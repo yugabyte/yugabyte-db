@@ -29,10 +29,22 @@
 #include "nodes/execnodes.h"
 #include "utils/rel.h"
 
+/* How a command modified a row. */
+typedef enum YbRowModificationKind
+{
+	YB_ROW_INSERTED,			/* inserted the row */
+	YB_ROW_UPDATED,				/* wrote the row's current version */
+	YB_ROW_DELETED,				/* deleted the row, or moved it to a new key */
+} YbRowModificationKind;
+
 extern void YbBeginRowModifications(ModifyTableState *mtstate);
 extern void YbEndRowModifications(ModifyTableState *mtstate);
+extern void YbSetRowModificationKey(ModifyTableState *mtstate, Relation rel,
+									TupleTableSlot *planSlot,
+									TupleTableSlot *keySlot);
 extern void YbRecordRowModification(ModifyTableState *mtstate, Relation rel,
-									TupleTableSlot *slot, bool deleted);
+									TupleTableSlot *slot,
+									YbRowModificationKind kind);
 extern TM_Result YbGetRowModificationResult(EState *estate, Relation rel,
 											TupleTableSlot *planSlot,
 											TM_FailureData *tmfd);
@@ -43,5 +55,8 @@ extern void YbCheckOnConflictRowNotModified(EState *estate, Relation rel,
 											Datum ybctid);
 extern bool YbIsRowDeletedByCommand(EState *estate, Relation rel,
 									TupleTableSlot *slot);
+extern void YbBeginLockRows(void);
+extern void YbEndLockRows(void);
+extern bool YbIsLockedRowModified(EState *estate, Relation rel, Datum ybctid);
 
 #endif							/* YB_ROW_MODIFICATION_H */

@@ -1307,9 +1307,8 @@ YbExecInsertAct(ModifyTableContext *context,
 				 * A later proposed row of this command must not update the
 				 * row, see ExecOnConflictUpdate.
 				 */
-				if (onconflict == ONCONFLICT_UPDATE)
-					YbRecordRowModification(mtstate, resultRelationDesc, slot,
-											false /* deleted */ );
+				YbRecordRowModification(mtstate, resultRelationDesc, slot,
+										YB_ROW_INSERTED);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
@@ -1389,6 +1388,8 @@ YbExecInsertAct(ModifyTableContext *context,
 
 				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate,
 							  onconflict);
+				YbRecordRowModification(mtstate, resultRelationDesc, slot,
+										YB_ROW_INSERTED);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
@@ -1633,6 +1634,9 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 	if (IsYBRelation(resultRelationDesc))
 	{
+		YbSetRowModificationKey(context->mtstate, resultRelationDesc,
+								context->planSlot, context->planSlot);
+
 		TM_Result	result = YbGetRowModificationResult(estate,
 														resultRelationDesc,
 														context->planSlot,
@@ -1658,12 +1662,16 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		 * tuple visibility semantics within the same transaction
 		 * (command counter). So, when a tuple is not found, hard code the
 		 * return value to TM_Invisible.
+		 *
+		 * A delete of a row that was not fetched does not know whether it
+		 * found the row when it is buffered: record it anyway.
 		 */
+		if (row_found || context->mtstate->yb_skip_fetch_target_tuple)
+			YbRecordRowModification(context->mtstate, resultRelationDesc,
+									context->planSlot, YB_ROW_DELETED);
 		if (!row_found)
 			return TM_Invisible;
 
-		YbRecordRowModification(context->mtstate, resultRelationDesc,
-								context->planSlot, true /* deleted */ );
 		return TM_Ok;
 	}
 
@@ -2584,6 +2592,9 @@ lreplace:
 												  *yb_cols_marked_for_update);
 
 		/* Where heap_update reports TM_SelfModified */
+		if (!*yb_is_pk_updated)
+			YbSetRowModificationKey(context->mtstate, resultRelationDesc,
+									context->planSlot, slot);
 		result = YbGetRowModificationResult(estate, resultRelationDesc,
 											context->planSlot, &context->tmfd);
 		if (result != TM_Ok)
@@ -2609,16 +2620,21 @@ lreplace:
 		 * tuple visibility semantics within the same transaction
 		 * (command counter). So, when a tuple is not found, hard code the
 		 * return value to TM_Invisible.
+		 *
+		 * An update of a row that was not fetched does not know whether it
+		 * found the row when it is buffered: record it anyway.
 		 */
+		if (row_found || context->mtstate->yb_skip_fetch_target_tuple)
+			YbRecordRowModification(context->mtstate, resultRelationDesc,
+									context->planSlot,
+									(*yb_is_pk_updated ?
+									 YB_ROW_DELETED : YB_ROW_UPDATED));
 		if (!row_found)
 			return TM_Invisible;
 
-		YbRecordRowModification(context->mtstate, resultRelationDesc,
-								context->planSlot,
-								*yb_is_pk_updated /* deleted */ );
 		if (*yb_is_pk_updated)
 			YbRecordRowModification(context->mtstate, resultRelationDesc, slot,
-									false /* deleted */ );
+									YB_ROW_INSERTED);
 		updateCxt->updated = true;
 		return TM_Ok;
 	}

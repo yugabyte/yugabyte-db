@@ -23,9 +23,15 @@
  * Only a ModifyTable node in progress can modify a row again, so the entries
  * are kept while one is: from its initialization to its last row.  A
  * modification is recorded only when another can follow it within the same
- * statement: when the node's subplan joins the target with other rows, when
- * the statement has writable CTEs, when the node runs inside another node in
- * progress (in a trigger or a function), and for ON CONFLICT DO UPDATE.
+ * statement: when the node's subplan can return a target row more than once,
+ * when another ModifyTable node of the statement (a writable CTE) targets the
+ * same table, when the node runs inside another node in progress (in a
+ * trigger or a function), and for ON CONFLICT DO UPDATE.
+ *
+ * A row lock likewise skips a row that its command or a later one modified,
+ * as heap_lock_tuple reports TM_SelfModified for it.  A locking scan, like a
+ * FOR UPDATE cursor, can outlive the command that opened it, so while one is
+ * open every modification is recorded and the entries are kept.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -50,13 +56,16 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "catalog/partition.h"
 #include "common/hashfn.h"
 #include "executor/tuptable.h"
 #include "executor/ybModifyTable.h"
 #include "executor/ybRowModification.h"
 #include "nodes/plannodes.h"
+#include "parser/parsetree.h"
 #include "utils/datum.h"
 #include "utils/hsearch.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "ybctid.h"
 
@@ -66,16 +75,12 @@ typedef struct YbRowKey
 	Datum		ybctid;
 } YbRowKey;
 
-/*
- * A modification of a row by command cmax in subtransaction subid.  A deleted
- * row is gone, as the old key of a primary key update is; otherwise the
- * command wrote the row's current version.
- */
+/* A modification of a row by command cmax in subtransaction subid. */
 typedef struct YbModificationRecord
 {
 	CommandId	cmax;
 	SubTransactionId subid;
-	bool		deleted;
+	YbRowModificationKind kind;
 } YbModificationRecord;
 
 /*
@@ -94,6 +99,7 @@ typedef struct YbSubXactDepth
 {
 	SubTransactionId subid;
 	int			depth;
+	int			lock_rows;
 } YbSubXactDepth;
 
 static MemoryContext yb_row_modifications_cxt = NULL;
@@ -101,6 +107,9 @@ static HTAB *yb_row_modifications = NULL;
 
 /* ModifyTable nodes initialized that have not modified all their rows. */
 static int	yb_modify_table_depth = 0;
+
+/* LockRows nodes of YB relations initialized and not yet ended. */
+static int	yb_lock_rows_open = 0;
 
 /* yb_modify_table_depth when each open subtransaction started. */
 static List *yb_subxact_depths = NIL;
@@ -142,6 +151,7 @@ YbRowModificationXactCallback(XactEvent event, void *arg)
 	yb_row_modifications_cxt = NULL;
 	yb_row_modifications = NULL;
 	yb_modify_table_depth = 0;
+	yb_lock_rows_open = 0;
 	yb_subxact_depths = NIL;
 }
 
@@ -201,6 +211,7 @@ YbRowModificationSubXactCallback(SubXactEvent event,
 
 				saved->subid = mySubid;
 				saved->depth = yb_modify_table_depth;
+				saved->lock_rows = yb_lock_rows_open;
 				yb_subxact_depths = lappend(yb_subxact_depths, saved);
 				MemoryContextSwitchTo(oldcxt);
 				break;
@@ -214,11 +225,15 @@ YbRowModificationSubXactCallback(SubXactEvent event,
 				if (saved->subid == mySubid)
 				{
 					/*
-					 * The nodes that the error interrupted never end: count
-					 * them out.
+					 * The nodes that the error interrupted, and the cursors
+					 * that the subtransaction opened, never end: count them
+					 * out.
 					 */
 					if (event == SUBXACT_EVENT_ABORT_SUB)
+					{
 						yb_modify_table_depth = saved->depth;
+						yb_lock_rows_open = saved->lock_rows;
+					}
 					yb_subxact_depths = list_delete_last(yb_subxact_depths);
 					pfree(saved);
 				}
@@ -232,11 +247,62 @@ YbRowModificationSubXactCallback(SubXactEvent event,
 }
 
 /*
- * Whether the plan can return a row of the target more than once: a join
- * other than a semi or anti join can match it with several rows.
+ * Whether the plan scans one of the target relations, given by their range
+ * table indexes.
  */
 static bool
-YbPlanMayRepeatRows(Plan *plan)
+YbPlanScansTarget(Plan *plan, Bitmapset *targets)
+{
+	ListCell   *lc;
+
+	if (plan == NULL)
+		return false;
+
+	switch (nodeTag(plan))
+	{
+		case T_Append:
+			foreach(lc, ((Append *) plan)->appendplans)
+			{
+				if (YbPlanScansTarget(lfirst(lc), targets))
+					return true;
+			}
+			return false;
+		case T_MergeAppend:
+			foreach(lc, ((MergeAppend *) plan)->mergeplans)
+			{
+				if (YbPlanScansTarget(lfirst(lc), targets))
+					return true;
+			}
+			return false;
+		case T_SubqueryScan:
+			return YbPlanScansTarget(((SubqueryScan *) plan)->subplan, targets);
+		case T_SeqScan:
+		case T_YbSeqScan:
+		case T_SampleScan:
+		case T_IndexScan:
+		case T_IndexOnlyScan:
+		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
+		case T_TidScan:
+		case T_TidRangeScan:
+		case T_ForeignScan:
+			return bms_is_member(((Scan *) plan)->scanrelid, targets);
+		default:
+			break;
+	}
+
+	return (YbPlanScansTarget(outerPlan(plan), targets) ||
+			YbPlanScansTarget(innerPlan(plan), targets));
+}
+
+/*
+ * Whether the plan can return a row of the target more than once: a join
+ * other than a semi or anti join can match it with several rows, unless the
+ * target is on its outer side and the planner proved that each outer row
+ * matches at most one inner row.
+ */
+static bool
+YbPlanMayRepeatRows(Plan *plan, Bitmapset *targets)
 {
 	ListCell   *lc;
 
@@ -250,34 +316,112 @@ YbPlanMayRepeatRows(Plan *plan)
 		case T_HashJoin:
 		case T_YbBatchedNestLoop:
 			{
-				JoinType	jointype = ((Join *) plan)->jointype;
+				Join	   *join = (Join *) plan;
 
-				if (jointype != JOIN_SEMI && jointype != JOIN_ANTI)
+				if (join->jointype != JOIN_SEMI &&
+					join->jointype != JOIN_ANTI &&
+					(YbPlanScansTarget(innerPlan(plan), targets) ||
+					 (!join->inner_unique &&
+					  YbPlanScansTarget(outerPlan(plan), targets))))
 					return true;
 				break;
 			}
 		case T_Append:
 			foreach(lc, ((Append *) plan)->appendplans)
 			{
-				if (YbPlanMayRepeatRows(lfirst(lc)))
+				if (YbPlanMayRepeatRows(lfirst(lc), targets))
 					return true;
 			}
 			break;
 		case T_MergeAppend:
 			foreach(lc, ((MergeAppend *) plan)->mergeplans)
 			{
-				if (YbPlanMayRepeatRows(lfirst(lc)))
+				if (YbPlanMayRepeatRows(lfirst(lc), targets))
 					return true;
 			}
 			break;
 		case T_SubqueryScan:
-			return YbPlanMayRepeatRows(((SubqueryScan *) plan)->subplan);
+			return YbPlanMayRepeatRows(((SubqueryScan *) plan)->subplan, targets);
 		default:
 			break;
 	}
 
-	return (YbPlanMayRepeatRows(outerPlan(plan)) ||
-			YbPlanMayRepeatRows(innerPlan(plan)));
+	return (YbPlanMayRepeatRows(outerPlan(plan), targets) ||
+			YbPlanMayRepeatRows(innerPlan(plan), targets));
+}
+
+/*
+ * The relation whose rows a target relation of the statement holds: the root
+ * of its partition tree, which is what an INSERT into a partitioned table
+ * names while its rows go to the partitions.
+ */
+static Oid
+YbTargetTreeRoot(PlannedStmt *pstmt, int rtindex)
+{
+	Oid			relid = rt_fetch(rtindex, pstmt->rtable)->relid;
+
+	if (get_rel_relispartition(relid))
+		relid = llast_oid(get_partition_ancestors(relid));
+	return relid;
+}
+
+/*
+ * Whether another ModifyTable node of the statement targets a relation of
+ * the same partition tree as the node does.
+ */
+static bool
+YbSharesTargetWithOtherNode(PlannedStmt *pstmt, ModifyTable *node)
+{
+	List	   *own = NIL;
+	ListCell   *lc;
+	bool		result = false;
+
+	foreach(lc, node->resultRelations)
+		own = list_append_unique_oid(own,
+									 YbTargetTreeRoot(pstmt, lfirst_int(lc)));
+
+	foreach(lc, pstmt->resultRelations)
+	{
+		if (list_member_int(node->resultRelations, lfirst_int(lc)))
+			continue;
+		if (list_member_oid(own, YbTargetTreeRoot(pstmt, lfirst_int(lc))))
+		{
+			result = true;
+			break;
+		}
+	}
+
+	list_free(own);
+	return result;
+}
+
+static void
+YbRegisterRowModificationCallbacks(void)
+{
+	if (!yb_callbacks_registered)
+	{
+		RegisterXactCallback(YbRowModificationXactCallback, NULL);
+		RegisterSubXactCallback(YbRowModificationSubXactCallback, NULL);
+		yb_callbacks_registered = true;
+	}
+}
+
+/*
+ * Whether the statement locks rows, as SELECT ... FOR UPDATE does.  Its
+ * LockRows nodes may not be initialized yet when the ModifyTable nodes of its
+ * writable CTEs are.
+ */
+static bool
+YbStatementLocksRows(PlannedStmt *pstmt)
+{
+	ListCell   *lc;
+
+	foreach(lc, pstmt->rowMarks)
+	{
+		if (RowMarkRequiresRowShareLock(lfirst_node(PlanRowMark, lc)->markType))
+			return true;
+	}
+	return false;
 }
 
 /*
@@ -289,23 +433,32 @@ YbBeginRowModifications(ModifyTableState *mtstate)
 	EState	   *estate = mtstate->ps.state;
 	ModifyTable *node = (ModifyTable *) mtstate->ps.plan;
 
-	if (!yb_callbacks_registered)
-	{
-		RegisterXactCallback(YbRowModificationXactCallback, NULL);
-		RegisterSubXactCallback(YbRowModificationSubXactCallback, NULL);
-		yb_callbacks_registered = true;
-	}
+	YbRegisterRowModificationCallbacks();
 
-	/* No node in progress could modify a row again. */
-	if (yb_modify_table_depth == 0)
+	/* No node in progress or locking scan could modify or lock a row again. */
+	if (yb_modify_table_depth == 0 && yb_lock_rows_open == 0)
 		YbForgetRowModifications();
 
-	mtstate->yb_track_row_modifications =
-		(yb_modify_table_depth > 0 ||
-		 estate->es_plannedstmt->hasModifyingCTE ||
-		 node->onConflictAction == ONCONFLICT_UPDATE ||
-		 ((node->operation == CMD_UPDATE || node->operation == CMD_DELETE) &&
-		  YbPlanMayRepeatRows(outerPlan(node))));
+	if (yb_modify_table_depth > 0 || yb_lock_rows_open > 0 ||
+		node->onConflictAction == ONCONFLICT_UPDATE ||
+		YbStatementLocksRows(estate->es_plannedstmt))
+		mtstate->yb_track_row_modifications = true;
+	else if (estate->es_plannedstmt->hasModifyingCTE &&
+			 YbSharesTargetWithOtherNode(estate->es_plannedstmt, node))
+		mtstate->yb_track_row_modifications = true;
+	else if (node->operation == CMD_UPDATE || node->operation == CMD_DELETE)
+	{
+		Bitmapset  *targets = NULL;
+		ListCell   *lc;
+
+		foreach(lc, node->resultRelations)
+			targets = bms_add_member(targets, lfirst_int(lc));
+		mtstate->yb_track_row_modifications =
+			YbPlanMayRepeatRows(outerPlan(node), targets);
+		bms_free(targets);
+	}
+	else
+		mtstate->yb_track_row_modifications = false;
 	mtstate->yb_modifying_rows = true;
 	++yb_modify_table_depth;
 }
@@ -336,13 +489,28 @@ YbFindRowModification(Relation rel, Datum ybctid)
 }
 
 /*
- * Records that the node's command modified the row in the slot: deleted it,
- * or wrote its current version by an update or, for ON CONFLICT DO UPDATE, an
- * insert.
+ * A node that does not fetch its target rows, like a single-row UPDATE or
+ * DELETE, has no ybctid in the plan slot: compute it from the key columns of
+ * keySlot, so that the row can be checked and recorded.
+ */
+void
+YbSetRowModificationKey(ModifyTableState *mtstate, Relation rel,
+						TupleTableSlot *planSlot, TupleTableSlot *keySlot)
+{
+	if (!mtstate->yb_skip_fetch_target_tuple ||
+		TABLETUPLE_YBCTID(planSlot) != 0 ||
+		(!mtstate->yb_track_row_modifications && !yb_row_modifications))
+		return;
+
+	TABLETUPLE_YBCTID(planSlot) = YBCComputeYBTupleIdFromSlot(rel, keySlot);
+}
+
+/*
+ * Records that the node's command modified the row in the slot.
  */
 void
 YbRecordRowModification(ModifyTableState *mtstate, Relation rel,
-						TupleTableSlot *slot, bool deleted)
+						TupleTableSlot *slot, YbRowModificationKind kind)
 {
 	YbRowKey	key;
 	YbRowModification *entry;
@@ -360,7 +528,7 @@ YbRecordRowModification(ModifyTableState *mtstate, Relation rel,
 
 	record.cmax = mtstate->ps.state->es_output_cid;
 	record.subid = GetCurrentSubTransactionId();
-	record.deleted = deleted;
+	record.kind = kind;
 
 	if (!yb_row_modifications)
 	{
@@ -416,7 +584,9 @@ YbRecordRowModification(ModifyTableState *mtstate, Relation rel,
 
 /*
  * What heap_update or heap_delete would report for the row of the plan slot:
- * TM_SelfModified if the executing command or a later one modified it.
+ * TM_SelfModified if the executing command or a later one modified it, and
+ * TM_Invisible if one of them inserted it, which only a node that does not
+ * fetch its target rows can try.
  */
 TM_Result
 YbGetRowModificationResult(EState *estate, Relation rel,
@@ -430,6 +600,9 @@ YbGetRowModificationResult(EState *estate, Relation rel,
 	entry = YbFindRowModification(rel, YBCGetYBTupleIdFromSlot(planSlot));
 	if (!entry || entry->latest.cmax < estate->es_output_cid)
 		return TM_Ok;
+
+	if (entry->latest.kind == YB_ROW_INSERTED)
+		return TM_Invisible;
 
 	ItemPointerSetInvalid(&tmfd->ctid);
 	tmfd->xmax = GetTopTransactionIdIfAny();
@@ -451,7 +624,8 @@ YbCheckTupleForTrigger(EState *estate, Relation rel, HeapTuple trigtuple,
 	YbRowModification *entry = YbFindRowModification(rel,
 													 HEAPTUPLE_YBCTID(trigtuple));
 
-	if (!entry || entry->latest.cmax < estate->es_output_cid)
+	if (!entry || entry->latest.cmax < estate->es_output_cid ||
+		entry->latest.kind == YB_ROW_INSERTED)
 		return true;
 
 	if (entry->latest.cmax != estate->es_output_cid)
@@ -490,7 +664,7 @@ YbIsRowDeletedByCommand(EState *estate, Relation rel, TupleTableSlot *slot)
 	if (should_free)
 		heap_freetuple(tuple);
 
-	return (entry && entry->latest.deleted &&
+	return (entry && entry->latest.kind == YB_ROW_DELETED &&
 			entry->latest.cmax >= estate->es_output_cid);
 }
 
@@ -506,7 +680,7 @@ YbCheckOnConflictRowNotModified(EState *estate, Relation rel, Datum ybctid)
 {
 	YbRowModification *entry = YbFindRowModification(rel, ybctid);
 
-	if (entry && !entry->latest.deleted &&
+	if (entry && entry->latest.kind != YB_ROW_DELETED &&
 		entry->latest.cmax >= estate->es_output_cid)
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -514,4 +688,36 @@ YbCheckOnConflictRowNotModified(EState *estate, Relation rel, Datum ybctid)
 				 errmsg("%s command cannot affect row a second time",
 						"ON CONFLICT DO UPDATE"),
 				 errhint("Ensure that no rows proposed for insertion within the same command have duplicate constrained values.")));
+}
+
+/*
+ * Called when a LockRows node of YB relations is initialized and when it
+ * ends.
+ */
+void
+YbBeginLockRows(void)
+{
+	YbRegisterRowModificationCallbacks();
+	++yb_lock_rows_open;
+}
+
+void
+YbEndLockRows(void)
+{
+	if (yb_lock_rows_open > 0)
+		--yb_lock_rows_open;
+}
+
+/*
+ * Whether the executing command or a later one updated or deleted the row
+ * that a row lock is about to lock, which heap_lock_tuple reports as
+ * TM_SelfModified, so that the row is skipped.
+ */
+bool
+YbIsLockedRowModified(EState *estate, Relation rel, Datum ybctid)
+{
+	YbRowModification *entry = YbFindRowModification(rel, ybctid);
+
+	return (entry && entry->latest.kind != YB_ROW_INSERTED &&
+			entry->latest.cmax >= estate->es_output_cid);
 }
