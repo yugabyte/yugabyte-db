@@ -151,10 +151,9 @@ JumbleQuery(Query *query)
 	jstate = InitJumble();
 
 	/*
-	 * YB_TODO_PG19MERGE: this was ported from queryjumble.c Upstream PG commits
-	 * 2ecbb0a49359759b46dd82df4ac3a083c36b1db4,
-	 * 3db72ebcbe20debc6552500ee9ccb4b2007f12f8 changed this function.
-	 * Verify this YB code is still sound.
+	 * YB: Each BACKFILL call carries its own read time and row bounds, so
+	 * jumbling the node would give every call a different queryId.  Hash
+	 * only the index OIDs so that all calls for an index share one queryId.
 	 */
 	if (query->utilityStmt && IsA(query->utilityStmt, YbBackfillIndexStmt))
 	{
