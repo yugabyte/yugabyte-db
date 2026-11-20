@@ -125,6 +125,10 @@
 \set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 >= ALL (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 
+-- IN/>ANY, sort...
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :run_query
+
 -- IN, sort, =, sort
 \set query ':P :Q SELECT r3, r2, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5) AND r3 = 2 ORDER BY r2, r4, n LIMIT 5;'
 \i :run_query
@@ -772,11 +776,6 @@ ANALYZE r5n;
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
 
--- A non-equality array condition on a stream column is a filter, even when
--- its array equals the stream IN list (#35030).
-\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
-\i :run_query
-
 --
 -- Cast expression secondary index
 --
@@ -811,9 +810,6 @@ SET yb_enable_advanced_index_cond_fold = off;
 \i :run_query
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
--- With the setting off too, the non-equality array condition with the stream
--- IN list's elements is a filter, not a second IN list on the stream column
--- (#35030).
 \set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
 \i :run_query
 RESET yb_enable_advanced_index_cond_fold;
