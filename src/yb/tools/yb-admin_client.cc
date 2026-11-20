@@ -111,6 +111,7 @@
 
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -4317,6 +4318,86 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::PrepareReplicationSlotsForTransactionalDDL(
+    const std::string& slot_name) {
+  master::PrepareReplicationSlotsForTransactionalDDLRequestPB req;
+  master::PrepareReplicationSlotsForTransactionalDDLResponsePB resp;
+  if (!slot_name.empty()) {
+    req.set_replication_slot_name(slot_name);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->PrepareReplicationSlotsForTransactionalDDL(
+      req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  if (!resp.skipped_slots().empty()) {
+    cout << "Skipped replication slots: "
+         << CollectionToString(
+                resp.skipped_slots(),
+                [](const auto& s) {
+                  return Format("$0 ($1)", s.replication_slot_name(), s.reason());
+                })
+         << "\n";
+  }
+  if (resp.slots().empty()) {
+    cout << "No replication slots to prepare\n";
+    return Status::OK();
+  }
+  RETURN_NOT_OK(InvalidateCDCStreamMetadataCaches());
+  cout << "Prepared replication slots for transactional DDL: "
+       << CollectionToString(resp.slots(), [](const auto& s) { return s.replication_slot_name(); })
+       << "\n";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::InvalidateCDCStreamMetadataCaches() {
+  // The added tables are all on the sys catalog tablet, which only the masters serve. A tserver
+  // reloads the stream from the master leader at VWAL init.
+  std::vector<std::pair<std::string, HostPort>> servers;
+  std::vector<std::string> failures;
+  const auto masters = VERIFY_RESULT(GetAllMasters());
+  for (const auto& master : masters.masters()) {
+    const auto& uuid = master.instance_id().permanent_uuid();
+    if (master.has_error()) {
+      failures.push_back(Format("master $0: $1", uuid, StatusFromPB(master.error())));
+      continue;
+    }
+    auto host_port = HostPortFromPB(SelectServerAddress(master.registration()));
+    servers.emplace_back(Format("master $0 at $1", uuid, host_port), host_port);
+  }
+  cdc::InvalidateStreamMetadataCacheRequestPB req;
+  std::vector<std::unique_ptr<cdc::CDCServiceProxy>> proxies;
+  std::vector<cdc::InvalidateStreamMetadataCacheResponsePB> resps(servers.size());
+  std::vector<RpcController> controllers(servers.size());
+  CountDownLatch latch(servers.size());
+  for (size_t i = 0; i != servers.size(); ++i) {
+    proxies.push_back(
+        std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), servers[i].second));
+    controllers[i].set_timeout(timeout_);
+    proxies[i]->InvalidateStreamMetadataCacheAsync(
+        req, &resps[i], &controllers[i], [&latch] { latch.CountDown(); });
+  }
+  latch.Wait();
+
+  for (size_t i = 0; i != servers.size(); ++i) {
+    auto status = controllers[i].status();
+    if (status.ok() && resps[i].has_error()) {
+      status = StatusFromPB(resps[i].error().status());
+    }
+    if (!status.ok()) {
+      failures.push_back(Format("$0: $1", servers[i].first, status));
+    }
+  }
+  SCHECK_FORMAT(failures.empty(), ServiceUnavailable, "$0", JoinStrings(failures, "; "));
+
+  cout << "Invalidated the CDC stream metadata caches on " << servers.size() << " masters\n";
+  return Status::OK();
+}
+
 Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id) {
   master::DisableDynamicTableAdditionOnCDCSDKStreamRequestPB req;
   master::DisableDynamicTableAdditionOnCDCSDKStreamResponsePB resp;
@@ -4336,6 +4417,62 @@ Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::
 
   cout << "Successfully disabled dynamic table addition on CDC stream: " << stream_id << "\n";
 
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetReplicationSlotCatalogBarrier(const std::string& slot_name) {
+  master::SetReplicationSlotCatalogBarrierRequestPB req;
+  req.set_replication_slot_name(slot_name);
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterReplicationProxy::SetReplicationSlotCatalogBarrier,
+      *master_replication_proxy_, req));
+
+  cout << "Catalog barrier of replication slot " << slot_name << " is at "
+       << HybridTime(resp.barrier_ht()) << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::PauseReplicationSlot(
+    const std::string& slot_name, MonoDelta timeout) {
+  master::PauseReplicationSlotRequestPB req;
+  req.set_replication_slot_name(slot_name);
+
+  const auto deadline = CoarseMonoClock::Now() + timeout;
+  bool waiting = false;
+  while (true) {
+    const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
+        &master::MasterReplicationProxy::PauseReplicationSlot, *master_replication_proxy_, req));
+    if (!resp.has_error()) {
+      break;
+    }
+    auto status = StatusFromPB(resp.error().status());
+    if (!status.IsTryAgain()) {
+      return status;
+    }
+    if (CoarseMonoClock::Now() >= deadline) {
+      return STATUS_FORMAT(
+          TimedOut, "$0. Waited $1 seconds; rerun the command until it succeeds",
+          status.message().ToBuffer(), timeout.ToSeconds());
+    }
+    if (!waiting) {
+      cout << "Waiting up to " << timeout.ToSeconds() << " seconds for the restart time of "
+           << "replication slot " << slot_name << " to reach its catalog barrier time" << endl;
+      waiting = true;
+    }
+    SleepFor(1s);
+  }
+
+  cout << "Paused replication slot " << slot_name << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ReleaseReplicationSlot(const std::string& slot_name) {
+  master::ReleaseReplicationSlotRequestPB req;
+  req.set_replication_slot_name(slot_name);
+  RETURN_NOT_OK(InvokeRpc(
+      &master::MasterReplicationProxy::ReleaseReplicationSlot, *master_replication_proxy_, req));
+
+  cout << "Released replication slot " << slot_name << endl;
   return Status::OK();
 }
 

@@ -454,7 +454,17 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
+  Status PrepareReplicationSlotsForTransactionalDDL(const std::string& slot_name);
+
+  Status InvalidateCDCStreamMetadataCaches();
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
+
+  Status SetReplicationSlotCatalogBarrier(const std::string& slot_name);
+
+  Status PauseReplicationSlot(const std::string& slot_name, MonoDelta timeout);
+
+  Status ReleaseReplicationSlot(const std::string& slot_name);
 
   Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
 

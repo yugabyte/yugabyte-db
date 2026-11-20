@@ -205,6 +205,10 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
+YB_DEFINE_ENUM(PrepareSlotForTxnDdlResult,
+               (kPrepared)(kNotReadyForConversion)(kNotLogicalReplication)(kNotificationSlot)
+               (kDeleting)(kAlreadyUnusable));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -1658,6 +1662,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // were created with an empty plugin name.
   Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
 
+  // Converts paused pub-refresh slots to implicit slots and marks the other pub-refresh slots
+  // unusable. Then adds the catalog tables used to decode transactional DDL to implicit slots
+  // created without them.
+  Status PrepareReplicationSlotsForTransactionalDDL(
+      const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+      PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc)
+      EXCLUDES(mutex_);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1678,6 +1690,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status RemoveTablesFromCDCSDKStream(
       const RemoveTablesFromCDCSDKStreamRequestPB* req,
       RemoveTablesFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status SetReplicationSlotCatalogBarrier(
+      const SetReplicationSlotCatalogBarrierRequestPB* req,
+      SetReplicationSlotCatalogBarrierResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status PauseReplicationSlot(
+      const PauseReplicationSlotRequestPB* req, PauseReplicationSlotResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  Status ReleaseReplicationSlot(
+      const ReleaseReplicationSlotRequestPB* req, ReleaseReplicationSlotResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
@@ -1796,6 +1820,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const google::protobuf::RepeatedPtrField<std::string>& table_ids) const
       REQUIRES_SHARED(mutex_);
 
+  // Whether 'table', created after the CDCSDK stream, can be added to the stream: a regular stream
+  // and one bound to a FOR ALL TABLES publication take every new table, while a stream bound to a
+  // publication with a table list takes it only if it is a rewrite of one of its tables.
+  bool CDCSDKStreamTakesNewTable(const CDCStreamInfo& stream, const TableInfo& table) const
+      REQUIRES_SHARED(mutex_);
+
+  // Whether 'table' is a rewrite of one of the tables of a CDCSDK stream, whose tables have the PG
+  // table oids 'stream_pg_table_oids'. A rewrite gives the PG table a new DocDB table with the same
+  // PG table oid, so sharing a PG table oid with a stream table is what identifies one.
+  static bool IsRewriteOfStreamTable(
+      const std::unordered_set<uint32_t>& stream_pg_table_oids, const TableInfo& table);
+
   // This method compares all tables in the namespace eligible for a CDCSDK stream to all the tables
   // added to a CDCSDK stream, to find indexes / mat views that are part of the CDCSDK streams.
   void FindAllNonEligibleTablesInCDCSDKStream(
@@ -1886,6 +1922,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+
+  Result<PrepareSlotForTxnDdlResult> PrepareStreamForTransactionalDDL(
+      const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
+
+  Result<CDCStreamInfoPtr> GetPubRefreshStream(const std::string& slot_name) EXCLUDES(mutex_);
+  Result<bool> HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id);
+  Status ClearImplicitConversionState(const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
+  // Requires cdcsdk_sys_catalog_barrier_mutex_.
+  Status ReleaseSysCatalogRetentionBarriersIfUnused(const xrepl::StreamId& stream_id)
+      EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
@@ -3037,6 +3083,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
+  // Deletes or hides the tablets of a table dropped by DeleteTableInternal(). A secondary table,
+  // e.g. a vector index, is removed from the tablets it lives on instead.
+  Status DeleteOrHideTablets(const DeletingTableData& table, const LeaderEpoch& epoch);
+
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
       EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
@@ -3672,6 +3722,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool xrepl_maps_loaded_ GUARDED_BY(mutex_) = false;
 
   std::mutex xrepl_stream_ids_in_use_mutex_;
+
+  // Serializes releasing the sys catalog retention barriers with setting them, so that a release
+  // never drops a barrier that a stream being created or a catalog barrier command just set.
+  std::mutex cdcsdk_sys_catalog_barrier_mutex_;
   std::unordered_set<xrepl::StreamId> xrepl_stream_ids_in_use_
       GUARDED_BY(xrepl_stream_ids_in_use_mutex_);
 

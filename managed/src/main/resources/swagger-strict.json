@@ -1004,7 +1004,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1211,7 +1212,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1514,7 +1516,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -4734,7 +4737,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -8693,7 +8696,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {

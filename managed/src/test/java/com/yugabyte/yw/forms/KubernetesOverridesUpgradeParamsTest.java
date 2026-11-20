@@ -40,12 +40,14 @@ import org.junit.Test;
 
 /**
  * A Kubernetes overrides upgrade with no override changed is accepted when it would install or
- * remove the node_exporter sidecar on a master or tserver pod, and rejected otherwise. Each test
- * universe has one master and one tserver node.
+ * remove the node_exporter sidecar on a master or tserver pod, or change the sidecar TLS the
+ * universe recorded, and rejected otherwise. Each test universe has one master and one tserver
+ * node.
  */
 public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
 
   private static final String KEY = UniverseConfKeys.k8sNodeExporterEnabled.getKey();
+  private static final String TLS_KEY = UniverseConfKeys.nodeExporterTlsEnabled.getKey();
   private static final String SUPPORTED_VERSION =
       KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW;
   private static final String UNSUPPORTED_VERSION = "2.29.0.0-b1";
@@ -159,6 +161,34 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
     assertNoOverridesModified(u);
   }
 
+  // The record decides the TLS the pods are rendered with, so no pod is read for it.
+  @Test
+  public void testNoChangeAcceptedWhenTlsWantedButNotRecorded() {
+    Universe u = k8sUniverseWithNodeToNode(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "true");
+    noChangeParams().verifyParams(u, true);
+    verify(mockKubernetesManager, never()).getPodObject(any(), any(), any());
+  }
+
+  @Test
+  public void testNoChangeAcceptedWhenTlsRecordedButNotWanted() {
+    Universe u = recordNodeExporterHttps(k8sUniverseWithNodeToNode(SUPPORTED_VERSION));
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "false");
+    noChangeParams().verifyParams(u, true);
+    verify(mockKubernetesManager, never()).getPodObject(any(), any(), any());
+  }
+
+  @Test
+  public void testNoChangeRejectedWhenTlsRecordedAsWanted() {
+    Universe u = recordNodeExporterHttps(k8sUniverseWithNodeToNode(SUPPORTED_VERSION));
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    RuntimeConfigEntry.upsert(u, TLS_KEY, "true");
+    mockServerPods(true /* sidecar */);
+    assertNoOverridesModified(u);
+  }
+
   @Test
   public void testChangedOverrideAcceptedWithoutReadingPods() {
     Universe u = k8sUniverse(SUPPORTED_VERSION);
@@ -166,6 +196,22 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
     params.universeOverrides = "tserver:\n  podLabels:\n    env: test";
     params.verifyParams(u, true);
     verify(mockKubernetesManager, never()).getPodObject(any(), any(), any());
+  }
+
+  private Universe k8sUniverseWithNodeToNode(String version) {
+    return Universe.saveDetails(
+        k8sUniverse(version).getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+          universe.setUniverseDetails(details);
+        });
+  }
+
+  private Universe recordNodeExporterHttps(Universe u) {
+    u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true"));
+    u.save();
+    return u;
   }
 
   private void assertNoOverridesModified(Universe u) {

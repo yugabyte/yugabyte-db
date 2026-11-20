@@ -2,8 +2,9 @@
 
 // Command yb-redact-server-conf rewrites a server.conf in place with its credentials replaced.
 //
-// It runs on the DB node, invoked by redact_server_conf_in_staging in devops/bin/node_utils.sh,
-// so that secrets are removed before the support bundle leaves the node.
+// It runs on the DB node, invoked by redact_server_conf_in_staging in
+// devops/bin/support_bundle_utils.sh, so that secrets are removed before the support bundle leaves
+// the node.
 //
 // Exit codes are part of the contract with that script: 0 redacted, 1 I/O or decode failure,
 // 2 usage error. The script maps any non-zero exit to REDACTION_STATUS=SKIPPED and still exits 0,
@@ -28,8 +29,8 @@ func main() {
 	switch os.Args[1] {
 	case "redact-file":
 		os.Exit(runRedactFile(os.Args[2:]))
-	// Pre-flight probe. node_utils.sh only checks the exit status here; printing the replacement
-	// token also confirms the binary is linked against the expected package.
+	// Pre-flight probe. support_bundle_utils.sh only checks the exit status here; printing the
+	// replacement token also confirms the binary is linked against the expected package.
 	case "smoke":
 		fmt.Print(serverconfredact.SecretReplacement)
 		os.Exit(0)
@@ -58,7 +59,8 @@ func runRedactFile(args []string) int {
 	}
 	// Accepted but unused. YBA resolves the version-specific sensitive gflag list on its side and
 	// passes the result in --sensitive-gflags-b64, so no version lookup happens on the node.
-	// node_utils.sh passes the flag regardless; keeping it accepted avoids a usage error there.
+	// support_bundle_utils.sh passes the flag regardless; keeping it accepted avoids a usage error
+	// there.
 	_ = ybVersion
 	if *filePath == "" {
 		fmt.Fprintln(os.Stderr, "--file is required")

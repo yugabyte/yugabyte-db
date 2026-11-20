@@ -14,10 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Uploads the yb-log-parse helper binary to DB nodes for support bundle scripts.
  *
- * <p>The binary replaces inline Python in {@code node_utils.sh} for deciding which log files fall
- * inside the collection window. It is uploaded rather than shipped with the node because DB nodes
- * are not redeployed for a YBA upgrade, and it is selected per node because a node's architecture
- * need not match the YBA host's.
+ * <p>The binary replaces inline Python in {@code support_bundle_utils.sh} for deciding which log
+ * files fall inside the collection window. It is uploaded rather than shipped with the node because
+ * DB nodes are not redeployed for a YBA upgrade, and it is selected per node because a node's
+ * architecture need not match the YBA host's.
  *
  * <p><b>Failure here is soft.</b> Every path returns {@code false} rather than throwing, and the
  * scripts fall back to their Python implementation -- slower, but correct. Contrast {@link

@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_type.h"
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
@@ -647,7 +648,8 @@ DefineIndex(Oid relationId,
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
 	/* Use PG catalog snapshot for catalog reads */
-	const bool 	yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	const bool 	yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1156,7 +1158,7 @@ DefineIndex(Oid relationId,
 
 		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
 		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+			yb_enable_colocated_tables_with_tablespaces;
 
 		/*
 		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
@@ -2345,7 +2347,7 @@ DefineIndex(Oid relationId,
 		volatile bool yb_type_changed = false;
 		PG_TRY();
 		{
-			if (!YBCIsLegacyModeForCatalogOps() &&
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
 				GetCurrentTransactionNestLevel() == 1 &&
 				YbGetTriggerDepth() == 0)
 			{
@@ -2372,7 +2374,8 @@ DefineIndex(Oid relationId,
 			 * WaitForBackendsCatalogVersion. Hence this additional phase
 			 * isn't necessary on the target.
 			 */
-			if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+				!yb_xcluster_automatic_mode_target_ddl)
 			{
 				/*
 				 * YB: Invalidate the relcache for the parent table as backfill
@@ -2464,7 +2467,8 @@ YbDefineIndexHelper(Oid relationId,
 					Oid databaseId)
 {
 	LOCKTAG		heaplocktag;
-	bool		yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	bool		yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
 
 	SET_LOCKTAG_RELATION(heaplocktag, MyDatabaseId, relationId);
 
@@ -2677,6 +2681,44 @@ YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
 						opclassname, collname),
 				 errhint("Use the COLLATE clause to set \"C\" collation explicitly.")));
 		ReleaseSysCache(collationtup);
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
+ * YbCheckOpClassInputType
+ *		An lsm key is stored in the encoding of the column type, so DocDB orders
+ *		and compares it as the column type's default lsm operator class would.
+ * Disallow an operator class if its input type and the column type have
+ * different default lsm operator classes, such as bpchar_ops on a text column
+ * or oid_ops on an int4 column. A type that cannot be an lsm key keeps its
+ * existing "not yet supported" error.
+ */
+static void
+YbCheckOpClassInputType(Oid atttype, Oid opclassoid)
+{
+	HeapTuple	classtup;
+	Form_pg_opclass classform;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	if (classform->opcintype != getBaseType(atttype) &&
+		GetDefaultOpClass(atttype, LSM_AM_OID) !=
+		GetDefaultOpClass(classform->opcintype, LSM_AM_OID) &&
+		YbDataTypeIsValidForKey(atttype))
+	{
+		/* Print bpchar, not "character", which means char(1) in a cast. */
+		char	   *opctypename = format_type_extended(classform->opcintype, -1,
+													   FORMAT_TYPE_TYPEMOD_GIVEN);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column type %s",
+						NameStr(classform->opcname), format_type_be(atttype)),
+				 errhint("Use a column or an index expression of type %s instead.",
+						 opctypename)));
 	}
 	ReleaseSysCache(classtup);
 }
@@ -2985,6 +3027,16 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		 */
 		if (IsYugaByteEnabled() && YBIsCollationValidNonC(attcollation))
 			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
+
+		/*
+		 * YB: binary upgrade and restore recreate indexes that already hold
+		 * data, and an xCluster target replays DDL its source already ran, so
+		 * do not reject those.
+		 */
+		if (IsYugaByteEnabled() && accessMethodId == LSM_AM_OID &&
+			!IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_xcluster_automatic_mode_target_ddl)
+			YbCheckOpClassInputType(atttype, classOidP[attn]);
 
 		if (OidIsValid(ddl_userid))
 		{
@@ -5616,7 +5668,8 @@ YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
 	 * YB: Skip WaitForLockers optimization on xCluster automatic-mode target
 	 * until GH #33155 is addressed.
 	 */
-	if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+	if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		!yb_xcluster_automatic_mode_target_ddl)
 		WaitForLockers(*heaplocktag, lockmode, false);
 	else
 		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */

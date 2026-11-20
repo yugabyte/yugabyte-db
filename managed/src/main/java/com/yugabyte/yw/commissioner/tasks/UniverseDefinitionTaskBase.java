@@ -83,7 +83,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -2266,8 +2265,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**
@@ -4410,17 +4408,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.force = true;
               Map<String, String> gflags = new HashMap<>();
               gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-              Cluster cluster = universe.getCluster(node.placementUuid);
-              Map<String, String> nodeGFlags =
-                  GFlagsUtil.getGFlagsForNode(
-                      node, serverType, cluster, universe.getUniverseDetails().clusters);
-              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
-                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
-              }
+              addUserYsqlPgConfCsv(gflags, universe, node, serverType);
               params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+  }
+
+  /**
+   * Adds the node's user ysql_pg_conf_csv, which SetFlagInMemory needs to rebuild the live value
+   * when the caller sets only a few flags.
+   */
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Universe universe, NodeDetails node, ServerType serverType) {
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster == null) {
+      // Fail rather than drop the user ysql_pg_conf_csv from the live value.
+      throw new IllegalStateException(
+          String.format(
+              "No cluster for node %s (placementUuid %s) in universe %s",
+              node.nodeName, node.placementUuid, universe.getUniverseUUID()));
+    }
+    addUserYsqlPgConfCsv(
+        gflags,
+        GFlagsUtil.getGFlagsForNode(
+            node, serverType, cluster, universe.getUniverseDetails().clusters));
+  }
+
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Map<String, String> nodeGFlags) {
+    String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+    if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+      gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+    }
   }
 
   public void updateAndPersistAuditLoggingConfigTask() {

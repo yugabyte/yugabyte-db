@@ -26,8 +26,11 @@ jobs:
             -w "$(pwd)" \
             yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \
             bash -c 'chown -R yugabyteci .'
+          # The image's default java is the OpenJDK 11 that its maven package pulls in, which
+          # can't parse Java 17 sources; use the image's Zulu 17 for managed/lint/lint-java.sh.
           docker run \
             --user yugabyteci \
+            -e JAVA_HOME=/usr/lib/jvm/zulu-17.jdk \
             -v "$(pwd):$(pwd)" \
             -w "$(pwd)" \
             yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest \

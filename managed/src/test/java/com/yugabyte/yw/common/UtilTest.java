@@ -454,6 +454,23 @@ public class UtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testYsqlRedactionOfDoubledQuotedPasswords() {
+    // ManageCatalogUpgradeSuperUser writes the password inside a format() string.
+    assertEquals(
+        "EXECUTE format('CREATE ROLE r WITH LOGIN PASSWORD REDACTED VALID UNTIL ''%s'';', time);",
+        Util.redactYsqlQuery(
+            "EXECUTE format('CREATE ROLE r WITH LOGIN PASSWORD ''Ab1!@^*zQ9'' VALID UNTIL"
+                + " ''%s'';', time);"));
+    assertEquals(
+        "EXECUTE format('ALTER ROLE r PASSWORD REDACTED');",
+        Util.redactYsqlQuery("EXECUTE format('ALTER ROLE r PASSWORD ''Ab1!@^*zQ9''');"));
+    // A plain password that starts with two quotes is not a doubled literal.
+    assertEquals(
+        "ALTER USER u WITH PASSWORD REDACTED; SELECT 1;",
+        Util.redactYsqlQuery("ALTER USER u WITH PASSWORD '''''Secret1'; SELECT 1;"));
+  }
+
+  @Test
   @Parameters({
     "3ns, 3",
     "2us, 2000",

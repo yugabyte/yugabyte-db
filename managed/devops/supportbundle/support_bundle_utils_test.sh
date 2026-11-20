@@ -8,15 +8,15 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-# Cases covering devops/bin/node_utils.sh, the script that runs on DB nodes.
+# Cases covering devops/bin/support_bundle_utils.sh, the script that runs on DB nodes.
 #
 # Needs python3; needs no Go helper binaries.
-#   bash managed/devops/supportbundle/node_utils_test.sh
+#   bash managed/devops/supportbundle/support_bundle_utils_test.sh
 
 # shellcheck source=./test_helpers.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/test_helpers.sh"
 
-NODE_UTILS="$DEVOPS_BIN/node_utils.sh"
+SB_UTILS="$DEVOPS_BIN/support_bundle_utils.sh"
 
 # ===============================================================================================
 # Bundle tar status
@@ -49,7 +49,7 @@ STUB
 )/yb-redact-server-conf"
 
 run_gflags_bundle() {
-  bash "$NODE_UTILS" create_gflags_bundle \
+  bash "$SB_UTILS" create_gflags_bundle \
     --node_home_dir "$GFLAGS_HOME" \
     --remote_tar_path "$1" \
     --gflag_file master/conf/server.conf \
@@ -100,7 +100,7 @@ done
 run_redact_gflags() {
   local tar_path=$1
   shift
-  bash "$NODE_UTILS" create_gflags_bundle \
+  bash "$SB_UTILS" create_gflags_bundle \
     --node_home_dir "$REDACT_HOME" --remote_tar_path "$tar_path" "$@" 2>/dev/null
 }
 tar_server_confs() {
@@ -183,7 +183,7 @@ mkdir -p "$YBC_REDACT_HOME/ybc/logs" "$YBC_REDACT_HOME/controller/conf"
 printf 'controller log line\n' > "$YBC_REDACT_HOME/ybc/logs/$YBC_REDACT_LOG"
 printf -- '--ldap_bind_passwd=%s\n' "$SECRET" > "$YBC_REDACT_HOME/controller/conf/server.conf"
 tar_path="$TMP_ROOT/out/ybc-drop.tar.gz"
-output="$(bash "$NODE_UTILS" create_ybc_logs_bundle \
+output="$(bash "$SB_UTILS" create_ybc_logs_bundle \
   --node_home_dir "$YBC_REDACT_HOME" \
   --ybc_logs_path "$YBC_REDACT_HOME/ybc/logs" \
   --start_date "2026-01-01" \
@@ -203,12 +203,12 @@ markers() {
 }
 EMPTY_HOME="$TMP_ROOT/empty-home"
 mkdir -p "$EMPTY_HOME/ybc/logs"
-output="$(bash "$NODE_UTILS" create_gflags_bundle --node_home_dir "$EMPTY_HOME" \
+output="$(bash "$SB_UTILS" create_gflags_bundle --node_home_dir "$EMPTY_HOME" \
   --remote_tar_path "$TMP_ROOT/out/gflags-empty.tar.gz" 2>/dev/null)"
 expect_bundle_status "redaction: GFlags with nothing to stage" EMPTY zero "$?" "$output"
 check "redaction: GFlags with nothing to stage -> NOT_APPLICABLE" "$(markers "$output")" \
   "REDACTION_STATUS=NOT_APPLICABLE BUNDLE_STATUS=EMPTY "
-output="$(bash "$NODE_UTILS" create_ybc_logs_bundle --node_home_dir "$EMPTY_HOME" \
+output="$(bash "$SB_UTILS" create_ybc_logs_bundle --node_home_dir "$EMPTY_HOME" \
   --ybc_logs_path "$EMPTY_HOME/ybc/logs" --start_date "2026-01-01" --end_date "2026-01-31" \
   --remote_tar_path "$TMP_ROOT/out/ybc-empty.tar.gz" 2>/dev/null)"
 expect_bundle_status "redaction: YbcLogs with nothing to stage" EMPTY zero "$?" "$output"
@@ -232,7 +232,7 @@ printf 'outside the base\n' > "$TMP_ROOT/outside.txt"
 for bad_path in "../outside.txt" "/etc/hostname" "tserver/../../outside.txt" ".."; do
   tar_path="$TMP_ROOT/out/escape.tar.gz"
   rm -f "$tar_path"
-  output="$(bash "$NODE_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
+  output="$(bash "$SB_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
     --remote_tar_path "$tar_path" --output_file tserver/tserver.out \
     --output_file "$bad_path" 2>/dev/null)"
   expect_bundle_status "file list: '$bad_path' fails the component" FAILED nonzero "$?" "$output"
@@ -249,13 +249,13 @@ for entry in "create_output_files_bundle --node_home_dir --output_file" \
   "create_tablet_meta_bundle --node_data_dir --tablet_meta_file" \
   "create_node_agent_bundle --node_agent_home_dir --node_agent_path"; do
   read -r fn dir_flag file_flag <<< "$entry"
-  output="$(bash "$NODE_UTILS" "$fn" "$dir_flag" "$FILES_HOME" \
+  output="$(bash "$SB_UTILS" "$fn" "$dir_flag" "$FILES_HOME" \
     --remote_tar_path "$TMP_ROOT/out/$fn-escape.tar.gz" "$file_flag" ../outside.txt 2>/dev/null)"
   check_contains "file list: $fn refuses '..'" "$output" \
     "Refusing file path '../outside.txt'"
 done
 
-output="$(bash "$NODE_UTILS" create_instance_bundle --node_home_dir / \
+output="$(bash "$SB_UTILS" create_instance_bundle --node_home_dir / \
   --remote_tar_path "$TMP_ROOT/out/alias.tar.gz" --instance_file etc/hostname 2>/dev/null)"
 expect_bundle_status "file list: Instance no longer takes --node_home_dir" FAILED nonzero "$?" \
   "$output"
@@ -263,7 +263,7 @@ check_contains "file list: --node_home_dir is an unknown argument" "$output" \
   "Unknown argument: --node_home_dir"
 
 run_output_files_conf() {
-  bash "$NODE_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
+  bash "$SB_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
     --remote_tar_path "$1" --output_file tserver/tserver.out \
     --output_file tserver/conf/server.conf "${@:2}" 2>/dev/null
 }
@@ -300,7 +300,7 @@ for label in "no helper" "helper fails"; do
 done
 
 tar_path="$TMP_ROOT/out/output-files-only-conf.tar.gz"
-output="$(bash "$NODE_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
+output="$(bash "$SB_UTILS" create_output_files_bundle --node_home_dir "$FILES_HOME" \
   --remote_tar_path "$tar_path" --output_file tserver/conf/server.conf --drop_server_conf \
   2>/dev/null)"
 expect_bundle_status "file list: a list of only a dropped server.conf leaves nothing to tar" EMPTY \
@@ -309,7 +309,7 @@ check_contains "file list: --drop_server_conf gives the helper-unavailable reaso
   "REDACTION_FAILURE=output_files/server.conf: redaction helper unavailable on this node"
 
 tar_path="$TMP_ROOT/out/consensus-conf.tar.gz"
-output="$(bash "$NODE_UTILS" create_consensus_meta_bundle --node_data_dir "$FILES_HOME" \
+output="$(bash "$SB_UTILS" create_consensus_meta_bundle --node_data_dir "$FILES_HOME" \
   --remote_tar_path "$tar_path" --consensus_meta_file master/consensus-meta \
   --redact_bin "$REDACT_STUB" 2>/dev/null)"
 expect_bundle_status "file list: a listed directory ships" OK zero "$?" "$output"
@@ -326,7 +326,7 @@ for entry in "create_output_files_bundle --node_home_dir --output_file" \
   "create_tablet_meta_bundle --node_data_dir --tablet_meta_file" \
   "create_node_agent_bundle --node_agent_home_dir --node_agent_path"; do
   read -r fn dir_flag file_flag <<< "$entry"
-  output="$(bash "$NODE_UTILS" "$fn" "$dir_flag" "$FILES_HOME" \
+  output="$(bash "$SB_UTILS" "$fn" "$dir_flag" "$FILES_HOME" \
     --remote_tar_path "$TMP_ROOT/out/$fn-flags.tar.gz" "$file_flag" tserver/tserver.out \
     --redact_bin "$REDACT_STUB" --yb_software_version 2.25.0.0 --sensitive_gflags_b64 e30= \
     --drop_server_conf 2>/dev/null)"
@@ -368,7 +368,7 @@ run_meta_entrypoint() {
   : > "$log"
   CP_CALL_LOG="$log" PATH="$CP_STUB_DIR:$PATH" \
     SUPPORT_BUNDLE_ESTIMATE_ONLY="$estimate" \
-    bash "$NODE_UTILS" "$fn" \
+    bash "$SB_UTILS" "$fn" \
       --node_data_dir "$ESTIMATE_HOME" \
       --remote_tar_path "$tar_path" 2>&1
 }
@@ -420,7 +420,7 @@ chmod +x "$BROKEN_HELPER"
 
 run_universe_logs() {
   local tar_path=$1
-  bash "$NODE_UTILS" create_universe_logs_bundle \
+  bash "$SB_UTILS" create_universe_logs_bundle \
     --node_home_dir "$LOGPARSE_HOME" \
     --master_logs_path "$LOGPARSE_HOME/master/logs" \
     --tserver_logs_path "$LOGPARSE_HOME/tserver/logs" \
@@ -432,7 +432,7 @@ run_universe_logs() {
 
 run_ybc_logs() {
   local tar_path=$1
-  bash "$NODE_UTILS" create_ybc_logs_bundle \
+  bash "$SB_UTILS" create_ybc_logs_bundle \
     --node_home_dir "$LOGPARSE_HOME" \
     --ybc_logs_path "$LOGPARSE_HOME/ybc/logs" \
     --start_date "2026-01-01" \
@@ -495,14 +495,14 @@ chmod +x "$GOOD_YB_HOME/bin/yb-log-parse"
 FAKE_HOME="$TMP_ROOT/fake-home"
 mkdir -p "$FAKE_HOME/bin"
 cp "$GOOD_YB_HOME/bin/yb-log-parse" "$FAKE_HOME/bin/yb-log-parse"
-output="$(HOME="$FAKE_HOME" bash "$NODE_UTILS" --yb_home_dir "$GOOD_YB_HOME" \
+output="$(HOME="$FAKE_HOME" bash "$SB_UTILS" --yb_home_dir "$GOOD_YB_HOME" \
   prefer_yb_log_parse_bin 2>&1)"
 check_contains "log-parse: the helper under --yb_home_dir is used" "$output" \
   "Using yb-log-parse helper: $GOOD_YB_HOME/bin/yb-log-parse"
-output="$(HOME="$FAKE_HOME" bash "$NODE_UTILS" prefer_yb_log_parse_bin 2>&1)"
+output="$(HOME="$FAKE_HOME" bash "$SB_UTILS" prefer_yb_log_parse_bin 2>&1)"
 check_contains "log-parse: a copy in \$HOME/bin is not used" "$output" \
   "not found at <no --yb_home_dir>"
-output="$(bash "$NODE_UTILS" --run_timeout_secs 30 --yb_home_dir "$GOOD_YB_HOME" \
+output="$(bash "$SB_UTILS" --run_timeout_secs 30 --yb_home_dir "$GOOD_YB_HOME" \
   prefer_yb_log_parse_bin 2>&1)"
 check_contains "log-parse: the flag still works after --run_timeout_secs" "$output" \
   "Using yb-log-parse helper: $GOOD_YB_HOME/bin/yb-log-parse"
@@ -530,7 +530,7 @@ for helper in "no" "a broken"; do
   else
     helper_env="YB_LOG_PARSE_BIN=$BROKEN_HELPER"
   fi
-  output="$(env "$helper_env" bash "$NODE_UTILS" estimate_universe_logs_size \
+  output="$(env "$helper_env" bash "$SB_UTILS" estimate_universe_logs_size \
     --node_home_dir "$EST_HOME" \
     --master_logs_path "$EST_HOME/master/logs" \
     --tserver_logs_path "$EST_HOME/tserver/logs" \
@@ -540,7 +540,7 @@ for helper in "no" "a broken"; do
     --regex "$LOG_REGEX" 2>&1)"
   check "UniverseLogs estimate with $helper yb-log-parse sizes the window" \
     "$(estimate_size "$output")" "36"
-  output="$(env "$helper_env" bash "$NODE_UTILS" estimate_ybc_logs_size \
+  output="$(env "$helper_env" bash "$SB_UTILS" estimate_ybc_logs_size \
     --node_home_dir "$EST_HOME" \
     --ybc_logs_path "$EST_HOME/ybc/logs" \
     --start_date "2026-01-01" \
@@ -577,7 +577,7 @@ mkdir -p "$EMPTY_MOUNT/yb-data/master/logs" "$EMPTY_MOUNT/yb-data/tserver/logs"
 
 run_pg_upgrade_logs() {
   local entrypoint=$1 mount=$2 tar_path=$3
-  YB_LOG_PARSE_SKIP=1 bash "$NODE_UTILS" "$entrypoint" \
+  YB_LOG_PARSE_SKIP=1 bash "$SB_UTILS" "$entrypoint" \
     --node_home_dir "$mount/yb-data" \
     --master_logs_path "$mount/yb-data/master/logs" \
     --tserver_logs_path "$mount/yb-data/tserver/logs" \
@@ -645,7 +645,7 @@ done
 run_data_dir_map() {
   local tar_path=$1
   shift
-  PATH="$ddm_stub_path$PATH" bash "$NODE_UTILS" collect_data_dir_map \
+  PATH="$ddm_stub_path$PATH" bash "$SB_UTILS" collect_data_dir_map \
     --remote_tar_path "$tar_path" \
     --node_home_dir "$DDM_D0" \
     --rocksdb_scan_roots \
@@ -705,7 +705,7 @@ echo "rc=\$?" >> "$DDM_FIND_LOG"
 EOF
 )"
 : > "$DDM_FIND_LOG"
-PATH="$DDM_FIND_STUB:$PATH" bash "$NODE_UTILS" collect_data_dir_map \
+PATH="$DDM_FIND_STUB:$PATH" bash "$SB_UTILS" collect_data_dir_map \
   --remote_tar_path "$TMP_ROOT/ddm-big.tar.gz" --node_home_dir "$TMP_ROOT/ddm-big/yb-data" \
   --max_listing_lines 3 > /dev/null 2>&1
 check "data_dir_map: the capped walk is stopped, not just its output" \
@@ -759,7 +759,7 @@ for _ in $(seq 50); do
   sleep 0.1
 done
 
-output="$(bash "$NODE_UTILS" collect_top_ps_pmap_stats \
+output="$(bash "$SB_UTILS" collect_top_ps_pmap_stats \
   --remote_tar_path "$TMP_ROOT/ps.tar.gz" 2>&1)"
 check_contains "ps/pmap: reports OK" "$output" "BUNDLE_STATUS=OK"
 ps_dir="$TMP_ROOT/ps-x"
@@ -834,7 +834,7 @@ chmod +x "$ST_STUBS/tar/tar" "$ST_STUBS/cp-fail/cp" "$ST_STUBS/cp-log/cp"
 run_output_files_in() {
   local tmp_dir=$1 tar_path=$2
   shift 2
-  bash "$NODE_UTILS" --tmp_dir "$tmp_dir" create_output_files_bundle \
+  bash "$SB_UTILS" --tmp_dir "$tmp_dir" create_output_files_bundle \
     --node_home_dir "$ST_HOME" --remote_tar_path "$tar_path" "$@" 2>&1
 }
 
@@ -843,7 +843,7 @@ ST_TAR_HANG=1 PATH="$ST_STUBS/tar:$PATH" run_output_files_in "$ST_BUNDLE_DIR" \
   "$ST_BUNDLE_DIR/output-files.tar.gz" --output_file tserver/tserver.out > /dev/null &
 st_pid=$!
 for _ in $(seq 50); do [ -s "$TMP_ROOT/st-tar.pid" ] && break; sleep 0.1; done
-# The stub's parent is node_utils.sh itself; the background job is a subshell above it.
+# The stub's parent is support_bundle_utils.sh itself; the background job is a subshell above it.
 read -r st_tar_pid st_script_pid < "$TMP_ROOT/st-tar.pid"
 kill -9 "$st_script_pid" 2>/dev/null
 kill "$st_tar_pid" 2>/dev/null
@@ -878,7 +878,7 @@ printf 'core one\n' > "$CORES_HOME/cores/core.1"
 printf 'core two\n' > "$CORES_HOME/cores/sub/core.2"
 touch -d "2026-01-15 12:00" "$CORES_HOME/cores/core.1" "$CORES_HOME/cores/sub/core.2"
 : > "$TMP_ROOT/st-cp.log"
-output="$(PATH="$ST_STUBS/cp-log:$PATH" bash "$NODE_UTILS" create_core_files_bundle \
+output="$(PATH="$ST_STUBS/cp-log:$PATH" bash "$SB_UTILS" create_core_files_bundle \
   --node_home_dir "$CORES_HOME" --start_date 2026-01-01 --end_date 2026-01-31 \
   --remote_tar_path "$TMP_ROOT/cores.tar.gz" --max_num_recent_cores 2 2>&1)"
 check_contains "cores: collected" "$output" "BUNDLE_STATUS=OK"
@@ -922,7 +922,7 @@ assert_no_audit() {
 # --- the filter works when awk works ------------------------------------------------------------
 PG_SRC="$TMP_ROOT/postgresql-2026-09-19.log"
 printf '%s\n%s\n' "$PLAIN_LINE" "$AUDIT_LINE" > "$PG_SRC"
-bash "$NODE_UTILS" filter_pg_audit_log_file \
+bash "$SB_UTILS" filter_pg_audit_log_file \
   "$PG_SRC" "$TMP_ROOT/out/filtered_ok.log" > /dev/null 2>&1
 assert_no_audit "audit rows removed on the normal path" "$TMP_ROOT/out/filtered_ok.log"
 if ! grep -q "connection authorized" "$TMP_ROOT/out/filtered_ok.log" 2>/dev/null; then
@@ -932,7 +932,7 @@ else
 fi
 
 # --- the filter cannot run ----------------------------------------------------------------------
-out="$(PATH="$AWK_STUB_DIR:$PATH" bash "$NODE_UTILS" \
+out="$(PATH="$AWK_STUB_DIR:$PATH" bash "$SB_UTILS" \
   filter_pg_audit_log_file "$PG_SRC" "$TMP_ROOT/out/filtered_broken.log" 2>&1)"
 assert_no_audit "audit rows never ship when the filter fails" "$TMP_ROOT/out/filtered_broken.log"
 
@@ -959,7 +959,7 @@ INSTANT="$(date -u -d "${DAY}T20:30:00Z" +%s)"
 
 check_epoch() {
   local name=$1 raw=$2 edge=$3 want=$4 got
-  got=$(bash "$NODE_UTILS" _system_logs_epoch_from_date "$raw" "$edge" 2>/dev/null)
+  got=$(bash "$SB_UTILS" _system_logs_epoch_from_date "$raw" "$edge" 2>/dev/null)
   check "$name" "$got" "$want"
 }
 
@@ -977,7 +977,7 @@ fi
 check_epoch "an instant is unchanged at the end edge"   "${DAY}T20:30:00Z" end   "$INSTANT"
 check_epoch "an instant is unchanged at the start edge" "${DAY}T20:30:00Z" start "$INSTANT"
 
-if bash "$NODE_UTILS" _system_logs_epoch_from_date "not-a-date" end >/dev/null 2>&1; then
+if bash "$SB_UTILS" _system_logs_epoch_from_date "not-a-date" end >/dev/null 2>&1; then
   fail "an unparseable bound should fail rather than invent a window"
 else
   pass "an unparseable bound fails"
@@ -998,7 +998,7 @@ mkdir -p "$CDC_HOME"
 run_collect_cdc_state() {
   local helper=$1
   shift
-  YB_DUMP_CDC_STATE_BIN="$helper" TMPDIR="$TMP_ROOT" bash "$NODE_UTILS" collect_cdc_state \
+  YB_DUMP_CDC_STATE_BIN="$helper" TMPDIR="$TMP_ROOT" bash "$SB_UTILS" collect_cdc_state \
     --remote_tar_path "$TMP_ROOT/cdc-state.tar.gz" --host_ip 127.0.0.1 \
     --tserver_rpc_port 9100 --yb_home_dir "$CDC_HOME" "$@" \
     >"$TMP_ROOT/cdc.stdout" 2>"$TMP_ROOT/cdc.stderr"
@@ -1040,7 +1040,7 @@ check "helper location: the copy under --yb_home_dir runs" "$(cat "$CDC_HOME_HEL
 rm -rf "${CDC_HOME:?}/bin"
 # The leading --yb_home_dir every YBA run carries wins over the entrypoint's own.
 rm -f "$CDC_HOME_HELPER_LOG"
-YB_DUMP_CDC_STATE_BIN="" TMPDIR="$TMP_ROOT" bash "$NODE_UTILS" \
+YB_DUMP_CDC_STATE_BIN="" TMPDIR="$TMP_ROOT" bash "$SB_UTILS" \
   --yb_home_dir "$TMP_ROOT/cdc-fake-home" collect_cdc_state \
   --remote_tar_path "$TMP_ROOT/cdc-state.tar.gz" --host_ip 127.0.0.1 \
   --tserver_rpc_port 9100 --yb_home_dir "$CDC_HOME" >/dev/null 2>&1
@@ -1081,7 +1081,7 @@ check_contains "unknown argument: the reason is on stderr" "$CDC_STDERR" "Unknow
 
 # --- dispatch guard -----------------------------------------------------------------------------
 # The script runs its first argument, so anything but a function defined in it must be refused.
-guard_out=$(bash "$NODE_UTILS" bash -c 'echo ran' 2>&1)
+guard_out=$(bash "$SB_UTILS" bash -c 'echo ran' 2>&1)
 guard_rc=$?
 check "dispatch: a non-function first argument exits 2" "$guard_rc" "2"
 check_contains "dispatch: the refusal names it" "$guard_out" "Unknown function: bash"
@@ -1092,12 +1092,12 @@ else
 fi
 # An option-like argument must not be read as an option to declare and slip through.
 for opt in -f -p; do
-  opt_out=$(bash "$NODE_UTILS" "$opt" 2>&1)
+  opt_out=$(bash "$SB_UTILS" "$opt" 2>&1)
   opt_rc=$?
   check "dispatch: '$opt' as the first argument exits 2" "$opt_rc" "2"
   check_contains "dispatch: the '$opt' refusal names it" "$opt_out" "Unknown function: $opt"
 done
-noargs_out=$(bash "$NODE_UTILS" 2>&1)
+noargs_out=$(bash "$SB_UTILS" 2>&1)
 check "dispatch: no arguments is a no-op" "$?:$noargs_out" "0:"
 
 # --- run timeout --------------------------------------------------------------------------------
@@ -1110,28 +1110,39 @@ shift 3
 exec "\$@"
 EOF
 )"
-rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$NODE_UTILS" --run_timeout_secs 330 \
-  check_file_exists "$TMP_ROOT" 2>&1)
+rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$SB_UTILS" --run_timeout_secs 330 \
+  decode_base64_string MQ== 2>&1)
 check "run timeout: the entrypoint still runs" "$rt_out" "1"
 check "run timeout: re-run under timeout -k 5" "$(tail -1 "$TIMEOUT_LOG")" \
-  "-k 5 330 bash $NODE_UTILS check_file_exists $TMP_ROOT"
+  "-k 5 330 bash $SB_UTILS decode_base64_string MQ=="
 
 BROKEN_TIMEOUT_DIR="$TMP_ROOT/stubs/broken-timeout"
 mkdir -p "$BROKEN_TIMEOUT_DIR"
 printf '#!/bin/sh\nexit 125\n' > "$BROKEN_TIMEOUT_DIR/timeout"
 chmod +x "$BROKEN_TIMEOUT_DIR/timeout"
-rt_out=$(env PATH="$BROKEN_TIMEOUT_DIR:$PATH" bash "$NODE_UTILS" --run_timeout_secs 330 \
-  check_file_exists "$TMP_ROOT" 2>&1)
+rt_out=$(env PATH="$BROKEN_TIMEOUT_DIR:$PATH" bash "$SB_UTILS" --run_timeout_secs 330 \
+  decode_base64_string MQ== 2>&1)
 check "run timeout: runs as before without a usable timeout" "$rt_out" "1"
 
 rm -f "$TIMEOUT_LOG"
-rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$NODE_UTILS" --run_timeout_secs 0 \
-  check_file_exists "$TMP_ROOT" 2>&1)
+rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$SB_UTILS" --run_timeout_secs 0 \
+  decode_base64_string MQ== 2>&1)
 check "run timeout: 0 is not a bound" "$rt_out:$(cat "$TIMEOUT_LOG" 2>/dev/null)" "1:"
 
-rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$NODE_UTILS" --run_timeout_secs 5 \
+rt_out=$(env PATH="$RECORDING_TIMEOUT:$PATH" bash "$SB_UTILS" --run_timeout_secs 5 \
   bash -c 'echo ran' 2>&1)
 check "run timeout: the dispatch guard still applies" "$?" "2"
 check_contains "run timeout: the refusal names it" "$rt_out" "Unknown function: bash"
 
-finish "node_utils"
+# --- helpers copied from node_utils.sh ----------------------------------------------------------
+# support_bundle_utils.sh keeps its own copy of these two, since node_utils.sh isn't staged with it.
+helper_defs() {
+  bash -c 'f=$1; shift; fns=("$@"); set --; source "$f" > /dev/null; declare -f "${fns[@]}"' \
+    _ "$1" get_paths_and_sizes get_paths_and_sizes_within_dates
+}
+sb_helpers="$(helper_defs "$SB_UTILS")"
+check_contains "copied helpers: defined" "$sb_helpers" "get_paths_and_sizes_within_dates ()"
+check "copied helpers: same as node_utils.sh" "$sb_helpers" \
+  "$(helper_defs "$DEVOPS_BIN/node_utils.sh")"
+
+finish "support_bundle_utils"

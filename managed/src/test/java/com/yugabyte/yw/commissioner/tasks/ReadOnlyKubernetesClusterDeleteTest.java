@@ -49,6 +49,7 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReadOnlyKubernetesClusterDeleteTest extends CommissionerBaseTest {
@@ -167,10 +168,34 @@ public class ReadOnlyKubernetesClusterDeleteTest extends CommissionerBaseTest {
   public void testClusterDeleteSuccess() throws Exception {
     TaskInfo taskInfo = waitForTask(submitTask(taskParams()));
     assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(subTaskTypes(taskInfo).contains(TaskType.CheckLeaderlessTablets));
     verify(mockKubernetesManager, times(1)).helmDelete(any(), any(), any());
     verify(mockKubernetesManager, times(1)).deleteStorage(any(), any(), any());
     verify(mockKubernetesManager, times(1)).deletePodDisruptionBudget(any());
     verify(mockKubernetesManager, times(1)).createPodDisruptionBudget(any());
+    assertReadReplicaDeleted();
+  }
+
+  @Test
+  public void testClusterDeleteAfterFailedCreate() throws Exception {
+    TaskInfo failed = new TaskInfo(TaskType.ReadOnlyKubernetesClusterCreate, null);
+    failed.setOwner("test");
+    failed.setTaskState(Failure);
+    failed.setTaskParams(Json.newObject());
+    failed.save();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.updatingTaskUUID = failed.getUuid();
+          details.placementModificationTaskUuid = failed.getUuid();
+          details.updateSucceeded = false;
+          u.setUniverseDetails(details);
+        });
+    TaskInfo taskInfo = waitForTask(submitTask(taskParams()));
+    assertEquals(Success, taskInfo.getTaskState());
+    // The basic prechecks are skipped on a universe broken by the failed create.
+    assertFalse(subTaskTypes(taskInfo).contains(TaskType.CheckLeaderlessTablets));
     assertReadReplicaDeleted();
   }
 

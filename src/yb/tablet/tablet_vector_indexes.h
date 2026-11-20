@@ -124,6 +124,10 @@ class TabletVectorIndexes :
   // postpone tablet splitting until the backfill completes (see GH#32321).
   bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
+  // Earliest backfill time of the active vector indexes not done backfilling, or kMax: each
+  // backfill reads at that time until done, so its history must not be garbage collected.
+  HybridTime AllowedHistoryCutoff() const EXCLUDES(vector_indexes_mutex_);
+
   // Returns true if there are no vector indexes, or every open vector index has compacted
   // inherited parent data for its tablet's split_generation.
   bool ParentDataCompacted() const EXCLUDES(vector_indexes_mutex_);
@@ -197,7 +201,9 @@ class TabletVectorIndexes :
       EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const override;
+
+  HybridTime MinRunningHybridTime() const override;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);
