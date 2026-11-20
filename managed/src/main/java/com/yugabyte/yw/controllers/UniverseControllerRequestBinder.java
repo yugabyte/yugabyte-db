@@ -114,14 +114,21 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
 
-      // Before we completely replace instance type with resourceSpec for k8s,
+      // Before we completely replace instance type logic with resourceSpec for k8s,
       // initializing tserverK8SNodeResourceSpec from instanceType
       // and masterK8SNodeResourceSpec from masterInstanceType.
       // Previously masterK8SNodeResourceSpec was also initialized from instanceType,
-      // which is incorrect, but in general that worked since masterInstanceType is equal
-      // to instanceType by default.
-      // If instanceType/masterInstanceType is not provided,
-      // the respective resources spec is left untouched.
+      // which is incorrect, but in general that worked since masterInstanceType has a fallback
+      // to instanceType if null (but instance types could derive when masterInstanceType is
+      // pinned to some value)
+      // If instanceType is not provided, the respective resources spec is left untouched.
+      // For the masterInstanceType it falls back to instanceType, so masterK8sResourceSpec
+      // is untouched if both instanceType and masterInstanceType are nulls.
+      // Basically that method is used for those universes that are mistakenly rely on
+      // instance types for some reason
+      // (for example due to a bug in code that erases or skips setting specs)
+      // since use_k8s_custom_resources is set to true by default now and all the existing
+      // universes were migrated by V298__Fix_K8s_Resource_Spec.
       KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams, runtimeConfGetter);
 
       return taskParams;
