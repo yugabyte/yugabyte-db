@@ -651,6 +651,13 @@ func TestResolveOCIDrives(t *testing.T) {
 			want:       "sda sdc",
 		},
 		{
+			name:       "boot volume is the last requested name",
+			disks:      []ociDisk{ociDataDisk("sda"), ociDataDisk("sdb"), ociBootDisk("sdc")},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			want:       "sdb sda",
+		},
+		{
 			name: "LVM boot volume is sdb",
 			disks: []ociDisk{
 				ociDataDisk("sda"),
