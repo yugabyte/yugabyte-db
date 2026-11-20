@@ -10,7 +10,7 @@ A **backport** is a PR whose title starts with `[BACKPORT <release-branch>]`, e.
 Original commit: <SHA> / #<PR>
 ```
 
-placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number) that already passed full review when its original PR merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
+placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number, or ` / D<id>` if the original landed via Phorge) that already passed full review when it merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
 
 When you review a backport PR, **switch to backport mode**:
 
@@ -58,6 +58,8 @@ Specifically, **do not** flag:
 - Anything that contradicts a comment, docstring, or commit message in the same diff.
 - Non-ASCII characters in new source code or comments, unless the file is test data that needs them.
 - Under `src/yb/`, departures from the conventions in [`src/yb/REVIEW.md`](src/yb/REVIEW.md).
+- Under `src/postgres/`, what [`src/postgres/REVIEW.md`](src/postgres/REVIEW.md) asks to flag.
+- Under `managed/`, what [`managed/REVIEW.md`](managed/REVIEW.md) asks to flag.
 
 Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unless they reveal an underlying correctness issue.
 
@@ -128,7 +130,7 @@ Regardless of PR type, give these areas extra attention:
 - **`src/yb/tablet/`** and **`src/yb/docdb/`** — write/read path, MVCC, transaction handling.
 - **`src/yb/cdc/`** and **`src/yb/cdc_consumer/`** — replication-stream correctness, idempotency.
 - **`src/postgres/`** — PostgreSQL-fork merges; double-check that upstream Postgres semantics are preserved. Also check the diff against the fork conventions in `.claude/skills/pg-code-style-guide/SKILL.md`: YB additions yb-prefixed and clustered behind `/* YB ... */` marker comments, upstream-owned lines left byte-identical (no style fixes or rewrapping), and regress test changes respecting the upstream-named / `yb.port.*` / `yb.orig.*` taxonomy. Flag violations — they surface as merge conflicts on the next PG major-version merge.
-- **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops.
+- **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops. See [`managed/REVIEW.md`](managed/REVIEW.md).
 
 ## Catalog manager changes
 
@@ -159,6 +161,12 @@ Inversions to flag at HIGH:
 - A COW lock taken before `CatalogManager::mutex_` on the same thread, or a `SCOPED_LEADER_SHARED_LOCK` taken while `mutex_` or a COW lock is held.
 - Several objects of one kind locked without sorting by id.
 - A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
+
+## Review comments are public
+
+A review comment on a PR is as public as the code. Don't write in one how a defect could be used against YugabyteDB, or which releases, branches, images or components lack a fix. If a finding needs that context, state the code-level problem and ask the author to continue in the linked JIRA ticket.
+
+This matters most for security fixes, whose descriptions are plain on purpose (`src/AGENTS.md` § Security and customer-sensitive changes). Don't ask the author to add the motivation or the impact to such a PR.
 
 ## What to ignore entirely
 

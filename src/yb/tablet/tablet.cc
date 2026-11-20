@@ -121,6 +121,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -193,6 +194,17 @@ DEFINE_RUNTIME_int32(verify_index_rate_rows_per_sec, 0,
     "processing more than this.");
 TAG_FLAG(verify_index_rate_rows_per_sec, advanced);
 
+DEFINE_RUNTIME_uint64(online_schema_change_backfill_rows_per_chunk, 10000000,
+    "How many source rows one online schema change backfill chunk RPC copies before returning to "
+    "the master. The master persists the chunk's resume key and refreshes progress on every "
+    "response, and applies an operator cancel between chunks, so this bounds how much work a crash "
+    "repeats, how stale pg_yb_online_schema_change's counters can be, and how long a cancel takes "
+    "to be honored -- against one master sys_catalog write and one new postgres backend per chunk. "
+    "The chunk is also bounded by the RPC deadline, which at the default usually ends it first. "
+    "Rounded up to a whole prefetch page (yb_fetch_row_limit), since the chunk only stops between "
+    "pages. 0 leaves the chunk bounded only by the RPC deadline.");
+TAG_FLAG(online_schema_change_backfill_rows_per_chunk, advanced);
+
 DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "The time we give the backfill process to wrap up the current set "
              "of writes and return successfully the RPC with the information about "
@@ -224,6 +236,10 @@ DEFINE_UNKNOWN_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 m
     "Max amount of time we can wait for active transactions to abort on a tablet "
     "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
     "unresponsive_ts_rpc_timeout_ms");
+
+DEFINE_test_flag(bool, fail_tier_target_db_update, false,
+    "Fail the regular DB's target_path_id update in SetTierMigrationTarget, after the target is "
+    "persisted.");
 
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
     "If set to value greater than 0, every nth row will be corrupted in the backfill process "
@@ -843,7 +859,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
@@ -1092,30 +1109,31 @@ struct Tablet::IntentsDbFlushFilterState {
   }
 };
 
+bool Tablet::WalAllowsPersist(const OpId& op_id, const char* what) {
+  auto state = tablet_context_->WalState(op_id);
+  switch (state) {
+    case log::WalEntryState::kAppended:
+      // A power loss could drop the ops from the WAL while their data is persisted.
+      return false;
+    case log::WalEntryState::kSyncFailed:
+      // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
+      // failing, so risk the power loss case instead.
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Flushing " << what << " with ops not fsynced in log, op id: " << op_id;
+      return true;
+    case log::WalEntryState::kDurable:
+      return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(log::WalEntryState, state);
+}
+
 Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
   auto frontiers = memtable.Frontiers();
   if (frontiers) {
     const auto& op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
-    auto wal_state = tablet_context_->WalState(op_id);
-    switch (wal_state) {
-      case log::WalEntryState::kNone:
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Skipping flush on memtable with ops not in log, memtable op id: " << op_id;
-        return false;
-      case log::WalEntryState::kAppended:
-        // A power loss could drop it from the WAL while it is flushed, and bootstrap would fail
-        // with "WAL files missing". The flush is retried after the fsync.
-        return false;
-      case log::WalEntryState::kSyncFailed:
-        // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
-        // failing, so risk the power loss case instead.
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Flushing memtable with ops not fsynced in log, memtable op id: " << op_id;
-        return true;
-      case log::WalEntryState::kDurable:
-        return true;
-    }
-    FATAL_INVALID_ENUM_VALUE(log::WalEntryState, wal_state);
+    // Otherwise bootstrap after a power loss could fail with "WAL files missing".
+    // A skipped flush is retried after the fsync.
+    return WalAllowsPersist(op_id, "memtable");
   }
 
   // It is correct to not have frontiers when memtable is empty
@@ -1130,6 +1148,13 @@ Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
       "flush! This should not happen.";
   LOG_WITH_PREFIX(DFATAL) << error_msg;
   return STATUS(IllegalState, error_msg);
+}
+
+void Tablet::WaitWalDurable(const OpId& op_id) {
+  BusyWait(
+      make_lw_function([this, &op_id] { return WalAllowsPersist(op_id, "vector index"); }),
+      Format("$0op $1 to become durable in log", LogPrefix(), op_id),
+      /* poll_interval= */ 1ms, /* warn_after= */ 10s, /* max_poll_interval= */ 100ms);
 }
 
 Result<bool> Tablet::IntentsDbFlushFilter(
@@ -1207,13 +1232,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   if (!state->HasNewData(memtable_index)) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
     // Regular DB flushed op id does not bound this flush, so the intents must be durable in WAL.
-    // See RegularDbFlushFilter for kSyncFailed.
     if (!frontiers) {
       return true;
     }
-    auto wal_state = tablet_context_->WalState(memtable_op_id);
-    return wal_state == log::WalEntryState::kDurable ||
-           wal_state == log::WalEntryState::kSyncFailed;
+    return WalAllowsPersist(memtable_op_id, "intents");
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
@@ -2893,6 +2915,19 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
   WriteQuery::Execute(std::move(query));
 }
 
+Result<size_t> Tablet::EvictTableReaders() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  size_t evicted = 0;
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (db) {
+      evicted += db->EvictTableReaders();
+    }
+  }
+  return evicted;
+}
+
 Status Tablet::Flush(
     FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick,
     rocksdb::FlushReason rocksdb_flush_reason) {
@@ -3386,7 +3421,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
-    index_info.emplace(table_info.index_info());
+    index_info.emplace(table_info.index_info(), ht);
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
@@ -3865,40 +3900,45 @@ constexpr auto kBackfillReadSnapshotTooOldRemedy =
     "Consider increasing tserver timestamp_history_retention_interval_sec above the expected "
     "CREATE INDEX duration and retrying";
 
+// Maps the error of a YSQL backfill query to the status the backfill reports. Returns one of
+// - TryAgain: for retryable errors
+// - IllegalState: for nonretryable errors
+Status BackfillChunkQueryError(const Status& query_status, const string& query) {
+  const auto libpq_error_msg = AuxilaryMessage(query_status).value();
+  LOG(WARNING) << "libpq query \"" << query << "\" returned " << query_status << ": "
+               << libpq_error_msg;
+  const auto pg_error_code = PgsqlError::ValueFromStatus(query_status);
+  // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
+  // the PostgreSQL error code it failed with.
+  const auto keep_pg_error_code = [&pg_error_code](Status status) {
+    return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
+  };
+  // The 2 spaces after ERROR: is necessary to match the error message.
+  constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
+  if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
+    return STATUS(TryAgain, libpq_error_msg, query_status.ErrorCodesSlice(), size_t(0));
+  }
+  // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
+  // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
+  // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
+  // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
+  if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
+    return keep_pg_error_code(STATUS(IllegalState, Format(
+        "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
+  }
+  return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+}
+
 // On success, returns
 // - backfilled_until
 // - num rows processed in table
 // - num rows backfilled to index
-// On failure, returns one of
-// - TryAgain: for retryable errors
-// - IllegalState: for nonretryable errors
+// On failure, returns what BackfillChunkQueryError does.
 Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     pgwrapper::PGConn* conn, const string& query) {
   auto result = conn->FetchRow<std::string, double, double>(query);
   if (!result.ok()) {
-    const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
-    LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
-                 << libpq_error_msg;
-    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
-    // Keep the SQLSTATE so that an error which reaches the CREATE INDEX backend is raised with
-    // the PostgreSQL error code it failed with.
-    const auto keep_pg_error_code = [&pg_error_code](Status status) {
-      return pg_error_code ? status.CloneAndAddErrorCode(PgsqlError(*pg_error_code)) : status;
-    };
-    // The 2 spaces after ERROR: is necessary to match the error message.
-    constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
-    if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
-      return STATUS(TryAgain, libpq_error_msg, result.status().ErrorCodesSlice(), size_t(0));
-    }
-    // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
-    // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
-    // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
-    // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
-    if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
-      return keep_pg_error_code(STATUS(IllegalState, Format(
-          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy)));
-    }
-    return keep_pg_error_code(STATUS(IllegalState, libpq_error_msg));
+    return BackfillChunkQueryError(result.status(), query);
   }
   const auto [returned_spec, num_rows_backfilled_in_index, num_rows_scanned] = *result;
   PgsqlBackfillSpecPB spec;
@@ -3911,6 +3951,42 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
   // scanned separately, which is the number of base table rows that were processed.
   return std::make_tuple(
       spec.next_row_key(), static_cast<uint64_t>(num_rows_scanned), num_rows_backfilled_in_index);
+}
+
+struct BackfillChunkResult {
+  PgsqlBackfillSpecPB spec;
+  double num_rows;
+};
+
+// On failure, returns what BackfillChunkQueryError does.
+Result<BackfillChunkResult> QueryPostgresBackfillChunk(
+    pgwrapper::PGConn* conn, const string& query) {
+  auto result = conn->FetchRow<std::string, double>(query);
+  if (!result.ok()) {
+    return BackfillChunkQueryError(result.status(), query);
+  }
+  const auto& [returned_spec, num_rows] = *result;
+  BackfillChunkResult chunk;
+  chunk.spec.ParseFromString(a2b_hex(returned_spec));
+  chunk.num_rows = num_rows;
+  VLOG(3) << "Returned backfill spec: { " << chunk.spec.ShortDebugString() << " }";
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
+  return chunk;
+}
+
+// Opens an internal PG connection for a YSQL backfill. It uses snapshot isolation because the
+// backfill reads at a fixed read time, which SERIALIZABLE does not allow.
+Result<pgwrapper::PGConn> CreateBackfillPGConn(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, CoarseTimePoint deadline,
+    std::string_view yb_internal_conn_kind = {}) {
+  auto conn_result = pgwrapper::CreateInternalPGConnBuilder(
+                         pgsql_proxy_bind_address, database_name,
+                         pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key, deadline,
+                         yb_internal_conn_kind)
+                         .Connect();
+  return pgwrapper::SetDefaultTransactionIsolation(
+      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 struct BackfillParams {
@@ -3996,6 +4072,37 @@ void SlowdownBackfillForTests() {
   }
 }
 
+struct YsqlBackfillPage {
+  std::string backfilled_until;
+  uint64_t num_rows;
+};
+
+// Runs YSQL backfill pages over one PG connection until the tablet is done, the deadline is near,
+// or max_rows rows are processed (0 means no row limit). run_page runs the page described by a
+// serialized backfill spec.
+template <class RunPage>
+Status RunYsqlBackfillPages(
+    const BackfillParams& backfill_params, uint64_t max_rows, const RunPage& run_page,
+    uint64_t* number_of_rows_processed, std::string* backfilled_until) {
+  do {
+    // Rebuild the spec from the resume key rather than reuse the returned one: the returned
+    // spec's `count` accumulates across pages, so reusing it would put `count` past `limit` from
+    // the second page on.
+    const auto page = VERIFY_RESULT(run_page(
+        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until)));
+    *backfilled_until = page.backfilled_until;
+    *number_of_rows_processed += page.num_rows;
+
+    VLOG(2) << "Processed " << *number_of_rows_processed << " rows so far in this chunk. "
+            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+
+    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
+  } while (CanProceedToBackfillMoreRows(
+               backfill_params, *backfilled_until, *number_of_rows_processed) &&
+           (max_rows == 0 || *number_of_rows_processed < max_rows));
+  return Status::OK();
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -4004,6 +4111,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
+    const HybridTime origination_ht,
     const HostPort& pgsql_proxy_bind_address,
     const std::string& database_name,
     const uint64_t postgres_auth_key,
@@ -4017,14 +4125,9 @@ Status Tablet::BackfillIndexesForYsql(
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
-  auto conn_result  = pgwrapper::CreateInternalPGConnBuilder(
-                          pgsql_proxy_bind_address, database_name,
-                          pgwrapper::PGConnSettings::kDefaultUser, postgres_auth_key,
-                          backfill_params.modified_deadline)
-                          .Connect();
-  // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
-  auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
-      std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline));
 
   if (is_xcluster_target) {
     // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
@@ -4032,6 +4135,15 @@ Status Tablet::BackfillIndexesForYsql(
     // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
     // hold up the xCluster safe time, and thus backfill would get stuck.
     RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
+  }
+
+  // The backfill's writes are made on behalf of a CREATE INDEX DDL, so they need to carry its
+  // origination time, not that of the BACKFILL INDEX statements.
+  if (origination_ht) {
+    VLOG(1) << "Backfilling index " << index.table_id() << " with origination time "
+            << origination_ht.GetPhysicalValueMicros();
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_origination_time_override = $0;", origination_ht.GetPhysicalValueMicros()));
   }
 
   // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
@@ -4044,34 +4156,85 @@ Status Tablet::BackfillIndexesForYsql(
   DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
 
   SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
-  do {
-    std::string serialized_backfill_spec =
-        GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, 0 /* max_rows */,
+      [&](const std::string& serialized_backfill_spec) -> Result<YsqlBackfillPage> {
+        // This should be safe from injection attacks because the parameters only consist of
+        // characters [-,0-9a-f].
+        std::string query_str = Format(
+            "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
+            index_oid_int,
+            b2a_hex(serialized_backfill_spec),
+            read_time.ToUint64(),
+            b2a_hex(partition_key));
+        VLOG(1) << "BackfillIndexesForYsql: libpq query string: " << query_str;
 
-    // This should be safe from injection attacks because the parameters only consist of characters
-    // [-,0-9a-f].
-    std::string query_str = Format(
-        "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
-        index_oid_int,
-        b2a_hex(serialized_backfill_spec),
-        read_time.ToUint64(),
-        b2a_hex(partition_key));
-    VLOG(1) << __func__ << ": libpq query string: " << query_str;
-
-    const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
-    *backfilled_until = std::get<0>(tup);
-    *number_of_rows_processed += std::get<1>(tup);
-    *num_rows_backfilled_in_index += std::get<2>(tup);
-
-    VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
-            << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
-
-    MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
-  } while (CanProceedToBackfillMoreRows(
-      backfill_params, *backfilled_until, *number_of_rows_processed));
+        const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+        *num_rows_backfilled_in_index += std::get<2>(tup);
+        return YsqlBackfillPage{std::get<0>(tup), std::get<1>(tup)};
+      },
+      number_of_rows_processed, backfilled_until));
 
   VLOG(1) << "Processed " << *number_of_rows_processed << " base table rows in this chunk. "
           << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+  return Status::OK();
+}
+
+Status Tablet::BackfillTableForYsql(
+    uint32_t src_oid, uint32_t dst_oid, uint32_t transform_oid,
+    const std::string& backfill_from,
+    const CoarseTimePoint deadline,
+    const HybridTime read_time,
+    const HostPort& pgsql_proxy_bind_address,
+    const std::string& database_name,
+    const uint64_t postgres_auth_key,
+    uint64_t* number_of_rows_processed,
+    std::string* backfilled_until) {
+  LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
+            << " from row \"" << strings::b2a_hex(backfill_from)
+            << "\" for online schema change src_oid=" << src_oid << " dst_oid=" << dst_oid;
+  SlowdownBackfillForTests();
+
+  BackfillParams backfill_params(deadline, true /* is_ysql */);
+  auto conn = VERIFY_RESULT(CreateBackfillPGConn(
+      pgsql_proxy_bind_address, database_name, postgres_auth_key,
+      backfill_params.modified_deadline,
+      pgwrapper::YbInternalConnKindWireName::kOnlineSchemaChangeBackfill));
+
+  const std::string partition_key = metadata_->partition()->partition_key_start();
+
+  // backfill_from is the DocDB key to resume at; empty means the start of the tablet.
+  *number_of_rows_processed = 0;
+  *backfilled_until = backfill_from;
+
+  // Also bound the chunk by rows, so the master gets resume points, progress and a chance to
+  // cancel at a tunable interval.
+  RETURN_NOT_OK(RunYsqlBackfillPages(
+      backfill_params, FLAGS_online_schema_change_backfill_rows_per_chunk,
+      [&](const std::string& bfinstr) -> Result<YsqlBackfillPage> {
+        // A NULL next_bfinstr becomes an empty spec, which has no next_row_key and so also means
+        // done.
+        std::string query_str = Format(
+            "SELECT COALESCE(encode(next_bfinstr, 'hex'), ''), rows_processed::float8 "
+            "FROM pg_catalog.yb_backfill_online_schema_change_chunk("
+            "$0, $1, $2, $3, decode('$4', 'hex'), decode('$5', 'hex'))",
+            src_oid, dst_oid, transform_oid,
+            read_time.ToUint64(),
+            b2a_hex(partition_key),
+            b2a_hex(bfinstr));
+        VLOG(1) << "BackfillTableForYsql: libpq query: " << query_str;
+
+        const auto chunk = VERIFY_RESULT(QueryPostgresBackfillChunk(&conn, query_str));
+        // next_row_key is empty only when the scan reached the end of the tablet.
+        return YsqlBackfillPage{
+            chunk.spec.next_row_key(), static_cast<uint64_t>(chunk.num_rows)};
+      },
+      number_of_rows_processed, backfilled_until));
+
+  VLOG(1) << "Done " << __func__ << " of tablet " << tablet_id()
+          << " processed " << *number_of_rows_processed << " rows"
+          << " backfilled_until: \""
+          << (backfilled_until->empty() ? "<end>" : b2a_hex(*backfilled_until)) << "\"";
   return Status::OK();
 }
 
@@ -4835,7 +4998,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -5451,16 +5620,25 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
-  std::lock_guard lock(tier_target_mutex_);
-  return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
+  bool changed = false;
+  Status write_status;
+  {
+    std::lock_guard lock(tier_target_mutex_);
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  return write_status;
 }
 
 Status Tablet::SetTierMigrationTargetUnlocked(
-    const std::string& target_tier, uint32_t target_path_id) {
+    const std::string& target_tier, uint32_t target_path_id, bool* changed) {
+  *changed = false;
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight && !same_target) {
+    if (tier_migration_status_.migration_pass_in_flight && !same_target) {
       // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
       // FinishTierMigrationPass would book its outcome against the new target. The same target
       // re-asserts what the pass is already doing, so it goes through as usual.
@@ -5473,19 +5651,24 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
   }
-  RETURN_NOT_OK_PREPEND(
-      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-      "Failed to set target_path_id on regular DB");
-
-  std::lock_guard lock(tier_migration_mutex_);
-  ReassertTierIntentUnlocked();
+  const auto db_status = FLAGS_TEST_fail_tier_target_db_update
+      ? STATUS(IOError, "Injected target_path_id update failure")
+      : regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}});
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    const bool state_changed = ReassertTierIntentUnlocked();
+    *changed = state_changed || !same_target;
+  }
+  RETURN_NOT_OK_PREPEND(db_status, "Failed to set target_path_id on regular DB");
   return Status::OK();
 }
 
-void Tablet::ReassertTierIntentUnlocked() {
+bool Tablet::ReassertTierIntentUnlocked() {
+  const bool changed = tier_migration_status_.state != TierMigrationStatus::State::kInProgress;
   tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
   tier_migration_status_.consecutive_failed_passes = 0;
   tier_migration_status_.last_error = Status::OK();
+  return changed;
 }
 
 bool Tablet::IsPersistedTierTarget(
@@ -5509,6 +5692,16 @@ Status Tablet::CheckTierTargetStillPersisted(
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
     const std::optional<TierTarget>& expected_target) {
+  auto result = DoRunTierMigrationPass(options, reconciler_pass, expected_target);
+  if (result.ok() && result->state_changed) {
+    NotifyTierStateChanged();
+  }
+  return result;
+}
+
+Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5520,7 +5713,6 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   TierReconcileResult result;
   uint32_t target_path_id = 0;
   std::string target_dir;
-  auto state_before = State::kNone;
   {
     // Held from reading the target to claiming the pass, so the pass is toward the persisted
     // target and AlterTabletTier cannot swap it for another until the pass ends. Not held across
@@ -5547,7 +5739,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
 
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    if (status.pass_in_flight) {
+    if (status.migration_pass_in_flight) {
       return STATUS(
           ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
     }
@@ -5556,8 +5748,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       result.status = status;
       return result;
     }
-    status.pass_in_flight = true;
-    state_before = status.state;
+    status.migration_pass_in_flight = true;
   }
 
   auto candidates = CollectTierMigrationCandidates(target_path_id);
@@ -5568,8 +5759,12 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
+    // state_changed is measured against the state the verdict replaces, not the one the pass
+    // started from: a same-target AlterTabletTier during the scan sets kInProgress and reports
+    // it, and the verdict that restores kDone has to be reported too.
+    const auto state_before = status.state;
     if (candidates.empty()) {
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.files_total = 0;
       status.files_moved = 0;
       status.files_deferred = 0;
@@ -5592,7 +5787,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     if (reconciler_pass && options.failed_pass_threshold > 0 &&
         status.consecutive_failed_passes >= options.failed_pass_threshold) {
       // The counters of the last failed pass stay as they were, for GetTierInfo.
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.state = State::kFailed;
       result.state_changed = status.state != state_before;
       result.status = status;
@@ -5655,15 +5850,27 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
 
+  bool changed = false;
+  std::optional<TierMigrationStatus> in_flight;
+  Status write_status;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
-    std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight) {
-      // Only the same target gets past the write with a pass in flight: that pass already serves
-      // this request, re-asserted just now like any accepted one, so report it.
-      return tier_migration_status_;
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    if (write_status.ok()) {
+      std::lock_guard lock(tier_migration_mutex_);
+      if (tier_migration_status_.migration_pass_in_flight) {
+        in_flight = tier_migration_status_;
+      }
     }
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  RETURN_NOT_OK(write_status);
+  if (in_flight) {
+    // Only the same target gets past the write with a pass in flight: that pass already serves
+    // this request, re-asserted just now like any accepted one, so report it.
+    return *in_flight;
   }
 
   // Lets a test slip another target in after the write, before the pass starts.
@@ -5757,7 +5964,7 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.pass_in_flight = false;
+    status.migration_pass_in_flight = false;
     status.files_moved = moved;
     status.files_deferred = deferred;
     status.files_failed = hard_failed;
@@ -5797,6 +6004,12 @@ void Tablet::WakeTierMigrationReconciler() {
   }
 }
 
+void Tablet::NotifyTierStateChanged() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->tier_state_changed) {
+    tier_migration_hooks_->tier_state_changed(tablet_id());
+  }
+}
+
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
   // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
   // shutdown/delete waits for this to be released before destroying the DB.
@@ -5822,12 +6035,14 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
     info.tier_paths.push_back(stats);
   }
 
-  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
-  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
-  // trivially "on" its home tier rather than "none". Overwritten below once there is at
-  // least one live SST to derive current_tier from directly.
+  // An empty tablet (no live SSTs yet: still bootstrapping, or never flushed) is trivially "on"
+  // the tier its next flush lands on rather than "none": the target's disk when a target is set,
+  // the home disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a
+  // tablet converged. Overwritten below once there is at least one live SST to derive
+  // current_tier from directly.
+  const uint32_t next_flush_path_id = info.target_tier.empty() ? 0 : info.target_tier_path_id;
   for (const auto& stats : info.tier_paths) {
-    if (stats.is_home) {
+    if (stats.path_id == next_flush_path_id) {
       info.current_tier = stats.tier;
       break;
     }
@@ -5864,11 +6079,28 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
   if (tiers_seen.size() == 1) {
     info.current_tier = *tiers_seen.begin();
   } else if (tiers_seen.size() > 1) {
-    // Straddling more than one tier (e.g. mid-migration): neither the home-tier default set
+    // Straddling more than one tier (e.g. mid-migration): neither the next-flush default set
     // above nor a single derived tier is accurate, so leave it unset rather than pick one.
     info.current_tier.clear();
   }
   return info;
+}
+
+Result<std::string> Tablet::CurrentStorageTier() const {
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  const auto target_path_id = metadata()->target_tier_path_id();
+  if (!metadata()->target_storage_tier().empty() && regular_db_ &&
+      CollectTierMigrationCandidates(target_path_id).empty()) {
+    // Every live SST is under the target's disk, or there is none yet: GetTierInfo would derive
+    // that disk's tier, after building a LiveFileMetaData per SST under the DB mutex.
+    for (const auto& tier_path : metadata()->tier_paths()) {
+      if (tier_path.path_id == target_path_id) {
+        return tier_path.tier;
+      }
+    }
+  }
+  return VERIFY_RESULT(GetTierInfo()).current_tier;
 }
 
 std::string Tablet::TEST_DocDBDumpStr(
@@ -6276,6 +6508,29 @@ Result<int64_t> Tablet::CountIntents() {
   }
   RETURN_NOT_OK(intent_iter->status());
   return num_intents;
+}
+
+Result<bool> Tablet::HasExternalIntents() const {
+  // Set before the first external intents write, never reset, and inherited by split children.
+  if (!metadata_->IsUnderXClusterReplication()) {
+    return false;
+  }
+
+  auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return false;
+  }
+  static constexpr char kPrefix = dockv::KeyEntryTypeAsChar::kExternalTransactionId;
+  static constexpr char kUpperBound = kPrefix + 1;
+  Slice upper_bound(&kUpperBound, 1);
+  auto iter = docdb::CreateRocksDBIterator(
+      intents_db_.get(), &docdb::KeyBounds::kNoBounds, docdb::BloomFilterOptions::Inactive(),
+      rocksdb::kDefaultQueryId, /* file_filter= */ nullptr, &upper_bound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  iter.Seek(Slice(&kPrefix, 1));
+  return iter.CheckedValid();
 }
 
 Status Tablet::ReadIntents(std::vector<std::string>* intents) {
@@ -7233,8 +7488,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

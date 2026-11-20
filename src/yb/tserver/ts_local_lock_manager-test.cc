@@ -82,6 +82,7 @@ constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr auto kObject3 = 3;
+constexpr auto kObject4 = 4;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -1392,6 +1393,17 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(LockRelationTServerFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
       ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // kObject1 is already held in the lock manager, so this acquire is redundant. It should still
+  // consume the buffer for txn1.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
 
   // Locks were consumed for txn1, fastpath release blocked.
   ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
@@ -1400,7 +1412,6 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
-
 
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the
 // subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no

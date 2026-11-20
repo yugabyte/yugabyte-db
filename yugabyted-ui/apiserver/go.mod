@@ -1,17 +1,13 @@
 module apiserver
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/labstack/echo/v4 v4.16.3
 	github.com/yugabyte/gocql v0.0.0-20220204171058-0bd8e6cb12d0
+	github.com/yugabyte/yb-voyager/yb-voyager v1.8.11
 	go.uber.org/zap v1.28.0
-)
-
-require (
-	github.com/samber/lo v1.53.0 // indirect
-	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 )
 
 require (
@@ -26,15 +22,16 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/rogpeppe/go-internal v1.16.0 // indirect
+	github.com/samber/lo v1.53.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	github.com/yugabyte/yb-voyager/yb-voyager v1.8.11
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )

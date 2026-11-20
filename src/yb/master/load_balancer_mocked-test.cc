@@ -997,6 +997,87 @@ TEST_F(LoadBalancerMockedTest, TestLeaderBlacklist) {
   LOG(INFO) << "Leader distribution: 2 1 1 -OR- 1 2 1";
 }
 
+// Global leader balancing moves a leader when the per-table leader variance is below the minimum
+// but the global one is not. Tablets of tables the run skipped are missing from the global counts,
+// but unlike for tablet moves they do not widen the global minimum, as a leader move is cheap to
+// reverse.
+TEST_F(LoadBalancerMockedTest, GlobalLeaderBalancingNotWidenedBySkippedTablets) {
+  PrepareTestStateMultiAz();
+  // The main table's leaders are on ts0, ts1, ts2, ts0: per-table leader loads 2 1 1.
+  // The extra table's 4 leaders are all on ts0: global leader loads 6 1 1.
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 4, ts_descs_[0]));
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleLeaderMoves(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 5 moves a leader off ts0.
+  SetCanPerformGlobalOperations(true);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+
+  // Skipped tablets do not widen the minimum: a widened bar of 2 + 4 = 6 would exceed the
+  // variance, but the leader still moves.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(4);
+  TestMoveLeader(&tablet_id, ts0, "" /* expected_to_ts */);
+}
+
+class LoadBalancerMockedTestFiveTablets : public LoadBalancerMockedTest {
+ protected:
+  int NumTablets() const override { return 5; }
+};
+
+// The same for tablet moves. With 5 tablets at RF3 on 4 tservers the per-table load is 3 4 4 4,
+// so no per-table move is possible. An extra table that avoids ts0 makes the global load 3 6 6 6.
+TEST_F(LoadBalancerMockedTestFiveTablets, GlobalLoadBalancingWidenedBySkippedTablets) {
+  std::vector<std::shared_ptr<TSDescriptor>> ts_descs;
+  for (int i = 0; i < 4; ++i) {
+    ts_descs.push_back(SetupTS(std::string(4, '0' + i), "a"));
+  }
+  PrepareTestState(ts_descs);
+  replication_info_.mutable_live_replicas()->set_num_replicas(kDefaultNumReplicas);
+  // PrepareTestState put a replica of every tablet on every tserver and the leader of tablet i on
+  // ts i % 4. Drop that replica, so tablets 0 and 4 avoid ts0 and tablets 1, 2, 3 avoid ts1, ts2,
+  // ts3, and lead each tablet from a tserver it is still on.
+  for (size_t i = 0; i < tablets_.size(); ++i) {
+    RemoveReplica(tablets_[i].get(), ts_descs_[i % 4]);
+    MoveTabletLeader(tablets_[i].get(), ts_descs_[(i + 1) % 4]);
+  }
+  const auto extra = ASSERT_RESULT(CreateExtraTable("extra_table", 2, ts_descs_[1]));
+  for (const auto& tablet : extra.tablets) {
+    RemoveReplica(tablet.get(), ts_descs_[0]);
+  }
+  const auto analyze = [&]() -> Status {
+    RETURN_NOT_OK(ResetLoadBalancerAndAnalyzeTablets());
+    return AnalyzeAdditionalTable(extra.table);
+  };
+  const auto& ts0 = ts_descs_[0]->permanent_uuid();
+  std::string tablet_id, from_ts, to_ts;
+
+  // The per-table variance of 1 is below the minimum, and global balancing is not allowed yet.
+  ASSERT_OK(analyze());
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+
+  // Once allowed, the global variance of 3 moves a tablet to ts0.
+  SetCanPerformGlobalOperations(true);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
+
+  // Skipped tablets widen the minimum: 2 + 2 = 4 exceeds the variance, 2 + 1 = 3 does not.
+  ASSERT_OK(analyze());
+  SetNumTabletsInSkippedTables(2);
+  ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  SetNumTabletsInSkippedTables(1);
+  ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+  ASSERT_EQ(to_ts, ts0);
+}
+
 class LoadBalancerMockedTestManyTablets : public LoadBalancerMockedTest {
  protected:
   int NumTablets() const override { return 40; }
@@ -1227,11 +1308,6 @@ TEST_F(LoadBalancerMockedTest, DiskCheckSkipsOversizedTabletOnSameSource) {
   }
   ASSERT_GE(moves, 1);
 }
-
-class LoadBalancerMockedTestFiveTablets : public LoadBalancerMockedTest {
- protected:
-  int NumTablets() const override { return 5; }
-};
 
 TEST_F(LoadBalancerMockedTestFiveTablets, DiskCheckTriesNextSourceForSameDestination) {
   // Tablet layout, with tserver 0000 holding every big tablet and nothing else:

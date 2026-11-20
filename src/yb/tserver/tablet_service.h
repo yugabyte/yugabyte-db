@@ -340,6 +340,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void ClearRocksDBCache(const ClearRocksDBCacheRequestPB* req,
+                         ClearRocksDBCacheResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void AddTableToTablet(const AddTableToTabletRequestPB* req,
                         AddTableToTabletResponsePB* resp,
                         rpc::RpcContext context) override;

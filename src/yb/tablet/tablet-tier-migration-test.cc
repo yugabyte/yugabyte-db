@@ -67,6 +67,7 @@
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(TEST_fail_tier_target_db_update);
 
 namespace yb::tablet {
 
@@ -128,7 +129,7 @@ class TierMigrationTest : public YBTabletTest {
     TabletTierInfo info;
     RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
       info = VERIFY_RESULT(t->GetTierInfo());
-      return !info.migration.pass_in_flight;
+      return !info.migration.migration_pass_in_flight;
     }, MonoDelta::FromSeconds(10), "tier migration pass to finish"));
     return info;
   }
@@ -206,14 +207,14 @@ TEST_F(TierMigrationTest, ConvergedTabletSchedulesNothing) {
   WriteFileWithKey(1);
 
   auto status = ASSERT_RESULT(tablet()->AlterTabletTier("ssd", kHomePathId));
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_EQ(status.state, TierMigrationStatus::State::kInProgress);
   ASSERT_EQ(status.files_total, 0u);
   ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "ssd");
   ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kHomePathId);
 
   status = ASSERT_RESULT(tablet()->StartTierMigrationPass());
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_EQ(status.files_total, 0u);
 }
 
@@ -311,13 +312,13 @@ TEST_F(TierMigrationTest, SecondCallWhilePassInFlightReportsProgress) {
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto first = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(first.pass_in_flight);
+  ASSERT_TRUE(first.migration_pass_in_flight);
   ASSERT_EQ(first.state, TierMigrationStatus::State::kInProgress);
   ASSERT_EQ(first.files_total, 1u);
 
   // The pass's only move is blocked mid-copy, so it is still in flight.
   auto second = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(second.pass_in_flight);
+  ASSERT_TRUE(second.migration_pass_in_flight);
   ASSERT_EQ(second.files_total, 1u);
 
   // StartTierMigrationPass itself is the one that refuses.
@@ -326,7 +327,7 @@ TEST_F(TierMigrationTest, SecondCallWhilePassInFlightReportsProgress) {
   ASSERT_TRUE(pass.status().IsServiceUnavailable()) << pass.status();
   // The bare same-target write is accepted, as a re-assert; only a different target is refused.
   ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
-  ASSERT_TRUE(tablet()->tier_migration_status().pass_in_flight);
+  ASSERT_TRUE(tablet()->tier_migration_status().migration_pass_in_flight);
 
   TEST_SYNC_POINT("TierMigrationTest::SecondCallWhilePassInFlightReportsProgress:Release");
   auto info = ASSERT_RESULT(WaitForPassToFinish());
@@ -349,7 +350,7 @@ TEST_F(TierMigrationTest, SameTargetDuringPassRepointsDb) {
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto first = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(first.pass_in_flight);
+  ASSERT_TRUE(first.migration_pass_in_flight);
 
   // Drift the DB away from the persisted intent behind the tablet's back, as a failed SetOptions
   // would have left it.
@@ -357,7 +358,7 @@ TEST_F(TierMigrationTest, SameTargetDuringPassRepointsDb) {
       {{"target_path_id", std::to_string(kDecoyPathId)}}));
 
   auto second = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(second.pass_in_flight);
+  ASSERT_TRUE(second.migration_pass_in_flight);
   // The next flush follows the DB, which must point at hdd again.
   WriteFileWithKey(2);
 
@@ -444,7 +445,7 @@ TEST_F(TierMigrationTest, TargetChangeDuringPassIsRefused) {
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto first = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(first.pass_in_flight);
+  ASSERT_TRUE(first.migration_pass_in_flight);
 
   auto second = tablet()->AlterTabletTier("nvme", kDecoyPathId);
   ASSERT_NOK(second);
@@ -454,7 +455,7 @@ TEST_F(TierMigrationTest, TargetChangeDuringPassIsRefused) {
   ASSERT_TRUE(write.IsServiceUnavailable()) << write;
   ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
   ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kTargetPathId);
-  ASSERT_TRUE(tablet()->tier_migration_status().pass_in_flight);
+  ASSERT_TRUE(tablet()->tier_migration_status().migration_pass_in_flight);
   // The DB still flushes to hdd, not to the refused target.
   WriteFileWithKey(2);
 
@@ -497,7 +498,7 @@ TEST_F(TierMigrationTest, TargetReplacedBeforePassStartIsRefused) {
           slip_in = false;
           auto result = tablet()->AlterTabletTier("nvme", kDecoyPathId);
           second_status = result.ok() ? Status::OK() : result.status();
-          second_pass_in_flight = result.ok() && result->pass_in_flight;
+          second_pass_in_flight = result.ok() && result->migration_pass_in_flight;
         }
       });
   yb::SyncPoint::GetInstance()->EnableProcessing();
@@ -544,7 +545,7 @@ TEST_F(TierMigrationTest, TargetReplacedBeforeOwnPassClaimsIsRefused) {
   ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "nvme");
   ASSERT_EQ(tablet()->metadata()->target_tier_path_id(), kDecoyPathId);
   // Nothing claimed the tablet, and the file has not moved.
-  ASSERT_FALSE(tablet()->tier_migration_status().pass_in_flight);
+  ASSERT_FALSE(tablet()->tier_migration_status().migration_pass_in_flight);
   auto info = ASSERT_RESULT(tablet()->GetTierInfo());
   ASSERT_EQ(SstCountOnPath(info, kHomePathId), 1u);
 
@@ -573,7 +574,7 @@ TEST_F(TierMigrationTest, TargetChangeDuringFailingPassIsRefused) {
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto first = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(first.pass_in_flight);
+  ASSERT_TRUE(first.migration_pass_in_flight);
 
   auto second = tablet()->AlterTabletTier("nvme", kDecoyPathId);
   ASSERT_NOK(second);
@@ -622,11 +623,11 @@ TEST_F(TierMigrationTest, SameTargetDuringFailingPassRestartsFailureCount) {
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   auto second = ASSERT_RESULT(tablet()->StartTierMigrationPass());
-  ASSERT_TRUE(second.pass_in_flight);
+  ASSERT_TRUE(second.migration_pass_in_flight);
   ASSERT_EQ(second.consecutive_failed_passes, 1u);
 
   auto restart = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_TRUE(restart.pass_in_flight);
+  ASSERT_TRUE(restart.migration_pass_in_flight);
   ASSERT_EQ(restart.consecutive_failed_passes, 0u);
   ASSERT_OK(restart.last_error);
 
@@ -757,6 +758,50 @@ TEST_F(TierMigrationTest, TargetChangeDuringScanIsRefused) {
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
 }
 
+// A same-target AlterTabletTier lands between a reconciler pass's scan and its verdict. The
+// re-assert puts the converged tablet back to kInProgress and reports it; the verdict then restores
+// kDone and must report that too, so it is measured against the state it replaces, not the one the
+// pass started from. Against the latter it reads kDone -> kDone, nothing fires, and the master
+// keeps IN_PROGRESS for a converged tablet until something unrelated re-reports it.
+TEST_F(TierMigrationTest, SameTargetReassertDuringScanIsReportedWithVerdict) {
+  std::atomic<int> state_changes{0};
+  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
+      .files_moved = nullptr,
+      .files_failed = nullptr,
+      .wake_reconciler = {},
+      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
+  }));
+  WriteFileWithKey(1);
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_EQ(state_changes.load(), 1);  // kNone -> kInProgress
+
+  // Converge: the first pass moves the file, the next one finds nothing and declares kDone.
+  auto result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.scheduled, 1u);
+  ASSERT_RESULT(WaitForPassToFinish());
+  result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+  ASSERT_EQ(state_changes.load(), 2);  // kInProgress -> kDone
+
+  // Re-asserts the same target once, from inside the next pass, right after its scan.
+  // AlterTabletTier finds this pass in flight and only reports its status.
+  bool reassert = true;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "Tablet::RunTierMigrationPass:AfterScan", [this, &reassert](void*) {
+        if (reassert) {
+          reassert = false;
+          ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+        }
+      });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_FALSE(reassert);
+  ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
+  ASSERT_TRUE(result.state_changed);  // the re-assert's kInProgress -> kDone
+  ASSERT_EQ(state_changes.load(), 4);  // the re-assert, then the verdict
+}
+
 // A pass that leaves a busy file behind does not wake the reconciler: the file is waiting on its
 // compaction, and the reconciler's interval is the right time to retry it.
 TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
@@ -765,6 +810,7 @@ TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
       .files_moved = nullptr,
       .files_failed = nullptr,
       .wake_reconciler = [&wakes] { ++wakes; },
+      .tier_state_changed = {},
   }));
   const uint64_t file_number = WriteFileWithKey(1);
 
@@ -792,6 +838,60 @@ TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
 
 #endif  // NDEBUG
 
+// CurrentStorageTier agrees with GetTierInfo's current_tier at every step of a migration: one
+// tier while every SST is off the target disk, none while they straddle, the target's once they
+// are all under it (the case it answers without the per-SST scan).
+TEST_F(TierMigrationTest, CurrentStorageTierMatchesTierInfo) {
+  auto check = [this](const std::string& expected) {
+    ASSERT_EQ(ASSERT_RESULT(tablet()->CurrentStorageTier()), expected);
+    ASSERT_EQ(ASSERT_RESULT(tablet()->GetTierInfo()).current_tier, expected);
+  };
+  auto move = [this](uint64_t file_number, uint32_t path_id) {
+    std::promise<Status> done;
+    ASSERT_OK(tablet()->regular_db()->ScheduleDBPathMove(
+        file_number, path_id, [&done](const Status& s) { done.set_value(s); }));
+    ASSERT_OK(done.get_future().get());
+  };
+
+  ASSERT_NO_FATALS(check("ssd"));  // Empty, no target: the home disk.
+  const uint64_t first = WriteFileWithKey(1);
+  const uint64_t second = WriteFileWithKey(2);
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_NO_FATALS(check("ssd"));  // Both SSTs still on home: one tier, not the target's.
+  ASSERT_NO_FATALS(move(first, kTargetPathId));
+  ASSERT_NO_FATALS(check(""));  // One on each disk: straddling.
+  ASSERT_NO_FATALS(move(second, kTargetPathId));
+  ASSERT_NO_FATALS(check("hdd"));  // Converged.
+}
+
+// A target write whose DB update fails has still persisted the target, so the state is
+// re-asserted and the target reported before the error reaches the caller. The retry then sees
+// the same target in the same state and reports nothing new.
+TEST_F(TierMigrationTest, FailedDbUpdateStillReportsPersistedTarget) {
+  std::atomic<int> state_changes{0};
+  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
+      .files_moved = nullptr,
+      .files_failed = nullptr,
+      .wake_reconciler = {},
+      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
+  }));
+  WriteFileWithKey(1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_db_update) = true;
+  auto failed = tablet()->AlterTabletTier("hdd", kTargetPathId);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_db_update) = false;
+  ASSERT_NOK(failed);
+  ASSERT_TRUE(failed.status().IsIOError()) << failed.status();
+  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
+  ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kInProgress);
+  ASSERT_EQ(state_changes.load(), 1);  // The persisted target, reported despite the error.
+
+  auto status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  ASSERT_EQ(status.files_total, 1u);
+  ASSERT_EQ(state_changes.load(), 1);  // Same target, still in progress: nothing new.
+  ASSERT_RESULT(WaitForPassToFinish());
+}
+
 // Only a reconciler pass declares convergence, and only from a scan of its own: the pass that
 // moved the last file leaves the tablet kInProgress, the next one finds nothing and marks it
 // kDone. A file that later shows up outside the target directory puts it back to kInProgress
@@ -814,7 +914,7 @@ TEST_F(TierMigrationTest, ReconcilePassMarksConvergedTabletDone) {
   ASSERT_EQ(result.scheduled, 0u);
   ASSERT_TRUE(result.state_changed);
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
-  ASSERT_FALSE(result.status.pass_in_flight);
+  ASSERT_FALSE(result.status.migration_pass_in_flight);
 
   // An idle pass changes nothing.
   result = ASSERT_RESULT(tablet()->RunTierReconcilePass(TierReconcileOptions()));
@@ -868,7 +968,7 @@ TEST_F(TierMigrationTest, ReconcilePassMarksFailedAtThresholdUntilNextAlter) {
   ASSERT_EQ(result.scheduled, 0u);
   ASSERT_TRUE(result.state_changed);
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kFailed);
-  ASSERT_FALSE(result.status.pass_in_flight);
+  ASSERT_FALSE(result.status.migration_pass_in_flight);
   ASSERT_NOK(result.status.last_error);
   // The last pass's tallies survive for GetTierInfo.
   ASSERT_EQ(result.status.files_failed, 1u);
@@ -947,13 +1047,13 @@ TEST_F(TierMigrationTest, SplitChildWaitsForPostSplitCompaction) {
   ASSERT_TRUE(result.awaiting_post_split_compaction);
   ASSERT_EQ(result.candidates, 0u);
   ASSERT_EQ(result.scheduled, 0u);
-  ASSERT_FALSE(result.status.pass_in_flight);
+  ASSERT_FALSE(result.status.migration_pass_in_flight);
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kInProgress);
   ASSERT_EQ(result.status.consecutive_failed_passes, 0u);
 
   // The manual path waits too.
   auto status = ASSERT_RESULT(child->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_EQ(status.state, TierMigrationStatus::State::kInProgress);
   info = ASSERT_RESULT(child->GetTierInfo());
   ASSERT_EQ(SstCountOnPath(info, kHomePathId), 1u);
@@ -983,6 +1083,7 @@ TEST_F(TierMigrationTest, OnlyCleanManualPassWakesReconciler) {
       .files_moved = nullptr,
       .files_failed = nullptr,
       .wake_reconciler = [&wakes] { ++wakes; },
+      .tier_state_changed = {},
   }));
   auto wait_for_wakes = [&wakes](int expected) {
     return WaitFor([&wakes, expected]() { return wakes.load() == expected; },
@@ -990,7 +1091,7 @@ TEST_F(TierMigrationTest, OnlyCleanManualPassWakesReconciler) {
   };
   WriteFileWithKey(1);
 
-  // Clean pass: the file moves, then one wake, after pass_in_flight is cleared.
+  // Clean pass: the file moves, then one wake, after migration_pass_in_flight is cleared.
   auto status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
   ASSERT_EQ(status.files_total, 1u);
   auto info = ASSERT_RESULT(WaitForPassToFinish());
@@ -1004,7 +1105,7 @@ TEST_F(TierMigrationTest, OnlyCleanManualPassWakesReconciler) {
 
   // Already converged: AlterTabletTier schedules nothing and wakes at once, for the verdict.
   status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_EQ(wakes.load(), 2);
 
   // Hard failure: no wake; the interval retries it.

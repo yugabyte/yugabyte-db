@@ -1,26 +1,49 @@
 site_name: PostgreSQL Anonymizer
 site_description: Anonymization and Data Masking with PostgreSQL
 site_author: www.dalibo.com
-copyright: Copyright 2018-2024 <a href="http://www.dalibo.com">dalibo</a>
+copyright: Copyright 2018-2025 <a href="http://www.dalibo.com">dalibo</a>
 repo_url: https://gitlab.com/dalibo/postgresql_anonymizer
+edit_uri: edit/latest/docs/
 theme:
   name: readthedocs
+extra_css:
+  - overrides/main.css
 nav:
-  - 'Home': 'index.md'
+  - 'Quick Start': index.md
   - 'Install': 'INSTALL.md'
   - 'Configure': 'configure.md'
-  - 'Declare Masking rules': 'declare_masking_rules.md'
-  - 'Masking Functions': 'masking_functions.md'
-  - 'Static Masking': 'static_masking.md'
-  - 'Dynamic Masking': 'dynamic_masking.md'
-  - 'Anonymous Dumps': 'anonymous_dumps.md'
-  - 'Generalization': 'generalization.md'
-  - 'Privacy By Default': 'privacy_by_default.md'
-  - 'Sampling': 'sampling.md'
-  - 'Detecting Identifiers': 'detection.md'
-  - 'Custom Fake Data': 'custom_fake_data.md'
-  - 'Concepts': 'concepts.md'
-  - 'Performances': 'performances.md'
-  - 'Upgrade': 'UPGRADE.md'
-  - 'Security': 'SECURITY.md'
-  - 'Links': 'links.md'
+  - Masking Rules:
+    - 'Declare Masking rules': 'declare_masking_rules.md'
+    - 'Masking Functions': 'masking_functions.md'
+  - Masking Methods:
+    - 'Static Masking': 'static_masking.md'
+    - 'Dynamic Masking': 'dynamic_masking.md'
+    - 'Replica Masking': 'replica_masking.md'
+    - 'Anonymous Dumps': 'anonymous_dumps.md'
+    - 'Masking Views': 'masking_views.md'
+    - 'Masking Data Wrappers': 'masking_data_wrappers.md'
+  - Advanced:
+    - 'Privacy By Default': 'privacy_by_default.md'
+    - 'Foreign Keys': 'foreign_keys.md'
+    - 'Sampling': 'sampling.md'
+    - 'Selective Masking': 'selective_masking.md'
+    - 'Detecting Identifiers': 'detection.md'
+    - 'Custom Fake Data': 'custom_fake_data.md'
+    - 'Performances': 'performances.md'
+    - 'Upgrade': 'UPGRADE.md'
+    - 'Import Export': 'impexp.md'
+  - Tutorials:
+    - 'Intro': tutorials/0-intro.md
+    - tutorials/1-static_masking.md
+    - tutorials/2-dynamic_masking.md
+    - tutorials/3-anonymous_dumps.md
+    - tutorials/4-generalization.md
+    - tutorials/9-conclusion.md
+  - Tech Docs:
+    - 'Concepts': concepts.md
+    - 'Security': SECURITY.md
+    - 'Links': links.md
+
+# Markdown settings
+markdown_extensions:
+- admonition

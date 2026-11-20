@@ -352,12 +352,19 @@ class GlobalLoadState {
         out += ", global_load_count: " + per_ts_global_meta_[ts_info->permanent_uuid()].ToString();
       }
     }
-    out += "]}, total_starting_tablets: " + std::to_string(total_starting_tablets_) + " }";
+    out += "]}, total_starting_tablets: " + std::to_string(total_starting_tablets_) +
+           ", num_tablets_in_skipped_tables: " + std::to_string(num_tablets_in_skipped_tables_) +
+           " }";
     return out;
   }
 
   // Used to determine how many tablets are being remote bootstrapped across the cluster.
   int total_starting_tablets_ = 0;
+
+  // Number of tablets in tables this run skipped with a kSkipTableLoadBalancing warning. They are
+  // not in per_ts_global_meta_, so a tserver's global load or leader count can be low by up to
+  // this many. Widens the minimum variance for global tablet moves only.
+  size_t num_tablets_in_skipped_tables_ = 0;
 
   TSDescriptorVector ts_descs_;
 

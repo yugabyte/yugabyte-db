@@ -33,6 +33,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -513,7 +514,12 @@ public class UniverseTest extends FakeDBApplication {
 
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(u.getUniverseDetails(), context);
+        UniverseResourceDetails.create(
+            Optional.of(Util.getDefaultProviderUUID(u)),
+            u.getNodes(),
+            u.getUniverseDetails(),
+            context,
+            true);
     JsonNode universeJson = Json.toJson(UniverseResp.create(u, null, mockConfGetter));
     assertThat(
         universeJson.get("universeUUID").asText(),
@@ -558,14 +564,16 @@ public class UniverseTest extends FakeDBApplication {
             k8s.getUniverseUUID(),
             u ->
                 u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-                    "2026.2.0.0-b1");
+                    NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     assertTrue(
-        new UniverseResp(k8s, null, null, null, null, confGetter).nodeExporterSidecarScraped);
-    assertFalse(new UniverseResp(k8s, null).nodeExporterSidecarScraped);
+        new UniverseResp(k8s, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
+    assertFalse(new UniverseResp(k8s).nodeExporterSidecarScraped);
 
     Universe vm = createUniverse("vm-resp", defaultCustomer.getId());
     assertFalse(
-        new UniverseResp(vm, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(vm, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
   }
 
   private Universe k8sUniverseAtVersion(String name, String ybSoftwareVersion) {
@@ -582,21 +590,27 @@ public class UniverseTest extends FakeDBApplication {
   public void testNodeExporterSidecarScrapedFollowsUniverseKeyAndVersion() {
     RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
 
-    Universe keyOff = k8sUniverseAtVersion("k8s-key-off", "2026.2.0.0-b1");
+    Universe keyOff =
+        k8sUniverseAtVersion("k8s-key-off", NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     app.injector()
         .instanceOf(SettableRuntimeConfigFactory.class)
         .forUniverse(keyOff)
         .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "false");
     assertFalse(
-        new UniverseResp(keyOff, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(keyOff, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
 
     Universe belowGate = k8sUniverseAtVersion("k8s-below-gate", "2026.1.2.0-b100");
     assertFalse(
-        new UniverseResp(belowGate, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(
+                belowGate, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
 
     Universe noVersion = k8sUniverseAtVersion("k8s-no-version", null);
     assertFalse(
-        new UniverseResp(noVersion, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(
+                noVersion, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
   }
 
   @Test
@@ -609,7 +623,7 @@ public class UniverseTest extends FakeDBApplication {
 
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -640,7 +654,7 @@ public class UniverseTest extends FakeDBApplication {
     u.setUniverseDetails(udtp);
 
     // Verify returned json is generated from the non-json userDetails object
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -655,7 +669,7 @@ public class UniverseTest extends FakeDBApplication {
   @Test
   public void testToJSONWithEmptyRegionList() {
     Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -676,7 +690,7 @@ public class UniverseTest extends FakeDBApplication {
 
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -876,7 +890,7 @@ public class UniverseTest extends FakeDBApplication {
     // areMastersUnderReplicated.
     Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, false /* setMasters */);
 
-    UniverseResp universeResp = new UniverseResp(u, null);
+    UniverseResp universeResp = new UniverseResp(u);
 
     JsonNode json = Json.toJson(universeResp).get("universeDetails");
 
@@ -924,7 +938,7 @@ public class UniverseTest extends FakeDBApplication {
       assertTrue(Util.areMastersUnderReplicated(u.getNode("host-n4"), u));
     }
 
-    UniverseResp universeResp = new UniverseResp(u, null);
+    UniverseResp universeResp = new UniverseResp(u);
     JsonNode json = Json.toJson(universeResp).get("universeDetails");
 
     JsonNode nodeDetailsSet = json.get("nodeDetailsSet");

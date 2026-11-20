@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -102,6 +104,7 @@ public class UpgradeUniverseHandler {
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
   private final GFlagsValidation gFlagsValidation;
+  private final ReleaseManager releaseManager;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -115,7 +118,8 @@ public class UpgradeUniverseHandler {
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
       SoftwareUpgradeHelper softwareUpgradeHelper,
-      GFlagsValidation gFlagsValidation) {
+      GFlagsValidation gFlagsValidation,
+      ReleaseManager releaseManager) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -127,6 +131,7 @@ public class UpgradeUniverseHandler {
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.gFlagsValidation = gFlagsValidation;
+    this.releaseManager = releaseManager;
   }
 
   public UUID restartUniverse(
@@ -153,6 +158,10 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    ReleaseContainer release = releaseManager.getReleaseByVersion(requestParams.ybSoftwareVersion);
+    if (release != null) {
+      release.raiseIfDisabledOrDeleted();
+    }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -354,12 +363,67 @@ public class UpgradeUniverseHandler {
       if (universeCluster == null || universeCluster.userIntent == null) {
         continue;
       }
+      UserIntent stored = universeCluster.userIntent;
+      if (stored.specificGFlags != null && stored.specificGFlags.isInheritFromPrimary()) {
+        // The read replica runs with the primary's gflags, and the UI sends the primary's
+        // (redacted) gflags as the read replica's own when it stops inheriting.
+        stored = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      }
+      SpecificGFlags storedGFlags = stored.specificGFlags;
+      if (storedGFlags == null) {
+        // Defensive: create and the V315 migration always set specificGFlags. Without this, a
+        // cluster stored without them would get a 400 for a value its deprecated maps hold.
+        storedGFlags =
+            SpecificGFlags.construct(
+                MapUtils.emptyIfNull(stored.masterGFlags),
+                MapUtils.emptyIfNull(stored.tserverGFlags));
+      }
       clusterParam.userIntent.specificGFlags =
           GFlagsUtil.mergeSensitiveSpecificGFlags(
-              universeCluster.userIntent.specificGFlags,
+              storedGFlags,
               clusterParam.userIntent.specificGFlags,
               gFlagsValidation,
-              universeCluster.userIntent.ybSoftwareVersion);
+              stored.ybSoftwareVersion);
+    }
+  }
+
+  private static void trimGFlags(UserIntent userIntent) {
+    GFlagsUtil.trimFlags(userIntent.specificGFlags);
+    userIntent.masterGFlags = trimFlagsIfSet(userIntent.masterGFlags);
+    userIntent.tserverGFlags = trimFlagsIfSet(userIntent.tserverGFlags);
+  }
+
+  private static Map<String, String> trimFlagsIfSet(Map<String, String> gflags) {
+    return gflags == null ? null : GFlagsUtil.trimFlags(gflags);
+  }
+
+  // The merges restore stored values, which may be untrimmed, into every request cluster. Only the
+  // gflags that differ from the stored ones are trimmed: the others must stay equal to them, or
+  // the task treats them as changed, and a resize without gflags changes restarts its nodes.
+  private void mergeSensitiveGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()
+        || requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster cluster : requestParams.clusters) {
+      UserIntent userIntent = cluster.userIntent;
+      if (userIntent == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster storedCluster = universe.getCluster(cluster.uuid);
+      UserIntent stored = storedCluster != null ? storedCluster.userIntent : null;
+      if (stored == null || !Objects.equals(userIntent.specificGFlags, stored.specificGFlags)) {
+        GFlagsUtil.trimFlags(userIntent.specificGFlags);
+      }
+      if (stored == null || !Objects.equals(userIntent.masterGFlags, stored.masterGFlags)) {
+        userIntent.masterGFlags = trimFlagsIfSet(userIntent.masterGFlags);
+      }
+      if (stored == null || !Objects.equals(userIntent.tserverGFlags, stored.tserverGFlags)) {
+        userIntent.tserverGFlags = trimFlagsIfSet(userIntent.tserverGFlags);
+      }
     }
   }
 
@@ -371,12 +435,9 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
-      GFlagsUtil.trimFlags(userIntent.specificGFlags);
-      userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
-      userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
+      trimGFlags(userIntent);
 
-      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
       // The merges replace the cluster maps, so copy them only now:
       // checkGFlagsProvidedInOldSchema rebuilds specificGFlags from these top-level maps.
       requestParams.masterGFlags = userIntent.masterGFlags;
@@ -393,22 +454,24 @@ public class UpgradeUniverseHandler {
         UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
             universeDetails != null ? universeDetails.getPrimaryCluster() : null;
         if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+          // The merges restore stored values, which may be untrimmed.
           requestParams.masterGFlags =
-              GFlagsUtil.mergeSensitiveGFlags(
-                  primaryUniverseCluster.userIntent.masterGFlags,
-                  requestParams.masterGFlags,
-                  gFlagsValidation,
-                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+              GFlagsUtil.trimFlags(
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      primaryUniverseCluster.userIntent.masterGFlags,
+                      requestParams.masterGFlags,
+                      gFlagsValidation,
+                      primaryUniverseCluster.userIntent.ybSoftwareVersion));
           requestParams.tserverGFlags =
-              GFlagsUtil.mergeSensitiveGFlags(
-                  primaryUniverseCluster.userIntent.tserverGFlags,
-                  requestParams.tserverGFlags,
-                  gFlagsValidation,
-                  primaryUniverseCluster.userIntent.ybSoftwareVersion);
+              GFlagsUtil.trimFlags(
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      primaryUniverseCluster.userIntent.tserverGFlags,
+                      requestParams.tserverGFlags,
+                      gFlagsValidation,
+                      primaryUniverseCluster.userIntent.ybSoftwareVersion));
         }
       }
-      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -525,6 +588,7 @@ public class UpgradeUniverseHandler {
                   requestParamsCluster.userIntent.specificGFlags,
                   gFlagsValidation,
                   primaryCluster.userIntent.ybSoftwareVersion);
+          GFlagsUtil.trimFlags(requestParamsCluster.userIntent.specificGFlags);
         }
         return true;
       }
@@ -697,22 +761,25 @@ public class UpgradeUniverseHandler {
       UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
           universeDetails != null ? universeDetails.getPrimaryCluster() : null;
       if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+        // verifyParams trimmed and checked these maps, and the merges restore stored values, which
+        // may be untrimmed. Both maps are null for a resize without gflags changes.
         requestParams.masterGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                primaryUniverseCluster.userIntent.masterGFlags,
-                requestParams.masterGFlags,
-                gFlagsValidation,
-                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+            trimFlagsIfSet(
+                GFlagsUtil.mergeSensitiveGFlags(
+                    primaryUniverseCluster.userIntent.masterGFlags,
+                    requestParams.masterGFlags,
+                    gFlagsValidation,
+                    primaryUniverseCluster.userIntent.ybSoftwareVersion));
         requestParams.tserverGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                primaryUniverseCluster.userIntent.tserverGFlags,
-                requestParams.tserverGFlags,
-                gFlagsValidation,
-                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+            trimFlagsIfSet(
+                GFlagsUtil.mergeSensitiveGFlags(
+                    primaryUniverseCluster.userIntent.tserverGFlags,
+                    requestParams.tserverGFlags,
+                    gFlagsValidation,
+                    primaryUniverseCluster.userIntent.ybSoftwareVersion));
       }
     }
-    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
 
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)

@@ -148,6 +148,7 @@ DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
 
 DEFINE_RUNTIME_bool(vector_index_allow_parallel_compactions, false,
     "Allow running multiple compactions of the same vector LSM in parallel.");
+TAG_FLAG(vector_index_allow_parallel_compactions, hidden);
 
 DEFINE_test_flag(bool, vector_index_exact, false,
     "Use exact brute-force search in vector index to guarantee deterministic results.");
@@ -493,9 +494,16 @@ class VectorLSMInsertTask :
     registry->TaskDone(this);
   }
 
-  void Search(SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
+  // tenant_extractor is null when vectors have no tenants.
+  Status Search(
+      SearchHeap& heap, const Vector& query_vector, const SearchOptions& options,
+      const VectorTenantExtractor& tenant_extractor) const {
     SharedLock lock(mutex_);
     for (const auto& entry : entries_) {
+      if (tenant_extractor &&
+          VERIFY_RESULT(tenant_extractor(entry.payload.AsSlice())) != options.tenant) {
+        continue;
+      }
       if (!options.filter(entry.vector_id, entry.payload.AsSlice())) {
         continue;
       }
@@ -507,6 +515,7 @@ class VectorLSMInsertTask :
         heap.emplace(entry, distance);
       }
     }
+    return Status::OK();
   }
 
  protected:
@@ -738,12 +747,14 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
     allocated_tasks_cond_.notify_all();
   }
 
-  SearchResults Search(const Vector& query_vector, const SearchOptions& options) {
+  Result<SearchResults> Search(
+      const Vector& query_vector, const SearchOptions& options,
+      const VectorTenantExtractor& tenant_extractor) {
     typename InsertTask::SearchHeap heap;
     {
       SharedLock lock(mutex_);
       for (const auto& task : active_tasks_) {
-        task.Search(heap, query_vector, options);
+        RETURN_NOT_OK(task.Search(heap, query_vector, options, tenant_extractor));
       }
     }
     return ReverseHeapToVector(heap);
@@ -1794,6 +1805,10 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
+  const auto& tenant_extractor = options_.vector_index_traits->tenant_extractor();
+  // Otherwise the insert registry would match nothing, while the chunks reject the search.
+  SCHECK(!tenant_extractor || !options.tenant.empty(), InvalidArgument,
+         "Search of a vector index with tenants without a tenant");
   if (options.max_num_results == 0) {
     return SearchResults();
   }
@@ -1804,7 +1819,8 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
   auto start_registry_search = MonoTime::Now();
-  auto intermediate_results = insert_registry_->Search(query_vector, options);
+  auto intermediate_results = VERIFY_RESULT(insert_registry_->Search(
+      query_vector, options, tenant_extractor));
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 
@@ -2006,6 +2022,11 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     if (TEST_sleep_after_saving_chunk) {
       SleepFor(TEST_sleep_after_saving_chunk);
     }
+  }
+
+  // Before the chunk is marked on disk, so the wait does not hold the manifest.
+  if (options_.wait_frontier_durable && chunk->applied_frontiers) {
+    options_.wait_frontier_durable(chunk->applied_frontiers->Largest());
   }
 
   TEST_SYNC_POINT("VectorLSM::DoSaveChunk:BeforeManifestCheck");
@@ -2866,6 +2887,9 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksForCompaction(CompactionType type) const {
+  // Parallel compactions could otherwise both see the same chunks as ready and race on locking
+  // them.
+  std::lock_guard pick_lock(pick_chunks_mutex_);
   if (type == CompactionType::kManual) {
     return PickChunksForFullCompaction();
   }

@@ -17,7 +17,7 @@ import {
   getProxyNodeAddress,
   getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
-import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
+import { isNotHidden, isDisabled, isHidden, isNonAvailable } from '../../../utils/LayoutUtils';
 import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
@@ -300,8 +300,9 @@ export default class NodeDetailsTable extends Component {
         'universes.actions'
       );
 
+      // Monitoring hides Queries when the feature is disabled as well as hidden.
       const hideQueries =
-        !isNotHidden(customer.currentCustomer.data.features, 'universes.details.queries') ||
+        isNonAvailable(customer.currentCustomer.data.features, 'universes.details.queries') ||
         row.isTServer === '-';
 
       if (hideIP) {

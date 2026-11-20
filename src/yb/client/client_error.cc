@@ -30,6 +30,9 @@ bool IsRetryableClientError(const Status& s) {
       // Upper layers might need to know the updated partition list to rebuild YBOperation instances
       // again to cover desired key range.
       return false;
+    case ClientErrorCode::kPipelinedWriteOutcomeUnknown:
+      // The server may still apply the request, so resending it could apply it twice.
+      return false;
     case ClientErrorCode::kTablePartitionListIsStale:
     case ClientErrorCode::kTablePartitionListRefreshed:
     case ClientErrorCode::kExpiredRequestToBeRetried:

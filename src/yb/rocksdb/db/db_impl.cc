@@ -52,6 +52,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/crc32c_accelerated.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
@@ -107,7 +108,6 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
-#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/log_buffer.h"
@@ -988,8 +988,8 @@ void DumpSupportInfo(Logger* logger) {
   RLOG(InfoLogLevel::INFO_LEVEL, logger, "\tBzip supported: %d",
       BZip2_Supported());
   RLOG(InfoLogLevel::INFO_LEVEL, logger, "\tLZ4 supported: %d", LZ4_Supported());
-  RLOG(InfoLogLevel::INFO_LEVEL, logger, "Fast CRC32 supported: %d",
-      crc32c::IsFastCrc32Supported());
+  RLOG(InfoLogLevel::INFO_LEVEL, logger, "CRC32C implementation: %s",
+      yb::crc::Crc32cImplementations().front().name);
 }
 
 }  // namespace
@@ -6822,6 +6822,36 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
 void DBImpl::GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) {
   InstrumentedMutexLock l(&mutex_);
   versions_->GetLiveFileNumbersNotOnPath(path_id, out);
+}
+
+size_t DBImpl::EvictTableReaders() {
+  std::vector<uint64_t> file_numbers;
+  {
+    InstrumentedMutexLock l(&mutex_);
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      if (cfd->IsDropped()) {
+        continue;
+      }
+      for (int level = 0; level < cfd->NumberLevels(); level++) {
+        for (const auto& file : cfd->current()->storage_info()->LevelFiles(level)) {
+          // The version holds the reader when max_open_files == -1, so evicting it from the table
+          // cache would not close it.
+          if (file->fd.table_reader) {
+            continue;
+          }
+          file_numbers.push_back(file->fd.GetNumber());
+        }
+      }
+    }
+  }
+  // Outside the mutex: dropping the last reference closes the file.
+  size_t evicted = 0;
+  for (const auto file_number : file_numbers) {
+    if (TableCache::EvictIfOpen(table_cache_.get(), file_number)) {
+      ++evicted;
+    }
+  }
+  return evicted;
 }
 
 yb::storage::FrontierInfo DBImpl::GetFrontiers(yb::storage::FrontierKinds kinds) {

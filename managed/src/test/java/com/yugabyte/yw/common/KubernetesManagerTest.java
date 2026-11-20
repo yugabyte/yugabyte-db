@@ -150,9 +150,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
       case HELM_DELETE:
         kubernetesManager.helmDelete(configProvider, "demo-universe", "demo-namespace");
         break;
-      case VOLUME_DELETE:
-        kubernetesManager.deleteStorage(configProvider, "demo-universe", "demo-namespace");
-        break;
     }
 
     Mockito.verify(shellProcessHandler, times(numOfCalls))
@@ -1528,5 +1525,76 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(
         Optional.empty(),
         kubernetesManager.getHelmReleaseStatus(configProvider, "demo-universe", "demo-ns"));
+  }
+
+  private List<List<String>> runDeleteStorage(
+      List<String> helmReleaseNames, int stsExitCode, int pvcExitCode) {
+    setupKubernetesManagerForHelmTests();
+    when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(900L);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(stsExitCode, "No resources found"))
+        .thenReturn(ShellResponse.create(pvcExitCode, "No resources found"));
+    try {
+      kubernetesManager.deleteStorage(
+          universe.getUniverseUUID(), configProvider, helmReleaseNames, "demo-namespace");
+    } finally {
+      Mockito.verify(shellProcessHandler, Mockito.atLeastOnce())
+          .run(command.capture(), context.capture());
+    }
+    return command.getAllValues();
+  }
+
+  @Test
+  public void testDeleteStorageDeletesStatefulSetsThenPVCs() {
+    List<List<String>> commands = runDeleteStorage(ImmutableList.of("demo-az1"), 0, 0);
+    assertEquals(
+        ImmutableList.of(
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "statefulset",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "release in (demo-az1)",
+                "--ignore-not-found",
+                "--timeout",
+                "900s"),
+            ImmutableList.of(
+                "kubectl",
+                "delete",
+                "pvc",
+                "--namespace",
+                "demo-namespace",
+                "-l",
+                "release in (demo-az1)",
+                "--timeout",
+                "900s")),
+        commands);
+  }
+
+  @Test
+  public void testDeleteStorageForSeveralReleases() {
+    List<List<String>> commands = runDeleteStorage(ImmutableList.of("demo-az1", "demo-az2"), 0, 0);
+    assertEquals(2, commands.size());
+    assertEquals("release in (demo-az1,demo-az2)", commands.get(0).get(6));
+    assertEquals("release in (demo-az1,demo-az2)", commands.get(1).get(6));
+  }
+
+  @Test
+  public void testDeleteStorageFailsWhenStatefulSetDeleteFails() {
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class, () -> runDeleteStorage(ImmutableList.of("demo-az1"), 1, 0));
+    assertTrue(e.getMessage(), e.getMessage().startsWith("Unable to delete StatefulSets"));
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
+  }
+
+  @Test
+  public void testDeleteStorageFailsWhenPVCDeleteFails() {
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class, () -> runDeleteStorage(ImmutableList.of("demo-az1"), 0, 1));
+    assertTrue(e.getMessage(), e.getMessage().startsWith("Unable to delete PVCs"));
   }
 }

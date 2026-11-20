@@ -308,12 +308,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         if (provider.getCloudCode() == Common.CloudType.onprem) {
           return "Disk resizing is not supported for onprem providers";
         }
-        if (curDeviceInfo.storageType == PublicCloudConstants.StorageType.UltraSSD_LRS
-            || curDeviceInfo.storageType == PublicCloudConstants.StorageType.PremiumV2_LRS) {
-          return String.format(
-              "%s doesn't support resizing without downtime", curDeviceInfo.storageType);
-        }
         if (provider.getCloudCode() == Common.CloudType.azu
+            && !isAzureDiskWithoutLiveExpandLimit(curDeviceInfo.storageType)
             && curDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
             && newDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
           return "Cannot expand from "
@@ -351,6 +347,18 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
 
     return null;
+  }
+
+  /**
+   * Azure expands Premium SSD v2 and Ultra disks while they are attached to a running VM, with
+   * either an NVMe or a SCSI disk controller, and the rule that a disk of up to 4 TiB cannot grow
+   * past 4 TiB without deallocating the VM does not apply to them. Only the size can be changed
+   * this way: IOPS and throughput changes on Azure are rejected by {@code checkDiskChanged}.
+   */
+  private static boolean isAzureDiskWithoutLiveExpandLimit(
+      PublicCloudConstants.StorageType storageType) {
+    return storageType == PublicCloudConstants.StorageType.UltraSSD_LRS
+        || storageType == PublicCloudConstants.StorageType.PremiumV2_LRS;
   }
 
   /**

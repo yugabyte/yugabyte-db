@@ -72,6 +72,7 @@
 #include "executor/ybExpr.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
+#include "nodes/print.h"
 #include "pg_yb_utils.h"
 #include <utils/rel.h>
 
@@ -5371,6 +5372,14 @@ ybTracePath(PlannerInfo *root, Path *path, char *msg)
 
 		appendStringInfoSpaces(&buf, 4);
 		appendStringInfo(&buf, "index name : %s\n", indexName);
+
+		if (indexPath->yb_index_path_info.merge_scan_info != NULL)
+		{
+			char *dump = nodeToString(indexPath->yb_index_path_info.merge_scan_info);
+			char *pretty = pretty_format_node_dump(dump);
+			appendStringInfoSpaces(&buf, 4);
+			appendStringInfo(&buf, "YbMergeScanInfo: merge_scan_info=%s\n", pretty);
+		}
 	}
 
 	appendStringInfoSpaces(&buf, 4);

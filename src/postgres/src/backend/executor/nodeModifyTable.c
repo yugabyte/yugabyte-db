@@ -1632,6 +1632,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 												  YB_SINGLE_SHARD_TRANSACTION :
 												  YB_TRANSACTIONAL),
 												 changingPart,
+												 false /* persist_missing_row */ ,
 												 estate);
 
 		/*
@@ -1677,7 +1678,8 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 
 		/* Delete index entries of the old tuple */
-		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple,
+							  false /* persist_missing_row */ , estate);
 	}
 
 	/*
@@ -6015,11 +6017,11 @@ YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
  *    are single row).
  *
  * Transition-table capture does not need to be checked here: the single-row
- * UPDATE/DELETE path in createplan.c is only taken when no row triggers
- * apply (see has_applicable_triggers()), and that helper consults
- * YBRelHasOldRowTriggers() which already rejects any relation carrying an
- * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
- * outer plan implies no transition_capture.
+ * UPDATE/DELETE path in createplan.c is not taken when the target leaf
+ * (has_applicable_triggers()) or the relation named in the query
+ * (yb_target_has_transition_tables()) has an AFTER UPDATE/DELETE trigger
+ * with REFERENCING OLD/NEW TABLE.  So a Result outer plan implies no
+ * transition_capture.
  */
 static bool
 ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable, Relation targetRel)
