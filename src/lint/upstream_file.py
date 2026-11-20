@@ -25,9 +25,9 @@
 
 from pathlib import Path
 import csv
-import email.utils
-import http.client
 import os
+import re
+import socket
 import subprocess
 import sys
 import time
@@ -41,16 +41,10 @@ CSV_FILEPATH = f"{SCRIPT_PATH}/upstream_repositories.csv"
 FETCH_ATTEMPTS = 3
 # Seconds to wait before the second attempt.  The wait doubles before each later attempt.
 FETCH_BACKOFF_S = 1.0
-# The longest wait a Retry-After header can ask for.
+# The longest wait a Retry-After header can ask for.  A fetch whose server asks for longer gives
+# up instead of retrying before the server said it could succeed.
 RETRY_AFTER_CAP_S = 30.0
 FETCH_TIMEOUT_S = 10
-# build-support/lint.py sets this to a file that every fetch in one lint run shares.  Each retry
-# adds its cost, the wait plus FETCH_TIMEOUT_S, to the file, and no fetch retries once the total
-# would pass FETCH_RETRY_BUDGET_S.  So during an outage, retries add at most that much to a lint
-# run, however many files it checks.  When the variable is unset, as under arc lint, each fetch
-# still makes at most FETCH_ATTEMPTS attempts.
-RETRY_BUDGET_FILE_ENV = "YB_LINT_FETCH_RETRY_BUDGET_FILE"
-FETCH_RETRY_BUDGET_S = 60.0
 
 
 class NotFoundError(Exception):
@@ -151,77 +145,67 @@ def fetch_url(url):
             # - (older python version) socket.timeout: The read operation timed out
             # - (newer python version) TimeoutError: The read operation timed out
 
-            # Only 404 should be considered expected.  That happens if the file path or commit
-            # does not exist.  403 happens for gitlab when the repository does not exist (github
-            # gives 404), and that should be considered a fatal issue.
+            # A fetch ends in one of these ways:
+            # - Retried: a 429, a 5xx, a timeout, a DNS failure, or a refused or reset connection.
+            #   It is fatal only once it is out of retries.
+            # - Not retried: everything else.  A 404 is NotFoundError, which means the file or
+            #   commit does not exist upstream, not that the fetch failed.  Any other error,
+            #   including the 403 that gitlab returns for a missing repository (github gives
+            #   404), is fatal on the first attempt.
             if isinstance(e, urllib.error.HTTPError) and e.code == 404:
                 raise NotFoundError(url) from e
 
             wait = _retry_wait(e, attempt)
-            if (wait is not None and attempt < FETCH_ATTEMPTS - 1
-                    and _take_retry_budget(wait + FETCH_TIMEOUT_S)):
+            if wait is not None and attempt < FETCH_ATTEMPTS - 1:
                 time.sleep(wait)
                 continue
 
-            # The rest should rethrow.  Also print the error message to stdout so that it shows
-            # in arc lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc
-            # lint truncates it so that it's not seen).
+            # The rest, errors that are out of retries or not retryable, should rethrow.  Also
+            # print the error message to stdout so that it shows in arc lint stdout (otherwise,
+            # it gets buried under stacktrace in stderr, and arc lint truncates it so that it's
+            # not seen).
             print(f"{type(e).__name__}: {e}")
             raise
     raise AssertionError("unreachable")
 
 
 def _retry_wait(e, attempt):
-    """Return the seconds to wait before retrying after e, or None if e is not retried.
-
-    Retried: 429, any 5xx, and any network error (a timeout while connecting or reading, a DNS
-    failure, a refused or reset connection, a truncated body).  Any other HTTP error is not.
-    """
+    """Return the seconds to wait before retrying after e, or None if e is not retried."""
+    backoff = FETCH_BACKOFF_S * 2 ** attempt
     if isinstance(e, urllib.error.HTTPError):
         if e.code != 429 and e.code < 500:
             return None
-        if e.code in (429, 503):
-            retry_after = _retry_after_s(e)
-            if retry_after is not None:
-                return min(retry_after, RETRY_AFTER_CAP_S)
-    elif not isinstance(e, (OSError, http.client.HTTPException)):
-        # URLError and every timeout are OSErrors.
-        return None
-    return FETCH_BACKOFF_S * 2 ** attempt
+        retry_after = _retry_after_s(e) if e.code in (429, 503) else None
+        if retry_after is None:
+            return backoff
+        return retry_after if retry_after <= RETRY_AFTER_CAP_S else None
+    # urlopen wraps a failure to connect in a URLError; a failure while reading the body is
+    # raised as it is.
+    reason = e.reason if isinstance(e, urllib.error.URLError) else e
+    if _is_network_failure(reason):
+        return backoff
+    return None
+
+
+def _is_network_failure(e):
+    """Whether e is a timeout, a DNS failure, or a refused or reset connection.
+
+    Not one of these, so not retried: a TLS certificate error, an invalid URL, or a proxy that
+    refuses the tunnel.
+    """
+    # socket.timeout is TimeoutError from Python 3.10 on.
+    return isinstance(e, (TimeoutError, socket.timeout, socket.gaierror, ConnectionError))
 
 
 def _retry_after_s(e):
-    """Return the seconds a Retry-After header asks for, or None if there is no valid one."""
-    value = e.headers.get("Retry-After") if e.headers else None
-    if not value:
-        return None
-    value = value.strip()
-    if value.isdigit():
-        return float(value)
-    try:
-        when = email.utils.parsedate_to_datetime(value)
-    except (TypeError, ValueError):
-        return None
-    if when.tzinfo is None:
-        return None
-    return max(0.0, when.timestamp() - time.time())
+    """Return the seconds a Retry-After header asks for, or None if there is no valid one.
 
-
-def _take_retry_budget(cost):
-    """Whether the lint run's retry budget has `cost` seconds left; if so, spend them."""
-    path = os.environ.get(RETRY_BUDGET_FILE_ENV)
-    if not path:
-        return True
-    try:
-        with open(path, "a+") as f:
-            f.seek(0)
-            spent = sum(float(x) for x in f.read().split())
-            if spent + cost > FETCH_RETRY_BUDGET_S:
-                return False
-            f.write(f"{cost}\n")
-    except (OSError, ValueError):
-        return True
-    return True
+    GitHub and GitLab both send it as a number of seconds, so that is the only form read.
+    """
+    value = (e.headers.get("Retry-After") or "").strip() if e.headers else ""
+    if not re.fullmatch(r"[0-9]{1,9}", value):
+        return None
+    return float(value)
 
 
 def main(filepath, output_filepath):

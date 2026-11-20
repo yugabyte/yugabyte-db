@@ -10,13 +10,15 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-"""Tests for src/lint/upstream_file.py's fetch_url: which failures it retries, how long it waits,
-and the retry budget that build-support/lint.py shares across one lint run."""
+"""Tests for src/lint/upstream_file.py's fetch_url: which failures it retries and how long it
+waits."""
 
 import email.message
+import http.client
 import importlib.util
 import io
-import os
+import socket
+import ssl
 import sys
 import urllib.error
 from pathlib import Path
@@ -35,7 +37,6 @@ def _load(name, path):
 
 
 upstream_file = _load("yb_upstream_file", REPO_ROOT / "src" / "lint" / "upstream_file.py")
-lint = _load("yb_lint_fetch_budget", REPO_ROOT / "build-support" / "lint.py")
 
 
 class _Response(io.BytesIO):
@@ -66,7 +67,11 @@ def _http_error(code, retry_after=None):
 
 @pytest.fixture
 def server(monkeypatch):
-    """urlopen answers from `server.answers` in order; sleeps are recorded, not slept."""
+    """urlopen answers from `server.answers` in order; sleeps are recorded, not slept.
+
+    An answer is the body, an exception urlopen raises, or a _ReadFailure whose exception the
+    response's read() raises after urlopen returned.
+    """
 
     class Server:
         answers = []
@@ -76,20 +81,27 @@ def server(monkeypatch):
     def urlopen(url, timeout):
         answer = Server.answers[Server.calls]
         Server.calls += 1
-        if isinstance(answer, urllib.error.URLError):
+        if isinstance(answer, Exception):
             raise answer
-        return _Response(answer)
+        return _Response(answer.error if isinstance(answer, _ReadFailure) else answer)
 
     monkeypatch.setattr(upstream_file.urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(upstream_file.time, "sleep", Server.sleeps.append)
-    monkeypatch.delenv(upstream_file.RETRY_BUDGET_FILE_ENV, raising=False)
     return Server
 
 
+class _ReadFailure:
+    def __init__(self, error):
+        self.error = error
+
+
 @pytest.mark.parametrize("failure", [
-    urllib.error.URLError("[Errno 110] Connection timed out"),
-    urllib.error.URLError("[Errno -3] Temporary failure in name resolution"),
-    TimeoutError("The read operation timed out"),  # raised by read(), after urlopen returned
+    urllib.error.URLError(TimeoutError(110, "Connection timed out")),
+    urllib.error.URLError(socket.timeout("timed out")),
+    urllib.error.URLError(socket.gaierror(-3, "Temporary failure in name resolution")),
+    urllib.error.URLError(ConnectionRefusedError(111, "Connection refused")),
+    _ReadFailure(TimeoutError("The read operation timed out")),
+    _ReadFailure(ConnectionResetError(104, "Connection reset by peer")),
     _http_error(429),
     _http_error(500),
     _http_error(503),
@@ -126,12 +138,30 @@ def test_another_4xx_fails_without_a_retry(server, code):
     assert server.calls == 1
 
 
+@pytest.mark.parametrize("failure", [
+    urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed")),
+    urllib.error.URLError(OSError("Tunnel connection failed: 407 Proxy Authentication Required")),
+    http.client.InvalidURL("URL can't contain control characters"),
+    ValueError("unknown url type"),
+])
+def test_a_failure_no_retry_can_fix_fails_at_once(server, capsys, failure):
+    server.answers = [failure]
+    with pytest.raises(type(failure)):
+        upstream_file.fetch_url("https://x")
+    assert server.calls == 1
+    assert server.sleeps == []
+    assert capsys.readouterr().out.startswith(type(failure).__name__ + ": ")
+
+
 @pytest.mark.parametrize("code,retry_after,wait", [
     (429, "7", 7.0),
-    (503, "7", 7.0),
-    (429, "3600", upstream_file.RETRY_AFTER_CAP_S),
-    (429, "Thu, 01 Jan 1970 00:00:00 GMT", 0.0),  # a time already past
-    (429, "soon", upstream_file.FETCH_BACKOFF_S),  # not a valid value
+    (503, " 7 ", 7.0),
+    (429, "30", upstream_file.RETRY_AFTER_CAP_S),
+    # not a number of seconds, so the normal backoff
+    (429, "Thu, 01 Jan 1970 00:00:00 GMT", upstream_file.FETCH_BACKOFF_S),
+    (429, "soon", upstream_file.FETCH_BACKOFF_S),
+    (429, "²",upstream_file.FETCH_BACKOFF_S),  # isdigit() is true, float() fails
+    (429, "-1", upstream_file.FETCH_BACKOFF_S),
     (500, "7", upstream_file.FETCH_BACKOFF_S),  # only 429 and 503 read it
 ])
 def test_retry_after_sets_the_wait(server, code, retry_after, wait):
@@ -140,40 +170,11 @@ def test_retry_after_sets_the_wait(server, code, retry_after, wait):
     assert server.sleeps == [wait]
 
 
-def test_retries_stop_when_the_lint_run_budget_is_spent(server, monkeypatch, tmp_path):
-    budget = tmp_path / "budget"
-    budget.write_text("")
-    monkeypatch.setenv(upstream_file.RETRY_BUDGET_FILE_ENV, str(budget))
-    cost = upstream_file.FETCH_BACKOFF_S + upstream_file.FETCH_TIMEOUT_S
-    retries_in_budget = int(upstream_file.FETCH_RETRY_BUDGET_S // cost)
-
-    # Each file's fetch fails once, then succeeds, until the budget has no room for a retry.
-    for _ in range(retries_in_budget):
-        server.answers, server.calls = [_http_error(503), b"contents"], 0
-        assert upstream_file.fetch_url("https://x") == b"contents"
-    server.answers, server.calls = [_http_error(503), b"contents"], 0
+@pytest.mark.parametrize("code", [429, 503])
+def test_a_retry_after_above_the_cap_gives_up(server, capsys, code):
+    server.answers = [_http_error(code, "3600"), b"contents"]
     with pytest.raises(urllib.error.HTTPError):
         upstream_file.fetch_url("https://x")
     assert server.calls == 1
-    assert len(server.sleeps) == retries_in_budget
-
-
-def test_lint_py_gives_its_linter_scripts_one_budget_file(monkeypatch, tmp_path):
-    # main() sets the variable in os.environ; give it a copy that is restored afterwards
-    monkeypatch.setattr(os, "environ", {k: v for k, v in os.environ.items()
-                                        if k != lint.FETCH_RETRY_BUDGET_FILE_ENV})
-    seen = []
-
-    def runner(linter, files):
-        seen.append(os.environ.get(lint.FETCH_RETRY_BUDGET_FILE_ENV))
-        return []
-
-    monkeypatch.setattr(lint, "_load_config", lambda: {"linters": {"a": {"type": "t"},
-                                                                    "b": {"type": "t"}}})
-    monkeypatch.setattr(lint, "RUNNERS", {"t": runner})
-    monkeypatch.setattr(lint.atexit, "register", lambda *args: None)
-    monkeypatch.setattr(sys, "argv", ["lint.py", "a.c"])
-    assert lint.main() == 0
-    assert len(seen) == 2 and seen[0] == seen[1] and Path(seen[0]).is_file()
-    assert lint.FETCH_RETRY_BUDGET_FILE_ENV == upstream_file.RETRY_BUDGET_FILE_ENV
-    os.unlink(seen[0])
+    assert server.sleeps == []
+    assert capsys.readouterr().out.startswith("HTTPError: ")
