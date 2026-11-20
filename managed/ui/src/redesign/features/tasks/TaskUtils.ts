@@ -107,8 +107,19 @@ export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
   if (!auditLog) return undefined;
-  // Without a taskDiff there is nothing to show.
-  if (isEmpty(auditLog.taskDiff)) return undefined;
+  const gflagsAudit = (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags;
+  // Without a taskDiff there is nothing to show, except the gflag entries the upgrade wrote itself.
+  if (isEmpty(auditLog.taskDiff)) {
+    return gflagsAudit
+      ? {
+          afterData: {},
+          beforeData: {},
+          gflagsAudit,
+          parentUuid: auditLog.taskUUID,
+          uuid: auditLog.auditID.toString()
+        }
+      : undefined;
+  }
   const taskDiff = withUnchangedIntentFromPayload(
     withDefaultClusterType(
       withIdentityFromPayload(
@@ -123,7 +134,7 @@ export const mapAuditLogToTaskDiffApiResp = (
   return {
     afterData: getTaskDiffValue(taskDiff, 'new'),
     beforeData: getTaskDiffValue(taskDiff, 'old'),
-    gflagsAudit: (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags,
+    gflagsAudit,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };

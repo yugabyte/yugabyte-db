@@ -121,15 +121,19 @@ describe('withDefaultClusterType', () => {
     expect(two.clusters).toEqual([{ clusterType: 'PRIMARY', a: 1 }, { b: 2 }]);
   });
 
-  it('gives untyped clusters the payload cluster types no other cluster has', () => {
+  it('gives the one untyped cluster the payload cluster type no other cluster has', () => {
     const payload = { clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }] };
-    const out = withDefaultClusterType({ clusters: [{ a: 1 }, { b: 2 }] }, payload);
-    expect(out.clusters.map((c: any) => c.clusterType)).toEqual(['PRIMARY', 'ASYNC']);
     const rr = withDefaultClusterType(
       { clusters: [{ clusterType: 'PRIMARY' }, { b: 2 }] },
       payload
     );
     expect(rr.clusters[1].clusterType).toBe('ASYNC');
+  });
+
+  it('leaves several untyped clusters untyped, as the request order is not the target order', () => {
+    const payload = { clusters: [{ clusterType: 'ASYNC' }, { clusterType: 'PRIMARY' }] };
+    const out = withDefaultClusterType({ clusters: [{ a: 1 }, { b: 2 }] }, payload);
+    expect(out.clusters.map((c: any) => c.clusterType)).toEqual([undefined, undefined]);
   });
 });
 
@@ -143,6 +147,12 @@ describe('mapAuditLogToTaskDiffApiResp', () => {
 
   it('treats an empty taskDiff as absent', () => {
     expect(mapAuditLogToTaskDiffApiResp({ ...base, taskDiff: {} })).toBeUndefined();
+  });
+
+  it('keeps the gflags audit entries of a row without a taskDiff', () => {
+    const gflags = { master: [{ name: 'a', old: '1', new: '2', default: '' }], tserver: [] };
+    const resp = mapAuditLogToTaskDiffApiResp({ ...base, additionalDetails: { gflags } });
+    expect(resp?.gflagsAudit).toEqual(gflags);
   });
 
   it('returns nothing without a taskDiff', () => {

@@ -72,7 +72,9 @@ export const withDefaultClusterType = (
   const untyped = clusters.filter((c) => !isDeltaNode(c) && !c?.clusterType).length;
   // More payload types than untyped clusters (e.g. only the read replica changed, and the payload
   // has the primary too): the type cannot be told, so the cluster stays untyped.
-  const decidable = !payload || available.length <= untyped;
+  // Several untyped clusters: the taskDiff order is the target's, not the request's, so which is
+  // which cannot be told from the payload either.
+  const decidable = !payload || (available.length <= untyped && untyped === 1);
   return {
     ...taskDiff,
     clusters: clusters.map((cluster, i) => {
@@ -132,7 +134,7 @@ const matchScore = (delta: any, payload: any, side: 'old' | 'new' = 'new'): numb
 /**
  * The taskDiff drops the identity fields (clusterType, code, name, uuid) of a modified list
  * element, e.g. the AZ whose leader preference changed. The audit payload is the request, which
- * has the full details, so take them from it. Modified AZs, regions and clouds keep their order in
+ * is the raw request body, which has the identity fields, so take them from it. Modified AZs, regions and clouds keep their order in
  * the request, so they are matched in order by the values they changed to. Clusters are not: the
  * request can list them in any order, so each one is matched on its own.
  */
