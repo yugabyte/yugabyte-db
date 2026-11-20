@@ -7588,7 +7588,7 @@ YbTriggerInternalRelcacheBuild()
 	 * This is the first live (non-prefetched) read of pg_database during
 	 * connection startup. The post-lock recheck in InitPostgres reads the
 	 * prefetched copy, which predates the database lock, so a DROP DATABASE
-	 * that committed while this backend was starting is only visible here.
+	 * that committed while this backend was starting is first visible here.
 	 * Fail just this connection with FATAL, as that recheck does.
 	 */
 	if (dbname == NULL)

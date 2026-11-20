@@ -26,6 +26,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -47,6 +48,8 @@ METRIC_DECLARE_counter(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb {
 namespace pgwrapper {
+
+YB_STRONGLY_TYPED_BOOL(SingleAttempt);
 
 class PgCatalogVersionTest : public LibPqTestBase {
 
@@ -950,7 +953,7 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
 
   // Setup connections retry while node 1 comes back up. The racing connection makes a single
   // attempt, so that a retry cannot hide a backend crash.
-  const auto connect_to_ts1 = [ts1](const std::string& dbname, bool single_attempt) {
+  const auto connect_to_ts1 = [ts1](const std::string& dbname, SingleAttempt single_attempt) {
     PGConnSettings settings{
         .host = ts1->bind_host(),
         .port = ts1->ysql_port(),
@@ -965,7 +968,7 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
 
   // Write the test database's relcache init file on node 1, then leave it behind by one catalog
   // version.
-  ASSERT_RESULT(connect_to_ts1(kTestDatabase, /* single_attempt = */ false));
+  ASSERT_RESULT(connect_to_ts1(kTestDatabase, SingleAttempt::kFalse));
   {
     auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
     ASSERT_OK(conn_test.Execute("CREATE TABLE t (k INT)"));
@@ -974,7 +977,7 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
 
   // A bystander session on node 1, which must survive.
   auto conn_bystander =
-      ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, /* single_attempt = */ false));
+      ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, SingleAttempt::kFalse));
 
   const auto db_oid = ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(Format(
       "SELECT oid FROM pg_database WHERE datname = '$0'", kTestDatabase)));
@@ -982,11 +985,17 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
       ts1, Format("delaying $0 ms before RelationCacheInitializePhase3 for database $1",
                   kDelayMs, db_oid));
   auto connect_future = std::async(std::launch::async, [&connect_to_ts1] {
-    return ResultToStatus(connect_to_ts1(kTestDatabase, /* single_attempt = */ true));
+    return ResultToStatus(connect_to_ts1(kTestDatabase, SingleAttempt::kTrue));
   });
-  // Drop the database once the connection has passed its database recheck and is paused.
+  // Drop the database once the connection has passed its database recheck and is paused. The
+  // DROP must commit before the pause ends; fail with a clear message if it was too slow, rather
+  // than on the connection unexpectedly succeeding.
   ASSERT_OK(delay_started.WaitFor(MonoDelta::FromMilliseconds(kDelayMs)));
+  const auto pause_start = MonoTime::Now();
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+  const auto drop_time = MonoTime::Now() - pause_start;
+  ASSERT_LT(drop_time, MonoDelta::FromMilliseconds(kDelayMs))
+      << "DROP DATABASE did not commit within the connection's pause";
   WaitForCatalogVersionToPropagate();
 
   const auto status = connect_future.get();
