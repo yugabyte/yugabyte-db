@@ -84,17 +84,7 @@ public class RemoveTabletServers extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
-    Map<String, Set<String>> pendingIps;
-    try {
-      pendingIps = getNodeIps(universe);
-    } catch (Exception e) {
-      // A node whose cluster or provider can no longer be read.
-      log.warn(
-          "Failed to read the nodes {}; their tservers stay registered as dead: {}",
-          taskParams().nodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toList()),
-          e.getMessage());
-      return;
-    }
+    Map<String, Set<String>> pendingIps = getNodeIps(universe);
     if (pendingIps.isEmpty()) {
       return;
     }
@@ -135,14 +125,25 @@ public class RemoveTabletServers extends UniverseTaskBase {
   }
 
   /**
-   * Maps each node to its IPs, skipping nodes without one and on-prem nodes whose instance is
-   * DECOMMISSIONED: their servers may still run, so they stay blacklisted and registered.
+   * Maps each node to its IPs, skipping nodes without one, nodes whose provider cannot be read, and
+   * on-prem nodes whose instance is DECOMMISSIONED: their servers may still run, so they stay
+   * blacklisted and registered.
    */
   private Map<String, Set<String>> getNodeIps(Universe universe) {
     Map<String, Set<String>> nodeIps = new HashMap<>();
     for (NodeDetails node : taskParams().nodes) {
-      if (isDecommissionedOnPrem(universe, node)) {
-        log.info("Skipping node {}: its on-prem instance is decommissioned", node.getNodeName());
+      try {
+        if (isDecommissionedOnPrem(universe, node)) {
+          log.info("Skipping node {}: its on-prem instance is decommissioned", node.getNodeName());
+          continue;
+        }
+      } catch (Exception e) {
+        // The node's cluster or provider can no longer be read.
+        log.warn(
+            "Skipping node {}: failed to read its provider; its tserver stays registered as dead:"
+                + " {}",
+            node.getNodeName(),
+            e.getMessage());
         continue;
       }
       Set<String> ips = new HashSet<>();

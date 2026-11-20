@@ -55,7 +55,7 @@ public class WaitForTServerHeartBeatsTest extends FakeDBApplication {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
   }
 
-  private void addNode(String name, String ip) {
+  private NodeDetails addNode(String name, String ip) {
     NodeDetails node = new NodeDetails();
     node.nodeName = name;
     node.isTserver = true;
@@ -65,6 +65,7 @@ public class WaitForTServerHeartBeatsTest extends FakeDBApplication {
     node.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     Universe.saveDetails(
         universe.getUniverseUUID(), u -> u.getUniverseDetails().nodeDetailsSet.add(node));
+    return node;
   }
 
   private static ListLiveTabletServersResponse live(String... ips) {
@@ -130,6 +131,29 @@ public class WaitForTServerHeartBeatsTest extends FakeDBApplication {
     run(null);
 
     verify(mockClient, times(2)).listLiveTabletServers();
+  }
+
+  @Test
+  public void testSecondaryIpSharedWithDecommissionedNode() throws Exception {
+    NodeDetails decommissioned = new NodeDetails();
+    decommissioned.nodeName = "n0";
+    decommissioned.state = NodeDetails.NodeState.Decommissioned;
+    decommissioned.cloudInfo = new CloudSpecificInfo();
+    decommissioned.cloudInfo.secondary_private_ip = "10.1.0.5";
+    decommissioned.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        universe.getUniverseUUID(), u -> u.getUniverseDetails().nodeDetailsSet.add(decommissioned));
+    NodeDetails added = addNode("n3", "10.0.0.3");
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getNode("n3").cloudInfo.secondary_private_ip = "10.1.0.5");
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    ListLiveTabletServersResponse n3Live = live("10.1.0.5");
+    when(mockClient.listLiveTabletServers()).thenReturn(n3Live);
+
+    run(Set.of(added.nodeName));
+
+    verify(mockClient, times(1)).listLiveTabletServers();
   }
 
   @Test

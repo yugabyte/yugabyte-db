@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -72,10 +73,11 @@ public class WaitForTServerHeartBeats extends UniverseTaskBase {
     long start = System.currentTimeMillis();
     while (true) {
       try {
-        missing.removeAll(
-            getLiveTserverNodes(universe).stream()
-                .map(NodeDetails::getNodeName)
-                .collect(Collectors.toSet()));
+        Set<String> liveHosts =
+            getLiveTabletServers(universe).stream()
+                .map(server -> server.getPrivateAddress().getHost())
+                .collect(Collectors.toSet());
+        missing.removeIf(name -> isLive(universe.getNode(name), liveHosts));
         if (missing.isEmpty()) {
           return;
         }
@@ -96,6 +98,11 @@ public class WaitForTServerHeartBeats extends UniverseTaskBase {
         throw new RuntimeException(getName() + " timed out waiting for the tservers on " + missing);
       }
     }
+  }
+
+  // Matches from the node's side: a live host maps to every node with that IP, not only the first.
+  private static boolean isLive(NodeDetails node, Set<String> liveHosts) {
+    return node != null && Util.getNodeIps(node).stream().anyMatch(liveHosts::contains);
   }
 
   private Set<String> getExpectedNodeNames(Universe universe) {
