@@ -52,7 +52,7 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVer
 
 /*
  * The class id of the per-database object lock that serializes DDLs
- * (PR #38568): DDLs that run in a separate DDL transaction with DDLs with
+ * (PR #38710): DDLs that run in a separate DDL transaction with DDLs with
  * global object locks, and, with ysql_enable_concurrent_ddl off, DDLs with
  * global object locks with each other.
  * No catalog row has this OID. Declaring it keeps unused_oids from handing it

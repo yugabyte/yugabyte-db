@@ -2930,7 +2930,7 @@ YbTrackAlteredTableId(Oid relid)
 
 /*
  * Serializes a DDL that runs in a separate DDL transaction with DDLs with
- * global object locks in the same database (PR #38568). The lock is taken in
+ * global object locks in the same database (PR #38710). The lock is taken in
  * the transaction that runs the statement, before the separate DDL transaction
  * starts, because the separate DDL transaction takes no object locks.
  */
@@ -2942,7 +2942,7 @@ YbLockDatabaseForLegacyDdl(void)
 
 /*
  * The counterpart of YbLockDatabaseForLegacyDdl for a DDL with global object
- * locks (PR #38568). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
+ * locks (PR #38710). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
  * instead of SHARE, so DDLs with global object locks in one database also run
  * one at a time. Every DDL of the transaction takes it, so that a DDL after a
  * rolled back savepoint takes it again.

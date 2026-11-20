@@ -1506,7 +1506,7 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
   }
 
   // Runs `ddl` on ts2 and expects it to time out: a DDL that ran in a separate DDL transaction
-  // earlier in the open transaction on ts1 holds the database lock from PR #38568 until the
+  // earlier in the open transaction on ts1 holds the database lock from PR #38710 until the
   // transaction ends. Neither pg_locks nor ASH shows that wait, so the timeout
   // is the signal.
   void ExpectDdlWaitsForLegacyTxn(const std::string& ddl) {
@@ -1822,7 +1822,7 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
 // later takes the same lock in the same transaction finds it there and does not send it, so a new
 // mode DDL does not wait for the DML. That gap no longer shows: the CREATE VIEW also took the
-// database lock from PR #38568 in the transaction that ran it, and the
+// database lock from PR #38710 in the transaction that ran it, and the
 // transaction holds it until it ends, so the new mode DDL waits for the whole transaction.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlWaitsForLegacyTxnThatRanDdl) {
   auto* ts1 = cluster_->tablet_server(0);
@@ -2082,7 +2082,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 
 // Tests for #32224.
 //
-// Two overlapping DDLs must not both commit unless both take global object locks (PR #38568). A
+// Two overlapping DDLs must not both commit unless both take global object locks (PR #38710). A
 // DDL in a transaction without global object locks runs in a separate DDL transaction ("legacy"
 // below).
 //
@@ -2175,7 +2175,7 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 // Case 6 of the upgrade design for #32224: a DDL in a separate DDL transaction and a DDL with
-// global object locks on the same table must not run in parallel (PR #38568). The first
+// global object locks on the same table must not run in parallel (PR #38710). The first
 // transaction started before the promotion, so its ALTER runs in a separate DDL transaction, and
 // the database lock it takes stays until the transaction ends. The second transaction cached t
 // before that ALTER, and its own ALTER must wait for the first transaction.
@@ -2210,7 +2210,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyAndGlobalDdlOnSameTable) {
 }
 
 // A DDL with global object locks must see a DDL in a separate DDL transaction that committed before
-// it, though only the heartbeat brings the other DDL's catalog version to its node (PR #38568). The
+// it, though only the heartbeat brings the other DDL's catalog version to its node (PR #38710). The
 // longer heartbeat keeps ts2 behind for a while after the first DDL commits.
 class PgObjectLocksTestSlowHeartbeat : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
