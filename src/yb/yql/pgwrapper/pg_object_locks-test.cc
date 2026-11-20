@@ -2401,9 +2401,13 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIs
   const auto index_status = index_future.get();
   const auto alter_status = alter_future.get();
   LOG(INFO) << "CREATE INDEX: " << index_status << ", ALTER TABLE t: " << alter_status;
-  // The detector aborts one of the two transactions, either one, and the other goes on.
+  // The detector aborts one of the two transactions, either one, and the other goes on. When it
+  // aborts the DDL transaction, its backend can exit with a FATAL (#35856), so the test does not
+  // use that connection again.
   ASSERT_NE(index_status.ok(), alter_status.ok());
-  ASSERT_OK(ddl_conn.Execute(alter_status.ok() ? "COMMIT" : "ROLLBACK"));
+  if (alter_status.ok()) {
+    ASSERT_OK(ddl_conn.Execute("COMMIT"));
+  }
 }
 
 // With ysql_enable_concurrent_ddl off, a CREATE INDEX waits for a writer to t, and the writer's
