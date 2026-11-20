@@ -1,10 +1,10 @@
 # Find and set maxclockerror to chrony.conf if not already present
-if [[ -f /etc/chrony.conf ]]; then
-    CHRONY_CONF="/etc/chrony.conf"
-elif [[ -f /etc/chrony/chrony.conf ]]; then
+if [[ -f /etc/chrony/chrony.conf ]]; then
     CHRONY_CONF="/etc/chrony/chrony.conf"
+elif [[ -f /etc/chrony.conf ]]; then
+    CHRONY_CONF="/etc/chrony.conf"
 else
-    echo "chrony.conf not found in /etc/chrony.conf or /etc/chrony/chrony.conf"
+    echo "chrony.conf not found in /etc/chrony/chrony.conf or /etc/chrony.conf"
     exit 1
 fi
 if ! grep -Fxq "maxclockerror 50" "${CHRONY_CONF}"; then
