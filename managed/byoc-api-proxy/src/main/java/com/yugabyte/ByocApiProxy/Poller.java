@@ -190,7 +190,7 @@ public class Poller implements DisposableBean {
 
     while (true) {
       try {
-        postResponseOnce(requestApi, dispatch);
+        requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
         return;
       } catch (ApiException e) {
         Duration remaining = Duration.between(OffsetDateTime.now(), deadline);
@@ -225,11 +225,6 @@ public class Poller implements DisposableBean {
         }
       }
     }
-  }
-
-  private synchronized void postResponseOnce(
-      InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch) throws ApiException {
-    requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
   }
 
   /** apiserver stops waiting for the answer, and stops giving the request out, at this time. */
