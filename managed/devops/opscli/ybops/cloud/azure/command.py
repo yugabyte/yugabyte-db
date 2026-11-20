@@ -16,9 +16,9 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod, \
     AzurePauseInstancesMethod, AzureResumeInstancesMethod, AzureChangeInstanceTypeMethod, \
     AzureCreateRootVolumesMethod, AzureReplaceRootVolumeMethod, AzureHardRebootInstancesMethod, \
-    AzureQueryCurrentHostMethod, AzureQueryDeviceNames
+    AzureQueryCurrentHostMethod, AzureQueryDeviceNames, AzureUpdateDiskMethod
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
-    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessDeleteKeyMethod, \
+    InitYSQLMethod, CronCheckMethod, AccessDeleteKeyMethod, \
     TransferXClusterCerts, VerifySSHConnection, RebootInstancesMethod, RunHooks, \
     WaitForConnection, ManageOtelCollector
 
@@ -43,7 +43,7 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
         self.add_method(InitYSQLMethod(self))
-        self.add_method(UpdateDiskMethod(self))
+        self.add_method(AzureUpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(AzureDeleteRootVolumesMethod(self))
         self.add_method(AzureChangeInstanceTypeMethod(self))

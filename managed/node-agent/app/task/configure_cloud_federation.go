@@ -439,7 +439,8 @@ func (h *ConfigureCloudFederation) teardown(ctx context.Context, ybHome string) 
 		Cmd  string
 	}{
 		{"remove-federation-dir", fmt.Sprintf("rm -rf %s", federationDir(ybHome))},
-		{"remove-federation-aws-block", removeAwsBlockCmd(filepath.Join(ybHome, ".aws", "config"))},
+		{"remove-federation-aws-block", removeManagedBlockCmd(
+			filepath.Join(ybHome, ".aws", "config"), awsConfigBlockBegin, awsConfigBlockEnd)},
 	}, h.logOut)
 }
 
@@ -580,7 +581,10 @@ func (h *ConfigureCloudFederation) writeS3Artifacts(
 		Desc string
 		Cmd  string
 	}{
-		{"remove-existing-federation-aws-block", removeAwsBlockCmd(awsConfig)},
+		{
+			"remove-existing-federation-aws-block",
+			removeManagedBlockCmd(awsConfig, awsConfigBlockBegin, awsConfigBlockEnd),
+		},
 		{
 			"append-federation-aws-block",
 			fmt.Sprintf(
@@ -597,21 +601,4 @@ credential_process = %s
 			),
 		},
 	}, h.logOut)
-}
-
-// removeAwsBlockCmd returns a shell command that strips the managed block from ~/.aws/config,
-// leaving any other profiles intact. Safe when the file or the block is absent.
-func removeAwsBlockCmd(awsConfig string) string {
-	return fmt.Sprintf(
-		`if [ -f %s ]; then `+
-			`awk '/%s/ {inblock=1} /%s/ {inblock=0; next} !inblock' %s > %s.tmp && `+
-			`mv %s.tmp %s; fi`,
-		awsConfig,
-		awsConfigBlockBegin,
-		awsConfigBlockEnd,
-		awsConfig,
-		awsConfig,
-		awsConfig,
-		awsConfig,
-	)
 }

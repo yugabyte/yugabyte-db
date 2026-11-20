@@ -56,7 +56,8 @@ public class AccessManager extends DevopsBase {
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
   public static final String PEM_PERMISSIONS = "r--------";
   public static final String PUB_PERMISSIONS = "rw-r--r--";
-  private static final String KUBECONFIG_PERMISSIONS = "rw-------";
+  public static final String OWNER_RW_PERMISSIONS = "rw-------";
+  private static final String KUBECONFIG_PERMISSIONS = OWNER_RW_PERMISSIONS;
   public static final String STORAGE_PATH = "yb.storage.path";
 
   @Inject
@@ -582,7 +583,11 @@ public class AccessManager extends DevopsBase {
       ObjectMapper mapper = Json.mapper();
       JsonNode gcpCred = mapper.readTree(credentials);
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
-      mapper.writeValue(new File(credentialsFilePath), gcpCred);
+      Path credentialsFile = Paths.get(credentialsFilePath);
+      Util.ensureOwnerWritable(credentialsFile);
+      mapper.writeValue(credentialsFile.toFile(), gcpCred);
+      Files.setPosixFilePermissions(
+          credentialsFile, PosixFilePermissions.fromString(OWNER_RW_PERMISSIONS));
       FileData.upsertFileInDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {
@@ -623,6 +628,7 @@ public class AccessManager extends DevopsBase {
 
     Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
     try {
+      Util.ensureOwnerWritable(configFile);
       Files.write(configFile, configFileContent.getBytes());
       Files.setPosixFilePermissions(configFile, ownerRW);
       FileData.upsertFileInDB(configFile.toAbsolutePath().toString());
@@ -649,6 +655,7 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("File " + pullSecretFile.getFileName() + " already exists.");
     }
     try {
+      Util.ensureOwnerWritable(pullSecretFile);
       Files.write(pullSecretFile, pullSecretFileContent.getBytes());
       FileData.upsertFileInDB(pullSecretFile.toAbsolutePath().toString());
       return pullSecretFile.toAbsolutePath().toString();
@@ -667,6 +674,7 @@ public class AccessManager extends DevopsBase {
 
     Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
     try {
+      Util.ensureOwnerWritable(file);
       Files.write(file, content.getBytes());
       Files.setPosixFilePermissions(file, ownerRW);
       FileData.upsertFileInDB(file.toAbsolutePath().toString());

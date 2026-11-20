@@ -13,6 +13,7 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(ysql_yb_enable_advisory_locks);
@@ -51,7 +52,21 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // row type either way. Read before BEGIN: since #36572, a transaction that starts before
   // finalize takes local object locks, so a read in that transaction locks the view across
   // finalize, and V76 cannot replace the view.
-  ASSERT_OK(conn.Fetch(kPgLocksQuery));
+  // pg_locks fails while a transaction status tablet has no leader, and the tservers restarted
+  // just above, so retry that error until every status tablet has elected one.
+  ASSERT_OK(WaitFor([&conn, &kPgLocksQuery]() -> Result<bool> {
+    auto status = ResultToStatus(conn.Fetch(kPgLocksQuery));
+    if (status.ok()) {
+      return true;
+    }
+    if (status.message().ToString().find(
+            "Couldn't fetch old transactions for the following status tablets") ==
+        std::string::npos) {
+      return status;
+    }
+    LOG(WARNING) << "Retrying pg_locks read: " << status;
+    return false;
+  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts"));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
@@ -89,13 +104,20 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // conn's transaction was opened before FinalizeUpgrade(), and the yb_enable_object_locking_infra
-  // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
-  // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
-  // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the
-  // catcache stays stale (21 vs 24 columns).
+  // conn's transaction was opened before FinalizeUpgrade(), so it keeps the pre-finalize value of
+  // the yb_enable_global_object_locking_infra auto flag, latched in StartTransaction. Its first
+  // pg_locks read after finalize is a new lock for the transaction. With object locking on, a
+  // transaction that started before the promotion takes local object locks and refreshes its
+  // catalog cache on a new lock, as PG does (#36572), so it sees the new yb_lock_status row type.
+  // With object locking off, it does not refresh mid-transaction, and the catcache stays stale (21
+  // vs 24 columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
-  ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  if (ASSERT_RESULT(cluster_->GetFlag(
+          cluster_->tablet_server(0), "enable_object_locking_for_table_locks")) == "true") {
+    ASSERT_EQ(ASSERT_RESULT(std::move(result)), "2, 2, 2, ShareLock; 0, 1, 1, ExclusiveLock");
+  } else {
+    ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  }
 
   // Once the transaction block ends, YBCheckSharedCatalogCacheVersion() stops bailing out on
   // IsTransactionOrTransactionBlock() and refreshes the catalog cache, so the same connection
@@ -110,6 +132,5 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock");
 }
-
 
 } // namespace yb

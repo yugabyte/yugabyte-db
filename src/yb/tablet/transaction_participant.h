@@ -112,6 +112,7 @@ struct TransactionalBatchData {
 class FastModeTransactionScope;
 
 YB_STRONGLY_TYPED_BOOL(OnlyAbortTxnsNotUsingTableLocks);
+YB_STRONGLY_TYPED_BOOL(WaitForApply);
 
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
@@ -211,9 +212,11 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Resolve all transactions that were committed or aborted at resolve_at.
   // After this function returns with success:
-  // - All intents of committed transactions will have been applied.
+  // - All committed transactions have local commit time, i.e. their APPLY records are applied.
+  //   With wait_for_apply, their intents are also written to regular DB.
   // - No transactions can be committed with commit time <= resolve_at from that point on..
-  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline);
+  Status ResolveIntents(
+      HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply);
 
   // Attempts to abort all transactions that started prior to cutoff time.
   // Waits until deadline, for txns to abort. If not, it returns a TimedOut.

@@ -12,6 +12,7 @@
 
 #include <string>
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 
@@ -50,6 +51,16 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     return Status::OK();
   }
 
+  // Corrupt pg_class.relchecks for a given table.
+  Status CorruptRelchecks(PGConn& conn, const std::string& table_name, int new_relchecks) {
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "UPDATE pg_class SET relchecks = $0 WHERE relname = '$1'",
+        new_relchecks, table_name));
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+    return Status::OK();
+  }
+
   // Run a DDL on a separate table to bump catalog version and invalidate the
   // relcache init file.
   Status InvalidateRelcacheInitFile(PGConn& conn) {
@@ -65,6 +76,14 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("SELECT 1"));
     return conn;
+  }
+
+  // Connects with a single attempt. Connect() retries a failed attempt, which would hide a
+  // backend that crashed during connection startup.
+  Result<PGConn> ConnectOnce() {
+    auto settings = MakeConnSettings();
+    settings.should_stop = [] { return true; };
+    return PGConnBuilder(settings).Connect();
   }
 
   struct TimedConnectionResult {
@@ -205,6 +224,126 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     LOG(INFO) << "After fix, query result: " << rows;
   }
 
+  /*
+   * relchecks higher than the table's CHECK rows in pg_constraint (#37715). Like upstream
+   * PostgreSQL, building the relcache entry only warns, so connections and reads work, and
+   * writes to the table fail in ExecRelCheck. Before the fix, a preload of the table raised an
+   * ERROR that left a half-filled CHECK array behind, and the system-only retry crashed the
+   * backend freeing it.
+   */
+  void RunRelchecksHigherTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int CHECK (col1 > 0), col2 int)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", table_name));
+
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 2));
+    ASSERT_OK(InvalidateRelcacheInitFile(setup_conn));
+
+    auto result = ASSERT_RESULT(TimedConnectAndQuery("SELECT 1"));
+    LOG(INFO) << "Connection + simple query took " << result.elapsed;
+
+    VerifyFullSchema(result.conn);
+
+    auto rows = ASSERT_RESULT(result.conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0 ORDER BY col2", table_name)));
+    ASSERT_EQ(rows, "3; 7");
+
+    auto status = result.conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "1 pg_constraint record(s) missing");
+
+    // InvalidateRelcacheInitFile is a no-op the second time, and without a new catalog version
+    // the next preload can read the old relchecks. It no longer fails on it, so nothing would
+    // rebuild the entry.
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 1));
+    ASSERT_OK(IncrementAllDBCatalogVersions(setup_conn, IsBreakingCatalogVersionChange::kTrue));
+
+    auto verify_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(verify_conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name));
+    status = verify_conn.ExecuteFormat("INSERT INTO $0 VALUES (-1, 0)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
+  }
+
+  /*
+   * relchecks higher than the table's CHECK rows, seen by a session that was already connected.
+   * A new catalog version without invalidation messages makes its next statement do a full
+   * catalog cache refresh, which rebuilds every relcache entry, user tables included, through
+   * the same preload code whatever the preload flags. Like upstream PostgreSQL, the rebuild only
+   * warns, so the session keeps working, and writes to the table fail in ExecRelCheck.
+   */
+  void RunRelchecksHigherRefreshTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int CHECK (col1 > 0), col2 int)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", table_name));
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name));
+
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 2));
+    ASSERT_OK(IncrementAllDBCatalogVersions(setup_conn, IsBreakingCatalogVersionChange::kFalse));
+    const auto target_version = ASSERT_RESULT(setup_conn.FetchRow<int64_t>(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
+        "(SELECT oid FROM pg_database WHERE datname = current_database())"));
+    // Each probe is a statement on conn, so it refreshes conn's caches once the new version
+    // reaches its tserver.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, target_version]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(
+              "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()")) >=
+              target_version;
+        },
+        30s * kTimeMultiplier, "the session sees the new catalog version"));
+
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0 ORDER BY col2", table_name)));
+    ASSERT_EQ(rows, "3; 7; 11");
+
+    auto status = conn.ExecuteFormat("INSERT INTO $0 VALUES (7, 8)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "1 pg_constraint record(s) missing");
+  }
+
+  /*
+   * A column with atthasdef but no pg_attrdef row, plus another table whose corruption makes a
+   * preload of user tables fail. Like upstream PostgreSQL, building the entry only warns and
+   * leaves the missing default out, so the retry's relcache teardown can free it. Before the fix,
+   * the preload left a NULL adbin in the DEFAULT array, and the teardown crashed the backend
+   * freeing it. Only PgRelcacheFaultToleranceWithPreloadTest preloads user tables at connection
+   * startup; in the base fixture nothing fails at startup, and the test checks only the lazy
+   * upstream build of the entry.
+   */
+  void RunAttrdefMissingTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int, col2 int DEFAULT 5)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2)", table_name));
+    ASSERT_OK(setup_conn.Execute("CREATE TABLE t_attrdef_natts (col1 int, col2 int)"));
+
+    ASSERT_OK(setup_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "DELETE FROM pg_attrdef WHERE adrelid = '$0'::regclass", table_name));
+    ASSERT_OK(setup_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+    ASSERT_OK(CorruptRelnatts(setup_conn, "t_attrdef_natts", 3));
+    ASSERT_OK(InvalidateRelcacheInitFile(setup_conn));
+
+    auto conn = ASSERT_RESULT(ConnectOnce());
+    VerifyFullSchema(conn);
+
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0", table_name)));
+    ASSERT_EQ(rows, "3");
+
+    auto status = conn.ExecuteFormat("INSERT INTO $0 (col1) VALUES (3)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "default expression not found");
+  }
+
   void RunPartitionTwoDefaultsTest() {
     auto setup_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateFullSchema(setup_conn));
@@ -275,6 +414,30 @@ TEST_F(PgRelcacheFaultToleranceTest, RelnattsHigher) {
 
 TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelnattsHigher) {
   RunRelnattsHigherTest("t_relnatts_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigher) {
+  RunRelchecksHigherTest("t_relchecks_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigher) {
+  RunRelchecksHigherTest("t_relchecks_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigherRefresh) {
+  RunRelchecksHigherRefreshTest("t_relchecks_refresh");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigherRefresh) {
+  RunRelchecksHigherRefreshTest("t_relchecks_refresh");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, AttrdefMissing) {
+  RunAttrdefMissingTest("t_attrdef_missing");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, AttrdefMissing) {
+  RunAttrdefMissingTest("t_attrdef_missing");
 }
 
 TEST_F(PgRelcacheFaultToleranceTest, PartitionTwoDefaults) {

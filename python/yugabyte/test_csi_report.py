@@ -72,7 +72,7 @@ def test_close_item_is_a_no_op() -> None:
 
 def test_create_test_is_a_no_op() -> None:
     descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B')
-    assert csi_report.create_test(descriptor, 0.0, 1, rerun=False) == ''
+    assert csi_report.create_test(descriptor, 0.0, 1, rerun=False) == ('', False)
 
 
 def test_upload_log_is_a_no_op() -> None:
@@ -493,12 +493,51 @@ def test_a_serial_repetition_reports_without_querying(
     created = serve_create(monkeypatch)
     descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B:::attempt_7')
 
-    assert csi_report.create_test(descriptor, 0.0, 0, rerun=rerun) == 'new-item-uuid'
+    assert csi_report.create_test(descriptor, 0.0, 0, rerun=rerun) == ('new-item-uuid', False)
 
     [item] = created
     assert item['retry'] is True
     assert item['uniqueId'] == 'tests-x/a-test:::A.B'
     assert {'key': 'retry_kind', 'value': retry_kind} in item['attributes']
+
+
+# A Spark task that holds several tests loses the results of the ones that had finished when its
+# executor is lost, and they run again. What CSI has for a test from before the loss is then the
+# only record of its first outcome, and create_test reads it from the item it queries anyway.
+@pytest.mark.parametrize('previous_item,reps,attempt,failed_before', [
+    # The test had failed before the executor was lost.
+    ({'id': 1, 'status': 'FAILED'}, '1', 1, True),
+    # Lost twice: it failed in the first attempt and passed in the second.
+    ({'id': 1, 'status': 'PASSED', 'retries': [{'status': 'FAILED'}]}, '1', 2, True),
+    ({'id': 1, 'status': 'PASSED'}, '1', 1, False),
+    # It was the test running when the executor was lost.
+    ({'id': 1, 'status': 'INTERRUPTED'}, '1', 1, False),
+    ({'id': 1, 'status': 'IN_PROGRESS', 'retries': None}, '1', 1, False),
+    # No item: the earlier attempt never reported this test.
+    (None, '1', 1, False),
+    # A --num_repetitions run: the item also holds the other repetitions of the test, which are
+    # not earlier attempts of this one.
+    ({'id': 1, 'status': 'FAILED'}, '3', 1, False),
+    ({'id': 1, 'status': 'FAILED'}, '3', 0, False),
+])
+def test_a_resubmitted_task_learns_that_its_test_failed_before(
+        monkeypatch: pytest.MonkeyPatch, previous_item: Any, reps: str, attempt: int,
+        failed_before: bool) -> None:
+    created = serve_create(monkeypatch)
+    monkeypatch.setenv('YB_CSI_REPS', reps)
+    monkeypatch.setattr(csi_report.time, 'sleep', lambda seconds: None)
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        assert params['filter.eq.uniqueId'] == 'tests-x/a-test:::A.B'
+        return FakeJson({'content': [previous_item] if previous_item else []})
+
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    descriptor = test_descriptor.TestDescriptor('tests-x/a-test:::A.B:::attempt_2')
+
+    assert csi_report.create_test(descriptor, 0.0, attempt, rerun=False) == (
+        'new-item-uuid', failed_before)
+
+    assert created[0]['retry'] is (previous_item is not None)
 
 
 # The conn_mgr attribute must follow the env vars each language's test harness reads: detective
@@ -523,7 +562,8 @@ def test_create_test_tags_conn_mgr(
     created = serve_create(monkeypatch)
 
     assert csi_report.create_test(
-        test_descriptor.TestDescriptor(descriptor), 0.0, 0, rerun=False) == 'new-item-uuid'
+        test_descriptor.TestDescriptor(descriptor), 0.0, 0, rerun=False) == (
+            'new-item-uuid', False)
 
     [item] = created
     assert ({'key': 'conn_mgr', 'value': 'true'} in item['attributes']) == tagged

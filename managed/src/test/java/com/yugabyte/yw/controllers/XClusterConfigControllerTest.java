@@ -1826,6 +1826,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         .add(exampleTableID1)
         .add(exampleTableID2)
         .add(exampleMatviewTableID);
+    // The set-tables validations are deferred to the EditXClusterConfig task; only the dryRun
+    // precheck still rejects the request synchronously.
+    editTablesRequest.put("dryRun", true);
 
     Result result =
         assertPlatformException(

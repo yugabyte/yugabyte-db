@@ -715,7 +715,7 @@ Default: `on`
 
 Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
 
-Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot set it to a value with `SET` after the first query of a transaction has run, or in a function's `SET` clause. `RESET` and `SET ... TO DEFAULT` are accepted at any time; a change made after the transaction has started using the optimization takes effect from the next transaction.
 
 Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
 
@@ -3056,13 +3056,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-TServer and every YB-Master. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 

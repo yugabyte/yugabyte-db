@@ -12,6 +12,33 @@ SET duckdb.execution_mode = 'full';
 -- must fail: force_execution cannot bypass the lake_io restrictions.
 SET duckdb.force_execution = true;
 
+-- DuckDB extension autoinstall/autoload are pinned off (PGC_INTERNAL): a non-bundled extension is
+-- built against libstdc++ and must never be downloaded or loaded into YB's libc++ DuckDB.
+SHOW duckdb.autoinstall_known_extensions;
+SHOW duckdb.autoload_known_extensions;
+-- must fail: even a superuser cannot turn them back on.
+SET duckdb.autoinstall_known_extensions = true;
+SET duckdb.autoload_known_extensions = true;
+-- must fail fast with a missing-extension error: az:// needs the non-bundled azure extension, and
+-- nothing is downloaded.
+SELECT count(*) FROM read_parquet('az://yb-container/does-not-exist.parquet');
+-- must fail the same way: an export goes through the COPY path instead of the planner.
+COPY (SELECT 1 AS i) TO 'az://yb-container/does-not-exist.parquet';
+-- The built-in extensions still work with both settings off. json is covered by
+-- yb.orig.lake_import.
+-- icu: DuckDB itself converts to a named time zone, which needs its ICU extension.
+SET timezone = 'Asia/Kolkata';
+CREATE TABLE yb_lake_tz_t (ts timestamptz);
+INSERT INTO yb_lake_tz_t VALUES ('2026-11-18 10:00:00+05:30');
+COPY (SELECT ts FROM yb_lake_tz_t) TO '/tmp/yb_lake_io_restrictions_tz.parquet';
+SELECT r['ts']::timestamptz AT TIME ZONE 'America/New_York' AS new_york_time
+  FROM read_parquet('/tmp/yb_lake_io_restrictions_tz.parquet') AS r;
+RESET timezone;
+DROP TABLE yb_lake_tz_t;
+-- must fail with a connection error, not a missing-extension error: http:// reaches httpfs. Port 9
+-- (discard) is not listened on, so this needs no network.
+SELECT count(*) FROM read_parquet('http://127.0.0.1:9/does-not-exist.parquet');
+
 -- must fail: duckdb.query() is arbitrary DuckDB SQL passthrough; in lake_io it is not routed to
 -- DuckDB, so it resolves to the duckdb_only stub and errors.
 SELECT * FROM duckdb.query('SELECT 1');

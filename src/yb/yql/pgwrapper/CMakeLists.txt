@@ -112,6 +112,10 @@ ADD_YB_LIBRARY(pg_locks_test_base
 
 target_link_libraries(pg_locks_test_base geo_transactions_test_base pg_wrapper_test_base integration-tests)
 
+ADD_YB_TEST_LIBRARY(pg_vector_index_test_base
+                    SRCS pg_vector_index_test_base.cc
+                    DEPS pg_wrapper_test_base rocksdb_tools yb_common_test_util)
+
 set(YSQL_UPGRADE_SRCS
     ysql_upgrade.cc)
 set(YSQL_UPGRADE_DEPS
@@ -223,7 +227,6 @@ ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_vector-test)
 ADD_YB_TEST(pg_vector_index-itest)
-ADD_YB_TEST(pg_vector_index-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(orphaned_tablet_cleanup-test)
@@ -265,9 +268,22 @@ add_dependencies(
   gen_auto_flags_json
   postgres)
 
-# Without the snapshot, the mini cluster runs initdb itself, which is too slow for this test's
-# clone scenarios under sanitizers.
-ADD_YB_TEST_DEPENDENCIES(pg_vector_index-test initial_sys_catalog_snapshot)
+set(PG_VECTOR_INDEX_TESTS
+    pg_vector_index-test
+    pg_vector_index_bootstrap-test
+    pg_vector_index_clone-test
+    pg_vector_index_reverse_mapping-test
+    pg_vector_index_single_server-test
+    pg_vector_index_snapshot-test
+    pg_vector_index_split-test
+    pg_vector_index_util-test)
+foreach(test ${PG_VECTOR_INDEX_TESTS})
+  ADD_YB_TEST(${test})
+  YB_TEST_TARGET_LINK_LIBRARIES(${test} pg_vector_index_test_base)
+  # Without the snapshot, the mini cluster runs initdb itself, which is too slow under sanitizers,
+  # e.g. for the clone scenarios.
+  ADD_YB_TEST_DEPENDENCIES(${test} initial_sys_catalog_snapshot)
+endforeach()
 
 add_custom_target(
   update_ysql_migrations ALL

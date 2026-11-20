@@ -4,25 +4,24 @@ import { NodeType } from '../../metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
 
-const ALL_NODE_TYPES = 'All Node Types';
+export const ALL_NODE_TYPES = 'All Node Types';
 
 interface NodeTypeSelectorData {
   onNodeTypeChanged: (nodeType: string) => void;
   currentSelectedNodeType?: string;
-  selectedRegionClusterUUID: string;
-  selectedRegionCode: string;
+  selectedRegionClusterUUID: string | null;
+  selectedRegionCode: string | null;
   selectedUniverse: any;
 }
 
-export const NodeTypeSelector: FC<NodeTypeSelectorData> = ({
+// A read replica cluster has no masters.
+export const getNodeTypeAvailability = ({
   currentSelectedNodeType,
-  onNodeTypeChanged,
   selectedUniverse,
   selectedRegionClusterUUID,
   selectedRegionCode
-}) => {
+}: Omit<NodeTypeSelectorData, 'onNodeTypeChanged'>): { isMaster: boolean; isTServer: boolean } => {
   let nodeItems: any[] = [];
-  let nodeTypeElement: any = [];
   let isMaster = true;
   let isTServer = true;
 
@@ -58,8 +57,24 @@ export const NodeTypeSelector: FC<NodeTypeSelectorData> = ({
     isMaster = masterNodeData?.isMaster;
     isTServer = tserverNodeData?.isTserver;
   }
+  return { isMaster, isTServer };
+};
 
-  nodeTypeElement = (
+export const NodeTypeSelector: FC<NodeTypeSelectorData> = ({
+  currentSelectedNodeType,
+  onNodeTypeChanged,
+  selectedUniverse,
+  selectedRegionClusterUUID,
+  selectedRegionCode
+}) => {
+  const { isMaster, isTServer } = getNodeTypeAvailability({
+    currentSelectedNodeType,
+    selectedUniverse,
+    selectedRegionClusterUUID,
+    selectedRegionCode
+  });
+
+  const nodeTypeElement = (
     <>
       <MenuItem
         onSelect={() => onNodeTypeChanged(NodeType.ALL)}

@@ -10,18 +10,20 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -217,7 +219,7 @@ public class RedactingService {
         target,
         ybSoftwareVersion,
         gFlagsValidation,
-        isGFlagsSensitiveDataApiRedactionEnabled());
+        target == RedactionTarget.APIS && isGFlagsSensitiveDataApiRedactionEnabled());
   }
 
   /**
@@ -236,11 +238,9 @@ public class RedactingService {
   }
 
   public static boolean isGFlagsSensitiveDataApiRedactionEnabled() {
-    RuntimeConfGetter runtimeConfGetter =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-    Boolean enabled =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction);
-    return !Boolean.FALSE.equals(enabled);
+    return StaticInjectorHolder.injector()
+        .instanceOf(RuntimeConfigCache.class)
+        .getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey());
   }
 
   public static JsonNode filterSecretFields(
@@ -1216,9 +1216,10 @@ public class RedactingService {
 
   /**
    * End of the line at start and of any following lines indented more than column, skipping blank
-   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs on
-   * purpose: ldapbindpasswd sits inside a value, so it has no key column to measure from, and the
-   * HBA value Helm folds has no blank lines.
+   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs:
+   * ldapbindpasswd sits inside a value, so it measures from the entry that value belongs to, or
+   * from the redacted line, and a blank line ends the fold, since the HBA value Helm folds has
+   * none.
    */
   private static int yamlIndentedLinesEnd(String s, int start, int column) {
     int n = s.length();
@@ -1519,6 +1520,12 @@ public class RedactingService {
     telemetrySecretForms = null;
   }
 
+  /** For unit tests without the DB. */
+  @VisibleForTesting
+  static void setTelemetrySecretsForTesting(List<String> secrets) {
+    telemetrySecretForms = secrets == null ? null : secretForms(secrets);
+  }
+
   private static List<String> telemetrySecretForms() {
     List<String> forms = telemetrySecretForms;
     if (forms != null) {
@@ -1555,13 +1562,16 @@ public class RedactingService {
    */
   private static List<String> secretForms(Collection<String> secrets) {
     Set<String> forms = new HashSet<>();
-    for (String secret : secrets) {
-      if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
-        continue;
+    for (String value : secrets) {
+      // Telemetry credentials are rendered without line breaks.
+      for (String secret : new String[] {value, TelemetryProviderConfig.removeLineBreaks(value)}) {
+        if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
+          continue;
+        }
+        forms.add(secret);
+        forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+        forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
       }
-      forms.add(secret);
-      forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
-      forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
     }
     return forms.stream()
         .sorted(Comparator.comparingInt(String::length).reversed())
@@ -1577,65 +1587,116 @@ public class RedactingService {
   }
 
   public static String redactShellProcessOutput(String input, RedactionTarget target) {
-    String output = input;
     try {
-      // Redact based on target
-      switch (target) {
-        case QUERY_PARAMS:
-          if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
-            output = redactEachLine(output, RedactingService::redactQueryParams);
-          }
-          break;
-        case HELM_VALUES:
-          if (output.contains("key:")) {
-            output = redactEachLine(output, RedactingService::redactrootCAKeys);
-          }
-          output = redactTelemetryCredentials(output);
-          break;
-        default:
-          break;
-      }
-      Set<String> names = sensitiveNames(null, null);
-      // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
-      // so these passes see the whole output. They run first: redactFreeText only follows a fold
-      // from a line it redacts itself.
-      output = HbaConfRedactor.redactFreeText(output);
-      for (String name : names) {
-        output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
-      }
-      // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
-      // redactFreeText again, so it is left out.
-      String redacted = output;
-      List<String> lineNames =
-          names.stream()
-              .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
-              .collect(Collectors.toList());
-      if (lineNames.isEmpty()) {
-        return redacted;
-      }
-      return redactEachLine(
-          redacted,
-          line -> {
-            String l = line;
-            for (String name : lineNames) {
-              l = redactPatternOccurrences(name, l);
-            }
-            return l;
-          });
-    } catch (Exception e) {
+      return redactShellOutput(input, target);
+    } catch (RuntimeException e) {
       log.error("Error redacting shell process output", e);
-      // Callers only log the result, so log none of it rather than all of it unredacted.
+      // Callers log the result, so log none of it rather than all of it unredacted.
       return SECRET_REPLACEMENT;
     }
   }
 
+  /** redactShellProcessOutput for a caller that must know when the redaction fails. */
+  static String redactShellOutput(String input, RedactionTarget target) {
+    String output = input;
+    // Redact based on target
+    switch (target) {
+      case QUERY_PARAMS:
+        if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
+          output = redactEachLine(output, RedactingService::redactQueryParams);
+        }
+        break;
+      case HELM_VALUES:
+        if (output.contains("key:")) {
+          output = redactEachLine(output, RedactingService::redactrootCAKeys);
+        }
+        output = redactTelemetryCredentials(output);
+        break;
+      default:
+        break;
+    }
+    Set<String> names = sensitiveNames(null, null);
+    // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
+    // so these passes see the whole output. They run first: redactFreeText only follows a fold
+    // from a line it redacts itself.
+    output = HbaConfRedactor.redactFreeText(output);
+    for (String name : names) {
+      output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
+    }
+    // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
+    // redactFreeText again, so it is left out.
+    String redacted = output;
+    List<String> lineNames =
+        names.stream()
+            .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
+            .collect(Collectors.toList());
+    if (lineNames.isEmpty()) {
+      return redacted;
+    }
+    return redactLinesContaining(
+        redacted,
+        lineNames,
+        line -> {
+          String l = line;
+          for (String name : lineNames) {
+            l = redactPatternOccurrences(name, l);
+          }
+          return l;
+        });
+  }
+
   /**
    * For passes that must not run past a line end: redactrootCAKeys checks only its first match, and
-   * its regex, redactQueryParams and several string-scan passes run to the end of their input when
-   * a value isn't closed.
+   * its regex and redactQueryParams run to the end of their input when a value isn't closed. Passes
+   * that change only lines holding a marker use redactLinesContaining.
    */
   private static String redactEachLine(String input, UnaryOperator<String> redact) {
     return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));
+  }
+
+  /**
+   * redactEachLine for a pass that leaves a line without any of the markers as it is: only the
+   * lines holding one are split out, so a multi-MB command output is not turned into a list of
+   * every line.
+   */
+  private static String redactLinesContaining(
+      String input, List<String> markers, UnaryOperator<String> redact) {
+    // The next occurrence of each marker, found again only once the scan has passed it.
+    int[] next = new int[markers.size()];
+    for (int i = 0; i < markers.size(); i++) {
+      next[i] = input.indexOf(markers.get(i));
+    }
+    StringBuilder out = null;
+    int copied = 0;
+    int lineStart = 0;
+    while (lineStart <= input.length()) {
+      int at = -1;
+      for (int i = 0; i < markers.size(); i++) {
+        if (next[i] >= 0 && next[i] < lineStart) {
+          next[i] = input.indexOf(markers.get(i), lineStart);
+        }
+        if (next[i] >= 0 && (at < 0 || next[i] < at)) {
+          at = next[i];
+        }
+      }
+      if (at < 0) {
+        break;
+      }
+      int start = input.lastIndexOf('\n', at - 1) + 1;
+      int end = input.indexOf('\n', at);
+      end = end < 0 ? input.length() : end;
+      String line = input.substring(start, end);
+      String redacted = redact.apply(line);
+      if (!redacted.equals(line)) {
+        if (out == null) {
+          out = new StringBuilder(input.length());
+        }
+        out.append(input, copied, start).append(redacted);
+        copied = end;
+      }
+      lineStart = end + 1;
+    }
+    return out == null ? input : out.append(input, copied, input.length()).toString();
   }
 
   private static boolean isBase64Encoded(String str) {

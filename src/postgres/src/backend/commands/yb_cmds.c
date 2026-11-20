@@ -1602,7 +1602,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				 * non-retryable schema version mismatch inside a transaction
 				 * block.
 				 */
-				if (YBCIsObjectLockingEnabled() &&
+				if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
 					(cmd->subtype == AT_ValidateConstraint ||
 					 cmd->subtype == AT_ValidateConstraintRecurse ||
 					 cmd->subtype == AT_SetStatistics))
@@ -2031,6 +2031,45 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 	YBCExecAlterTable(handle, relationId);
 }
 
+/*
+ * Create table-level tombstone for a colocated index.
+ */
+void
+YbWriteColocatedIndexTombstone(Relation index)
+{
+	/*
+	 * Copartitioned indexes (currently ybhnsw) store their rows in a
+	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
+	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
+	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
+	 * child of a partitioned vector-index drop still produces sibling
+	 * transactional writes against the same colocated tablet. The first
+	 * such write carries the txn's isolation metadata, and because the
+	 * apply emits no write_pairs, the transaction is never registered with
+	 * the participant. Subsequent sibling writes (which the YBClient
+	 * batcher strips of isolation metadata after the first request) then
+	 * fail conflict resolution with "Transaction not found" - see
+	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
+	 * avoids the empty-batch + isolation race; the actual storage is
+	 * cleaned up when the master drops the index.
+	 */
+	if (index->rd_indam->yb_amiscopartitioned)
+		return;
+
+	YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
+
+	if (handle)
+	{
+		bool		not_found = false;
+
+		HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
+		int			rows_affected_count = 0;
+
+		HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+									 &not_found);
+	}
+}
+
 void
 YBCDropIndex(Relation index)
 {
@@ -2046,46 +2085,10 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	/*
-	 * Create table-level tombstone for colocated (via DB or tablegroup)
-	 * indexes
-	 */
-	bool not_found = false;
+	if (yb_props->is_colocated)
+		YbWriteColocatedIndexTombstone(index);
 
-	/*
-	 * Copartitioned indexes (currently ybhnsw) store their rows in a
-	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
-	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
-	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
-	 * child of a partitioned vector-index drop still produces sibling
-	 * transactional writes against the same colocated tablet. The first
-	 * such write carries the txn's isolation metadata, and because the
-	 * apply emits no write_pairs, the transaction is never registered with
-	 * the participant. Subsequent sibling writes (which the YBClient
-	 * batcher strips of isolation metadata after the first request) then
-	 * fail conflict resolution with "Transaction not found" — see
-	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
-	 * avoids the empty-batch + isolation race; the actual storage is
-	 * cleaned up by the DROP_INDEX master RPC below.
-	 */
-	if (yb_props->is_colocated && !index->rd_indam->yb_amiscopartitioned)
-	{
-		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
-		if (handle)
-		{
-			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
-			int			rows_affected_count = 0;
-
-			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
-										 &not_found);
-		}
-	}
-
-	/*
-	 * Reset not_found so that a NotFound from the colocated truncate above
-	 * does not cause us to skip the actual drop-index RPC below.
-	 */
-	not_found = false;
+	bool		not_found = false;
 
 	/* Drop the index table */
 	{
@@ -2263,12 +2266,13 @@ YBCValidatePlacements(const char *live_placement_info,
  */
 static void
 YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
-							 size_t *num_tables, bool *all_tables)
+							 size_t *num_tables, bool *all_tables,
+							 bool yb_expand_all_tables_pub)
 {
 	MemoryContext caller_context = CurrentMemoryContext;
 	bool		is_in_txn = IsTransactionOrTransactionBlock();
 	Publication *publication;
-	List	   *tables = NIL;
+	List	   *tables;
 	ListCell   *lc;
 	size_t		table_idx = 0;
 
@@ -2277,12 +2281,10 @@ YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
 		StartTransactionCommand();
 
 	publication = GetPublicationByName(publication_name, false /* missing_ok */ );
-	*all_tables = publication->alltables;
-	if (!publication->alltables)
-		tables = GetPublicationRelations(publication->oid,
-										 publication->pubviaroot ?
-										 PUBLICATION_PART_ROOT :
-										 PUBLICATION_PART_LEAF);
+	/* yb_pg_get_publications_tables() only sets *all_tables when it is true. */
+	*all_tables = false;
+	tables = yb_pg_get_publications_tables(list_make1(publication), all_tables,
+										   yb_expand_all_tables_pub);
 
 	*num_tables = list_length(tables);
 	*relfilenodes = MemoryContextAlloc(caller_context,
@@ -2343,13 +2345,15 @@ YBCCreateReplicationSlot(const char *slot_name,
 
 	/*
 	 * The master starts a publication bound slot with exactly these tables, so
-	 * it never has to look the publication up itself.
+	 * it never has to look the publication up itself.  For a FOR ALL TABLES
+	 * publication no tables are sent: the master adds every table itself.
 	 */
 	if (yb_publication_name != NULL)
 		YbGetPublicationRelfileNodes(yb_publication_name,
 									 &publication_relfilenodes,
 									 &num_publication_tables,
-									 &publication_all_tables);
+									 &publication_all_tables,
+									 false /* yb_expand_all_tables_pub */ );
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
@@ -2535,10 +2539,20 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YbcPgChangeRecordBatch **record_batch,
-						   YbcTypeEntityProvider type_entity_provider)
+						   YbcPgChangeRecordBatch **record_batch)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
+	/*
+	 * Allocated before the call in CurrentMemoryContext, which is
+	 * cached_records_context in this case. This will be freed by
+	 * PreProcessBeforeFetchingNextBatch which resets cached_records_context.
+	 */
+	MemoryContextCallback *free_response = palloc(sizeof(MemoryContextCallback));
+
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+
+	free_response->func = YBCPgFreeCDCConsistentChangesResponse;
+	free_response->arg = (*record_batch)->response;
+	MemoryContextRegisterResetCallback(CurrentMemoryContext, free_response);
 }
 
 void

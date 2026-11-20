@@ -142,6 +142,7 @@ class XClusterSafeTimeService {
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
   int32_t cluster_config_version_ GUARDED_BY(mutex_) = kInvalidClusterConfigVersion;
+  bool producer_tablet_keys_have_stream_id_ GUARDED_BY(mutex_) = false;
   std::map<xcluster::SafeTimeTablePK, NamespaceId> producer_tablet_namespace_map_
       GUARDED_BY(mutex_);
 

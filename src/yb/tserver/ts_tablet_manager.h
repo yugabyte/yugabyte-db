@@ -373,6 +373,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MarkTabletDirty(const TabletId& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  // MarkTabletDirty for a change with no consensus event behind it (a tier migration event), so
+  // the stateful-service callbacks that follow a consensus change are not run.
+  void MarkTabletReportDirty(const TabletId& tablet_id,
+                             std::shared_ptr<consensus::StateChangeContext> context);
+
   void MarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
 
   void UnmarkTabletBeingRemoteBootstrapped(const TabletId& tablet_id, const TableId& table_id);
@@ -532,6 +537,14 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   client::YBMetaDataCache* YBMetaDataCache() const;
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
+
+  uint64_t TEST_BootstrapWallClockTimeUs() const {
+    return ts_bootstrap_wall_clock_time_us_->value();
+  }
+
+  uint64_t TEST_StartupTabletsPendingBootstrap() const {
+    return ts_startup_tablets_pending_bootstrap_->value();
+  }
 
   // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
   // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
@@ -1020,6 +1033,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Gauge to monitor the total time to open all tablets' metadata.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_open_metadata_time_us_;
+
+  // Gauge to monitor the wall-clock time to bootstrap all tablets during startup.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_bootstrap_wall_clock_time_us_;
+
+  // Gauge to monitor the number of startup tablets that have not finished bootstrapping yet.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_startup_tablets_pending_bootstrap_;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
