@@ -38,6 +38,7 @@ YbgExprTypmod
 YbgExprCollation
 YbgEvalExpr
 YbgSplitArrayDatum
+YbgJsonbFromCString
 
 # Relation sampling
 YbgSamplerCreate

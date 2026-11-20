@@ -265,6 +265,9 @@ message TSHeartbeatRequestPB {
   // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
   // map[db_oid] -> earliest local live transaction registered for that db.
   map<uint32, YsqlDbOldestPinnedReadTime> ts_ysql_db_oldest_pinned_read_times = 24;
+
+  // Version of the CdcTablePollerRegistryPB this tserver has applied. 0 if none.
+  optional uint64 cdc_table_registry_version = 25;
 }
 
 // Load levels are defined by the admission thresholds in master_tablet_service: BUSY means new
@@ -394,6 +397,9 @@ message TSHeartbeatResponsePB {
   // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
   // of this duration from when the TServer sent the heartbeat request.
   optional uint32 xcluster_guarded_lease_duration_ms = 36;
+
+  // Sent when the version in the request differs from the master's.
+  optional cdc.CdcTablePollerRegistryPB cdc_table_registry = 38;
 }
 
 service MasterHeartbeat {

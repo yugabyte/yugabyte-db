@@ -254,6 +254,17 @@ void DeleteMemoryContextIfSet() {
   }
 }
 
+Result<std::string> JsonTextToPgJsonb(const std::string& json) {
+  PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
+
+  char* data = nullptr;
+  size_t len = 0;
+  PG_RETURN_NOT_OK(YbgJsonbFromCString(json.c_str(), &data, &len));
+  std::string result(data, len);
+  PG_RETURN_NOT_OK(YbgResetMemoryContext());
+  return result;
+}
+
 namespace {
 
 // Given a 'ql_value', interpret the binary value in it as an array of type

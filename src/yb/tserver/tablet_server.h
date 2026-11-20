@@ -410,6 +410,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual int32_t cluster_config_version() const override;
 
+  uint64_t cdc_table_registry_version() const;
+
   Result<uint32_t> XClusterConfigVersion() const;
 
   Status SetPausedXClusterProducerStreams(

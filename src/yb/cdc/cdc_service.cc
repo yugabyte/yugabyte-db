@@ -279,6 +279,8 @@ DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
+DECLARE_bool(TEST_cdcsdk_enable_cdc_table);
+
 DECLARE_bool(cdc_enable_dynamic_schema_changes);
 
 METRIC_DEFINE_entity(xcluster);
@@ -5562,6 +5564,15 @@ void CDCServiceImpl::InitVirtualWALForCDC(
       stream_metadata_result.ok(),
       STATUS_FORMAT(NotFound, "Stream metadata not found for stream id $0", stream_id),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
+  // The CDC table pollers call GetChanges on the stream of the slot and own its checkpoints. A
+  // virtual WAL polling the same stream would overwrite them.
+  RPC_CHECK_AND_RETURN_ERROR(
+      !FLAGS_TEST_cdcsdk_enable_cdc_table || stream_metadata_result->get()->IsNotificationSlot(),
+      STATUS(
+          NotSupported,
+          "Replication slots cannot be consumed while TEST_cdcsdk_enable_cdc_table is set"),
+      resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
   auto lsn_type = stream_metadata_result->get()->GetReplicationSlotLsnType().value_or(
       ReplicationSlotLsnType_SEQUENCE);

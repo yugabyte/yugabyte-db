@@ -110,7 +110,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
-  void StoreReplicationError(ReplicationErrorPb error, const std::string& error_detail = {})
+  virtual void StoreReplicationError(
+      ReplicationErrorPb error, const std::string& error_detail = {})
       EXCLUDES(replication_error_mutex_);
   // Stores a generic SYSTEM_ERROR if the current error is OK or uninitialized. Does not overwrite
   // a more specific error that has already been set.
@@ -171,7 +172,6 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void InvalidateSafeTime();
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
-  Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
 
   void MarkReplicationPaused();
 
@@ -179,6 +179,22 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   void IncrementPollFailures();
 
+ protected:
+  // The hooks below let a subclass poll a stream that is not an xCluster stream and apply its
+  // changes differently. The implementations in this class are the xCluster ones.
+
+  // The client to send GetChanges with. Null if this poller cannot poll.
+  virtual client::YBClient* GetChangesClient();
+
+  virtual Status PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) REQUIRES(data_mutex_);
+
+  virtual Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
+
+  // Called once the changes of a GetChanges response have been applied, to record where the next
+  // GetChanges request continues from.
+  virtual void ChangesApplied(const XClusterOutputClientResponse& response) REQUIRES(data_mutex_);
+
+  // The data members are protected only for the subclasses that implement the hooks above.
   const xcluster::ProducerTabletInfo producer_tablet_info_;
   const xcluster::ConsumerTabletInfo consumer_tablet_info_;
   const NamespaceId consumer_namespace_id_;
@@ -214,7 +230,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::function<int64_t(const TabletId&)> get_leader_term_;
 
   client::YBClient& local_client_;
-  std::shared_ptr<XClusterOutputClient> output_client_;
+  std::shared_ptr<XClusterOutputClientIf> output_client_;
   std::shared_ptr<client::XClusterRemoteClientHolder> source_client_;
   std::shared_ptr<XClusterDDLQueueHandler> ddl_queue_handler_;
 

@@ -312,6 +312,8 @@ set(TSERVER_SRCS
   stateful_services/pg_cron_leader_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
+  cdc_table_output_client.cc
+  cdc_table_poller.cc
   xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
