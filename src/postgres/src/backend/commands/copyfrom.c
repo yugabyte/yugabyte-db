@@ -758,6 +758,10 @@ CopyFrom(CopyFromState cstate)
 	 * 3. When the target is a partitioned table. The checks here only see the
 	 *    partitioned table itself, but each partition can have its own foreign
 	 *    keys, triggers, indexes and colocation.
+	 * 4. When a row can get other than one entry in a secondary index, as with
+	 *    a partial index or an index not yet ready for inserts. The batch size
+	 *    set below assumes one entry per index, so a batch could otherwise end
+	 *    between a row and its index entries.
 	 */
 	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
@@ -766,7 +770,8 @@ CopyFrom(CopyFromState cstate)
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 		resultRelInfo->ri_RelationDesc->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
-		!has_rule_or_trigger && !IsTransactionBlock())
+		!has_rule_or_trigger && !IsTransactionBlock() &&
+		YbSecondaryIndicesGetOneEntryPerRow(resultRelInfo))
 	{
 		elog(LOG, "using non-txn for copy from colocated table, yb_disable_transactional_writes=%d",
 			 yb_disable_transactional_writes);
