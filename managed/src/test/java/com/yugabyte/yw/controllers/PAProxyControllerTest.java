@@ -119,16 +119,22 @@ public class PAProxyControllerTest extends FakeDBApplication {
       paServer.start();
       PACollector collector = registerCollector(paServer);
       Universe universe = ModelFactory.createUniverse(customer.getId());
+      String prefix = "v2/universes/" + universe.getUniverseUUID();
+      String other = UUID.randomUUID().toString();
+      String otherEncoded = String.format("%%%02X", (int) other.charAt(0)) + other.substring(1);
 
-      assertPlatformException(
-          () ->
-              route(
-                  proxyRequest(
-                      collector,
-                      "v2/universes/"
-                          + universe.getUniverseUUID()
-                          + "/nodes?x=/universes/"
-                          + UUID.randomUUID())));
+      for (String path :
+          new String[] {
+            prefix + "/nodes?x=/universes/" + other,
+            prefix + "/nodes?universes=" + other,
+            prefix + "/nodes?x=/universes/" + otherEncoded,
+            prefix + "/x/universes/" + other + "/y/universes/" + universe.getUniverseUUID(),
+            prefix + "/x/universes%5C" + other,
+            prefix + "/x/Universes/" + other,
+            prefix + "/x/universes;y/" + other
+          }) {
+        assertPlatformException(() -> route(proxyRequest(collector, path)));
+      }
       assertThat(paServer.getRequestCount(), equalTo(1));
     }
   }
@@ -144,7 +150,11 @@ public class PAProxyControllerTest extends FakeDBApplication {
           new String[] {
             "v2//universes/" + universe.getUniverseUUID() + "/nodes",
             "v2/./universes/" + universe.getUniverseUUID(),
-            "v2/%75niverses/" + universe.getUniverseUUID()
+            "v2/%75niverses/" + universe.getUniverseUUID(),
+            "x/%2e%2e/v2/universes/" + universe.getUniverseUUID() + "/nodes",
+            "x/../v2/universes/" + universe.getUniverseUUID() + "/nodes",
+            "v2/universes/" + universe.getUniverseUUID() + "/%2e%2e/" + UUID.randomUUID(),
+            "v2/universes/" + universe.getUniverseUUID() + "/../" + UUID.randomUUID()
           }) {
         assertPlatformException(() -> route(proxyRequest(collector, path)));
       }
