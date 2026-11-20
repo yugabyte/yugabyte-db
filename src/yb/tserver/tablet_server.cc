@@ -2918,6 +2918,10 @@ TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 
+bool TabletServer::IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const {
+  return xcluster_context_->IsTargetAndInAutomaticMode(namespace_id);
+}
+
 void TabletServer::ScheduleCheckLaggingCatalogVersions() {
   LOG(INFO) << __func__;
   messenger()->scheduler().Schedule(

@@ -17,6 +17,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/txn_error_injection.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/common/transaction_error.h"
 #include "yb/dockv/doc_key.h"
@@ -84,6 +85,13 @@ namespace yb {
 namespace tserver {
 
 namespace {
+
+// Whether the database of YSQL table table_id is the target of automatic mode xCluster replication.
+// The namespace id comes from the table id, since tablet metadata may not have it.
+Result<bool> IsXClusterAutomaticModeTarget(TabletServerIf& server, const TableId& table_id) {
+  return server.IsXClusterAutomaticModeTarget(
+      VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)));
+}
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
@@ -908,13 +916,18 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // Reject reads arriving at index with a read time earlier than the index birth time.
         // TODO(#33155): birth_time of a regular index isn't set on an xCluster automatic-mode
         // target (where backfill is replicated from the source).
+        // TODO(#38694): Such a target builds a vector index itself, but reads it at the xCluster
+        // safe time, which stays below the index birth time until the DDL is processed. So the
+        // check is skipped there too.
         const auto birth_time = table_info->index_info->birth_time();
         VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
                 << " birth_time=" << birth_time
                 << " retain_delete_markers="
                 << table_info->schema().table_properties().retain_delete_markers()
                 << " read_time=" << read_time_.read;
-        if (birth_time && read_time_.read < birth_time) {
+        if (birth_time && read_time_.read < birth_time &&
+            !(table_info->index_info->is_vector_index() &&
+              VERIFY_RESULT(IsXClusterAutomaticModeTarget(server_, table_info->table_id)))) {
           return STATUS(
               SnapshotTooOld,
               Format("Query read time < index birth time: $0 < [$1] $2",
