@@ -1398,6 +1398,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
+  // The number of tablets on the list ExtractTabletsToProcess reads.
+  size_t TEST_NumPendingTablets() EXCLUDES(pending_tablets_mutex_);
+
   PitrCount pitr_count() const override;
 
   // Returns the current valid LeaderEpoch.
@@ -2366,6 +2369,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ExtractTabletsToProcess(TabletInfos *tablets_to_delete,
                                TableToTabletInfos *tablets_to_process);
 
+  // Put a tablet on the list ExtractTabletsToProcess reads. Every tablet added to tablet_map_
+  // and every tablet set to DELETED goes through one of these.
+  void TrackNewTablet(const TabletInfoPtr& tablet) EXCLUDES(pending_tablets_mutex_);
+  void TrackDeletedTablet(const TabletInfoPtr& tablet) EXCLUDES(pending_tablets_mutex_);
+
+  // Put a table on the list CleanUpDeletedTables reads. Every table set to DELETING, DELETED or
+  // HIDING goes through this.
+  void TrackTableBeingRemoved(const TableInfoPtr& table) EXCLUDES(tables_being_removed_mutex_);
+
+  // The tables in tables_ that are DELETING, DELETED or HIDING.
+  std::vector<TableInfoPtr> GetTablesBeingRemoved() EXCLUDES(mutex_);
+
   // Determine whether any tables are in the DELETING state.
   bool AreTablesDeletingOrHiding() override;
 
@@ -2732,6 +2747,28 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
+
+  // The tablets ExtractTabletsToProcess has to look at: not running yet, or deleted and still in
+  // tablet_map_. The mutex can be taken while holding mutex_, not the other way round.
+  struct PendingTablet {
+    TabletInfoPtr tablet;
+    // Set by TrackDeletedTablet: the tablet stays listed until it leaves tablet_map_.
+    bool deleted = false;
+  };
+  std::mutex pending_tablets_mutex_;
+  std::map<TabletId, PendingTablet> pending_tablets_ GUARDED_BY(pending_tablets_mutex_);
+
+  // The tables CleanUpDeletedTables has to look at. Same locking order as pending_tablets_.
+  struct TableBeingRemoved {
+    TableInfoPtr table;
+    // Incremented by TrackTableBeingRemoved, so a pass running at the same time keeps the entry.
+    uint64_t version = 0;
+    // Whether a pass saw the table as DELETING, DELETED or HIDING since it was last tracked.
+    bool seen = false;
+  };
+  std::mutex tables_being_removed_mutex_;
+  std::map<TableId, TableBeingRemoved> tables_being_removed_
+      GUARDED_BY(tables_being_removed_mutex_);
 
   // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);

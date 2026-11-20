@@ -149,6 +149,9 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     LOG(INFO) << "Index table " << table_id << " added for backfill status validation";
   }
 
+  if (table_lock->started_deleting() || table_lock->is_hiding()) {
+    catalog_manager_->TrackTableBeingRemoved(table);
+  }
   table_lock.Commit();
   catalog_manager_->HandleNewTableId(table->id());
 
@@ -259,6 +262,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       return STATUS_FORMAT(
           IllegalState, "Loaded tablet already in tablet map: $0", tablet->tablet_id());
     }
+    // The first pass of the background task drops the ones that are running.
+    catalog_manager_->TrackNewTablet(tablet);
 
     if (metadata.hosted_tables_mapped_by_parent_id()) {
       table_ids = state_->parent_to_child_tables[primary_table->id()];
