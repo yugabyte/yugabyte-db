@@ -7926,7 +7926,8 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * read NULL for the new column, and the NOT NULL check below would
 		 * be skipped.  Fill them by rewriting the table instead.  This only
 		 * guards against the PG and YB missing-value decisions drifting
-		 * apart.
+		 * apart.  If yb_enable_alter_table_rewrite is off, ATRewriteTables
+		 * fails the ALTER instead, which is still better than NULL rows.
 		 *
 		 * It does not apply when yb_enable_add_column_missing_default is off.
 		 * That AutoFlag is held back during an upgrade until external peers
