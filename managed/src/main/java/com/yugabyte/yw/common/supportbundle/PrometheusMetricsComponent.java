@@ -102,9 +102,16 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
       log.debug("exportMetric: querying metric '{}' from {} to {}", query, startDate, endDate);
 
+      // The previous call for this directory (another node or metric) removes it when it's empty.
+      Files.createDirectories(Paths.get(exportDestDir));
+
       // batchwise collection of prom-dump
       Date batchStartTS = startDate;
       Date batchEndTS = Date.from(batchStartTS.toInstant().plus(effectiveBatchDuration));
+      // A window shorter than one batch is queried in one batch.
+      if (batchEndTS.after(endDate)) {
+        batchEndTS = endDate;
+      }
       int batchNumber = 1;
       int freq = 0;
       while (!batchEndTS.after(endDate)) {
