@@ -120,6 +120,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
   }
 
+  // TODO(#38782): Remove this and the test paths for the flag off, now that it is a default-on
+  // AutoFlag.
   // With transactional DDL, catalog transactions such as DDLs also take LSNs and transaction ids.
   private boolean isTransactionalDdlEnabled() throws Exception {
     return "true".equals(miniCluster.getClient().getFlag(
