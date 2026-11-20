@@ -2721,6 +2721,10 @@ void TSTabletManager::OpenTablet(
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
       retryable_requests.CopyFrom(*parent_tablet_requests);
+      // The parent's last flushed op id describes the parent's bootstrap state file, which the
+      // split may not have copied to the child. Without the reset, a child with no writes of its
+      // own would never flush its bootstrap state.
+      retryable_requests.ResetLastFlushedOpId();
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "

@@ -3780,15 +3780,6 @@ void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
   const auto parent_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   const auto parent_tablet_id = parent_peer->tablet_id();
-  if (flush_child_bootstrap_state) {
-    // The split copies the parent's bootstrap state to the children. Flush it synchronously, since
-    // a rollover-triggered async flush may not finish before the split is applied, leaving a child
-    // that receives no writes with nothing to save.
-    ASSERT_OK(WaitFor([&parent_peer] {
-      WARN_NOT_OK(parent_peer->FlushBootstrapState(), "Failed to flush bootstrap state");
-      return parent_peer->TEST_HasBootstrapStateOnDisk();
-    }, 10s * kTimeMultiplier, "parent bootstrap state flushed to disk"));
-  }
 
   ASSERT_OK(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTabletSplitCompletion(2, 1, 1));
@@ -3848,8 +3839,15 @@ void TabletSplitSingleServerITest::TestRetryableWriteAfterSplitChildRestart(
   for (const auto& child_peer : child_peers) {
     if (flush_child_bootstrap_state) {
       ASSERT_OK(child_peer->log()->AllocateSegmentAndRollOver());
-      ASSERT_OK(WaitFor([&] { return child_peer->TEST_HasBootstrapStateOnDisk(); },
-                        10s * kTimeMultiplier, "child retryable requests flushed to disk"));
+      // A file copied from the parent at split does not count; wait for the child's own flush,
+      // which is the only thing that sets its last flushed op id.
+      auto consensus = ASSERT_RESULT(child_peer->GetRaftConsensus());
+      ASSERT_OK(WaitFor(
+          [&] {
+            return child_peer->TEST_HasBootstrapStateOnDisk() &&
+                   consensus->GetLastFlushedOpIdInRetryableRequests() != OpId::Min();
+          },
+          10s * kTimeMultiplier, "child retryable requests flushed to disk"));
     } else {
       ASSERT_FALSE(child_peer->TEST_HasBootstrapStateOnDisk());
     }

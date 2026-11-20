@@ -311,6 +311,10 @@ class RetryableRequests::Impl {
     return last_flushed_op_id_;
   }
 
+  void ResetLastFlushedOpId() {
+    last_flushed_op_id_ = OpId::Min();
+  }
+
   void ToPB(TabletBootstrapStatePB* pb) const {
     max_replicated_op_id_.ToPB(pb->mutable_last_op_id());
     for (const auto& client_requests : clients_) {
@@ -782,6 +786,10 @@ void RetryableRequests::SetLastFlushedOpId(const OpId& op_id) {
 
 OpId RetryableRequests::GetLastFlushedOpId() const {
   return impl_->GetLastFlushedOpId();
+}
+
+void RetryableRequests::ResetLastFlushedOpId() {
+  impl_->ResetLastFlushedOpId();
 }
 
 void RetryableRequests::ToPB(TabletBootstrapStatePB *pb) const {
