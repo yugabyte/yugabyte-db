@@ -85,10 +85,10 @@
  * run in a separate DDL transaction with DDLs with global object locks
  * (PR #38568). Upstream locks database objects only with sub id 0, which every
  * backend takes at connection start. Object sub ids upstream uses for any
- * class are attribute numbers, at most MaxHeapAttributeNumber (1600), and
- * pg_locks shows the sub id as int2, so the value stays between the two.
+ * class are attribute numbers, at most MaxHeapAttributeNumber, so the value
+ * stays above them.
  */
-#define YB_DATABASE_DDL_MODE_LOCK_OBJSUBID 10000
+#define YB_DATABASE_DDL_MODE_LOCK_OBJSUBID (2 * MaxHeapAttributeNumber)
 
 /*
  * Postgres code uses process-level storage (e.g. static variables) to store

@@ -33,8 +33,8 @@ namespace {
   * - concurrency with other DMLs and
   * - concurrency with other DDLs
   *
-  * The first two are validated against each other in common_flags.cc, so they can only be moved
-  * together.
+  * ysql_yb_ddl_transaction_block_enabled and enable_object_locking_for_table_locks are validated
+  * against each other in common_flags.cc, so they can only be moved together.
   */
 constexpr const char* kNewDDLModeFlags[] = {
     "ysql_yb_ddl_transaction_block_enabled",
