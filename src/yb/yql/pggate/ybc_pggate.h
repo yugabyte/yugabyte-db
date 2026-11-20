@@ -770,6 +770,10 @@ YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 // Set prefix length for distinct index scans.
 YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefix_length);
 
+// Set the snapshot command id of a read that gets no exec parameters from the executor, see
+// PgsqlReadRequestPB::read_command_id.
+YbcStatus YBCPgSetReadCommandId(YbcPgStatement handle, uint32_t command_id);
+
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params);
 
 // Gets the ybctids from a request. Returns a vector of all the results.

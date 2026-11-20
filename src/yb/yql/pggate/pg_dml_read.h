@@ -79,6 +79,9 @@ class PgDmlRead : public PgDml {
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(int distinct_prefix_length);
 
+  // Set the read command id of the scan and of its secondary index scan, if any.
+  void SetReadCommandId(uint32_t command_id);
+
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(
       int attr_num, PgExpr* attr_value, bool start_inclusive,

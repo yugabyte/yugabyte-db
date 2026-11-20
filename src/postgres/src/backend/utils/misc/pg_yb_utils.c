@@ -2578,12 +2578,15 @@ bool		yb_enable_global_views = false;
 bool
 yb_is_federated_yb_foreign_table(Oid relid)
 {
-	ForeignTable *table;
-	ForeignServer *server;
-	ListCell   *lc;
+	ForeignTable *table = GetForeignTable(relid);
 
-	table = GetForeignTable(relid);
-	server = GetForeignServer(table->serverid);
+	return YbIsFederatedYbForeignServer(GetForeignServer(table->serverid));
+}
+
+bool
+YbIsFederatedYbForeignServer(ForeignServer *server)
+{
+	ListCell   *lc;
 
 	foreach(lc, server->options)
 	{
@@ -11514,13 +11517,13 @@ HandleYBStatusAtErrorLevelImpl(YbcStatus status, int elevel, const char *text_do
 }
 
 Oid
-YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
+YbGetFederatedForeignTableBackingRelid(ForeignServer *server, List *ft_options)
 {
 	ListCell   *lc;
 	char	   *schema_name = NULL;
 	char	   *table_name = NULL;
 
-	if (!yb_is_federated_yb_foreign_table(ft_relid))
+	if (!YbIsFederatedYbForeignServer(server))
 		return InvalidOid;
 
 	/*
@@ -11529,7 +11532,7 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 	 * table and its aux view in any schema (only the base view must live in
 	 * pg_catalog), ad-hoc global views can't be created in pg_catalog.
 	 */
-	foreach(lc, GetForeignTable(ft_relid)->options)
+	foreach(lc, ft_options)
 	{
 		DefElem    *def = (DefElem *) lfirst(lc);
 
