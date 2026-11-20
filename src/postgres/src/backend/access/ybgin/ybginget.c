@@ -580,6 +580,7 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 	if (has_data)
 	{
 		tuple = heap_form_tuple(tupdesc, values, nulls);
+		HeapTupleHeaderClearDatum(tuple->t_data);
 
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)

@@ -37,7 +37,6 @@
 #include "access/transam.h"
 #include "access/twophase.h"
 #include "access/xlogutils.h"
-#include "access/xlogwait.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
@@ -915,6 +914,9 @@ LockErrorCleanup(void)
 			GrantAwaitedLock();
 	}
 
+	/* An error can bypass ProcSleep()'s reset, so clear waitStart here */
+	pg_atomic_write_u64(&MyProc->waitStart, 0);
+
 	ResetAwaitedLock();
 
 	LWLockRelease(partitionLock);
@@ -966,16 +968,15 @@ RemoveProcFromArray(int code, Datum arg)
 /*
  * ProcKill() -- Destroy the per-proc data structure for
  *		this process. Release any of its held LW locks.
- *
- * If you are going to edit this, take a look at postmaster.c:reaper as well.
- * That function handles as much as this as possible but from the perspective
- * of the parent of the terminated child, to handle cases where the child was
- * not able to clean itself up.
  */
 static void
 ProcKill(int code, Datum arg)
 {
 	PGPROC	   *proc;
+	PGPROC	   *leader;
+	dlist_head *procgloballist;
+	bool		push_leader;
+	bool		push_self;
 
 	Assert(MyProc != NULL);
 
@@ -1005,37 +1006,92 @@ ProcKill(int code, Datum arg)
 	 */
 	LWLockReleaseAll();
 
-	/*
-	 * Cleanup waiting for LSN if any.
-	 */
-	WaitLSNCleanup();
-
 	/* Cancel any pending condition variable sleep, too */
 	ConditionVariableCancelSleep();
 
-	if (MyProc->lockGroupLeader != NULL)
-		YbRemoveLockGroupLeader(MyProc);
-
 	/*
-	 * Reset MyLatch to the process local one.  This is so that signal
-	 * handlers et al can continue using the latch after the shared latch
-	 * isn't ours anymore.
+	 * Reset MyLatch to the process local one and disown the shared latch, so
+	 * that signal handlers et al can continue using the latch after the
+	 * shared latch isn't ours anymore.
 	 *
-	 * Similarly, stop reporting wait events to MyProc->wait_event_info.
+	 * DisownLatch() must happen before our PGPROC can appear on a freelist: a
+	 * newly-forked backend that pops our slot and calls OwnLatch() would
+	 * PANIC on a still-owned latch.
 	 *
-	 * After that clear MyProc and disown the shared latch.
+	 * pgstat_reset_wait_event_storage() is intentionally deferred until after
+	 * the lock-group block so that wait_event_info remains visible in our
+	 * PGPROC slot while we may be observed there.  It is safe to defer
+	 * because our slot is not yet on any freelist at this point, and useful
+	 * for testing purposes.
 	 */
 	SwitchBackToLocalLatch();
+	DisownLatch(&MyProc->procLatch);
+
+	proc = MyProc;
+	procgloballist = proc->procgloballist;
+
+	/*
+	 * Detach from any lock group of which we are a member, deciding under
+	 * leader_lwlock whether we (via push_self) and/or the leader (via
+	 * push_leader) need to be pushed onto a freelist.  The actual pushes
+	 * happen after evaluating if any of these are required, under a single
+	 * ProcGlobal->freeProcsLock.
+	 *
+	 * The decision whether any of the freelists needs to be updated is taken
+	 * under a single leader_lwlock.
+	 */
+	push_leader = false;
+	push_self = true;
+	leader = NULL;
+
+	if (proc->lockGroupLeader != NULL)
+	{
+		LWLock	   *leader_lwlock;
+
+		leader = proc->lockGroupLeader;
+		leader_lwlock = LockHashPartitionLockByProc(leader);
+
+		LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);
+		Assert(!dlist_is_empty(&leader->lockGroupMembers));
+		dlist_delete(&proc->lockGroupLink);
+		if (dlist_is_empty(&leader->lockGroupMembers))
+		{
+			leader->lockGroupLeader = NULL;
+			if (leader != proc)
+			{
+				/*
+				 * We are the last follower and the leader exited earlier; its
+				 * PGPROC is still allocated and must be pushed here.
+				 */
+				push_leader = true;
+				proc->lockGroupLeader = NULL;
+			}
+		}
+		else if (leader != proc)
+		{
+			/* Non-last follower; leader still present in the group. */
+			proc->lockGroupLeader = NULL;
+		}
+		else
+		{
+			/*
+			 * We are the leader and followers remain.  Skip our own push; the
+			 * last follower to exit will push us back to the freelist.
+			 */
+			push_self = false;
+		}
+		LWLockRelease(leader_lwlock);
+	}
+
+	/* See comment above, close to DisownLatch() */
 	if (YBIsEnabledInPostgresEnvVar())
 		yb_pgstat_reset_wait_event_storage();
 	else
 		pgstat_reset_wait_event_storage();
 
-	proc = MyProc;
 	MyProc = NULL;
 	YbSwitchBackToLocalProcState();
 	MyProcNumber = INVALID_PROC_NUMBER;
-	DisownLatch(&proc->procLatch);
 
 	/* Mark the proc no longer in use */
 	proc->pid = 0;
@@ -1045,41 +1101,26 @@ ProcKill(int code, Datum arg)
 	if (IsYugaByteEnabled())
 		YBOnPostgresBackendShutdown();
 
-	YbReleaseProcToFreeList(proc);
-}
-
-/*
- * Detach from any lock group of which we are a member.  If the leader
- * exits before all other group members, its PGPROC will remain allocated
- * until the last group process exits; that process must return the
- * leader's PGPROC to the appropriate list.
- */
-void
-YbRemoveLockGroupLeader(PGPROC *proc)
-{
-	dlist_head *procgloballist;
-	PGPROC	   *leader = proc->lockGroupLeader;
-	LWLock	   *leader_lwlock = LockHashPartitionLockByProc(leader);
-
-	LWLockAcquire(leader_lwlock, LW_EXCLUSIVE);
-	Assert(!dlist_is_empty(&leader->lockGroupMembers));
-	dlist_delete(&proc->lockGroupLink);
-	if (dlist_is_empty(&leader->lockGroupMembers))
+	SpinLockAcquire(&ProcGlobal->freeProcsLock);
+	if (push_leader)
 	{
-		leader->lockGroupLeader = NULL;
-		if (leader != proc)
-		{
-			procgloballist = leader->procgloballist;
-
-			/* Leader exited first; return its PGPROC. */
-			SpinLockAcquire(&ProcGlobal->freeProcsLock);
-			dlist_push_head(procgloballist, &leader->freeProcsLink);
-			SpinLockRelease(&ProcGlobal->freeProcsLock);
-		}
+		/* Return leader PGPROC (and semaphore) to appropriate freelist */
+		dlist_push_head(leader->procgloballist, &leader->freeProcsLink);
 	}
-	else if (leader != proc)
-		proc->lockGroupLeader = NULL;
-	LWLockRelease(leader_lwlock);
+	if (push_self)
+	{
+		Assert(proc->lockGroupLeader == NULL);
+		/* Since lockGroupLeader is NULL, lockGroupMembers should be empty. */
+		Assert(dlist_is_empty(&proc->lockGroupMembers));
+
+		/* Return PGPROC structure (and semaphore) to appropriate freelist */
+		dlist_push_tail(procgloballist, &proc->freeProcsLink);
+	}
+
+	/* Update shared estimate of spins_per_delay */
+	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
+
+	SpinLockRelease(&ProcGlobal->freeProcsLock);
 }
 
 void
@@ -1648,12 +1689,13 @@ ProcSleep(LOCALLOCK *locallock)
 			TimestampDifference(get_timeout_start_time(DEADLOCK_TIMEOUT),
 								GetCurrentTimestamp(),
 								&secs, &usecs);
-			msecs = secs * 1000 + usecs / 1000;
-			usecs = usecs % 1000;
-
 			/* Increment the lock statistics counters if done waiting. */
 			if (myWaitStatus == PROC_WAIT_STATUS_OK)
-				pgstat_count_lock_waits(locallock->tag.lock.locktag_type, msecs);
+				pgstat_count_lock_waits(locallock->tag.lock.locktag_type,
+										(PgStat_Counter) secs * 1000000 + usecs);
+
+			msecs = secs * 1000 + usecs / 1000;
+			usecs = usecs % 1000;
 
 			if (log_lock_waits)
 			{
@@ -1764,6 +1806,12 @@ ProcSleep(LOCALLOCK *locallock)
 			deadlock_state = DS_NO_DEADLOCK;
 		}
 	} while (myWaitStatus == PROC_WAIT_STATUS_WAITING);
+
+	/*
+	 * Clear waitStart after the wait, as we may have set it after
+	 * ProcWakeup() cleared it.
+	 */
+	pg_atomic_write_u64(&MyProc->waitStart, 0);
 
 	/*
 	 * Disable the timers, if they are still running.  As in LockErrorCleanup,

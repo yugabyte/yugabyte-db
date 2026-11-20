@@ -216,10 +216,13 @@ COPY gtest1 FROM stdin;
 \.
 
 COPY gtest1 (a, b) FROM stdin;
+\.
 
 COPY gtest1 FROM stdin WHERE b <> 10;
+\.
 
 COPY gtest1 FROM stdin WHERE gtest1 IS NULL;
+\.
 
 SELECT * FROM gtest1 ORDER BY a;
 
@@ -236,8 +239,12 @@ COPY gtest3 FROM stdin;
 \.
 
 COPY gtest3 (a, b) FROM stdin;
+\.
 
 SELECT * FROM gtest3 ORDER BY a;
+
+-- COPY JSON should exclude generated columns, same as text/CSV
+COPY gtest1 TO stdout WITH (FORMAT json);
 
 -- null values
 CREATE TABLE gtest2 (a int PRIMARY KEY, b int GENERATED ALWAYS AS (NULL) VIRTUAL);
@@ -344,6 +351,16 @@ CREATE TABLE gtest20c (a int, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
 ALTER TABLE gtest20c ADD CONSTRAINT whole_row_check CHECK (gtest20c IS NOT NULL);
 INSERT INTO gtest20c VALUES (1);  -- ok
 INSERT INTO gtest20c VALUES (NULL);  -- fails
+ALTER TABLE gtest20c ALTER COLUMN b SET EXPRESSION AS (NULL::int);  -- violates constraint
+
+-- index with whole-row reference needs rebuild
+CREATE TABLE gtest20d (a int, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
+INSERT INTO gtest20d VALUES (1), (1);
+CREATE INDEX gtest20d_idx1 ON gtest20d (a) WHERE gtest20d = ROW (1, 2);
+
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 2::bigint);  -- index rebuild
+CREATE INDEX gtest20d_idx2 ON gtest20d ((gtest20d = ROW (1, 2)));
+ALTER TABLE gtest20d ALTER COLUMN b SET EXPRESSION AS (a * 3);  -- index rebuild
 
 -- not-null constraints
 CREATE TABLE gtest21a (a int PRIMARY KEY, b int GENERATED ALWAYS AS (nullif(a, 0)) VIRTUAL NOT NULL);
@@ -370,6 +387,27 @@ INSERT INTO gtest21b (a) VALUES (2), (0);  -- violates constraint
 INSERT INTO gtest21b (a) VALUES (NULL);  -- error
 ALTER TABLE gtest21b ALTER COLUMN b DROP NOT NULL;
 INSERT INTO gtest21b (a) VALUES (0);  -- ok now
+
+-- virtual generated columns are not physically stored, even when not null
+CREATE TABLE gtest21c (a int NOT NULL, b int GENERATED ALWAYS AS (a * 2) VIRTUAL NOT NULL, c int NOT NULL);
+INSERT INTO gtest21c (a, c) VALUES (10, 42);
+SELECT a, b, c FROM gtest21c;
+DROP TABLE gtest21c;
+
+-- try adding a virtual generated column to an existing table with tuples,
+-- then try adding an atthasmissing column before adding a normal nullable
+-- column.
+CREATE TABLE gtest21d (a int NOT NULL);
+INSERT INTO gtest21d (a) VALUES(10);
+ALTER TABLE gtest21d ADD COLUMN b INT GENERATED ALWAYS AS (a * 10) VIRTUAL NOT NULL;
+SELECT * FROM gtest21d ORDER BY a;
+INSERT INTO gtest21d (a) VALUES(20);
+ALTER TABLE gtest21d ADD COLUMN c INT NOT NULL DEFAULT 1234;
+SELECT * FROM gtest21d ORDER BY a;
+ALTER TABLE gtest21d ADD COLUMN d INT;
+INSERT INTO gtest21d (a, c, d) VALUES(30, 12345, 100);
+SELECT * FROM gtest21d ORDER BY a;
+DROP TABLE gtest21d;
 
 -- not-null constraint with partitioned table
 CREATE TABLE gtestnn_parent (
@@ -683,6 +721,13 @@ CREATE TABLE gtest31_2 (x int, y gtest31_1);
 ALTER TABLE gtest31_1 ALTER COLUMN b TYPE varchar;  -- fails
 DROP TABLE gtest31_1, gtest31_2;
 
+-- Check if the rowtype is used in PARTITION BY expression of another table.
+CREATE TABLE gtest31_1 (a int GENERATED ALWAYS AS (123) VIRTUAL);
+CREATE TABLE gtest31_2 (b text) PARTITION BY RANGE ((('(1)'::gtest31_1).a + length(b)));
+ALTER TABLE gtest31_1 ALTER COLUMN a TYPE bigint;
+ALTER TABLE gtest31_1 ALTER COLUMN a SET EXPRESSION AS (124);
+DROP TABLE gtest31_1, gtest31_2;
+
 -- triggers
 CREATE TABLE gtest26 (
     a int PRIMARY KEY,
@@ -811,6 +856,29 @@ CREATE TABLE gtest28b (LIKE gtest28a INCLUDING GENERATED);
 
 \d gtest28*
 
+-- rule actions referring to generated columns:
+-- NEW.b in a rule action should reflect the generated column's new value
+CREATE TABLE gtest_rule (a int, b int GENERATED ALWAYS AS (a * 2) VIRTUAL);
+CREATE TABLE gtest_rule_log (op text, old_b int, new_b int);
+CREATE RULE gtest_rule_upd AS ON UPDATE TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('UPD', OLD.b, NEW.b);
+CREATE RULE gtest_rule_ins AS ON INSERT TO gtest_rule
+  DO ALSO INSERT INTO gtest_rule_log VALUES ('INS', NULL, NEW.b);
+INSERT INTO gtest_rule (a) VALUES (1);
+UPDATE gtest_rule SET a = 10;
+UPDATE gtest_rule SET a = (SELECT max(b) FROM gtest_rule);
+SELECT * FROM gtest_rule_log;
+DROP RULE gtest_rule_upd ON gtest_rule;
+DROP RULE gtest_rule_ins ON gtest_rule;
+DROP TABLE gtest_rule_log;
+
+-- rule quals referring to generated columns:
+-- NEW.b in the rule qual should reflect the generated column's new value
+CREATE RULE gtest_rule_qual AS ON UPDATE TO gtest_rule WHERE NEW.b > 100
+  DO INSTEAD NOTHING;
+UPDATE gtest_rule SET a = 100;
+SELECT * FROM gtest_rule;
+DROP TABLE gtest_rule;
 
 -- sanity check of system catalog
 SELECT attrelid, attname, attgenerated FROM pg_attribute WHERE attgenerated NOT IN ('', 's', 'v');
@@ -903,3 +971,53 @@ select * from gtest33 where b is null;
 
 reset constraint_exclusion;
 drop table gtest33;
+
+-- Ensure that EXCLUDED.<virtual-generated-column> in INSERT ... ON CONFLICT
+-- DO UPDATE is expanded to the generation expression, both for plain and
+-- partitioned target relations.
+create table gtest34 (id int primary key, a int,
+                      c int generated always as (a * 10) virtual);
+insert into gtest34 values (1, 5);
+insert into gtest34 values (1, 7)
+    on conflict (id) do update set a = excluded.c returning *;
+insert into gtest34 values (1, 2)
+    on conflict (id) do update set a = gtest34.c + excluded.c returning *;
+insert into gtest34 values (1, 3)
+    on conflict (id) do update set a = 999 where excluded.c > 20 returning *;
+drop table gtest34;
+
+create table gtest34p (id int primary key, a int,
+                       c int generated always as (a * 10) virtual)
+    partition by range (id);
+create table gtest34p_1 partition of gtest34p for values from (1) to (100);
+insert into gtest34p values (1, 5);
+insert into gtest34p values (1, 7)
+    on conflict (id) do update set a = excluded.c returning *;
+insert into gtest34p values (1, 2)
+    on conflict (id) do update set a = gtest34p.c + excluded.c returning *;
+drop table gtest34p;
+
+-- Ensure that virtual generated columns work with WHERE CURRENT OF
+create table gtest_cursor (id int primary key, a int, b int generated always as (a * 2) virtual);
+insert into gtest_cursor values (1, 10), (2, 20), (3, 30);
+
+begin;
+declare curs cursor for select * from gtest_cursor order by id for update;
+fetch 1 from curs;
+update gtest_cursor set a = 99 where current of curs;
+select * from gtest_cursor order by id;
+delete from gtest_cursor where current of curs;
+select * from gtest_cursor order by id;
+commit;
+
+drop table gtest_cursor;
+
+-- NOT NULL on a partitioned table's virtual column does not prove non-nullness,
+-- because a partition can have a different generation expression
+CREATE TABLE gtestnn_parent2 (a int NOT NULL, b int GENERATED ALWAYS AS (nullif(a, 0)) VIRTUAL NOT NULL) PARTITION BY LIST (a);
+CREATE TABLE gtestnn_child2 PARTITION OF gtestnn_parent2 (b GENERATED ALWAYS AS (a + 1) VIRTUAL) FOR VALUES IN (0);
+INSERT INTO gtestnn_parent2 VALUES (0);
+EXPLAIN (COSTS OFF)
+SELECT a FROM gtestnn_parent2 WHERE a NOT IN (SELECT b FROM gtestnn_parent2);
+SELECT a FROM gtestnn_parent2 WHERE a NOT IN (SELECT b FROM gtestnn_parent2);
+DROP TABLE gtestnn_parent2;

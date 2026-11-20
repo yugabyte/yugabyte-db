@@ -85,7 +85,7 @@ static void pgsa_write_to_disk(void);
 /*
  * Background worker entry point for pg_stash_advice persistence.
  *
- * On startup, if load_from_disk_pending is set, we load previously saved
+ * On startup, if stashes_ready is set, we load previously saved
  * stash data from disk.  Then we enter a loop, periodically checking whether
  * any changes have been made (via the change_count atomic counter) and
  * writing them to disk.  On shutdown, we perform a final write.
@@ -139,16 +139,23 @@ pg_stash_advice_worker_main(Datum main_arg)
 	/*
 	 * If pg_stash_advice.persist was set to true during
 	 * process_shared_preload_libraries() and the data has not yet been
-	 * successfully loaded, load it now.
+	 * successfully loaded, load it now. At that point, what's in memory
+	 * matches what's on disk, so note the current change count before
+	 * allowing any further changes.
+	 *
+	 * Otherwise, we can't assume that what's in memory has been saved: a
+	 * previous worker may have died while trying to write the file. Since
+	 * change_count starts at zero, comparing against zero makes us write at
+	 * the first opportunity unless nothing has ever been changed.
 	 */
 	if (pg_atomic_unlocked_test_flag(&pgsa_state->stashes_ready))
 	{
 		pgsa_read_from_disk();
+		last_change_count = pg_atomic_read_u64(&pgsa_state->change_count);
 		pg_atomic_test_set_flag(&pgsa_state->stashes_ready);
 	}
-
-	/* Note the current change count so we can detect future changes. */
-	last_change_count = pg_atomic_read_u64(&pgsa_state->change_count);
+	else
+		last_change_count = 0;
 
 	/* Periodically write to disk until terminated. */
 	while (!ShutdownRequestPending)
@@ -368,10 +375,17 @@ pgsa_read_from_disk(void)
 								PGSA_DUMP_FILE, lineno)));
 
 			/* No further fields are expected. */
-			if (*cursor != '\0')
+			if (cursor != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg("syntax error in file \"%s\" line %u: expected end of line",
+								PGSA_DUMP_FILE, lineno)));
+
+			/* Reject overlong stash names. */
+			if (strlen(name) >= NAMEDATALEN)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg("syntax error in file \"%s\" line %u: stash name too long",
 								PGSA_DUMP_FILE, lineno)));
 
 			/* Duplicate check. */
@@ -416,7 +430,7 @@ pgsa_read_from_disk(void)
 								PGSA_DUMP_FILE, lineno)));
 
 			/* No further fields are expected. */
-			if (*cursor != '\0')
+			if (cursor != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg("syntax error in file \"%s\" line %u: expected end of line",
@@ -432,7 +446,7 @@ pgsa_read_from_disk(void)
 
 			/* Parse the query ID. */
 			errno = 0;
-			queryId = strtoll(queryid_str, &endptr, 10);
+			queryId = strtoi64(queryid_str, &endptr, 10);
 			if (*endptr != '\0' || errno != 0 || queryid_str == endptr ||
 				queryId == 0)
 				ereport(ERROR,
@@ -597,25 +611,34 @@ pgsa_append_tsv_escaped_string(StringInfo buf, const char *str)
 /*
  * Extract the next tab-delimited field from *cursor.
  *
- * The tab delimiter is replaced with '\0' and *cursor is advanced past it.
- * If *cursor already points to '\0' (no more fields), returns NULL.
+ * Returns a pointer to the field data; when there are no remaining fields,
+ * returns NULL. For fields other than the last, the tab that terminates the
+ * field is replaced by \0, so that the caller can always interpret the return
+ * value as a C string.
+ *
+ * When this function is first called for a given line of text, *cursor should
+ * point to the beginning of the line. On return, *cursor will have been
+ * advanced past the tab that terminates the current field, or set to NULL if
+ * we just returned the last field.
  */
 static char *
 pgsa_next_tsv_field(char **cursor)
 {
 	char	   *start = *cursor;
-	char	   *p = start;
+	char	   *p;
 
-	if (*p == '\0')
+	if (start == NULL)
 		return NULL;
 
-	while (*p != '\0' && *p != '\t')
-		p++;
+	p = strchr(start, '\t');
+	if (p != NULL)
+	{
+		*p = '\0';
+		*cursor = p + 1;
+	}
+	else
+		*cursor = NULL;
 
-	if (*p == '\t')
-		*p++ = '\0';
-
-	*cursor = p;
 	return start;
 }
 

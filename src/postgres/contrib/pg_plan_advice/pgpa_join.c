@@ -93,7 +93,7 @@ pgpa_create_join_unroller(void)
  *
  * pgpa_plan_walker creates a "top level" join unroller object when it
  * encounters a join in a portion of the plan tree in which no join unroller
- * is already active. From there, this function is responsible for determing
+ * is already active. From there, this function is responsible for determining
  * to what portion of the plan tree that join unroller applies, and for
  * creating any subordinate join unroller objects that are needed as a result
  * of non-outer-deep join trees. We do this by returning the join unroller
@@ -251,7 +251,7 @@ pgpa_build_unrolled_join(pgpa_plan_walker_context *walker,
 	ujoin->outer.scan =
 		pgpa_build_scan(walker, ujoin->outer.plan,
 						ujoin->outer.elided_node,
-						join_unroller->outer_beneath_any_gather,
+						!join_unroller->outer_beneath_any_gather,
 						true);
 
 	/*
@@ -281,7 +281,7 @@ pgpa_build_unrolled_join(pgpa_plan_walker_context *walker,
 			ujoin->inner[i].scan =
 				pgpa_build_scan(walker, ujoin->inner[i].plan,
 								ujoin->inner[i].elided_node,
-								join_unroller->inner_beneath_any_gather[k],
+								!join_unroller->inner_beneath_any_gather[k],
 								true);
 	}
 
@@ -363,9 +363,11 @@ pgpa_decompose_join(pgpa_plan_walker_context *walker, Plan *plan,
 			/*
 			 * The planner may have chosen to place a Material node on the
 			 * inner side of the MergeJoin; if this is present, we record it
-			 * as part of the join strategy.
+			 * as part of the join strategy. (However, scan-level Materialize
+			 * nodes are an exception.)
 			 */
-			if (elidedinner == NULL && IsA(innerplan, Material))
+			if (elidedinner == NULL && IsA(innerplan, Material) &&
+				!pgpa_is_scan_level_materialize(innerplan))
 			{
 				elidedinner = pgpa_descend_node(pstmt, &innerplan);
 				strategy = JSTRAT_MERGE_JOIN_MATERIALIZE;
@@ -390,9 +392,11 @@ pgpa_decompose_join(pgpa_plan_walker_context *walker, Plan *plan,
 			/*
 			 * The planner may have chosen to place a Material or Memoize node
 			 * on the inner side of the NestLoop; if this is present, we
-			 * record it as part of the join strategy.
+			 * record it as part of the join strategy. (However, scan-level
+			 * Materialize nodes are an exception.)
 			 */
-			if (elidedinner == NULL && IsA(innerplan, Material))
+			if (elidedinner == NULL && IsA(innerplan, Material) &&
+				!pgpa_is_scan_level_materialize(innerplan))
 			{
 				elidedinner = pgpa_descend_node(pstmt, &innerplan);
 				strategy = JSTRAT_NESTED_LOOP_MATERIALIZE;

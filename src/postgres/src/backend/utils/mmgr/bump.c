@@ -120,15 +120,15 @@ static inline void BumpBlockFree(BumpContext *set, BumpBlock *block);
 
 
 /*
-* BumpContextCreate
-*		Create a new Bump context.
-*
-* parent: parent context, or NULL if top-level context
-* name: name of context (must be statically allocated)
-* minContextSize: minimum context size
-* initBlockSize: initial allocation block size
-* maxBlockSize: maximum allocation block size
-*/
+ * BumpContextCreate
+ *		Create a new Bump context.
+ *
+ * parent: parent context, or NULL if top-level context
+ * name: name of context (must be statically allocated)
+ * minContextSize: minimum context size
+ * initBlockSize: initial allocation block size
+ * maxBlockSize: maximum allocation block size
+ */
 MemoryContext
 BumpContextCreate(MemoryContext parent, const char *name, Size minContextSize,
 				  Size initBlockSize, Size maxBlockSize)
@@ -833,6 +833,10 @@ BumpCheck(MemoryContext context)
 			/* chunks have both block and context pointers, so check both */
 			if (chunkblock != block)
 				elog(WARNING, "problem in Bump %s: bogus block link in block %p, chunk %p",
+					 name, block, chunk);
+
+			if (!sentinel_ok(MemoryChunkGetPointer(chunk), chunk->requested_size))
+				elog(WARNING, "problem in Bump %s: detected write past chunk end in block %p, chunk %p",
 					 name, block, chunk);
 		}
 

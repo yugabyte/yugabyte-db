@@ -3,7 +3,11 @@
 PGFILEDESC = "pg_upgrade - an in-place binary upgrade utility"
 PGAPPICON = win32
 
-EXTRA_INSTALL=contrib/test_decoding src/test/modules/dummy_seclabel src/test/modules/test_extensions
+EXTRA_INSTALL=contrib/dblink \
+	contrib/postgres_fdw \
+	contrib/test_decoding \
+	src/test/modules/dummy_seclabel \
+	src/test/modules/test_extensions
 
 subdir = src/bin/pg_upgrade
 top_builddir = ../../..
@@ -34,7 +38,7 @@ OBJS = \
 override CPPFLAGS := -I$(srcdir) -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
-# required for 002_pg_upgrade.pl
+# required for 002_pg_upgrade.pl and 009_composite_types.pl
 REGRESS_SHLIB=$(abs_top_builddir)/src/test/regress/regress$(DLSUFFIX)
 export REGRESS_SHLIB
 

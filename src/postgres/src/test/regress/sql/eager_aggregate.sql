@@ -177,6 +177,62 @@ SELECT t1.a, avg(t2.c) FILTER (WHERE random() > 0.5)
   JOIN eager_agg_t2 t2 ON t1.b = t2.b
 GROUP BY t1.a ORDER BY t1.a;
 
+-- Ensure eager aggregation is not applied below a volatile join clause
+EXPLAIN (COSTS OFF)
+SELECT t1.a, avg(t2.c)
+  FROM eager_agg_t1 t1
+  JOIN eager_agg_t2 t2 ON t1.b = t2.b AND t1.c > t2.b * random()
+GROUP BY t1.a ORDER BY t1.a;
+
+-- Eager aggregation must not push a partial aggregate onto the inner side of a
+-- SEMI or ANTI join
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t2.b, count(*)
+  FROM eager_agg_t2 t2
+  WHERE NOT EXISTS (SELECT 1 FROM eager_agg_t3 t3 WHERE t3.a = t2.a)
+GROUP BY t2.b ORDER BY t2.b;
+
+SELECT t2.b, count(*)
+  FROM eager_agg_t2 t2
+  WHERE NOT EXISTS (SELECT 1 FROM eager_agg_t3 t3 WHERE t3.a = t2.a)
+GROUP BY t2.b ORDER BY t2.b;
+
+-- Eager aggregation may still push a partial aggregate onto the outer side of
+-- a SEMI or ANTI join
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t2.b, count(*)
+  FROM eager_agg_t2 t2
+  WHERE EXISTS (SELECT 1 FROM eager_agg_t1 t1 WHERE t1.b = t2.b)
+GROUP BY t2.b ORDER BY t2.b;
+
+SELECT t2.b, count(*)
+  FROM eager_agg_t2 t2
+  WHERE EXISTS (SELECT 1 FROM eager_agg_t1 t1 WHERE t1.b = t2.b)
+GROUP BY t2.b ORDER BY t2.b;
+
+-- Ensure a join key of a different type than the grouping key is not grouped
+-- using the grouping key's operators
+CREATE TABLE eager_agg_s1 (a int2);
+CREATE TABLE eager_agg_s2 (b int4, c double precision);
+INSERT INTO eager_agg_s1 VALUES (5);
+INSERT INTO eager_agg_s2 SELECT 5, 1 FROM generate_series(1, 100);
+INSERT INTO eager_agg_s2 SELECT 65541, 1 FROM generate_series(1, 100);
+ANALYZE eager_agg_s1, eager_agg_s2;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT s1.a, sum(s2.c)
+  FROM eager_agg_s1 s1
+  JOIN eager_agg_s2 s2 ON s1.a = s2.b
+GROUP BY s1.a;
+
+SELECT s1.a, sum(s2.c)
+  FROM eager_agg_s1 s1
+  JOIN eager_agg_s2 s2 ON s1.a = s2.b
+GROUP BY s1.a;
+
+DROP TABLE eager_agg_s1;
+DROP TABLE eager_agg_s2;
+
 DROP TABLE eager_agg_t1;
 DROP TABLE eager_agg_t2;
 DROP TABLE eager_agg_t3;
@@ -274,6 +330,33 @@ SELECT t3.y, sum(t2.y + t3.y)
   JOIN eager_agg_tab1 t2 ON t1.x = t2.x
   JOIN eager_agg_tab1 t3 ON t2.x = t3.x
 GROUP BY t3.y ORDER BY t3.y;
+
+-- partial aggregation with an extra grouping key needed by a non-equality
+-- join clause
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.x, sum(t1.y)
+  FROM eager_agg_tab1 t1
+  JOIN eager_agg_tab1 t2 ON t1.x = t2.x AND t1.y < t2.y
+GROUP BY t1.x ORDER BY t1.x;
+
+SELECT t1.x, sum(t1.y)
+  FROM eager_agg_tab1 t1
+  JOIN eager_agg_tab1 t2 ON t1.x = t2.x AND t1.y < t2.y
+GROUP BY t1.x ORDER BY t1.x;
+
+-- same, with the extra grouping key nullable by an outer join below
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t1.x, sum(t2.y)
+  FROM eager_agg_tab1 t1
+  LEFT JOIN eager_agg_tab1 t2 ON t1.x = t2.x AND t1.y = t2.y
+  JOIN eager_agg_tab1 t3 ON t1.x = t3.x AND COALESCE(t2.y, 0) < t3.y
+GROUP BY t1.x ORDER BY t1.x;
+
+SELECT t1.x, sum(t2.y)
+  FROM eager_agg_tab1 t1
+  LEFT JOIN eager_agg_tab1 t2 ON t1.x = t2.x AND t1.y = t2.y
+  JOIN eager_agg_tab1 t3 ON t1.x = t3.x AND COALESCE(t2.y, 0) < t3.y
+GROUP BY t1.x ORDER BY t1.x;
 
 RESET enable_hashagg;
 RESET max_parallel_workers_per_gather;

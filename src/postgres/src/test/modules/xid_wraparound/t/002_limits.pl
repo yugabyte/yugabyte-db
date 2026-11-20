@@ -70,7 +70,8 @@ $node->safe_psql('postgres',
 # the warning:
 #
 #  WARNING:  database "postgres" must be vacuumed within 3000024 transactions
-#  HINT:  To avoid a database shutdown, execute a database-wide VACUUM in that database.
+#  DETAIL:  Approximately 0.14% of transaction ID space remains before wraparound.
+#  HINT:  To avoid transaction ID assignment failures, execute a database-wide VACUUM in that database.
 #  You might also need to commit or roll back old prepared transactions, or drop stale replication slots.
 my $stderr;
 my $warn_limit = 0;
@@ -125,14 +126,19 @@ $ret =
 	qq[INSERT INTO wraparoundtest VALUES ('after VACUUM')],
 	'INSERT 0 1');
 
-# Check the table contents
+# Check the table contents.  It's possible for more than one "after VACUUM"
+# entry to appear, because there is a window where the preceding INSERT will
+# succeed but also produce a warning message about impending wraparound.
+# poll_query_until won't accept that as a successful result, so it iterates
+# an additional time or times until the INSERT succeeds cleanly.
 $ret = $node->safe_psql('postgres', qq[SELECT * from wraparoundtest]);
-is( $ret, "start
+like(
+	$ret, qr/^start
 oldxact
 after 1 billion
 after 2 billion
-reached warn-limit
-after VACUUM");
+reached warn-limit(
+after VACUUM)+$/);
 
 $node->stop;
 done_testing();

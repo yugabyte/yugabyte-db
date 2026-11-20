@@ -25,6 +25,7 @@
 
 #include "commands/defrem.h"
 #include "common/hashfn_unstable.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/extendplan.h"
 #include "optimizer/pathnode.h"
@@ -86,8 +87,15 @@ typedef struct pgpa_join_state
 	Bitmapset  *rel_indexes;
 } pgpa_join_state;
 
+typedef struct pgpa_baserel_state
+{
+	/* Force partial paths to be discarded? */
+	bool		discard_partial_paths;
+} pgpa_baserel_state;
+
 /* Saved hook values */
 static build_simple_rel_hook_type prev_build_simple_rel = NULL;
+static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 static join_path_setup_hook_type prev_join_path_setup = NULL;
 static joinrel_setup_hook_type prev_joinrel_setup = NULL;
 static planner_setup_hook_type prev_planner_setup = NULL;
@@ -107,6 +115,10 @@ static void pgpa_planner_shutdown(PlannerGlobal *glob, Query *parse,
 								  const char *query_string, PlannedStmt *pstmt);
 static void pgpa_build_simple_rel(PlannerInfo *root,
 								  RelOptInfo *rel,
+								  RangeTblEntry *rte);
+static void pgpa_set_rel_pathlist(PlannerInfo *root,
+								  RelOptInfo *rel,
+								  Index rti,
 								  RangeTblEntry *rte);
 static void pgpa_joinrel_setup(PlannerInfo *root,
 							   RelOptInfo *joinrel,
@@ -132,6 +144,7 @@ static void pgpa_planner_apply_join_path_advice(JoinType jointype,
 												char *plan_name,
 												pgpa_join_state *pjs);
 static void pgpa_planner_apply_scan_advice(RelOptInfo *rel,
+										   RangeTblEntry *rte,
 										   pgpa_trove_entry *scan_entries,
 										   Bitmapset *scan_indexes,
 										   pgpa_trove_entry *rel_entries,
@@ -159,7 +172,6 @@ static List *pgpa_planner_append_feedback(List *list, pgpa_trove *trove,
 										  pgpa_trove_lookup_type type,
 										  pgpa_identifier *rt_identifiers,
 										  pgpa_plan_walker_context *walker);
-static void pgpa_planner_feedback_warning(List *feedback);
 
 static pgpa_planner_info *pgpa_planner_get_proot(pgpa_planner_state *pps,
 												 PlannerInfo *root);
@@ -188,6 +200,8 @@ pgpa_planner_install_hooks(void)
 	planner_shutdown_hook = pgpa_planner_shutdown;
 	prev_build_simple_rel = build_simple_rel_hook;
 	build_simple_rel_hook = pgpa_build_simple_rel;
+	prev_set_rel_pathlist = set_rel_pathlist_hook;
+	set_rel_pathlist_hook = pgpa_set_rel_pathlist;
 	prev_joinrel_setup = joinrel_setup_hook;
 	joinrel_setup_hook = pgpa_joinrel_setup;
 	prev_join_path_setup = join_path_setup_hook;
@@ -440,6 +454,7 @@ pgpa_build_simple_rel(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			uint64		original_mask = rel->pgs_mask;
 
 			pgpa_planner_apply_scan_advice(rel,
+										   rte,
 										   tresult_scan.entries,
 										   tresult_scan.indexes,
 										   tresult_rel.entries,
@@ -465,6 +480,28 @@ pgpa_build_simple_rel(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Pass call to previous hook. */
 	if (prev_build_simple_rel)
 		(*prev_build_simple_rel) (root, rel, rte);
+}
+
+/*
+ * Hook function for set_rel_pathlist().
+ */
+static void
+pgpa_set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti,
+					  RangeTblEntry *rte)
+{
+	pgpa_baserel_state *pbs;
+
+	if (prev_set_rel_pathlist)
+		(*prev_set_rel_pathlist) (root, rel, rti, rte);
+
+	/*
+	 * Discard any partial paths, if we were asked to do so. We do this after
+	 * calling any previous hook, so that we can discard whatever paths it may
+	 * have added in addition to whatever came from the core code.
+	 */
+	pbs = GetRelOptInfoExtensionState(rel, planner_extension_id);
+	if (pbs != NULL && pbs->discard_partial_paths)
+		rel->partial_pathlist = NIL;
 }
 
 /*
@@ -550,6 +587,7 @@ pgpa_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 		{
 			pgpa_planner_info *proot;
 			MemoryContext oldcontext;
+			Bitmapset  *relids;
 
 			/*
 			 * Get or create a pgpa_planner_info object, and then add the
@@ -559,12 +597,20 @@ pgpa_join_path_setup(PlannerInfo *root, RelOptInfo *joinrel,
 			 * context, since we might have been called by GEQO. We want all
 			 * the data we store here (including the proot, if we create it)
 			 * to last for as long as the pgpa_planner_state.
+			 *
+			 * pgpa_filter_out_join_relids copies the input Bitmapset whether
+			 * or not it is changed, so 'relids' is part of the long-lived
+			 * context.
 			 */
 			oldcontext = MemoryContextSwitchTo(pps->mcxt);
 			proot = pgpa_planner_get_proot(pps, root);
-			if (!list_member(proot->sj_unique_rels, uniquerel->relids))
+			relids = pgpa_filter_out_join_relids(uniquerel->relids,
+												 root->parse->rtable);
+			if (!list_member(proot->sj_unique_rels, relids))
 				proot->sj_unique_rels = lappend(proot->sj_unique_rels,
-												bms_copy(uniquerel->relids));
+												relids);
+			else
+				bms_free(relids);
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
@@ -779,6 +825,23 @@ pgpa_planner_apply_joinrel_advice(uint64 *pgs_mask_p, char *plan_name,
 												entry->target);
 			Assert(itm != PGPA_ITM_DISJOINT);
 
+			/*
+			 * If this entry has previously been marked inapplicable, don't
+			 * enforce it. However, if appropriate, we still mark it fully
+			 * matched.
+			 */
+			if ((entry->flags & PGPA_FB_INAPPLICABLE) != 0)
+			{
+				if (itm == PGPA_ITM_EQUAL)
+					entry->flags |= PGPA_FB_MATCH_FULL;
+				continue;
+			}
+
+			/*
+			 * Otherwise, if the specified targets exactly match this joinrel,
+			 * arrange to enforce it here; see comments below for details on
+			 * what we do when there is not an exact match.
+			 */
 			if (itm == PGPA_ITM_EQUAL)
 			{
 				full_match = true;
@@ -876,19 +939,19 @@ pgpa_planner_apply_joinrel_advice(uint64 *pgs_mask_p, char *plan_name,
 	 * the set of targets exactly matched this relation, fully matched. If
 	 * there was a conflict, mark them all as conflicting.
 	 */
-	flags = PGPA_TE_MATCH_PARTIAL;
+	flags = PGPA_FB_MATCH_PARTIAL;
 	if (gather_conflict)
-		flags |= PGPA_TE_CONFLICTING;
+		flags |= PGPA_FB_CONFLICTING;
 	pgpa_trove_set_flags(pjs->rel_entries, gather_partial_match, flags);
-	flags |= PGPA_TE_MATCH_FULL;
+	flags |= PGPA_FB_MATCH_FULL;
 	pgpa_trove_set_flags(pjs->rel_entries, gather_full_match, flags);
 
 	/* Likewise for partitionwise advice. */
-	flags = PGPA_TE_MATCH_PARTIAL;
+	flags = PGPA_FB_MATCH_PARTIAL;
 	if (partitionwise_conflict)
-		flags |= PGPA_TE_CONFLICTING;
+		flags |= PGPA_FB_CONFLICTING;
 	pgpa_trove_set_flags(pjs->rel_entries, partitionwise_partial_match, flags);
-	flags |= PGPA_TE_MATCH_FULL;
+	flags |= PGPA_FB_MATCH_FULL;
 	pgpa_trove_set_flags(pjs->rel_entries, partitionwise_full_match, flags);
 
 	/*
@@ -968,7 +1031,14 @@ pgpa_planner_apply_join_path_advice(JoinType jointype, uint64 *pgs_mask_p,
 		pgpa_itm_type inner_itm;
 		pgpa_itm_type outer_itm;
 
-		if (entry->tag != PGPA_TAG_PARTITIONWISE)
+		/*
+		 * This loop only considers PARTITIONWISE advice, and disregards any
+		 * that has previously been marked inapplicable. Note that any
+		 * inapplicable advice will already be marked fully matched by this
+		 * point, so we don't need to worry about that here.
+		 */
+		if (entry->tag != PGPA_TAG_PARTITIONWISE ||
+			(entry->flags & PGPA_FB_INAPPLICABLE) != 0)
 			continue;
 
 		outer_itm = pgpa_identifiers_match_target(pjs->outer_count,
@@ -1082,7 +1152,7 @@ pgpa_planner_apply_join_path_advice(JoinType jointype, uint64 *pgs_mask_p,
 					 * This doesn't seem to be a semijoin to which SJ_UNIQUE
 					 * or SJ_NON_UNIQUE can be applied.
 					 */
-					entry->flags |= PGPA_TE_INAPPLICABLE;
+					entry->flags |= PGPA_FB_INAPPLICABLE;
 				}
 				else if (advice_unique != jt_unique)
 					sj_deny_indexes = bms_add_member(sj_deny_indexes, i);
@@ -1102,11 +1172,11 @@ pgpa_planner_apply_join_path_advice(JoinType jointype, uint64 *pgs_mask_p,
 		(jo_deny_indexes != NULL || jo_deny_rel_indexes != NULL))
 	{
 		pgpa_trove_set_flags(pjs->join_entries, jo_permit_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 		pgpa_trove_set_flags(pjs->join_entries, jo_deny_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 		pgpa_trove_set_flags(pjs->rel_entries, jo_deny_rel_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 	}
 
 	/*
@@ -1115,15 +1185,15 @@ pgpa_planner_apply_join_path_advice(JoinType jointype, uint64 *pgs_mask_p,
 	 */
 	if (jm_conflict)
 		pgpa_trove_set_flags(pjs->join_entries, jm_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 
 	/* If semijoin advice says both yes and no, mark it all as conflicting. */
 	if (sj_permit_indexes != NULL && sj_deny_indexes != NULL)
 	{
 		pgpa_trove_set_flags(pjs->join_entries, sj_permit_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 		pgpa_trove_set_flags(pjs->join_entries, sj_deny_indexes,
-							 PGPA_TE_CONFLICTING);
+							 PGPA_FB_CONFLICTING);
 	}
 
 	/*
@@ -1200,7 +1270,7 @@ pgpa_join_order_permits_join(int outer_count, int inner_count,
 	pgpa_advice_target *prefix_target;
 
 	/* We definitely have at least a partial match for this trove entry. */
-	entry->flags |= PGPA_TE_MATCH_PARTIAL;
+	entry->flags |= PGPA_FB_MATCH_PARTIAL;
 
 	/*
 	 * Find the innermost sublist that contains all keys; if no sublist does,
@@ -1232,14 +1302,33 @@ pgpa_join_order_permits_join(int outer_count, int inner_count,
 			{
 				if (child_target->ttype == PGPA_TARGET_ORDERED_LIST)
 				{
+					/*
+					 * JOIN_ORDER((...)) is treated as syntactic sugar; the
+					 * extra level of parentheses does not change the
+					 * interpretation. Hence, don't set sublist = true in that
+					 * case.
+					 */
+					if (list_length(target->children) != 1)
+						sublist = true;
 					target = child_target;
-					sublist = true;
 					loop = true;
 					break;
 				}
 				else
 				{
 					Assert(child_target->ttype == PGPA_TARGET_UNORDERED_LIST);
+
+					/*
+					 * If an unordered sublist is the entire advice target,
+					 * for example because the user writes JOIN_ORDER({...})
+					 * or JOIN_ORDER(({...})), and if the join we're
+					 * considering contains exactly the mentioned relations,
+					 * we need to mark this advice as fully matched, because
+					 * that won't happen anywhere else.
+					 */
+					if (itm == PGPA_ITM_EQUAL && !sublist &&
+						list_length(target->children) == 1)
+						entry->flags |= PGPA_FB_MATCH_FULL;
 					return PGPA_JO_INDIFFERENT;
 				}
 			}
@@ -1308,7 +1397,7 @@ pgpa_join_order_permits_join(int outer_count, int inner_count,
 		 * answer is yes.
 		 */
 		if (!sublist && outer_length + 1 == length && itm == PGPA_ITM_EQUAL)
-			entry->flags |= PGPA_TE_MATCH_FULL;
+			entry->flags |= PGPA_FB_MATCH_FULL;
 
 		return (itm == PGPA_ITM_EQUAL) ? PGPA_JO_PERMITTED : PGPA_JO_DENIED;
 	}
@@ -1334,7 +1423,7 @@ pgpa_join_order_permits_join(int outer_count, int inner_count,
 	 * joining t1-t2 to the result would still be rejected.
 	 */
 	if (!sublist)
-		entry->flags |= PGPA_TE_MATCH_FULL;
+		entry->flags |= PGPA_FB_MATCH_FULL;
 	return sublist ? PGPA_JO_DENIED : PGPA_JO_PERMITTED;
 }
 
@@ -1365,7 +1454,7 @@ pgpa_join_method_permits_join(int outer_count, int inner_count,
 	pgpa_itm_type join_itm;
 
 	/* We definitely have at least a partial match for this trove entry. */
-	entry->flags |= PGPA_TE_MATCH_PARTIAL;
+	entry->flags |= PGPA_FB_MATCH_PARTIAL;
 
 	*restrict_method = false;
 
@@ -1382,7 +1471,7 @@ pgpa_join_method_permits_join(int outer_count, int inner_count,
 											  target);
 	if (inner_itm == PGPA_ITM_EQUAL)
 	{
-		entry->flags |= PGPA_TE_MATCH_FULL;
+		entry->flags |= PGPA_FB_MATCH_FULL;
 		*restrict_method = true;
 		return true;
 	}
@@ -1469,7 +1558,7 @@ pgpa_opaque_join_permits_join(int outer_count, int inner_count,
 	pgpa_itm_type join_itm;
 
 	/* We definitely have at least a partial match for this trove entry. */
-	entry->flags |= PGPA_TE_MATCH_PARTIAL;
+	entry->flags |= PGPA_FB_MATCH_PARTIAL;
 
 	*restrict_method = false;
 
@@ -1481,7 +1570,7 @@ pgpa_opaque_join_permits_join(int outer_count, int inner_count,
 		 * We have an exact match, and should therefore allow the join and
 		 * enforce the use of the relevant opaque join method.
 		 */
-		entry->flags |= PGPA_TE_MATCH_FULL;
+		entry->flags |= PGPA_FB_MATCH_FULL;
 		*restrict_method = true;
 		return true;
 	}
@@ -1539,7 +1628,7 @@ pgpa_semijoin_permits_join(int outer_count, int inner_count,
 	*restrict_method = false;
 
 	/* We definitely have at least a partial match for this trove entry. */
-	entry->flags |= PGPA_TE_MATCH_PARTIAL;
+	entry->flags |= PGPA_FB_MATCH_PARTIAL;
 
 	/*
 	 * If outer rel is the nullable side and contains exactly the same
@@ -1555,7 +1644,7 @@ pgpa_semijoin_permits_join(int outer_count, int inner_count,
 											  rids, target);
 	if (outer_itm == PGPA_ITM_EQUAL)
 	{
-		entry->flags |= PGPA_TE_MATCH_FULL;
+		entry->flags |= PGPA_FB_MATCH_FULL;
 		if (outer_is_nullable)
 		{
 			*restrict_method = true;
@@ -1571,7 +1660,7 @@ pgpa_semijoin_permits_join(int outer_count, int inner_count,
 											  target);
 	if (inner_itm == PGPA_ITM_EQUAL)
 	{
-		entry->flags |= PGPA_TE_MATCH_FULL;
+		entry->flags |= PGPA_FB_MATCH_FULL;
 		if (!outer_is_nullable)
 		{
 			*restrict_method = true;
@@ -1616,6 +1705,7 @@ pgpa_semijoin_permits_join(int outer_count, int inner_count,
  */
 static void
 pgpa_planner_apply_scan_advice(RelOptInfo *rel,
+							   RangeTblEntry *rte,
 							   pgpa_trove_entry *scan_entries,
 							   Bitmapset *scan_indexes,
 							   pgpa_trove_entry *rel_entries,
@@ -1624,6 +1714,8 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 	const uint64 all_scan_mask = PGS_SCAN_ANY | PGS_APPEND |
 		PGS_MERGE_APPEND | PGS_CONSIDER_INDEXONLY;
 	bool		gather_conflict = false;
+	bool		saw_no_gather = false;
+	bool		saw_gather = false;
 	Bitmapset  *gather_partial_match = NULL;
 	Bitmapset  *gather_full_match = NULL;
 	int			i = -1;
@@ -1641,6 +1733,8 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 		pgpa_trove_entry *my_entry = &scan_entries[i];
 		uint64		my_scan_type = all_scan_mask;
 
+		CHECK_FOR_INTERRUPTS();
+
 		/* Translate our advice tags to a scan strategy advice value. */
 		if (my_entry->tag == PGPA_TAG_DO_NOT_SCAN)
 			my_scan_type = 0;
@@ -1649,13 +1743,14 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 			/*
 			 * Currently, PGS_CONSIDER_INDEXONLY can suppress Bitmap Heap
 			 * Scans, so don't clear it when such a scan is requested. This
-			 * happens because build_index_scan() thinks that the possibility
-			 * of an index-only scan is a sufficient reason to consider using
-			 * an otherwise-useless index, and get_index_paths() thinks that
-			 * the same paths that are useful for index or index-only scans
-			 * should also be considered for bitmap scans. Perhaps that logic
-			 * should be tightened up, but until then we need to include
-			 * PGS_CONSIDER_INDEXONLY in my_scan_type here.
+			 * happens because build_index_scankeys() thinks that the
+			 * possibility of an index-only scan is a sufficient reason to
+			 * consider using an otherwise-useless index, and
+			 * get_index_paths() thinks that the same paths that are useful
+			 * for index or index-only scans should also be considered for
+			 * bitmap scans. Perhaps that logic should be tightened up, but
+			 * until then we need to include PGS_CONSIDER_INDEXONLY in
+			 * my_scan_type here.
 			 */
 			my_scan_type = PGS_BITMAPSCAN | PGS_CONSIDER_INDEXONLY;
 		}
@@ -1702,6 +1797,8 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 		uint64		my_gather_mask = 0;
 		bool		just_one_rel;
 
+		CHECK_FOR_INTERRUPTS();
+
 		just_one_rel = my_entry->target->ttype == PGPA_TARGET_IDENTIFIER
 			|| list_length(my_entry->target->children) == 1;
 
@@ -1711,7 +1808,18 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 		 */
 		if (my_entry->tag == PGPA_TAG_PARTITIONWISE)
 		{
-			if (just_one_rel)
+			if (!rte->inh)
+			{
+				/*
+				 * Can't apply PARTITIONWISE advice to something that is not
+				 * an inheritance parent.
+				 */
+				my_entry->flags |=
+					PGPA_FB_MATCH_PARTIAL | PGPA_FB_INAPPLICABLE;
+				if (just_one_rel)
+					my_entry->flags |= PGPA_FB_MATCH_FULL;
+			}
+			else if (just_one_rel)
 			{
 				const uint64 my_scan_type = PGS_APPEND | PGS_MERGE_APPEND;
 
@@ -1744,11 +1852,13 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 				my_gather_mask = PGS_GATHER;
 			else
 				my_gather_mask = PGS_GATHER_MERGE;
+			saw_gather = true;
 		}
 		else if (my_entry->tag == PGPA_TAG_NO_GATHER)
 		{
 			Assert(just_one_rel);
 			my_gather_mask = PGS_CONSIDER_NONPARTIAL;
+			saw_no_gather = true;
 		}
 
 		/*
@@ -1798,7 +1908,7 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 
 			/* Mark advice as inapplicable. */
 			pgpa_trove_set_flags(scan_entries, scan_type_indexes,
-								 PGPA_TE_INAPPLICABLE);
+								 PGPA_FB_INAPPLICABLE);
 		}
 		else
 		{
@@ -1812,12 +1922,74 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 	}
 
 	/*
+	 * NO_GATHER is documented to both discard partial paths for the current
+	 * relation and also to disable placement of a Gather or Gather Merge node
+	 * above a scan or join containing this target.
+	 *
+	 * These may sound like the same thing, but they aren't. Preventing a
+	 * Gather or Gather Merge node above a scan or join containing this target
+	 * only disables the use of parallel query within the same join problem.
+	 * If that were the only thing we prohibited, then a scan of a parent
+	 * table, or an outer subquery, would potentially still be able to use a
+	 * Parallel Seq Scan or similar on this table.
+	 *
+	 * Since that's counterintuitive, we also arrange to discard all partial
+	 * paths for this relation. That doesn't totally block parallel query,
+	 * either. An especially notable case is that a non-partial path can be
+	 * joined to a partial path to produce a new partial path.
+	 *
+	 * Even taken together, these are *still* not a total prohibition.  An
+	 * outer subquery won't be able to scan this relation in parallel, but it
+	 * can still use a non-partial scan of this relation at some point in the
+	 * plan tree that is below a Gather or Gather Merge. Also, NO_GATHER on a
+	 * child blocks a parallel scan of that child, but a parent could still
+	 * create a Parallel Append node that incorporates a non-partial scan of
+	 * that child.
+	 *
+	 * Possibly the whole definition of NO_GATHER needs rethinking in the
+	 * future, but it needs careful thought, because we must be able to
+	 * distinguish between closely-related cases; for example, it's easy to
+	 * argue that NO_GATHER on a subquery rel should prohibit parallelism
+	 * entirely at outer levels, but advice is supposed to be able to describe
+	 * every plan shape, and that definition would make it impossible to
+	 * request that the subquery plan avoid parallel scans while at the same
+	 * time demanding a Gather or Gather Merge in the outer query.
+	 *
+	 * Before changing anything here, please review the documentation, which
+	 * discusses the current behavior in some detail.
+	 */
+	if (saw_no_gather)
+	{
+		if (saw_gather)
+		{
+			/*
+			 * GATHER((this other)) and NO_GATHER(this) produce the same
+			 * gather_mask; in such cases, only this code notices the
+			 * conflict.
+			 */
+			gather_conflict = true;
+		}
+		else
+		{
+			pgpa_baserel_state *pbs;
+
+			/*
+			 * Let pgpa_set_rel_pathlist know that it should discard partial
+			 * paths for this relation.
+			 */
+			pbs = palloc_object(pgpa_baserel_state);
+			pbs->discard_partial_paths = true;
+			SetRelOptInfoExtensionState(rel, planner_extension_id, pbs);
+		}
+	}
+
+	/*
 	 * Mark all the scan method entries as fully matched; and if they specify
 	 * different things, mark them all as conflicting.
 	 */
-	flags = PGPA_TE_MATCH_PARTIAL | PGPA_TE_MATCH_FULL;
+	flags = PGPA_FB_MATCH_PARTIAL | PGPA_FB_MATCH_FULL;
 	if (scan_type_conflict)
-		flags |= PGPA_TE_CONFLICTING;
+		flags |= PGPA_FB_CONFLICTING;
 	pgpa_trove_set_flags(scan_entries, scan_type_indexes, flags);
 	pgpa_trove_set_flags(rel_entries, scan_type_rel_indexes, flags);
 
@@ -1826,11 +1998,11 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
 	 * the ones that included this relation as a target by itself as fully
 	 * matched. If there was a conflict, mark them all as conflicting.
 	 */
-	flags = PGPA_TE_MATCH_PARTIAL;
+	flags = PGPA_FB_MATCH_PARTIAL;
 	if (gather_conflict)
-		flags |= PGPA_TE_CONFLICTING;
+		flags |= PGPA_FB_CONFLICTING;
 	pgpa_trove_set_flags(rel_entries, gather_partial_match, flags);
-	flags |= PGPA_TE_MATCH_FULL;
+	flags |= PGPA_FB_MATCH_FULL;
 	pgpa_trove_set_flags(rel_entries, gather_full_match, flags);
 
 	/*
@@ -1856,7 +2028,7 @@ pgpa_planner_apply_scan_advice(RelOptInfo *rel,
  *
  * Feedback entries are generated from the trove entry's flags. It's assumed
  * that the caller has already set all relevant flags with the exception of
- * PGPA_TE_FAILED. We set that flag here if appropriate.
+ * PGPA_FB_FAILED. We set that flag here if appropriate.
  */
 static List *
 pgpa_planner_append_feedback(List *list, pgpa_trove *trove,
@@ -1873,15 +2045,17 @@ pgpa_planner_append_feedback(List *list, pgpa_trove *trove,
 		pgpa_trove_entry *entry = &entries[i];
 		DefElem    *item;
 
+		CHECK_FOR_INTERRUPTS();
+
 		/*
 		 * If this entry was fully matched, check whether generating advice
 		 * from this plan would produce such an entry. If not, label the entry
 		 * as failed.
 		 */
-		if ((entry->flags & PGPA_TE_MATCH_FULL) != 0 &&
+		if ((entry->flags & PGPA_FB_MATCH_FULL) != 0 &&
 			!pgpa_walker_would_advise(walker, rt_identifiers,
 									  entry->tag, entry->target))
-			entry->flags |= PGPA_TE_FAILED;
+			entry->flags |= PGPA_FB_FAILED;
 
 		item = makeDefElem(pgpa_cstring_trove_entry(entry),
 						   (Node *) makeInteger(entry->flags), -1);
@@ -1895,7 +2069,7 @@ pgpa_planner_append_feedback(List *list, pgpa_trove *trove,
  * Emit a WARNING to tell the user about a problem with the supplied plan
  * advice.
  */
-static void
+void
 pgpa_planner_feedback_warning(List *feedback)
 {
 	StringInfoData detailbuf;
@@ -1920,7 +2094,7 @@ pgpa_planner_feedback_warning(List *feedback)
 		 * NB: Feedback should never be marked fully matched without also
 		 * being marked partially matched.
 		 */
-		if (flags == (PGPA_TE_MATCH_PARTIAL | PGPA_TE_MATCH_FULL))
+		if (flags == (PGPA_FB_MATCH_PARTIAL | PGPA_FB_MATCH_FULL))
 			continue;
 
 		/*
@@ -2066,6 +2240,9 @@ pgpa_compute_rt_identifier(pgpa_planner_info *proot, PlannerInfo *root,
 /*
  * Compute the range table offset for each pgpa_planner_info for which it
  * is possible to meaningfully do so.
+ *
+ * For pgpa_planner_info objects for which no RT offset can be computed,
+ * clear sj_unique_rels, which is meaningless in such cases.
  */
 static void
 pgpa_compute_rt_offsets(pgpa_planner_state *pps, PlannedStmt *pstmt)
@@ -2081,7 +2258,7 @@ pgpa_compute_rt_offsets(pgpa_planner_state *pps, PlannedStmt *pstmt)
 
 		/*
 		 * It's not guaranteed that every plan name we saw during planning has
-		 * a SubPlanInfo, but any that do not certainly don't appear in the
+		 * a SubPlanRTInfo, but any that do not certainly don't appear in the
 		 * final range table.
 		 */
 		foreach_node(SubPlanRTInfo, rtinfo, pstmt->subrtinfos)
@@ -2097,23 +2274,24 @@ pgpa_compute_rt_offsets(pgpa_planner_state *pps, PlannedStmt *pstmt)
 				 * there's no fixed rtoffset that we can apply to the RTIs
 				 * used during planning to locate the corresponding relations.
 				 */
-				if (rtinfo->dummy)
+				if (!rtinfo->dummy)
 				{
-					/*
-					 * It will not be possible to make any effective use of
-					 * the sj_unique_rels list in this case, and it also won't
-					 * be important to do so. So just throw the list away to
-					 * avoid confusing pgpa_plan_walker.
-					 */
-					proot->sj_unique_rels = NIL;
-					break;
+					Assert(!proot->has_rtoffset);
+					proot->has_rtoffset = true;
+					proot->rtoffset = rtinfo->rtoffset;
 				}
-				Assert(!proot->has_rtoffset);
-				proot->has_rtoffset = true;
-				proot->rtoffset = rtinfo->rtoffset;
 				break;
 			}
 		}
+
+		/*
+		 * If we didn't end up setting has_rtoffset, then it will not be
+		 * possible to make any effective use of sj_unique_rels, and it also
+		 * won't be important to do so.  So just throw the list away to avoid
+		 * confusing pgpa_plan_walker.
+		 */
+		if (!proot->has_rtoffset)
+			proot->sj_unique_rels = NIL;
 	}
 }
 

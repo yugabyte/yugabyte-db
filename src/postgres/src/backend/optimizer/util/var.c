@@ -86,6 +86,7 @@ static bool pull_vars_walker(Node *node, pull_vars_context *context);
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
 static bool contain_vars_returning_old_or_new_walker(Node *node, void *context);
+static bool contain_var_or_representative_walker(Node *node, void *context);
 static bool locate_var_of_level_walker(Node *node,
 									   locate_var_of_level_context *context);
 static bool pull_var_clause_walker(Node *node,
@@ -571,6 +572,69 @@ contain_vars_returning_old_or_new_walker(Node *node, void *context)
 
 
 /*
+ * contain_var_or_representative
+ *	  Recursively scan a clause to discover whether it contains any Var nodes
+ *	  (of the current query level), or CaseTestExpr or Param nodes.
+ *
+ *	  Returns true if any such node found.
+ *
+ * This is like contain_var_clause, but additionally returns true if we find
+ * a node that might represent the value of a Var from elsewhere in the query.
+ * We don't inquire into whether it actually does represent one; this is used
+ * for leakproofness checks in which it's better to report false positives
+ * than false negatives.
+ *
+ * You might think this needs to return true for upper-level Vars too,
+ * but at least in current usage it's better to match contain_var_clause.
+ * The caller is considering whether to push the clause below an RLS qual, so
+ * we need only restrict access to Vars of the relation with the RLS policy.
+ *
+ * Does not examine subqueries, therefore must only be used after reduction
+ * of sublinks to subplans!
+ */
+bool
+contain_var_or_representative(Node *node)
+{
+	return contain_var_or_representative_walker(node, NULL);
+}
+
+static bool
+contain_var_or_representative_walker(Node *node, void *context)
+{
+	/* This part must match contain_var_clause ... */
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		if (((Var *) node)->varlevelsup == 0)
+			return true;		/* abort the tree traversal and return true */
+		return false;
+	}
+	if (IsA(node, CurrentOfExpr))
+		return true;
+	if (IsA(node, PlaceHolderVar))
+	{
+		if (((PlaceHolderVar *) node)->phlevelsup == 0)
+			return true;		/* abort the tree traversal and return true */
+		/* else fall through to check the contained expr */
+	}
+	/* ... and here's the additional part */
+	if (IsA(node, CaseTestExpr))
+		return true;
+	if (IsA(node, Param))
+	{
+		/* We don't consider PARAM_EXTERN Params dangerous for this purpose */
+		if (((Param *) node)->paramkind == PARAM_EXTERN)
+			return false;
+		else
+			return true;
+	}
+	return expression_tree_walker(node, contain_var_or_representative_walker,
+								  context);
+}
+
+
+/*
  * locate_var_of_level
  *	  Find the parse location of any Var of the specified query level.
  *
@@ -810,6 +874,9 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
  * PlaceHolderVar or constructed from those, we can just add the
  * varnullingrels bits to the existing nullingrels field(s); otherwise
  * we have to add a PlaceHolderVar wrapper.
+ *
+ * If root is NULL, nulled whole-row JOIN Vars are left unexpanded, so the
+ * result must be flattened again with a root before it can be executed.
  */
 Node *
 flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node)
@@ -822,6 +889,8 @@ flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node)
 	 * it's okay to immediately increment sublevels_up.
 	 */
 	Assert(node != (Node *) query);
+	/* add_nullingrels_if_needed relies on this */
+	Assert(root == NULL || query == root->parse);
 
 	context.root = root;
 	context.query = query;
@@ -843,7 +912,8 @@ flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node)
  * PlaceHolderVars.  We can avoid making PlaceHolderVars in the parser's
  * usage because it won't be dealing with arbitrary expressions: so long as
  * adjust_standard_join_alias_expression can handle everything the parser
- * would make as a join alias expression, we're OK.
+ * would make as a join alias expression, we're OK.  (Nulled whole-row join
+ * Vars are the exception; those are left unexpanded.)
  *
  * The "node" might be part of a sub-query of the Query whose join alias
  * Vars are to be expanded.  "sublevels_up" indicates how far below the
@@ -899,6 +969,13 @@ flatten_join_alias_vars_mutator(Node *node,
 			ListCell   *lv;
 			ListCell   *ln;
 
+			/*
+			 * A nulled whole-row expansion needs a PlaceHolderVar, which we
+			 * can't make without a root; leave the Var unexpanded.
+			 */
+			if (context->root == NULL && var->varnullingrels != NULL)
+				return node;
+
 			Assert(list_length(rte->joinaliasvars) == list_length(rte->eref->colnames));
 			forboth(lv, rte->joinaliasvars, ln, rte->eref->colnames)
 			{
@@ -918,8 +995,12 @@ flatten_join_alias_vars_mutator(Node *node,
 				if (IsA(newvar, Var))
 					((Var *) newvar)->location = var->location;
 				/* Recurse in case join input is itself a join */
-				/* (also takes care of setting inserted_sublink if needed) */
 				newvar = flatten_join_alias_vars_mutator(newvar, context);
+
+				/* Detect if we are adding a sublink to query */
+				if (context->possible_sublink && !context->inserted_sublink)
+					context->inserted_sublink = checkExprHasSubLink(newvar);
+
 				fields = lappend(fields, newvar);
 				/* We need the names of non-dropped columns, too */
 				colnames = lappend(colnames, copyObject((Node *) lfirst(ln)));
@@ -966,12 +1047,34 @@ flatten_join_alias_vars_mutator(Node *node,
 	}
 	if (IsA(node, PlaceHolderVar))
 	{
-		/* Copy the PlaceHolderVar node with correct mutation of subnodes */
-		PlaceHolderVar *phv;
+		PlaceHolderVar *phv = (PlaceHolderVar *) node;
 
-		phv = (PlaceHolderVar *) expression_tree_mutator(node,
-														 flatten_join_alias_vars_mutator,
-														 context);
+		/*
+		 * A PHV above the target level can't contain join aliases of the
+		 * target level and has no relid sets of ours to fix, so return it
+		 * unchanged.
+		 */
+		if (phv->phlevelsup > context->sublevels_up)
+			return node;		/* no need to copy, really */
+
+		/*
+		 * A pushed-down copy of a target-level PHV is preprocessed by
+		 * preprocess_subquery_phvs, which handles its target-level aliases
+		 * and may leave SubPlans in it; so don't recurse into it.  Any other
+		 * PHV may still hold target-level aliases, so recurse.
+		 */
+		if (phv->phlevelsup == context->sublevels_up &&
+			context->sublevels_up > 0)
+		{
+			PlaceHolderVar *newphv = makeNode(PlaceHolderVar);
+
+			memcpy(newphv, phv, sizeof(PlaceHolderVar));
+			phv = newphv;
+		}
+		else
+			phv = (PlaceHolderVar *) expression_tree_mutator(node,
+															 flatten_join_alias_vars_mutator,
+															 context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == context->sublevels_up)
 		{
@@ -1233,6 +1336,10 @@ mark_nullable_by_grouping(PlannerInfo *root, Node *newnode, Var *oldvar)
 /*
  * Add oldvar's varnullingrels, if any, to a flattened join alias expression.
  * The newnode has been copied, so we can modify it freely.
+ *
+ * If we need a PlaceHolderVar, we reuse any PHV already made for the same
+ * expression with this root, so that all expansions of the same alias get
+ * the same phid, much as pullup_replace_vars_callback does with its rv_cache.
  */
 static Node *
 add_nullingrels_if_needed(PlannerInfo *root, Node *newnode, Var *oldvar)
@@ -1248,25 +1355,47 @@ add_nullingrels_if_needed(PlannerInfo *root, Node *newnode, Var *oldvar)
 		 * We can insert a PlaceHolderVar to carry the nullingrels.  However,
 		 * deciding where to evaluate the PHV is slightly tricky.  We first
 		 * try to evaluate it at the natural semantic level of the new
-		 * expression; but if that expression is variable-free, fall back to
-		 * evaluating it at the join that the oldvar is an alias Var for.
+		 * expression, ignoring any lateral references to rels outside the
+		 * join; but if that leaves nothing, fall back to evaluating it at the
+		 * join that the oldvar is an alias Var for.
 		 */
-		PlaceHolderVar *newphv;
+		PlaceHolderVar *newphv = NULL;
 		Index		levelsup = oldvar->varlevelsup;
-		Relids		phrels = pull_varnos_of_level(root, newnode, levelsup);
+		Relids		joinrelids;
+		Relids		phrels;
 
-		if (bms_is_empty(phrels))	/* variable-free? */
+		/* oldvar belongs to root->parse even when levelsup > 0 */
+		joinrelids = get_relids_for_join(root->parse, oldvar->varno);
+		phrels = pull_varnos_of_level(root, newnode, levelsup);
+		phrels = bms_int_members(phrels, joinrelids);
+		if (bms_is_empty(phrels))
 		{
-			if (levelsup != 0)	/* this won't work otherwise */
-				elog(ERROR, "unsupported join alias expression");
-			phrels = get_relids_for_join(root->parse, oldvar->varno);
-			/* If it's an outer join, eval below not above the join */
-			phrels = bms_del_member(phrels, oldvar->varno);
-			Assert(!bms_is_empty(phrels));
+			/* Keep the join's own OJ relid: this set spans both its sides */
+			phrels = joinrelids;
 		}
-		newphv = make_placeholder_expr(root, (Expr *) newnode, phrels);
+
+		/* Look for an existing PHV, comparing at level zero */
+		if (levelsup != 0)
+			IncrementVarSublevelsUp(newnode, -((int) levelsup), 0);
+		foreach_node(PlaceHolderVar, phv, root->join_alias_phvs)
+		{
+			if (bms_equal(phv->phrels, phrels) &&
+				equal(phv->phexpr, newnode))
+			{
+				newphv = copyObject(phv);
+				break;
+			}
+		}
+		if (newphv == NULL)
+		{
+			newphv = make_placeholder_expr(root, (Expr *) newnode, phrels);
+			root->join_alias_phvs = lappend(root->join_alias_phvs,
+											copyObject(newphv));
+		}
+
 		/* newphv has zero phlevelsup and NULL phnullingrels; fix it */
-		newphv->phlevelsup = levelsup;
+		if (levelsup != 0)
+			IncrementVarSublevelsUp((Node *) newphv, levelsup, 0);
 		newphv->phnullingrels = bms_copy(oldvar->varnullingrels);
 		newnode = (Node *) newphv;
 	}

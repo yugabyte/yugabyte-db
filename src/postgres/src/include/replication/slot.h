@@ -397,7 +397,7 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait,
 								bool yb_force, bool yb_if_exists);
-extern void ReplicationSlotDropAcquired(void);
+extern void ReplicationSlotDropAcquired(bool try_disable);
 extern void ReplicationSlotAlter(const char *name, const bool *failover,
 								 const bool *two_phase);
 

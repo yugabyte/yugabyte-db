@@ -1,4 +1,5 @@
-/* dynamic SQL support routines
+/*
+ * dynamic SQL support routines
  *
  * src/interfaces/ecpg/ecpglib/descriptor.c
  */
@@ -231,7 +232,7 @@ get_char_item(int lineno, void *var, enum ECPGttype vartype, char *value, int va
 				}
 
 bool
-ECPGget_desc(int lineno, const char *desc_name, int index,...)
+ECPGget_desc(int lineno, const char *desc_name, int index, ...)
 {
 	va_list		args;
 	PGresult   *ECPGresult;
@@ -476,6 +477,16 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 		memset(&stmt, 0, sizeof stmt);
 		stmt.lineno = lineno;
 
+		/* desperate try to guess something sensible */
+		stmt.connection = ecpg_get_connection(NULL);
+		if (stmt.connection == NULL)
+		{
+			ecpg_raise(lineno, ECPG_NO_CONN, ECPG_SQLSTATE_CONNECTION_DOES_NOT_EXIST,
+					   ecpg_gettext("NULL"));
+			va_end(args);
+			return false;
+		}
+
 		/* Make sure we do NOT honor the locale for numeric input */
 		/* since the database gives the standard decimal point */
 		/* (see comments in execute.c) */
@@ -505,8 +516,6 @@ ECPGget_desc(int lineno, const char *desc_name, int index,...)
 		setlocale(LC_NUMERIC, "C");
 #endif
 
-		/* desperate try to guess something sensible */
-		stmt.connection = ecpg_get_connection(NULL);
 		ecpg_store_result(ECPGresult, index, &stmt, &data_var);
 
 #ifdef HAVE_USELOCALE
@@ -610,7 +619,7 @@ set_desc_attr(struct descriptor_item *desc_item, struct variable *var,
 
 
 bool
-ECPGset_desc(int lineno, const char *desc_name, int index,...)
+ECPGset_desc(int lineno, const char *desc_name, int index, ...)
 {
 	va_list		args;
 	struct descriptor *desc;
@@ -852,7 +861,7 @@ ecpg_find_desc(int line, const char *name)
 }
 
 bool
-ECPGdescribe(int line, int compat, bool input, const char *connection_name, const char *stmt_name,...)
+ECPGdescribe(int line, int compat, bool input, const char *connection_name, const char *stmt_name, ...)
 {
 	bool		ret = false;
 	struct connection *con;

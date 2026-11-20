@@ -102,12 +102,14 @@ DROP SUBSCRIPTION [ IF EXISTS ] <replaceable class="parameter">name</replaceable
    it from the replication slot by executing
    <link linkend="sql-altersubscription-params-set">
    <literal>ALTER SUBSCRIPTION ... SET (slot_name = NONE)</literal></link>.
-   After that, <command>DROP SUBSCRIPTION</command> will no longer attempt any
-   actions on a remote host.  Note that if the remote replication slot still
-   exists, it (and any related table synchronization slots) should then be
-   dropped manually; otherwise it/they will continue to
-   reserve WAL and might eventually cause the disk to fill up.  See
-   also <xref linkend="logical-replication-subscription-slot"/>.
+   After that, <command>DROP SUBSCRIPTION</command> will not attempt to drop
+   the subscription's own replication slot.  It may still connect to the publisher
+   to drop internally-created table synchronization slots if some table
+   synchronization is left unfinished; if the publisher is unreachable, those
+   slots (and the main slot, if it still exists) must be dropped manually.  Otherwise
+   it/they will continue to reserve WAL and might eventually cause the disk to
+   fill up.  See also
+   <xref linkend="logical-replication-subscription-slot"/>.
   </para>
 
   <para>

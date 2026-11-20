@@ -15,7 +15,6 @@
 #include "access/xlog_internal.h"
 #include "common/string.h"
 #include "pg_upgrade.h"
-#include "storage/checksum.h"
 
 
 /*
@@ -355,7 +354,7 @@ get_control_data(ClusterInfo *cluster)
 				pg_fatal("%d: controldata retrieval problem", __LINE__);
 
 			p++;				/* remove ':' char */
-			cluster->controldata.chkpnt_nxtmxoff = str2uint(p);
+			cluster->controldata.chkpnt_nxtmxoff = str2uint64(p);
 			got_mxoff = true;
 		}
 		else if ((p = strstr(bufin, "First log segment after reset:")) != NULL)
@@ -364,7 +363,7 @@ get_control_data(ClusterInfo *cluster)
 			p = strchr(p, ':');
 			if (p == NULL || strlen(p) <= 1)
 				pg_fatal("%d: controldata retrieval problem", __LINE__);
-			p = strpbrk(p, "01234567890ABCDEF");
+			p = strpbrk(p, "0123456789ABCDEF");
 			if (p == NULL || strlen(p) <= 1)
 				pg_fatal("%d: controldata retrieval problem", __LINE__);
 
@@ -742,14 +741,6 @@ check_control_data(ControlData *oldctrl,
 	 * float8_pass_by_value does not need to match, but is used in
 	 * check_for_isn_and_int8_passing_mismatch().
 	 */
-
-	/*
-	 * If data checksums are in any in-progress state then disallow the
-	 * upgrade. The user should either let the process finish, or turn off
-	 * data checksums, before retrying.
-	 */
-	if (oldctrl->data_checksum_version > PG_DATA_CHECKSUM_VERSION)
-		pg_fatal("checksums are being enabled in the old cluster");
 
 	/*
 	 * We might eventually allow upgrades from checksum to no-checksum

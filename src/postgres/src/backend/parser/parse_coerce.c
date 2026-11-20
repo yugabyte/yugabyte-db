@@ -573,6 +573,10 @@ can_coerce_type(int nargs, const Oid *input_typeids, const Oid *target_typeids,
 		if (inputTypeId == targetTypeId)
 			continue;
 
+		/* reject all cases of casting something else to/from "internal" */
+		if (inputTypeId == INTERNALOID || targetTypeId == INTERNALOID)
+			return false;
+
 		/* accept if target is ANY */
 		if (targetTypeId == ANYOID)
 			continue;
@@ -1035,13 +1039,12 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 	else if (node && IsA(node, Var) &&
 			 ((Var *) node)->varattno == InvalidAttrNumber)
 	{
-		int			rtindex = ((Var *) node)->varno;
-		int			sublevels_up = ((Var *) node)->varlevelsup;
-		int			vlocation = ((Var *) node)->location;
+		Var		   *var = (Var *) node;
 		ParseNamespaceItem *nsitem;
 
-		nsitem = GetNSItemByRangeTablePosn(pstate, rtindex, sublevels_up);
-		args = expandNSItemVars(pstate, nsitem, sublevels_up, vlocation, NULL);
+		nsitem = GetNSItemByVar(pstate, var);
+		args = expandNSItemVars(pstate, nsitem, var->varlevelsup,
+								var->location, NULL);
 	}
 	else
 		ereport(ERROR,
@@ -2968,7 +2971,8 @@ check_valid_internal_signature(Oid ret_type,
 }
 
 
-/* TypeCategory()
+/*
+ * TypeCategory()
  *		Assign a category to the specified type OID.
  *
  * NB: this must not return TYPCATEGORY_INVALID.
@@ -2985,7 +2989,8 @@ TypeCategory(Oid type)
 }
 
 
-/* IsPreferredType()
+/*
+ * IsPreferredType()
  *		Check if this type is a preferred type for the given category.
  *
  * If category is TYPCATEGORY_INVALID, then we'll return true for preferred
@@ -3006,7 +3011,8 @@ IsPreferredType(TYPCATEGORY category, Oid type)
 }
 
 
-/* IsBinaryCoercible()
+/*
+ * IsBinaryCoercible()
  *		Check if srctype is binary-coercible to targettype.
  *
  * This notion allows us to cheat and directly exchange values without
@@ -3035,7 +3041,8 @@ IsBinaryCoercible(Oid srctype, Oid targettype)
 	return IsBinaryCoercibleWithCast(srctype, targettype, &castoid);
 }
 
-/* IsBinaryCoercibleWithCast()
+/*
+ * IsBinaryCoercibleWithCast()
  *		Check if srctype is binary-coercible to targettype.
  *
  * This variant also returns the OID of the pg_cast entry if one is involved.
@@ -3169,6 +3176,10 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 	/* Domains are always coercible to and from their base type */
 	if (sourceTypeId == targetTypeId)
 		return COERCION_PATH_RELABELTYPE;
+
+	/* Reject all cases of casting something else to/from "internal" */
+	if (sourceTypeId == INTERNALOID || targetTypeId == INTERNALOID)
+		return COERCION_PATH_NONE;
 
 	/* Look in pg_cast */
 	tuple = SearchSysCache2(CASTSOURCETARGET,

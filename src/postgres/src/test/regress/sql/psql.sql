@@ -499,6 +499,17 @@ execute q;
 
 deallocate q;
 
+-- expanded output with short-width columns
+\pset border 2
+\pset expanded on
+create table psql_short_tab(a int, b int);
+insert into psql_short_tab values(10,20),(30,40);
+\pset format aligned
+select * from psql_short_tab;
+\pset format wrapped
+select * from psql_short_tab;
+drop table psql_short_tab;
+
 \pset linestyle ascii
 \pset border 1
 
@@ -1115,6 +1126,17 @@ select \if false \\ (bogus \else \\ 42 \endif \\ forty_two;
 	\echo 'should print #8-1'
 \endif
 
+-- test that begin/end matching ignores to-be-ignored text
+create function silly_function(int) returns int
+begin atomic select $1;
+\if false
+end
+\endif
+;
+end;
+\sf silly_function(int)
+drop function silly_function(int);
+
 -- :{?...} defined variable test
 \set i 1
 \if :{?i}
@@ -1560,6 +1582,15 @@ COPY reload_output(line) FROM :'o_out_file';
 SELECT line FROM reload_output ORDER BY lineno;
 
 DROP TABLE reload_output;
+
+-- \copy must skip in-line data, even if the issued COPY command fails.
+\copy no_such_table from stdin
+foo
+\echo this should not get output
+bar
+\echo this should not get output
+\.
+\echo this should get output
 
 --
 -- AUTOCOMMIT and combined queries

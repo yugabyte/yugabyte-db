@@ -2211,23 +2211,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
      <varlistentry id="libpq-connect-max-protocol-version" xreflabel="max_protocol_version">
       <term><literal>max_protocol_version</literal></term>
       <listitem>
-       <note>
-        <para>
-        During the PostgreSQL 19 beta period, libpq connections that do not
-        specify a <literal>max_protocol_version</literal> will "grease" the
-        handshake by sending unsupported startup parameters, including version
-        <literal>3.9999</literal>, in order to identify software that does not
-        correctly negotiate the connection. This replaces the default behavior
-        described below.
-        </para>
-        <para>
-        If you know that a server doesn't properly implement protocol version
-        negotiation, you can set <literal>max_protocol_version=3.0</literal> to
-        revert to the standard behavior (preferably after notifying the server's
-        maintainers that their software needs to be fixed).
-        </para>
-       </note>
-
        <para>
         Specifies the protocol version to request from the server.
         The default is to use version <literal>3.0</literal> of the
@@ -2333,19 +2316,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
         name in <filename>pg_service.conf</filename> that holds additional connection parameters.
         This allows applications to specify only a service name so connection parameters
         can be centrally maintained. See <xref linkend="libpq-pgservice"/>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry id="libpq-connect-servicefile" xreflabel="servicefile">
-      <term><literal>servicefile</literal></term>
-      <listitem>
-       <para>
-        This option specifies the name of the per-user connection service file
-        (see <xref linkend="libpq-pgservice"/>).
-        Defaults to <filename>~/.pg_service.conf</filename>, or
-        <filename>%APPDATA%\postgresql\.pg_service.conf</filename> on
-        Microsoft Windows.
        </para>
       </listitem>
      </varlistentry>
@@ -7058,15 +7028,20 @@ int PQrequestCancel(PGconn *conn);
    to send simple function calls to the server.
   </para>
 
-  <tip>
+  <warning>
    <para>
-    This interface is somewhat obsolete, as one can achieve similar
+    This interface is unsafe and should not be used.  When
+    <parameter>result_is_int</parameter> is set to <literal>0</literal>,
+    <function>PQfn</function> may write data beyond the end of
+    <parameter>result_buf</parameter>, regardless of whether the buffer has
+    enough space for the requested number of bytes.  Furthermore, it is
+    obsolete, as one can achieve similar
     performance and greater functionality by setting up a prepared
     statement to define the function call.  Then, executing the statement
     with binary transmission of parameters and results substitutes for a
     fast-path function call.
    </para>
-  </tip>
+  </warning>
 
   <para>
    The function <function id="libpq-PQfn">PQfn</function><indexterm><primary>PQfn</primary></indexterm>
@@ -9182,8 +9157,12 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
       <indexterm>
        <primary><envar>PGSERVICEFILE</envar></primary>
       </indexterm>
-      <envar>PGSERVICEFILE</envar> behaves the same as the
-      <xref linkend="libpq-connect-servicefile"/> connection parameter.
+      <envar>PGSERVICEFILE</envar> specifies the name of the per-user
+      connection service file
+      (see <xref linkend="libpq-pgservice"/>).
+      Defaults to <filename>~/.pg_service.conf</filename>, or
+      <filename>%APPDATA%\postgresql\.pg_service.conf</filename> on
+      Microsoft Windows.
      </para>
     </listitem>
 
@@ -9624,8 +9603,7 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
    On Microsoft Windows, it is named
    <filename>%APPDATA%\postgresql\.pg_service.conf</filename> (where
    <filename>%APPDATA%</filename> refers to the Application Data subdirectory
-   in the user's profile).  A different file name can be specified using the
-   <literal>servicefile</literal> key word in a libpq connection string or by
+   in the user's profile).  A different file name can be specified by
    setting the environment variable <envar>PGSERVICEFILE</envar>.
    The system-wide file is named <filename>pg_service.conf</filename>.
    By default it is sought in the <filename>etc</filename> directory
@@ -10648,11 +10626,11 @@ typedef struct
     development and testing. The variable accepts a comma-separated list of
     debug options:
 
-    <programlisting>
+<programlisting>
 PGOAUTHDEBUG=option1,option2,...         <lineannotation>for safe options only</lineannotation>
 PGOAUTHDEBUG=UNSAFE:option1,option2,...  <lineannotation>when using unsafe options</lineannotation>
 PGOAUTHDEBUG=UNSAFE                      <lineannotation>legacy format; enables all options</lineannotation>
-    </programlisting>
+</programlisting>
    </para>
 
    <para>
@@ -10729,11 +10707,11 @@ PGOAUTHDEBUG=UNSAFE                      <lineannotation>legacy format; enables 
 
    <para>
     Examples:
-    <programlisting>
+<programlisting>
 PGOAUTHDEBUG=call-count              <lineannotation>safe options only</lineannotation>
 PGOAUTHDEBUG=UNSAFE:http,trace       <lineannotation>enable HTTP and traffic logging</lineannotation>
 PGOAUTHDEBUG=UNSAFE:http,call-count  <lineannotation>mix of unsafe and safe</lineannotation>
-    </programlisting>
+</programlisting>
    </para>
 
    <warning>

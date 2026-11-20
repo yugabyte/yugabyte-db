@@ -6,7 +6,7 @@
 
 SELECT getdatabaseencoding() <> 'UTF8' OR
        (SELECT count(*) FROM pg_collation WHERE collname IN ('de_DE', 'en_US', 'sv_SE', 'tr_TR') AND collencoding = pg_char_to_encoding('UTF8')) <> 4 OR
-       version() !~ 'linux-gnu'
+       version() !~ '-linux[-,]'
        AS skip_test \gset
 \if :skip_test
 \quit
@@ -188,6 +188,9 @@ SELECT to_date('01 ŞUB 2010', 'DD TMMON YYYY');
 SELECT to_date('01 Şub 2010', 'DD TMMON YYYY');
 SELECT to_date('1234567890ab 2010', 'TMMONTH YYYY'); -- fail
 
+SELECT to_date('01 Aralık 2010', 'DD TMMONTH YYYY');
+SELECT to_date('01 aralık 2010', 'DD TMMONTH YYYY');
+SELECT to_date('2010 01 araLık', 'YYYY DD TMMONTH');
 
 -- backwards parsing
 

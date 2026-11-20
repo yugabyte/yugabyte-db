@@ -21,7 +21,7 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CHECKPOINT [ ( option [, ...] ) ]
+CHECKPOINT [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -35,8 +35,10 @@ CHECKPOINT [ ( option [, ...] ) ]
 
   <para>
    A checkpoint is a point in the write-ahead log sequence at which
-   all data files have been updated to reflect the information in the
-   log.  All data files will be flushed to disk.  Refer to
+   all data files for permanent relations have been updated to reflect the
+   information in the log.  All data for permanent relation files will be
+   flushed to disk.  Dirty buffers of unlogged relations are not flushed unless
+   <literal>FLUSH_UNLOGGED</literal> is specified.  Refer to
    <xref linkend="wal-configuration"/> for more details about what happens
    during a checkpoint.
   </para>

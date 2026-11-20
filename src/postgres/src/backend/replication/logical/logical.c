@@ -31,6 +31,7 @@
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"
+#include "commands/repack.h"
 #include "fmgr.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -42,9 +43,12 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
+#include "utils/varlena.h"
 
 /* YB includes */
 #include "pg_yb_utils.h"
@@ -59,6 +63,9 @@ typedef struct LogicalErrorCallbackState
 	const char *callback_name;
 	XLogRecPtr	report_location;
 } LogicalErrorCallbackState;
+
+/* GUC variables */
+char	   *output_plugin_libraries_string;
 
 /* wrappers around output plugin callbacks */
 static void output_plugin_error_callback(void *arg);
@@ -109,6 +116,39 @@ static void update_progress_txn_cb_wrapper(ReorderBuffer *cache,
 
 static void LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin);
 
+/* check_hook: validate new output_plugin_libraries value */
+bool
+check_output_plugin_libraries(char **newval, void **extra, GucSource source)
+{
+	char	   *copy;
+	List	   *components;
+	bool		ok = true;
+
+	copy = guc_strdup(LOG, *newval);
+	if (!copy)
+		return false;
+
+	/*
+	 * XXX SplitGUCList won't respect guc_malloc requirements, but this is
+	 * consistent with other check_hook implementations...
+	 */
+	if (!SplitGUCList(copy, ',', &components))
+	{
+		GUC_check_errdetail("List syntax is invalid.");
+		ok = false;
+	}
+
+	/*
+	 * Like with related GUC_LIST_QUOTE variables, we check only syntax here
+	 * and not the existence of the plugins themselves.
+	 */
+
+	list_free(components);
+	guc_free(copy);
+
+	return ok;
+}
+
 static void yb_schema_change_cb_wrapper(ReorderBuffer *cache, Oid relid);
 
 /*
@@ -152,6 +192,7 @@ StartupDecodingContext(List *output_plugin_options,
 					   bool need_full_snapshot,
 					   bool fast_forward,
 					   bool in_create,
+					   bool for_repack,
 					   XLogReaderRoutine *xl_routine,
 					   LogicalOutputPluginWriterPrepareWrite prepare_write,
 					   LogicalOutputPluginWriterWrite do_write,
@@ -178,7 +219,78 @@ StartupDecodingContext(List *output_plugin_options,
 	 * now.
 	 */
 	if (!fast_forward)
-		LoadOutputPlugin(&ctx->callbacks, NameStr(slot->data.plugin));
+	{
+		/*
+		 * Before loading this library, make sure it's been blessed for
+		 * logical decoding.
+		 */
+		const char *plugin = NameStr(slot->data.plugin);
+		bool		plugin_allowed = false;
+
+		if (strcmp(plugin, "pgrepack") == 0)
+		{
+			/*
+			 * REPACK is a special case -- print a more helpful error message
+			 * here if we're not being called in the correct context.
+			 */
+			if (!for_repack || !AmRepackWorker())
+				ereport(ERROR,
+						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("unsupported use of logical decoding plugin \"%s\"",
+							   "pgrepack"),
+						errdetail("This plugin can only be used by %s.",
+								  "REPACK (CONCURRENTLY)"));
+
+			plugin_allowed = true;
+		}
+		else if (output_plugin_libraries_string &&
+				 output_plugin_libraries_string[0])
+		{
+			/* Check this plugin against output_plugin_libraries. */
+			char	   *rawstring;
+			List	   *elemlist = NIL;
+
+			/* Need a modifiable copy */
+			rawstring = pstrdup(output_plugin_libraries_string);
+
+			/* The check_hook should have already handled syntax errors. */
+			if (!SplitGUCList(rawstring, ',', &elemlist))
+				elog(ERROR, "internal error: invalid output_plugin_libraries syntax after check_hook");
+
+			foreach_ptr(char, allowed, elemlist)
+			{
+				if (strcmp(allowed, plugin) == 0)
+				{
+					plugin_allowed = true;
+					break;
+				}
+			}
+
+			list_free(elemlist);
+			pfree(rawstring);
+		}
+
+		if (!plugin_allowed)
+		{
+			/*
+			 * Use the same error message as check_restricted_library_name(),
+			 * but provide additional context for the DBA in the logs. (The
+			 * HINT will be sent to the client, but that's not a secret.)
+			 */
+			ereport(ERROR,
+					errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					errmsg("library \"%s\" may not be used as an output plugin",
+						   plugin),
+			/*- translator: The second %s is the value of the output_plugin_libraries GUC, which may contain whitespace, commas, and double-quotes (") */
+					errdetail_log("The configuration parameter \"%s\" (currently '%s') does not name this library as a trusted output plugin.",
+								  "output_plugin_libraries",
+								  output_plugin_libraries_string),
+					errhint("If it is safe for all REPLICATION users to use this library as an output plugin, add it to \"%s\" and reload the server configuration.",
+							"output_plugin_libraries"));
+		}
+
+		LoadOutputPlugin(&ctx->callbacks, plugin);
+	}
 
 	/*
 	 * Now that the slot's xmin has been set, we can announce ourselves as a
@@ -298,9 +410,6 @@ StartupDecodingContext(List *output_plugin_options,
 	ctx->prepare_write = prepare_write;
 	ctx->write = do_write;
 	ctx->update_progress = update_progress;
-
-	/* Assume shared catalog access. The startup callback can change it. */
-	ctx->options.need_shared_catalogs = true;
 
 	ctx->output_plugin_options = output_plugin_options;
 
@@ -483,7 +592,7 @@ CreateInitDecodingContext(const char *plugin,
 	ReplicationSlotSave();
 
 	ctx = StartupDecodingContext(NIL, restart_lsn, xmin_horizon,
-								 need_full_snapshot, false, true,
+								 need_full_snapshot, false, true, for_repack,
 								 xl_routine, prepare_write, do_write,
 								 update_progress);
 
@@ -618,7 +727,8 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx = StartupDecodingContext(output_plugin_options,
 								 start_lsn, InvalidTransactionId, false,
-								 fast_forward, false, xl_routine, prepare_write,
+								 fast_forward, false, false,
+								 xl_routine, prepare_write,
 								 do_write, update_progress);
 
 	/* call output plugin initialization callback */
@@ -649,7 +759,7 @@ CreateDecodingContext(XLogRecPtr start_lsn,
 
 	ctx->reorder->output_rewrites = ctx->options.receive_rewrites;
 
-	ereport(DEBUG1,
+	ereport(LogicalDecodingLogLevel(),
 			(errmsg("starting logical decoding for slot \"%s\"",
 					NameStr(slot->data.name)),
 			 errdetail("Streaming transactions committing after %X/%08X, reading WAL from %X/%08X.",
@@ -769,7 +879,9 @@ OutputPluginUpdateProgress(struct LogicalDecodingContext *ctx,
 
 /*
  * Load the output plugin, lookup its output plugin init function, and check
- * that it provides the required callbacks.
+ * that it provides the required callbacks. The caller must have checked that
+ * the current user has the necessary privileges to load the given plugin;
+ * standard LOAD restrictions are not applied here.
  */
 static void
 LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin)
@@ -2064,8 +2176,14 @@ LogicalConfirmReceivedLocation(XLogRecPtr lsn)
 			SpinLockRelease(&MyReplicationSlot->mutex);
 
 			ReplicationSlotsComputeRequiredXmin(false);
-			ReplicationSlotsComputeRequiredLSN();
 		}
+
+		/*
+		 * Now that the new restart_lsn is safely on disk, recompute the
+		 * global WAL retention requirement.
+		 */
+		if (updated_restart)
+			ReplicationSlotsComputeRequiredLSN();
 	}
 	else
 	{
@@ -2259,7 +2377,6 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 									bool *found_consistent_snapshot)
 {
 	LogicalDecodingContext *ctx;
-	ResourceOwner old_resowner PG_USED_FOR_ASSERTS_ONLY = CurrentResourceOwner;
 	XLogRecPtr	retlsn;
 
 	Assert(XLogRecPtrIsValid(moveto));
@@ -2318,17 +2435,7 @@ LogicalSlotAdvanceAndCheckSnapState(XLogRecPtr moveto,
 			 * might still have critical updates to do.
 			 */
 			if (record)
-			{
 				LogicalDecodingProcessRecord(ctx, ctx->reader);
-
-				/*
-				 * We used to have bugs where logical decoding would fail to
-				 * preserve the resource owner.  That's important here, so
-				 * verify that that doesn't happen anymore.  XXX this could be
-				 * removed once it's been battle-tested.
-				 */
-				Assert(CurrentResourceOwner == old_resowner);
-			}
 
 			CHECK_FOR_INTERRUPTS();
 		}

@@ -228,11 +228,11 @@ typedef struct ParallelApplyWorkerEntry
 static HTAB *ParallelApplyTxnHash = NULL;
 
 /*
-* A list (pool) of active parallel apply workers. The information for
-* the new worker is added to the list after successfully launching it. The
-* list entry is removed if there are already enough workers in the worker
-* pool at the end of the transaction. For more information about the worker
-* pool, see comments atop this file.
+ * A list (pool) of active parallel apply workers. The information for
+ * the new worker is added to the list after successfully launching it. The
+ * list entry is removed if there are already enough workers in the worker
+ * pool at the end of the transaction. For more information about the worker
+ * pool, see comments atop this file.
  */
 static List *ParallelApplyWorkerPool = NIL;
 
@@ -815,6 +815,15 @@ LogicalParallelApplyLoop(shm_mq_handle *mqh)
 
 				if (rc & WL_LATCH_SET)
 					ResetLatch(MyLatch);
+
+				/*
+				 * Force stats reporting to avoid long delays. There can be
+				 * long idle gaps before the leader assigns the next
+				 * transaction, and the only opportunity to report stats
+				 * during such gaps is here.
+				 */
+				if ((rc & WL_TIMEOUT) && !IsTransactionState())
+					pgstat_report_stat(true);
 			}
 		}
 		else

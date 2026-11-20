@@ -28,7 +28,8 @@ static PyObject *PLy_spi_execute_fetch_result(SPITupleTable *tuptable,
 static void PLy_spi_exception_set(PyObject *excclass, ErrorData *edata);
 
 
-/* prepare(query="select * from foo")
+/*
+ * prepare(query="select * from foo")
  * prepare(query="select * from foo where bar = $1", params=["text"])
  * prepare(query="select * from foo where bar = $1", params=["text"], limit=5)
  */
@@ -86,6 +87,11 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 			int32		typmod;
 
 			optr = PySequence_GetItem(list, i);
+
+			/* PySequence_GetItem() can return NULL, with an exception set */
+			if (optr == NULL)
+				PLy_elog(ERROR, "could not get element %d from sequence", i);
+
 			if (PyUnicode_Check(optr))
 				sptr = PLyUnicode_AsString(optr);
 			else
@@ -143,7 +149,8 @@ PLy_spi_prepare(PyObject *self, PyObject *args)
 	return (PyObject *) plan;
 }
 
-/* execute(query="select * from foo", limit=5)
+/*
+ * execute(query="select * from foo", limit=5)
  * execute(plan=plan, values=(foo, bar), limit=5)
  */
 PyObject *
@@ -248,6 +255,11 @@ PLy_spi_execute_plan(PyObject *ob, PyObject *list, long limit)
 			PyObject   *elem;
 
 			elem = PySequence_GetItem(list, j);
+
+			/* PySequence_GetItem() can return NULL, with an exception set */
+			if (elem == NULL)
+				PLy_elog(ERROR, "could not get element %d from sequence", j);
+
 			PG_TRY(2);
 			{
 				bool		isnull;

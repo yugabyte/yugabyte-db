@@ -112,6 +112,9 @@
 	(XLH_DELETE_CONTAINS_OLD_TUPLE | XLH_DELETE_CONTAINS_OLD_KEY)
 
 /* This is what we need to know about delete */
+#define HEAP_DELETE_BLKREF_HEAP		0
+#define HEAP_DELETE_BLKREF_VM		1
+
 typedef struct xl_heap_delete
 {
 	TransactionId xmax;			/* xmax of the deleted tuple */
@@ -159,12 +162,15 @@ typedef struct xl_heap_header
 #define SizeOfHeapHeader	(offsetof(xl_heap_header, t_hoff) + sizeof(uint8))
 
 /* This is what we need to know about insert */
+#define HEAP_INSERT_BLKREF_HEAP		0
+#define HEAP_INSERT_BLKREF_VM		1
+
 typedef struct xl_heap_insert
 {
 	OffsetNumber offnum;		/* inserted tuple's offset */
 	uint8		flags;
 
-	/* xl_heap_header & TUPLE DATA in backup block 0 */
+	/* xl_heap_header & TUPLE DATA in HEAP_INSERT_BLKREF_HEAP */
 } xl_heap_insert;
 
 #define SizeOfHeapInsert	(offsetof(xl_heap_insert, flags) + sizeof(uint8))
@@ -175,10 +181,14 @@ typedef struct xl_heap_insert
  * The main data of the record consists of this xl_heap_multi_insert header.
  * 'offsets' array is omitted if the whole page is reinitialized
  * (XLOG_HEAP_INIT_PAGE).
- *
- * In block 0's data portion, there is an xl_multi_insert_tuple struct,
- * followed by the tuple data for each tuple. There is padding to align
- * each xl_multi_insert_tuple struct.
+ */
+#define HEAP_MULTI_INSERT_BLKREF_HEAP	0
+#define HEAP_MULTI_INSERT_BLKREF_VM		1
+
+/*
+ * In HEAP_MULTI_INSERT_BLKREF_HEAP's data portion, there is an
+ * xl_multi_insert_tuple struct, followed by the tuple data for each tuple.
+ * There is padding to align each xl_multi_insert_tuple struct.
  */
 typedef struct xl_heap_multi_insert
 {
@@ -203,7 +213,7 @@ typedef struct xl_multi_insert_tuple
 /*
  * This is what we need to know about update|hot_update
  *
- * Backup blk 0: new page
+ * HEAP_UPDATE_BLKREF_HEAP_NEW: new page
  *
  * If XLH_UPDATE_PREFIX_FROM_OLD or XLH_UPDATE_SUFFIX_FROM_OLD flags are set,
  * the prefix and/or suffix come first, as one or two uint16s.
@@ -215,8 +225,25 @@ typedef struct xl_multi_insert_tuple
  * If XLH_UPDATE_CONTAINS_NEW_TUPLE flag is given, the tuple data is
  * included even if a full-page image was taken.
  *
- * Backup blk 1: old page, if different. (no data, just a reference to the blk)
+ * HEAP_UPDATE_BLKREF_HEAP_OLD: old page, if different. (no data, just a reference
+ * to the block)
+ *
+ * HEAP_UPDATE_BLKREF_VM_NEW: VM page covering the new heap page. Registered
+ * when XLH_UPDATE_NEW_ALL_VISIBLE_CLEARED is set and the new heap page's VM bit
+ * was actually cleared. Also covers the old heap page's VM bits when both heap
+ * pages map to the same VM page and both blocks' VM bits were actually cleared.
+ *
+ * HEAP_UPDATE_BLKREF_VM_OLD: VM page covering the old heap page. Only
+ * registered when XLH_UPDATE_OLD_ALL_VISIBLE_CLEARED is set and the old heap
+ * page's VM bits were actually cleared. Also only registered when the old heap
+ * page's VM bits are on a different VM page than the new heap page's or they
+ * are on the same VM page and only the old block's VM bits are cleared.
  */
+#define HEAP_UPDATE_BLKREF_HEAP_NEW	0
+#define HEAP_UPDATE_BLKREF_HEAP_OLD	1
+#define HEAP_UPDATE_BLKREF_VM_NEW	2
+#define HEAP_UPDATE_BLKREF_VM_OLD	3
+
 typedef struct xl_heap_update
 {
 	TransactionId old_xmax;		/* xmax of the old tuple */
@@ -403,6 +430,9 @@ typedef struct xlhp_prune_items
 #define XLH_LOCK_ALL_FROZEN_CLEARED		0x01
 
 /* This is what we need to know about lock */
+#define HEAP_LOCK_BLKREF_HEAP		0
+#define HEAP_LOCK_BLKREF_VM			1
+
 typedef struct xl_heap_lock
 {
 	TransactionId xmax;			/* might be a MultiXactId */

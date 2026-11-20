@@ -830,6 +830,16 @@ tuplesort_putheaptuple(Tuplesortstate *state, HeapTuple tup)
 	TuplesortClusterArg *arg = (TuplesortClusterArg *) base->arg;
 	Size		tuplen;
 
+	/*
+	 * NB: No need to call heap_datum_check() here: In contrast to
+	 * tuplesort_puttupleslot(), tuplesort_putheaptuple() is just used with
+	 * tuplesort_begin_cluster(), which preserves the full HeapTupleHeader,
+	 * including version information, even when spilling to disk. Attribute
+	 * access performs the necessary checks.
+	 *
+	 * Currently, callers are not expected to supply datum tuples anyway.
+	 */
+
 	/* copy the tuple into sort storage */
 	tup = heap_copytuple(tup);
 	stup.tuple = tup;
@@ -976,6 +986,7 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 	MemoryContext oldcontext = MemoryContextSwitchTo(base->tuplecontext);
 	TuplesortDatumArg *arg = (TuplesortDatumArg *) base->arg;
 	SortTuple	stup;
+	Size		tuplen;
 
 	/*
 	 * Pass-by-value types or null values are just stored directly in
@@ -998,17 +1009,26 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 		stup.datum1 = !isNull ? val : (Datum) 0;
 		stup.isnull1 = isNull;
 		stup.tuple = NULL;		/* no separate storage */
+		tuplen = 0;
 	}
 	else
 	{
 		stup.isnull1 = false;
 		stup.datum1 = datumCopy(val, false, arg->datumTypeLen);
 		stup.tuple = DatumGetPointer(stup.datum1);
+
+		/* GetMemoryChunkSpace is not supported for bump contexts */
+		if (TupleSortUseBumpTupleCxt(base->sortopt))
+			tuplen = MAXALIGN(datumGetSize(PointerGetDatum(stup.tuple),
+										   false,
+										   arg->datumTypeLen));
+		else
+			tuplen = GetMemoryChunkSpace(stup.tuple);
 	}
 
 	tuplesort_puttuple_common(state, &stup,
 							  base->tuples &&
-							  base->sortKeys->abbrev_converter && !isNull, 0);
+							  base->sortKeys->abbrev_converter && !isNull, tuplen);
 
 	MemoryContextSwitchTo(oldcontext);
 }
