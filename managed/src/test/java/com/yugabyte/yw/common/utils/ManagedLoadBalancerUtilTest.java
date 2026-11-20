@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -20,9 +21,13 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.bouncycastle.asn1.x509.GeneralName;
 import org.junit.Test;
 
 public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
@@ -160,6 +165,127 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
     assertEquals(on, ManagedLoadBalancerUtil.getEditedSetting(on, null));
     assertEquals(null, ManagedLoadBalancerUtil.getEditedSetting(on, off));
     assertEquals(on, ManagedLoadBalancerUtil.getEditedSetting(null, on));
+  }
+
+  @Test
+  public void testEditThatLeavesTheDnsNamesOutKeepsThem() {
+    ManagedLoadBalancerConfig named =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    named.setDnsNames(List.of("db.example.com"));
+    ManagedLoadBalancerConfig withoutNames =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    ManagedLoadBalancerConfig cleared =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    cleared.setDnsNames(List.of());
+
+    // A client that sends only enablePrivate must not wipe the names and restart the tservers.
+    assertEquals(
+        List.of("db.example.com"),
+        ManagedLoadBalancerUtil.getEditedSetting(named, withoutNames).getDnsNames());
+    assertEquals(List.of(), ManagedLoadBalancerUtil.getEditedSetting(named, cleared).getDnsNames());
+  }
+
+  @Test
+  public void testTurnOffMayRepeatTheSavedDnsNamesButNotChangeThem() {
+    ManagedLoadBalancerConfig named =
+        cluster(ClusterType.PRIMARY, true, null).userIntent.getManagedLoadBalancer();
+    named.setDnsNames(List.of("db.example.com"));
+    // A client that read the setting and cleared enablePrivate.
+    ManagedLoadBalancerConfig readThenTurnedOff = named.clone();
+    readThenTurnedOff.setEnablePrivate(false);
+    // v1 reads a missing enablePrivate as false, so this may mean "add a name", not "turn off".
+    ManagedLoadBalancerConfig onlyNewNames = new ManagedLoadBalancerConfig();
+    onlyNewNames.setDnsNames(List.of("db.example.com", "new.example.com"));
+
+    assertEquals(null, ManagedLoadBalancerUtil.getEditedSetting(named, readThenTurnedOff));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> ManagedLoadBalancerUtil.getEditedSetting(named, onlyNewNames));
+  }
+
+  @Test
+  public void testDnsNamesAcceptDnsNamesAndWildcardsButNotIpAddresses() {
+    Cluster on = cluster(ClusterType.PRIMARY, true, null);
+    for (String good : List.of("db.example.com", "*.db.example.com", "db.lbtest.internal")) {
+      Cluster updated = cluster(ClusterType.PRIMARY, true, null);
+      updated.userIntent.getManagedLoadBalancer().setDnsNames(List.of(good));
+      validateEdit(on, updated);
+    }
+    // An IP in a dNSName SAN fails ycqlsh and Java clients; YBA adds the LB IP itself.
+    for (String bad :
+        List.of(
+            "10.0.0.5",
+            "10.0.0.256",
+            "*.10.0.0.5",
+            "2001:db8::5",
+            "*.com",
+            "a.*.b.com",
+            "http://db.example.com",
+            "a..b.com",
+            "db example.com",
+            "a".repeat(64) + ".example.com")) {
+      Cluster updated = cluster(ClusterType.PRIMARY, true, null);
+      updated.userIntent.getManagedLoadBalancer().setDnsNames(List.of(bad));
+      PlatformServiceException e =
+          assertThrows(bad, PlatformServiceException.class, () -> validateEdit(on, updated));
+      assertEquals(bad, 400, e.getHttpStatus());
+    }
+  }
+
+  @Test
+  public void testCertNamesAreTheLoadBalancerOfTheNodesZoneAndTheClusterDnsNames() {
+    Cluster primary = cluster(ClusterType.PRIMARY, true, null);
+    primary.uuid = UUID.randomUUID();
+    primary.userIntent.getManagedLoadBalancer().setDnsNames(List.of("*.db.example.com"));
+    Cluster readReplica = cluster(ClusterType.ASYNC, false, null);
+    readReplica.uuid = UUID.randomUUID();
+    UUID westZone = UUID.randomUUID();
+    UUID eastZone = UUID.randomUUID();
+    ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+    state.put(
+        new ManagedLoadBalancer(
+            primary.uuid,
+            UUID.randomUUID(),
+            ManagedLoadBalancer.Scheme.PRIVATE,
+            List.of(westZone),
+            "lbi-west",
+            "10.150.0.5"));
+    state.put(
+        new ManagedLoadBalancer(
+            primary.uuid,
+            UUID.randomUUID(),
+            ManagedLoadBalancer.Scheme.PRIVATE,
+            List.of(eastZone),
+            "lbi-east",
+            "lbi-east-0123456789.elb.us-east-1.amazonaws.com"));
+    UniverseDefinitionTaskParams details = new UniverseDefinitionTaskParams();
+    details.clusters = List.of(primary, readReplica);
+    details.setManagedLoadBalancerState(state);
+
+    // A load balancer serves only its own region, so a node answers only for that one.
+    assertEquals(
+        Map.of("10.150.0.5", GeneralName.iPAddress, "*.db.example.com", GeneralName.dNSName),
+        ManagedLoadBalancerUtil.getCertNames(details, node(primary, westZone, true)));
+    assertEquals(
+        Map.of(
+            "lbi-east-0123456789.elb.us-east-1.amazonaws.com",
+            GeneralName.dNSName,
+            "*.db.example.com",
+            GeneralName.dNSName),
+        ManagedLoadBalancerUtil.getCertNames(details, node(primary, eastZone, true)));
+    // The load balancer sends traffic only to tservers.
+    assertEquals(
+        Map.of(), ManagedLoadBalancerUtil.getCertNames(details, node(primary, westZone, false)));
+    assertEquals(
+        Map.of(), ManagedLoadBalancerUtil.getCertNames(details, node(readReplica, westZone, true)));
+  }
+
+  private static NodeDetails node(Cluster cluster, UUID azUuid, boolean isTserver) {
+    NodeDetails node = new NodeDetails();
+    node.placementUuid = cluster.uuid;
+    node.azUuid = azUuid;
+    node.isTserver = isTserver;
+    return node;
   }
 
   @Test

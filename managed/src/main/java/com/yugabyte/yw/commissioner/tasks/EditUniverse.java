@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -38,6 +39,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -178,10 +180,30 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
+      UniverseDefinitionTaskParams beforeEdit = getBeforeEditDetails(universe);
+      Set<String> lbCertNodes =
+          getLoadBalancerCertNodes(
+              taskParams(),
+              cluster -> {
+                Cluster old = beforeEdit.getClusterByUuid(cluster.uuid);
+                return old != null
+                    && (ManagedLoadBalancerUtil.isEnabled(old)
+                        || ManagedLoadBalancerUtil.isEnabled(cluster));
+              });
       // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
       // first. This creates the load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
         createEnsureManagedLoadBalancerTasks(cluster);
+      }
+      Predicate<String> isLbCertStale = isLoadBalancerCertStale(beforeEdit);
+      // After ensure: it saves the addresses the certs carry.
+      if (!lbCertNodes.isEmpty()) {
+        // Rollback would restore the old names but not the certs on the nodes. Not the Once
+        // variant: this one may be skipped, and a later step must still add its own.
+        createMarkRollbackUnsafeTask()
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
+            .setShouldRunPredicate(t -> lbCertNodes.stream().anyMatch(isLbCertStale));
+        createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
       }
       // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
       // may have saved the state and stopped mid-rebind.
@@ -197,7 +219,9 @@ public class EditUniverse extends EditUniverseTaskBase {
                           || lbState.getLoadBalancers().stream()
                               .noneMatch(lb -> lb.getClusterUuid().equals(c.uuid)))
               .map(c -> c.uuid)
-              .collect(Collectors.toSet()));
+              .collect(Collectors.toSet()),
+          lbCertNodes,
+          isLbCertStale);
       Set<NodeDetails> nodesToProvision =
           PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
       if (!nodesToProvision.isEmpty()) {
@@ -320,6 +344,15 @@ public class EditUniverse extends EditUniverseTaskBase {
   }
 
   /**
+   * The pre-edit snapshot, not the saved universe: the first attempt's freeze already saved the new
+   * setting. prevState is the fallback; on a first attempt it is still pre-edit.
+   */
+  private UniverseDefinitionTaskParams getBeforeEditDetails(Universe universe) {
+    StateTransitionDetails transition = universe.getStateTransitionDetails();
+    return transition != null ? transition.getBeforeUniverseDetails() : prevState;
+  }
+
+  /**
    * Try to automatically rollback universe to a healthy state. This is only possible if we were
    * going to add some nodes but none of those nodes were successfully created.
    *
@@ -341,8 +374,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         .anyMatch(
             c ->
                 prevState.getClusterByUuid(c.uuid) != null
-                    && ManagedLoadBalancerUtil.isTurnedOnOrOff(
-                        prevState.getClusterByUuid(c.uuid), c))) {
+                    && ManagedLoadBalancerUtil.isChanged(prevState.getClusterByUuid(c.uuid), c))) {
       return false;
     }
     try {
