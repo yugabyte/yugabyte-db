@@ -13,11 +13,11 @@ so every relcache entry the worker builds is a burst of catalog reads.
 Upstream models worker launch as one `parallel_setup_cost` per Gather. The
 measurements below find three delays that a flat charge cannot follow: one per
 relation in the worker's plan, one per worker, and one per worker per relation.
-The model charges the first. Without the per-relation charge the planner picks
-a 2-worker Parallel Append for the 600-partition `count(*)` of #36424, because
-the scan cost is divided among the workers while nothing on the startup side
-grows, and on the three-node cluster measured below that plan ran 15 times
-slower than the serial plan.
+The model charges the first. On the three-node cluster measured below, the
+600-partition `count(*)` of #36424 ran 15 times slower as a 2-worker Parallel
+Append than as the serial plan. That query shows the delay and not what the
+charge does to plan choice, because its plan costs carry a second error (What
+the measurements establish).
 
 Catalog preloading replaces the per-relation delay with a fixed delay several
 times larger, which follows the catalog of the database and not the plan. The
@@ -248,13 +248,20 @@ the fit in the worker count is 25.8 ms + 1.82 ms per worker. A probe on
 2026-09-16, on a three-node cluster of the same instance type, gave 29.3 ms +
 1.68 ms per worker.
 
-**The charge moves the #36424 query to its serial plan and leaves a
-10-partition scan parallel.** The planner costs were identical in all three
-environments: 16,209.81 serial and 12,183.11 for the 2-worker plan of the
-#36424 query. Raising `parallel_setup_cost` by `120 * 600` made the planner
-choose the serial plan at every worker count from 1 to 8. For a table of 10
-partitions and 200,000 rows, raising `parallel_setup_cost` by `120 * 10` left
-the 2-worker plan in place, at 12,419.92 against 15,970.50 serial.
+**The `count(*)` queries show the delay, not the effect of the charge on plan
+choice.** The planner costs were identical in all three environments:
+16,209.81 serial and 12,183.11 for the 2-worker plan of the #36424 query.
+Raising `parallel_setup_cost` by `120 * 600` made the planner choose the
+serial plan at every worker count from 1 to 8. For a table of 10 partitions
+and 200,000 rows, raising `parallel_setup_cost` by `120 * 10` left the
+2-worker plan in place, at 12,419.92 against 15,970.50 serial. Neither result
+shows that the charge is the right size. The planner costs the scan under a
+pushed-down aggregate as if every row came back to PostgreSQL (#34090), and a
+parallel plan divides that overcharge among its workers, so part of each
+parallel plan's cost advantage is the overcharge and not the missing launch
+charge. How large a part was not measured. Plan choice on a query without an
+aggregate was measured for a one-relation plan only (A one-relation plan under
+a LIMIT).
 
 ### Catalog preloading
 
@@ -473,9 +480,8 @@ of the figures shown.
 - **Nothing is charged per worker.** Neither the 1.4 ms per worker nor the
   0.08 to 0.11 ms per worker per relation enters the cost, so adding workers
   still lowers the cost of a plan whose launch gets slower.
-- **The flat part undercharges at 300 units per millisecond.** The
-  10-partition query above stays parallel with the charge and runs in 53 ms
-  against 42 ms serial. At the ratio of the #36851 query's serial plan the
+- **The flat part undercharges at 300 units per millisecond.** It is 4,080
+  against 6,900 measured. At the ratio of the #36851 query's serial plan the
   flat part is about the launch of a one-relation plan (A one-relation plan
   under a LIMIT).
 - **The preload charge is calibrated at one worker and at 127 units per
