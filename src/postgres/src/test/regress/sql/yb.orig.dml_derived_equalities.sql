@@ -397,6 +397,14 @@ ANALYZE t_mixed_expr;
 \set query ':P :hint SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;'
 \i :run_query
 
+-- An equality the query already has on the first expression column does not
+-- stop the derivation for the second one.
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
+    ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
+\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
+\i :run_query
+
 DROP TABLE t_const_expr;
 DROP TABLE t_mixed_expr;
 

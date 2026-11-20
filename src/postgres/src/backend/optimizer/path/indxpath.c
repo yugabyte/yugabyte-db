@@ -5145,6 +5145,18 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		AttrNumber	attnum = index->indexkeys[i];
 		List	   *rinfos = NIL;
 
+		/*
+		 * If there is an existing equality condition on the key, we won't
+		 * derive another condition for it.
+		 */
+		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
+		{
+			/* expr_lc must stay in step with the expression keys */
+			if (attnum == InvalidAttrNumber)
+				expr_lc = lnext(index->indexprs, expr_lc);
+			continue;
+		}
+
 		if (attnum == InvalidAttrNumber)
 		{
 			/* expression index */
@@ -5179,24 +5191,6 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 			inferrable_expr = (Expr *) makeVar(rel->relid, attnum, attr->atttypid,
 											   attr->atttypmod, attr->attcollation, 0);
 		}
-
-		/*
-		 * An equality index clause already pins this key to one value.  A
-		 * derived equality would be a second condition on the key and would
-		 * not narrow the scan.
-		 *
-		 * A batched nested loop turns a join equality into "key = ANY
-		 * (batch)".  Each batch element still pins the key to one value.  The
-		 * equality skipped here would be derived from the join clauses.  It
-		 * would be batched element by element with the join equality.
-		 *
-		 * A join equality does not suppress the equality derived from the
-		 * restriction clauses.  That one is derived on the restriction clause
-		 * set.  get_join_index_paths then copies it into each join clause
-		 * set.
-		 */
-		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
-			continue;
 
 		if (or_clauses != NULL)
 		{

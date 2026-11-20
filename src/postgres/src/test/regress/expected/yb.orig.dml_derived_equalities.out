@@ -1160,6 +1160,31 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FRO
  2 | 4
 (1 row)
 
+-- An equality the query already has on the first expression column does not
+-- stop the derivation for the second one.
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
+    ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
+\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Index Scan using t_mixed_expr_idx2 on t_mixed_expr
+         Index Cond: (((b + 1) = 5) AND ((b * 2) = (4 * 2)))
+         Storage Filter: (b = 4)
+(5 rows)
+
+/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
+ a | b 
+---+---
+ 2 | 4
+(1 row)
+
 DROP TABLE t_const_expr;
 DROP TABLE t_mixed_expr;
 -- Derived equalities must not push a clause whose substituted RHS
