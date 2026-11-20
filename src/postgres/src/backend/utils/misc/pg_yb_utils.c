@@ -4354,7 +4354,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					ListCell   *cell;
 
 					is_version_increment = false;
-					bool		found_temp = false;
+					bool		marked_temp = false;
 
 					foreach(cell, stmt->objects)
 					{
@@ -4363,8 +4363,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 						if (!YbIsRangeVarTempRelation(rel))
 							is_version_increment = true;
 						else
-							found_temp = true;
-						if (is_version_increment && found_temp)
+							marked_temp = true;
+						if (is_version_increment && marked_temp)
 							break;
 					}
 
