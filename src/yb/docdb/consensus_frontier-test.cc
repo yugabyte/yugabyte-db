@@ -267,6 +267,18 @@ TEST_F(ConsensusFrontierTest, TxnApplyOpIndex) {
     ASSERT_EQ(from_pb.txn_apply_op_index(), frontier->txn_apply_op_index());
   }
 
+  // A frontier written by a version without the field decodes as zero, and zero is written back
+  // without the field.
+  ConsensusFrontierPB legacy_pb;
+  google::protobuf::Any legacy_any;
+  legacy_any.PackFrom(legacy_pb);
+  ConsensusFrontier legacy;
+  ASSERT_OK(legacy.FromPB(legacy_any));
+  ASSERT_EQ(legacy.txn_apply_op_index(), 0);
+  legacy.ToPB(&legacy_any);
+  ASSERT_TRUE(legacy_any.UnpackTo(&legacy_pb));
+  ASSERT_FALSE(legacy_pb.has_txn_apply_op_index());
+
   // Nothing to retain while every regular apply has its intents removal flushed.
   ASSERT_EQ(UnremovedIntentsRetainIndex(0, 0), std::nullopt);
   ASSERT_EQ(UnremovedIntentsRetainIndex(0, 10), std::nullopt);

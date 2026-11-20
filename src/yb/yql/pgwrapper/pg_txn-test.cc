@@ -105,12 +105,6 @@ Result<ColumnTombstoneCounters> GetColumnTombstoneCounters(
   };
 }
 
-// The column tombstone tests below call WaitForNoRunningTransactions before compacting:
-// Tablet::CompactionHybridTimeConstraints feeds MinRunningHybridTime() to HandleOtherRange, so a
-// transaction that is still running or applying pulls other_min below a column tombstone's hybrid
-// time. CanHaveOtherDataBefore then becomes true and the whole keep/drop branch is skipped, which
-// fails every assertion in these tests at once.
-
 } // namespace
 
 class PgTxnTest : public PgMiniTestBase {
@@ -1098,6 +1092,10 @@ TEST_F(PgTxnTest, ColumnTombstoneSurvivesCompactionWithPackingDisabled) {
   // With packing off the compaction can no longer merge the tombstone into the packed row, while
   // the packed row itself is still forwarded to the output.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  // Tablet::CompactionHybridTimeConstraints feeds MinRunningHybridTime() to HandleOtherRange, so a
+  // transaction that is still running or applying pulls other_min below a column tombstone's hybrid
+  // time. CanHaveOtherDataBefore then becomes true and the whole keep/drop branch is skipped, which
+  // fails every assertion at once. The other column tombstone tests wait for the same reason.
   ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "test"));
   auto before = ASSERT_RESULT(GetColumnTombstoneCounters(cluster_.get(), "test"));
   ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kFalse));

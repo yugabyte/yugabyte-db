@@ -258,6 +258,9 @@ class PgMiniTest : public PgMiniTestBase {
   PgSchemaName GetPgSchema(const string& tbl_name);
 };
 
+YB_STRONGLY_TYPED_BOOL(EnableWalRetention);
+YB_STRONGLY_TYPED_BOOL(AdvanceIntentsFlushedOpId);
+
 class PgMiniTestSingleNode : public PgMiniTest {
  protected:
   size_t NumTabletServers() override {
@@ -265,9 +268,11 @@ class PgMiniTestSingleNode : public PgMiniTest {
   }
 
   void TestReApplyAfterRepackOnBootstrap(
-      bool enable_wal_retention, bool advance_intents_flushed_op_id);
+      EnableWalRetention enable_wal_retention,
+      AdvanceIntentsFlushedOpId advance_intents_flushed_op_id);
 
-  void TestWalGcReleasedAfterLastDistributedTxn(bool advance_intents_flushed_op_id);
+  void TestWalGcReleasedAfterLastDistributedTxn(
+      AdvanceIntentsFlushedOpId advance_intents_flushed_op_id);
 };
 
 class PgMiniTestFailOnConflict : public PgMiniTest {
@@ -4051,7 +4056,8 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
 // so only the retention rule (the regular RocksDB txn_apply_op_index is above the intents one)
 // keeps the bootstrap flushed-entries optimizer from skipping the original.
 void PgMiniTestSingleNode::TestReApplyAfterRepackOnBootstrap(
-    bool enable_wal_retention, bool advance_intents_flushed_op_id) {
+    EnableWalRetention enable_wal_retention,
+    AdvanceIntentsFlushedOpId advance_intents_flushed_op_id) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) =
       enable_wal_retention;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -4199,18 +4205,15 @@ void PgMiniTestSingleNode::TestReApplyAfterRepackOnBootstrap(
 }
 
 TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedOnBootstrap) {
-  TestReApplyAfterRepackOnBootstrap(
-      /* enable_wal_retention = */ true, /* advance_intents_flushed_op_id = */ false);
+  TestReApplyAfterRepackOnBootstrap(EnableWalRetention::kTrue, AdvanceIntentsFlushedOpId::kFalse);
 }
 
 TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedWithAdvancedIntentsFlushedOpId) {
-  TestReApplyAfterRepackOnBootstrap(
-      /* enable_wal_retention = */ true, /* advance_intents_flushed_op_id = */ true);
+  TestReApplyAfterRepackOnBootstrap(EnableWalRetention::kTrue, AdvanceIntentsFlushedOpId::kTrue);
 }
 
 TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackWithoutWalRetention) {
-  TestReApplyAfterRepackOnBootstrap(
-      /* enable_wal_retention = */ false, /* advance_intents_flushed_op_id = */ false);
+  TestReApplyAfterRepackOnBootstrap(EnableWalRetention::kFalse, AdvanceIntentsFlushedOpId::kFalse);
 }
 
 // User-visible coverage of the WAL GC side of the retention rule: for a transaction whose intents
@@ -4368,7 +4371,7 @@ TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedWithUnflushedIntentsRemo
 // single-shard writes, which record no apply and write no intents. Runs with and without the
 // intents flushed op id advance on regular flushes.
 void PgMiniTestSingleNode::TestWalGcReleasedAfterLastDistributedTxn(
-    bool advance_intents_flushed_op_id) {
+    AdvanceIntentsFlushedOpId advance_intents_flushed_op_id) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_advance_intents_flushed_op_id_to_match_regular) =
       advance_intents_flushed_op_id;
@@ -4434,11 +4437,11 @@ void PgMiniTestSingleNode::TestWalGcReleasedAfterLastDistributedTxn(
 }
 
 TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterLastDistributedTxn) {
-  TestWalGcReleasedAfterLastDistributedTxn(/* advance_intents_flushed_op_id = */ true);
+  TestWalGcReleasedAfterLastDistributedTxn(AdvanceIntentsFlushedOpId::kTrue);
 }
 
 TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterLastDistributedTxnWithoutFlushedOpIdAdvance) {
-  TestWalGcReleasedAfterLastDistributedTxn(/* advance_intents_flushed_op_id = */ false);
+  TestWalGcReleasedAfterLastDistributedTxn(AdvanceIntentsFlushedOpId::kFalse);
 }
 
 // The intents removal that would record the last distributed transaction's apply index in the
@@ -4610,13 +4613,16 @@ TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterRolledBackLastDistributedTxn) {
   {
     BlockStrandTask block;
     tablet_peer->StrandEnqueue(&block);
+    // The strand uses the task until it is done, also when an assertion below fails.
+    auto release_block = ScopeExit([&block] {
+      block.Release();
+      block.WaitDone();
+    });
     block.WaitStarted();
     ASSERT_OK(conn.CommitTransaction());
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> { return intents_files() == 1; },
         60s * kTimeMultiplier, "SST of the first transaction deleted"));
-    block.Release();
-    block.WaitDone();
   }
   run_queued_strand_tasks();
   log_flushed_values("After the removal of the first transaction");
@@ -4626,13 +4632,15 @@ TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterRolledBackLastDistributedTxn) {
   {
     BlockStrandTask block;
     tablet_peer->StrandEnqueue(&block);
+    auto release_block = ScopeExit([&block] {
+      block.Release();
+      block.WaitDone();
+    });
     block.WaitStarted();
     ASSERT_OK(conn2.RollbackTransaction());
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> { return intents_files() == 0; },
         60s * kTimeMultiplier, "SST of the second transaction deleted"));
-    block.Release();
-    block.WaitDone();
   }
   run_queued_strand_tasks();
   log_flushed_values("After the removal of the second transaction");
