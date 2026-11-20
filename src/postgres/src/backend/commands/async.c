@@ -349,6 +349,7 @@ static SlruCtlData NotifyCtlData;
 
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
+bool		yb_test_notifs_poller_error_holding_queue_lock = false;
 int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
@@ -3440,6 +3441,15 @@ ybNotifsPollerLoop()
 			ErrorData  *edata = CopyErrorData();
 
 			/*
+			 * The error may have been raised with NotifyQueueLock (and
+			 * NotifySLRULock) held, e.g. by an SLRU I/O failure while adding
+			 * entries to the queue. LWLocks are not re-entrant: acquiring
+			 * NotifyQueueLock below would wait on ourselves forever, and every
+			 * LISTEN on the node behind us.
+			 */
+			LWLockReleaseAll();
+
+			/*
 			 * A stale poller, say one whose slot was dropped under it, must
 			 * not report its error: the listeners it would terminate belong
 			 * to the poller that replaced it.
@@ -3731,6 +3741,12 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		 */
 		if (ybIsStaleNotifsPoller())
 			ybExitStaleNotifsPoller(NULL);
+
+		if (yb_test_notifs_poller_error_holding_queue_lock)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("test-only: notifications poller error while "
+							"holding NotifyQueueLock")));
 
 		if (asyncQueueIsFull())
 		{

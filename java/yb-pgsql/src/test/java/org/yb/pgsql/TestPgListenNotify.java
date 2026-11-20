@@ -1667,6 +1667,36 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     });
   }
 
+  /**
+   * An ERROR the poller raises while holding NotifyQueueLock must not leave it waiting on that
+   * lock in its error handler: it must still terminate the listeners and exit.
+   */
+  @Test
+  public void testPollerErrorHoldingQueueLock() throws Exception {
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN ch1");
+      getPollerPid(stmt);
+
+      appendToPgConfOnAllTServers(
+          "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+
+      stmt.execute("NOTIFY ch1, 'x'");
+
+      waitForPollerAndSlotCleanup(nonListener);
+      assertConnectionDead(listener, "listener");
+    } finally {
+      for (Map.Entry<HostAndPort, String> e : originalPgConf.entrySet()) {
+        setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
+      }
+    }
+
+    verifyListenNotifyWorks();
+  }
+
   private void setCdcIntentRetentionMs(String value) throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       miniCluster.getClient().setFlag(tserver, "cdc_intent_retention_ms", value);
@@ -1738,6 +1768,21 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
+    }
+  }
+
+  /**
+   * Appends an entry to ysql_pg_conf_csv on every tserver, first saving each prior value in
+   * {@code original} for the caller to restore. The value is CSV with quoting, so it is only
+   * appended to, never split. A change to the flag reloads postgresql.conf, so it reaches
+   * background workers such as the poller.
+   */
+  private void appendToPgConfOnAllTServers(String entry, Map<HostAndPort, String> original)
+      throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
+      original.put(tserver, current);
+      setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
     }
   }
 

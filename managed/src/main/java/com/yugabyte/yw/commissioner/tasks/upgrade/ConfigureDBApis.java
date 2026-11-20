@@ -56,15 +56,16 @@ public class ConfigureDBApis extends UpgradeTaskBase {
     }
     // The task ensures the load balancers with the new ports last, after the rolling restart.
     Universe universe = getUniverse();
-    Cluster primary = universe.getUniverseDetails().getPrimaryCluster();
-    List<Integer> ports =
-        ManageLoadBalancerGroup.getForwardedPorts(
-            targetUserIntent(primary), taskParams().communicationPorts);
-    if (ManagedLoadBalancerUtil.isEnabled(primary)
-        && !ports.equals(
-            ManageLoadBalancerGroup.getForwardedPorts(
-                primary.userIntent, universe.getUniverseDetails().communicationPorts))) {
-      ManagedLoadBalancerUtil.validatePorts(universe, primary, ports, cloudAPIFactory);
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      List<Integer> ports =
+          ManageLoadBalancerGroup.getForwardedPorts(
+              targetUserIntent(cluster), taskParams().communicationPorts);
+      if (ManagedLoadBalancerUtil.isEnabled(cluster)
+          && !ports.equals(
+              ManageLoadBalancerGroup.getForwardedPorts(
+                  cluster.userIntent, universe.getUniverseDetails().communicationPorts))) {
+        ManagedLoadBalancerUtil.validatePorts(universe, cluster, ports, cloudAPIFactory);
+      }
     }
   }
 
@@ -210,7 +211,9 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // Last,
           // so a load balancer error can't leave auth on with the default password.
           UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-          createEnsureManagedLoadBalancerTasks(details.getPrimaryCluster());
+          for (Cluster cluster : details.clusters) {
+            createEnsureManagedLoadBalancerTasks(cluster);
+          }
           createManageLoadBalancerTasks(createLoadBalancerMap(details, null, null, null));
           // Ensure gives a load balancer deleted outside YBA a new address, which the certs must
           // name. Not retryable, so details still holds the names the running certs carry.

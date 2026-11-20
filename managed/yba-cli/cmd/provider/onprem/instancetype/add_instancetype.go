@@ -16,7 +16,8 @@ var addInstanceTypesCmd = &cobra.Command{
 	Use:     "add",
 	Aliases: []string{"create"},
 	Short:   "Add an instance type to YugabyteDB Anywhere on-premises provider",
-	Long:    "Add an instance type to YugabyteDB Anywhere on-premises provider",
+	Long: "Add an instance type to YugabyteDB Anywhere on-premises provider. " +
+		"If the instance type exists, it is updated and unset flags keep their current values.",
 	Example: `yba provider onprem instance-type add \
 	--name <provider-name> --instance-type-name <instance-type>\
 	--volume mount-points=<mount-point>::size=<size>::type=<volume-type>`,
@@ -39,8 +40,9 @@ func init() {
 	addInstanceTypesCmd.Flags().String("instance-type-name", "",
 		"[Required] Instance type name.")
 	addInstanceTypesCmd.Flags().StringArray("volume", []string{},
-		"[Required] Volumes associated per node of an instance type. Minimum number of required "+
-			"volumes = 1. Provide the following double colon (::) separated fields as key-value pairs: "+
+		"[Required for a new instance type] Volumes associated per node of an instance type. "+
+			"Minimum number of required volumes = 1. "+
+			"Provide the following double colon (::) separated fields as key-value pairs: "+
 			"\"type=<volume-type>::"+
 			"size=<volume-size>::mount-points=<comma-separated-mount-points>\". "+
 			formatter.Colorize("Mount points is a required key-value.",
