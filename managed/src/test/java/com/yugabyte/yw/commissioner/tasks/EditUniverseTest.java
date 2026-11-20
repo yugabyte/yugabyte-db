@@ -1579,6 +1579,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testGcpTurnOnRestartsTserversAfterEnsureAndRetriesFinishTheRebind() throws Exception {
     createAccessKeyForProvider("default-key", gcpProvider);
+    setCheckNodesAreSafeToTakeDown(mockClient);
     Universe universe = createUniverseForProvider("GCP Universe", gcpProvider);
     factory
         .forUniverse(universe)
