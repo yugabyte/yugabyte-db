@@ -60,8 +60,6 @@ DECLARE_OID_DEFINING_MACRO(YbDdlSerializationLockOid, 8129);
  * insert and delete of a database's row with every bump. Unlike a lock on the
  * table, this lets DDLs in different databases bump their versions
  * concurrently.
- * No catalog row has this OID. Declaring it keeps unused_oids from handing it
- * out, and genbki and duplicate_oids reject any catalog entry that reuses it.
  */
 DECLARE_OID_DEFINING_MACRO(YbCatalogVersionLockOid, 8130);
 
