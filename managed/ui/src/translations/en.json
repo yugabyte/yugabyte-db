@@ -802,6 +802,101 @@
           "submit": "Delete",
           "success": "Support bundle deleted.",
           "failed": "Failed to delete the support bundle."
+        },
+        "create": {
+          "title": "Create Support Bundle",
+          "subtitle": "{{universeName}} · {{regions}} · {{nodes}}",
+          "regionCount_one": "{{count}} region",
+          "regionCount_other": "{{count}} regions",
+          "nodeCount_one": "{{count}} node",
+          "nodeCount_other": "{{count}} nodes",
+          "timeAndScope": "1. Time & Scope",
+          "whatToCollect": "2. What to collect",
+          "createBundle": "Create Bundle",
+          "createSuccess": "Support bundle creation started.",
+          "createFailed": "Failed to create the support bundle.",
+          "sensitive": "Sensitive",
+          "timeRange": {
+            "label": "Time Range",
+            "start": "Start",
+            "end": "End",
+            "endBeforeStart": "End must be after start.",
+            "preset": {
+              "last15Minutes": "Last 15 minutes",
+              "last30Minutes": "Last 30 minutes",
+              "last1Hour": "Last 1 hour",
+              "last2Hours": "Last 2 hours",
+              "last6Hours": "Last 6 hours",
+              "last24Hours": "Last 24 hours",
+              "last3Days": "Last 3 days",
+              "last7Days": "Last 7 days",
+              "custom": "Custom range"
+            }
+          },
+          "nodes": {
+            "label": "Nodes",
+            "allNodes": "All Nodes",
+            "selectedNodes_one": "{{count}} node",
+            "selectedNodes_other": "{{count}} nodes",
+            "nodeCount_one": "{{count}} node",
+            "nodeCount_other": "{{count}} nodes",
+            "unknownRegion": "Unknown region"
+          },
+          "recommended": {
+            "title": "Recommended bundle",
+            "description": "Everything support needs for most tickets.",
+            "includedByDefault": "Included by default",
+            "optional": "Optional"
+          },
+          "customize": {
+            "title": "Customize",
+            "description": "Choose categories, add extra collections, set advanced overrides."
+          }
+        },
+        "summary": {
+          "estimatedSize": "Estimated Bundle Size",
+          "estimating": "Estimating…",
+          "asOf": "As of",
+          "refreshEstimate": "Refresh estimate",
+          "largeBundleWarning": "Over 20 GB. Uploads are slow and large bundles can fill the YBA file system.",
+          "scopeToFewerNodes": "Scope to fewer nodes",
+          "viewBreakdown": "View size breakdown",
+          "hideBreakdown": "Hide size breakdown",
+          "compressionNote": "Files are compressed on each node before transfer.",
+          "expiryNote": "Bundles expire after 10 days."
+        },
+        "category": {
+          "platformLogs": "Platform Logs",
+          "clusterLogs": "Cluster Logs",
+          "nodeDiagnostics": "Node Diagnostics Logs",
+          "internalMetadata": "Internal Metadata",
+          "performanceMetrics": "Performance Metrics",
+          "securityAudit": "Security & Audit"
+        },
+        "component": {
+          "applicationLogs": "YBA platform application logs",
+          "systemLogs": "Node OS system logs",
+          "ybaMetadata": "YBA entity & configuration metadata",
+          "universeLogs": "DB node process logs (master + tserver)",
+          "tabletReport": "Cluster tablet distribution snapshot",
+          "gFlags": "GFlag Runtime Configuration",
+          "instance": "Node Instance Identity Files",
+          "ybcLogs": "YB-Controller Process Logs",
+          "clusterConfig": "Cluster config & placement",
+          "k8sInfo": "Kubernetes pod & volume info",
+          "nodeAgent": "YBA node agent logs & config",
+          "outputFiles": "Process stdout",
+          "errorFiles": "Process stderr",
+          "coreFiles": "Process core dumps",
+          "consensusMeta": "Raft consensus metadata",
+          "tabletMeta": "Tablet superblock metadata",
+          "prometheusMetrics": "Prometheus metrics",
+          "perfAdvisor": "Perf advisor metrics",
+          "pgAuditLogs": "PG audit logs"
+        },
+        "sensitiveTooltip": {
+          "coreFiles": "Process core dumps are memory dumps and cannot be redacted. They may contain application data, credentials, or other sensitive information that was present in memory when the dump was created.\n\nUse customize bundle if you want to exclude core dumps.",
+          "pgAuditLogs": "PG audit logs can include SQL statement text and, depending on your audit configuration, parameter values. YBA applies PII filtering when pgAudit logs are included in a support bundle, but the logs may still contain other sensitive application or customer data. Review them before sharing."
         }
       }
     },

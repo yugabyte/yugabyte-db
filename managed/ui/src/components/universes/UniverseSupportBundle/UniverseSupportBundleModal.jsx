@@ -86,12 +86,7 @@ export const UniverseSupportBundleModal = (props) => {
   const configEntries = globalRuntimeConfigsQuery.data?.configEntries;
   const useV2Api = isSupportBundleUiV2Enabled(configEntries);
   if (isSupportBundleRedesignEnabled(configEntries)) {
-    return (
-      <SupportBundleV2
-        universeUuid={currentUniverse.universeDetails.universeUUID}
-        onClose={closeModal}
-      />
-    );
+    return <SupportBundleV2 universe={currentUniverse} onClose={closeModal} />;
   }
 
   return (
