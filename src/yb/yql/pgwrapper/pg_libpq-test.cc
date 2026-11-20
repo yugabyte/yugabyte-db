@@ -6960,9 +6960,6 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
-    // Table locks and transactional DDL on, as on the cluster where #37717 was seen. Outside
-    // release builds, concurrent DDL and DDL savepoint support default to off; object locking
-    // requires the former, and the latter is set so that every build type runs the same mode.
     for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
       flags->insert(flags->end(), {
           "--enable_object_locking_for_table_locks=true",
@@ -6973,6 +6970,15 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
       });
     }
   }
+
+  struct Isolation {
+    std::string name;
+    std::string suffix;
+    // Whether a statement that changed the catalog is retried in an explicit block.
+    bool retry_allowed_in_block;
+  };
+  const std::vector<Isolation> kIsolations = {
+      {"read committed", "rc", true}, {"repeatable read", "rr", false}};
 };
 
 // Test for #37717: a retryable error raised while committing a statement that
@@ -6987,10 +6993,6 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
 // with the same stale caches.  (Under REPEATABLE READ, only the SELECT is
 // retried by default.)
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
-  struct Isolation {
-    std::string name;
-    std::string suffix;
-  };
   struct FailMode {
     int mode;
     std::string error;
@@ -7016,8 +7018,7 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
       {"do", "DO $$$$ BEGIN ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID; END $$$$",
        false},
       {"func", "SELECT add_check('$0')", true}};
-  for (const auto& [isolation, suffix] : std::vector<Isolation>{
-           {"read committed", "rc"}, {"repeatable read", "rr"}}) {
+  for (const auto& [isolation, suffix, _] : kIsolations) {
     ASSERT_OK(stmt_conn.ExecuteFormat("SET default_transaction_isolation = '$0'", isolation));
     for (const auto& [mode, error] : std::vector<FailMode>{
              {5, "failed DDL operation with conflict as requested"},
@@ -7067,11 +7068,6 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
 // internal subtransaction to roll back, so it must be refused, and the session
 // must stay usable.
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintRetryInBlock) {
-  struct Isolation {
-    std::string name;
-    std::string suffix;
-    bool retry_allowed;
-  };
   struct ErrorCode {
     std::string sqlstate;
     std::string name;
@@ -7090,8 +7086,7 @@ TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintRetryInBlock) {
       "RAISE EXCEPTION 'injected retryable error' USING ERRCODE = code; "
       "END IF; "
       "END $$"));
-  for (const auto& [isolation, suffix, retry_allowed] : std::vector<Isolation>{
-           {"read committed", "rc", true}, {"repeatable read", "rr", false}}) {
+  for (const auto& [isolation, suffix, retry_allowed] : kIsolations) {
     for (const auto& [sqlstate, error_name] : std::vector<ErrorCode>{
              {"YB002", "read_restart"}, {"YB003", "conflict"}, {"YB004", "deadlock"}}) {
       SCOPED_TRACE(Format("$0, $1", isolation, error_name));

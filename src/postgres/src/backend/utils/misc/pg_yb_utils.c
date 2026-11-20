@@ -214,9 +214,11 @@ static uint64_t function_cache_generation = 0;
 
 /*
  * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
- * transaction state (use_regular_txn_block), whether or not it ran a DDL
- * statement. The DDL transaction state is cleared before the commit RPC, so
- * this is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ * transaction state (use_regular_txn_block). A DDL statement sets that state,
+ * and so does YBAddDdlTxnState for a catalog change made without one, such as
+ * by the statistics restore functions or the pg_hint_plan hint table trigger.
+ * The DDL transaction state is cleared before the commit RPC, so this is what
+ * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
@@ -2824,9 +2826,10 @@ YBGetDdlUseRegularTransactionBlock()
 
 /*
  * True while YBCommitTransactionContainingDDL commits a transaction with DDL
- * transaction state (use_regular_txn_block), whether or not it ran a DDL
- * statement: from just before it clears that state and sends the commit RPC,
- * until that RPC succeeds or the transaction is aborted.
+ * transaction state (use_regular_txn_block), which a DDL statement or a
+ * catalog change registered through YBAddDdlTxnState sets: from just before it
+ * clears that state and sends the commit RPC, until that RPC succeeds or the
+ * transaction is aborted.
  */
 bool
 YBIsDdlTxnBlockCommitInProgress()
