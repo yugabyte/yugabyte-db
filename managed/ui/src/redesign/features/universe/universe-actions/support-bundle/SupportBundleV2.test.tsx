@@ -12,6 +12,7 @@ import {
 import { SupportBundleStatus } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import en from '@app/translations/en.json';
 
+import { SupportBundleReadyWatcher } from './ready/SupportBundleReadyWatcher';
 import { SupportBundleV2 } from './SupportBundleV2';
 
 void i18n.use(initReactI18next).init({
@@ -24,7 +25,8 @@ const api = vi.hoisted(() => ({
   pageListSupportBundles: vi.fn(),
   estimateSupportBundleSize: vi.fn(),
   createSupportBundle: vi.fn(),
-  deleteSupportBundle: vi.fn()
+  deleteSupportBundle: vi.fn(),
+  getSupportBundle: vi.fn()
 }));
 vi.mock('@app/v2/api/support-bundle/support-bundle', () => api);
 const paApi = vi.hoisted(() => ({ fetchUniverseRegistrationDetails: vi.fn() }));
@@ -43,6 +45,7 @@ const renderFlow = () => {
     <YBThemeProvider theme={yba.ybaTheme}>
       <QueryClientProvider client={queryClient}>
         <SupportBundleV2 universe={createSupportBundleUniverseMock()} onClose={vi.fn()} />
+        <SupportBundleReadyWatcher universeUuid="universe-uuid" universeNodeCount={9} />
       </QueryClientProvider>
     </YBThemeProvider>
   );
@@ -80,5 +83,31 @@ describe('SupportBundleV2', () => {
 
     expect(await screen.findByTestId('SupportBundleRow-sb-new')).toBeInTheDocument();
     expect(screen.queryByTestId('CreateSupportBundlePage')).toBeNull();
+  });
+
+  it('shares a ready bundle from the list', async () => {
+    api.pageListSupportBundles.mockResolvedValue({
+      entities: [createSupportBundleMock('sb-ready', SupportBundleStatus.Success)],
+      total_count: 1
+    });
+    renderFlow();
+
+    fireEvent.click(await screen.findByTestId('SupportBundleRow-Share-sb-ready'));
+
+    expect(await screen.findByText('Share Bundle')).toBeInTheDocument();
+    expect(screen.getByTestId('ShareBundleModal-Submit')).toBeDisabled();
+  });
+
+  it('announces the bundle it created once the bundle is ready', async () => {
+    api.createSupportBundle.mockResolvedValue({ task_uuid: 'task-1', resource_uuid: 'sb-new' });
+    api.getSupportBundle.mockResolvedValue(
+      createSupportBundleMock('sb-new', SupportBundleStatus.Success)
+    );
+    renderFlow();
+
+    fireEvent.click(await screen.findByTestId('SupportBundlesEmptyState-Create'));
+    fireEvent.click(await screen.findByTestId('SupportBundleSummaryPanel-Create'));
+
+    expect(await screen.findByTestId('SupportBundleReadyBanner')).toBeInTheDocument();
   });
 });

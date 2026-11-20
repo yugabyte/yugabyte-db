@@ -239,3 +239,13 @@ export const supportBundleCreateMswHandlers = ({
       : HttpResponse.json({ error: 'Not registered' }, { status: 404 })
   )
 ];
+
+/**
+ * Answers every bundle lookup with `bundle` under the requested UUID, so the ready banner can
+ * announce whichever bundle a story just created.
+ */
+export const supportBundleGetMswHandlers = (bundle: SupportBundle) => [
+  http.get(`${SUPPORT_BUNDLES_URL}/:bundleUuid`, ({ params }) =>
+    HttpResponse.json({ ...bundle, info: { ...bundle.info, uuid: params.bundleUuid } })
+  )
+];

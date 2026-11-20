@@ -924,6 +924,27 @@
         "sensitiveTooltip": {
           "coreFiles": "Process core dumps are memory dumps and cannot be redacted. They may contain application data, credentials, or other sensitive information that was present in memory when the dump was created.\n\nUse customize bundle if you want to exclude core dumps.",
           "pgAuditLogs": "PG audit logs can include SQL statement text and, depending on your audit configuration, parameter values. YBA applies PII filtering when pgAudit logs are included in a support bundle, but the logs may still contain other sensitive application or customer data. Review them before sharing."
+        },
+        "share": {
+          "title": "Share Bundle",
+          "download": "Download",
+          "sensitiveWarningTitle": "This bundle includes unredacted components that may contain sensitive data.",
+          "sensitiveWarningBody": "Review it before sharing outside your organization.",
+          "acknowledge": "I understand and want to share this data.",
+          "timeRange": "Time range",
+          "to": "to",
+          "redaction": "Redaction",
+          "unredactedIncluded": "Unredacted components included",
+          "unredactedTooltip": "PG audit logs and process core dumps don't support automatic redaction and may contain sensitive data.",
+          "destination": "Destination"
+        },
+        "ready": {
+          "title": "Support bundle ready",
+          "body_one": "{{size}} · collected from {{count}} node. Share it with support or download it from Support Bundles.",
+          "body_other": "{{size}} · collected from {{count}} nodes. Share it with support or download it from Support Bundles.",
+          "share": "Share Bundle",
+          "dismiss": "Dismiss",
+          "failed": "Support bundle {{bundleName}} could not be created."
         }
       }
     },

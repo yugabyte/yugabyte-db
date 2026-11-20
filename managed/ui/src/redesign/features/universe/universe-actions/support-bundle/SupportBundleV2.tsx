@@ -6,7 +6,7 @@ import { SupportBundle } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CreateSupportBundlePage } from './create/CreateSupportBundlePage';
 import { useSupportBundleUniverseContext } from './hooks/useSupportBundleUniverseContext';
 import { SupportBundlesModal } from './list/SupportBundlesModal';
-import { downloadSupportBundle } from './supportBundleApi';
+import { ShareBundleModal } from './share/ShareBundleModal';
 
 interface SupportBundleV2Props {
   universe: Universe;
@@ -19,8 +19,7 @@ export const SupportBundleV2 = ({ universe, onClose }: SupportBundleV2Props) => 
   const context = useSupportBundleUniverseContext(universe);
   const [isCreating, setIsCreating] = useState(false);
 
-  const onShareBundle = (bundle: SupportBundle) =>
-    downloadSupportBundle(universeUuid, bundle.info?.uuid ?? '', true);
+  const [bundleToShare, setBundleToShare] = useState<SupportBundle | null>(null);
 
   if (isCreating) {
     return (
@@ -33,11 +32,18 @@ export const SupportBundleV2 = ({ universe, onClose }: SupportBundleV2Props) => 
     );
   }
   return (
-    <SupportBundlesModal
-      universeUuid={universeUuid}
-      onClose={onClose}
-      onCreateBundle={() => setIsCreating(true)}
-      onShareBundle={onShareBundle}
-    />
+    <>
+      <SupportBundlesModal
+        universeUuid={universeUuid}
+        onClose={onClose}
+        onCreateBundle={() => setIsCreating(true)}
+        onShareBundle={setBundleToShare}
+      />
+      <ShareBundleModal
+        universeUuid={universeUuid}
+        bundle={bundleToShare}
+        onClose={() => setBundleToShare(null)}
+      />
+    </>
   );
 };

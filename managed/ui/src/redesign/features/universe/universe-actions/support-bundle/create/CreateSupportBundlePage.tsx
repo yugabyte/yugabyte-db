@@ -31,6 +31,7 @@ import {
   SupportBundleFormValues
 } from '../model/formState';
 import { groupNodesByRegion } from '../model/nodes';
+import { addPendingSupportBundle } from '../ready/pendingSupportBundles';
 import { getSelectedComponents, toCreateSpec } from '../model/toCreateSpec';
 import { CustomizeCategoryList } from './CustomizeCategoryList';
 import { SummaryPanel } from './SummaryPanel';
@@ -161,7 +162,10 @@ export const CreateSupportBundlePage = ({
       return;
     }
     createBundle.mutate(spec, {
-      onSuccess: () => {
+      onSuccess: (task) => {
+        if (task.resource_uuid) {
+          addPendingSupportBundle(universeUuid, task.resource_uuid);
+        }
         toast.success(t('createSuccess'));
         onCreated();
       },
