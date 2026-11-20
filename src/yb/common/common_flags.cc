@@ -292,9 +292,8 @@ DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
-    "When true, DDLs with global object locks in the same database run concurrently unless they "
-    "lock the same objects. When false, they run one at a time. Either way they wait for DDLs in "
-    "the same database that run in a separate DDL transaction without object locks.");
+    "When true, DDLs with global object locks in the same database run concurrently, as allowed "
+    "by object locks. When false, they run one at a time.");
 
 DEFINE_NON_RUNTIME_int32(ysql_separate_ddl_txn_inval_propagation_wait_ms, 0,
     "After a DDL that runs in a separate DDL transaction bumps the catalog version, how many "
