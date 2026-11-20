@@ -40,6 +40,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class Poller implements DisposableBean {
   private static final String X_REQUEST_ID_HEADER = "X-REQUEST-ID";
+  private static final Duration POST_RETRY_INITIAL_BACKOFF = Duration.ofMillis(500);
+  private static final Duration POST_RETRY_MAX_BACKOFF = Duration.ofSeconds(5);
 
   private final YbaProperties yba;
   private final ProxiedAppProperties proxiedApp;
@@ -140,11 +142,12 @@ public class Poller implements DisposableBean {
         httpDispatchExecutor.execute(
             () -> {
               try {
+                OffsetDateTime deadline = postDeadline(reqData);
                 DispatchResult dispatch = executeHttpExchange(reqData, yba.baseUrl(), mdcRequestId);
                 withRequestId(
                     dispatch.mdcRequestId(),
                     () -> {
-                      postResponse(requestApi, dispatch);
+                      postResponse(requestApi, dispatch, deadline);
                       return null;
                     });
               } catch (Exception e) {
@@ -176,13 +179,63 @@ public class Poller implements DisposableBean {
     return cause;
   }
 
-  private synchronized void postResponse(
-      InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch) {
-    try {
-      requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
-    } catch (ApiException e) {
-      log.error("Failed to post response for {} (status {})", dispatch.requestId(), e.getCode(), e);
+  /**
+   * Posts YBA's answer and retries a failed post until the request's deadline. The caller keeps the
+   * request in {@link #inFlight} until this returns. While apiserver has no answer it gives the
+   * request out again, and the proxy must not send that request to YBA a second time.
+   */
+  private void postResponse(
+      InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch, OffsetDateTime deadline) {
+    Duration backoff = POST_RETRY_INITIAL_BACKOFF;
+
+    while (true) {
+      try {
+        postResponseOnce(requestApi, dispatch);
+        return;
+      } catch (ApiException e) {
+        Duration remaining = Duration.between(OffsetDateTime.now(), deadline);
+        if (remaining.isNegative() || remaining.isZero()) {
+          log.error(
+              "Failed to post response for {} (status {}); the request deadline has passed",
+              dispatch.requestId(),
+              e.getCode(),
+              e);
+          return;
+        }
+
+        Duration delay = backoff.compareTo(remaining) < 0 ? backoff : remaining;
+        log.warn(
+            "Failed to post response for {} (status {}): {}; retrying in {} ms",
+            dispatch.requestId(),
+            e.getCode(),
+            e.getMessage(),
+            delay.toMillis());
+
+        try {
+          Thread.sleep(delay.toMillis());
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          log.error("Interrupted before response for {} was posted", dispatch.requestId(), e);
+          return;
+        }
+
+        backoff = backoff.multipliedBy(2);
+        if (backoff.compareTo(POST_RETRY_MAX_BACKOFF) > 0) {
+          backoff = POST_RETRY_MAX_BACKOFF;
+        }
+      }
     }
+  }
+
+  private synchronized void postResponseOnce(
+      InternalQueuedHttpRequestApi requestApi, DispatchResult dispatch) throws ApiException {
+    requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
+  }
+
+  /** apiserver stops waiting for the answer, and stops giving the request out, at this time. */
+  private OffsetDateTime postDeadline(QueuedHttpRequestData reqData) {
+    OffsetDateTime timeoutOn = reqData.getTimeoutOn();
+    return timeoutOn != null ? timeoutOn : OffsetDateTime.now().plus(proxiedApp.readTimeout());
   }
 
   /**
