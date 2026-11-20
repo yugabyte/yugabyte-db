@@ -1035,6 +1035,10 @@ class Tablet : public AbstractTablet,
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
 
+  // Whether the intents DB holds external intents of a transaction replicated by xCluster, which is
+  // applied when its apply record arrives.
+  Result<bool> HasExternalIntents() const;
+
   // Get all the entries of intent db.
   // Potentially takes a long time. Used for testing/debugging.
   Status ReadIntents(std::vector<std::string>* resp);
