@@ -685,7 +685,7 @@ class NodeChecker():
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
                  ybdb_inbuilt_ybc, yba_ynp_version, pss_collection_interval_secs=0,
-                 collect_pss=True):
+                 metrics_only=False):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -730,7 +730,8 @@ class NodeChecker():
         self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
         self.yba_ynp_version = yba_ynp_version
         self.pss_collection_interval_secs = pss_collection_interval_secs
-        self.collect_pss = collect_pss
+        self.metrics_only = metrics_only
+        self.textfile_collector_present = None
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -2151,8 +2152,25 @@ class NodeChecker():
         msgs.append("%s ms" % drift_ms)
         return e.fill_and_return_entry(msgs, metrics=metrics)
 
+    def _is_textfile_collector_present(self):
+        # Same condition as check_node_metrics_collection. When it is false YBA publishes the
+        # metrics of the full run, because the metrics-only run's textfile is never scraped.
+        if self.textfile_collector_present is None:
+            output = self.get_command_for_process("node_exporter")
+            self.textfile_collector_present = (
+                not check_for_errors(output)
+                and 'node_exporter' in output
+                and '--collector.textfile.directory=' in output)
+        return self.textfile_collector_present
+
+    def _is_pss_source(self):
+        # The per-minute metrics-only run feeds the graphs through the textfile, so the full run
+        # skips PSS, unless nothing scrapes that textfile (k8s runs no metrics-only run at all).
+        return (self.metrics_only or self.is_k8s
+                or not self._is_textfile_collector_present())
+
     def _is_pss_collection_due(self):
-        if not self.collect_pss or self.pss_collection_interval_secs < 0:
+        if not self._is_pss_source() or self.pss_collection_interval_secs < 0:
             return False
         if self.pss_collection_interval_secs == 0:
             return True
@@ -2163,6 +2181,12 @@ class NodeChecker():
         # The slack keeps run-to-run jitter from pushing an interval equal to the health check
         # period to every second run. A negative elapsed means the clock went back.
         return not (0 <= elapsed < self.pss_collection_interval_secs - PSS_INTERVAL_SLACK_SECS)
+
+    def _get_root_start_time(self, res):
+        for pid_info in res['process_map'].values():
+            if pid_info.get('is_root'):
+                return pid_info['stats'].get('start_time')
+        return None
 
     def _get_pss_values(self, res):
         """PSS values for the postgres tree, None where they could not be read."""
@@ -2177,20 +2201,34 @@ class NodeChecker():
                 elif pss > 0:
                     backend_pss.append(pss)
         values = {
-            # Negative means PSS could not be read for at least one pid; a partial sum would
-            # under-report, so skip it.
-            'total': total if total >= 0 else None,
+            'start_time': self._get_root_start_time(res),
+            # Negative means PSS could not be read for at least one pid. A partial sum would
+            # under-report, and a max or p95 over a subset is biased the same way, so skip all
+            # three.
+            'total': total if total >= 0 and not unavailable else None,
             'backend_max': None,
             'backend_p95': None
         }
+        if unavailable:
+            return values
         if backend_pss:
             values['backend_max'] = max(backend_pss)
             values['backend_p95'] = get_nearest_rank_percentile(backend_pss, 0.95)
-        elif not unavailable:
+        else:
             # No backends running, as opposed to PSS being unreadable.
             values['backend_max'] = 0
             values['backend_p95'] = 0
         return values
+
+    def _get_last_pss_values(self, prev, res):
+        if not self._is_pss_source() or self.pss_collection_interval_secs < 0:
+            return None
+        last = prev.get('pss_values')
+        start_time = self._get_root_start_time(res)
+        # Don't carry values over a postgres restart.
+        if last and start_time is not None and last.get('start_time') == start_time:
+            return last
+        return None
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
@@ -2201,17 +2239,23 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
+            # Stamped before the load: walking the postgres tree can take longer than the slack
+            # in _is_pss_collection_due, which would skip a run that is due.
+            started_at = time.time()
             with_pss = process_name == POSTMASTER and self._is_pss_collection_due()
             res = self._load_per_process_metrics(process_name, with_pss)
             pss = None
             if process_name == POSTMASTER:
+                # A run that skips PSS reports the last collected values. Omitting the series
+                # leaves a gap in the YBA UI graphs, whose window is a single query step.
                 if with_pss:
-                    res['pss_collected_at'] = time.time()
+                    res['pss_collected_at'] = started_at
                     pss = self._get_pss_values(res)
                 else:
-                    # Keep the last collection time across runs that skip PSS.
-                    res['pss_collected_at'] = (
-                        self.prev_process_results.get(POSTMASTER, {}).get('pss_collected_at'))
+                    prev = self.prev_process_results.get(POSTMASTER, {})
+                    res['pss_collected_at'] = prev.get('pss_collected_at')
+                    pss = self._get_last_pss_values(prev, res)
+                res['pss_values'] = pss
             stat = res['total_stat']
             self.current_process_results[process_name] = res
             self._dump_per_process_results()
@@ -3512,9 +3556,7 @@ def main():
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
         n.ybdb_inbuilt_ybc, args.yba_ynp_version, n.pss_collection_interval_secs,
-        # The per-minute metrics-only run feeds the graphs, so the full run skips PSS. Kubernetes
-        # has no metrics-only run, so the full run is the only source there.
-        collect_pss=(args.metrics_only or n.is_k8s))
+        metrics_only=args.metrics_only)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
