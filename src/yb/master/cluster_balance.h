@@ -91,9 +91,7 @@ class ClusterLoadBalancer {
 
   // Runs the cluster balancer once for the live and all read only clusters, in order
   // of the cluster config.
-  void RunClusterBalancer(
-      const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
-      const TabletInfoMap& tablet_map);
+  void RunClusterBalancer(const LeaderEpoch& epoch);
 
   // Sets whether to enable or disable the cluster balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }

@@ -77,9 +77,7 @@ class CatalogManagerBgTasks final {
   void RunOnceAsLeader(const LeaderEpoch& epoch, CoarseDuration& balancer_time);
 
  private:
-  void MaybeRunClusterBalancer(
-      const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
-      const TabletInfoMap& tablets, CoarseDuration& balancer_time);
+  void MaybeRunClusterBalancer(const LeaderEpoch& epoch, CoarseDuration& balancer_time);
 
   void ScaleUpTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch);
   Status DoScaleUpTransactionStatusTables(

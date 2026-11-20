@@ -2620,6 +2620,55 @@ TEST_F(AutomaticTabletSplitITest, RemoteBootstrapAfterPostSplitDoesNotHoldOutsta
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = false;
 }
 
+TEST_F(AutomaticTabletSplitITest, TrackedTabletListDropsSmallTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(1000));
+
+  // A heartbeat with a replica above the threshold puts the tablet on the list.
+  auto& split_manager = ASSERT_RESULT(GetLeaderMaster()).get().tablet_split_manager();
+  ASSERT_OK(WaitFor([&] {
+    return split_manager.TEST_NumTrackedTablets() > 0;
+  }, 30s * kTimeMultiplier, "Wait for a tracked tablet"));
+
+  // No tablet is above the new threshold, so the split manager drops them all.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1LL << 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WaitFor([&] {
+    return split_manager.TEST_NumTrackedTablets() == 0;
+  }, 30s * kTimeMultiplier, "Wait for no tracked tablets"));
+}
+
+TEST_F(AutomaticTabletSplitITest, SplitAfterThresholdLowered) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(1000));
+
+  auto& split_manager = ASSERT_RESULT(GetLeaderMaster()).get().tablet_split_manager();
+  ASSERT_OK(WaitFor([&] {
+    return split_manager.TEST_NumTrackedTablets() > 0;
+  }, 30s * kTimeMultiplier, "Wait for a tracked tablet"));
+
+  // The tablet is below the threshold, so the split manager drops it from the list.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1LL << 40;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WaitFor([&] {
+    return split_manager.TEST_NumTrackedTablets() == 0;
+  }, 30s * kTimeMultiplier, "Wait for no tracked tablets"));
+
+  // The tservers do not report the unchanged size again. The lower threshold alone must make
+  // the split manager look at the tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));
+}
+
 // Similar to the FailedSplitIsRestarted test, but crash instead.
 TEST_F(AutomaticTabletSplitExternalMiniClusterITest, CrashedSplitIsRestarted) {
   constexpr int kNumRows = 1000;
@@ -5449,6 +5498,25 @@ TEST_F(TabletSplitITestMultiMaster, AlterTableRetryLoopAfterSplitAndMasterFailov
   SleepFor(5s * kTimeMultiplier);
 
   LOG(INFO) << "Skip count for split parent: " << skip_sink.GetEventCount();
+}
+
+// A new master leader must find a tablet that was large enough to split before the leader change.
+TEST_F(TabletSplitITestMultiMaster, AutomaticSplitAfterMasterLeaderChange) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit_per_tserver) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(1000));
+
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets = */ 2));
 }
 
 }  // namespace yb

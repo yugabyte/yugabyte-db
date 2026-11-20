@@ -346,6 +346,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // Updates a replica in replica_locations_ map if it exists. Returns false if it does not.
   bool UpdateReplicaInfo(const std::string& ts_uuid, const TabletReplicaDriveInfo& drive_info);
 
+  // Whether the tablet split manager has this tablet on its list of tablets to check.
+  std::atomic<bool>& tracked_for_split() { return tracked_for_split_; }
+
   // Applies a heartbeat leader_info entry under one lock: lease decision, valid-leader time, write.
   void ProcessLeaderInfo(
       const std::string& ts_uuid, consensus::LeaderLeaseStatus leader_lease_status,
@@ -449,6 +452,8 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   LeaderStepDownFailureTimes leader_stepdown_failure_times_ GUARDED_BY(lock_);
 
   std::atomic<bool> initiated_election_{false};
+
+  std::atomic<bool> tracked_for_split_{false};
 
   std::unordered_map<xrepl::StreamId, uint64_t> replication_stream_to_status_bitmask_;
 
