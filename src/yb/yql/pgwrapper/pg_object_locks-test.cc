@@ -2124,29 +2124,16 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
 }
 
-// Tests for #32224: with ysql_enable_concurrent_ddl off, DDLs with global object locks in one
+// Tests for #34673: with ysql_enable_concurrent_ddl off, DDLs with global object locks in one
 // database run one at a time; with it on, they run as concurrently as object locks allow.
 //
-// The first DDL alters a, and a ddl_command_end event trigger holds it open, after its catalog
-// writes and before it commits, while the second DDL alters b. "Overlap" means the second DDL
-// commits while the first is held, and the first commits as well. The parameter turns
-// ysql_enable_concurrent_ddl off.
-class PgObjectLocksTestOverlappingDdls : public PgObjectLocksTest,
-                                         public ::testing::WithParamInterface<bool> {
+// DdlsOverlap runs two DDLs: the first alters a, and a ddl_command_end event trigger holds it open,
+// after its catalog writes and before it commits, while the second alters b. "Overlap" means the
+// second DDL commits while the first is held, and the first commits as well.
+class PgObjectLocksTestDdlOverlap : public PgObjectLocksTest {
  protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back(
-        Format("--ysql_enable_concurrent_ddl=$0", !GetParam()));
-  }
-};
-
-TEST_P(PgObjectLocksTestOverlappingDdls, DdlsOverlapOnlyWithConcurrentDdl) {
-  const bool concurrent_ddl_off = GetParam();
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  void CreateOverlapObjects() {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
     ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
     ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
     ASSERT_OK(conn.ExecuteFormat(
@@ -2157,34 +2144,55 @@ TEST_P(PgObjectLocksTestOverlappingDdls, DdlsOverlapOnlyWithConcurrentDdl) {
         "CREATE EVENT TRIGGER slow_ddl ON ddl_command_end EXECUTE FUNCTION slow_ddl()"));
   }
 
-  const std::string first_ddl = "ALTER TABLE a ADD COLUMN v INT";
-  auto first_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(first_conn.Execute("SET test.slow = 'on'"));
-  auto first_future = std::async(std::launch::async, [&first_conn, &first_ddl]() {
-    return first_conn.Execute(first_ddl);
-  });
-  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(LoggedWaitFor([&observer, &first_ddl]() -> Result<bool> {
-    auto sleeping = observer.FetchRow<int64_t>(Format(
-        "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0' AND wait_event = 'PgSleep'",
-        first_ddl));
-    if (!sleeping.ok()) {
-      LOG(INFO) << "pg_stat_activity: " << sleeping.status();
-      return false;
-    }
-    return *sleeping > 0;
-  }, 30s * kTimeMultiplier, "the first DDL to sleep in the event trigger"));
+  // Each call adds the column `column` to a and to b, so a later call needs another name.
+  Result<bool> DdlsOverlap(
+      ExternalTabletServer* first_ts, ExternalTabletServer* second_ts, const std::string& column) {
+    const auto first_ddl = Format("ALTER TABLE a ADD COLUMN $0 INT", column);
+    auto first_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+    RETURN_NOT_OK(first_conn.Execute("SET test.slow = 'on'"));
+    auto first_future = std::async(std::launch::async, [&first_conn, &first_ddl]() {
+      return first_conn.Execute(first_ddl);
+    });
+    auto observer = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+    RETURN_NOT_OK(LoggedWaitFor([&observer, &first_ddl]() -> Result<bool> {
+      auto sleeping = observer.FetchRow<int64_t>(Format(
+          "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0' AND wait_event = 'PgSleep'",
+          first_ddl));
+      if (!sleeping.ok()) {
+        LOG(INFO) << "pg_stat_activity: " << sleeping.status();
+        return false;
+      }
+      return *sleeping > 0;
+    }, 30s * kTimeMultiplier, "the first DDL to sleep in the event trigger"));
 
-  auto second_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  const auto second_status = second_conn.Execute("ALTER TABLE b ADD COLUMN v INT");
-  const bool second_ended_while_first_held =
-      first_future.wait_for(0s) == std::future_status::timeout;
-  const auto first_status = first_future.get();
-  LOG(INFO) << "first DDL: " << first_status << ", second DDL: " << second_status
-            << ", second ended while first held: " << second_ended_while_first_held;
+    auto second_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*second_ts));
+    const auto second_status =
+        second_conn.ExecuteFormat("ALTER TABLE b ADD COLUMN $0 INT", column);
+    const bool second_ended_while_first_held =
+        first_future.wait_for(0s) == std::future_status::timeout;
+    const auto first_status = first_future.get();
+    LOG(INFO) << "first DDL: " << first_status << ", second DDL: " << second_status
+              << ", second ended while first held: " << second_ended_while_first_held;
+    return first_status.ok() && second_status.ok() && second_ended_while_first_held;
+  }
+};
 
-  const bool overlapped =
-      first_status.ok() && second_status.ok() && second_ended_while_first_held;
+// The parameter turns ysql_enable_concurrent_ddl off.
+class PgObjectLocksTestOverlappingDdls : public PgObjectLocksTestDdlOverlap,
+                                         public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestDdlOverlap::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--ysql_enable_concurrent_ddl=$0", !GetParam()));
+  }
+};
+
+TEST_P(PgObjectLocksTestOverlappingDdls, DdlsOverlapOnlyWithConcurrentDdl) {
+  const bool concurrent_ddl_off = GetParam();
+  ASSERT_NO_FATALS(CreateOverlapObjects());
+  const auto overlapped = ASSERT_RESULT(
+      DdlsOverlap(cluster_->tablet_server(0), cluster_->tablet_server(1), "v"));
   ASSERT_EQ(overlapped, !concurrent_ddl_off);
 }
 
@@ -2193,6 +2201,29 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<bool>& info) {
       return info.param ? "ConcurrentDdlDisabled" : "ConcurrentDdlEnabled";
     });
+
+// Turning ysql_enable_concurrent_ddl off on a running cluster: the cluster starts with it on, and
+// a rolling restart turns it off on every tserver. DDLs overlap before and run one at a time after.
+TEST_F(PgObjectLocksTestDdlOverlap, ConcurrentDdlSwitchedOff) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(CreateOverlapObjects());
+  ASSERT_TRUE(ASSERT_RESULT(DdlsOverlap(ts1, ts2, "v1")));
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto* ts = cluster_->tablet_server(i);
+    ts->RemoveExtraFlag("ysql_enable_concurrent_ddl");
+    ts->AddExtraFlag("ysql_enable_concurrent_ddl", "false");
+    ts->Shutdown();
+    ASSERT_OK(ts->Restart());
+    ASSERT_OK(LoggedWaitFor(
+        [ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
+        60s * kTimeMultiplier, "restarted tserver to accept connections"));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_enable_concurrent_ddl")), "false");
+  }
+
+  ASSERT_FALSE(ASSERT_RESULT(DdlsOverlap(ts1, ts2, "v2")));
+}
 
 class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
  protected:
