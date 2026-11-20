@@ -12,8 +12,8 @@ import java.util.regex.Pattern;
  * Reads route parameters from a request path for authorization checks.
  *
  * <p>Authorization has to check the UUID the controller receives. So callers pass {@code
- * request.path()}, not {@code uri()}, since the query string is not part of the route; a segment
- * is decoded the way Play's router decodes a {@code :param} value; and the first {@code
+ * request.path()}, not {@code uri()}, since the query string is not part of the route; a segment is
+ * decoded the way Play's router decodes a {@code :param} value; and the first {@code
  * /<segment>/<value>} pair wins, because a route's own parameters come before any trailing {@code
  * *param}, whose value can hold more segments.
  */

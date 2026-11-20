@@ -75,8 +75,7 @@ public class AuthorizationHandlerTest extends FakeDBApplication {
 
     otherCustomer = ModelFactory.testCustomer("tc2", "Other Customer");
     otherCustomerAdminToken =
-        ModelFactory.testUser(otherCustomer, "admin@other.com", Users.Role.Admin)
-            .createAuthToken();
+        ModelFactory.testUser(otherCustomer, "admin@other.com", Users.Role.Admin).createAuthToken();
   }
 
   private Result getUniverse(String token, String customerSegment, UUID universeUUID, String rest) {
@@ -94,8 +93,7 @@ public class AuthorizationHandlerTest extends FakeDBApplication {
     assertEquals(OK, getUniverse(readerToken, cUUID, readable, "").status());
     assertEquals(UNAUTHORIZED, getUniverse(readerToken, cUUID, other, "").status());
     assertEquals(
-        UNAUTHORIZED,
-        getUniverse(readerToken, cUUID, other, "?x=/universes/" + readable).status());
+        UNAUTHORIZED, getUniverse(readerToken, cUUID, other, "?x=/universes/" + readable).status());
   }
 
   @Test
