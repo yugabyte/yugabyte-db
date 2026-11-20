@@ -18,6 +18,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);
@@ -32,11 +33,13 @@ namespace {
   * - concurrency with other DMLs and
   * - concurrency with other DDLs
   *
-  * They are validated against each other in common_flags.cc, so they can only be moved together.
+  * The first two are validated against each other in common_flags.cc, so they can only be moved
+  * together.
   */
 constexpr const char* kNewDDLModeFlags[] = {
     "ysql_yb_ddl_transaction_block_enabled",
-    "enable_object_locking_for_table_locks"};
+    "enable_object_locking_for_table_locks",
+    "ysql_enable_concurrent_ddl"};
 
 // These require transactional DDL, so the legacy mode has to turn them off with it. The new mode
 // leaves them at their default rather than forcing them on, so that a build whose default is off
@@ -50,6 +53,7 @@ constexpr const char* kFlagsDependingOnTxnalDDL[] = {
 void ToggleDDLMode(bool use_legacy) {
   const auto enabled = !use_legacy;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = enabled;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = enabled;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = enabled;
   if (use_legacy) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = false;

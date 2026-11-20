@@ -81,13 +81,14 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
- * Object sub id of the lock on a pg_database object that keeps legacy DDLs
- * apart from DDLs with global object locks (#32224). Upstream locks database
- * objects only with sub id 0, which every backend takes at connection start;
- * the top of the range keeps this lock apart from those and from any sub id
- * upstream may add.
+ * Object sub id of the lock on a pg_database object that keeps DDLs that run
+ * in a separate DDL transaction apart from DDLs with global object locks
+ * (PR #38568). Upstream locks database objects only with sub id 0, which every
+ * backend takes at connection start. Object sub ids upstream uses for any
+ * class are attribute numbers, at most MaxHeapAttributeNumber (1600), and
+ * pg_locks shows the sub id as int2, so the value stays between the two.
  */
-#define YB_DATABASE_DDL_MODE_LOCK_OBJSUBID PG_UINT16_MAX
+#define YB_DATABASE_DDL_MODE_LOCK_OBJSUBID 10000
 
 /*
  * Postgres code uses process-level storage (e.g. static variables) to store
@@ -1105,8 +1106,6 @@ extern bool yb_xcluster_invalid_index_ddl_check;
 extern bool yb_enable_xcluster_analyze_replication;
 
 extern bool yb_user_ddls_preempt_auto_analyze;
-
-extern bool yb_disable_concurrent_ddl;
 
 /*
  * If true, enable RPC execution time stats for pg_stat_statements.

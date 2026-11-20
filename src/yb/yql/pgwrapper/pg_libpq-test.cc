@@ -6599,7 +6599,7 @@ class PgLibPqYsqlUpgradeRetryTest : public PgLibPqTest {
       flags->insert(flags->end(), {
           "--enable_object_locking_for_table_locks=true",
           "--ysql_yb_ddl_transaction_block_enabled=true",
-          "--ysql_yb_disable_concurrent_ddl=false",
+          "--ysql_enable_concurrent_ddl=true",
           "--ysql_yb_enable_invalidation_messages=true",
           "--refresh_waiter_timeout_ms=5000",
       });

@@ -1215,12 +1215,15 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
       {{"enable_object_locking_for_table_locks", "true"}},
       "enable_object_locking_for_table_locks"));
   // Object locking requires transactional DDL, so the two have to move together, in any order.
+  // ysql_enable_concurrent_ddl is not tied to either.
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
   }));
   ASSERT_NO_FATALS(expect_ok({
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
       {"enable_object_locking_for_table_locks", "true"},
   }));
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
@@ -1230,11 +1233,13 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   ASSERT_OK(cluster_->SetFlag(ts, "refresh_waiter_timeout_ms", "0"));
   ASSERT_NO_FATALS(expect_err(
       {{"enable_object_locking_for_table_locks", "true"},
-       {"ysql_yb_ddl_transaction_block_enabled", "true"}},
+       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+       {"ysql_enable_concurrent_ddl", "true"}},
       "enable_object_locking_for_table_locks"));
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "true"},
       {"refresh_waiter_timeout_ms", "30000"},
   }));
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("refresh_waiter_timeout_ms")), "0");

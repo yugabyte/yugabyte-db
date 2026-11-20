@@ -110,12 +110,6 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "yb_enable_invalidation_messages is enabled.");
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_concurrent_ddl, false,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte support.] "
-    "When true, DDLs with global object locks in the same database run one at a time. When false, "
-    "they run concurrently unless they lock the same objects. Either way they wait for DDLs "
-    "without global object locks in the same database.");
-
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 

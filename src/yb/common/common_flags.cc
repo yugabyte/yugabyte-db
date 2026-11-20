@@ -37,8 +37,6 @@ TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "04_2024");
 DEPRECATE_FLAG(bool, ysql_yb_disable_ddl_transaction_block_for_read_committed, "09_2026");
-// Replaced by ysql_yb_disable_concurrent_ddl (#34673).
-DEPRECATE_FLAG(bool, ysql_enable_concurrent_ddl, "11_2026");
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
@@ -292,6 +290,11 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
+
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "When true, DDLs with global object locks in the same database run concurrently unless they "
+    "lock the same objects. When false, they run one at a time. Either way they wait for DDLs in "
+    "the same database that run in a separate DDL transaction without object locks.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),

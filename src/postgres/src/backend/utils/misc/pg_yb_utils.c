@@ -2555,8 +2555,6 @@ bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;
 
-bool		yb_disable_concurrent_ddl = false;
-
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
 bool		yb_enable_pg_stat_statements_docdb_metrics = true;
@@ -2931,18 +2929,10 @@ YbTrackAlteredTableId(Oid relid)
 }
 
 /*
- * A legacy DDL and a DDL with global object locks must not run at the same
- * time (#32224). Legacy DDLs keep each other apart through the catalog version
- * row, and DDLs with global object locks through object locks, but neither
- * mechanism sees a DDL of the other mode. So each DDL locks this object on its
- * database: a legacy DDL in ROW EXCLUSIVE, which only reaches the local lock
- * manager, and a DDL with global object locks in SHARE. The two modes conflict,
- * and each mode conflicts with neither itself.
- *
- * A legacy DDL takes it in the transaction that runs the statement, before it
- * starts its separate DDL transaction: that transaction takes no object locks,
- * and it picks its read time when it starts, so it starts only once the lock is
- * granted and reads the catalog after any DDL it waited for.
+ * Keeps a DDL that runs in a separate DDL transaction apart from DDLs with
+ * global object locks in the same database (PR #38568). The lock is taken in
+ * the transaction that runs the statement, before the separate DDL transaction
+ * starts, because the separate DDL transaction takes no object locks.
  */
 static void
 YbLockDatabaseForLegacyDdl(void)
@@ -2955,11 +2945,10 @@ YbLockDatabaseForLegacyDdl(void)
 }
 
 /*
- * A DDL with global object locks takes SHARE, or EXCLUSIVE when
- * yb_disable_concurrent_ddl is set, so that DDLs with global object locks in
- * one database also run one at a time (#34673). EXCLUSIVE conflicts with
- * itself, with SHARE and with ROW EXCLUSIVE, so a DDL that takes it waits for
- * every other DDL in its database even while backends disagree on the setting.
+ * The counterpart of YbLockDatabaseForLegacyDdl for a DDL with global object
+ * locks (PR #38568). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
+ * instead of SHARE, so DDLs with global object locks in one database also run
+ * one at a time.
  */
 static void
 YbLockDatabaseForGlobalDdl(void)
@@ -2969,7 +2958,7 @@ YbLockDatabaseForGlobalDdl(void)
 
 	LockSharedObject(DatabaseRelationId, MyDatabaseId,
 					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID,
-					 yb_disable_concurrent_ddl ? ExclusiveLock : ShareLock);
+					 *YBCGetGFlags()->ysql_enable_concurrent_ddl ? ShareLock : ExclusiveLock);
 }
 
 void

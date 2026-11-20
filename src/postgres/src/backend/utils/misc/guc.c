@@ -2828,18 +2828,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_disable_concurrent_ddl", PGC_SIGHUP, LOCK_MANAGEMENT,
-			gettext_noop("When true, DDLs with global object locks in the same "
-						 "database run one at a time."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_disable_concurrent_ddl,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_enable_ddl_savepoint_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
 			gettext_noop("Allow enabling ddl savepoint support."),
 			NULL,
