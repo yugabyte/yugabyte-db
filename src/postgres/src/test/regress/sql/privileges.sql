@@ -60,6 +60,11 @@ SET ROLE regress_priv_user3;
 GRANT regress_priv_user1 TO regress_priv_user4;
 SELECT grantor::regrole FROM pg_auth_members WHERE roleid = 'regress_priv_user1'::regrole and member = 'regress_priv_user4'::regrole;
 RESET ROLE;
+REVOKE INHERIT OPTION FOR regress_priv_user2 FROM regress_priv_user3;
+SET ROLE regress_priv_user3;
+GRANT regress_priv_user1 TO regress_priv_user5; -- fail
+ALTER GROUP regress_priv_user1 ADD USER regress_priv_user5; -- fail
+RESET ROLE;
 REVOKE regress_priv_user2 FROM regress_priv_user3;
 REVOKE regress_priv_user1 FROM regress_priv_user2 CASCADE;
 
@@ -253,6 +258,7 @@ BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- fail
 COMMIT;
 COPY atest2 FROM stdin; -- fail
+\.
 GRANT ALL ON atest1 TO PUBLIC; -- fail
 
 -- checks in subquery, both ok
@@ -296,6 +302,7 @@ BEGIN;
 LOCK atest2 IN ACCESS EXCLUSIVE MODE; -- ok
 COMMIT;
 COPY atest2 FROM stdin; -- fail
+\.
 
 -- checks in subquery, both fail
 SELECT * FROM atest1 WHERE ( b IN ( SELECT col1 FROM atest2 ) );
@@ -543,6 +550,7 @@ SELECT one, two FROM atest5 NATURAL JOIN atest6; -- ok now
 -- test column-level privileges for INSERT and UPDATE
 INSERT INTO atest5 (two) VALUES (3); -- ok
 COPY atest5 FROM stdin; -- fail
+\.
 COPY atest5 (two) FROM stdin; -- ok
 1
 \.
@@ -783,33 +791,6 @@ UPDATE errtst SET a = 'aaaa', b = NULL WHERE a = 'aaa';
 SET SESSION AUTHORIZATION regress_priv_user1;
 DROP TABLE errtst;
 
--- test column-level privileges on the range used in FOR PORTION OF
-SET SESSION AUTHORIZATION regress_priv_user1;
-CREATE TABLE t1 (
-  c1 int4range,
-  valid_at tsrange,
-	CONSTRAINT t1pk PRIMARY KEY (c1, valid_at WITHOUT OVERLAPS)
-);
--- UPDATE requires select permission on the valid_at column (but not update):
-GRANT SELECT (c1) ON t1 TO regress_priv_user2;
-GRANT UPDATE (c1) ON t1 TO regress_priv_user2;
-GRANT SELECT (c1, valid_at) ON t1 TO regress_priv_user3;
-GRANT UPDATE (c1) ON t1 TO regress_priv_user3;
-SET SESSION AUTHORIZATION regress_priv_user2;
-UPDATE t1 FOR PORTION OF valid_at FROM '2000-01-01' TO '2001-01-01' SET c1 = '[2,3)';
-SET SESSION AUTHORIZATION regress_priv_user3;
-UPDATE t1 FOR PORTION OF valid_at FROM '2000-01-01' TO '2001-01-01' SET c1 = '[2,3)';
-SET SESSION AUTHORIZATION regress_priv_user1;
--- DELETE requires select permission on the valid_at column:
-GRANT DELETE ON t1 TO regress_priv_user2;
-GRANT DELETE ON t1 TO regress_priv_user3;
-SET SESSION AUTHORIZATION regress_priv_user2;
-DELETE FROM t1 FOR PORTION OF valid_at FROM '2000-01-01' TO '2001-01-01';
-SET SESSION AUTHORIZATION regress_priv_user3;
-DELETE FROM t1 FOR PORTION OF valid_at FROM '2000-01-01' TO '2001-01-01';
-SET SESSION AUTHORIZATION regress_priv_user1;
-DROP TABLE t1;
-
 -- test column-level privileges when involved with DELETE
 SET SESSION AUTHORIZATION regress_priv_user1;
 ALTER TABLE atest6 ADD COLUMN three integer;
@@ -956,6 +937,21 @@ SET SESSION AUTHORIZATION regress_priv_user4;
 SELECT '{1}'::int4[]::int8[]; --other user, fail
 ROLLBACK;
 
+-- verify privilege checks on cast functions used by to_json()/to_jsonb()
+CREATE TYPE priv_testenum1 AS ENUM ('a');
+CREATE FUNCTION priv_testenum1_to_json(priv_testenum1) RETURNS json
+  LANGUAGE sql IMMUTABLE AS $$ SELECT to_json($1::text) $$;
+CREATE CAST (priv_testenum1 AS json) WITH FUNCTION priv_testenum1_to_json(priv_testenum1);
+REVOKE ALL ON FUNCTION priv_testenum1_to_json(priv_testenum1) FROM PUBLIC;
+SELECT to_json('a'::priv_testenum1); -- superuser, succeed
+SET SESSION AUTHORIZATION regress_priv_user4;
+SELECT to_json('a'::priv_testenum1); -- other user, fail
+SELECT to_jsonb('a'::priv_testenum1); -- other user, fail
+RESET SESSION AUTHORIZATION;
+DROP CAST (priv_testenum1 AS json);
+DROP FUNCTION priv_testenum1_to_json(priv_testenum1);
+DROP TYPE priv_testenum1;
+
 -- privileges on types
 
 -- switch to superuser
@@ -966,6 +962,9 @@ REVOKE USAGE ON TYPE priv_testtype1 FROM PUBLIC;
 GRANT USAGE ON TYPE priv_testtype1 TO regress_priv_user2;
 GRANT USAGE ON TYPE _priv_testtype1 TO regress_priv_user2; -- fail
 GRANT USAGE ON DOMAIN priv_testtype1 TO regress_priv_user2; -- fail
+
+CREATE FUNCTION cons_priv_testtype1(a int, b text) RETURNS priv_testtype1 LANGUAGE SQL
+  AS $$ SELECT row(a, b) $$ IMMUTABLE;
 
 CREATE DOMAIN priv_testdomain1 AS int;
 REVOKE USAGE on DOMAIN priv_testdomain1 FROM PUBLIC;
@@ -986,18 +985,24 @@ CREATE CAST (priv_testdomain1 AS priv_testdomain3a) WITH FUNCTION castfunc(int);
 DROP FUNCTION castfunc(int) CASCADE;
 DROP DOMAIN priv_testdomain3a;
 
+CREATE DOMAIN priv_testdomain4a AS int CHECK (VALUE > ('(0,1)'::priv_testtype1).a);
+
 CREATE FUNCTION priv_testfunc5a(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
 CREATE FUNCTION priv_testfunc6a(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
+CREATE FUNCTION priv_testfunc7a(a int DEFAULT ('(0,1)'::priv_testtype1).a) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
 
 CREATE OPERATOR !+! (PROCEDURE = int4pl, LEFTARG = priv_testdomain1, RIGHTARG = priv_testdomain1);
 
 CREATE TABLE test5a (a int, b priv_testdomain1);
 CREATE TABLE test6a OF priv_testtype1;
+CREATE TABLE test6a2 (a int, b text);
+ALTER TABLE test6a2 OF priv_testtype1;
 CREATE TABLE test10a (a int[], b priv_testtype1[]);
 
 CREATE TABLE test9a (a int, b int);
 ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
 ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
+CREATE INDEX ON test9a ((a::priv_testdomain1));
 
 CREATE TYPE test7a AS (a int, b priv_testdomain1);
 
@@ -1005,9 +1010,22 @@ CREATE TYPE test8a AS (a int, b int);
 ALTER TYPE test8a ADD ATTRIBUTE c priv_testdomain1;
 ALTER TYPE test8a ALTER ATTRIBUTE b TYPE priv_testdomain1;
 
+CREATE DOMAIN priv_testdomain5a AS test8a CHECK ((VALUE).a > 0 AND ('(0,1)'::priv_testtype1).a >= 0);
+
 CREATE TABLE test11a AS (SELECT 1::priv_testdomain1 AS a);
 
+CREATE VIEW test16a AS SELECT ('(0,1)'::priv_testtype1).a;
+CREATE TABLE test17a (a int) PARTITION BY RANGE ((a + ('(0,1)'::priv_testtype1).a));
+CREATE POLICY priv_testpolicy1a ON test9a USING (('(0,1)'::priv_testtype1).a > 0);
+
 REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
+
+CREATE TABLE test12 (c int DEFAULT 0 CHECK (c > 0 AND '(0,1)'::priv_testtype1 IS NOT NULL));
+CREATE TABLE test13 (c int DEFAULT ('(0,1)'::priv_testtype1).a);
+
+CREATE TABLE test_tbl_with_idx (c int, d text);
+CREATE INDEX ON test_tbl_with_idx ((cons_priv_testtype1(c, d)));
+DROP TABLE test_tbl_with_idx;
 
 SET SESSION AUTHORIZATION regress_priv_user2;
 
@@ -1021,18 +1039,24 @@ CREATE DOMAIN priv_testdomain3b AS int;
 CREATE FUNCTION castfunc(int) RETURNS priv_testdomain3b AS $$ SELECT $1::priv_testdomain3b $$ LANGUAGE SQL;
 CREATE CAST (priv_testdomain1 AS priv_testdomain3b) WITH FUNCTION castfunc(int);
 
+CREATE DOMAIN priv_testdomain4b AS int CHECK (VALUE > ('(0,1)'::priv_testtype1).a);
+
 CREATE FUNCTION priv_testfunc5b(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
 CREATE FUNCTION priv_testfunc6b(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
+CREATE FUNCTION priv_testfunc7b(a int DEFAULT ('(0,1)'::priv_testtype1).a) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
 
 CREATE OPERATOR !! (PROCEDURE = priv_testfunc5b, RIGHTARG = priv_testdomain1);
 
 CREATE TABLE test5b (a int, b priv_testdomain1);
 CREATE TABLE test6b OF priv_testtype1;
+CREATE TABLE test6b2 (a int, b text);
+ALTER TABLE test6b2 OF priv_testtype1;
 CREATE TABLE test10b (a int[], b priv_testtype1[]);
 
 CREATE TABLE test9b (a int, b int);
 ALTER TABLE test9b ADD COLUMN c priv_testdomain1;
 ALTER TABLE test9b ALTER COLUMN b TYPE priv_testdomain1;
+CREATE INDEX ON test9b ((a::priv_testdomain1));
 
 CREATE TYPE test7b AS (a int, b priv_testdomain1);
 
@@ -1040,18 +1064,45 @@ CREATE TYPE test8b AS (a int, b int);
 ALTER TYPE test8b ADD ATTRIBUTE c priv_testdomain1;
 ALTER TYPE test8b ALTER ATTRIBUTE b TYPE priv_testdomain1;
 
+CREATE DOMAIN priv_testdomain5b AS test8b CHECK ((VALUE).a > 0 AND ('(0,1)'::priv_testtype1).a >= 0);
+
 CREATE TABLE test11b AS (SELECT 1::priv_testdomain1 AS a);
 
+CREATE VIEW test16b AS SELECT ('(0,1)'::priv_testtype1).a;
+CREATE TABLE test17b (a int) PARTITION BY RANGE ((a + ('(0,1)'::priv_testtype1).a));
+CREATE POLICY priv_testpolicy1b ON test9b USING (('(0,1)'::priv_testtype1).a > 0);
+
 REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
+
+CREATE TABLE test12 (c int DEFAULT 0 CHECK (c > 0 AND '(0,1)'::priv_testtype1 IS NOT NULL));
+CREATE TABLE test13 (c int DEFAULT ('(0,1)'::priv_testtype1).a);
+
+CREATE TABLE test_tbl_with_idx (c int, d text);
+CREATE INDEX ON test_tbl_with_idx ((cons_priv_testtype1(c, d)));
+DROP TABLE test_tbl_with_idx;
+
+-- new stored expressions require USAGE on types, rebuilds do not
+\c -
+REVOKE USAGE ON TYPE priv_testtype1 FROM regress_priv_user2;
+SET SESSION AUTHORIZATION regress_priv_user2;
+ALTER TABLE test12 ALTER COLUMN c TYPE bigint;
+ALTER TYPE test8b ALTER ATTRIBUTE a TYPE bigint CASCADE;
+ALTER TABLE test12 ALTER COLUMN c SET DEFAULT ('(0,1)'::priv_testtype1).a;
+CREATE TABLE test14 (LIKE test12 INCLUDING CONSTRAINTS);
+CREATE TABLE test15 (LIKE test13 INCLUDING DEFAULTS);
 
 \c -
 DROP AGGREGATE priv_testagg1b(priv_testdomain1);
 DROP DOMAIN priv_testdomain2b;
+DROP DOMAIN priv_testdomain4b;
+DROP DOMAIN priv_testdomain5b;
 DROP OPERATOR !! (NONE, priv_testdomain1);
 DROP FUNCTION priv_testfunc5b(a priv_testdomain1);
 DROP FUNCTION priv_testfunc6b(b int);
+DROP FUNCTION priv_testfunc7b(a int);
 DROP TABLE test5b;
 DROP TABLE test6b;
+DROP TABLE test6b2;
 DROP TABLE test9b;
 DROP TABLE test10b;
 DROP TYPE test7b;
@@ -1059,8 +1110,13 @@ DROP TYPE test8b;
 DROP CAST (priv_testdomain1 AS priv_testdomain3b);
 DROP FUNCTION castfunc(int) CASCADE;
 DROP DOMAIN priv_testdomain3b;
+DROP VIEW test16b;
 DROP TABLE test11b;
+DROP TABLE test17b;
+DROP TABLE test12;
+DROP TABLE test13;
 
+DROP FUNCTION cons_priv_testtype1; -- ok
 DROP TYPE priv_testtype1; -- ok
 DROP DOMAIN priv_testdomain1; -- ok
 
@@ -1291,6 +1347,24 @@ REFRESH MATERIALIZED VIEW sro_mv;
 \c -
 REFRESH MATERIALIZED VIEW sro_mv;
 BEGIN; SET CONSTRAINTS ALL IMMEDIATE; REFRESH MATERIALIZED VIEW sro_mv; COMMIT;
+
+SET SESSION AUTHORIZATION regress_sro_user;
+-- REFRESH may not leave a type behind in the caller's pg_temp, either
+CREATE OR REPLACE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'CREATE DOMAIN pg_temp.sro_domain AS pg_catalog.int4; SELECT true';
+REFRESH MATERIALIZED VIEW sro_mv; -- fail
+CREATE OR REPLACE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'CREATE TYPE pg_temp.sro_enum AS ENUM (''x''); SELECT true';
+REFRESH MATERIALIZED VIEW sro_mv; -- fail
+CREATE OR REPLACE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'CREATE TYPE pg_temp.sro_range AS RANGE (SUBTYPE = pg_catalog.int4); SELECT true';
+REFRESH MATERIALIZED VIEW sro_mv; -- fail
+-- including a multirange named apart from its range
+CREATE OR REPLACE FUNCTION mv_action() RETURNS bool LANGUAGE sql AS
+	'CREATE TYPE public.sro_range AS RANGE (SUBTYPE = pg_catalog.int4,
+	  MULTIRANGE_TYPE_NAME = pg_temp.sro_multirange); SELECT true';
+\c -
+REFRESH MATERIALIZED VIEW sro_mv; -- fail
 
 -- REFRESH MATERIALIZED VIEW CONCURRENTLY use of eval_const_expressions()
 SET SESSION AUTHORIZATION regress_sro_user;
@@ -1865,70 +1939,12 @@ revoke select on dep_priv_test from regress_priv_user4 cascade;
 set session role regress_priv_user1;
 drop table dep_priv_test;
 
---
--- Property graphs
---
-set session role regress_priv_user1;
-create property graph ptg1
-	vertex tables (
-		atest5 key (four)
-			default label properties (four)
-			label lttc properties (three as lttck),
-		atest1 key (a)
-			default label
-			label lttc properties (a as lttck),
-		atest2 key (col1)
-			default label
-			label ltv properties (col1 as ltvk));
--- select privileges on property graph as well as table
-select * from graph_table (ptg1 match (is atest5) COLUMNS (1 as value)) limit 0; -- ok
-grant select on ptg1 to regress_priv_user2;
-set session role regress_priv_user2;
-select * from graph_table (ptg1 match (is atest1) COLUMNS (1 as value)) limit 0; -- ok
--- select privileges on property graph but not table
-select * from graph_table (ptg1 match (is atest5) COLUMNS (1 as value)) limit 0; -- fails
-select * from graph_table (ptg1 match (is lttc) COLUMNS (1 as value)) limit 0; -- fails
-set session role regress_priv_user3;
--- select privileges on table but not property graph
-select * from graph_table (ptg1 match (is atest1) COLUMNS (1 as value)) limit 0; -- fails
--- select privileges on neither
-select * from graph_table (ptg1 match (is atest5) COLUMNS (1 as value)) limit 0; -- fails
--- column privileges
-set session role regress_priv_user1;
-select * from graph_table (ptg1 match (v is lttc) COLUMNS (v.lttck)) limit 0; -- ok
-grant select on ptg1 to regress_priv_user4;
-set session role regress_priv_user4;
-select * from graph_table (ptg1 match (a is atest5) COLUMNS (a.four)) limit 0; -- ok
-select * from graph_table (ptg1 match (v is lttc) COLUMNS (v.lttck)) limit 0; -- fail
--- access property graph through security definer view
-set session role regress_priv_user4;
-create view atpgv1 as select * from graph_table (ptg1 match (is atest1) COLUMNS (1 as value)) limit 0;
-grant select on atpgv1 to regress_priv_user3;
-select * from atpgv1; -- ok
-set session role regress_priv_user3;
-select * from atpgv1; -- ok
-set session role regress_priv_user4;
-create view atpgv2 as select * from graph_table (ptg1 match (v is ltv) COLUMNS (v.ltvk)) limit 0;
--- though the session user is the owner of the view and also has access to the
--- property graph, it does not have access to a table referenced in the graph
--- pattern
-select * from atpgv2; -- fail
-grant select on atpgv2 to regress_priv_user2;
--- The user who otherwise does not have access to the property graph, gets
--- access to it through a security definer view and uses it successfully since
--- it has access to the tables referenced in the graph pattern.
-set session role regress_priv_user2;
-select * from atpgv2; -- ok
 
 -- clean up
 
 \c
 
 drop sequence x_seq;
-
-drop view atpgv1;
-drop view atpgv2;
-drop property graph ptg1;
 
 DROP AGGREGATE priv_testagg1(int);
 DROP FUNCTION priv_testfunc2(int);

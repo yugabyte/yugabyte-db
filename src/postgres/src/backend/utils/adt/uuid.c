@@ -37,6 +37,23 @@
 #define US_PER_MS	INT64CONST(1000)
 
 /*
+ * The offset between the PostgreSQL epoch (2000-01-01) and the Unix epoch
+ * (1970-01-01) in microseconds. Subtract this from a Unix-epoch microseconds
+ * to get a TimestampTz.
+ */
+#define PG_UNIX_EPOCH_OFFSET_US \
+	((int64) (POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC)
+
+/*
+ * Valid timestamp range for UUID version 7, expressed in PostgreSQL-epoch
+ * microseconds. UUIDv7 uses a 48-bit unsigned millisecond field relative
+ * to the Unix epoch, so the representable window is [1970-01-01, ~10889].
+ */
+#define UUIDV7_MIN_TIMESTAMP	(-PG_UNIX_EPOCH_OFFSET_US)
+#define UUIDV7_MAX_TIMESTAMP \
+	(((INT64CONST(1) << 48) - 1) * US_PER_MS - PG_UNIX_EPOCH_OFFSET_US)
+
+/*
  * UUID version 7 uses 12 bits in "rand_a" to store  1/4096 (or 2^12) fractions of
  * sub-millisecond. While most Unix-like platforms provide nanosecond-precision
  * timestamps, some systems only offer microsecond precision, limiting us to 10
@@ -675,6 +692,13 @@ uuidv7_interval(PG_FUNCTION_ARGS)
 	int64		ns = get_real_time_ns_ascending();
 	int64		us;
 
+	/* Reject infinite intervals before any arithmetic */
+	if (INTERVAL_NOT_FINITE(shift))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("interval out of range for UUID version 7"),
+				 errdetail("UUID version 7 does not support infinite intervals.")));
+
 	/*
 	 * Shift the current timestamp by the given interval. To calculate time
 	 * shift correctly, we convert the UNIX epoch to TimestampTz and use
@@ -682,16 +706,26 @@ uuidv7_interval(PG_FUNCTION_ARGS)
 	 * precision.
 	 */
 
-	ts = (TimestampTz) (ns / NS_PER_US) -
-		(POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC;
+	ts = (TimestampTz) (ns / NS_PER_US) - PG_UNIX_EPOCH_OFFSET_US;
 
 	/* Compute time shift */
 	ts = DatumGetTimestampTz(DirectFunctionCall2(timestamptz_pl_interval,
 												 TimestampTzGetDatum(ts),
 												 IntervalPGetDatum(shift)));
 
-	/* Convert a TimestampTz value back to an UNIX epoch timestamp */
-	us = ts + (POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC;
+	/*
+	 * Reject timestamps outside the range representable by UUID version 7's
+	 * 48-bit millisecond field. We compare in PostgreSQL-epoch units so that
+	 * the subsequent conversion to Unix-epoch microseconds cannot overflow.
+	 */
+	if (ts < UUIDV7_MIN_TIMESTAMP || ts > UUIDV7_MAX_TIMESTAMP)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range for UUID version 7"),
+				 errdetail("UUID version 7 supports timestamps from 1970-01-01 to approximately year 10889.")));
+
+	/* Convert the TimestampTz value to a Unix-epoch timestamp in usec */
+	us = ts + PG_UNIX_EPOCH_OFFSET_US;
 
 	/* Generate an UUIDv7 */
 	uuid = generate_uuidv7(us / US_PER_MS, (us % US_PER_MS) * NS_PER_US + ns % NS_PER_US);
@@ -751,8 +785,7 @@ uuid_extract_timestamp(PG_FUNCTION_ARGS)
 			+ (((uint64) uuid->data[0]) << 40);
 
 		/* convert ms to us, then adjust */
-		ts = (TimestampTz) (tms * US_PER_MS) -
-			(POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC;
+		ts = (TimestampTz) (tms * US_PER_MS) - PG_UNIX_EPOCH_OFFSET_US;
 
 		PG_RETURN_TIMESTAMPTZ(ts);
 	}

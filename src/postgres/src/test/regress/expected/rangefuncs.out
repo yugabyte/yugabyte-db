@@ -2279,7 +2279,7 @@ ERROR:  attribute 5 of type record has been dropped
 rollback;
 alter table users alter column seq type numeric;  -- fail, view has reference
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view usersview depends on column "seq"
+DETAIL:  rule _RETURN on view usersview depends on column "seq".
 -- likewise, check we don't crash if the dependency goes wrong
 begin;
 -- destroy the dependency entry that prevents the ALTER:

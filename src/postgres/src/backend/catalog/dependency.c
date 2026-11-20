@@ -51,11 +51,6 @@
 #include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_propgraph_element.h"
-#include "catalog/pg_propgraph_element_label.h"
-#include "catalog/pg_propgraph_label.h"
-#include "catalog/pg_propgraph_label_property.h"
-#include "catalog/pg_propgraph_property.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
@@ -338,63 +333,13 @@ performDeletion(const ObjectAddress *object,
 }
 
 /*
- * performDeletionCheck: Check whether a specific object can be safely deleted.
- * This function does not perform any deletion; instead, it raises an error
- * if the object cannot be deleted due to existing dependencies.
- *
- * It can be useful when you need to delete some objects later.  See comments
- * in performDeletion too.
- * The behavior must be specified as DROP_RESTRICT.
- */
-void
-performDeletionCheck(const ObjectAddress *object,
-					 DropBehavior behavior, int flags)
-{
-	Relation	depRel;
-	ObjectAddresses *targetObjects;
-
-	Assert(behavior == DROP_RESTRICT);
-
-	depRel = table_open(DependRelationId, RowExclusiveLock);
-
-	AcquireDeletionLock(object, 0);
-
-	/*
-	 * Construct a list of objects we want to delete later (ie, the given
-	 * object plus everything directly or indirectly dependent on it).
-	 */
-	targetObjects = new_object_addresses();
-
-	findDependentObjects(object,
-						 DEPFLAG_ORIGINAL,
-						 flags,
-						 NULL,	/* empty stack */
-						 targetObjects,
-						 NULL,	/* no pendingObjects */
-						 &depRel);
-
-	/*
-	 * Check if deletion is allowed.
-	 */
-	reportDependentObjects(targetObjects,
-						   behavior,
-						   flags,
-						   object);
-
-	/* And clean up */
-	free_object_addresses(targetObjects);
-
-	table_close(depRel, RowExclusiveLock);
-}
-
-/*
- * performMultipleDeletions: Similar to performDeletion, but acts on multiple
+ * performMultipleDeletions: Similar to performDeletion, but act on multiple
  * objects at once.
  *
  * The main difference from issuing multiple performDeletion calls is that the
  * list of objects that would be implicitly dropped, for each object to be
  * dropped, is the union of the implicit-object list for all objects.  This
- * makes each check more relaxed.
+ * makes each check be more relaxed.
  */
 void
 performMultipleDeletions(const ObjectAddresses *objects,
@@ -912,17 +857,6 @@ findDependentObjects(const ObjectAddress *object,
 			continue;
 
 		/*
-		 * Check that the dependent object is not in a shared catalog, which
-		 * is not supported by doDeletion().
-		 */
-		if (IsSharedRelation(otherObject.classId))
-			ereport(ERROR,
-					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-					 errmsg("cannot drop %s because %s depends on it",
-							getObjectDescription(object, false),
-							getObjectDescription(&otherObject, false))));
-
-		/*
 		 * Must lock the dependent object before recursing to it.
 		 */
 		AcquireDeletionLock(&otherObject, 0);
@@ -940,6 +874,22 @@ findDependentObjects(const ObjectAddress *object,
 			ReleaseDeletionLock(&otherObject);
 			/* and continue scanning for dependencies */
 			continue;
+		}
+
+		/*
+		 * Check that the dependent object is not in a shared catalog, which
+		 * is not supported by doDeletion().
+		 */
+		if (IsSharedRelation(otherObject.classId))
+		{
+			char	   *otherObjDesc = getObjectDescription(&otherObject,
+															false);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("cannot drop %s because %s depends on it",
+							getObjectDescription(object, false), otherObjDesc),
+					 errhint("Drop %s first.", otherObjDesc)));
 		}
 
 		/*
@@ -1625,11 +1575,6 @@ doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 		case AccessMethodRelationId:
 		case AccessMethodOperatorRelationId:
 		case AccessMethodProcedureRelationId:
-		case PropgraphElementRelationId:
-		case PropgraphElementLabelRelationId:
-		case PropgraphLabelRelationId:
-		case PropgraphLabelPropertyRelationId:
-		case PropgraphPropertyRelationId:
 		case NamespaceRelationId:
 		case TSParserRelationId:
 		case TSDictionaryRelationId:
@@ -1691,7 +1636,7 @@ AcquireDeletionLock(const ObjectAddress *object, int flags)
 		else
 			LockRelationOid(object->objectId, AccessExclusiveLock);
 	}
-	else if (object->classId == AuthMemRelationId)
+	else if (IsSharedRelation(object->classId))
 		LockSharedObject(object->classId, object->objectId, 0,
 						 AccessExclusiveLock);
 	else
@@ -1712,6 +1657,9 @@ ReleaseDeletionLock(const ObjectAddress *object)
 {
 	if (object->classId == RelationRelationId)
 		UnlockRelationOid(object->objectId, AccessExclusiveLock);
+	else if (IsSharedRelation(object->classId))
+		UnlockSharedObject(object->classId, object->objectId, 0,
+						   AccessExclusiveLock);
 	else
 		/* assume we should lock the whole object not a sub-object */
 		UnlockDatabaseObject(object->classId, object->objectId, 0,
@@ -1817,6 +1765,9 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 	find_expr_references_context context;
 	RangeTblEntry rte = {0};
 
+	if (expr == NULL)
+		return;
+
 	context.addrs = new_object_addresses();
 
 	/* We gin up a rather bogus rangetable list to handle Vars */
@@ -1830,6 +1781,21 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 
 	/* Scan the expression tree for referenceable objects */
 	find_expr_references_walker(expr, &context);
+
+	/* Also add a dependency to the result type */
+	if (IsA(expr, List))
+	{
+		ListCell   *l;
+
+		foreach(l, (List *) expr)
+		{
+			add_object_address(TypeRelationId, exprType(lfirst(l)), 0,
+							   context.addrs);
+		}
+	}
+	else
+		add_object_address(TypeRelationId, exprType(expr), 0,
+						   context.addrs);
 
 	/* Remove any duplicates */
 	eliminate_duplicate_dependencies(context.addrs);
@@ -1894,6 +1860,138 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 							   behavior);
 
 	free_object_addresses(context.addrs);
+}
+
+/*
+ * We require USAGE on a type to store a dependency on it.  This helper
+ * function does the appropriate privilege checks.
+ *
+ * NB: Other objects have privileges of their own, but recording those
+ * dependencies doesn't require holding them.  For example, an expression may
+ * reference a function for which the user lacks EXECUTE.  Instead, EXECUTE is
+ * checked when the function is executed.
+ */
+static void
+check_usage_on_types(ObjectAddresses *addrs, Oid roleid)
+{
+	for (int i = 0; i < addrs->numrefs; i++)
+	{
+		ObjectAddress *ref = &addrs->refs[i];
+		AclResult	aclresult;
+
+		if (ref->classId != TypeRelationId)
+			continue;
+
+		/* we don't record dependencies on pinned types */
+		if (IsPinnedObject(ref->classId, ref->objectId))
+			continue;
+
+		aclresult = object_aclcheck(ref->classId, ref->objectId,
+									roleid, ACL_USAGE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error_type(aclresult, ref->objectId);
+	}
+}
+
+/*
+ * CheckUsageOnTypesInExpr - require USAGE on all types named by an expression
+ *
+ * rtable is the rangetable for interpreting Vars (or NIL if none are
+ * expected).  roleid is the role whose USAGE is required.
+ */
+void
+CheckUsageOnTypesInExpr(Node *expr, List *rtable, Oid roleid)
+{
+	ObjectAddresses *addrs = new_object_addresses();
+
+	collectDependenciesOfExpr(addrs, expr, rtable);
+	eliminate_duplicate_dependencies(addrs);
+	check_usage_on_types(addrs, roleid);
+	free_object_addresses(addrs);
+}
+
+/*
+ * CheckUsageOnTypesInSingleRelExpr - as above, for a single-rel expression
+ *
+ * Like recordDependencyOnSingleRelExpr(), this handles expressions whose Vars
+ * all refer to one relation.  roleid is the role whose USAGE is required.
+ */
+void
+CheckUsageOnTypesInSingleRelExpr(Node *expr, Oid relId, Oid roleid)
+{
+	find_expr_references_context context;
+	RangeTblEntry rte = {0};
+
+	if (expr == NULL)
+		return;
+
+	context.addrs = new_object_addresses();
+
+	/* We gin up a rather bogus rangetable list to handle Vars */
+	rte.type = T_RangeTblEntry;
+	rte.rtekind = RTE_RELATION;
+	rte.relid = relId;
+	rte.relkind = RELKIND_RELATION;
+	rte.rellockmode = AccessShareLock;
+	context.rtables = list_make1(list_make1(&rte));
+
+	find_expr_references_walker(expr, &context);
+
+	/* Also check USAGE on the result type */
+	if (IsA(expr, List))
+	{
+		ListCell   *l;
+
+		foreach(l, (List *) expr)
+		{
+			add_object_address(TypeRelationId, exprType(lfirst(l)), 0,
+							   context.addrs);
+		}
+	}
+	else
+		add_object_address(TypeRelationId, exprType(expr), 0,
+						   context.addrs);
+
+	eliminate_duplicate_dependencies(context.addrs);
+	check_usage_on_types(context.addrs, roleid);
+	free_object_addresses(context.addrs);
+}
+
+/*
+ * CheckTypeDependencyInExpr - does 'expr' depend on the given type?
+ */
+bool
+CheckTypeDependencyInExpr(Node *expr, List *rtable, Oid typeId)
+{
+	ObjectAddresses *addrs = new_object_addresses();
+	ObjectAddress typeAddr;
+	bool		result;
+
+	collectDependenciesOfExpr(addrs, expr, rtable);
+
+	ObjectAddressSet(typeAddr, TypeRelationId, typeId);
+	result = object_address_present(&typeAddr, addrs);
+	free_object_addresses(addrs);
+
+	return result;
+}
+
+/*
+ * CheckTypeDependencyInSingleRelExpr - as above, for a single-rel expression
+ */
+bool
+CheckTypeDependencyInSingleRelExpr(Node *expr, Oid relId, Oid typeId)
+{
+	RangeTblEntry rte = {0};
+
+	/* We gin up a rather bogus rangetable list to handle Vars */
+	rte.type = T_RangeTblEntry;
+	rte.rtekind = RTE_RELATION;
+	rte.relid = relId;
+	rte.relkind = RELKIND_RELATION;
+	rte.rellockmode = AccessShareLock;
+
+	return CheckTypeDependencyInExpr(expr, list_make1(&rte), typeId);
 }
 
 /*
@@ -2389,7 +2487,6 @@ find_expr_references_walker(Node *node,
 			switch (rte->rtekind)
 			{
 				case RTE_RELATION:
-				case RTE_GRAPH_TABLE:
 					add_object_address(RelationRelationId, rte->relid, 0,
 									   context->addrs);
 					break;

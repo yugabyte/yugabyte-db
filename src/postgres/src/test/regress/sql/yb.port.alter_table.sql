@@ -1094,7 +1094,9 @@ copy attest from stdin;
 \.
 select * from attest;
 copy attest(a) from stdin;
+\.
 copy attest("........pg.dropped.1........") from stdin;
+\.
 copy attest(b,c) from stdin;
 31	32
 \.
@@ -1382,10 +1384,9 @@ create table at_tab1 (a int, b text);
 create table at_tab2 (x int, y at_tab1);
 alter table at_tab1 alter column b type varchar; -- fails
 drop table at_tab2;
--- Use of row type in an expression is defended differently
+-- Or if it's used in expressions stored in catalogs
 create table at_tab2 (x int, y text, check((x,y)::at_tab1 = (1,'42')::at_tab1));
-alter table at_tab1 alter column b type varchar; -- allowed, but ...
-insert into at_tab2 values(1,'42'); -- ... this will fail
+alter table at_tab1 alter column b type varchar; -- fails
 drop table at_tab1, at_tab2;
 -- Check it for a partitioned table, too
 create table at_tab1 (a int, b text) partition by list(a);

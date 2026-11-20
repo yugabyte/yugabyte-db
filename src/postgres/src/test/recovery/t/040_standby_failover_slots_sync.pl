@@ -141,9 +141,17 @@ $standby1->init_from_backup(
 	has_streaming => 1,
 	has_restoring => 1);
 
+# CVE-2026-14661: Make sure otherwise-unsafe connection parameters are still
+# allowed in primary_conninfo, by setting up an unused sslkeylogfile and
+# referencing it throughout. (The tests here provide coverage of
+# pg_sync_replication_slots() in addition to standard physical replication,
+# which is convenient.)
+my $tmpdir = PostgreSQL::Test::Utils::tempdir;
+my $sslkeylogfile = "$tmpdir/noexist/sslkeylog";
+
 # Increase the log_min_messages setting to DEBUG2 on both the standby and
 # primary to debug test failures, if any.
-my $connstr_1 = $primary->connstr;
+my $connstr_1 = $primary->connstr . " sslkeylogfile=''$sslkeylogfile''";
 $standby1->append_conf(
 	'postgresql.conf', qq(
 hot_standby_feedback = on
@@ -1031,9 +1039,11 @@ $primary->wait_for_replay_catchup($standby2);
 ##################################################
 
 # Recreate the slot by creating a subscription on the subscriber, keep it disabled.
-$subscriber1->safe_psql('postgres', qq[
+$subscriber1->safe_psql(
+	'postgres', qq[
 	CREATE TABLE push_wal (a int);
-	CREATE SUBSCRIPTION regress_mysub1 CONNECTION '$publisher_connstr' PUBLICATION regress_mypub WITH (slot_name = lsub1_slot, failover = true, enabled = false);]);
+	CREATE SUBSCRIPTION regress_mysub1 CONNECTION '$publisher_connstr' PUBLICATION regress_mypub WITH (slot_name = lsub1_slot, failover = true, enabled = false);]
+);
 
 # Create some DDL on the primary so that the slot lags behind the standby
 $primary->safe_psql('postgres', "CREATE TABLE push_wal (a int);");
@@ -1059,7 +1069,8 @@ $standby2->reload;
 # further calls, call the API in a background process.
 my $h = $standby2->background_psql('postgres', on_error_stop => 0);
 
-$h->query_until(qr/start/, q(
+$h->query_until(
+	qr/start/, q(
 	\echo start
 	SELECT pg_sync_replication_slots();
 	));
@@ -1089,7 +1100,8 @@ synchronized_standby_slots = 'sb2_slot'
 $primary->reload;
 
 # Enable the Subscription, so that the remote slot catches up
-$subscriber1->safe_psql('postgres', "ALTER SUBSCRIPTION regress_mysub1 ENABLE");
+$subscriber1->safe_psql('postgres',
+	"ALTER SUBSCRIPTION regress_mysub1 ENABLE");
 $subscriber1->wait_for_subscription_sync;
 
 # Create xl_running_xacts on the primary to speed up restart_lsn advancement.
@@ -1097,8 +1109,8 @@ $primary->safe_psql('postgres', "SELECT pg_log_standby_snapshot();");
 
 # Confirm from the log that the slot is sync-ready now.
 $standby2->wait_for_log(
-    qr/newly created replication slot \"lsub1_slot\" is sync-ready now/,
-    $log_offset);
+	qr/newly created replication slot \"lsub1_slot\" is sync-ready now/,
+	$log_offset);
 
 $h->quit;
 

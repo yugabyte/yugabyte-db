@@ -23,6 +23,7 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "access/heapam.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -43,6 +44,8 @@
 
 static bool tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 						 TypeCacheEntry **eq, Bitmapset *columns);
+static bool repl_index_key_equal(Relation idxrel, TupleTableSlot *slot1,
+								 TupleTableSlot *slot2, ScanKey skey);
 
 /*
  * Setup a ScanKey for a search in the relation 'rel' for a tuple 'key' that
@@ -180,9 +183,17 @@ should_refetch_tuple(TM_Result res, TM_FailureData *tmfd)
  *
  * If a matching tuple is found, lock it with lockmode, fill the slot with its
  * contents, and return true.  Return false otherwise.
+ *
+ * 'skipduplicates' specifies whether the first matching tuple can be used
+ * without comparing it against 'searchslot', unless the index scan sets
+ * xs_recheck (as with a lossy GiST index for WITHOUT OVERLAPS), in which case
+ * only the index key columns are compared, using the index's own equality
+ * semantics. If false, all matching tuples are compared against 'searchslot',
+ * which must contain a complete row.
  */
 bool
 RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
+							 bool skipduplicates,
 							 LockTupleMode lockmode,
 							 TupleTableSlot *searchslot,
 							 TupleTableSlot *outslot)
@@ -195,12 +206,9 @@ RelationFindReplTupleByIndex(Relation rel, Oid idxoid,
 	Relation	idxrel;
 	bool		found;
 	TypeCacheEntry **eq = NULL;
-	bool		isIdxSafeToSkipDuplicates;
 
 	/* Open the index. */
 	idxrel = index_open(idxoid, RowExclusiveLock);
-
-	isIdxSafeToSkipDuplicates = (GetRelationIdentityOrPK(rel) == idxoid);
 
 	InitDirtySnapshot(snap);
 
@@ -221,9 +229,10 @@ retry:
 	{
 		/*
 		 * Avoid expensive equality check if the index is primary key or
-		 * replica identity index.
+		 * replica identity index, unless the index scan indicates that a
+		 * recheck is needed.
 		 */
-		if (!isIdxSafeToSkipDuplicates)
+		if (!skipduplicates)
 		{
 			if (eq == NULL)
 				eq = palloc0_array(TypeCacheEntry *, outslot->tts_tupleDescriptor->natts);
@@ -231,6 +240,9 @@ retry:
 			if (!tuples_equal(outslot, searchslot, eq, NULL))
 				continue;
 		}
+		else if (scan->xs_recheck &&
+				 !repl_index_key_equal(idxrel, outslot, searchslot, skey))
+			continue;
 
 		ExecMaterializeSlot(outslot);
 
@@ -353,6 +365,51 @@ tuples_equal(TupleTableSlot *slot1, TupleTableSlot *slot2,
 											att->attcollation,
 											slot1->tts_values[attrnum],
 											slot2->tts_values[attrnum])))
+			return false;
+	}
+
+	return true;
+}
+
+/*
+ * Compare the key columns of index 'idxrel' between the two slots, using the
+ * equality operators and collations of the scan key 'skey' built by
+ * build_replindex_scan_key().
+ */
+static bool
+repl_index_key_equal(Relation idxrel, TupleTableSlot *slot1,
+					 TupleTableSlot *slot2, ScanKey skey)
+{
+	Assert(slot1->tts_tupleDescriptor->natts ==
+		   slot2->tts_tupleDescriptor->natts);
+
+	for (int i = 0; i < idxrel->rd_index->indnkeyatts; i++)
+	{
+		AttrNumber	keycol = idxrel->rd_index->indkey.values[i];
+		Datum		value1;
+		Datum		value2;
+		bool		isnull1;
+		bool		isnull2;
+
+		value1 = slot_getattr(slot1, keycol, &isnull1);
+		value2 = slot_getattr(slot2, keycol, &isnull2);
+
+		/*
+		 * If one value is NULL and other is not, then they are certainly not
+		 * equal
+		 */
+		if (isnull1 != isnull2)
+			return false;
+
+		/*
+		 * If both are NULL, they can be considered equal.
+		 */
+		if (isnull1 || isnull2)
+			continue;
+
+		if (!DatumGetBool(FunctionCall2Coll(&skey[i].sk_func,
+											skey[i].sk_collation,
+											value1, value2)))
 			return false;
 	}
 
@@ -537,6 +594,10 @@ update_most_recent_deletion_info(TupleTableSlot *scanslot,
  * returns the transaction ID, origin, and commit timestamp of the transaction
  * that deleted this tuple.
  *
+ * If 'identidxoid' is valid, it is the replica identity or primary key
+ * index, and only its key columns are compared. Otherwise, all columns are
+ * compared.
+ *
  * 'oldestxmin' acts as a cutoff transaction ID. Tuples deleted by transactions
  * with IDs >= 'oldestxmin' are considered recently dead and are eligible for
  * conflict detection.
@@ -564,7 +625,8 @@ update_most_recent_deletion_info(TupleTableSlot *scanslot,
  * tuple was deleted most recently.
  */
 bool
-RelationFindDeletedTupleInfoSeq(Relation rel, TupleTableSlot *searchslot,
+RelationFindDeletedTupleInfoSeq(Relation rel, Oid identidxoid,
+								TupleTableSlot *searchslot,
 								TransactionId oldestxmin,
 								TransactionId *delete_xid,
 								ReplOriginId *delete_origin,
@@ -573,7 +635,7 @@ RelationFindDeletedTupleInfoSeq(Relation rel, TupleTableSlot *searchslot,
 	TupleTableSlot *scanslot;
 	TableScanDesc scan;
 	TypeCacheEntry **eq;
-	Bitmapset  *indexbitmap;
+	Bitmapset  *indexbitmap = NULL;
 	TupleDesc	desc PG_USED_FOR_ASSERTS_ONLY = RelationGetDescr(rel);
 
 	Assert(equalTupleDescs(desc, searchslot->tts_tupleDescriptor));
@@ -583,21 +645,35 @@ RelationFindDeletedTupleInfoSeq(Relation rel, TupleTableSlot *searchslot,
 	*delete_time = 0;
 
 	/*
-	 * If the relation has a replica identity key or a primary key that is
-	 * unusable for locating deleted tuples (see
-	 * IsIndexUsableForFindingDeletedTuple), a full table scan becomes
-	 * necessary. In such cases, comparing the entire tuple is not required,
-	 * since the remote tuple might not include all column values. Instead,
-	 * the indexed columns alone are sufficient to identify the target tuple
-	 * (see logicalrep_rel_mark_updatable).
+	 * If the caller's replica identity key or primary key is unusable for
+	 * locating deleted tuples (see IsIndexUsableForFindingDeletedTuple), a
+	 * full table scan becomes necessary. In such cases, comparing the entire
+	 * tuple is not required, since the remote tuple might not include all
+	 * column values. Instead, the indexed columns alone are sufficient to
+	 * identify the target tuple (see logicalrep_rel_mark_updatable).
 	 */
-	indexbitmap = RelationGetIndexAttrBitmap(rel,
-											 INDEX_ATTR_BITMAP_IDENTITY_KEY);
+	if (OidIsValid(identidxoid))
+	{
+		/* The index must have been locked already */
+		Relation	idxrel = index_open(identidxoid, NoLock);
 
-	/* fallback to PK if no replica identity */
-	if (!indexbitmap)
-		indexbitmap = RelationGetIndexAttrBitmap(rel,
-												 INDEX_ATTR_BITMAP_PRIMARY_KEY);
+		/*
+		 * The index may no longer be the replica identity if DROP INDEX
+		 * CONCURRENTLY or REINDEX CONCURRENTLY ran meanwhile, but it stays
+		 * unique and non-partial, which is all we rely on. See
+		 * FindReplTupleInLocalRel().
+		 */
+		Assert(idxrel->rd_index->indisunique);
+		Assert(heap_attisnull(idxrel->rd_indextuple, Anum_pg_index_indpred,
+							  NULL));
+
+		for (int i = 0; i < idxrel->rd_index->indnkeyatts; i++)
+			indexbitmap = bms_add_member(indexbitmap,
+										 idxrel->rd_index->indkey.values[i] -
+										 FirstLowInvalidHeapAttributeNumber);
+
+		index_close(idxrel, NoLock);
+	}
 
 	eq = palloc0_array(TypeCacheEntry *, searchslot->tts_tupleDescriptor->natts);
 
@@ -632,9 +708,12 @@ RelationFindDeletedTupleInfoSeq(Relation rel, TupleTableSlot *searchslot,
 /*
  * Similar to RelationFindDeletedTupleInfoSeq() but using index scan to locate
  * the deleted tuple.
+ *
+ * 'skipduplicates' works as in RelationFindReplTupleByIndex().
  */
 bool
 RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
+									bool skipduplicates,
 									TupleTableSlot *searchslot,
 									TransactionId oldestxmin,
 									TransactionId *delete_xid,
@@ -647,7 +726,6 @@ RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
 	IndexScanDesc scan;
 	TupleTableSlot *scanslot;
 	TypeCacheEntry **eq = NULL;
-	bool		isIdxSafeToSkipDuplicates;
 	TupleDesc	desc PG_USED_FOR_ASSERTS_ONLY = RelationGetDescr(rel);
 
 	Assert(equalTupleDescs(desc, searchslot->tts_tupleDescriptor));
@@ -656,8 +734,6 @@ RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
 	*delete_xid = InvalidTransactionId;
 	*delete_time = 0;
 	*delete_origin = InvalidReplOriginId;
-
-	isIdxSafeToSkipDuplicates = (GetRelationIdentityOrPK(rel) == idxoid);
 
 	scanslot = table_slot_create(rel, NULL);
 
@@ -682,9 +758,10 @@ RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
 	{
 		/*
 		 * Avoid expensive equality check if the index is primary key or
-		 * replica identity index.
+		 * replica identity index, unless the index scan indicates that a
+		 * recheck is needed.
 		 */
-		if (!isIdxSafeToSkipDuplicates)
+		if (!skipduplicates)
 		{
 			if (eq == NULL)
 				eq = palloc0_array(TypeCacheEntry *, scanslot->tts_tupleDescriptor->natts);
@@ -692,6 +769,9 @@ RelationFindDeletedTupleInfoByIndex(Relation rel, Oid idxoid,
 			if (!tuples_equal(scanslot, searchslot, eq, NULL))
 				continue;
 		}
+		else if (scan->xs_recheck &&
+				 !repl_index_key_equal(idxrel, scanslot, searchslot, skey))
+			continue;
 
 		update_most_recent_deletion_info(scanslot, oldestxmin, delete_xid,
 										 delete_time, delete_origin);
@@ -916,8 +996,8 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 	ItemPointer tid = &(searchslot->tts_tid);
 
 	/*
-	 * We support only non-system tables, with
-	 * check_publication_add_relation() accountable.
+	 * Relations that must not be a logical replication target are rejected
+	 * before we get here; see CheckSubscriptionTargetRel().
 	 */
 	Assert(rel->rd_rel->relkind == RELKIND_RELATION);
 	Assert(!IsCatalogRelation(rel));
@@ -1163,15 +1243,18 @@ CheckCmdReplicaIdentity(Relation rel, CmdType cmd)
 
 
 /*
- * Check if we support writing into specific relkind of local relation and check
- * if it aligns with the relkind of the relation on the publisher.
+ * Check that the local relation can be used as a logical replication target,
+ * and that its relkind aligns with the relkind of the relation on the
+ * publisher.
  *
  * The nspname and relname are only needed for error reporting.
  */
 void
-CheckSubscriptionRelkind(char localrelkind, char remoterelkind,
-						 const char *nspname, const char *relname)
+CheckSubscriptionTargetRel(Oid relid, char remoterelkind,
+						   const char *nspname, const char *relname)
 {
+	char		localrelkind = get_rel_relkind(relid);
+
 	if (localrelkind != RELKIND_RELATION &&
 		localrelkind != RELKIND_PARTITIONED_TABLE &&
 		localrelkind != RELKIND_SEQUENCE)
@@ -1180,6 +1263,33 @@ CheckSubscriptionRelkind(char localrelkind, char remoterelkind,
 				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
 						nspname, relname),
 				 errdetail_relkind_not_supported(localrelkind)));
+
+	/*
+	 * Some relations must never be written by an apply worker.  System
+	 * catalogs hold data that the server maintains for itself, and a
+	 * temporary relation belongs to the session that created it.  A
+	 * PostgreSQL publisher refuses to publish any of them, but the target
+	 * relation is named by the publisher, which doesn't have to be a
+	 * PostgreSQL server, so we can't rely on that.
+	 */
+	if (IsCatalogRelationOid(relid))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
+						nspname, relname),
+				 errdetail("This operation is not supported for system tables.")));
+
+	/*
+	 * Reject temporary relations.  Accessing a temporary relation of another
+	 * session is rejected when its buffers are read, but that is much later
+	 * than here, after we have already looked at its metadata.
+	 */
+	if (get_rel_persistence(relid) == RELPERSISTENCE_TEMP)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot use relation \"%s.%s\" as logical replication target",
+						nspname, relname),
+				 errdetail("This operation is not supported for temporary tables.")));
 
 	/*
 	 * Allow RELKIND_RELATION and RELKIND_PARTITIONED_TABLE to be treated

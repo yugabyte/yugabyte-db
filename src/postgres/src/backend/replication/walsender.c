@@ -217,6 +217,13 @@ static bool waiting_for_ping_response = false;
 static TimestampTz shutdown_request_timestamp = 0;
 
 /*
+ * Set after queueing the CommandComplete message that ends WAL streaming
+ * during shutdown. This prevents WalSndDone() and WalSndDoneImmediate()
+ * from queueing the same message twice.
+ */
+static bool shutdown_stream_done_queued = false;
+
+/*
  * While streaming WAL in Copy mode, streamingDoneSending is set to true
  * after we have sent CopyDone. We should not send any more CopyData messages
  * after that. streamingDoneReceiving is set to true when we receive CopyDone
@@ -416,6 +423,9 @@ WalSndErrorCleanup(void)
 
 	if (xlogreader != NULL && xlogreader->seg.ws_file >= 0)
 		wal_segment_close(xlogreader);
+
+	xlogreader = NULL;
+	logical_decoding_ctx = NULL;
 
 	if (IsYugaByteEnabled() && MyReplicationSlot != NULL)
 		YBCDestroyVirtualWal();
@@ -1052,6 +1062,9 @@ StartReplication(StartReplicationCmd *cmd)
 		Assert(streamingDoneSending && streamingDoneReceiving);
 	}
 
+	XLogReaderFree(xlogreader);
+	xlogreader = NULL;
+
 	if (cmd->slotname)
 		ReplicationSlotRelease();
 
@@ -1140,7 +1153,29 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 	am_cascading_walsender = RecoveryInProgress();
 
 	if (am_cascading_walsender)
-		GetXLogReplayRecPtr(&currTLI);
+	{
+		TimeLineID	insertTLI;
+
+		/*
+		 * If the insertion timeline has already been set, use it.
+		 * InsertTimeLineID is set before the WAL segments of the old timeline
+		 * are removed, before SharedRecoveryState switches to
+		 * RECOVERY_STATE_DONE.
+		 *
+		 * There is a window where RecoveryInProgress() still returns true but
+		 * the old timeline's WAL segments have already been removed or
+		 * recycled.  Using the WAL insertion timeline avoids attempting to
+		 * read from those removed segments, improving availability, and is a
+		 * safe thing to do as promotion copies the contents in the last
+		 * segment of the old timeline to the first segment of the new
+		 * timeline, up to the switchpoint.
+		 */
+		insertTLI = GetWALInsertionTimeLineIfSet();
+		if (insertTLI != 0)
+			currTLI = insertTLI;
+		else
+			GetXLogReplayRecPtr(&currTLI);
+	}
 	else
 		currTLI = GetWALInsertionTimeLine();
 
@@ -1499,7 +1534,9 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		 * logical decoding context.
 		 */
 		EnsureLogicalDecodingEnabled();
-		Assert(IsLogicalDecodingEnabled());
+
+		/* See the comment in create_logical_replication_slot() */
+		Assert(RecoveryInProgress() || IsLogicalDecodingEnabled());
 
 		if (IsYugaByteEnabled())
 		{
@@ -1860,6 +1897,8 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 	WalSndLoop(XLogSendLogical);
 
 	FreeDecodingContext(logical_decoding_ctx);
+	logical_decoding_ctx = NULL;
+	xlogreader = NULL;
 	ReplicationSlotRelease();
 
 	if (IsYugaByteEnabled())
@@ -2413,6 +2452,9 @@ exec_replication_command(const char *cmd_string)
 
 	CHECK_FOR_INTERRUPTS();
 
+	Assert(xlogreader == NULL);
+	Assert(logical_decoding_ctx == NULL);
+
 	/*
 	 * Prepare to parse and execute the command.
 	 *
@@ -2570,7 +2612,6 @@ exec_replication_command(const char *cmd_string)
 				/* dupe, but necessary per libpqrcv_endstreaming */
 				EndReplicationCommand(cmdtag);
 
-				Assert(xlogreader != NULL);
 				break;
 			}
 
@@ -3170,7 +3211,30 @@ ProcessStandbyPSRequestMessage(void)
 	nextFullXid = ReadNextFullTransactionId();
 	fullOldestXidInCommit = FullTransactionIdFromAllowableAt(nextFullXid,
 															 oldestXidInCommit);
-	lsn = GetXLogWriteRecPtr();
+
+	/*
+	 * Report the end of the last inserted WAL record rather than the WAL
+	 * write position.  A transaction that commits asynchronously (with
+	 * synchronous_commit = off) clears DELAY_CHKPT_IN_COMMIT without flushing
+	 * its commit record, so it is visible to neither the in-commit scan above
+	 * nor a write position that has not yet reached its commit record.  The
+	 * subscriber waits until it has applied and flushed up to the reported
+	 * position before advancing its non-removable transaction ID, so the
+	 * reported position must cover every transaction that has already
+	 * committed, as each of those already carries a commit timestamp earlier
+	 * than this reply.  A transaction's commit timestamp is written as part
+	 * of its commit record, so it cannot have committed without that record
+	 * already being at or before the insert position.  A transaction that has
+	 * determined its commit timestamp but not yet inserted the record is
+	 * still in the commit phase, and so is reported by the in-commit scan
+	 * above.
+	 *
+	 * GetXLogInsertEndRecPtr() is used rather than GetXLogInsertRecPtr()
+	 * because the latter can return a position past the page header when the
+	 * last record ends at a page boundary, which can never match a record end
+	 * and would needlessly stall the subscriber's wait.
+	 */
+	lsn = GetXLogInsertEndRecPtr();
 
 	elog(DEBUG2, "sending primary status");
 
@@ -4084,15 +4148,17 @@ WalSndDoneImmediate(void)
 {
 	WalSndState state = MyWalSnd->state;
 
-	if (state == WALSNDSTATE_CATCHUP ||
-		state == WALSNDSTATE_STREAMING ||
-		state == WALSNDSTATE_STOPPING)
+	if ((state == WALSNDSTATE_CATCHUP ||
+		 state == WALSNDSTATE_STREAMING ||
+		 state == WALSNDSTATE_STOPPING) &&
+		!shutdown_stream_done_queued)
 	{
 		QueryCompletion qc;
 
 		/* Try to inform receiver that XLOG streaming is done */
 		SetQueryCompletion(&qc, CMDTAG_COPY, 0);
-		EndCommand(&qc, DestRemote, false);
+		EndCommandExtended(&qc, DestRemote, false, true);
+		shutdown_stream_done_queued = true;
 
 		/*
 		 * Note that the output buffer may be full during the forced shutdown
@@ -4149,10 +4215,55 @@ WalSndDone(WalSndSendDataCallback send_data)
 	{
 		QueryCompletion qc;
 
+		Assert(!shutdown_stream_done_queued);
+
 		/* Inform the standby that XLOG streaming is done */
 		SetQueryCompletion(&qc, CMDTAG_COPY, 0);
-		EndCommand(&qc, DestRemote, false);
-		pq_flush();
+		EndCommandExtended(&qc, DestRemote, false, true);
+		shutdown_stream_done_queued = true;
+
+		/*
+		 * Reset last_reply_timestamp so subsequent WalSndComputeSleeptime()
+		 * calls ignore wal_sender_timeout during shutdown.
+		 */
+		last_reply_timestamp = 0;
+
+		/*
+		 * Do not call pq_flush() here, since it can block indefinitely while
+		 * waiting for the socket to become writable, preventing
+		 * wal_sender_shutdown_timeout from being enforced. Instead, use the
+		 * walsender nonblocking flush path so the shutdown timeout continues
+		 * to be checked while the send buffer drains.
+		 */
+		for (;;)
+		{
+			long		sleeptime;
+
+			/*
+			 * During shutdown, die if the shutdown timeout expires. Call this
+			 * before WalSndComputeSleeptime() so the timeout is considered
+			 * when computing sleep time.
+			 */
+			WalSndCheckShutdownTimeout();
+
+			if (!pq_is_send_pending())
+				break;
+
+			sleeptime = WalSndComputeSleeptime(GetCurrentTimestamp());
+
+			/* Sleep until something happens or we time out */
+			WalSndWait(WL_SOCKET_WRITEABLE, sleeptime,
+					   WAIT_EVENT_WAL_SENDER_WRITE_DATA);
+
+			/* Clear any already-pending wakeups */
+			ResetLatch(MyLatch);
+
+			CHECK_FOR_INTERRUPTS();
+
+			/* Try to flush pending output to the client */
+			if (pq_flush_if_writable() != 0)
+				WalSndShutdown();
+		}
 
 		proc_exit(0);
 	}
@@ -4268,13 +4379,13 @@ WalSndSignals(void)
 	pqsignal(SIGTERM, die);		/* request shutdown */
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
 	InitializeTimeouts();		/* establishes SIGALRM handler */
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 	pqsignal(SIGUSR2, WalSndLastCycleHandler);	/* request a last cycle and
 												 * shutdown */
 
 	/* Reset some signals that are accepted by postmaster but not here */
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 }
 
 /* Register shared-memory space needed by walsender */
@@ -4397,7 +4508,47 @@ WalSndWait(uint32 socket_events, long timeout, uint32 wait_event)
 	if (wait_event == WAIT_EVENT_WAIT_FOR_STANDBY_CONFIRMATION)
 		ConditionVariablePrepareToSleep(&WalSndCtl->wal_confirm_rcv_cv);
 	else if (MyWalSnd->kind == REPLICATION_KIND_PHYSICAL)
+	{
 		ConditionVariablePrepareToSleep(&WalSndCtl->wal_flush_cv);
+
+		/*
+		 * Recheck the conditions tested by XLogSendPhysical() now that we're
+		 * on the waitlist. Otherwise, we could miss a wakeup for a WAL flush,
+		 * promotion, or timeline switch that occurred before we joined it.
+		 */
+		if (wait_event == WAIT_EVENT_WAL_SENDER_MAIN &&
+			!sendTimeLineIsHistoric && !pq_is_send_pending())
+		{
+			XLogRecPtr	flushPtr;
+			bool		becameHistoric = false;
+
+			Assert(WalSndCaughtUp);
+			Assert(!streamingDoneSending);
+
+			if (am_cascading_walsender)
+			{
+				TimeLineID	flushTLI;
+
+				flushPtr = GetStandbyFlushRecPtr(&flushTLI);
+
+				/*
+				 * Promotion or a timeline switch need not advance the flush
+				 * pointer.  Let XLogSendPhysical() handle the now-historic
+				 * timeline.
+				 */
+				becameHistoric = !RecoveryInProgress() ||
+					sendTimeLine != flushTLI;
+			}
+			else
+				flushPtr = GetFlushRecPtr(NULL);
+
+			if (flushPtr > sentPtr || becameHistoric)
+			{
+				ConditionVariableCancelSleep();
+				return;
+			}
+		}
+	}
 	else if (MyWalSnd->kind == REPLICATION_KIND_LOGICAL)
 		ConditionVariablePrepareToSleep(&WalSndCtl->wal_replay_cv);
 

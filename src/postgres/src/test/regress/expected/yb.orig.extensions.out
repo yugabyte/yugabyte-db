@@ -103,9 +103,9 @@ explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select 
 -- GHI 14498: different queryid may indicate NodeTag added to the middle of the list
 -- Please make sure it is appended
 select queryid, query from pg_stat_statements where query like 'explain %';
-       queryid        |                                             query                                              
-----------------------+------------------------------------------------------------------------------------------------
- -1178685816570221190 | explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test
+       queryid       |                                             query                                              
+---------------------+------------------------------------------------------------------------------------------------
+ 3453698420058866229 | explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test
 (1 row)
 
 drop table test;

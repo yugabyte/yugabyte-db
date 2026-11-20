@@ -19,7 +19,6 @@
 #include "pgstat.h"
 #include "port/atomics.h"
 #include "postmaster/bgworker_internals.h"
-#include "postmaster/datachecksum_state.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
@@ -163,14 +162,6 @@ static const struct
 	{
 		.fn_name = "TableSyncWorkerMain",
 		.fn_addr = TableSyncWorkerMain
-	},
-	{
-		.fn_name = "DataChecksumsWorkerLauncherMain",
-		.fn_addr = DataChecksumsWorkerLauncherMain
-	},
-	{
-		.fn_name = "DataChecksumsWorkerMain",
-		.fn_addr = DataChecksumsWorkerMain
 	},
 	{
 		.fn_name = "YbAshMain",
@@ -836,19 +827,19 @@ BackgroundWorkerMain(const void *startup_data, size_t startup_data_len)
 	}
 	else
 	{
-		pqsignal(SIGINT, SIG_IGN);
-		pqsignal(SIGUSR1, SIG_IGN);
-		pqsignal(SIGFPE, SIG_IGN);
+		pqsignal(SIGINT, PG_SIG_IGN);
+		pqsignal(SIGUSR1, PG_SIG_IGN);
+		pqsignal(SIGFPE, PG_SIG_IGN);
 	}
 	pqsignal(SIGTERM, die);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
-	pqsignal(SIGHUP, SIG_IGN);
+	pqsignal(SIGHUP, PG_SIG_IGN);
 
 	InitializeTimeouts();		/* establishes SIGALRM handler */
 
-	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR2, SIG_IGN);
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
+	pqsignal(SIGUSR2, PG_SIG_IGN);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 
 	/*
 	 * If an exception is encountered, processing resumes here.
@@ -1527,16 +1518,20 @@ TerminateBackgroundWorkersForDatabase(Oid databaseId)
 		if (slot->in_use &&
 			(slot->worker.bgw_flags & BGWORKER_INTERRUPTIBLE))
 		{
-			PGPROC	   *proc = BackendPidGetProc(slot->pid);
+			PGPROC	   *proc;
+			pid_t		pid = slot->pid;
 
+			LWLockAcquire(ProcArrayLock, LW_SHARED);
+			proc = BackendPidGetProcWithLock(pid);
 			if (proc && proc->databaseId == databaseId)
 			{
 				slot->terminate = true;
 				signal_postmaster = true;
 
 				elog(DEBUG1, "termination requested for worker (PID %d) on database %u",
-					 (int) slot->pid, databaseId);
+					 (int) pid, databaseId);
 			}
+			LWLockRelease(ProcArrayLock);
 		}
 	}
 

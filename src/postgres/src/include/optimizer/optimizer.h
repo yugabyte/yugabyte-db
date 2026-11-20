@@ -135,7 +135,7 @@ typedef enum
 {
 	NOTNULL_SOURCE_RELOPT,		/* Use RelOptInfo */
 	NOTNULL_SOURCE_HASHTABLE,	/* Use Global Hash Table */
-	NOTNULL_SOURCE_SYSCACHE,	/* Use System Catalog */
+	NOTNULL_SOURCE_CATALOG,		/* Use System Catalog */
 } NotNullSource;
 
 extern bool contain_mutable_functions(Node *clause);
@@ -212,6 +212,7 @@ extern List *pull_vars_of_level(Node *node, int levelsup);
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);
 extern bool contain_vars_returning_old_or_new(Node *node);
+extern bool contain_var_or_representative(Node *node);
 extern int	locate_var_of_level(Node *node, int levelsup);
 extern List *pull_var_clause(Node *node, int flags);
 extern Node *flatten_join_alias_vars(PlannerInfo *root, Query *query, Node *node);

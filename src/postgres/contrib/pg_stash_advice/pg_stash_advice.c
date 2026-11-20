@@ -22,7 +22,10 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
-PG_MODULE_MAGIC;
+PG_MODULE_MAGIC_EXT(
+					.name = "pg_stash_advice",
+					.version = PG_VERSION
+);
 
 /* Shared memory hash table parameters */
 static dshash_parameters pgsa_stash_dshash_parameters = {
@@ -385,7 +388,7 @@ pgsa_check_stash_name_guc(char **newval, void **extra, GucSource source)
 	if (strlen(stash_name) + 1 > NAMEDATALEN)
 	{
 		GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
-		GUC_check_errdetail("advice stash names may not be longer than %d bytes",
+		GUC_check_errdetail("Advice stash names may not be longer than %d bytes.",
 							NAMEDATALEN - 1);
 		return false;
 	}
@@ -397,7 +400,7 @@ pgsa_check_stash_name_guc(char **newval, void **extra, GucSource source)
 	if (!pg_is_ascii(stash_name))
 	{
 		GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
-		GUC_check_errdetail("advice stash name must not contain non-ASCII characters");
+		GUC_check_errdetail("Advice stash name must not contain non-ASCII characters.");
 		return false;
 	}
 
@@ -409,7 +412,7 @@ pgsa_check_stash_name_guc(char **newval, void **extra, GucSource source)
 	if (!pgsa_is_identifier(stash_name))
 	{
 		GUC_check_errcode(ERRCODE_INVALID_PARAMETER_VALUE);
-		GUC_check_errdetail("advice stash name must begin with a letter or underscore and contain only letters, digits, and underscores");
+		GUC_check_errdetail("Advice stash name must begin with a letter or underscore and contain only letters, digits, and underscores.");
 		return false;
 	}
 
@@ -698,7 +701,7 @@ pgsa_set_advice_string(char *stash_name, int64 queryId, char *advice_string)
 		ereport(ERROR,
 				errcode(ERRCODE_OUT_OF_MEMORY),
 				errmsg("out of memory"),
-				errdetail("could not insert advice string into shared hash table"));
+				errdetail("Could not insert advice string into shared hash table."));
 	}
 
 	/* Update the entry and release the lock. */

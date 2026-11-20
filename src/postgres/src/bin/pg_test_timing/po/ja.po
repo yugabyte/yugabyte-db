@@ -7,9 +7,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_test_timing (PostgreSQL 17)\n"
 "Report-Msgid-Bugs-To: pgsql-bugs@lists.postgresql.org\n"
-"POT-Creation-Date: 2022-07-14 10:48+0900\n"
-"PO-Revision-Date: 2022-05-10 15:27+0900\n"
-"Last-Translator: Michihide Hotta <hotta@net-newbie.com>\n"
+"POT-Creation-Date: 2026-07-03 14:13+0900\n"
+"PO-Revision-Date: 2026-07-06 14:57+0900\n"
+"Last-Translator: Kyotaro Horiguchi <horikyota.ntt@gmail.com>\n"
 "Language-Team: \n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
@@ -18,69 +18,217 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 "X-Generator: Poedit 1.8.13\n"
 
-#: pg_test_timing.c:59
+#: ../../common/fe_memutils.c:41 ../../common/fe_memutils.c:81
+#: ../../common/fe_memutils.c:104 ../../common/fe_memutils.c:167
 #, c-format
-msgid "Usage: %s [-d DURATION]\n"
-msgstr "使用方法: %s [-d 期間]\n"
+msgid "out of memory\n"
+msgstr "メモリ不足です\n"
 
-#: pg_test_timing.c:81
+#: ../../common/fe_memutils.c:98 ../../common/fe_memutils.c:159
+#, c-format
+msgid "cannot duplicate null pointer (internal error)\n"
+msgstr "nullポインタは複製できません(内部エラー)\n"
+
+#: ../../common/fe_memutils.c:209
+#, c-format
+msgid "invalid memory allocation request size %zu + %zu\n"
+msgstr "メモリ割り当て要求サイズ %zu + %zu が不正です\n"
+
+#: ../../common/fe_memutils.c:228
+#, c-format
+msgid "invalid memory allocation request size %zu * %zu\n"
+msgstr "メモリ割り当て要求サイズ %zu * %zu が不正です\n"
+
+#: pg_test_timing.c:79
+#, c-format
+msgid "Usage: %s [-c CUTOFF] [-d DURATION]\n"
+msgstr "使用方法: %s [-c 閾値] [-d 継続時間]\n"
+
+#: pg_test_timing.c:100 pg_test_timing.c:121
 #, c-format
 msgid "%s: invalid argument for option %s\n"
 msgstr "%s: オプション%sの引数が無効です\n"
 
-#: pg_test_timing.c:83 pg_test_timing.c:97 pg_test_timing.c:109
+#: pg_test_timing.c:102 pg_test_timing.c:123 pg_test_timing.c:137
+#: pg_test_timing.c:149
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
 msgstr "\"%s --help\" で詳細を確認してください。\n"
 
-#: pg_test_timing.c:90
+#: pg_test_timing.c:108 pg_test_timing.c:130
 #, c-format
 msgid "%s: %s must be in range %u..%u\n"
 msgstr "%s: %sは%u..%uの範囲でなければなりません\n"
 
-#: pg_test_timing.c:107
+#: pg_test_timing.c:147
 #, c-format
 msgid "%s: too many command-line arguments (first is \"%s\")\n"
 msgstr "%s: コマンドライン引数が多すぎます（先頭は \"%s\"）\n"
 
-#: pg_test_timing.c:115
+#: pg_test_timing.c:154
 #, c-format
-msgid "Testing timing overhead for %u second.\n"
-msgid_plural "Testing timing overhead for %u seconds.\n"
-msgstr[0] "%u秒に対するタイミングのオーバーヘッドをテストしています。\n"
+msgid ""
+"Testing timing overhead for %u second.\n"
+"\n"
+msgid_plural ""
+"Testing timing overhead for %u seconds.\n"
+"\n"
+msgstr[0] "タイミングのオーバーヘッドを%u秒間テストします。\n"
 
-#: pg_test_timing.c:151
+#: pg_test_timing.c:209
+#, c-format
+msgid "TSC frequency source: %s\n"
+msgstr "TSC周波数取得元: %s\n"
+
+#: pg_test_timing.c:210
+#, c-format
+msgid "TSC frequency in use: %d kHz\n"
+msgstr "使用中のTSC周波数: %d kHz\n"
+
+#: pg_test_timing.c:216
+#, c-format
+msgid "TSC frequency from calibration: %d kHz\n"
+msgstr "校正後のTSC周波数: %d kHz\n"
+
+#: pg_test_timing.c:223
+#, c-format
+msgid ""
+"WARNING: Calibrated TSC frequency differs by %.1f%% from the "
+"TSC frequency in use\n"
+msgstr ""
+"警告: 校正されたTSC周波数は、使用中のTSC周波数と%.1f%%異なって"
+"います\n"
+
+#: pg_test_timing.c:225
+#, c-format
+msgid ""
+"HINT: Consider setting timing_clock_source to 'system'. Report "
+"bugs to <%s>.\n"
+msgstr ""
+"ヒント: timing_clock_source を 'system' に設定することを検討し"
+"てください。バグは <%s> に報告してください。\n"
+"\n"
+
+#: pg_test_timing.c:230
+#, c-format
+msgid "TSC calibration did not converge\n"
+msgstr "TSCキャリブレーションが収束しませんでした\n"
+
+#: pg_test_timing.c:240
+#, c-format
+msgid ""
+"\n"
+"TSC clock source will be used by default, unless "
+"timing_clock_source is set to 'system'.\n"
+msgstr ""
+"\n"
+"timing_clock_source が 'system'に設定されない限り、デフォルトで"
+"TSCクロックソースが使用されます。\n"
+
+#: pg_test_timing.c:242
+#, c-format
+msgid ""
+"\n"
+"TSC clock source will not be used by default, unless "
+"timing_clock_source is set to 'tsc'.\n"
+msgstr ""
+"\n"
+"timing_clock_source が 'tsc' に設定されない限り、デフォルトでは"
+"TSCクロックソースは使用されません。\n"
+
+#: pg_test_timing.c:245
+#, c-format
+msgid ""
+"\n"
+"TSC clock source is not usable. Likely unable to determine TSC "
+"frequency. Are you running in an unsupported virtualized "
+"environment?\n"
+msgstr ""
+"\n"
+"TSCクロックソースは使用できません。おそらくTSC周波数を特定でき"
+"ません。サポート対象外の仮想化環境で実行していませんか?\n"
+
+#: pg_test_timing.c:270
+#, c-format
+msgid "Fast clock source: %s\n"
+msgstr "高速クロックソース: %s\n"
+
+#: pg_test_timing.c:272
+#, c-format
+msgid "System clock source: %s\n"
+msgstr "システムクロックソース: %s\n"
+
+#: pg_test_timing.c:274
+#, c-format
+msgid "Clock source: %s\n"
+msgstr "クロックソース: %s\n"
+
+#: pg_test_timing.c:312
 #, c-format
 msgid "Detected clock going backwards in time.\n"
 msgstr "クロックの時刻が逆行していることを検出しました。\n"
 
-#: pg_test_timing.c:152
+#: pg_test_timing.c:313
 #, c-format
-msgid "Time warp: %d ms\n"
-msgstr "逆行した時間: %d ms\n"
+msgid "Time warp: %<PRId64> ns\n"
+msgstr "逆行した時間: %<PRId64> ns\n"
 
-#: pg_test_timing.c:175
+#: pg_test_timing.c:351
 #, c-format
-msgid "Per loop time including overhead: %0.2f ns\n"
-msgstr "オーバーヘッド込みのループ時間毎: %0.2f ns\n"
+msgid "Average loop time including overhead: %0.2f ns\n"
+msgstr "オーバーヘッド込みの平均ループ時間: %0.2f ns\n"
 
-#: pg_test_timing.c:186
-msgid "< us"
-msgstr "< us"
+#: pg_test_timing.c:361
+msgid "<= ns"
+msgstr "<= ns"
 
-#: pg_test_timing.c:187
+#: pg_test_timing.c:362
+msgid "ns"
+msgstr "ns"
+
+#: pg_test_timing.c:363
 #, no-c-format
 msgid "% of total"
 msgstr "全体の％"
 
-#: pg_test_timing.c:188
+#: pg_test_timing.c:364
+#, no-c-format
+msgid "running %"
+msgstr "\"%s\"を実行中"
+
+#: pg_test_timing.c:365
 msgid "count"
 msgstr "個数"
 
-#: pg_test_timing.c:197
+#: pg_test_timing.c:375
+#, c-format
+msgid ""
+"WARNING: No timing measurements collected. Report this as a "
+"bug to <%s>.\n"
+msgstr ""
+"警告: 時間計測情報が収集できませんでした。バグとして<%s>まで報"
+"告してください。\n"
+
+#: pg_test_timing.c:389
 #, c-format
 msgid "Histogram of timing durations:\n"
-msgstr "タイミング持続時間のヒストグラム:\n"
+msgstr "タイミング継続時間のヒストグラム:\n"
 
-#~ msgid "%s: duration must be a positive integer (duration is \"%d\")\n"
-#~ msgstr "%s: 持続時間は正の整数にする必要があります (持続時間は\"%d\")\n"
+#: pg_test_timing.c:409
+#, c-format
+msgid ""
+"\n"
+"Observed timing durations up to %.4f%%:\n"
+msgstr ""
+"\n"
+"観測された継続時間は最大で%.4f%%に達しました:\n"
+
+#~ msgid ""
+#~ "%s: duration must be a positive integer (duration is \"%d"
+#~ "\")\n"
+#~ msgstr ""
+#~ "%s: 持続時間は正の整数にする必要があります (持続時間は\"%d"
+#~ "\")\n"
+
+#~ msgid "< us"
+#~ msgstr "< us"

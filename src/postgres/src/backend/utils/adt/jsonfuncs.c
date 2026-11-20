@@ -17,8 +17,6 @@
 #include <limits.h>
 
 #include "access/htup_details.h"
-#include "access/tupdesc.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "common/int.h"
 #include "common/jsonapi.h"
@@ -3371,6 +3369,17 @@ populate_domain(DomainIOData *io,
 									colname, mcxt, PointerGetDatum(NULL),
 									jsv, isnull, escontext, omit_quotes);
 		Assert(!*isnull || SOFT_ERROR_OCCURRED(escontext));
+
+		/*
+		 * If converting to the base type failed softly, the caller is going
+		 * to discard the result, so don't check the domain's constraints on
+		 * it; doing so might throw a hard error or overwrite the saved error.
+		 */
+		if (SOFT_ERROR_OCCURRED(escontext))
+		{
+			*isnull = true;
+			return (Datum) 0;
+		}
 	}
 
 	if (!domain_check_safe(res, *isnull, typid, &io->domain_info, mcxt,
@@ -3674,7 +3683,17 @@ populate_record(TupleDesc tupdesc,
 	 * nulls.
 	 */
 	if (defaultval && JsObjectIsEmpty(obj))
+	{
+		/*
+		 * XXX: There's currently no guarantee that the default tuple matches
+		 * the tupledesc without this check. But this should probably have
+		 * been enforced much earlier.
+		 */
+		if (HeapTupleHeaderIsVersionedDatum(defaultval))
+			heap_datum_check(defaultval, tupdesc);
+
 		return defaultval;
+	}
 
 	/* (re)allocate metadata cache */
 	if (record == NULL ||
@@ -3754,6 +3773,14 @@ populate_record(TupleDesc tupdesc,
 										  &nulls[i],
 										  escontext,
 										  false);
+
+		/*
+		 * Once a column has failed softly, the caller is going to discard the
+		 * whole tuple, so don't populate the remaining columns; doing so
+		 * might throw a hard error or overwrite the saved error.
+		 */
+		if (SOFT_ERROR_OCCURRED(escontext))
+			break;
 	}
 
 	res = heap_form_tuple(tupdesc, values, nulls);
@@ -5072,9 +5099,11 @@ jsonb_set_lax(PG_FUNCTION_ARGS)
 
 		newval = DirectFunctionCall1(jsonb_in, CStringGetDatum("null"));
 
-		fcinfo->args[2].value = newval;
-		fcinfo->args[2].isnull = false;
-		return jsonb_set(fcinfo);
+		return DirectFunctionCall4(jsonb_set,
+								   PG_GETARG_DATUM(0),
+								   PG_GETARG_DATUM(1),
+								   newval,
+								   PG_GETARG_DATUM(3));
 	}
 	else if (strcmp(handle_val, "delete_key") == 0)
 	{
@@ -6199,109 +6228,6 @@ json_categorize_type(Oid typoid, bool is_jsonb,
 					getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
 				}
 			}
-			break;
-	}
-}
-
-/*
- * Check whether a type conversion to JSON or JSONB involves any mutable
- * functions.  This recurses into container types (arrays, composites,
- * ranges, multiranges, domains) to check their element/sub types.
- *
- * The caller must initialize *has_mutable to false before calling.
- * If any mutable function is found, *has_mutable is set to true.
- */
-void
-json_check_mutability(Oid typoid, bool is_jsonb, bool *has_mutable)
-{
-	char		att_typtype = get_typtype(typoid);
-	JsonTypeCategory tcategory;
-	Oid			outfuncoid;
-
-	/* since this function recurses, it could be driven to stack overflow */
-	check_stack_depth();
-
-	Assert(has_mutable != NULL);
-
-	if (*has_mutable)
-		return;
-
-	if (att_typtype == TYPTYPE_DOMAIN)
-	{
-		json_check_mutability(getBaseType(typoid), is_jsonb, has_mutable);
-		return;
-	}
-	else if (att_typtype == TYPTYPE_COMPOSITE)
-	{
-		/*
-		 * For a composite type, recurse into its attributes.  Use the
-		 * typcache to avoid opening the relation directly.
-		 */
-		TupleDesc	tupdesc = lookup_rowtype_tupdesc(typoid, -1);
-
-		for (int i = 0; i < tupdesc->natts; i++)
-		{
-			Form_pg_attribute attr = TupleDescAttr(tupdesc, i);
-
-			if (attr->attisdropped)
-				continue;
-
-			json_check_mutability(attr->atttypid, is_jsonb, has_mutable);
-			if (*has_mutable)
-				break;
-		}
-		ReleaseTupleDesc(tupdesc);
-		return;
-	}
-	else if (att_typtype == TYPTYPE_RANGE)
-	{
-		json_check_mutability(get_range_subtype(typoid), is_jsonb,
-							  has_mutable);
-		return;
-	}
-	else if (att_typtype == TYPTYPE_MULTIRANGE)
-	{
-		json_check_mutability(get_multirange_range(typoid), is_jsonb,
-							  has_mutable);
-		return;
-	}
-	else
-	{
-		Oid			att_typelem = get_element_type(typoid);
-
-		if (OidIsValid(att_typelem))
-		{
-			/* recurse into array element type */
-			json_check_mutability(att_typelem, is_jsonb, has_mutable);
-			return;
-		}
-	}
-
-	json_categorize_type(typoid, is_jsonb, &tcategory, &outfuncoid);
-
-	switch (tcategory)
-	{
-		case JSONTYPE_NULL:
-		case JSONTYPE_BOOL:
-		case JSONTYPE_NUMERIC:
-			break;
-
-		case JSONTYPE_DATE:
-		case JSONTYPE_TIMESTAMP:
-		case JSONTYPE_TIMESTAMPTZ:
-			*has_mutable = true;
-			break;
-
-		case JSONTYPE_JSON:
-		case JSONTYPE_JSONB:
-		case JSONTYPE_ARRAY:
-		case JSONTYPE_COMPOSITE:
-			break;
-
-		case JSONTYPE_CAST:
-		case JSONTYPE_OTHER:
-			if (func_volatile(outfuncoid) != PROVOLATILE_IMMUTABLE)
-				*has_mutable = true;
 			break;
 	}
 }

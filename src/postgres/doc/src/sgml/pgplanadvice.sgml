@@ -223,11 +223,10 @@ alias_name#occurrence_number/partition_schema.partition_name@plan_name
    and are included only when required. When a component is omitted, the
    preceding punctuation must also be omitted. For the first occurrence of a
    relation within a given subquery, generated advice will omit the occurrence
-   number, but it is legal to write <literal>#1</literal>, if desired. The
-   partition schema and partition name are included only for children of
-   partitioned tables. In generated advice, <literal>pg_plan_advice</literal>
-   always includes both, but it is legal to omit the schema. The plan name is
-   omitted for the top-level plan, and must be included for any subplan.
+   number, but it is legal to write <literal>#1</literal>, if desired. For
+   children of partitioned tables, the partition schema and partition name are
+   required; otherwise, both are omitted. The plan name is omitted for the
+   top-level plan, and must be included for any subplan.
   </para>
 
   <para>
@@ -266,7 +265,7 @@ SEQ_SCAN(<replaceable>target</replaceable> [ ... ])
 TID_SCAN(<replaceable>target</replaceable> [ ... ])
 INDEX_SCAN(<replaceable>target</replaceable> <replaceable>index_name</replaceable> [ ... ])
 INDEX_ONLY_SCAN(<replaceable>target</replaceable> <replaceable>index_name</replaceable> [ ... ])
-FOREIGN_SCAN((<replaceable>target</replaceable> [ ... ]) [ ... ])
+FOREIGN_JOIN((<replaceable>target</replaceable> [ ... ]) [ ... ])
 BITMAP_HEAP_SCAN(<replaceable>target</replaceable> [ ... ])
 DO_NOT_SCAN(<replaceable>target</replaceable> [ ... ])</synopsis>
 
@@ -288,10 +287,10 @@ DO_NOT_SCAN(<replaceable>target</replaceable> [ ... ])</synopsis>
    </para>
 
    <para>
-    <literal>FOREIGN_SCAN</literal> specifies that a join between two or
+    <literal>FOREIGN_JOIN</literal> specifies that a join between two or
     more foreign tables should be pushed down to a remote server so
     that it can be implemented as a single <literal>Foreign Scan</literal>.
-    Specifying <literal>FOREIGN_SCAN</literal> for a single foreign table is
+    Specifying <literal>FOREIGN_JOIN</literal> for a single foreign table is
     neither necessary nor permissible: a <literal>Foreign Scan</literal> will
     need to be used regardless. If you want to prevent a join from being
     pushed down, consider using the <literal>JOIN_ORDER</literal> tag for
@@ -395,7 +394,7 @@ join_method_name(<replaceable>join_method_item</replaceable> [ ... ])
 
 <phrase>where <replaceable>join_method_name</replaceable> is:</phrase>
 
-{ MERGE_JOIN_MATERIALIZE | MERGE_JOIN_PLAIN | NESTED_LOOP_MATERIALIZE | NESTED_LOOP_PLAIN | HASH_JOIN }
+{ MERGE_JOIN_MATERIALIZE | MERGE_JOIN_PLAIN | NESTED_LOOP_MATERIALIZE | NESTED_LOOP_MEMOIZE | NESTED_LOOP_PLAIN | HASH_JOIN }
 
 <phrase>and <replaceable>join_method_item</replaceable> is:</phrase>
 
@@ -504,8 +503,9 @@ NO_GATHER(<replaceable>advice_target</replaceable> [ ... ])
    <para>
     <literal>NO_GATHER</literal> specifies that no <literal>Gather</literal> or
     <literal>Gather Merge</literal> node should appear above any of the
-    targets, but it only constrains the planning of an individual subquery,
-    and outer subquery levels can still use parallel query. For example,
+    targets, but it only constrains planning within a given join problem,
+    and parent tables or outer subquery levels can still use parallel query.
+    For example,
     <literal>NO_GATHER(inner_example@any_1)</literal> precludes using a
     <literal>Parallel Seq Scan</literal> to access the
     <literal>inner_example</literal> table within the <literal>any_1</literal>
@@ -517,14 +517,14 @@ NO_GATHER(<replaceable>advice_target</replaceable> [ ... ])
    </para>
 
 <programlisting>
- Finalize Aggregate
-   ->  Gather
-         ->  Partial Aggregate
-               ->  Parallel Seq Scan on outer_example
-                     Filter: (something = (hashed SubPlan any_1).col1)
-                     SubPlan any_1
-                       ->  Seq Scan on inner_example
-                             Filter: (something_else > 100)
+Finalize Aggregate
+  ->  Gather
+        ->  Partial Aggregate
+              ->  Parallel Seq Scan on outer_example
+                    Filter: (something = (hashed SubPlan any_1).col1)
+                    SubPlan any_1
+                      ->  Seq Scan on inner_example
+                            Filter: (something_else > 100)
 </programlisting>
 
    <para>
@@ -534,14 +534,22 @@ NO_GATHER(<replaceable>advice_target</replaceable> [ ... ])
    </para>
 
 <programlisting>
- Aggregate
-   ->  Seq Scan on outer_example
-         Filter: (something = (hashed SubPlan any_1).col1)
-         SubPlan any_1
-           ->  Gather
-                 -> Parallel Seq Scan on inner_example
-                      Filter: (something_else > 100)
+Aggregate
+  ->  Seq Scan on outer_example
+        Filter: (something = (hashed SubPlan any_1).col1)
+        SubPlan any_1
+          ->  Gather
+                -> Parallel Seq Scan on inner_example
+                     Filter: (something_else > 100)
 </programlisting>
+
+   <para>
+    Similarly, when <literal>NO_GATHER</literal> is applied to an individual
+    partition, it precludes a parallel scan of that particular partition, but
+    it is still possible for a <literal>Parallel Append</literal> node to use
+    a non-parallel scan of that partition. To rule out that possibility,
+    use <literal>NO_GATHER</literal> on the parent rather than on the child.
+   </para>
 
   </sect3>
  </sect2>
@@ -811,6 +819,34 @@ EXPLAIN (COSTS OFF)
    the planner chooses from among those it believes to be viable. It can never
    force the choice of a plan which the planner refused to consider in the
    first place.
+  </para>
+
+  <para>
+   One consequence of the limitation described in the previous paragraph is
+   that plan advice works only probabilistically when
+   <link linkend="geqo"><acronym>GEQO</acronym></link> is used. Even if plans
+   compatible with the supplied advice exist, there is no guarantee that any
+   of them will be a part of the randomly generated pool of candidates. If
+   not, the planner will generate a plan that does not comply with the
+   supplied advice, with some parts of that plan marked disabled. If you
+   supply advice that only mildly constrains join planning,
+   <acronym>GEQO</acronym> will usually manage to find a plan that conforms
+   with it; but if you wish to constrain it more substantially, you may need
+   to disable <acronym>GEQO</acronym> in order to obtain satisfactory results.
+   Note that scan advice is not affected by this limitation because it does
+   not constrain the join order.
+  </para>
+
+  <para>
+   Plan advice is consulted only when a query is planned. If a prepared
+   statement is re-executed under a different value of
+   <varname>pg_plan_advice.advice</varname>, or with different advice supplied
+   by another module such as <xref linkend="pgstashadvice"/>, it can still
+   make use of a previously cached plan. The same thing can happen when
+   re-executing a statement within a <application>PL/pgSQL</application>
+   block, where plans can also be cached. Sessions that do not wish to reuse
+   previously-cached plans can use
+   <link linkend="sql-discard"><command>DISCARD PLANS</command></link>.
   </para>
  </sect2>
 

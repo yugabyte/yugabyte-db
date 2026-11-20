@@ -77,6 +77,12 @@ bool		Log_truncate_on_rotation = false;
 int			Log_file_mode = S_IRUSR | S_IWUSR;
 
 /*
+ * Indicates to be running in the syslogger process, and that the logging
+ * file descriptor(s) have been set up.
+ */
+bool		syslogger_setup_done = false;
+
+/*
  * Private state
  */
 static pg_time_t next_rotation_time;
@@ -175,6 +181,17 @@ SysLoggerMain(const void *startup_data, size_t startup_data_len)
 	pg_time_t	now;
 	WaitEventSet *wes;
 
+#ifndef EXEC_BACKEND
+
+	/*
+	 * In !EXEC_BACKEND, syslogger is immediately ready to take over: the
+	 * output files were already opened by postmaster before forking.  For the
+	 * other case we must wait until the file descriptors have been restored,
+	 * below.
+	 */
+	syslogger_setup_done = true;
+#endif
+
 	/*
 	 * Re-open the error output files that were opened by SysLogger_Start().
 	 *
@@ -190,6 +207,8 @@ SysLoggerMain(const void *startup_data, size_t startup_data_len)
 		syslogFile = syslogger_fdopen(slsdata->syslogFile);
 		csvlogFile = syslogger_fdopen(slsdata->csvlogFile);
 		jsonlogFile = syslogger_fdopen(slsdata->jsonlogFile);
+
+		syslogger_setup_done = true;
 	}
 #else
 	Assert(startup_data_len == 0);
@@ -276,18 +295,18 @@ SysLoggerMain(const void *startup_data, size_t startup_data_len)
 
 	pqsignal(SIGHUP, SignalHandlerForConfigReload); /* set flag to read config
 													 * file */
-	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, SIG_IGN);
-	pqsignal(SIGQUIT, SIG_IGN);
-	pqsignal(SIGALRM, SIG_IGN);
-	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGINT, PG_SIG_IGN);
+	pqsignal(SIGTERM, PG_SIG_IGN);
+	pqsignal(SIGQUIT, PG_SIG_IGN);
+	pqsignal(SIGALRM, PG_SIG_IGN);
+	pqsignal(SIGPIPE, PG_SIG_IGN);
 	pqsignal(SIGUSR1, sigUsr1Handler);	/* request log rotation */
-	pqsignal(SIGUSR2, SIG_IGN);
+	pqsignal(SIGUSR2, PG_SIG_IGN);
 
 	/*
 	 * Reset some signals that are accepted by postmaster but not here
 	 */
-	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGCHLD, PG_SIG_DFL);
 
 	sigprocmask(SIG_SETMASK, &UnBlockSig, NULL);
 

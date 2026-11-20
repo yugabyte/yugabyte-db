@@ -931,7 +931,7 @@ hash_search_with_hash_value(HTAB *hashp,
 		 * table is the subject of any active hash_seq_search scans.
 		 */
 		if (hctl->freeList[0].nentries > (int64) hctl->max_bucket &&
-			!IS_PARTITIONED(hctl) && !hashp->frozen &&
+			!hctl->isfixed && !IS_PARTITIONED(hctl) && !hashp->frozen &&
 			!has_seq_scans(hashp))
 			(void) expand_table(hashp);
 	}
@@ -1494,6 +1494,7 @@ expand_table(HTAB *hashp)
 	HASHBUCKET	currElement,
 				nextElement;
 
+	Assert(!hctl->isfixed);
 	Assert(!IS_PARTITIONED(hctl));
 
 #ifdef HASH_STATISTICS
@@ -1583,6 +1584,7 @@ dir_realloc(HTAB *hashp)
 	int64		old_dirsize;
 	int64		new_dirsize;
 
+	Assert(!hashp->hctl->isfixed);
 	if (hashp->hctl->max_dsize != NO_MAX_DSIZE)
 		return false;
 
@@ -1617,6 +1619,8 @@ static HASHSEGMENT
 seg_alloc(HTAB *hashp)
 {
 	HASHSEGMENT segp;
+
+	Assert(!hashp->hctl->isfixed);
 
 	segp = (HASHSEGMENT) hashp->alloc(sizeof(HASHBUCKET) * HASH_SEGSIZE, hashp->alloc_arg);
 
@@ -1764,7 +1768,7 @@ static int64
 next_pow2_int64(int64 num)
 {
 	/* my_log2's internal range check is sufficient */
-	return 1L << my_log2(num);
+	return INT64CONST(1) << my_log2(num);
 }
 
 /* calculate first power of 2 >= num, bounded to what will fit in an int */

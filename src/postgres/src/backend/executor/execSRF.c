@@ -45,6 +45,7 @@ static void ExecPrepareTuplestoreResult(SetExprState *sexpr,
 										ExprContext *econtext,
 										Tuplestorestate *resultStore,
 										TupleDesc resultDesc);
+static void ExecReleaseTuplestoreResult(SetExprState *sexpr);
 static void tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
 
 
@@ -317,6 +318,34 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 									 errmsg("rows returned by function are not all of the same row type")));
 					}
 
+					if (tupdesc->tdtypeid != RECORDOID)
+					{
+						/*
+						 * If it's not a record type, check that the datum and
+						 * the tupledesc are still compatible.
+						 *
+						 * We do that here because after tuplestore_puttuple()
+						 * we don't have the necessary information anymore.
+						 * Right now tuplestore_puttuple() doesn't have the
+						 * tupledesc and thus can't perform this check.
+						 *
+						 * Note that this would not protect against problems
+						 * if the tupledesc could change across rows (we'd
+						 * leave differently shaped tuples in the tuplestore,
+						 * causing problems on retrieval), but the descriptor
+						 * luckily can't change.
+						 *
+						 * Because of the version normalization in
+						 * DatumGetHeapTupleHeader(), the tuple has to be
+						 * marked as a datum, and because this is the !=
+						 * RECORDOID branch, it should be versioned. For now
+						 * just Assert() that that is the case.
+						 */
+						Assert(HeapTupleHeaderIsVersionedDatum(td));
+						if (HeapTupleHeaderIsVersionedDatum(td))
+							heap_datum_check(td, tupdesc);
+					}
+
 					/*
 					 * tuplestore_puttuple needs a HeapTuple not a bare
 					 * HeapTupleHeader, but it doesn't need all the fields.
@@ -552,8 +581,7 @@ restart:
 			}
 		}
 		/* Exhausted the tuplestore, so clean up */
-		tuplestore_end(fcache->funcResultStore);
-		fcache->funcResultStore = NULL;
+		ExecReleaseTuplestoreResult(fcache);
 		*isDone = ExprEndResult;
 		*isNull = true;
 		return (Datum) 0;
@@ -814,14 +842,16 @@ ShutdownSetExpr(Datum arg)
 {
 	SetExprState *sexpr = castNode(SetExprState, DatumGetPointer(arg));
 
-	/* If we have a slot, make sure it's let go of any tuplestore pointer */
+	/* Release any open tuplestore */
+	ExecReleaseTuplestoreResult(sexpr);
+
+	/*
+	 * If each invocation of the function can return a different row type,
+	 * ExecReleaseTuplestoreResult will have already dropped the slot.  If
+	 * not, we must clear it here.
+	 */
 	if (sexpr->funcResultSlot)
 		ExecClearTuple(sexpr->funcResultSlot);
-
-	/* Release any open tuplestore */
-	if (sexpr->funcResultStore)
-		tuplestore_end(sexpr->funcResultStore);
-	sexpr->funcResultStore = NULL;
 
 	/* Clear any active set-argument state */
 	sexpr->setArgsValid = false;
@@ -869,6 +899,13 @@ ExecPrepareTuplestoreResult(SetExprState *sexpr,
 							Tuplestorestate *resultStore,
 							TupleDesc resultDesc)
 {
+	/*
+	 * Any previous result must have been released.  In particular, a slot not
+	 * built from funcResultDesc must not survive to be reused here.
+	 */
+	Assert(sexpr->funcResultStore == NULL);
+	Assert(sexpr->funcResultDesc != NULL || sexpr->funcResultSlot == NULL);
+
 	sexpr->funcResultStore = resultStore;
 
 	if (sexpr->funcResultSlot == NULL)
@@ -930,6 +967,40 @@ ExecPrepareTuplestoreResult(SetExprState *sexpr,
 									PointerGetDatum(sexpr));
 		sexpr->shutdown_reg = true;
 	}
+}
+
+/*
+ *		ExecReleaseTuplestoreResult
+ *
+ * Release a tuplestore function result set up by ExecPrepareTuplestoreResult,
+ * if any.
+ */
+static void
+ExecReleaseTuplestoreResult(SetExprState *sexpr)
+{
+	/*
+	 * A slot built from a per-invocation record descriptor describes only
+	 * this materialized result and owns a private copy of its descriptor.
+	 * Drop it with the tuplestore so the next invocation builds a slot from
+	 * its own result descriptor.
+	 */
+	if (sexpr->funcResultSlot && sexpr->funcResultDesc == NULL)
+	{
+		TupleDesc	slotDesc = sexpr->funcResultSlot->tts_tupleDescriptor;
+
+		ExecDropSingleTupleTableSlot(sexpr->funcResultSlot);
+		sexpr->funcResultSlot = NULL;
+
+		/*
+		 * The slot's descriptor is not reference counted, so we have to free
+		 * the memory manually.
+		 */
+		FreeTupleDesc(slotDesc);
+	}
+
+	if (sexpr->funcResultStore)
+		tuplestore_end(sexpr->funcResultStore);
+	sexpr->funcResultStore = NULL;
 }
 
 /*

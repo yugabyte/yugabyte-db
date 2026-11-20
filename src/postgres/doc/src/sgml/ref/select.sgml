@@ -37,7 +37,7 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="parameter">expression</replac
     [ { * | <replaceable class="parameter">expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] } [, ...] ]
     [ FROM <replaceable class="parameter">from_item</replaceable> [, ...] ]
     [ WHERE <replaceable class="parameter">condition</replaceable> ]
-    [ GROUP BY { ALL | [ ALL | DISTINCT ] <replaceable class="parameter">grouping_element</replaceable> [, ...] } ]
+    [ GROUP BY [ ALL | DISTINCT ] <replaceable class="parameter">grouping_element</replaceable> [, ...] ]
     [ HAVING <replaceable class="parameter">condition</replaceable> ]
     [ WINDOW <replaceable class="parameter">window_name</replaceable> AS ( <replaceable class="parameter">window_definition</replaceable> ) [, ...] ]
     [ { UNION | INTERSECT | EXCEPT } [ ALL | DISTINCT ] <replaceable class="parameter">select</replaceable> ]
@@ -59,7 +59,6 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="parameter">expression</replac
     [ LATERAL ] <replaceable class="parameter">function_name</replaceable> ( [ <replaceable class="parameter">argument</replaceable> [, ...] ] ) AS ( <replaceable class="parameter">column_definition</replaceable> [, ...] )
     [ LATERAL ] ROWS FROM( <replaceable class="parameter">function_name</replaceable> ( [ <replaceable class="parameter">argument</replaceable> [, ...] ] ) [ AS ( <replaceable class="parameter">column_definition</replaceable> [, ...] ) ] [, ...] )
                 [ WITH ORDINALITY ] [ [ AS ] <replaceable class="parameter">alias</replaceable> [ ( <replaceable class="parameter">column_alias</replaceable> [, ...] ) ] ]
-    GRAPH_TABLE ( <replaceable class="parameter">graph_name</replaceable> MATCH <replaceable class="parameter">graph_pattern</replaceable> COLUMNS ( { <replaceable class="parameter">expression</replaceable> [ AS <replaceable class="parameter">name</replaceable> ] } [, ...] ) ) [ [ AS ] <replaceable class="parameter">alias</replaceable> [ ( <replaceable class="parameter">column_alias</replaceable> [, ...] ) ] ]
     <replaceable class="parameter">from_item</replaceable> <replaceable class="parameter">join_type</replaceable> <replaceable class="parameter">from_item</replaceable> { ON <replaceable class="parameter">join_condition</replaceable> | USING ( <replaceable class="parameter">join_column</replaceable> [, ...] ) [ AS <replaceable class="parameter">join_using_alias</replaceable> ] }
     <replaceable class="parameter">from_item</replaceable> NATURAL <replaceable class="parameter">join_type</replaceable> <replaceable class="parameter">from_item</replaceable>
     <replaceable class="parameter">from_item</replaceable> CROSS JOIN <replaceable class="parameter">from_item</replaceable>
@@ -589,48 +588,6 @@ TABLE [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ]
      </varlistentry>
 
      <varlistentry>
-      <term><literal>GRAPH_TABLE ( <replaceable class="parameter">graph_name</replaceable> MATCH <replaceable class="parameter">graph_pattern</replaceable> COLUMNS ( { <replaceable class="parameter">expression</replaceable> [ AS <replaceable class="parameter">name</replaceable> ] } [, ...] ) )</literal></term>
-      <listitem>
-       <para>
-        This clause produces output from matching the specifying graph pattern
-        against a property graph.  See <xref linkend="ddl-property-graphs"/>
-        and <xref linkend="queries-graph"/> for more information.
-       </para>
-
-       <para>
-        <replaceable class="parameter">graph_name</replaceable> is the name
-        (optionally schema-qualified) of an existing property graph (defined
-        with <xref linkend="sql-create-property-graph"/>).
-       </para>
-
-       <para>
-        <replaceable class="parameter">graph_pattern</replaceable> is a graph
-        pattern in a special graph pattern sublanguage.  See <xref
-        linkend="queries-graph-patterns"/>.
-       </para>
-
-       <para>
-        The <literal>COLUMNS</literal> clause defines the output columns of
-        the <literal>GRAPH_TABLE</literal> clause.  <replaceable
-        class="parameter">expression</replaceable> is a scalar expression
-        using the graph pattern variables defined in the <replaceable
-        class="parameter">graph_pattern</replaceable>.  The name of the output
-        columns are specified using the <literal>AS</literal> clauses.  If the
-        expressions are simple property references, the property names are
-        used as the output names, otherwise an explicit name must be
-        specified.
-       </para>
-
-       <para>
-        Like for other <literal>FROM</literal> clause items, a table alias
-        name and column alias names may follow the <literal>GRAPH_TABLE
-        (...)</literal> clause.  (A column alias list would be redundant with
-        the <literal>COLUMNS</literal> clause.)
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><replaceable class="parameter">join_type</replaceable></term>
       <listitem>
        <para>
@@ -839,7 +796,7 @@ WHERE <replaceable class="parameter">condition</replaceable>
    <para>
     The optional <literal>GROUP BY</literal> clause has the general form
 <synopsis>
-GROUP BY { ALL | [ ALL | DISTINCT ] <replaceable class="parameter">grouping_element</replaceable> [, ...] }
+GROUP BY [ ALL | DISTINCT ] <replaceable class="parameter">grouping_element</replaceable> [, ...]
 </synopsis>
    </para>
 
@@ -855,14 +812,6 @@ GROUP BY { ALL | [ ALL | DISTINCT ] <replaceable class="parameter">grouping_elem
     an aggregate function or a window function.  In case of ambiguity,
     a <literal>GROUP BY</literal> name will be interpreted as an
     input-column name rather than an output column name.
-   </para>
-
-   <para>
-    The form <literal>GROUP BY ALL</literal> with no explicit
-    <replaceable class="parameter">grouping_elements</replaceable>
-    provided is equivalent to writing <literal>GROUP BY</literal> with the
-    numbers of all <command>SELECT</command> output columns that do not
-    contain either an aggregate function or a window function.
    </para>
 
    <para>

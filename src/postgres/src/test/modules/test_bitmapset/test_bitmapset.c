@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * test_bitmapset.c
- *      Test the Bitmapset data structure.
+ *	  Test the Bitmapset data structure.
  *
  * This module tests the Bitmapset implementation in PostgreSQL, covering
  * all public API functions.
@@ -19,11 +19,12 @@
 #include <stddef.h>
 #include "catalog/pg_type.h"
 #include "common/pg_prng.h"
-#include "utils/array.h"
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "nodes/bitmapset.h"
 #include "nodes/nodes.h"
 #include "nodes/pg_list.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
 
@@ -584,10 +585,11 @@ test_bitmap_match(PG_FUNCTION_ARGS)
  * equivalent C functions, this stresses Bitmapsets in a random fashion for
  * various operations.
  *
- * "min_value" is the minimal value used for the members, that will stand
- * up to a range of "max_range".  "num_ops" defines the number of time each
- * operation is done.  "seed" is a random seed used to calculate the member
- * values.  When "seed" is <= 0, a random seed will be chosen automatically.
+ * Arguments:
+ *  arg1: optional random seed.  NULL autoselects the seed.
+ *  arg2: defines the number of times each operation is done.
+ *  arg3: the minimum bitmapset member number to use in the random set.
+ *  arg4: the maximum bitmapset member number to use in the random set.
  *
  * The return value is the number of times all operations have been executed.
  */
@@ -601,21 +603,33 @@ test_random_operations(PG_FUNCTION_ARGS)
 	pg_prng_state state;
 	uint64		seed = GetCurrentTimestamp();
 	int			num_ops;
-	int			max_range;
 	int			min_value;
+	int			max_value;
 	int			member;
+	uint32		range;
 	int		   *members;
 	int			num_members = 0;
 	int			total_ops = 0;
 
-	if (PG_GETARG_INT32(0) > 0)
-		seed = PG_GETARG_INT32(0);
+	if (!PG_ARGISNULL(0))
+		seed = PG_GETARG_INT64(0);
+
+	if (PG_ARGISNULL(1) || PG_GETARG_INT32(1) <= 0)
+		elog(ERROR, "invalid number of operations");
+	if (PG_ARGISNULL(2) || PG_GETARG_INT32(2) < 0)
+		elog(ERROR, "invalid minimum value");
+	if (PG_ARGISNULL(3) || PG_GETARG_INT32(3) < 0)
+		elog(ERROR, "invalid maximum value");
 
 	num_ops = PG_GETARG_INT32(1);
-	max_range = PG_GETARG_INT32(2);
-	min_value = PG_GETARG_INT32(3);
+	min_value = PG_GETARG_INT32(2);
+	max_value = PG_GETARG_INT32(3);
+
+	if (max_value < min_value)
+		elog(ERROR, "maximum value must be greater than or equal to minimum value");
 
 	pg_prng_seed(&state, seed);
+	range = (uint32) max_value - (uint32) min_value + 1;
 
 	/*
 	 * There can be up to "num_ops" members added.  This is very unlikely,
@@ -627,7 +641,9 @@ test_random_operations(PG_FUNCTION_ARGS)
 	/* Phase 1: Random insertions in first set */
 	for (int i = 0; i < num_ops / 2; i++)
 	{
-		member = pg_prng_uint32(&state) % max_range + min_value;
+		CHECK_FOR_INTERRUPTS();
+
+		member = min_value + (pg_prng_uint32(&state) % range);
 
 		if (!bms_is_member(member, bms1))
 			members[num_members++] = member;
@@ -637,7 +653,9 @@ test_random_operations(PG_FUNCTION_ARGS)
 	/* Phase 2: Random insertions in second set */
 	for (int i = 0; i < num_ops / 4; i++)
 	{
-		member = pg_prng_uint32(&state) % max_range + min_value;
+		CHECK_FOR_INTERRUPTS();
+
+		member = min_value + (pg_prng_uint32(&state) % range);
 
 		if (!bms_is_member(member, bms2))
 			members[num_members++] = member;
@@ -651,8 +669,11 @@ test_random_operations(PG_FUNCTION_ARGS)
 	/* Verify union contains all members from first and second sets */
 	for (int i = 0; i < num_members; i++)
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		if (!bms_is_member(members[i], result))
-			elog(ERROR, "union missing member %d", members[i]);
+			elog(ERROR, "union missing member %d, seed " UINT64_FORMAT,
+				 members[i], seed);
 	}
 	bms_free(result);
 
@@ -667,8 +688,11 @@ test_random_operations(PG_FUNCTION_ARGS)
 
 		while ((member = bms_next_member(result, member)) >= 0)
 		{
+			CHECK_FOR_INTERRUPTS();
+
 			if (!bms_is_member(member, bms1) || !bms_is_member(member, bms2))
-				elog(ERROR, "intersection contains invalid member %d", member);
+				elog(ERROR, "intersection contains invalid member %d, seed " UINT64_FORMAT,
+					 member, seed);
 		}
 		bms_free(result);
 	}
@@ -679,6 +703,8 @@ test_random_operations(PG_FUNCTION_ARGS)
 	{
 		int			lower = pg_prng_uint32(&state) % 100;
 		int			upper = lower + (pg_prng_uint32(&state) % 20);
+
+		CHECK_FOR_INTERRUPTS();
 
 		result = bms_add_range(result, lower, upper);
 	}
@@ -699,10 +725,12 @@ test_random_operations(PG_FUNCTION_ARGS)
 
 	for (int op = 0; op < num_ops; op++)
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		switch (pg_prng_uint32(&state) % 3)
 		{
 			case 0:				/* add */
-				member = pg_prng_uint32(&state) % max_range + min_value;
+				member = min_value + (pg_prng_uint32(&state) % range);
 				if (!bms_is_member(member, bms))
 					members[num_members++] = member;
 				bms = bms_add_member(bms, member);
@@ -714,7 +742,8 @@ test_random_operations(PG_FUNCTION_ARGS)
 
 					member = members[pos];
 					if (!bms_is_member(member, bms))
-						elog(ERROR, "expected %d to be a valid member", member);
+						elog(ERROR, "expected %d to be a valid member, seed " UINT64_FORMAT,
+							 member, seed);
 
 					bms = bms_del_member(bms, member);
 
@@ -730,7 +759,8 @@ test_random_operations(PG_FUNCTION_ARGS)
 				for (int i = 0; i < num_members; i++)
 				{
 					if (!bms_is_member(members[i], bms))
-						elog(ERROR, "missing member %d", members[i]);
+						elog(ERROR, "missing member %d, seed " UINT64_FORMAT,
+							 members[i], seed);
 				}
 				break;
 		}

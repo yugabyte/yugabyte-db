@@ -51,22 +51,6 @@ client backend|relation|vacuum
 client backend|temp relation|normal
 client backend|wal|init
 client backend|wal|normal
-datachecksum launcher|relation|bulkread
-datachecksum launcher|relation|bulkwrite
-datachecksum launcher|relation|init
-datachecksum launcher|relation|normal
-datachecksum launcher|relation|vacuum
-datachecksum launcher|temp relation|normal
-datachecksum launcher|wal|init
-datachecksum launcher|wal|normal
-datachecksum worker|relation|bulkread
-datachecksum worker|relation|bulkwrite
-datachecksum worker|relation|init
-datachecksum worker|relation|normal
-datachecksum worker|relation|vacuum
-datachecksum worker|temp relation|normal
-datachecksum worker|wal|init
-datachecksum worker|wal|normal
 io worker|relation|bulkread
 io worker|relation|bulkwrite
 io worker|relation|init
@@ -111,7 +95,7 @@ walsummarizer|wal|init
 walsummarizer|wal|normal
 walwriter|wal|init
 walwriter|wal|normal
-(95 rows)
+(79 rows)
 \a
 -- ensure that both seqscan and indexscan plans are allowed
 SET enable_seqscan TO on;
@@ -924,6 +908,8 @@ SELECT (n_tup_ins + n_tup_upd) > 0 AS has_data FROM pg_stat_all_tables
  t
 (1 row)
 
+-- stats_reset may not be set for datid=0 and shared objects in
+-- pg_stat_database, so reset once.
 SELECT pg_stat_reset_single_table_counters('pg_shdescription'::regclass);
  pg_stat_reset_single_table_counters 
 -------------------------------------
@@ -935,6 +921,22 @@ SELECT (n_tup_ins + n_tup_upd) > 0 AS has_data FROM pg_stat_all_tables
  has_data 
 ----------
  f
+(1 row)
+
+SELECT stats_reset AS shared_db_reset_before
+  FROM pg_stat_database WHERE datid = 0 \gset
+-- Second reset for comparison.
+SELECT pg_stat_reset_single_table_counters('pg_shdescription'::regclass);
+ pg_stat_reset_single_table_counters 
+-------------------------------------
+ 
+(1 row)
+
+SELECT stats_reset > :'shared_db_reset_before'::timestamptz AS has_updated
+  FROM pg_stat_database WHERE datid = 0;
+ has_updated 
+-------------
+ t
 (1 row)
 
 -- set back comment
@@ -1146,7 +1148,7 @@ SELECT stats_reset > :'wal_reset_ts'::timestamptz FROM pg_stat_wal;
 -- Test error case for reset_shared with unknown stats type
 SELECT pg_stat_reset_shared('unknown');
 ERROR:  unrecognized reset target: "unknown"
-HINT:  Target must be "archiver", "bgwriter", "checkpointer", "io", "recovery_prefetch", "slru", or "wal".
+HINT:  Target must be "archiver", "bgwriter", "checkpointer", "io", "lock", "recovery_prefetch", "slru", or "wal".
 -- Test that reset works for pg_stat_database and pg_stat_database_conflicts
 -- Since pg_stat_database stats_reset starts out as NULL, reset it once first so that we
 -- have a baseline for comparison. The same for pg_stat_database_conflicts as it shares

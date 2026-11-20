@@ -473,7 +473,7 @@ GUCCheckExplainExtensionOption(const char *option_name,
 	}
 
 	/* Unrecognized option name. */
-	GUC_check_errmsg("unrecognized EXPLAIN option \"%s\"", option_name);
+	GUC_check_errmsg("unrecognized %s option \"%s\"", "EXPLAIN", option_name);
 	return false;
 }
 
@@ -484,7 +484,7 @@ GUCCheckExplainExtensionOption(const char *option_name,
  * for an EXPLAIN extension option, the caller is entitled to assume that
  * a suitably constructed DefElem passed to the main option handler will
  * not cause an error. To construct this DefElem, the caller should set
- * the DefElem's defname to option_name. If option_values is NULL, arg
+ * the DefElem's defname to option_name. If option_value is NULL, arg
  * should be NULL. Otherwise, arg should be of the type given by
  * option_type, with option_value as the associated value. The only option
  * types that should be passed are T_String, T_Float, and T_Integer; in
@@ -538,8 +538,8 @@ GUCCheckBooleanExplainOption(const char *option_name,
 
 	if (!valid)
 	{
-		GUC_check_errmsg("EXPLAIN option \"%s\" requires a Boolean value",
-						 option_name);
+		GUC_check_errmsg("%s option \"%s\" requires a Boolean value",
+						 "EXPLAIN", option_name);
 		return false;
 	}
 

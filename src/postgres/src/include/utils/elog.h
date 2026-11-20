@@ -200,29 +200,29 @@ extern int	errcode(int sqlerrcode);
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
-extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	errmsg(const char *fmt, ...) pg_attribute_printf(1, 2);
+extern int	errmsg_internal(const char *fmt, ...) pg_attribute_printf(1, 2);
 
 extern int	errmsg_plural(const char *fmt_singular, const char *fmt_plural,
-						  unsigned long n,...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
+						  unsigned long n, ...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
 
-extern int	errdetail(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	errdetail_internal(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	errdetail(const char *fmt, ...) pg_attribute_printf(1, 2);
+extern int	errdetail_internal(const char *fmt, ...) pg_attribute_printf(1, 2);
 
-extern int	errdetail_log(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	errdetail_log(const char *fmt, ...) pg_attribute_printf(1, 2);
 
 extern int	errdetail_log_plural(const char *fmt_singular,
 								 const char *fmt_plural,
-								 unsigned long n,...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
+								 unsigned long n, ...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
 
 extern int	errdetail_plural(const char *fmt_singular, const char *fmt_plural,
-							 unsigned long n,...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
+							 unsigned long n, ...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
 
-extern int	errhint(const char *fmt,...) pg_attribute_printf(1, 2);
-extern int	errhint_internal(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	errhint(const char *fmt, ...) pg_attribute_printf(1, 2);
+extern int	errhint_internal(const char *fmt, ...) pg_attribute_printf(1, 2);
 
 extern int	errhint_plural(const char *fmt_singular, const char *fmt_plural,
-						   unsigned long n,...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
+						   unsigned long n, ...) pg_attribute_printf(1, 4) pg_attribute_printf(2, 4);
 
 /*
  * errcontext() is typically called in error context callback functions, not
@@ -236,7 +236,7 @@ extern int	errhint_plural(const char *fmt_singular, const char *fmt_plural,
 
 extern int	set_errcontext_domain(const char *domain);
 
-extern int	errcontext_msg(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	errcontext_msg(const char *fmt, ...) pg_attribute_printf(1, 2);
 
 extern int	errhidestmt(bool hide_stmt);
 extern int	errhidecontext(bool hide_ctx);
@@ -329,7 +329,7 @@ extern void errsave_finish(struct Node *context,
 /* Support for constructing error strings separately from ereport() calls */
 
 extern void pre_format_elog_string(int errnumber, const char *domain);
-extern char *format_elog_string(const char *fmt,...) pg_attribute_printf(1, 2);
+extern char *format_elog_string(const char *fmt, ...) pg_attribute_printf(1, 2);
 
 
 /* Support for attaching context information to error reports */
@@ -409,6 +409,9 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
  * statements are required.  The optional suffix may contain any character
  * that's allowed in a variable name.  The suffix, if specified, must be the
  * same within each component macro of the given PG_TRY() statement.
+ *
+ * If you modify these macros, check whether similar modifications are
+ * needed in plperl's PG_PERL_TRY and friends.
  *----------
  */
 #define PG_TRY(...)  \
@@ -504,6 +507,7 @@ extern void ThrowErrorData(ErrorData *edata);
 pg_noreturn extern void pg_re_throw(void);
 
 extern char *GetErrorContextStack(void);
+extern bool HaveCompleteError(void);
 
 /* Hook for intercepting messages before they are sent to the server log */
 typedef void (*emit_log_hook_type) (ErrorData *edata);
@@ -558,7 +562,7 @@ extern void write_jsonlog(ErrorData *edata);
  * not available). Used before ereport/elog can be used
  * safely (memory context, GUC load etc)
  */
-extern void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
+extern void write_stderr(const char *fmt, ...) pg_attribute_printf(1, 2);
 extern void vwrite_stderr(const char *fmt, va_list ap) pg_attribute_printf(1, 0);
 
 typedef struct YbStatusErrorDataFormatText {
