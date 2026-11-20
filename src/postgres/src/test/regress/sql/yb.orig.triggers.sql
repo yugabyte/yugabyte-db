@@ -270,7 +270,10 @@ update self_ref_trigger set nchildren = nchildren - 1;
 \set ordering 'order by nchildren'
 :run;
 
-delete from self_ref_trigger where id in (2, 4);
+-- One row at a time: if a single DELETE deletes row 4 first, its trigger
+-- updates row 2, and deleting row 2 then fails.
+delete from self_ref_trigger where id = 4;
+delete from self_ref_trigger where id = 2;
 
 \set ordering ''
 :run;
