@@ -764,6 +764,45 @@
           "requestSuccess": "Reprovision Universe Nodes started.",
           "taskSuccess": "Reprovisioned nodes with YNP."
         }
+      },
+      "supportBundleV2": {
+        "list": {
+          "title": "Support Bundles",
+          "bundleCount_one": "{{count}} bundle",
+          "bundleCount_other": "{{count}} bundles",
+          "createBundle": "Create Bundle",
+          "share": "Share",
+          "delete": "Delete bundle",
+          "deleteDisabledRunning": "A bundle can't be deleted while it is being created.",
+          "expiryNote": "Bundles expire 10 days after creation. Expired bundles are removed from the YBA filesystem automatically.",
+          "expiresInDays_one": "in {{count}} day",
+          "expiresInDays_other": "in {{count}} days",
+          "column": {
+            "name": "Name",
+            "redaction": "Redaction",
+            "size": "Size",
+            "expires": "Expires",
+            "status": "Status"
+          },
+          "redactionTooltip": "YugabyteDB Anywhere automatically removes sensitive values, such as passwords and keys, from files that support redaction in support bundles.",
+          "loadFailed": "Failed to load support bundles.",
+          "emptyTitle": "No support bundles yet",
+          "emptyBody": "A support bundle packages logs, configuration, and diagnostic data from this universe. You can analyze it locally or send it to Yugabyte Support for troubleshooting.",
+          "emptyCreate": "Create Support Bundle"
+        },
+        "status": {
+          "ready": "Ready",
+          "creating": "Creating…",
+          "failed": "Failed to Create",
+          "aborted": "Aborted"
+        },
+        "deleteModal": {
+          "title": "Delete Support Bundle",
+          "body": "Delete {{bundleName}}? This can't be undone.",
+          "submit": "Delete",
+          "success": "Support bundle deleted.",
+          "failed": "Failed to delete the support bundle."
+        }
       }
     },
     "commonErrors": {
@@ -3623,8 +3662,8 @@
           "disableSuccess": "Metrics export successfully disabled.",
           "updateSuccess": "Metrics export successfully updated.",
           "enableInProgress": "Enabling cross-cloud federated access...",
-        "disableInProgress": "Disabling cross-cloud federated access...",
-        "enableFailed": "Failed to enable metrics export.",
+          "disableInProgress": "Disabling cross-cloud federated access...",
+          "enableFailed": "Failed to enable metrics export.",
           "disableFailed": "Failed to disable metrics export.",
           "updateFailed": "Failed to update metrics export.",
           "enableRequestFailed": "Metrics export enable request failed:",
