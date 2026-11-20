@@ -3922,12 +3922,15 @@ YBCommitTransactionContainingDDL()
 		/*
 		 * Best effort: a DDL with global object locks learns of this DDL only
 		 * through the heartbeat, so hold the database lock of
-		 * YbLockDatabaseForLegacyDdl for a few heartbeat intervals, which lets
-		 * a DDL that waits for it on another node usually see this DDL's
-		 * catalog changes. The statement's transaction holds that lock when it
-		 * takes local but not global object locks.
+		 * YbLockDatabaseForLegacyDdl for
+		 * ysql_separate_ddl_txn_lock_hold_heartbeats heartbeat intervals, which
+		 * lets a DDL that waits for it on another node usually see this DDL's
+		 * catalog changes. The flag is 0, no wait, by default. The statement's
+		 * transaction holds that lock when it takes local but not global object
+		 * locks.
 		 */
-		if (YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
+		if (*YBCGetGFlags()->ysql_separate_ddl_txn_lock_hold_heartbeats > 0 &&
+			YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
 			pg_usleep((long) *YBCGetGFlags()->ysql_separate_ddl_txn_lock_hold_heartbeats *
 					  YBGetHeartbeatIntervalMs() * 1000L);
 	}
