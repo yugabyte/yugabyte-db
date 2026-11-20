@@ -940,7 +940,7 @@ TEST_F(MasterTest, ValidateReplicationInfoRequiresTserversOnStorageTier) {
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 
-// The master Raft config rides on a heartbeat only while the tserver's config index is behind.
+// The master Raft config rides on a heartbeat only while the TServer's config index is behind.
 TEST_F(MasterTest, HeartbeatMasterConfigOnlyWhenBehind) {
   const char* kTsUUID = "my-ts-uuid";
 
