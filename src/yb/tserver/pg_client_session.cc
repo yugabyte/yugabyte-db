@@ -2778,9 +2778,12 @@ class PgClientSession::Impl {
     }
 
     auto arena = ObtainArena(&context, *resp);
-    // Use a dedicated session: the plain session may hold a stale read point from a previous
-    // statement, which can predate the table (e.g. an index birth time) being scanned.
-    auto session = CreateSession(&client_, context.GetClientDeadline(), clock(), arena);
+    // kLegacyCatalog, not kPlain: every catalog read sets or resets its read time, so resetting it
+    // here affects no other request. A leftover read point can predate the scanned index's birth
+    // time; key ranges need no snapshot, so let the tablet pick the read time.
+    auto session = EnsureSession(
+        PgClientSessionKind::kLegacyCatalog, context.GetClientDeadline(), arena);
+    session->SetReadPoint({});
 
     // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
     // instead of passing through YBSession.
@@ -2815,7 +2818,7 @@ class PgClientSession::Impl {
     embedded_req->set_max_key_length(req.max_key_length());
 
     session->Apply(psql_read);
-    session->FlushAsync([session, callback = MakeRpcOperationCompletionCallback(
+    session->FlushAsync([callback = MakeRpcOperationCompletionCallback(
                              std::move(context), resp, /* clock = */ nullptr)](
                             client::FlushStatus* flush_status) {
       callback(CombineErrorsToStatus(flush_status->errors, flush_status->status));
