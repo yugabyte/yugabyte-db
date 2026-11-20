@@ -253,6 +253,9 @@ func TestRedactDashedFlagNames(t *testing.T) {
 	cases := []struct{ input, want string }{
 		{"--ycql-ldap-bind-passwd=abc,def=ghi", "--ycql-ldap-bind-passwd=REDACTED"},
 		{"--ycql_ldap-bind_passwd=abc", "--ycql_ldap-bind_passwd=REDACTED"},
+		{`--ycql_ldap-bind_passwd="abc,def=ghi"`, `--ycql_ldap-bind_passwd="REDACTED"`},
+		{`{"ycql_ldap-bind_passwd":"pw"}`, `{"ycql_ldap-bind_passwd":"REDACTED"}`},
+		{"my_secret-flag=pw, webserver_port=9000", "my_secret-flag=REDACTED, webserver_port=9000"},
 		{"--my-secret-flag=pw\n--port=5433", "--my-secret-flag=REDACTED\n--port=5433"},
 		{"ycql-ldap-bind-passwd=abc, webserver_port=9000",
 			"ycql-ldap-bind-passwd=REDACTED, webserver_port=9000"},

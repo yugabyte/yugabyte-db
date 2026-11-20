@@ -35,25 +35,25 @@ var defaultPatterns = []string{
 //
 // Patterns are sorted before use so that output does not depend on map iteration order. The Java
 // iterates a HashSet here and is order-dependent; sorting is a deliberate improvement. The order
-// doesn't change the output: the redactors apply to disjoint field names, apart from a name and
-// its dashed spelling, which redact the same flag lines, and redacting a value again keeps it.
+// doesn't change the output: the redactors apply to disjoint field names, apart from spellings of
+// one name, which redact the same flag lines, and redacting a value again keeps it.
 //
-// Each name is also matched with its underscores as dashes, which gflags reads the same way.
+// Each name is matched under every spelling of it in input, any mix of dashes and underscores,
+// which gflags reads the same way.
 func RedactSensitiveInfo(input string, sensitiveGflags []string) string {
 	if input == "" {
 		return input
 	}
+	canonicalInput := canonicalFlagName(input)
 	patterns := make(map[string]struct{})
 	for _, p := range defaultPatterns {
-		patterns[p] = struct{}{}
-		patterns[dashedFlagName(p)] = struct{}{}
+		addSpellings(patterns, input, canonicalInput, p)
 	}
 	for _, g := range sensitiveGflags {
 		if g == "" || canonicalFlagName(g) == "ysql_hba_conf_csv" {
 			continue
 		}
-		patterns[g] = struct{}{}
-		patterns[dashedFlagName(g)] = struct{}{}
+		addSpellings(patterns, input, canonicalInput, g)
 	}
 	ordered := make([]string, 0, len(patterns))
 	for p := range patterns {
@@ -115,9 +115,23 @@ func canonicalFlagName(name string) string {
 	return strings.ReplaceAll(name, "-", "_")
 }
 
-// dashedFlagName is name with its underscores as dashes.
-func dashedFlagName(name string) string {
-	return strings.ReplaceAll(name, "_", "-")
+// addSpellings adds to patterns each spelling of name in input, whose dashes canonicalInput reads
+// as underscores. The key=value and CLI redactors match a name only as spelled.
+func addSpellings(patterns map[string]struct{}, input, canonicalInput, name string) {
+	canonical := canonicalFlagName(name)
+	if !strings.Contains(canonical, "_") {
+		patterns[name] = struct{}{}
+		return
+	}
+	for from := 0; ; {
+		i := strings.Index(canonicalInput[from:], canonical)
+		if i < 0 {
+			return
+		}
+		i += from
+		patterns[input[i:i+len(canonical)]] = struct{}{}
+		from = i + 1
+	}
 }
 
 // lineEnd returns the end of the line holding i.

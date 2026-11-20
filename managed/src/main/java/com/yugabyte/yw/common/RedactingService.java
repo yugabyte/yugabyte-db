@@ -458,7 +458,7 @@ public class RedactingService {
 
   private static String redactSensitiveInfoInString(String input, Set<String> names) {
     String output = input;
-    for (String pattern : names) {
+    for (String pattern : spellingsIn(input, names)) {
       output = redactPatternOccurrences(pattern, output);
       output = redactYamlKeyValue(output, pattern, SECRET_REPLACEMENT);
     }
@@ -466,10 +466,32 @@ public class RedactingService {
   }
 
   /**
-   * Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. Holds
-   * each gflag name with underscores and with dashes, for the text scans, which don't match a mixed
-   * spelling. A field or map key, also in JSON held in a text value, is matched by its {@link
-   * GFlagsUtil#canonicalGFlagName}, which covers mixed spellings too.
+   * The names text holds, each under every spelling of it there. The text scans match a name only
+   * as spelled, and gflags reads any dash in a flag name as an underscore.
+   */
+  private static Set<String> spellingsIn(String text, Set<String> names) {
+    String canonicalText = GFlagsUtil.canonicalGFlagName(text);
+    Set<String> spellings = new HashSet<>();
+    for (String name : names) {
+      String canonicalName = GFlagsUtil.canonicalGFlagName(name);
+      if (canonicalName.indexOf('_') < 0) {
+        spellings.add(name);
+        continue;
+      }
+      for (int i = canonicalText.indexOf(canonicalName);
+          i >= 0;
+          i = canonicalText.indexOf(canonicalName, i + 1)) {
+        spellings.add(text.substring(i, i + canonicalName.length()));
+      }
+    }
+    return spellings;
+  }
+
+  /**
+   * Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. A field
+   * or map key, also in JSON held in a text value, is matched by its {@link
+   * GFlagsUtil#canonicalGFlagName}, and a text scan by {@link #spellingsIn}, so both cover a name
+   * spelled with any mix of dashes and underscores.
    */
   private static Set<String> sensitiveNames(
       String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
@@ -487,11 +509,6 @@ public class RedactingService {
         }
       } catch (Exception e) {
         log.warn("Exception in sensitive gflags processing: ", e);
-      }
-    }
-    for (String name : List.copyOf(names)) {
-      if (name.indexOf('_') >= 0) {
-        names.add(name.replace('_', '-'));
       }
     }
     return names;
@@ -1657,7 +1674,7 @@ public class RedactingService {
       default:
         break;
     }
-    Set<String> names = sensitiveNames(null, null);
+    Set<String> names = spellingsIn(output, sensitiveNames(null, null));
     // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
     // so these passes see the whole output. They run first: redactFreeText only follows a fold
     // from a line it redacts itself.

@@ -987,6 +987,29 @@ public class RedactingServiceTest {
         RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
   }
 
+  /** Text matches a gflag name spelled with any mix of dashes and underscores. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInText() {
+    String text =
+        "--ycql_ldap-bind_passwd=dummy-mixed-pw\n"
+            + "--ycql-ldap_bind-passwd=\"dummy-quoted-pw\"\n"
+            + "{\"ycql_ldap-bind_passwd\":\"dummy-json-pw\"}\n"
+            + "ycql-ldap-bind_passwd: dummy-yaml-pw\n"
+            + "--webserver-port=9000";
+    String want =
+        "--ycql_ldap-bind_passwd="
+            + SECRET_REPLACEMENT
+            + "\n--ycql-ldap_bind-passwd=\""
+            + SECRET_REPLACEMENT
+            + "\"\n{\"ycql_ldap-bind_passwd\":\""
+            + SECRET_REPLACEMENT
+            + "\"}\nycql-ldap-bind_passwd: "
+            + SECRET_REPLACEMENT
+            + "\n--webserver-port=9000";
+    assertEquals(want, RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(want, RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
   /** JSON held in a text value matches a gflag name in any spelling, as the tree around it does. */
   @Test
   public void testSensitiveGFlagMixedSpellingInJsonText() {
