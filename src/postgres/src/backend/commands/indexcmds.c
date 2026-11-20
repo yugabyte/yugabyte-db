@@ -2406,10 +2406,12 @@ DefineIndex(Oid relationId,
 				if (yb_should_run_in_autonomous_transaction)
 					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 				else
-					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+					YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 				/* YB: Short wait for backends on older catalog versions. */
 				YbWaitForBackendsCatalogVersion(false);
+				if (!yb_should_run_in_autonomous_transaction)
+					YbLockDatabaseForGlobalDdl();
 
 				/*
 				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
@@ -2506,9 +2508,11 @@ YbDefineIndexHelper(Oid relationId,
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+	if (!yb_should_run_in_autonomous_transaction)
+		YbLockDatabaseForGlobalDdl();
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2541,9 +2545,11 @@ YbDefineIndexHelper(Oid relationId,
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+	if (!yb_should_run_in_autonomous_transaction)
+		YbLockDatabaseForGlobalDdl();
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);

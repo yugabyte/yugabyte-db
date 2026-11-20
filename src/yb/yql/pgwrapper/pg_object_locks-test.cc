@@ -2230,7 +2230,7 @@ class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    // CreateIndexAndDdlDeadlockIsDetected reads the CREATE INDEX's WaitForLockers wait from ASH.
+    // CreateIndexWaitDoesNotBlockWritersDdl reads the CREATE INDEX's WaitForLockers wait from ASH.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ash=true");
   }
 };
@@ -2319,9 +2319,9 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlWithoutVersionIncrementDoesNot
   ASSERT_OK(holder.Execute("COMMIT"));
 }
 
-// With ysql_enable_concurrent_ddl off, each phase of a CREATE INDEX takes the database DDL lock in
-// its transaction, so another DDL in the database waits while the CREATE INDEX waits for lockers.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexPhaseHoldsDatabaseLock) {
+// With ysql_enable_concurrent_ddl off, a CREATE INDEX phase waits for lockers before it takes the
+// database DDL lock, so another DDL in the database runs while the CREATE INDEX waits.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLock) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -2341,22 +2341,21 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexPhaseHoldsDatabaseLock
   });
   ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
 
+  // A wait would show as a statement timeout.
   auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
   ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
-  ASSERT_NOK_STR_CONTAINS(
-      ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"),
-      "canceling statement due to statement timeout");
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
   ASSERT_OK(index_future.get());
-  ASSERT_OK(ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
 }
 
-// With ysql_enable_concurrent_ddl off, a CREATE INDEX that holds the database DDL lock waits for
-// a writer to t, and the writer's transaction then runs a DDL, which waits on the database lock.
-// Both waits are lock waits, so the deadlock detector must end the cycle well before the statement
-// timeout.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlDeadlockIsDetected) {
+// With ysql_enable_concurrent_ddl off, a CREATE INDEX waits for a writer to t, and the writer's
+// transaction then runs a DDL. The CREATE INDEX holds no database DDL lock while it waits, so the
+// DDL runs, and the CREATE INDEX finishes once the writer commits. Holding the lock there would
+// block both: the wait for lockers is registered under the session's transaction, so the deadlock
+// detector would not see the cycle.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitDoesNotBlockWritersDdl) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -2373,11 +2372,6 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlDeadlockIsDetect
   ASSERT_OK(writer_conn.Execute("BEGIN"));
   ASSERT_OK(writer_conn.Execute("INSERT INTO t VALUES (1000, 1)"));
 
-  std::vector<ExternalDaemon*> tservers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    tservers.push_back(cluster_->tablet_server(i));
-  }
-  LogWaiter deadlock_log(tservers, "aborted due to a deadlock");
   auto index_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(index_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
   auto index_future = std::async(std::launch::async, [&index_conn]() {
@@ -2393,15 +2387,9 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlDeadlockIsDetect
     return waiting.ok() && *waiting > 0;
   }, 30s * kTimeMultiplier, "the CREATE INDEX to wait for the writer"));
 
-  const auto start = MonoTime::Now();
-  auto writer_status = writer_conn.Execute("ALTER TABLE other ADD COLUMN c INT");
-  ASSERT_OK(deadlock_log.WaitFor(10s * kTimeMultiplier));
-  auto index_status = index_future.get();
-  LOG(INFO) << "writer ALTER: " << writer_status << ", CREATE INDEX: " << index_status
-            << ", after " << MonoTime::Now() - start;
-  // The detector aborts one of the two transactions, either one, and the other goes on.
-  ASSERT_NE(writer_status.ok(), index_status.ok());
-  ASSERT_OK(writer_conn.Execute("ROLLBACK"));
+  ASSERT_OK(writer_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
+  ASSERT_OK(writer_conn.Execute("COMMIT"));
+  ASSERT_OK(index_future.get());
 }
 
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).

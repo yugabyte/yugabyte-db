@@ -2950,7 +2950,7 @@ YbTrackAlteredTableId(Oid relid)
  * database run one at a time: each takes this lock in EXCLUSIVE mode. With it
  * on, they take no lock here and run as concurrently as object locks allow.
  */
-static void
+void
 YbLockDatabaseForGlobalDdl(void)
 {
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl)
@@ -2998,8 +2998,30 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+static void YbAddDdlTxnStateInternal(YbDdlMode mode, bool lock_database);
+
 void
 YBAddDdlTxnState(YbDdlMode mode)
+{
+	YbAddDdlTxnStateInternal(mode, true /* lock_database */ );
+}
+
+/*
+ * For a CREATE INDEX phase, which waits for lockers or backends right after
+ * entering DDL state. The wait must run with no object locks held by the
+ * phase's transaction, or a DDL that waits on such a lock and the wait can
+ * block each other without the deadlock detector seeing it: the wait is
+ * registered under the session's transaction, not the phase's. The phase
+ * takes the database lock with YbLockDatabaseForGlobalDdl after the wait.
+ */
+void
+YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
+{
+	YbAddDdlTxnStateInternal(mode, false /* lock_database */ );
+}
+
+static void
+YbAddDdlTxnStateInternal(YbDdlMode mode, bool lock_database)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
 
@@ -3008,7 +3030,7 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * TABLE, cannot conflict with another DDL, so it is not serialized. A
 	 * later DDL of the transaction that does increment it takes the lock then.
 	 */
-	if (mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT)
+	if (lock_database && (mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
 		YbLockDatabaseForGlobalDdl();
 
 	/*
