@@ -7222,8 +7222,6 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   }
 
   void TestFastPathVectorDeletion(const std::string& statement);
-  void TestRestoreToTime(bool store_payload, bool separate_file);
-  void TestSearchAtOldReadTime(bool store_payload);
   void TestUnappliedVectorUpdates();
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
@@ -8243,8 +8241,22 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
 // A restore to a time keeps the SST files written after it behind a hybrid time filter, whether
 // the rolled back rows have files of their own or share one with restored rows. An index
 // candidate check must not step over a file's rolled back entries past the candidate's key, or
-// search time grows with the square of the rolled back vectors.
-void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_file) {
+// search time grows with the square of the rolled back vectors. Parameters: whether the index
+// stores payloads, and whether the rolled back rows are flushed to a file of their own.
+class PgVectorIndexRestoreToTimeTest
+    : public PgVectorIndexUtilTest, public testing::WithParamInterface<std::tuple<bool, bool>> {
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexRestoreToTimeTest, testing::Combine(testing::Bool(), testing::Bool()),
+    [](const testing::TestParamInfo<std::tuple<bool, bool>>& param_info) -> std::string {
+      return Format(
+          "$0$1", std::get<0>(param_info.param) ? "StoredPayload" : "ReverseMapping",
+          std::get<1>(param_info.param) ? "SeparateFile" : "WithinFile");
+    });
+
+TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
+  const auto [store_payload, separate_file] = GetParam();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
   client::SnapshotTestUtil snapshot_util;
   snapshot_util.SetProxy(&client_->proxy_cache());
@@ -8313,28 +8325,22 @@ void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_
   ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumRolledBackRows));
 }
 
-TEST_F(PgVectorIndexUtilTest, RestoreToTimeWithinFile) {
-  TestRestoreToTime(/* store_payload= */ false, /* separate_file= */ false);
-}
-
-TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeWithinFile) {
-  TestRestoreToTime(/* store_payload= */ true, /* separate_file= */ false);
-}
-
-TEST_F(PgVectorIndexUtilTest, RestoreToTimeSeparateFile) {
-  TestRestoreToTime(/* store_payload= */ false, /* separate_file= */ true);
-}
-
-TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeSeparateFile) {
-  TestRestoreToTime(/* store_payload= */ true, /* separate_file= */ true);
-}
-
 // A search at a read time before most of the vectors were written, e.g. in a REPEATABLE READ
 // transaction, still finds them in the index and checks each of them. A candidate check must not
 // step over the entries written after the read time past the candidate's key, or search time
-// grows with the square of the newer vectors.
-void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
+// grows with the square of the newer vectors. Parameter: whether the index stores payloads.
+class PgVectorIndexSearchAtOldReadTimeTest
+    : public PgVectorIndexUtilTest, public testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexSearchAtOldReadTimeTest, testing::Bool(),
+    [](const testing::TestParamInfo<bool>& param_info) -> std::string {
+      return param_info.param ? "StoredPayload" : "ReverseMapping";
+    });
+
+TEST_P(PgVectorIndexSearchAtOldReadTimeTest, SearchAtOldReadTime) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = GetParam();
   constexpr size_t kNumRows = 10;
   constexpr size_t kNumNewerRows = 10000;
   auto conn = ASSERT_RESULT(MakeIndex());
@@ -8380,14 +8386,6 @@ void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
   // A search checks each newer vector, reading about a block per check. Stepping over the newer
   // entries took over two blocks per check.
   ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumNewerRows));
-}
-
-TEST_F(PgVectorIndexUtilTest, SearchAtOldReadTime) {
-  TestSearchAtOldReadTime(/* store_payload= */ false);
-}
-
-TEST_F(PgVectorIndexUtilTest, StoredPayloadSearchAtOldReadTime) {
-  TestSearchAtOldReadTime(/* store_payload= */ true);
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index
