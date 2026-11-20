@@ -2054,8 +2054,12 @@ YbcStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
-bool YBCIsRestartReadPointRequested() {
-  return pgapi->IsRestartReadPointRequested();
+void YBCPgResetRetryReadLimitCaps() {
+  pgapi->ResetRetryReadLimitCaps();
+}
+
+bool YBCPgIsReadRestartRetryInProgress() {
+  return pgapi->IsReadRestartRetryInProgress();
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {

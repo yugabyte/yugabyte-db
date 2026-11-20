@@ -2258,6 +2258,68 @@ class PgClientSession::Impl {
     return status;
   }
 
+  Status RestartTransactionForRetry(
+      const PgRestartTransactionForRetryRequestPB& req,
+      PgRestartTransactionForRetryResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    TEST_SYNC_POINT("PgClientSession::RestartTransactionForRetry");
+    const auto& session = Session(PgClientSessionKind::kPlain);
+    // The limits are taken only from a read point with a pending restart, i.e. the one that faced
+    // it. If a request with another read time serial no switched the session's read point since,
+    // no limits are returned and the retry gets full uncertainty windows: capping at another
+    // point's limits, e.g. a clamped catalog read point, could close the retry's windows.
+    if (session && session->read_point()->IsRestartRequired()) {
+      const auto& read_point = *session->read_point();
+      if (const auto global_limit = read_point.GetReadTime().global_limit;
+          global_limit.is_valid()) {
+        resp->set_global_limit_ht(global_limit.ToUint64());
+        auto& local_limits = *resp->mutable_local_limits();
+        for (const auto& [tablet, local_limit] : read_point.RestartLocalLimits()) {
+          local_limits[tablet] = local_limit.ToUint64();
+        }
+      }
+      // The retry reads at the current time, so it must already be past the restart time, which
+      // the restarting read's response propagated to this clock.
+      const auto restart_read_ht = read_point.GetRestartReadHt();
+      LOG_IF_WITH_PREFIX(DFATAL, read_point.Now() <= restart_read_ht)
+          << "Clock is not past the restart time " << restart_read_ht;
+    }
+    switch (req.kind()) {
+      case PgRestartTransactionForRetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY:
+        return Status::OK();
+      case PgRestartTransactionForRetryRequestPB::REPLACE_DIST_TRANSACTION_ONLY:
+        return ReplacePlainTransaction(context->GetClientDeadline());
+      case PgRestartTransactionForRetryRequestPB::DEFAULT:
+        return ResultToStatus(
+            SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+      default:
+        break;
+    }
+    return STATUS_FORMAT(InvalidArgument, "Unexpected retry kind: $0", req.kind());
+  }
+
+  // The retry's next request starts a new distributed transaction for the same txn_serial_no, with
+  // the replaced transaction's priority. The read point is reset so the new transaction does not
+  // take the failed attempt's read time as its own (BeginTransactionIfNecessary keeps a read time
+  // the session already has), whether the retry reads or writes first. A non-transactional session
+  // only releases the failed attempt's object locks: the retry's new read_time_serial_no resets its
+  // read point.
+  Status ReplacePlainTransaction(CoarseTimePoint deadline) {
+    constexpr auto kKind = PgClientSessionKind::kPlain;
+    auto& session_data = GetSessionData(kKind);
+    auto& txn = session_data.transaction;
+    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kKind, deadline));
+    if (!txn) {
+      return Status::OK();
+    }
+    saved_priority_ = txn->GetPriority();
+    txn->Abort();
+    session_data.session->SetTransaction(nullptr);
+    txn = nullptr;
+    ResetReadPoint(kKind);
+    return Status::OK();
+  }
+
   Status RollbackToSubTransaction(
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -3946,10 +4008,6 @@ class PgClientSession::Impl {
 
     auto& read_point = *Session(PgClientSessionKind::kPlain)->read_point();
     switch (manipulation) {
-      case ReadTimeManipulation::RESTART:
-        read_point.Restart();
-        VLOG(1) << "Restarted read point " << read_point.GetReadTime();
-        return;
       case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
         if (!read_point.GetReadTime() || (read_time_serial_no_ != read_time_serial_no)) {
           read_point.SetCurrentReadTime();
@@ -4159,23 +4217,7 @@ class PgClientSession::Impl {
             (read_time_options.has_read_time() && read_time_options.read_time().has_read_ht()),
         IllegalState, "Historical read session must have a read time");
 
-    if (read_time_options.restart_transaction()) {
-      VLOG_WITH_PREFIX(3) << "Restarting transaction";
-      RETURN_NOT_OK(RestartTransaction(kind, deadline));
-      if (read_time_options.clamp_uncertainty_window()) {
-        // The clamp uncertainty option is set by catalog reads (among other cases).
-        // Catalog cache invalidation messages are processed by resetting the catalog snapshot,
-        // so a subsequent catalog read must use the latest snapshot. Reusing a restarted read
-        // time from a prior error can predate the invalidations and return stale catalog rows.
-        // Therefore, override the restarted read point here with the current time.
-        // This override loses the restart read information until TODO(#31142) is fixed.
-        RSTATUS_DCHECK(
-          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
-      }
-    } else if (!skip_read_time) {
+    if (!skip_read_time) {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_read_time = read_time_options.has_read_time();
       const auto has_follower_staleness = read_time_options.has_follower_read_staleness_ms();
@@ -4271,6 +4313,26 @@ class PgClientSession::Impl {
           IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+      }
+
+      // After clamping, so a clamped read keeps its empty uncertainty window. A reset read point
+      // (e.g. non-transactional writes) must get its read time from the storage layer, so it is
+      // not capped.
+      if (const auto cap = HybridTime::FromPB(read_time_options.global_limit_cap_ht());
+          cap && kind == PgClientSessionKind::kPlain &&
+          !IsReadPointResetRequested(read_time_options) &&
+          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION)) {
+        // A read time picked by DocDB would get an uncapped global limit.
+        if (!session.read_point()->GetReadTime()) {
+          session.read_point()->SetCurrentReadTime();
+        }
+        auto& read_point = *session.read_point();
+        read_point.CapGlobalLimit(cap);
+        for (const auto& entry : read_time_options.local_limit_caps()) {
+          using rpc::map_util::ExtractKey;
+          using rpc::map_util::ExtractValue;
+          read_point.CapLocalLimit(ExtractKey(entry), HybridTime(ExtractValue(entry)));
+        }
       }
     }
 
@@ -4492,35 +4554,6 @@ class PgClientSession::Impl {
     }
 
     return &ddl_txn_metadata_;
-  }
-
-  Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
-    auto& session_data = GetSessionData(kind);
-    auto& session = *session_data.session;
-    auto& txn = session_data.transaction;
-    if (!txn) {
-      SCHECK(
-        session.IsRestartRequired(), IllegalState,
-        "Attempted to restart when session does not require restart");
-
-      const auto old_read_time = session.read_point()->GetReadTime();
-      session.RestartNonTxnReadPoint(client::Restart::kTrue);
-      const auto new_read_time = session.read_point()->GetReadTime();
-      VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
-      LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)
-          << "Read time did not change during restart: " << old_read_time
-          << " => " << new_read_time;
-      return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
-    }
-
-    SCHECK(
-        txn->IsRestartRequired(), IllegalState,
-        "Attempted to restart when transaction does not require restart");
-    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kind, deadline));
-    txn = VERIFY_RESULT(txn->CreateRestartedTransaction());
-    session.SetTransaction(txn);
-    VLOG_WITH_PREFIX(3) << "Restarted transaction";
-    return Status::OK();
   }
 
   client::YBSessionPtr& EnsureSession(

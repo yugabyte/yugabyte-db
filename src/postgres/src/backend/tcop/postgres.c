@@ -6468,6 +6468,9 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	 */
 	YbResetRetryCounts();
 
+	if (IsYugaByteEnabled())
+		YBCPgResetRetryReadLimitCaps();
+
 	/*
 	 * Reset the flag that tracks whether a non-atomic (in-procedure) COMMIT
 	 * has been executed. This flag is set in _SPI_commit() and checked in
