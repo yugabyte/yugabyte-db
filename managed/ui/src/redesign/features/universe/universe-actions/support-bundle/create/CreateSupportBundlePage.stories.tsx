@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ToastContainer } from 'react-toastify';
+import { within } from '@testing-library/dom';
+import userEvent from '@testing-library/user-event';
 
 import {
   createSupportBundleUniverseMock,
@@ -74,5 +76,38 @@ export const KubernetesWithPerfAdvisor: Story = {
   },
   parameters: {
     msw: { handlers: supportBundleCreateMswHandlers({ universe: k8sUniverse }) }
+  }
+};
+
+// The page is a full-screen dialog, so it renders outside the story's canvas.
+const selectCustomize = async (canvasElement: HTMLElement) => {
+  const page = within(canvasElement.ownerDocument.body);
+  await userEvent.click(await page.findByTestId('CreateSupportBundlePage-Customize-Select'));
+  return page;
+};
+
+export const Customize: Story = {
+  parameters: {
+    msw: { handlers: supportBundleCreateMswHandlers({ universe }) }
+  },
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    await selectCustomize(canvasElement);
+  }
+};
+
+/** Selecting Performance Metrics opens its Prometheus and Perf Advisor settings. */
+export const CustomizeMetrics: Story = {
+  args: {
+    context: { isK8sUniverse: false, isPerfAdvisorRegistered: true }
+  },
+  parameters: {
+    msw: {
+      handlers: supportBundleCreateMswHandlers({ universe, isPerfAdvisorRegistered: true })
+    }
+  },
+  play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+    const page = await selectCustomize(canvasElement);
+    const metrics = within(await page.findByTestId('CustomizeCategory-performanceMetrics'));
+    await userEvent.click(metrics.getAllByRole('checkbox')[0]);
   }
 };

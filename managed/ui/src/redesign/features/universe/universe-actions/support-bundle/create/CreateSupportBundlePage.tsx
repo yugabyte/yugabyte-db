@@ -32,6 +32,7 @@ import {
 } from '../model/formState';
 import { groupNodesByRegion } from '../model/nodes';
 import { getSelectedComponents, toCreateSpec } from '../model/toCreateSpec';
+import { CustomizeCategoryList } from './CustomizeCategoryList';
 import { SummaryPanel } from './SummaryPanel';
 
 const { styled, Box, Dialog, Typography, IconButton } = mui;
@@ -317,11 +318,27 @@ export const CreateSupportBundlePage = ({
               description={t('customize.description')}
               selected={values.mode === CollectionMode.CUSTOMIZE}
               expanded={expandedCard === CollectionMode.CUSTOMIZE}
-              disabled
               onSelect={() => selectMode(CollectionMode.CUSTOMIZE)}
               onToggleExpanded={() => toggleExpanded(CollectionMode.CUSTOMIZE)}
               dataTestId="CreateSupportBundlePage-Customize"
-            />
+            >
+              <Box display="flex" alignItems="flex-start" gap={1}>
+                <Box display="flex" color="grey.500">
+                  <TreeIcon />
+                </Box>
+                <CustomizeCategoryList
+                  values={values}
+                  categories={categories}
+                  context={context}
+                  summary={summary}
+                  onChange={(patch) =>
+                    Object.entries(patch).forEach(([key, value]) =>
+                      setValue(key as keyof SupportBundleFormValues, value as never)
+                    )
+                  }
+                />
+              </Box>
+            </RadioCard>
           </Section>
         </Box>
         <SummaryPanel
