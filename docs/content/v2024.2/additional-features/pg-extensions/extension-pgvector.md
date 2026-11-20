@@ -18,7 +18,6 @@ The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows
 {{< note title="pgvector in YugabyteDB v2024.2" >}}
 YugabyteDB v2024.2 supports the pgvector extension for storing and querying vectors using exact (sequential scan) similarity search only. Vector indexing is not available in this release.
 
-CDC, backup/restore, and xCluster behavior with vector columns has not been formally QA-tested in this release.
 {{< /note >}}
 
 To enable the extension:
