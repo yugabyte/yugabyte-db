@@ -23,6 +23,7 @@ import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.client.YBClientApi;
 
 // Waits until the master leader reports the tservers of the given nodes as live, so that the next
 // tasks, like creating a table, do not lack tserver resources.
@@ -71,32 +72,39 @@ public class WaitForTServerHeartBeats extends UniverseTaskBase {
     }
     int numTries = 1;
     long start = System.currentTimeMillis();
-    while (true) {
-      try {
-        Set<String> liveHosts =
-            getLiveTabletServers(universe).stream()
-                .map(server -> server.getPrivateAddress().getHost())
-                .collect(Collectors.toSet());
-        missing.removeIf(name -> isLive(universe.getNode(name), liveHosts));
-        if (missing.isEmpty()) {
-          return;
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
+      while (true) {
+        try {
+          Set<String> liveHosts =
+              client.listLiveTabletServers().getTabletServers().stream()
+                  .map(server -> server.getPrivateAddress().getHost())
+                  .collect(Collectors.toSet());
+          missing.removeIf(name -> isLive(universe.getNode(name), liveHosts));
+          if (missing.isEmpty()) {
+            return;
+          }
+          log.info(
+              "Waiting for the tservers on {} to heartbeat to master leader; retrying after {}ms."
+                  + " Tried {} times.",
+              missing,
+              WAIT_EACH_ATTEMPT_MS,
+              numTries);
+        } catch (CancellationException e) {
+          throw e;
+        } catch (Exception e) {
+          log.warn("{}: ignoring error '{}'.", getName(), e.getMessage());
         }
-        log.info(
-            "Waiting for the tservers on {} to heartbeat to master leader; retrying after {}ms."
-                + " Tried {} times.",
-            missing,
-            WAIT_EACH_ATTEMPT_MS,
-            numTries);
+        if (System.currentTimeMillis() >= start + TIMEOUT_SERVER_WAIT_MS) {
+          throw new RuntimeException(
+              getName() + " timed out waiting for the tservers on " + missing);
+        }
         waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
         numTries++;
-      } catch (CancellationException e) {
-        throw e;
-      } catch (Exception e) {
-        log.warn("{}: ignoring error '{}'.", getName(), e.getMessage());
       }
-      if (System.currentTimeMillis() >= start + TIMEOUT_SERVER_WAIT_MS) {
-        throw new RuntimeException(getName() + " timed out waiting for the tservers on " + missing);
-      }
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
