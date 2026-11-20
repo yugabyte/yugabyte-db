@@ -208,6 +208,7 @@ YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
 YbRemovedAclKind
 YbResetBatchFn_t
+YbRetryKind
 YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
@@ -260,6 +261,8 @@ YbTupleCacheEntry
 YbTupleCacheIterator
 YbTupleCacheKeyExtractor
 YbTxnError
+YbTxnRestartCallback
+YbTxnRestartCallbackItem
 YbUpdateAffectedEntities
 YbUpdateRelationCacheState
 YbUserIdAndSecContext

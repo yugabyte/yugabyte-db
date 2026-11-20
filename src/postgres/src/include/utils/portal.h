@@ -251,6 +251,9 @@ extern void PortalHashTableDeleteAll(void);
 extern bool ThereAreNoReadyPortals(void);
 extern void HoldPinnedPortals(void);
 extern void ForgetPortalSnapshots(void);
+
+/* YB declarations */
 extern void YbForEachPortal(void (*callback) (Portal portal));
+extern bool YbHasOpenPortal(const char *exclude_portal);
 
 #endif							/* PORTAL_H */
