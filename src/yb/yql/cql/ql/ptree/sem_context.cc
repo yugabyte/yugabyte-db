@@ -197,6 +197,10 @@ shared_ptr<YBTable> SemContext::GetTableDesc(const client::YBTableName& table_na
   return table;
 }
 
+Result<bool> SemContext::KeyspaceExists(const string& keyspace_name) {
+  return ql_env_->KeyspaceExists(keyspace_name);
+}
+
 shared_ptr<YBTable> SemContext::GetTableDesc(const TableId& table_id) {
   bool cache_used = false;
   shared_ptr<YBTable> table = ql_env_->GetTableDesc(table_id, &cache_used);

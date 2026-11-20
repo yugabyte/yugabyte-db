@@ -114,6 +114,9 @@ class QLEnv {
   // Alter keyspace with the given name.
   virtual Status AlterKeyspace(const std::string& keyspace_name);
 
+  // Check whether a CQL keyspace with the given name exists.
+  virtual Result<bool> KeyspaceExists(const std::string& keyspace_name);
+
   virtual std::string CurrentKeyspace() const {
     return ql_session()->current_keyspace();
   }

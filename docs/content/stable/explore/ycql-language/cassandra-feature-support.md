@@ -140,8 +140,8 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Roles        | [Manage users and roles](../../../secure/authorization/create-roles-ycql/)     |
 | {{<icon/yes>}} | Permissions  | [Grant privileges](../../../secure/authorization/ycql-grant-permissions/)      |
 | {{<icon/no>}}  | Users        | Legacy Cassandra feature (_CREATE, DROP, ALTER, LIST_)                          |
-| {{<icon/no>}}  | `LIST ROLES` | But can be done using [query](../../../secure/authorization/create-roles-ycql/) |
-| {{<icon/no>}}  | `LIST PERMISSIONS` | But can be done using [query](../../../secure/authorization/ycql-grant-permissions/#2-list-permissions-for-roles) |
+| {{<icon/yes>}} | `LIST ROLES` | [LIST ROLES](../../../api/ycql/ddl_list_roles/) |
+| {{<icon/yes>}} | `LIST PERMISSIONS` | [LIST PERMISSIONS](../../../api/ycql/ddl_list_permissions/) |
 {.sno-1}
 
 ## Other Features

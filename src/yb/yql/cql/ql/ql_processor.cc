@@ -320,6 +320,11 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
       s = ql_env_.HasRolePermission(role, PermissionType::ALTER_PERMISSION);
       break;
     }
+    case TreeNodeOpcode::kPTListRoles: FALLTHROUGH_INTENDED;
+    case TreeNodeOpcode::kPTListPermissions:
+      // Authorized by the executor, which needs the role catalog it reads from the master: a
+      // caller without DESCRIBE on ALL ROLES may still list its own roles and permissions.
+      break;
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto grant_revoke_role_stmt = static_cast<const PTGrantRevokeRole*>(tnode);
       const string granted_role = grant_revoke_role_stmt->granted_role_name();

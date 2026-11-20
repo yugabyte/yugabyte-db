@@ -54,6 +54,7 @@ Where
 - Only a role with the `SUPERUSER` status can create another `SUPERUSER` role.
 - A role with the `LOGIN` privilege can be used to authenticate into YQL.
 - Only a client with the permission `CREATE` on `ALL ROLES` or with the `SUPERUSER` status can create another role.
+- The role that creates a role is granted the `ALTER`, `AUTHORIZE`, `DESCRIBE`, and `DROP` permissions on it.
 
 ## Examples
 

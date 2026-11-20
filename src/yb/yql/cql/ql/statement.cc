@@ -65,6 +65,11 @@ Status Statement::Prepare(QLProcessor *processor, const MemTrackerPtr& mem_track
       case TreeNodeOpcode::kPTListNode:
         result->reset(new PreparedResult(static_cast<const PTListNode&>(stmt)));
         break;
+      case TreeNodeOpcode::kPTListRoles: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTListPermissions:
+        // Like Apache Cassandra, prepare LIST ROLES / LIST PERMISSIONS with no result metadata.
+        // The column metadata is sent with every rows result instead.
+        break;
       default:
         break;
     }
