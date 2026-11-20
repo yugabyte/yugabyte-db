@@ -81,8 +81,8 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
- * Object sub id of the lock on a pg_database object that keeps DDLs that run
- * in a separate DDL transaction apart from DDLs with global object locks
+ * Object sub id of the lock on a pg_database object that serializes DDLs that
+ * run in a separate DDL transaction with DDLs with global object locks
  * (PR #38568). Upstream locks database objects only with sub id 0, which every
  * backend takes at connection start. Object sub ids upstream uses for any
  * class are attribute numbers, at most MaxHeapAttributeNumber (1600), and

@@ -2746,15 +2746,10 @@ YBClearDdlTransactionState()
 	};
 }
 
-/* Whether YbLockDatabaseForLegacyDdl sent its lock for the current DDL. */
-static bool yb_separate_ddl_holds_database_lock = false;
-
 static void
 YBResetDdlState()
 {
 	YbcStatus	status = NULL;
-
-	yb_separate_ddl_holds_database_lock = false;
 
 	if (ddl_transaction_state.mem_context)
 	{
@@ -2934,7 +2929,7 @@ YbTrackAlteredTableId(Oid relid)
 }
 
 /*
- * Keeps a DDL that runs in a separate DDL transaction apart from DDLs with
+ * Serializes a DDL that runs in a separate DDL transaction with DDLs with
  * global object locks in the same database (PR #38568). The lock is taken in
  * the transaction that runs the statement, before the separate DDL transaction
  * starts, because the separate DDL transaction takes no object locks.
@@ -2942,13 +2937,11 @@ YbTrackAlteredTableId(Oid relid)
 static void
 YbLockDatabaseForLegacyDdl(void)
 {
-	yb_separate_ddl_holds_database_lock = false;
 	if (YBCIsObjectLockingLatchedForCurrTxn())
 		return;
 
 	LockSharedObject(DatabaseRelationId, MyDatabaseId,
 					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, RowExclusiveLock);
-	yb_separate_ddl_holds_database_lock = YbUsingObjectLocksLocally();
 }
 
 /*
@@ -3918,12 +3911,13 @@ YBCommitTransactionContainingDDL()
 		 * A DDL with global object locks learns of this DDL only through the
 		 * heartbeat. Hold the database lock of YbLockDatabaseForLegacyDdl for
 		 * a heartbeat interval, so that a DDL that waits for it on another
-		 * node sees this DDL's catalog changes once it gets the lock.
+		 * node sees this DDL's catalog changes once it gets the lock. The
+		 * statement's transaction holds that lock only if it takes object
+		 * locks.
 		 */
-		if (yb_separate_ddl_holds_database_lock)
+		if (!use_regular_txn_block && YbUsingObjectLocksLocally())
 			pg_usleep(YBGetHeartbeatIntervalMs() * 1000L);
 	}
-	yb_separate_ddl_holds_database_lock = false;
 }
 
 void
