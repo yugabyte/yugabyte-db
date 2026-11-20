@@ -2350,6 +2350,54 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLoc
   ASSERT_OK(index_future.get());
 }
 
+// With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
+// on t, which a CREATE INDEX holds across its phases. The later phases take no database lock, so
+// the CREATE INDEX finishes and the DDL then goes on. A phase that waited on the database lock
+// would block both: the CREATE INDEX's lock on t belongs to the session's transaction and the
+// phase's wait to the phase's, so the deadlock detector would not see the cycle.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexLaterPhasesDoNotWaitForDatabaseLock) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 100), 0"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+  }
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
+
+  LogWaiter pause_log(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
+  auto index_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(index_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  auto index_future = std::async(std::launch::async, [&index_conn]() {
+    return index_conn.Execute("CREATE INDEX t_v ON t(v)");
+  });
+  ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
+
+  // Takes the database lock, then waits on t for the CREATE INDEX.
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
+  auto alter_future = std::async(std::launch::async, [&ddl_conn]() {
+    return ddl_conn.Execute("ALTER TABLE t ADD COLUMN c INT");
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
+    auto waiting = observer.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM pg_locks WHERE NOT granted AND mode = 'AccessExclusiveLock'"
+        " AND relation = 't'::regclass");
+    return waiting.ok() && *waiting > 0;
+  }, 30s * kTimeMultiplier, "the ALTER to wait on t"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
+  ASSERT_OK(index_future.get());
+  ASSERT_OK(alter_future.get());
+  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+}
+
 // With ysql_enable_concurrent_ddl off, a CREATE INDEX waits for a writer to t, and the writer's
 // transaction then runs a DDL. The CREATE INDEX holds no database DDL lock while it waits, so the
 // DDL runs, and the CREATE INDEX finishes once the writer commits. Holding the lock there would

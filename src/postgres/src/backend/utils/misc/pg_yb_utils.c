@@ -2950,7 +2950,7 @@ YbTrackAlteredTableId(Oid relid)
  * database run one at a time: each takes this lock in EXCLUSIVE mode. With it
  * on, they take no lock here and run as concurrently as object locks allow.
  */
-void
+static void
 YbLockDatabaseForGlobalDdl(void)
 {
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl)
@@ -3007,12 +3007,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 }
 
 /*
- * For a CREATE INDEX phase, which waits for lockers or backends right after
- * entering DDL state. The wait must run with no object locks held by the
- * phase's transaction, or a DDL that waits on such a lock and the wait can
- * block each other without the deadlock detector seeing it: the wait is
- * registered under the session's transaction, not the phase's. The phase
- * takes the database lock with YbLockDatabaseForGlobalDdl after the wait.
+ * For the CREATE INDEX phases after the first, which take no database lock.
+ * A phase waits for lockers or backends right after entering DDL state, and
+ * that wait is registered under the session's transaction, as is the
+ * CREATE INDEX's session lock on the table; the database lock would belong to
+ * the phase's transaction. A cycle through both, such as a DDL holding the
+ * database lock that waits on the table, would not be seen by the deadlock
+ * detector. The first phase still takes the lock.
  */
 void
 YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
