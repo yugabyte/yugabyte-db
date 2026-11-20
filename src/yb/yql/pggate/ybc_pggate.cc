@@ -3113,8 +3113,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
-    // Read the GUC, not the gflag: a promoted AutoFlag keeps its default status, so the tserver
-    // doesn't pass it to postgres and the gflag here stays false.
     const bool use_attr_num = yb_enable_replication_slot_transactional_ddl;
 
     // (attnum, column name) -> (index in old tuples, index in new tuples).

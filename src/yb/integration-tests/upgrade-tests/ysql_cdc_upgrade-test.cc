@@ -212,21 +212,6 @@ class CdcUpgradeTest : public UpgradeTestBase {
     }
   }
 
-  // The masters aren't restarted, so their CDC services keep the stream metadata they cached, as
-  // they would when an AutoFlag is promoted.
-  Status EnableTxnDdlReplication() {
-    constexpr auto kFlag = "ysql_yb_enable_replication_slot_transactional_ddl";
-    for (auto* daemon : cluster_->daemons()) {
-      daemon->AddExtraFlag(kFlag, "true");
-    }
-    RETURN_NOT_OK(cluster_->SetFlagOnMasters(kFlag, "true"));
-    RETURN_NOT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
-    // The restart doesn't wait for postgres, and the walsender connections go to tserver 0.
-    return WaitFor(
-        [this]() { return cluster_->ConnectToDB(kDbName, 0 /* tserver_index */).ok(); }, 60s,
-        "Waiting for postgres on tserver 0");
-  }
-
   // Creates pub-refresh slots in the old version, streams from the first, and upgrades without
   // finalizing.
   void CreatePubRefreshSlotsAndUpgrade(const std::vector<std::string>& slot_names) {
@@ -454,7 +439,6 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
 
   ASSERT_OK(FinalizeUpgrade());
-  ASSERT_OK(EnableTxnDdlReplication());
   ASSERT_NOK_STR_CONTAINS(
       StreamAndAcknowledge(kSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
       "prepare_replication_slots_for_transactional_ddl");
@@ -509,7 +493,6 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
 
   ASSERT_OK(FinalizeUpgrade());
-  ASSERT_OK(EnableTxnDdlReplication());
   ASSERT_OK(RunYbAdmin("prepare_replication_slots_for_transactional_ddl", ""));
   ASSERT_NOK_STR_CONTAINS(
       StreamAndAcknowledge(kUnpausedSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
