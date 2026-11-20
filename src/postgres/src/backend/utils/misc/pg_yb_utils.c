@@ -3907,8 +3907,9 @@ YBCommitTransactionContainingDDL()
 		 * YbLockDatabaseForLegacyDdl for
 		 * ysql_separate_ddl_txn_inval_propagation_wait_ms milliseconds, to let
 		 * them propagate before such a DDL that waits for the lock goes on. The
-		 * flag is 0, no wait, by default. The statement's transaction holds that
-		 * lock when it takes local but not global object locks.
+		 * flag is 0, no wait, by default. A DDL with global object locks needs no
+		 * such wait: the release of its global locks carries the new catalog
+		 * versions, and each tserver applies them before it unlocks.
 		 */
 		if (*YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms > 0 &&
 			YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
