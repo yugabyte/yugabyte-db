@@ -1,0 +1,15 @@
+# third-party-extensions/postgresql_anonymizer/tests/yb_schedule_4
+#
+####################################################################################################
+# postgresql_anonymizer Extension Testsuite
+####################################################################################################
+test: yb.port.restricted
+test: yb.port.rename_objects
+test: yb.port.restore
+test: yb.port.rls
+test: yb.port.sampling
+test: yb.port.search_path
+test: yb.port.shuffle
+test: syntax_checks
+test: yb.port.ternary
+test: yb.port.test_replica_masking

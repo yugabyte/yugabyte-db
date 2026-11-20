@@ -2728,6 +2728,13 @@ void TSTabletManager::OpenTablet(
         .tablet_splitter = this,
         .allowed_history_cutoff_provider =
             std::bind(&TSTabletManager::AllowedHistoryCutoff, this, _1),
+        // Only transactional xCluster targets have a safe time. Before the first heartbeat it is
+        // unknown, so assume a target.
+        .is_transactional_xcluster_target_provider =
+            [server = server_](const NamespaceId& namespace_id) {
+              auto safe_time = server->GetXClusterContext().GetSafeTime(namespace_id);
+              return !safe_time.ok() || safe_time->has_value();
+            },
         .transaction_manager_provider = [server = server_]() -> client::TransactionManager& {
           return server->TransactionManager();
         },

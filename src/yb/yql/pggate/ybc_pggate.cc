@@ -96,6 +96,7 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
+// Not read here today. The guardrail that blocks concurrent DDLs by default (#34673) will read it.
 DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DECLARE_uint64(rpc_max_message_size);
@@ -2155,6 +2156,11 @@ bool YBCPgIsDdlModeWithRegularTransactionBlock() {
   return pgapi->IsDdlModeWithRegularTransactionBlock();
 }
 
+bool YBCPgUsingObjectLocksLocally() {
+  // pgapi is null when YB is not enabled, as in a tserver's local initdb.
+  return pgapi && pgapi->UsingObjectLocksLocally();
+}
+
 bool YBCCurrentTransactionUsesFastPath() {
   auto result = pgapi->CurrentTransactionUsesFastPath();
   if (!result.ok()) {
@@ -2166,7 +2172,7 @@ bool YBCCurrentTransactionUsesFastPath() {
 
 bool YBCIsLegacyModeForCatalogOps() {
   //
-  // If object locking is enabled:
+  // If the transaction takes object locks (i.e., non-legacy):
   //
   // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
   //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
@@ -2178,22 +2184,31 @@ bool YBCIsLegacyModeForCatalogOps() {
   // (2) Catalog reads will always use the kTransactional session type. This is done so that they
   //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
   //     see the catalog data modified by the current active transaction (this is required because
-  //     transactional DDL is enabled if object locking is enabled).
+  //     transactional DDL is enabled with global object locks).
   //
-  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
-  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
-  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
-  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
-  //     the TransactionSnapshot's read time serial number.
+  //     In the pre-object locking (i.e., legacy) mode, catalog reads for DML transactions go via
+  //     the kCatalog session type which has a single catalog_read_time_ (see pg_session.h).
+  //     Catalog reads executed as part of a DDL transaction (or) after a DDL in a DDL-DML
+  //     transaction block (i.e., with transactional DDL enabled) go via the kTransactional session
+  //     type and would use the TransactionSnapshot's read time serial number.
   //
-  return !pgapi || !pgapi->IsTableLockingEnabledForCurrentTxn() ||
-      !FLAGS_ysql_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet() ||
-      YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
+  // A transaction without global object locks still takes local DML locks, so it also uses the PG
+  // mode of catalog operations: a DDL with global object locks that changes an object the
+  // transaction reads either committed before the transaction's lock on that object, or waits for
+  // it. Only a transaction that takes no object locks, such as an autonomous DDL in its separate
+  // DDL transaction, uses the legacy mode of catalog operations. Against such a DDL a reader still
+  // has the old fences: the tablets' breaking catalog version and table schema version checks.
+  //
+  return !pgapi || !pgapi->UsingObjectLocksLocally() || YBCIsSysTablePrefetchingStarted();
+}
+
+bool YBCUsingObjectLocksGloballyForCurrentTxn() {
+  return pgapi && pgapi->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 bool YBCIsDdlTransactionBlockEnabled() {
   return pgapi && yb_ddl_transaction_block_enabled &&
-      pgapi->IsTableLockingEnabledForCurrentTxn();
+      pgapi->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -3203,15 +3218,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     const auto& docdb_txn_id = row_message_pb.transaction_id();
     const bool has_docdb_txn_id = !docdb_txn_id.empty();
 
-    const auto& aborted_subtxn_set_pb = row_message_pb.aborted_subtxns().set();
-    uint32_t* aborted_subtxn_set = nullptr;
-    if (!aborted_subtxn_set_pb.empty()) {
-      aborted_subtxn_set = static_cast<uint32_t*>(
-          YBCPAlloc(sizeof(uint32_t) * aborted_subtxn_set_pb.size()));
-      std::copy(
-          aborted_subtxn_set_pb.begin(), aborted_subtxn_set_pb.end(), aborted_subtxn_set);
-    }
-
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -3228,9 +3234,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .xrepl_origin_id =
             row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
         .has_docdb_txn_id = has_docdb_txn_id,
-        .docdb_txn_id = {},
-        .aborted_subtxn_set = aborted_subtxn_set,
-        .aborted_subtxn_set_size = aborted_subtxn_set_pb.size()};
+        .docdb_txn_id = {}};
     if (has_docdb_txn_id) {
       snprintf(
           resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",
@@ -3254,12 +3258,35 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
       .publication_refresh_record_time = publication_refresh_record_time,
       .publication_refresh_txn_id = {},
+      .aborted_subtxn_sets = nullptr,
+      .aborted_subtxn_sets_count = 0,
   };
   if (!publication_refresh_txn_id.empty()) {
     snprintf(
         (*record_batch)->publication_refresh_txn_id,
         sizeof((*record_batch)->publication_refresh_txn_id), "%s",
         publication_refresh_txn_id.c_str());
+  }
+
+  const auto& aborted_subtxns_pb = resp.aborted_subtxns();
+  if (!aborted_subtxns_pb.empty()) {
+    auto* aborted_subtxn_sets = static_cast<YbcPgAbortedSubtxnSet*>(
+        YBCPAlloc(sizeof(YbcPgAbortedSubtxnSet) * aborted_subtxns_pb.size()));
+    int idx = 0;
+    for (const auto& [docdb_txn_id, entry_pb] : aborted_subtxns_pb) {
+      const auto& set_pb = entry_pb.aborted_subtxns().set();
+      auto& entry = aborted_subtxn_sets[idx++];
+      entry = YbcPgAbortedSubtxnSet{
+          .docdb_txn_id = {},
+          .commit_time_ht = entry_pb.commit_time(),
+          .set = static_cast<uint32_t*>(YBCPAlloc(sizeof(uint32_t) * set_pb.size())),
+          .set_size = set_pb.size(),
+      };
+      snprintf(entry.docdb_txn_id, sizeof(entry.docdb_txn_id), "%s", docdb_txn_id.c_str());
+      std::copy(set_pb.begin(), set_pb.end(), entry.set);
+    }
+    (*record_batch)->aborted_subtxn_sets = aborted_subtxn_sets;
+    (*record_batch)->aborted_subtxn_sets_count = idx;
   }
 
   if (row_count > 0) {

@@ -783,6 +783,24 @@ void FillDDLInfo(
   throughput_metrics->bytes_sent += proto_record->ByteSizeLong();
 }
 
+// Whether the table's latest DDL record in the response already has this schema version. A cache
+// entry can be dropped and reloaded with the same version for each row, e.g. when the sys catalog
+// at the row's hybrid time is ahead of the row's packing.
+// Compare against the response, not the cache: the cache can hold a version whose DDL record was
+// never sent, e.g. after a CHANGE_METADATA_OP that only marks columns for deletion, or after the
+// CacheMissError retry, which clears the response but keeps the cache.
+bool IsLastDDLRecordInResponse(
+    const GetChangesResponsePB& resp, const TableId& table_id, SchemaVersion schema_version) {
+  const auto& records = resp.cdc_sdk_proto_records();
+  for (auto it = records.rbegin(); it != records.rend(); ++it) {
+    const auto& row_message = it->row_message();
+    if (row_message.op() == RowMessage_Op_DDL && row_message.table_id() == table_id) {
+      return row_message.schema_version() == schema_version;
+    }
+  }
+  return false;
+}
+
 Result<TableName> GetColocatedTableName(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const TableId& req_table_id) {
   for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
@@ -843,7 +861,9 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
             << " tablet " << tablet->tablet_id();
 
     const auto& schema_details = (*cached_schema_details)[cur_table_id];
-    FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    if (!IsLastDDLRecordInResponse(*resp, cur_table_id, schema_details.schema_version)) {
+      FillDDLInfo(tablet_peer, schema_details, table_name, cur_table_id, resp, throughput_metrics);
+    }
 
     return schema_details;
   }
@@ -2266,6 +2286,7 @@ Status GetConsistentWALRecords(
           *last_seen_op_id, *consistent_safe_time, deadline, /* fetch_single_entry */ false,
           &last_readable_opid_index));
     }
+    TEST_SYNC_POINT_CALLBACK("GetConsistentWALRecords::AfterReadOps", &read_ops);
 
     if (read_ops.read_from_disk_size && mem_tracker) {
       (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
@@ -2896,15 +2917,15 @@ Status GetChangesForCDCSDK(
 
     have_more_messages = HaveMoreMessages(true);
 
-    if (wal_records.empty()) {
-      RSTATUS_DCHECK(
-          wait_for_wal_update, IllegalState,
-          Format(
-            "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
-            OpId::FromPB(from_op_id),
-            tablet_id,
-            stream_id));
+    RSTATUS_DCHECK(
+        !wal_records.empty() || wait_for_wal_update, IllegalState,
+        Format(
+          "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
+          OpId::FromPB(from_op_id),
+          tablet_id,
+          stream_id));
 
+    if (wait_for_wal_update) {
       VLOG(1) << "Returning empty response while resuming partial txn."
               << " tablet_id: " << tablet_id << ", stream_id: " << stream_id
               << ", from_op_id: " << OpId::FromPB(from_op_id)

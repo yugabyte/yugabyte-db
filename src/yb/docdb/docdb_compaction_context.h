@@ -109,6 +109,8 @@ struct HistoryRetentionDirective {
   MonoDelta table_ttl;
 
   ShouldRetainDeleteMarkersInMajorCompaction retain_delete_markers_in_major_compaction{false};
+
+  bool is_transactional_xcluster_target = false;
 };
 
 struct CompactionSchemaInfo {
@@ -251,11 +253,14 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
 
   void SetTableTTLForTests(MonoDelta ttl);
 
+  void SetIsTransactionalXClusterTargetForTests(bool value);
+
  private:
   std::mutex history_cutoff_mutex_;
   HistoryCutoff history_cutoff_ GUARDED_BY(history_cutoff_mutex_)
       = { HybridTime::kInvalid, HybridTime::kMin };
   std::atomic<MonoDelta> table_ttl_{MonoDelta::kMax};
+  std::atomic<bool> is_transactional_xcluster_target_{false};
 };
 
 HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info);

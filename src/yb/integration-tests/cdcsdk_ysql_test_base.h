@@ -247,6 +247,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
     bool has_publication_refresh_indicator = false;
+    std::map<std::string, CDCSDKAbortedSubtxnsPB> aborted_subtxns;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
@@ -1005,6 +1006,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestSchemaPackingNotFoundForConcurrentDDLAndDML(bool multiple_responses);
 
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);
