@@ -370,7 +370,7 @@ message IndexInfoPB {
   optional BirthTimeState birth_time_state = 40;
 
   // Id of the transaction that created the index. Set only while birth_time_state is
-  // BIRTH_TIME_PENDING_DDL_COMMIT. This is required so that any readers done as part of the same
+  // BIRTH_TIME_PENDING_DDL_COMMIT. This is required so that any readers part of the same
   // transaction that does the CREATE INDEX are able to read even if the transaction's snapshot is
   // older than the birth time of the index.
   optional bytes birth_time_pending_txn_id = 41;
