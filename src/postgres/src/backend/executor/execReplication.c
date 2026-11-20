@@ -725,7 +725,16 @@ FindConflictTuple(ResultRelInfo *resultRelInfo, EState *estate,
 	TM_FailureData tmfd;
 	TM_Result	res;
 
+	TupleTableSlot *yb_conflict_slot = NULL;
+
 	*conflictslot = NULL;
+
+	/*
+	 * TODO(#34102): For a YB relation, lock and report the row returned in
+	 * yb_conflict_slot instead of locking by conflictTid.  Unreachable today:
+	 * the apply worker cannot insert into YB relations.
+	 */
+	Assert(!IsYBRelation(rel));
 
 	/*
 	 * Build additional information required to check constraints violations.
@@ -737,7 +746,7 @@ retry:
 	if (ExecCheckIndexConstraints(resultRelInfo, slot, estate,
 								  &conflictTid, &slot->tts_tid,
 								  list_make1_oid(conflictindex),
-								  NULL /* YB_TODO_PG19MERGE: ybConflictSlot */))
+								  &yb_conflict_slot))
 	{
 		if (*conflictslot)
 			ExecDropSingleTupleTableSlot(*conflictslot);
