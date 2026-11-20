@@ -410,15 +410,20 @@ GetYbObjectLockId(const LOCKTAG *locktag)
  *   take advisory locks by calling LockAcquire directly, and rely on them
  *   conflicting across backends.
  *   TODO(#38468): route those through YB's advisory lock path too.
+ * - User locks are reserved for the old contrib/userlock module and unused.
+ *   Like any lock nobody has shown to be backend-local, they are sent.
  *
- * The other tag types are either never acquired with object locking enabled
- * (transaction, virtual transaction and speculative insertion locks), or
- * protect PG-local storage, which only temp relations have and only their own
- * backend can access (relation extension and page locks).  For those the
+ * The remaining tag types are either never acquired with object locking
+ * enabled (transaction, virtual transaction and speculative insertion locks),
+ * or protect PG-local storage, which only temp relations have and only their
+ * own backend can access (relation extension and page locks).  For those the
  * local lock table is enough.
  * Sending them would also be wrong, as GetYbObjectLockId drops the tag type:
  * e.g. a relation extension lock would become an ExclusiveLock on the
  * relation itself, held until commit.
+ *
+ * The switch deliberately has no default, so that a tag type added by a PG
+ * merge fails to compile (-Werror=switch) until it is classified here.
  */
 static bool
 YbIsObjectLockTag(const LOCKTAG *locktag)
@@ -430,10 +435,17 @@ YbIsObjectLockTag(const LOCKTAG *locktag)
 		case LOCKTAG_DATABASE_FROZEN_IDS:
 		case LOCKTAG_TUPLE:
 		case LOCKTAG_ADVISORY:
+		case LOCKTAG_USERLOCK:
 			return true;
-		default:
+		case LOCKTAG_RELATION_EXTEND:
+		case LOCKTAG_PAGE:
+		case LOCKTAG_TRANSACTION:
+		case LOCKTAG_VIRTUALTRANSACTION:
+		case LOCKTAG_SPECULATIVE_TOKEN:
 			return false;
 	}
+	/* Not a valid tag type; keep the lock conflicting across backends. */
+	return true;
 }
 
 int

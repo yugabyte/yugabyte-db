@@ -347,6 +347,28 @@ TEST_F(PgObjectLocksTestRF1, TempTableDmlTakesNoGlobalLocks) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT sum(v) FROM t")), 1);
 }
 
+// COPY into a temp table extends its free space map, and fsm_extend takes a relation extension
+// lock even on temp relations. It used to be sent to the master as a global ExclusiveLock on the
+// relation's own lock ID.
+TEST_F(PgObjectLocksTestRF1, TempTableCopyTakesNoGlobalLocks) {
+  const auto in_file = GetTestPath("copy_in.csv");
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "COPY (SELECT g, 0 FROM generate_series(1, 2000) g) TO '$0' CSV", in_file));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(WaitFor(
+      [this] { return NumGrantedLocksOnMaster() == 0; }, 5s * kTimeMultiplier,
+      "Wait for the DDLs to release their global locks"));
+
+  // Keep the transaction open: a global lock would stay granted on the master until commit.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("COPY t FROM '$0' CSV", in_file));
+  ASSERT_EQ(NumGrantedLocksOnMaster(), 0);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 2000);
+}
+
 TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   CreateTestTable();
 
