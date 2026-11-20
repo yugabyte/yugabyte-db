@@ -2199,6 +2199,8 @@ class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+    // CreateIndexAndDdlDeadlockIsDetected reads the CREATE INDEX's WaitForLockers wait from ASH.
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ash=true");
   }
 };
 
@@ -2229,6 +2231,35 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockDoesNotCrossDatabases
       same_db_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"),
       "canceling statement due to statement timeout");
   ASSERT_OK(holder.Execute("COMMIT"));
+}
+
+// With ysql_enable_concurrent_ddl off, a DDL in a transaction block holds the database DDL lock
+// until the block ends, also after ROLLBACK TO a savepoint taken before an earlier DDL.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+  }
+
+  auto block_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(block_conn.Execute("BEGIN"));
+  ASSERT_OK(block_conn.Execute("SAVEPOINT s"));
+  ASSERT_OK(block_conn.Execute("ALTER TABLE a ADD COLUMN v INT"));
+  ASSERT_OK(block_conn.Execute("ROLLBACK TO s"));
+  ASSERT_OK(block_conn.Execute("ALTER TABLE b ADD COLUMN v INT"));
+
+  // A wait shows as a statement timeout.
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
+  ASSERT_NOK_STR_CONTAINS(
+      ddl_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"),
+      "canceling statement due to statement timeout");
+
+  ASSERT_OK(block_conn.Execute("COMMIT"));
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"));
 }
 
 // With ysql_enable_concurrent_ddl off, a CREATE INDEX keeps the database DDL lock across its
@@ -2295,12 +2326,13 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlDeadlockIsDetect
   auto index_future = std::async(std::launch::async, [&index_conn]() {
     return index_conn.Execute("CREATE INDEX t_v ON t(v)");
   });
-  // The CREATE INDEX waits for the writer before its backfill.
+  // The CREATE INDEX waits for the writer in WaitForLockers before its backfill. That wait shows
+  // in ASH, not in pg_stat_activity or pg_locks.
   auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
     auto waiting = observer.FetchRow<int64_t>(
-        "SELECT COUNT(*) FROM pg_stat_activity WHERE query = 'CREATE INDEX t_v ON t(v)'"
-        " AND wait_event_type = 'Lock'");
+        "SELECT COUNT(*) FROM yb_active_session_history"
+        " WHERE wait_event_aux = 'WaitForLockersMultiple'");
     return waiting.ok() && *waiting > 0;
   }, 30s * kTimeMultiplier, "the CREATE INDEX to wait for the writer"));
 
