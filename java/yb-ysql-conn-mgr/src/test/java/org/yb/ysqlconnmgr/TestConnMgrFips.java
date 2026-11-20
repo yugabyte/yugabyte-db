@@ -20,8 +20,6 @@ import static org.yb.AssertionWrappers.fail;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
@@ -47,7 +45,6 @@ import com.yugabyte.ssl.WrappedFactory;
 import org.junit.Assume;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
@@ -168,12 +165,6 @@ public class TestConnMgrFips extends BaseYsqlConnMgr {
     flagMap.put("certs_for_client_dir", certsDir());
     flagMap.put("openssl_require_fips", "true");
     return flagMap;
-  }
-
-  // TODO: Lives in BaseYsqlConnMgr on master; drop this copy once that is backported.
-  private static String certsDir() {
-    FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   /**

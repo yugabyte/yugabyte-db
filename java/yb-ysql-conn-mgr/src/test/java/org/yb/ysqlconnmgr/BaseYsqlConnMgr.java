@@ -30,6 +30,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -130,6 +132,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected WireConn.Builder rawConnBuilder() {
     return WireConn.builder(miniCluster);
+  }
+
+  /**
+   * Absolute path to the shared test_certs directory used by every SSL-related test in this
+   * package (ysql.crt/key/der, ca.crt, crl files, ...). Rooted next to the build's bin directory,
+   * so it works both under the source tree and in the packaged test layout.
+   */
+  protected static String certsDir() {
+    FileSystem fs = FileSystems.getDefault();
+    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
