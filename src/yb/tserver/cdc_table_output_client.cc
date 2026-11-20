@@ -14,8 +14,10 @@
 #include "yb/tserver/cdc_table_output_client.h"
 
 #include <array>
-#include <cmath>
-#include <sstream>
+
+#include <google/protobuf/util/json_util.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -40,7 +42,6 @@
 
 #include "yb/tserver/xcluster_poller.h"
 
-#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -63,73 +64,57 @@ constexpr std::array<const char*, 7> kKeyColumns = {
 
 constexpr size_t kUuidSize = 16;
 
-void WriteQLValue(const QLValuePB& value, JsonWriter& writer) {
-  switch (value.value_case()) {
-    case QLValuePB::kInt8Value: return writer.Int(value.int8_value());
-    case QLValuePB::kInt16Value: return writer.Int(value.int16_value());
-    case QLValuePB::kInt32Value: return writer.Int(value.int32_value());
-    case QLValuePB::kInt64Value: return writer.Int64(value.int64_value());
-    case QLValuePB::kUint32Value: return writer.Uint(value.uint32_value());
-    case QLValuePB::kUint64Value: return writer.Uint64(value.uint64_value());
-    case QLValuePB::kBoolValue: return writer.Bool(value.bool_value());
-    case QLValuePB::kStringValue: return writer.String(value.string_value());
-    case QLValuePB::kBinaryValue: return writer.String(b2a_hex(value.binary_value()));
-    case QLValuePB::VALUE_NOT_SET: return writer.Null();
-    default: return writer.String(value.ShortDebugString());
-  }
-}
-
-void WriteDouble(double value, JsonWriter& writer) {
-  // JSON has no NaN or infinity.
-  if (std::isfinite(value)) {
-    writer.Double(value);
-  } else {
-    writer.String(std::to_string(value));
-  }
-}
-
-void WriteDatum(const DatumMessagePB& datum, JsonWriter& writer) {
-  switch (datum.datum_case()) {
-    case DatumMessagePB::kDatumInt32: return writer.Int(datum.datum_int32());
-    case DatumMessagePB::kDatumInt64: return writer.Int64(datum.datum_int64());
-    case DatumMessagePB::kDatumFloat: return WriteDouble(datum.datum_float(), writer);
-    case DatumMessagePB::kDatumDouble: return WriteDouble(datum.datum_double(), writer);
-    case DatumMessagePB::kDatumBool: return writer.Bool(datum.datum_bool());
-    case DatumMessagePB::kDatumString: return writer.String(datum.datum_string());
-    case DatumMessagePB::kDatumBytes: return writer.String(b2a_hex(datum.datum_bytes()));
-    case DatumMessagePB::kDatumMissing:
-    case DatumMessagePB::DATUM_NOT_SET:
-      // Values of the catalog tables are not converted by the CDC service.
-      if (datum.has_pg_catalog_value()) {
-        return WriteQLValue(datum.pg_catalog_value(), writer);
-      }
-      return writer.Null();
-  }
-  FATAL_INVALID_ENUM_VALUE(DatumMessagePB::DatumCase, datum.datum_case());
-}
-
-// The columns of the tuple as a JSON object. nullopt if the tuple has no columns, which is how
-// the CDC service sends an image it does not have.
-std::optional<std::string> TupleToJson(
+// The columns of the tuple in the form described in the header. nullopt if the tuple has no
+// columns, which is how the CDC service sends an image it does not have.
+Result<std::optional<std::string>> TupleToJson(
     const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple) {
-  std::stringstream out;
-  JsonWriter writer(&out, JsonWriter::COMPACT);
+  static const auto kPrintOptions = [] {
+    google::protobuf::util::JsonPrintOptions options;
+    options.preserve_proto_field_names = true;
+    return options;
+  }();
+
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   bool has_columns = false;
+  std::string ql_value_json;
   writer.StartObject();
   for (const auto& datum : tuple) {
     // An entry without a name only keeps the old and the new tuple the same length.
     if (!datum.has_column_name()) {
       continue;
     }
+    const auto& name = datum.column_name();
+    // A request that is not from a walsender gets decoded values, without attribute numbers.
+    SCHECK(
+        datum.has_col_attr_num() && datum.has_column_type() &&
+            (datum.has_pg_ql_value() || datum.has_pg_catalog_value()),
+        IllegalState, "Column $0 lacks its attribute number, type or undecoded value", name);
     has_columns = true;
-    writer.String(datum.column_name());
-    WriteDatum(datum, writer);
+
+    writer.Key(std::to_string(datum.col_attr_num()).c_str());
+    writer.StartArray();
+    writer.Int64(datum.column_type());
+    const auto& ql_value =
+        datum.has_pg_catalog_value() ? datum.pg_catalog_value() : datum.pg_ql_value();
+    if (IsNull(ql_value)) {
+      writer.Null();
+    } else {
+      ql_value_json.clear();
+      auto status =
+          google::protobuf::util::MessageToJsonString(ql_value, &ql_value_json, kPrintOptions);
+      SCHECK(
+          status.ok(), InternalError, "Value of column $0 cannot be written as JSON: $1", name,
+          status.ToString());
+      writer.RawValue(ql_value_json.data(), ql_value_json.size(), rapidjson::kObjectType);
+    }
+    writer.EndArray();
   }
   writer.EndObject();
   if (!has_columns) {
     return std::nullopt;
   }
-  return out.str();
+  return std::string(buffer.GetString(), buffer.GetSize());
 }
 
 // The 16 bytes that YSQL stores for a uuid, from its hex form with or without dashes.
@@ -277,11 +262,11 @@ Status CdcTableOutputClient::AddWrites(Batch& batch) {
       add_column(origin_id_column_id_)->set_int32_value(row.xrepl_origin_id());
     }
     add_column(op_column_id_)->dup_string_value(op);
-    if (auto before = TupleToJson(row.old_tuple())) {
+    if (auto before = VERIFY_RESULT(TupleToJson(row.old_tuple()))) {
       add_column(before_column_id_)->dup_binary_value(
           VERIFY_RESULT(docdb::JsonTextToPgJsonb(*before)));
     }
-    if (auto after = TupleToJson(row.new_tuple())) {
+    if (auto after = VERIFY_RESULT(TupleToJson(row.new_tuple()))) {
       add_column(after_column_id_)->dup_binary_value(
           VERIFY_RESULT(docdb::JsonTextToPgJsonb(*after)));
     }

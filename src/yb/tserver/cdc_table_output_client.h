@@ -34,6 +34,13 @@ namespace yb::tserver {
 // from the change alone, so applying a batch again, in full or in part, leaves the table as if it
 // had been applied once. The poller relies on that to retry a failed batch and to re-read changes
 // after a leader change.
+//
+// The before and after columns hold the row images undecoded, for the reader of the table to
+// convert to datums the way a walsender does with a GetChanges response:
+//   {"<attnum>": [<type oid>, <value>], ...}
+// The value is the protobuf JSON form of the column's QLValuePB with the field names of the
+// proto, as in {"int32_value": 1}, so bytes are base64 and 64-bit integers are strings. It is
+// null for NULL. A column that the image does not have is absent.
 class CdcTableOutputClient : public XClusterOutputClientIf,
                              public std::enable_shared_from_this<CdcTableOutputClient> {
  public:
@@ -48,7 +55,7 @@ class CdcTableOutputClient : public XClusterOutputClientIf,
 
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
 
-  // The CDCSDK changes are already decoded, so there is no schema version to map.
+  // Maps the schema versions of an xCluster source to those of its target, which do not exist here.
   void UpdateSchemaVersionMappings(
       const cdc::XClusterSchemaVersionMap& schema_version_map,
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) override {}

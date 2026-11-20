@@ -83,6 +83,9 @@ Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
   // Until the consumer moves this poller after a leader change, the old leader's CDC service
   // forwards the call to the new leader.
   req->set_serve_as_proxy(true);
+  // The CDC table keeps the values undecoded, which is how the CDC service sends them to a
+  // walsender, along with the attribute number and type that decoding needs.
+  req->set_cdcsdk_request_source(cdc::CDCSDKRequestSource::WALSENDER);
 
   *req->mutable_from_cdc_sdk_checkpoint() = next_request_->checkpoint;
   req->set_safe_hybrid_time(next_request_->safe_hybrid_time);

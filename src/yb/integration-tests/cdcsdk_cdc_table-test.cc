@@ -34,6 +34,21 @@ namespace {
 const auto kTimeout = 60s * kTimeMultiplier;
 const std::string kNilUuid = "00000000-0000-0000-0000-000000000000";
 
+// The attribute numbers of the columns of a table made by CreateTestTable.
+constexpr int kIdAttnum = 1;
+constexpr int kValueAttnum = 2;
+
+// SQL for the value of a column in a before or after image of the CDC table. An image is
+// {"<attnum>": [<type oid>, <QLValuePB as protobuf JSON>]}, and bytes are base64 in that JSON.
+std::string Int32Value(const std::string& image, int attnum) {
+  return Format("($0)->'$1'->1->>'int32_value'", image, attnum);
+}
+
+std::string StringValue(const std::string& image, int attnum) {
+  return Format(
+      "convert_from(decode(($0)->'$1'->1->>'string_value', 'base64'), 'UTF8')", image, attnum);
+}
+
 }  // namespace
 
 // Tests that the changes of the published tables of a database end up in its pg_yb_cdc_changes
@@ -122,11 +137,12 @@ TEST_F(CDCSDKCdcTableTest, TablePublication) {
   // id, op, value before, value after, whether the row has a transaction id. A before image
   // of an insert and an after image of a delete do not exist.
   auto rows = ASSERT_RESULT(conn.FetchAllAsString(Format(
-      "SELECT COALESCE(after, before)->>'id', op, COALESCE(before->>'v', '-'), "
-      "COALESCE(after->>'v', '-'), "
+      "SELECT $3, op, COALESCE($4, '-'), COALESCE($5, '-'), "
       "CASE WHEN transaction_id = '$0' THEN 'single' ELSE 'txn' END FROM $1 WHERE $2 "
       "ORDER BY 1, commit_time, record_time",
-      kNilUuid, master::kPgYbCdcChangesTableName, t1_filter)));
+      kNilUuid, master::kPgYbCdcChangesTableName, t1_filter,
+      Int32Value("COALESCE(after, before)", kIdAttnum), StringValue("before", kValueAttnum),
+      StringValue("after", kValueAttnum))));
   ASSERT_EQ(
       rows,
       "1, I, -, a, single; 1, U, a, a2, txn; 2, I, -, b, txn; 3, I, -, c, txn; "
@@ -141,6 +157,26 @@ TEST_F(CDCSDKCdcTableTest, TablePublication) {
       1);
 
   ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, "bucket_id != yb_hash_code(row_ybctid) % 256")), 0);
+
+  // An image has the type and the undecoded value of each column, by attribute number. 23 and 25
+  // are int4 and text, and YQ== is 'a' in base64.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+          "SELECT after::text FROM $0 WHERE $1 AND op = 'I' AND $2 = '1'",
+          master::kPgYbCdcChangesTableName, t1_filter, Int32Value("after", kIdAttnum)))),
+      R"({"1": [23, {"int32_value": 1}], "2": [25, {"string_value": "YQ=="}]})");
+
+  // A NULL column is present, with a null value. A value that is the default of its protobuf
+  // field is not left out.
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (0, NULL)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (4, '')"));
+  ASSERT_OK(WaitForChanges(conn, 7, t1_filter));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT after::text FROM $0 WHERE $1 AND $2 IN ('0', '4') ORDER BY $2",
+          master::kPgYbCdcChangesTableName, t1_filter, Int32Value("after", kIdAttnum)))),
+      R"({"1": [23, {"int32_value": 0}], "2": [25, null]}; )"
+      R"({"1": [23, {"int32_value": 4}], "2": [25, {"string_value": ""}]})");
 
   // t2 is not published.
   ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, ASSERT_RESULT(TableFilter("t2")))), 0);
@@ -225,7 +261,8 @@ TEST_F(CDCSDKCdcTableTest, LeaderChange) {
   ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 20);
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
-          "SELECT count(DISTINCT after->>'id') FROM $0", master::kPgYbCdcChangesTableName))),
+          "SELECT count(DISTINCT $1) FROM $0", master::kPgYbCdcChangesTableName,
+          Int32Value("after", kIdAttnum)))),
       20);
 }
 
@@ -241,11 +278,17 @@ TEST_F(CDCSDKCdcTableTest, SysCatalogChanges) {
 
   const auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
       "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto relname_attnum = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT attnum::int FROM pg_attribute "
+      "WHERE attrelid = 'pg_class'::regclass AND attname = 'relname'"));
+  // The columns of a catalog table also come with their attribute number and type.
   ASSERT_OK(WaitForChanges(
       conn, 1,
       Format(
-          "replace(table_id::text, '-', '') = '$0' AND after->>'relname' = 't3'",
-          GetPgsqlTableId(database_oid, kPgClassTableOid))));
+          "replace(table_id::text, '-', '') = '$0' AND $1 = 't3' AND "
+          "(after->'$2'->>0)::oid = 'name'::regtype",
+          GetPgsqlTableId(database_oid, kPgClassTableOid), StringValue("after", relname_attnum),
+          relname_attnum)));
 }
 
 TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {

@@ -124,6 +124,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(TEST_cdcsdk_enable_cdc_table);
 
 namespace yb::cdc {
 
@@ -217,6 +218,12 @@ Status AddColumnToMap(
     if (tablet_peer->tablet_metadata()->IsSysCatalog()) {
       cdc_datum_message->mutable_pg_catalog_value()->CopyFrom(ql_value);
       col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_pg_catalog_type());
+      // The CDC table identifies a column by its attribute number. Only sent for it, to leave
+      // what a walsender receives unchanged.
+      if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+        cdc_datum_message->set_col_attr_num(col_schema.order());
+        cdc_datum_message->set_column_type(col_schema.pg_type_oid());
+      }
       return Status::OK();
     }
     cdc_datum_message->mutable_cql_value()->CopyFrom(ql_value);
