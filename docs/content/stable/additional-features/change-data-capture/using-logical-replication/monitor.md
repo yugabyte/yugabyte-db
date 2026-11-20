@@ -70,6 +70,21 @@ Provides a list of all replication slots that currently exist on the database cl
 | confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the `confirmed_flush_lsn` are not available anymore. |
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |
+| yb_lsn_type | text | The [LSN type](../key-concepts/#lsn-type) the slot was created with, `SEQUENCE` or `HYBRID_TIME`. Available in v2025.1.1.1 and later. |
+| yb_restart_time | timestamp with time zone | The commit time corresponding to `restart_lsn`: the physical time component of `yb_restart_commit_ht`, as a timestamp. See [Restart time](../key-concepts/#restart-time). Available in v2025.1.1.1 and later. |
+
+#### Slot lag
+
+To measure how far behind a slot is, query `yb_restart_time` (v2025.1.1.1 and later):
+
+```plpgsql
+SELECT slot_name, now() - yb_restart_time AS restart_lag
+FROM pg_replication_slots;
+```
+
+`restart_lag` is the age of the oldest change the slot may still need. YugabyteDB LSNs are not byte offsets, so `pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)` does not measure lag. [`pg_current_wal_lsn`](../#limitations) and [`pg_wal_lsn_diff`](../#limitations) are unsupported.
+
+`restart_lag` is measured from the wall clock. It keeps growing until `yb_restart_time` advances, including while the database is idle. [`cdcsdk_flush_lag`](#cdc-service-metrics) is the gap between the newest committed WAL record and the slot restart time, so it falls toward zero on an idle database.
 
 ### pg_stat_replication
 

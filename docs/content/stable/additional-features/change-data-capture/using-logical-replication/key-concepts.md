@@ -65,7 +65,7 @@ A table whose tablets are not of interest, or have [expired](#when-a-slot-become
 
 #### Restart time
 
-The restart time of a slot is the commit time from which streaming resumes when the client reconnects. It is also the point up to which the database must retain changes for the slot. `pg_replication_slots` reports it as `restart_lsn` and as `yb_restart_commit_ht` (a hybrid time). From v2025.1, `yb_restart_time` reports the same value as a timestamp. `confirmed_flush_lsn` is the last LSN the client acknowledged.
+The restart time of a slot is the commit time from which streaming resumes when the client reconnects. It is also the point up to which the database must retain changes for the slot. `pg_replication_slots` reports it as `restart_lsn` and as `yb_restart_commit_ht` (a hybrid time). From v2025.1.1.1, `yb_restart_time` reports the same value as a timestamp. `confirmed_flush_lsn` is the last LSN the client acknowledged.
 
 The restart time advances in the following cases:
 
