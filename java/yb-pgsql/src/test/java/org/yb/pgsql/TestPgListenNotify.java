@@ -914,6 +914,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       expected.addAll(aFirst ? expectedB : expectedA);
       assertEquals(expected, payloads);
     } finally {
+      // The virtual WAL can ship a window before the clock reaches its end, moving its safe time
+      // there. Keep rounding until the end of every window committed into, so that no later commit
+      // falls below that safe time and gets dropped.
+      Thread.sleep(windowMs - System.currentTimeMillis() % windowMs + windowMs / 10);
       setVirtualWalCommitTimeRoundUp(0);
     }
   }
@@ -954,8 +958,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("COMMIT");
         assertNotificationsInOrder(listenerConn, "multi_", n);
 
-        // One autocommit statement. Must stay ordered whether its notifications stream as one
-        // transaction or one per row.
+        // One autocommit statement. Its notifications are written in one transaction too (#37444).
         stmt.execute(notifySeriesSql("auto_", n));
         assertNotificationsInOrder(listenerConn, "auto_", n);
       }

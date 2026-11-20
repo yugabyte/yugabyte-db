@@ -1244,8 +1244,8 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
             (op == RowMessage_Op_BEGIN || op == RowMessage_Op_COMMIT ||
              op == RowMessage_Op_INSERT || op == RowMessage_Op_UPDATE ||
              op == RowMessage_Op_DELETE)) {
-          // Rounding up, not down: a window's records are then shipped only after every
-          // tablet's safe time passes the window's end, when no later commit can round into it.
+          // Rounding up, not down, keeps a commit time at or above the virtual WAL safe
+          // time already reached, below which records are dropped.
           const uint64_t unit = HybridTime::FromMicros(
               FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec).ToUint64();
           const uint64_t commit_time = record.row_message().commit_time();

@@ -605,7 +605,7 @@ typedef struct YbNotifsPollerPendingEntry
 	AsyncQueueEntry qe;
 	/* sort keys, see ybNotifsPollerPendingEntryCmp */
 	char		docdb_txn_id[37];	/* empty if the row has none */
-	int64		seq;
+	int32		seq;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -725,7 +725,7 @@ static void ClearPendingActionsAndNotifies(void);
 
 /* YB: helper functions for NOTIFY */
 static void ybInsertPendingNotifiesToTable(void);
-static Datum ybNotificationExtraOptions(int64 seq);
+static Datum ybNotificationExtraOptions(int32 seq);
 
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
@@ -751,7 +751,7 @@ static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-									  AsyncQueueEntry *qe, int64 *seq);
+									  AsyncQueueEntry *qe, int32 *seq);
 static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
@@ -3840,7 +3840,7 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
  */
 static void
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-						  AsyncQueueEntry *qe, int64 *seq)
+						  AsyncQueueEntry *qe, int32 *seq)
 {
 	*seq = -1;
 
@@ -3888,8 +3888,9 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	/*
 	 * The table also takes plain SQL writes, so don't trust the value's shape:
-	 * an ERROR here would terminate every listener on the node. Anything
-	 * unexpected falls back to arrival order.
+	 * an ERROR here would terminate every listener on the node. A value that
+	 * isn't an object with a non-negative int32 seq falls back to arrival
+	 * order; a fractional seq is rounded.
 	 */
 	if (!isnull)
 	{
@@ -3915,7 +3916,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 /* Build the extra_options value of a pg_yb_notifications row. */
 static Datum
-ybNotificationExtraOptions(int64 seq)
+ybNotificationExtraOptions(int32 seq)
 {
 	JsonbParseState *state = NULL;
 	JsonbValue	key;
