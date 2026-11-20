@@ -10681,8 +10681,12 @@ class Configs(object):
     # Saves current configs to config file.
     def save_configs(self):
         if os.path.exists(self.config_file):
-            with open(self.config_file, "w+") as f:
+            # Write atomically: concurrent yugabyted commands (e.g. start and status)
+            # read and save this file, and in-place writes can leave it empty or corrupt.
+            tmp_file = "{}.tmp.{}".format(self.config_file, uuid.uuid4().hex)
+            with open(tmp_file, "w") as f:
                 json.dump(self.saved_data, f, indent=4)
+            os.replace(tmp_file, self.config_file)
 
     # Custom parser for reading config file.
     @staticmethod
