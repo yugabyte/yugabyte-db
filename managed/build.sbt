@@ -1074,6 +1074,10 @@ Universal / javaOptions += "-Debean.registerShutdownHook=false"
 // Java code, with the same results.
 Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
 
+// Keep BouncyCastle on its Java code. Its native entropy source reads RDSEED, which often fails
+// to return entropy on K8s nodes, and SecureRandom then fails; the Java code seeds from the kernel.
+Universal / javaOptions += "-Dorg.bouncycastle.native.cpu_variant=java"
+
 Universal / mappings ++= {
   compileYbaCliBinary.value.flatMap { folderPath =>
     val folder = file(folderPath)
