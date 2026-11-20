@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <future>
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
@@ -917,6 +919,78 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
+}
+
+// A connection that starts while DROP DATABASE removes its database must fail on its own, without
+// crashing its backend (which makes the postmaster restart every backend on that node).
+// The pg_database recheck in InitPostgres reads the startup catalog prefetch, which predates the
+// drop, so it passes. The connection then finds its relcache init file stale and cannot revalidate
+// it, so it rebuilds the file, and that rebuild makes the first live pg_database read.
+//
+// The test runs in the legacy DDL mode (no object locking, no invalidation messages) because there
+// the window is deterministic: the database lock is local to the node, so the DROP on another node
+// commits while the connection is paused after its recheck, and without invalidation messages a
+// stale init file is always rebuilt. With object locking, the DROP has to commit before the
+// connection takes the database lock, and the connection crashes only if its node learns of the
+// drop between the connection resolving its shared memory slot and fetching invalidation messages.
+TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
+  constexpr auto kDelayMs = 10000 * kTimeMultiplier;
+  RestartClusterWithInvalMessageDisabled();
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Every backend that starts on node 1 from now on pauses after its database recheck and before
+  // RelationCacheInitializePhase3.
+  auto* ts1 = cluster_->tablet_server(1);
+  ts1->Shutdown();
+  ASSERT_OK(ts1->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_ysql_delay_before_relcache_init_phase3_ms", std::to_string(kDelayMs)}}));
+
+  // Setup connections retry while node 1 comes back up. The racing connection makes a single
+  // attempt, so that a retry cannot hide a backend crash.
+  const auto connect_to_ts1 = [ts1](const std::string& dbname, bool single_attempt) {
+    PGConnSettings settings{
+        .host = ts1->bind_host(),
+        .port = ts1->ysql_port(),
+        .dbname = dbname,
+        .connect_timeout = static_cast<size_t>(4 * kDelayMs / 1000),
+    };
+    if (single_attempt) {
+      settings.should_stop = [] { return true; };
+    }
+    return PGConnBuilder(settings).Connect();
+  };
+
+  // Write the test database's relcache init file on node 1, then leave it behind by one catalog
+  // version.
+  ASSERT_RESULT(connect_to_ts1(kTestDatabase, /* single_attempt = */ false));
+  {
+    auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+    ASSERT_OK(conn_test.Execute("CREATE TABLE t (k INT)"));
+  }
+  WaitForCatalogVersionToPropagate();
+
+  // A bystander session on node 1, which must survive.
+  auto conn_bystander =
+      ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, /* single_attempt = */ false));
+
+  auto connect_future = std::async(std::launch::async, [&connect_to_ts1] {
+    return ResultToStatus(connect_to_ts1(kTestDatabase, /* single_attempt = */ true));
+  });
+  // Let the connection pass its database recheck and reach the delay, then drop the database, all
+  // before the delay ends.
+  std::this_thread::sleep_for(3s * kTimeMultiplier);
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+  WaitForCatalogVersionToPropagate();
+
+  const auto status = connect_future.get();
+  LOG(INFO) << "Connection status: " << status;
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "does not exist");
+  ASSERT_STR_CONTAINS(status.ToString(), "It seems to have just been dropped or renamed.");
+  ASSERT_OK(conn_bystander.Fetch("SELECT 1"));
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.

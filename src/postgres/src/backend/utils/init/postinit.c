@@ -1664,6 +1664,15 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
 										&YbTablegroupCatalogExists));
 
+	/*
+	 * YB: Test-only delay after the database recheck and before
+	 * RelationCacheInitializePhase3, so that a test can drop the database in
+	 * between.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms > 0)
+		pg_usleep(*YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms * 1000L);
+
 	RelationCacheInitializePhase3();
 
 	/* Before anything below reads the catalog for a decision that lasts the session. */
