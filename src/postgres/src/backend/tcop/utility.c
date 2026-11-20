@@ -551,6 +551,12 @@ ProcessUtility(PlannedStmt *pstmt,
 	Assert(qc == NULL || qc->commandTag == CMDTAG_UNKNOWN);
 
 	/*
+	 * YB: A utility command that a ModifyTable node runs, in a trigger or a
+	 * function, writes as its own command, not as the node.
+	 */
+	CommandId	yb_prev_write_command_id = YbSetWriteCommandId(InvalidCommandId);
+
+	/*
 	 * We provide a function hook variable that lets loadable plugins get
 	 * control when ProcessUtility is called.  Such a plugin would normally
 	 * call standard_ProcessUtility().
@@ -563,6 +569,8 @@ ProcessUtility(PlannedStmt *pstmt,
 		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 								context, params, queryEnv,
 								dest, qc);
+
+	YbSetWriteCommandId(yb_prev_write_command_id);
 }
 
 /*
