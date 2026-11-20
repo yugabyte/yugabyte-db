@@ -628,6 +628,7 @@ class PgDocReadOp : public PgDocOp {
 
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
+  void SetReadCommandId();
 
   // Re-format the request when connecting to older server during rolling upgrade.
   void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);

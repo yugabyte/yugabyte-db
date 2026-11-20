@@ -67,14 +67,12 @@ BEGIN;
   INSERT INTO test_cursor VALUES (1, 'one');
   DECLARE c CURSOR FOR SELECT * FROM test_cursor;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following FETCH, but there's 3.
+  -- The cursor reads with the snapshot of its DECLARE, so only one row is output.
   FETCH ALL FROM c;
- id | name  
-----+-------
+ id | name 
+----+------
   1 | one
-  2 | two
-  3 | three
-(3 rows)
+(1 row)
 
 ROLLBACK;
 -- CURSOR in PL/PGSQL block (Issue 6627).
@@ -86,7 +84,7 @@ BEGIN
   INSERT INTO test_cursor VALUES (1, 'one');
   OPEN c_pl;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following LOOP, but there's 3.
+  -- The cursor reads with the snapshot of its OPEN, so only one row is output.
   LOOP
     FETCH FROM c_pl INTO row;
     EXIT WHEN NOT FOUND;
@@ -95,8 +93,6 @@ BEGIN
   DELETE FROM test_cursor;
 END $$;
 NOTICE:  FETCHING a row: (1,one)
-NOTICE:  FETCHING a row: (2,two)
-NOTICE:  FETCHING a row: (3,three)
 -- CURSOR in PL/PGSQL procedure (Issue 6627).
 CREATE OR REPLACE PROCEDURE proc() LANGUAGE plpgsql AS $body$
 DECLARE
@@ -106,7 +102,7 @@ BEGIN
   INSERT INTO test_cursor VALUES (1, 'one');
   OPEN c_proc;
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following LOOP, but there's 3.
+  -- The cursor reads with the snapshot of its OPEN, so only one row is output.
   LOOP
     FETCH FROM c_proc INTO row;
     EXIT WHEN NOT FOUND;
@@ -118,8 +114,6 @@ $body$;
 --
 CALL proc();
 NOTICE:  FETCHING a row: (1,one)
-NOTICE:  FETCHING a row: (2,two)
-NOTICE:  FETCHING a row: (3,three)
 --
 -- Use CURSOR to call FUNCTION in anonymous block.
 --
@@ -152,11 +146,11 @@ BEGIN;
   INSERT INTO test_cursor VALUES (1, 'one');
   DECLARE c_cnt CURSOR FOR SELECT cnt(), cnt_v(), cnt_s(), cnt_i();
   INSERT INTO test_cursor VALUES (2, 'two'), (3, 'three');
-  -- BUG: Only one row should be output by the following FETCH.
+  -- The STABLE function sees the rows as of the DECLARE.
   FETCH ALL FROM c_cnt;
  cnt | cnt_v | cnt_s | cnt_i 
 -----+-------+-------+-------
-   3 |     3 |     3 |     1
+   3 |     3 |     1 |     1
 (1 row)
 
 ROLLBACK;

@@ -308,6 +308,17 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
 
 	/*
+	 * YB: Like a heap scan comparing cmin with curcid, the statement's reads
+	 * see only the transaction's writes of earlier commands.
+	 */
+	if (IsYugaByteEnabled() && estate->es_snapshot != InvalidSnapshot &&
+		IsMVCCSnapshot(estate->es_snapshot))
+	{
+		estate->yb_exec_params.has_read_command_id = true;
+		estate->yb_exec_params.read_command_id = estate->es_snapshot->curcid;
+	}
+
+	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or
 	 * unless it's EXPLAIN-only mode (when ExecutorFinish won't be called).
 	 */

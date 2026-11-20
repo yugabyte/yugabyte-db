@@ -763,7 +763,9 @@ typedef struct EState
 	 * NOTE: This is slightly incorrect and causes a bug as explained in
 	 * requirement 1 of src/yb/yql/pggate/README. But apart from that corner
 	 * case, this ensures that read operations of a SQL statement don't read
-	 * any value written by the same statement.
+	 * any value written by the same statement.  Reads that send their
+	 * snapshot's command id (yb_exec_params.read_command_id) use it instead
+	 * for the writes that record one.
 	 */
 	uint64_t	yb_es_in_txn_limit_ht_for_reads;
 
