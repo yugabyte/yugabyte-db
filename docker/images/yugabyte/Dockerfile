@@ -102,7 +102,6 @@ RUN set -x; \
       net-tools \
       openssl \
       openssl-devel \
-      redhat-rpm-config \
       rsync \
       procps \
       sysstat \
@@ -111,7 +110,7 @@ RUN set -x; \
       hostname \
     ); \
     if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
-      packages+=(python3.11-devel python3.11-pip); \
+      packages+=(python3.11-devel python3.11-pip redhat-rpm-config); \
     fi; \
     $yum_install "${packages[@]}" \
     && if [[ "$BASE_IMAGE" != *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
