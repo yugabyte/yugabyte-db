@@ -225,6 +225,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     log.info("Getting Universe with UUID: {}", uniUUID);
     api.v2.models.Universe v2Response =
         UniverseRespMapper.INSTANCE.toV2Universe(v1Response, universe);
+    setXClusterConfigUuids(
+        v2Response,
+        uniUUID,
+        XClusterConfig.findConfigUuidsByUniverseUuids(Collections.singleton(uniUUID)));
     if (log.isTraceEnabled()) {
       log.trace("Got Universe {}", prettyPrint(v2Response));
     }
@@ -266,14 +270,36 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Universe.loadUniverseDetails(pagedList.getList());
     List<UniverseResp> page = UniverseResp.create(customer, pagedList.getList(), confGetter);
 
+    List<UUID> universeUuids = new ArrayList<>(pagedList.getList().size());
+    for (Universe u : pagedList.getList()) {
+      universeUuids.add(u.getUniverseUUID());
+    }
+    XClusterConfig.ConfigUuidsByUniverse configUuids =
+        XClusterConfig.findConfigUuidsByUniverseUuids(universeUuids);
     List<api.v2.models.Universe> v2Universes = new ArrayList<>(page.size());
     for (int i = 0; i < page.size(); i++) {
       UniverseResp r = page.get(i);
       Universe u = pagedList.getList().get(i);
-      v2Universes.add(UniverseRespMapper.INSTANCE.toV2Universe(r, u));
+      api.v2.models.Universe v2Universe = UniverseRespMapper.INSTANCE.toV2Universe(r, u);
+      setXClusterConfigUuids(v2Universe, u.getUniverseUUID(), configUuids);
+      v2Universes.add(v2Universe);
     }
 
     return new UniversePagedResp(pagedList).setEntities(v2Universes);
+  }
+
+  private static void setXClusterConfigUuids(
+      api.v2.models.Universe v2Universe,
+      UUID universeUuid,
+      XClusterConfig.ConfigUuidsByUniverse configUuids) {
+    if (v2Universe.getInfo() == null || v2Universe.getInfo().getxClusterInfo() == null) {
+      return;
+    }
+    v2Universe
+        .getInfo()
+        .getxClusterInfo()
+        .sourceXClusterConfigs(new ArrayList<>(configUuids.sourceConfigUuids(universeUuid)))
+        .targetXClusterConfigs(new ArrayList<>(configUuids.targetConfigUuids(universeUuid)));
   }
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {

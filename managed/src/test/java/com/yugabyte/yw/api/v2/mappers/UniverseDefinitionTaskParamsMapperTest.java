@@ -27,7 +27,6 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.List;
 import org.junit.Test;
 import org.mockito.MockedStatic;
-import org.springframework.test.util.ReflectionTestUtils;
 import play.mvc.Http.Request;
 
 public class UniverseDefinitionTaskParamsMapperTest extends FakeDBApplication {
@@ -72,7 +71,7 @@ public class UniverseDefinitionTaskParamsMapperTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUniverseInfoIncludesCalculatedXClusterConfigs() {
+  public void testXClusterConfigUuidsComeFromOneLookup() {
     Customer customer = ModelFactory.testCustomer();
     Universe source = ModelFactory.createUniverse("source-universe", customer.getId());
     Universe target = ModelFactory.createUniverse("target-universe", customer.getId());
@@ -83,24 +82,22 @@ public class UniverseDefinitionTaskParamsMapperTest extends FakeDBApplication {
     details.xClusterInfo.sourceRootCertDirPath = SOURCE_ROOT_CERT_DIR;
     source.setUniverseDetails(details);
     source.save();
-
     UniverseDefinitionTaskParams reloaded =
         Universe.getOrBadRequest(source.getUniverseUUID()).getUniverseDetails();
-    assertNull(ReflectionTestUtils.getField(reloaded.xClusterInfo, "universeUuid"));
-
     UniverseInfo info = UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseInfo(reloaded);
-
     assertEquals(SOURCE_ROOT_CERT_DIR, info.getxClusterInfo().getSourceRootCertDirPath());
-    assertEquals(List.of(config.getUuid()), info.getxClusterInfo().getSourceXClusterConfigs());
-    assertTrue(info.getxClusterInfo().getTargetXClusterConfigs().isEmpty());
+    assertNull(info.getxClusterInfo().getSourceXClusterConfigs());
+    assertNull(info.getxClusterInfo().getTargetXClusterConfigs());
 
-    UniverseDefinitionTaskParams targetDetails =
-        Universe.getOrBadRequest(target.getUniverseUUID()).getUniverseDetails();
-    UniverseInfo targetInfo =
-        UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseInfo(targetDetails);
+    XClusterConfig.ConfigUuidsByUniverse configUuids =
+        XClusterConfig.findConfigUuidsByUniverseUuids(
+            List.of(source.getUniverseUUID(), target.getUniverseUUID()));
     assertEquals(
-        List.of(config.getUuid()), targetInfo.getxClusterInfo().getTargetXClusterConfigs());
-    assertTrue(targetInfo.getxClusterInfo().getSourceXClusterConfigs().isEmpty());
+        List.of(config.getUuid()), configUuids.sourceConfigUuids(source.getUniverseUUID()));
+    assertTrue(configUuids.targetConfigUuids(source.getUniverseUUID()).isEmpty());
+    assertEquals(
+        List.of(config.getUuid()), configUuids.targetConfigUuids(target.getUniverseUUID()));
+    assertTrue(configUuids.sourceConfigUuids(target.getUniverseUUID()).isEmpty());
   }
 
   private static UniverseDefinitionTaskParams.XClusterInfo xClusterInfo() {

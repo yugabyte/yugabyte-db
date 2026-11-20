@@ -301,15 +301,6 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   @Override
   public UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams) {
     UniverseInfo universeInfo = delegate.toV2UniverseInfo(v1UniverseTaskParams);
-    // MapStruct skips these. readXClusterInfo stamps universeUuid; the lists are empty without it.
-    if (v1UniverseTaskParams.xClusterInfo != null && universeInfo.getxClusterInfo() != null) {
-      UniverseDefinitionTaskParams.XClusterInfo xClusterInfo =
-          v1UniverseTaskParams.readXClusterInfo();
-      universeInfo
-          .getxClusterInfo()
-          .sourceXClusterConfigs(new ArrayList<>(xClusterInfo.getSourceXClusterConfigs()))
-          .targetXClusterConfigs(new ArrayList<>(xClusterInfo.getTargetXClusterConfigs()));
-    }
     ManagedLoadBalancerState state = v1UniverseTaskParams.getManagedLoadBalancerState();
     if (state == null || universeInfo.getClusters() == null) {
       return universeInfo;
