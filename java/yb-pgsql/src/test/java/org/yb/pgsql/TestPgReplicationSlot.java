@@ -934,7 +934,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   void testDynamicTableAdditionForAllTablesPublication(boolean usePubRefresh) throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     String slotName = "test_dynamic_table_addition_for_all_tables_pub";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1010,7 +1013,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
 
         // begin
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+          LogSequenceNumber.valueOf(txnDdl ? "0/22" : "0/B"), txnDdl ? 5 : 3));
         // insert 1
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
           Arrays.asList(
@@ -1039,7 +1043,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("wxyz")))));
         // commit
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/22" : "0/B"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/23" : "0/C")));
       }
     };
 
@@ -6014,6 +6019,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWithTableRewrite() throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
         false /* usePubRefresh */, false /* streamTablesWithoutPrimaryKey */);
 
@@ -6086,8 +6092,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 12 from first txn, 8 from DDLs, 5 from third txn.
-    result.addAll(receiveMessage(stream, 25));
+    // 12 from first txn, 8 from DDLs, 5 from third txn. With transactional DDL, the DDL of a
+    // rewrite is decoded after the rewritten row, so the third txn re-sends the RELATIONs of t1
+    // and t2.
+    result.addAll(receiveMessage(stream, txnDdl ? 27 : 25));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
@@ -6132,7 +6140,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
 
         // DDL for t1 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/20" : "0/B"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
           Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
             PgOutputRelationMessageColumn.CreateForComparison("b", 20))));
@@ -6141,10 +6150,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/20" : "0/B"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/21" : "0/C")));
 
         // DDL for t2 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/3C" : "0/E"), 4));
         add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
           Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
             PgOutputRelationMessageColumn.CreateForComparison("b", 23),
@@ -6155,14 +6166,27 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/3C" : "0/E"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/3D" : "0/F")));
 
         // Remaining txn.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 5));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/51" : "0/13"), txnDdl ? 8 : 5));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("b", 20))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
           Arrays.asList(
             new PgOutputMessageTupleColumnValue("2"),
             new PgOutputMessageTupleColumnValue("2")))));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("b", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("serial_num", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
           Arrays.asList(
             new PgOutputMessageTupleColumnValue("2"),
@@ -6173,7 +6197,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/51" : "0/13"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/52" : "0/14")));
       }
     };
     assertEquals(expectedResult, result);
@@ -6358,6 +6383,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testAddDropPrimaryKey() throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
         false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
 
@@ -6410,8 +6436,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 6 from first txn, 8 from DDLs, 4 from third txn.
-    result.addAll(receiveMessage(stream, 18));
+    // 6 from first txn, 8 from DDLs, 4 from third txn. With transactional DDL, the DDL of a rewrite
+    // is decoded after the rewritten row, so the third txn re-sends the RELATIONs of t1 and t2.
+    result.addAll(receiveMessage(stream, txnDdl ? 20 : 18));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
@@ -6433,7 +6460,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
 
         // Add primary key DDL for t1 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/1E" : "0/8"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
@@ -6441,10 +6469,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/1E" : "0/8"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/1F" : "0/9")));
 
         // Drop primary key DDL for t2 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 4));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/35" : "0/B"), 4));
         add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
@@ -6452,18 +6482,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/35" : "0/B"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/36" : "0/C")));
 
         // Remaining txn.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/39" : "0/F"), 5));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+              Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("2")))));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+              Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("2")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/39" : "0/F"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/3A" : "0/10")));
       }
     };
     assertEquals(expectedResult, result);
