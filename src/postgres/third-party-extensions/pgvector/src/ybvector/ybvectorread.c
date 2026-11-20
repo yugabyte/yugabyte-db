@@ -24,8 +24,6 @@
 
 #include "postgres.h"
 
-#include <math.h>
-
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/stratnum.h"
@@ -34,6 +32,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
 #include "commands/defrem.h"
+#include "common/pg_prng.h"
 #include "nodes/nodeFuncs.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -353,21 +352,24 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 /*
  * The vector a scan searches with when its query vector is NULL.  Every
  * distance is NULL then, so any row order is correct, but DocDB can't search
- * without a vector.  The vector must not make most rows tie: a page ending in a
+ * without a vector.  The vector must not make many rows tie: a page ending in a
  * tie widens by at most vector_index_max_extra_tied_results rows, and a later
  * page keeps only rows farther than every row fetched before from that tablet,
- * so the rest of a tie is lost.  A zero vector would tie every row under cosine
- * and inner product.  The coordinates here, the fractional parts of multiples
- * of the golden ratio, are all distinct and have no simple ratios between them,
- * so distinct vectors tie about as rarely as for a real query.
+ * so the rest of a tie is lost.  A zero vector ties every row under cosine and
+ * inner product.  Coordinates with integer relations between them, such as
+ * multiples of the golden ratio mod 1, tie large groups of rows on binary or
+ * small-integer data.  Pseudo-random coordinates have no such relations, and
+ * the fixed seed makes every NULL scan search with the same vector.
  */
 static Vector *
 makeNullQueryStandIn(int dim)
 {
 	Vector	   *result = InitVector(dim);
+	pg_prng_state state;
 
+	pg_prng_seed(&state, 38105);
 	for (int i = 0; i < dim; i++)
-		result->x[i] = (float) fmod((i + 1) * 0.6180339887498949, 1.0);
+		result->x[i] = (float) pg_prng_double(&state);
 	return result;
 }
 

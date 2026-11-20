@@ -175,22 +175,23 @@ EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq ORDER BY v <#> (SELECT v FROM vec_n
 SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <#> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3) s;
 EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq ORDER BY v <=> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3;
 SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <=> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3) s;
--- Rescans alternating between NULL and non-NULL query vectors.
+-- Rescans alternating between NULL and non-NULL query vectors.  Both non-NULL
+-- probes are in the table, so their nearest distance is 0.
 CREATE TEMP TABLE vec_nullq_probes (pid int, q vector(3));
 INSERT INTO vec_nullq_probes VALUES (1, '[1,1,1]'), (2, NULL), (3, '[5,5,5]'), (4, NULL);
-EXPLAIN (COSTS OFF) SELECT p.pid, count(n.id) FROM vec_nullq_probes p
-  LEFT JOIN LATERAL (SELECT id FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
+EXPLAIN (COSTS OFF) SELECT p.pid, count(n.id), min(n.v <-> p.q) FROM vec_nullq_probes p
+  LEFT JOIN LATERAL (SELECT id, v FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
   GROUP BY p.pid ORDER BY p.pid;
-SELECT p.pid, count(n.id) FROM vec_nullq_probes p
-  LEFT JOIN LATERAL (SELECT id FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
+SELECT p.pid, count(n.id), min(n.v <-> p.q) FROM vec_nullq_probes p
+  LEFT JOIN LATERAL (SELECT id, v FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
   GROUP BY p.pid ORDER BY p.pid;
 -- A NULL parameter of a generic plan.
 SET plan_cache_mode = force_generic_plan;
 PREPARE vec_nullq_near(vector) AS
-  SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <-> $1 LIMIT 3) s;
+  SELECT count(*), min(d) FROM (SELECT v <-> $1 AS d FROM vec_nullq ORDER BY v <-> $1 LIMIT 3) s;
 EXPLAIN (COSTS OFF) EXECUTE vec_nullq_near(NULL);
 EXECUTE vec_nullq_near(NULL);
-EXECUTE vec_nullq_near('[1,1,1]');
+EXECUTE vec_nullq_near('[5,5,5]');
 DEALLOCATE vec_nullq_near;
 RESET plan_cache_mode;
 DROP TABLE vec_nullq_probes;
@@ -198,11 +199,11 @@ DROP TABLE vec_nullq;
 
 -- The LIMIT sent to the tablet leaves out the OFFSET, so these scans need rows
 -- from later pages of the tablet, more than vector_index_max_extra_tied_results
--- (1024) past the first.  A later page keeps only rows farther than all fetched
--- before, so a NULL query must not search with a vector that every row ties
--- with, such as a zero vector under cosine or inner product.  The inner product
--- index is on normalized vectors: on others HNSW doesn't reach every row even
--- for a non-NULL query.
+-- (1024 by default) past the first.  A later page keeps only rows farther than
+-- all fetched before, so a NULL query must not search with a vector that every
+-- row ties with, such as a zero vector under cosine or inner product.  The
+-- inner product index is on normalized vectors: on others HNSW doesn't reach
+-- every row even for a non-NULL query.
 CREATE TABLE vec_nullq_pages (id int PRIMARY KEY, v vector(3), nv vector(3)) SPLIT INTO 1 TABLETS;
 INSERT INTO vec_nullq_pages
   SELECT g, x, l2_normalize(x) FROM generate_series(1, 1500) g,
@@ -211,17 +212,17 @@ CREATE INDEX vec_nullq_pages_cos ON vec_nullq_pages USING ybhnsw (v vector_cosin
 CREATE INDEX vec_nullq_pages_ip ON vec_nullq_pages USING ybhnsw (nv vector_ip_ops);
 CREATE INDEX vec_nullq_pages_l2 ON vec_nullq_pages USING ybhnsw (v vector_l2_ops);
 EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
-  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100;
 SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
-  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100) s;
 EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
-  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100;
 SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
-  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100) s;
 EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
-  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100;
 SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
-  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1100) s;
 DROP TABLE vec_nullq_pages;
 
 CREATE TABLE vec1 (embedding vector(3));
