@@ -2958,37 +2958,6 @@ YbLockDatabaseForGlobalDdl(void)
 						   ExclusiveLock);
 }
 
-/*
- * A CREATE INDEX that builds the index across several transactions keeps the
- * lock of YbLockDatabaseForGlobalDdl as a session lock until it finishes, as
- * it keeps its lock on the table, so that no other DDL in the database runs
- * between its phases. It cannot block: the transaction already holds the
- * lock. Returns whether it took the lock, for
- * YbUnlockDatabaseForIndexBuildSession.
- */
-bool
-YbLockDatabaseForIndexBuildSession(void)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, YbDdlSerializationLockOid,
-					   InvalidOid, 0);
-	if (!LockHeldByMe(&tag, ExclusiveLock))
-		return false;
-	(void) LockAcquire(&tag, ExclusiveLock, true, false);
-	return true;
-}
-
-void
-YbUnlockDatabaseForIndexBuildSession(void)
-{
-	LOCKTAG		tag;
-
-	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, YbDdlSerializationLockOid,
-					   InvalidOid, 0);
-	LockRelease(&tag, ExclusiveLock, true);
-}
-
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {

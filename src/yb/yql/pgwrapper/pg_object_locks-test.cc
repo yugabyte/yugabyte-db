@@ -2262,9 +2262,9 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   ASSERT_OK(ddl_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"));
 }
 
-// With ysql_enable_concurrent_ddl off, a CREATE INDEX keeps the database DDL lock across its
-// phases, as it keeps its lock on the table. Another DDL in the database waits until it ends.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexHoldsDatabaseLockAcrossPhases) {
+// With ysql_enable_concurrent_ddl off, each phase of a CREATE INDEX takes the database DDL lock in
+// its transaction, so another DDL in the database waits while the CREATE INDEX waits for lockers.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexPhaseHoldsDatabaseLock) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
