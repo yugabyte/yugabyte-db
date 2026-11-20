@@ -1399,7 +1399,17 @@ RecordTransactionCommit(void)
 	nrels = smgrGetPendingDeletes(true, &rels);
 	nchildren = xactGetCommittedChildren(&children);
 	ndroppedstats = pgstat_get_transactional_drops(true, &droppedstats);
-	if (XLogStandbyInfoActive())
+
+	/*
+	 * YB: A PG transaction can commit in the middle of a DDL that runs in its
+	 * own DocDB transaction. An example of this is multi-table ANALYZE.
+	 * The pending invalidation messages still belong to the top level DDL, so
+	 * collecting them here would fail the top-of-stack check in
+	 * xactGetCommittedInvalidationMessages. These invalidation messages are
+	 * only needed for WAL replay on standbys, which YB does not do.
+	 */
+
+	if (XLogStandbyInfoActive() && YBGetDdlNestingLevel() == 0)
 		nmsgs = xactGetCommittedInvalidationMessages(&invalMessages,
 													 &RelcacheInitFileInval);
 	wrote_xlog = (XactLastRecEnd != 0);
