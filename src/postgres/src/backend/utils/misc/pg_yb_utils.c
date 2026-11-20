@@ -2944,8 +2944,7 @@ YbLockDatabaseForLegacyDdl(void)
  * The counterpart of YbLockDatabaseForLegacyDdl for a DDL with global object
  * locks (PR #38710). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
  * instead of SHARE, so DDLs with global object locks in one database also run
- * one at a time. Every DDL of the transaction takes it, so that a DDL after a
- * rolled back savepoint takes it again.
+ * one at a time.
  */
 static void
 YbLockDatabaseForGlobalDdl(void)
