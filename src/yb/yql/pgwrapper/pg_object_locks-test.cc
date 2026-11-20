@@ -2272,9 +2272,8 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlAndGlobalDdlDeadlockIsD
   const auto elapsed = MonoTime::Now() - start;
   LOG(INFO) << "legacy CREATE TABLE: " << legacy_status << ", global ALTER TABLE t: " << new_status
             << ", after " << elapsed;
-  // The detector aborts A's transaction, so L's DDL goes on.
-  ASSERT_OK(legacy_status);
-  ASSERT_NOK(new_status);
+  // The detector aborts one of the two transactions, either one, and the other's DDL goes on.
+  ASSERT_NE(legacy_status.ok(), new_status.ok());
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
 }
 
