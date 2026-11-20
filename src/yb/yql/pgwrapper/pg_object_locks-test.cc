@@ -2255,20 +2255,17 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlAndGlobalDdlDeadlockIsD
   ASSERT_OK(new_conn.Execute("BEGIN"));
   ASSERT_OK(new_conn.Execute("ALTER TABLE x ADD COLUMN c INT"));
 
-  const auto start = MonoTime::Now();
-  auto new_future = std::async(std::launch::async, [&new_conn]() -> Status {
-    return new_conn.Execute("ALTER TABLE t ADD COLUMN c INT");
-  });
-  // Neither pg_locks nor ASH shows the wait on t, so give the ALTER time to queue, and check that
-  // it is still waiting on the writer.
-  SleepFor(3s * kTimeMultiplier);
-  ASSERT_EQ(new_future.wait_for(0s), std::future_status::timeout);
   std::vector<ExternalDaemon*> tservers;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     tservers.push_back(cluster_->tablet_server(i));
   }
   LogWaiter deadlock_log(tservers, "aborted due to a deadlock");
-  // L's DDL waits on the database lock that A holds, which closes the cycle.
+  const auto start = MonoTime::Now();
+  // A's ALTER waits on L's write to t, and L's DDL waits on the database lock that A holds. The
+  // cycle forms whichever of the two waits comes first.
+  auto new_future = std::async(std::launch::async, [&new_conn]() -> Status {
+    return new_conn.Execute("ALTER TABLE t ADD COLUMN c INT");
+  });
   auto legacy_status = legacy_conn.Execute("CREATE TABLE y(k INT PRIMARY KEY)");
   ASSERT_OK(deadlock_log.WaitFor(10s * kTimeMultiplier));
   auto new_status = new_future.get();
