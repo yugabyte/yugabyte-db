@@ -73,12 +73,13 @@ class CatalogManagerBgTasks final {
   void TryResumeBackfillForTables(const LeaderEpoch& epoch, std::unordered_set<TableId>* tables);
   void ClearDeadTServerMetrics() const;
   void Run();
-  void RunOnceAsLeader(const LeaderEpoch& epoch);
+  // Writes the time spent in the cluster balancer to balancer_time.
+  void RunOnceAsLeader(const LeaderEpoch& epoch, CoarseDuration& balancer_time);
 
  private:
   void MaybeRunClusterBalancer(
       const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
-      const TabletInfoMap& tablets);
+      const TabletInfoMap& tablets, CoarseDuration& balancer_time);
 
   void ScaleUpTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch);
   Status DoScaleUpTransactionStatusTables(
@@ -100,6 +101,7 @@ class CatalogManagerBgTasks final {
   CatalogManager* catalog_manager_;
   bool was_leader_ = false;
   scoped_refptr<EventStats> cluster_balancer_duration_;
+  scoped_refptr<EventStats> bg_task_duration_;
   CoarseTimePoint last_transaction_status_check_time_;
   size_t last_live_tservers_;
 };

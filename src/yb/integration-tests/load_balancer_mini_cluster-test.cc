@@ -44,6 +44,7 @@
 #include "yb/util/status_format.h"
 
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
+METRIC_DECLARE_event_stats(catalog_manager_bg_task_duration);
 METRIC_DECLARE_event_stats(load_balancer_duration);
 METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
 METRIC_DECLARE_gauge_uint32(total_table_load_difference);
@@ -255,10 +256,16 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   auto master_metric_entity = mini_master->master()->metric_entity();
   auto stats = master_metric_entity->FindOrCreateMetric<EventStats>(
       &METRIC_load_balancer_duration);
+  auto bg_task_stats = master_metric_entity->FindOrCreateMetric<EventStats>(
+      &METRIC_catalog_manager_bg_task_duration);
   // The metric should get a value.
   ASSERT_OK(WaitFor([&] {
     return stats->MeanValue() > 0;
   }, 10s, "load_balancer_duration gets a value"));
+  // A pass can take less than 1 ms, so check that passes are recorded, not their duration.
+  ASSERT_OK(WaitFor([&] {
+    return bg_task_stats->underlying()->CurrentCount() > 0;
+  }, 10s, "catalog_manager_bg_task_duration records passes"));
 
   ASSERT_OK(mini_cluster()->StepDownMasterLeader());
 
@@ -267,6 +274,9 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   ASSERT_OK(WaitFor([&] {
     return stats->MeanValue() == 0;
   }, 10s, "load_balancer_duration value resets"));
+  ASSERT_OK(WaitFor([&] {
+    return bg_task_stats->underlying()->CurrentCount() == 0;
+  }, 10s, "catalog_manager_bg_task_duration resets"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
