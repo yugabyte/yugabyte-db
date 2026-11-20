@@ -648,7 +648,8 @@ DefineIndex(Oid relationId,
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
 	/* Use PG catalog snapshot for catalog reads */
-	const bool 	yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	const bool 	yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -2346,7 +2347,7 @@ DefineIndex(Oid relationId,
 		volatile bool yb_type_changed = false;
 		PG_TRY();
 		{
-			if (!YBCIsLegacyModeForCatalogOps() &&
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
 				GetCurrentTransactionNestLevel() == 1 &&
 				YbGetTriggerDepth() == 0)
 			{
@@ -2373,7 +2374,8 @@ DefineIndex(Oid relationId,
 			 * WaitForBackendsCatalogVersion. Hence this additional phase
 			 * isn't necessary on the target.
 			 */
-			if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+			if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+				!yb_xcluster_automatic_mode_target_ddl)
 			{
 				/*
 				 * YB: Invalidate the relcache for the parent table as backfill
@@ -2465,7 +2467,8 @@ YbDefineIndexHelper(Oid relationId,
 					Oid databaseId)
 {
 	LOCKTAG		heaplocktag;
-	bool		yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+	bool		yb_should_run_in_autonomous_transaction =
+		!YBCUsingObjectLocksGloballyForCurrentTxn();
 
 	SET_LOCKTAG_RELATION(heaplocktag, MyDatabaseId, relationId);
 
@@ -5665,7 +5668,8 @@ YbWaitForLockersOrBackendsCatalogVersion(LOCKTAG *heaplocktag,
 	 * YB: Skip WaitForLockers optimization on xCluster automatic-mode target
 	 * until GH #33155 is addressed.
 	 */
-	if (YBCIsObjectLockingEnabled() && !yb_xcluster_automatic_mode_target_ddl)
+	if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		!yb_xcluster_automatic_mode_target_ddl)
 		WaitForLockers(*heaplocktag, lockmode, false);
 	else
 		YbWaitForBackendsCatalogVersion(true);	/* error on timeout */
