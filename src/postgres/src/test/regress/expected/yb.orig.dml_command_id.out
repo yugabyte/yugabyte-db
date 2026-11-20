@@ -207,5 +207,48 @@ SELECT count(*) FROM cid_t WHERE id = 2001;
 (1 row)
 
 ROLLBACK;
-DROP TABLE cid_t, cid_t2, cid_no_pk, cid_t3, cid_k, cid_s, cid_h, cid_mvt;
-DROP FUNCTION cid_zeros(), cid_count3(), cid_count3_volatile(), cid_f(int);
+-- The rows of a statement record its command id even after a function it
+-- calls has advanced the current one: a cursor that the function opens
+-- while the statement runs sees the rows the statement wrote before.
+CREATE TABLE cid_m (k int PRIMARY KEY);
+CREATE TABLE cid_m_seen (n bigint);
+CREATE FUNCTION cid_m_peek(step int) RETURNS int LANGUAGE plpgsql VOLATILE AS $$
+DECLARE c refcursor := 'cid_m_cur'; n bigint;
+BEGIN
+  IF step = 1 THEN
+    PERFORM 1 FROM cid_m;
+    OPEN c FOR SELECT count(*) FROM cid_m;
+  ELSIF step = 3 THEN
+    FETCH c INTO n;
+    INSERT INTO cid_m_seen VALUES (n);
+    CLOSE c;
+  END IF;
+  RETURN step;
+END $$;
+INSERT INTO cid_m SELECT cid_m_peek(g) FROM generate_series(1, 4) g;
+SELECT * FROM cid_m_seen;
+ n 
+---
+ 2
+(1 row)
+
+-- A DDL that a statement runs in a function writes as its own command.
+CREATE FUNCTION cid_mk(n int) RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+  EXECUTE format('CREATE TABLE cid_mk_%s (k int PRIMARY KEY)', n);
+  EXECUTE format('INSERT INTO cid_mk_%s VALUES (%s)', n, n);
+  EXECUTE format('ALTER TABLE cid_mk_%s ADD COLUMN v int DEFAULT %s', n, n);
+  RETURN n;
+END $$;
+INSERT INTO cid_m SELECT cid_mk(g) + 100 FROM generate_series(1, 2) g;
+SELECT * FROM cid_mk_2;
+ k | v 
+---+---
+ 2 | 2
+(1 row)
+
+DROP TABLE cid_mk_1, cid_mk_2;
+DROP TABLE cid_t, cid_t2, cid_no_pk, cid_t3, cid_k, cid_s, cid_h, cid_mvt,
+  cid_m, cid_m_seen;
+DROP FUNCTION cid_zeros(), cid_count3(), cid_count3_volatile(), cid_f(int),
+  cid_m_peek(int), cid_mk(int);

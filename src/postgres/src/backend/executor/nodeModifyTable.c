@@ -4721,6 +4721,19 @@ ExecModifyTable(PlanState *pstate)
 }
 
 /*
+ * YB: The node's writes record its es_output_cid, see YbSetWriteCommandId.
+ */
+static TupleTableSlot *
+YbExecModifyTable(PlanState *pstate)
+{
+	CommandId	prev = YbSetWriteCommandId(pstate->state->es_output_cid);
+	TupleTableSlot *slot = ExecModifyTable(pstate);
+
+	YbSetWriteCommandId(prev);
+	return slot;
+}
+
+/*
  * ExecLookupResultRelByOid
  * 		If the table with given OID is among the result relations to be
  * 		updated by the given ModifyTable node, return its ResultRelInfo.
@@ -4801,7 +4814,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate = makeNode(ModifyTableState);
 	mtstate->ps.plan = (Plan *) node;
 	mtstate->ps.state = estate;
-	mtstate->ps.ExecProcNode = ExecModifyTable;
+	mtstate->ps.ExecProcNode = (IsYugaByteEnabled() ? YbExecModifyTable :
+								ExecModifyTable);
 
 	mtstate->operation = operation;
 	mtstate->canSetTag = node->canSetTag;
