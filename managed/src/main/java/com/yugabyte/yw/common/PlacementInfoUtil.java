@@ -1586,7 +1586,8 @@ public class PlacementInfoUtil {
                 BAD_REQUEST,
                 String.format(
                     "Found duplicate zone: %s in region %s in cloud %s",
-                    block.getPlacementZone(), block.getPlacementRegion(),
+                    block.getPlacementZone(),
+                    block.getPlacementRegion(),
                     block.getPlacementCloud()));
           }
         });
