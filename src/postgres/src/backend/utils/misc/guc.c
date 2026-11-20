@@ -6522,6 +6522,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_delay_after_catalog_version_increment_ms", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("When > 0, a DDL waits this long after it increments the "
+						 "catalog version and before its transaction commits."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_test_delay_after_catalog_version_increment_ms,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_delay_relation_grant_update_ms", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When > 0, GRANT and REVOKE on a relation sleep this many ms "
 						 "between reading and updating its pg_class row."),

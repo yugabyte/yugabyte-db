@@ -52,4 +52,17 @@ DECLARE_UNIQUE_INDEX_PKEY(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVer
 
 DECLARE_OID_DEFINING_MACRO(YbDdlSerializationLockOid, 8129);
 
+/*
+ * The class id of the object locks that serialize writes to
+ * pg_yb_catalog_version by transactions with global object locks. One lock per
+ * database serializes the catalog version bumps of that database, and one
+ * cluster-wide lock (database 0) serializes the bumps of all databases and the
+ * insert and delete of a database's row with every bump. Unlike a lock on the
+ * table, this lets DDLs in different databases bump their versions
+ * concurrently.
+ * No catalog row has this OID. Declaring it keeps unused_oids from handing it
+ * out, and genbki and duplicate_oids reject any catalog entry that reuses it.
+ */
+DECLARE_OID_DEFINING_MACRO(YbCatalogVersionLockOid, 8130);
+
 #endif							/* PG_YB_CATALOG_VERSION_H */

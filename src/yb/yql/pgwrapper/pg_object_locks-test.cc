@@ -4548,6 +4548,98 @@ YB_STRONGLY_TYPED_BOOL(Colocated);
 
 // Parameterized over colocated vs non-colocated so we cover both the separate index-read path
 // and the embedded index_request path used for colocated secondary indexes.
+// The catalog version bump of a DDL with global object locks locks the pg_yb_catalog_version row of
+// its database, and the bump of a DDL that changes a shared catalog locks all rows
+// (YbCatalogVersionLockOid). The first DDL waits after its bump and before it commits
+// (yb_test_delay_after_catalog_version_increment_ms), still holding those locks, while the second
+// DDL runs on another node. The second DDL commits while the first is held only when the two bump
+// the rows of different databases. Otherwise it waits, and its statement times out.
+struct CatalogVersionLockCase {
+  std::string name;
+  std::string first_db;
+  std::string first_ddl;
+  std::string second_db;
+  std::string second_ddl;
+  bool overlap;
+};
+
+class PgObjectLocksCatalogVersionLockTest
+    : public PgObjectLocksWithConcurrentDdl,
+      public ::testing::WithParamInterface<CatalogVersionLockCase> {};
+
+TEST_P(PgObjectLocksCatalogVersionLockTest, OnlyBumpsOfDifferentDatabasesOverlap) {
+  const auto& param = GetParam();
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE ROLE r1"));
+    for (const auto* db : {"db1", "db2"}) {
+      ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db));
+      auto db_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, db));
+      ASSERT_OK(db_conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+      ASSERT_OK(db_conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+    }
+  }
+  WaitForCatalogVersionToPropagate();
+
+  auto first_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, param.first_db));
+  ASSERT_OK(first_conn.ExecuteFormat(
+      "SET yb_test_delay_after_catalog_version_increment_ms = $0", 20000 * kTimeMultiplier));
+  auto first_future = std::async(std::launch::async, [&first_conn, &param]() {
+    return first_conn.Execute(param.first_ddl);
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(LoggedWaitFor([&observer, &param]() -> Result<bool> {
+    auto held = observer.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0' AND wait_event = 'PgSleep'",
+        param.first_ddl));
+    if (!held.ok()) {
+      LOG(INFO) << "pg_stat_activity: " << held.status();
+      return false;
+    }
+    return *held > 0;
+  }, 30s * kTimeMultiplier, "the first DDL to wait after its catalog version bump"));
+
+  auto second_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, param.second_db));
+  ASSERT_OK(second_conn.ExecuteFormat("SET statement_timeout = $0", 5000 * kTimeMultiplier));
+  const auto second_status = second_conn.Execute(param.second_ddl);
+  const bool second_ended_while_first_held =
+      first_future.wait_for(0s) == std::future_status::timeout;
+  const auto first_status = first_future.get();
+  LOG(INFO) << "first DDL: " << first_status << ", second DDL: " << second_status
+            << ", second ended while first held: " << second_ended_while_first_held;
+
+  ASSERT_OK(first_status);
+  if (param.overlap) {
+    ASSERT_OK(second_status);
+    ASSERT_TRUE(second_ended_while_first_held);
+  } else {
+    ASSERT_NOK(second_status);
+    ASSERT_STR_CONTAINS(
+        second_status.ToString(), "canceling statement due to statement timeout");
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    CatalogVersionBumps, PgObjectLocksCatalogVersionLockTest,
+    ::testing::Values(
+        CatalogVersionLockCase{
+            "DifferentDatabases", "db1", "ALTER TABLE a ADD COLUMN v INT", "db2",
+            "ALTER TABLE a ADD COLUMN v INT", true},
+        CatalogVersionLockCase{
+            "SameDatabase", "db1", "ALTER TABLE a ADD COLUMN v INT", "db1",
+            "ALTER TABLE b ADD COLUMN v INT", false},
+        CatalogVersionLockCase{
+            "AllDatabasesFirst", "db1", "ALTER ROLE r1 CONNECTION LIMIT 5", "db2",
+            "ALTER TABLE a ADD COLUMN v INT", false},
+        CatalogVersionLockCase{
+            "AllDatabasesSecond", "db1", "ALTER TABLE a ADD COLUMN v INT", "db2",
+            "ALTER ROLE r1 CONNECTION LIMIT 6", false}),
+    [](const ::testing::TestParamInfo<CatalogVersionLockCase>& info) {
+      return info.param.name;
+    });
+
 class PgObjectLocksWaitForBackendsIndexValid
     : public PgObjectLocksWithConcurrentDdl,
       public ::testing::WithParamInterface<Colocated> {

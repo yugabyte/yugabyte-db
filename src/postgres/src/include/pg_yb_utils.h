@@ -939,6 +939,12 @@ extern int	yb_test_delay_after_applying_inval_message_ms;
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 
 /*
+ * If > 0, a DDL waits this many ms after it increments the catalog version and
+ * before its transaction commits, with wait event PgSleep.
+ */
+extern int	yb_test_delay_after_catalog_version_increment_ms;
+
+/*
  * If > 0, GRANT/REVOKE on a relation sleeps for this many ms between reading
  * its pg_class row and writing it back.
  */

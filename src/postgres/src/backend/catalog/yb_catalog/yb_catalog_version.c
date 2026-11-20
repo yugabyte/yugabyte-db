@@ -35,6 +35,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "pg_yb_utils.h"
+#include "storage/latch.h"
 #include "storage/lmgr.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
@@ -42,6 +43,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -511,6 +513,46 @@ YbGetNewIncrementAllCatalogVersionsFunctionOid()
 	return YbGetSQLIncrementCatalogVersionFunctionOidHelper("yb_increment_all_db_catalog_versions_with_inval_messages");
 }
 
+/*
+ * Locks an object of YbCatalogVersionLockOid in database dbid, or the
+ * cluster-wide one when dbid is InvalidOid.
+ */
+static void
+YbLockCatalogVersionObject(Oid dbid, LOCKMODE lockmode)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_OBJECT(tag, dbid, YbCatalogVersionLockOid, 0, 0);
+	(void) LockAcquire(&tag, lockmode, false, false);
+
+	/* Make sure syscaches are up-to-date with any changes we waited for */
+	AcceptInvalidationMessages();
+}
+
+/*
+ * Serializes a write to the pg_yb_catalog_version row of db_oid with every
+ * other write to that row and with writes to all rows, but not with writes to
+ * the rows of other databases.
+ */
+static void
+YbLockCatalogVersionRow(Oid db_oid)
+{
+	YbLockCatalogVersionObject(InvalidOid, RowExclusiveLock);
+	YbLockCatalogVersionObject(db_oid, ExclusiveLock);
+}
+
+/*
+ * Serializes a write to all pg_yb_catalog_version rows, or an insert or delete
+ * of a row, with every other write to the table. It takes EXCLUSIVE on the
+ * cluster-wide lock that YbLockCatalogVersionRow takes ROW EXCLUSIVE on first,
+ * so a transaction never upgrades that lock.
+ */
+static void
+YbLockAllCatalogVersionRows(void)
+{
+	YbLockCatalogVersionObject(InvalidOid, ExclusiveLock);
+}
+
 static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 												bool is_breaking_change,
@@ -522,7 +564,12 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
 	if (YBCUsingObjectLocksGloballyForCurrentTxn())
-		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+	{
+		if (is_global_ddl)
+			YbLockAllCatalogVersionRows();
+		else
+			YbLockCatalogVersionRow(db_oid);
+	}
 
 	if (YbIsInvalidationMessageEnabled())
 	{
@@ -715,6 +762,10 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 													command_tag,
 													invalMessages,
 													nmsgs);
+	if (yb_test_delay_after_catalog_version_increment_ms > 0)
+		(void) WaitLatch(MyLatch, WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						 yb_test_delay_after_catalog_version_increment_ms,
+						 WAIT_EVENT_PG_SLEEP);
 	if (yb_test_fail_next_inc_catalog_version)
 	{
 		yb_test_fail_next_inc_catalog_version = false;
@@ -772,7 +823,7 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(db_oid != MyDatabaseId);
 
 	if (YBCUsingObjectLocksGloballyForCurrentTxn())
-		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+		YbLockAllCatalogVersionRows();
 
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
@@ -878,7 +929,7 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(db_oid != MyDatabaseId);
 
 	if (YBCUsingObjectLocksGloballyForCurrentTxn())
-		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+		YbLockAllCatalogVersionRows();
 
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
