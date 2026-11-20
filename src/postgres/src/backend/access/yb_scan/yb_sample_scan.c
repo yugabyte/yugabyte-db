@@ -206,6 +206,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 										   perrowcxt);
 
 			rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+			HeapTupleHeaderClearDatum(rows[numrows]->t_data);
 
 			if (syscols.ybctid != NULL)
 				HEAPTUPLE_YBCTID(rows[numrows]) =

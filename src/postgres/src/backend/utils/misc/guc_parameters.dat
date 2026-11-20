@@ -514,7 +514,7 @@
   long_desc => 'Reading a composite value whose row type was altered incompatibly after the value was created normally causes PostgreSQL to report an error. This parameter controls that behavior. Anything other than "error", i.e. "warn" or "disabled", is not safe.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'composite_type_mismatch',
-  boot_val => 'COMPOSITE_TYPE_MISMATCH_ERROR',
+  boot_val => 'COMPOSITE_TYPE_MISMATCH_DISABLED', # YB: attribute versions rely on WAL, which YB does not use; disabled for now
   options => 'composite_type_mismatch_options',
 },
 
@@ -2350,7 +2350,7 @@
   # Note that src/bin/pg_upgrade/check.c assumes GUC_LIST_QUOTE here.
   flags => 'GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_SUPERUSER_ONLY',
   variable => 'output_plugin_libraries_string',
-  boot_val => '"pgoutput, test_decoding"',
+  boot_val => '"pgoutput, test_decoding, yboutput"', # YB: add yboutput
   check_hook => 'check_output_plugin_libraries',
 },
 

@@ -101,7 +101,7 @@ static void heap_datum_check_coercion(HeapTupleHeader tup, TupleDesc targetDesc)
 
 
 /* GUC variable */
-int			composite_type_mismatch = COMPOSITE_TYPE_MISMATCH_ERROR;
+int			composite_type_mismatch = COMPOSITE_TYPE_MISMATCH_DISABLED;	/* YB: see guc_parameters.dat */
 
 
 /*
