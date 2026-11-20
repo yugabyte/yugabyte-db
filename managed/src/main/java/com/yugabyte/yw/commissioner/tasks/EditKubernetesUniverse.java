@@ -524,8 +524,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
     } else {
       UUID providerUUID = Util.getSingleProviderUUID(curIntent);
-      boolean tserverCpuChanged = false;
-      boolean tserverMemChanged = false;
+
       // KubernetesCommandExecutor treats null as new K8SNodeResourceSpec()
       // so comparing effective values
       UserIntent.K8SNodeResourceSpec curTserverK8SNodeResourceSpec =
@@ -534,27 +533,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       UserIntent.K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
           Optional.ofNullable(newIntent.getTserverK8SNodeResourceSpec(providerUUID))
               .orElse(new UserIntent.K8SNodeResourceSpec());
-      tserverCpuChanged =
+      boolean tserverCpuChanged =
           !Objects.equals(
               curTserverK8SNodeResourceSpec.cpuCoreCount,
               newTserverK8SNodeResourceSpec.cpuCoreCount);
 
-      tserverMemChanged =
+      boolean tserverMemChanged =
           !Objects.equals(
               curTserverK8SNodeResourceSpec.memoryGib, newTserverK8SNodeResourceSpec.memoryGib);
 
       boolean masterMemChanged = false;
       boolean masterCpuChanged = false;
 
+      // KubernetesCommandExecutor treats null as new K8SNodeResourceSpec()
+      // so comparing effective values
       UserIntent.K8SNodeResourceSpec curMasterK8SNodeResourceSpec =
-          curIntent.getMasterK8SNodeResourceSpec(providerUUID);
+          Optional.ofNullable(curIntent.getMasterK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
       UserIntent.K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
-          newIntent.getMasterK8SNodeResourceSpec(providerUUID);
-
+          Optional.ofNullable(newIntent.getMasterK8SNodeResourceSpec(providerUUID))
+              .orElse(new UserIntent.K8SNodeResourceSpec());
       // Skip readonly cluster since it cannot have masters anyway.
-      if (!isReadOnlyCluster
-          && curMasterK8SNodeResourceSpec != null
-          && newMasterK8SNodeResourceSpec != null) {
+      if (!isReadOnlyCluster) {
         masterCpuChanged =
             !Objects.equals(
                 curMasterK8SNodeResourceSpec.cpuCoreCount,

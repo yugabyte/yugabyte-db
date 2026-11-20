@@ -372,10 +372,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
 
-    Set<UUID> editedNodesClusterUUIDs = universeEditSpec.getClusters().stream()
-        .filter(c -> c.getNodeSpec() != null)
-        .map(c -> c.getUuid())
-        .collect(Collectors.toSet());
+    Set<UUID> editedNodesClusterUUIDs =
+        universeEditSpec.getClusters().stream()
+            .filter(c -> c.getNodeSpec() != null)
+            .map(c -> c.getUuid())
+            .collect(Collectors.toSet());
 
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
@@ -389,10 +390,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // (the mapper clears them when the node spec is passed without them).
       if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
         KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
-            cluster.clusterType,
-            cluster.userIntent,
-            false, /* overwrite */
-            confGetter);
+            cluster.clusterType, cluster.userIntent, false, /* overwrite */ confGetter);
       }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));

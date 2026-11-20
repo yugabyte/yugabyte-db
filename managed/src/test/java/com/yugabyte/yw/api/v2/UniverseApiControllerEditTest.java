@@ -1346,8 +1346,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     Universe k8sUniverse = setupKubernetesUniverseInDB();
     UUID k8sUuid = k8sUniverse.getUniverseUUID();
     UUID k8sProviderUuid =
-        UUID.fromString(
-            k8sUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+        UUID.fromString(k8sUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider);
     InstanceType.upsert(
         k8sProviderUuid, "tserver.type", 1.0, 2.0, new InstanceType.InstanceTypeDetails());
     InstanceType.upsert(
