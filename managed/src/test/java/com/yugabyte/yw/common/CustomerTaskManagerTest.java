@@ -516,6 +516,32 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
             .getStatus());
   }
 
+  @Test
+  public void testUpdateUniverseSoftwareUpgradeStateSetSkipsMissingPlacementTask() {
+    // The placement modification task may no longer exist, e.g. it was recorded against the other
+    // universe of an xCluster/DR pair and garbage collected after that universe was deleted.
+    universe = ModelFactory.createUniverse(customer.getId());
+    UUID missingTaskUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.placementModificationTaskUuid = missingTaskUuid;
+          d.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading;
+          u.setUniverseDetails(d);
+        },
+        false);
+
+    // Must not throw, as this runs during YBA startup.
+    taskManager.updateUniverseSoftwareUpgradeStateSet();
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(missingTaskUuid, universe.getUniverseDetails().placementModificationTaskUuid);
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
+        universe.getUniverseDetails().softwareUpgradeState);
+  }
+
   private CustomerTask createYbaBackupTask(TaskType taskType) {
     TaskInfo taskInfo = new TaskInfo(taskType, null);
     taskInfo.setUuid(UUID.randomUUID());

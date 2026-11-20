@@ -90,6 +90,8 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     MockitoAnnotations.initMocks(this);
     defaultCustomer = ModelFactory.testCustomer();
     when(mockRuntimeConfFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
+    // CustomerTaskDeletionValidator looks up the task UUID before delegating to isDeletable().
+    when(mockCustomerTask.getTaskUUID()).thenReturn(UUID.randomUUID());
     taskGarbageCollector =
         new TaskGarbageCollector(mockPlatformScheduler, mockRuntimeConfFactory, mockConfGetter);
     defaultRegistry.clear();
@@ -379,5 +381,44 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     checkCounters(defaultCustomer.getUuid(), 1.0, 0.0, null, null);
     assertNotNull(CustomerTask.get(owningTask.getId()));
     assertNotNull(CustomerTask.get(newerTask.getId()));
+  }
+
+  @Test
+  public void testKeepTaskReferencedByOtherUniverseAfterTargetDeleted() {
+    // A DR/xCluster task is recorded against the source but also freezes the target.
+    Universe source = ModelFactory.createUniverse("source", defaultCustomer.getId());
+    Universe target = ModelFactory.createUniverse("target", defaultCustomer.getId());
+    CustomerTask drTask =
+        createCompletedUniverseTask(
+            source,
+            CustomerTask.TaskType.Pause,
+            Date.from(Instant.now().minus(Duration.ofDays(2))));
+    for (Universe universe : List.of(source, target)) {
+      Universe.saveDetails(
+          universe.getUniverseUUID(),
+          u -> {
+            UniverseDefinitionTaskParams details = u.getUniverseDetails();
+            details.placementModificationTaskUuid = drTask.getTaskUUID();
+            u.setUniverseDetails(details);
+          });
+    }
+    source.delete();
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, Collections.singletonList(drTask));
+    checkCounters(defaultCustomer.getUuid(), 1.0, 0.0, null, null);
+    assertNotNull(CustomerTask.get(drTask.getId()));
+    assertTrue(TaskInfo.maybeGet(drTask.getTaskUUID()).isPresent());
+
+    // Once the target no longer references it, the task is deleted.
+    Universe.saveDetails(
+        target.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.placementModificationTaskUuid = null;
+          u.setUniverseDetails(details);
+        });
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, Collections.singletonList(drTask));
+    checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 1.0, 1.0);
+    assertNull(CustomerTask.get(drTask.getId()));
+    assertFalse(TaskInfo.maybeGet(drTask.getTaskUUID()).isPresent());
   }
 }

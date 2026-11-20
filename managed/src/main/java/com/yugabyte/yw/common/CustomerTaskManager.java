@@ -583,12 +583,14 @@ public class CustomerTaskManager {
     Set<UUID> universeUUIDSet = Universe.getAllUUIDs();
     for (UUID uuid : universeUUIDSet) {
       Universe universe = Universe.getOrBadRequest(uuid);
-      Customer customer = Customer.get(universe.getCustomerId());
       UUID placementModificationTaskUuid =
           universe.getUniverseDetails().placementModificationTaskUuid;
       if (placementModificationTaskUuid != null) {
-        CustomerTask placementModificationTask =
-            CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
+        Optional<CustomerTask> optional = CustomerTask.maybeGet(placementModificationTaskUuid);
+        if (optional.isEmpty()) {
+          continue;
+        }
+        CustomerTask placementModificationTask = optional.get();
         Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(placementModificationTask.getTaskUUID());
         if (taskInfo.isPresent()) {
           TaskInfo lastTaskInfo = taskInfo.get();

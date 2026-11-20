@@ -67,7 +67,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-import play.libs.concurrent.HttpExecutionContext;
+import play.libs.concurrent.ClassLoaderExecutionContext;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -81,10 +81,7 @@ public class UniverseInfoController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private RuntimeConfGetter confGetter;
   @Inject private UniverseInfoHandler universeInfoHandler;
-  @Inject private HttpExecutionContext ec;
-
-  private static final String YSQL_USERNAME_HEADER = "ysql-username";
-  private static final String YSQL_PASSWORD_HEADER = "ysql-password";
+  @Inject private ClassLoaderExecutionContext ec;
 
   /**
    * API that checks the status of the the tservers and masters in the universe.
