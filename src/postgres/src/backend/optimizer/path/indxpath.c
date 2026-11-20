@@ -19,6 +19,7 @@
 
 #include "access/stratnum.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
@@ -3003,6 +3004,10 @@ match_clause_to_indexcol(IndexOptInfo *index,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		if (!plain_op && index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return false;
+
 		/*
 		 * If the column in the filter clause is part of the hash key for this
 		 * index and the clause uses an inequality operator, then index scan

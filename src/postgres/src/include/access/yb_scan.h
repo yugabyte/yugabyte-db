@@ -307,6 +307,9 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
+
+extern bool YbCanBindSearchArray(StrategyNumber strategy);
+
 /*
  * Used in Agg node init phase to determine whether YB preliminary check or PG
  * recheck may be needed.

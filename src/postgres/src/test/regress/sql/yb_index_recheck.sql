@@ -8,6 +8,8 @@
 --- 2. Incomplete bindings to hash keys.
 --- 3. Conditions whose operands don’t match in type. (including UDTs)
 --- 4. Unsupported RowComparisonExpressions
+--- 5. Non-equality SAOP conditions, which are filters rather than index
+---    conditions.
 
 \set explain_analyze 'EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)'
 SET enable_seqscan = off;
@@ -185,3 +187,37 @@ INSERT INTO test_multiple_rechecks SELECT i, j, k FROM generate_series(1, 10) i,
 :explain_analyze /*+ IndexScan(t) */ SELECT * FROM test_multiple_rechecks t WHERE ROW(a, b) < ROW(4, 4) AND c IN (1, 2, 3, 4, 5, 6) AND c < 4;
 
 DROP TABLE test_multiple_rechecks;
+
+--- - ---
+--- 5 --- Non-equality SAOP (#35030)
+--- - ---
+
+CREATE TABLE t_nonequality_saop(g int, k int, PRIMARY KEY(g ASC, k ASC));
+INSERT INTO t_nonequality_saop SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+
+-- Test non-equality SAOP with no other condition on its column
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{NULL,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k > ANY ('{}');
+
+-- Test Inequality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+:explain_analyze SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_saop) */ SELECT * FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+RESET yb_enable_bitmapscan;
+
+-- Test Equality + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
+
+-- Test SAOP + non-equality SAOP
+:explain_analyze SELECT * FROM t_nonequality_saop WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+
+-- Test Inequality + non-equality SAOP different types
+PREPARE nonequality_saop_count(bigint[]) AS SELECT count(*) FROM t_nonequality_saop WHERE g = 0 AND k >= 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_saop_count('{5,3000000000}');
+EXECUTE nonequality_saop_count('{5,3000000000}');
+DEALLOCATE nonequality_saop_count;
+
+DROP TABLE t_nonequality_saop;
