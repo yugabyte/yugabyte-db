@@ -64,6 +64,12 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     runtimeConfigs?.configEntries?.find(
       (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
     )?.value === 'true';
+
+  const isConnectionPoolEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
+    )?.value === 'true';
+
   // Prefer Advanced ports on remount so Database and Advanced stay in sync.
   // Internal YSQL falls back to the default when connection pooling is off.
   const providerCode = generalSettings?.providerConfiguration?.code ?? generalSettings?.cloud;
@@ -167,11 +173,13 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledPanel>
           <StyledHeader>{t('databaseSettings.features')}</StyledHeader>
           <StyledContent sx={{ gap: '16px' }}>
-            <ConnectionPoolingField
-              disabled={false}
-              dbVersion={generalSettings?.databaseVersion ?? ''}
-              hideOverridePorts={hideOverridePorts}
-            />
+            {isConnectionPoolEnabled && (
+              <ConnectionPoolingField
+                disabled={false}
+                dbVersion={generalSettings?.databaseVersion ?? ''}
+                hideOverridePorts={hideOverridePorts}
+              />
+            )}
             <PGCompatibiltyField
               disabled={false}
               dbVersion={generalSettings?.databaseVersion ?? ''}
