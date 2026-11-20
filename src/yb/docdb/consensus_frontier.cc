@@ -378,7 +378,9 @@ void ConsensusFrontier::Update(
     UpdateField(
         &split_min_chunk_serial_no_, rhs.split_min_chunk_serial_no_,
         storage::UpdateUserValueType::kLargest);
-    // Both watermarks only grow, so the maximum is the latest one.
+    // A value stays valid once written, so the highest one written holds. A lower one can follow:
+    // the later chunks of a large apply carry its index again, and intents removals record zero
+    // while enable_wal_retention_for_unremoved_intents is off.
     txn_apply_op_index_ = std::max(txn_apply_op_index_, rhs.txn_apply_op_index_);
   }
 }
