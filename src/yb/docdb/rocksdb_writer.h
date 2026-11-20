@@ -499,6 +499,9 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
 
   // Released by WriteApplied, at the latest on destruction.
   vector_index::VectorLSMChunkHolds chunk_holds_;
+
+  // Shared by all records the op applies, see Apply.
+  std::optional<VectorIndexesUpdater> vector_indexes_updater_;
 };
 
 // Context class for dumping intents records for a transaction.
