@@ -324,10 +324,6 @@ Depending on the mode, perform DDL changes on databases in replication for xClus
 
 Perform DDL operations on the DR primary universe only. All schema changes are automatically replicated to the DR replica universe.
 
-{{< warning title="Do not pause replication while DDL statements are replicating" >}}
-In v2025.2.9.0, pausing replication while a DDL statement is being applied on the DR replica terminates that DDL on the replica. This behavior is specific to v2025.2.9.0 and does not occur in earlier versions. The issue will be fixed in a later release.
-{{< /warning >}}
-
   {{% /tab %}}
 
   {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
