@@ -157,6 +157,9 @@ analyze ce.s;
 --            '/p' rows repeat them with distinct pushdown off (plain inner
 --            scan, DISTINCT resolved above the join) and run only for the
 --            queries flagged distinct_inner.
+-- query_method_hints : hints added to a method's hint for one query, where
+--            the method's own hint does not give the scans the test compares.
+--            A test fills it together with queries.
 ------------------------------------------------------------------------------
 drop table if exists queries cascade;
 create table queries (qid int primary key, descr text, query text,
@@ -178,6 +181,21 @@ insert into methods values
                                                                      'Merge Join',          true),
     (14, 'NL/p',  'NL',  'Leading((s r)) NestLoop(s r) Set(yb_enable_distinct_pushdown off)',
                                                                      'Nested Loop',         true);
+
+drop table if exists query_method_hints cascade;
+create table query_method_hints (qid int, label text, hint text not null,
+                                 primary key (qid, label));
+
+-- The hint a method runs a query with: the method's own hint, then the
+-- query's hints for the method, if any.
+drop function if exists method_hint cascade;
+create function method_hint(qid int, label text, hint text) returns text
+language sql stable as
+$$
+    select hint || coalesce(
+        (select ' ' || h.hint from query_method_hints h
+         where h.qid = method_hint.qid and h.label = method_hint.label), '');
+$$;
 
 -- Run a single base query with the supplied hint comment under
 -- EXPLAIN (FORMAT JSON) and return the plan tree.  With exec (the default)
@@ -320,7 +338,8 @@ select
 from
     queries q,
     methods m,
-    lateral explain_join_json(m.hint, q.query, false) plan,
+    lateral explain_join_json(method_hint(q.qid, m.label, m.hint), q.query,
+                              false) plan,
     lateral (select plan->0->'Plan') r0(root),
     lateral (
         select jsonb_path_query_first(
@@ -368,7 +387,8 @@ select
 from
     queries q,
     methods m,
-    lateral explain_join_json(m.hint, q.query) plan,
+    lateral explain_join_json(method_hint(q.qid, m.label, m.hint),
+                              q.query) plan,
     lateral (select plan->0)         s0(summary),
     lateral (select plan->0->'Plan') r0(root),
     lateral (
