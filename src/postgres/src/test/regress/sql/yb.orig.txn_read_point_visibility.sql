@@ -35,7 +35,7 @@ $$ LANGUAGE plpgsql VOLATILE;
 
 -- Populate the catalog caches so that no catalog reads occur during the
 -- actual test. This is done because if we are using the legacy mode of
--- catalog reads (i.e., ysql_enable_concurrent_ddl=false) with
+-- catalog reads (i.e., object locking off) with
 -- yb_ddl_transaction_block_enabled=true, then catalog reads use the same
 -- read snapshot as the first read and end up saving the statement's read time
 -- in the read point history and hide the bug.
