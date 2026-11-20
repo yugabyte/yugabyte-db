@@ -32,7 +32,6 @@ namespace yb {
 namespace cdc {
 
 YB_DEFINE_ENUM(SchemaChangeBelowSafeTime, (kRenameColumn)(kRolledBackAddColumn));
-YB_STRONGLY_TYPED_BOOL(TransactionalDdl);
 
 class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {
  public:
@@ -1323,16 +1322,6 @@ void SetRejectMode(
   }
 }
 
-template <class Tuple>
-std::vector<std::string> SortedColumnNames(const Tuple& tuple) {
-  std::vector<std::string> names;
-  for (const auto& column : tuple) {
-    names.push_back(column.column_name());
-  }
-  std::sort(names.begin(), names.end());
-  return names;
-}
-
 }  // namespace
 
 // A CHANGE_METADATA_OP is not MVCC-tracked, so the leader's safe time can pass its hybrid time
@@ -1346,7 +1335,6 @@ void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
   ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
   // A leader move would let the old leader's followers commit the op without the window.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
@@ -1370,7 +1358,7 @@ void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
   // back. With transactional DDL, both run in a block that is rolled back.
   const bool rolled_back =
       transactional_ddl || change == SchemaChangeBelowSafeTime::kRolledBackAddColumn;
-  const std::vector<std::string> expected_columns{"a", rolled_back ? "b" : "c", "d"};
+  const std::string changed_column = rolled_back ? "b" : "c";
 
   auto ddl_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto* sync_point = SyncPoint::GetInstance();
@@ -1459,10 +1447,9 @@ void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
       held_resp.safe_hybrid_time(), /* wal_segment_index = */ 0, /* expected_records_count = */ 1);
   ASSERT_EQ(changes.record_count[2], 1);
   for (const auto& record : changes.records) {
-    const auto& row = record.row_message();
-    if (row.op() == RowMessage::UPDATE) {
-      ASSERT_EQ(SortedColumnNames(row.new_tuple()), expected_columns) << row.ShortDebugString();
-      ASSERT_EQ(SortedColumnNames(row.old_tuple()), expected_columns) << row.ShortDebugString();
+    if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_NO_FATALS(CheckRecordTuples(
+          record, {"a", "d", changed_column}, {"a", changed_column, "d"}));
     }
   }
 }

@@ -193,6 +193,7 @@ namespace cdc {
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 YB_STRONGLY_TYPED_BOOL(RetryInit);
+YB_STRONGLY_TYPED_BOOL(TransactionalDdl);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
