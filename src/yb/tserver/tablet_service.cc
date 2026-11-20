@@ -108,6 +108,7 @@
 #include "yb/tserver/tablet_flusher.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tier_migration_reconciler.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"
@@ -1023,7 +1024,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   for (const auto& idx : req->indexes()) {
     index_ids.push_back(idx.table_id());
     if (is_pg_table) {
-      indexes_to_backfill.emplace_back(idx);
+      indexes_to_backfill.emplace_back(idx, HybridTime::kInvalid);
       continue;
     }
     auto result = index_map->FindIndex(idx.table_id());
@@ -1960,7 +1961,9 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->namespace_id(),
       req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
-      req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
+      req->has_index_info()
+          ? std::make_optional<qlexpr::IndexInfo>(req->index_info(), HybridTime::kInvalid)
+          : std::nullopt,
       0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
       tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
@@ -2256,35 +2259,6 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
 }
 
 namespace {
-
-TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus::State state) {
-  switch (state) {
-    case tablet::TierMigrationStatus::State::kNone:
-      return TierMigrationStatusPB::NONE;
-    case tablet::TierMigrationStatus::State::kInProgress:
-      return TierMigrationStatusPB::IN_PROGRESS;
-    case tablet::TierMigrationStatus::State::kDone:
-      return TierMigrationStatusPB::DONE;
-    case tablet::TierMigrationStatus::State::kFailed:
-      return TierMigrationStatusPB::FAILED;
-  }
-  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, state);
-}
-
-void FillTierMigrationStatusPB(
-    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
-  pb->set_state(ToTierMigrationStatePB(status.state));
-  pb->set_migration_pass_in_flight(status.migration_pass_in_flight);
-  pb->set_files_total(status.files_total);
-  pb->set_files_moved(status.files_moved);
-  pb->set_files_failed(status.files_failed);
-  pb->set_files_deferred(status.files_deferred);
-  pb->set_obsoleted(status.obsoleted);
-  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
-  if (!status.last_error.ok()) {
-    pb->set_last_error(status.last_error.ToString());
-  }
-}
 
 // Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
 // caller never believes a migration was started or reads tier info that nothing maintains.

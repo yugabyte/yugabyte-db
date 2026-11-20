@@ -778,10 +778,15 @@ class VectorMetadataFilter {
 
     // Make sure extracted entry matches the specified key.
     if (!entry || !entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      // No mapping entry for the tombstone: either it was already removed, e.g. by an earlier
-      // iteration of this post-split compaction, or it will be written when a committed transaction
-      // is applied. Such a transaction started before the tombstone was written. A kept tombstone
-      // is removed later by a regular compaction, like any other tombstone.
+      // No mapping entry for the tombstone. Either it was already removed, e.g. by an earlier
+      // iteration of this post-split compaction, or the transaction which wrote the vector is
+      // committed but not applied yet and writes the entry at apply time, below the tombstone.
+      // That transaction started before the tombstone was written and counts as running until it
+      // is applied, so min running is not newer than its start: a tombstone which is not older
+      // than min running is kept, and is removed later by a regular compaction. On an xCluster
+      // target, min running is kMin while the tablet holds external intents of such a transaction.
+      // On a non-transactional target, a regular compaction can remove the tombstone before
+      // the apply, see GH #38648.
       EncodedDocHybridTime encoded_doc_ht;
       RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
       const auto keep = encoded_doc_ht >= encoded_min_running_ht_;

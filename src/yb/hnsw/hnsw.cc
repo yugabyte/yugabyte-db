@@ -27,6 +27,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/vector_index/vector_index_if.h"
@@ -132,10 +133,6 @@ class TenantDirectoryBlock {
       : size_(Load<uint32_t, HnswEndian>(data)),
         ends_(data + sizeof(uint32_t)),
         entries_(ends_ + size_ * sizeof(uint32_t)) {}
-
-  size_t size() const {
-    return size_;
-  }
 
   Slice tenant(size_t index) const {
     return Slice(entries_ + Begin(index), entries_ + End(index) - sizeof(VectorNo));
@@ -758,15 +755,17 @@ Status YbHnsw::Init(const std::string& path) {
 Result<YbHnsw::SearchResult> YbHnsw::Search(
     const std::byte* query_vector, const vector_index::SearchOptions& options,
     YbHnswSearchContext& context) const {
+  const bool has_tenants = header_.num_tenant_directory_blocks;
+  SCHECK(has_tenants || options.tenant.empty(), InvalidArgument,
+         "Tenant search of a vector index without tenants");
+  SCHECK(!has_tenants || !options.tenant.empty(), InvalidArgument,
+         "Search of a vector index with tenants without a tenant");
   SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
   SearchResult result;
-  if (!header_.num_tenant_directory_blocks) {
-    DCHECK(options.tenant.empty());
+  if (!has_tenants) {
     result = SearchFrom(query_vector, header_.entry, options, context);
-  } else if (options.tenant.empty()) {
-    result = SearchAllTenants(query_vector, options, context);
   } else if (auto entry = FindTenantEntry(options.tenant, context.search_cache)) {
     result = SearchFrom(query_vector, *entry, options, context);
   }
@@ -794,38 +793,6 @@ YbHnsw::SearchResult YbHnsw::SearchFrom(
       query_vector, entry, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
-}
-
-YbHnsw::SearchResult YbHnsw::SearchAllTenants(
-    const std::byte* query_vector, const vector_index::SearchOptions& options,
-    YbHnswSearchContext& context) const {
-  // Further first, like context.top.
-  YbHnswSearchContext::Top top;
-  const auto limit = options.max_num_results;
-  for (size_t block = 0; block != header_.num_tenant_directory_blocks; ++block) {
-    auto data = context.search_cache.Data(header_.tenant_directory_block + block);
-    if (!data) {
-      return {};
-    }
-    TenantDirectoryBlock directory(data);
-    for (size_t i = 0; i != directory.size(); ++i) {
-      auto [best_vector, best_dist] = SearchInNonBaseLayers(
-          query_vector, directory.entry(i), context.search_cache);
-      SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
-      if (!context.search_cache.status().ok()) {
-        return {};
-      }
-      for (const auto& entry : context.top.data()) {
-        if (top.size() < limit) {
-          top.push(entry);
-        } else if (limit && entry.first < top.top().first) {
-          top.replace_top(entry);
-        }
-      }
-    }
-  }
-  context.top.swap(top);
-  return MakeResult(limit, context);
 }
 
 size_t YbHnsw::VectorLevel(VectorNo vector) const {

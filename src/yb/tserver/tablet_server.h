@@ -117,6 +117,7 @@ namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
+struct PgClientServiceHolder;
 class TabletServiceBackupImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
@@ -443,6 +444,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TserverXClusterContextIf& GetXClusterContext() const;
 
+  bool IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const override;
+
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
@@ -711,8 +714,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
   std::weak_ptr<TabletServiceBackupImpl> backup_service_;
-
-  struct PgClientServiceHolder;
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

@@ -858,7 +858,7 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(OnlineIndexBirthTimeFinalOn
     auto info = VERIFY_RESULT(client->GetYBTableInfoById(index_id, /* include_hidden = */ false));
     SCHECK(info.index_info, IllegalState, "index table has no index_info");
     return info.index_info->birth_time_state() == IndexInfoPB::BIRTH_TIME_FINAL &&
-           info.index_info->birth_time() != 0;
+           info.index_info->birth_time().is_valid();
   }, 30s * kTimeMultiplier, "Wait for the master to finalize the index birth time"));
 }
 

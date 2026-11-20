@@ -313,7 +313,12 @@ DuckdbSubXactCallback_Cpp(SubXactEvent event) {
 		return;
 	}
 
-	if (event == SUBXACT_EVENT_START_SUB) {
+	/*
+	 * YB: READ COMMITTED starts a new internal subtransaction for every statement in a transaction
+	 * block, so without this exception every statement after the first DuckDB one would fail here.
+	 */
+	if (event == SUBXACT_EVENT_START_SUB &&
+	    (!IsYBReadCommitted() || YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */))) {
 		throw duckdb::NotImplementedException("SAVEPOINT is not supported in DuckDB");
 	}
 }

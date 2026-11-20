@@ -333,6 +333,7 @@ TableInfo::~TableInfo() = default;
 void TableInfo::CompleteInit() {
   if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
+    LOG_IF(DFATAL, !index_info->birth_time()) << "Vector index without birth time: " << ToString();
   }
 
   if (!index_info || !index_info->is_unique()) {
@@ -380,7 +381,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
   if (pb.has_index_info()) {
-    index_info.reset(new IndexInfo(pb.index_info()));
+    index_info.reset(new IndexInfo(pb.index_info(), hybrid_time));
   }
   index_map->FromPB(pb.indexes());
   schema_version = pb.schema_version();
@@ -728,7 +729,7 @@ Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_
   IndexInfoPB index_info_pb;
   target->index_info->ToPB(&index_info_pb);
   *index_info_pb.mutable_vector_idx_options() = source_options;
-  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb);
+  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb, target->hybrid_time);
   target->doc_read_context->vector_idx_options = source_options;
   return Status::OK();
 }
@@ -2967,7 +2968,7 @@ void FinalizeIndexBirthTime(
     index_info_pb.clear_birth_time_state();
     index_info_pb.clear_birth_time_pending_txn_id();
   }
-  table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+  table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb, table_info->hybrid_time));
 }
 
 } // namespace
