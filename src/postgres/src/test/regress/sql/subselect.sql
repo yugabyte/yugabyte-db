@@ -540,6 +540,18 @@ from
   join
   int4_tbl i4 on dummy = i4.f1;
 
+-- Likewise, but with the sublink inserted into a whole-row reference.
+
+select 1 from ((select (select 1) as x) ss1 cross join int4_tbl i4) j
+  where (select 1 where j is null) is null;
+
+select 1 from ((select (select 1) as x) ss1 cross join int4_tbl i4) j
+  where (1, 1) in (select (j is null)::int, count(*) from int4_tbl);
+
+select 1 from ((select (select 1) as x) ss1 cross join int4_tbl i4) j
+  where exists (select 1 from int4_tbl
+                tablesample system ((j is null)::int * 100));
+
 --
 -- Test case for subselect within UPDATE of INSERT...ON CONFLICT DO UPDATE
 --
@@ -725,6 +737,19 @@ select sum(ss.tst::int) from
          random() as r
   from onek i where i.unique1 = o.unique1 ) ss
 where o.ten = 0;
+
+--
+-- Test rescan of a hashed subplan that is referenced more than once (here
+-- the equivalence class produces two copies of it in the scan filter)
+--
+explain (costs off)
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
+
+select i4.f1, (select count(*) from onek
+               where two = four and two = (0 in (select i4.f1))::int)
+from int4_tbl i4 order by i4.f1;
 
 --
 -- Test rescan of a hashed SetOp node
@@ -993,6 +1018,122 @@ select * from
   where ss.v;
 
 drop function tattle(x int, y int);
+
+--
+-- check that an upper-level qual is not pushed down if its operator is from a
+-- different btree opfamily than the subquery's grouping eqop
+--
+BEGIN;
+
+CREATE TYPE t_rec AS (x numeric);
+CREATE TEMP TABLE pdt (id int, a t_rec);
+INSERT INTO pdt VALUES
+  (1, ROW(1.00)::t_rec),
+  (2, ROW(1.0)::t_rec),
+  (3, ROW(2)::t_rec);
+
+-- DISTINCT ON: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT ON (a) id, a FROM pdt ORDER BY a, id) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT DISTINCT ON (a) id, a FROM pdt ORDER BY a, id) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- Window function PARTITION BY: conflict, qual stays outside the WindowAgg
+EXPLAIN (COSTS OFF)
+SELECT * FROM (
+  SELECT id, a, count(*) OVER (PARTITION BY a) AS cnt FROM pdt
+) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (
+  SELECT id, a, count(*) OVER (PARTITION BY a) AS cnt FROM pdt
+) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- Plain DISTINCT: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT a FROM pdt) s WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT DISTINCT a FROM pdt) s WHERE a *= ROW(1.0)::t_rec;
+
+-- Positive: compatible opfamily, safe to push past the grouping
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT ON (a) id, a FROM pdt ORDER BY a, id) s
+WHERE a = ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT DISTINCT ON (a) id, a FROM pdt ORDER BY a, id) s
+WHERE a = ROW(1.0)::t_rec;
+
+-- Simple CASE: the arg is compared by each WHEN, so the same rules apply.
+-- The relabeled arg is compared by oid's "=", not the grouping eqop.
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT id FROM pdt) s
+WHERE (CASE id::oid WHEN 1 THEN 1 ELSE 0 END) = 1;
+
+-- Positive: compatible opfamily, safe to push past the grouping
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT DISTINCT id FROM pdt) s
+WHERE (CASE id WHEN 1 THEN 1 ELSE 0 END) = 1;
+
+-- Set operations: any operation other than UNION ALL groups rows by equality,
+-- so the same opfamily-mismatch rules apply.
+CREATE TEMP TABLE u1 (a t_rec);
+CREATE TEMP TABLE u2 (a t_rec);
+INSERT INTO u1 VALUES (ROW(1.00)::t_rec), (ROW(1.0)::t_rec);
+INSERT INTO u2 VALUES (ROW(1.0)::t_rec);
+
+-- UNION: conflict, qual stays in outer query
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT a FROM u1 UNION SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT a FROM u1 UNION SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- INTERSECT: same
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT a FROM u1 INTERSECT SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT a FROM u1 INTERSECT SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- INTERSECT ALL: still groups
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT a FROM u1 INTERSECT ALL SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT a FROM u1 INTERSECT ALL SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- UNION ALL of (UNION ...): an inner grouping node still exposes the
+-- conflict to a qual pushed down through the outer UNION ALL.
+EXPLAIN (COSTS OFF)
+SELECT * FROM (
+  (SELECT a FROM u1 UNION SELECT a FROM u2)
+  UNION ALL
+  SELECT a FROM u2
+) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (
+  (SELECT a FROM u1 UNION SELECT a FROM u2)
+  UNION ALL
+  SELECT a FROM u2
+) s
+WHERE a *= ROW(1.0)::t_rec;
+
+-- UNION ALL only: no grouping anywhere, pushdown remains allowed.
+EXPLAIN (COSTS OFF)
+SELECT * FROM (SELECT a FROM u1 UNION ALL SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+SELECT * FROM (SELECT a FROM u1 UNION ALL SELECT a FROM u2) s
+WHERE a *= ROW(1.0)::t_rec;
+
+ROLLBACK;
 
 --
 -- Test that LIMIT can be pushed to SORT through a subquery that just projects
@@ -1631,5 +1772,46 @@ CREATE OPERATOR ?= (
 EXPLAIN (COSTS OFF)
 SELECT * FROM not_null_tab
 WHERE NOT id ?= ANY (SELECT id FROM not_null_tab);
+
+-- No ANTI JOIN: the inner side has an unvalidated NOT NULL constraint, so
+-- the column might contain NULLs.
+CREATE TEMP TABLE notnull_notvalid_tab (id int);
+INSERT INTO notnull_notvalid_tab VALUES (NULL);
+ALTER TABLE notnull_notvalid_tab ADD CONSTRAINT nn NOT NULL id NOT VALID;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM not_null_tab
+WHERE id NOT IN (SELECT id FROM notnull_notvalid_tab);
+
+-- NOT IN with NULL on inner side should return no rows
+SELECT * FROM not_null_tab
+WHERE id NOT IN (SELECT id FROM notnull_notvalid_tab);
+
+-- No ANTI JOIN: the sub-select's output is an upper-level Var, so the
+-- sub-select's own quals tell us nothing about its nullability
+INSERT INTO null_tab VALUES (1, NULL);
+INSERT INTO not_null_tab VALUES (2, 2);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM null_tab t1
+WHERE COALESCE(t1.id, -1) NOT IN
+    (SELECT t1.val FROM not_null_tab t2 WHERE t2.val IS NOT NULL);
+
+-- NOT IN with NULL on inner side should return no rows
+SELECT * FROM null_tab t1
+WHERE COALESCE(t1.id, -1) NOT IN
+    (SELECT t1.val FROM not_null_tab t2 WHERE t2.val IS NOT NULL);
+
+-- No ANTI JOIN: the inner operand is coerced by a cast function that can
+-- return NULL for a non-null input
+CREATE FUNCTION int4_to_text_nullable(int4) RETURNS text
+    AS 'SELECT CASE WHEN $1 <> 0 THEN $1::varchar END'
+    LANGUAGE sql IMMUTABLE STRICT;
+CREATE CAST (int4 AS text) WITH FUNCTION int4_to_text_nullable(int4) AS IMPLICIT;
+CREATE TEMP TABLE not_null_text_tab (t text NOT NULL);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM not_null_text_tab
+WHERE t NOT IN (SELECT id FROM not_null_tab);
 
 ROLLBACK;

@@ -112,6 +112,20 @@ static uint32 pgfdw_we_get_result = 0;
  */
 #define RETRY_CANCEL_TIMEOUT	1000
 
+/*
+ * Macro for constructing commit command to be sent
+ *
+ * We synchronize the read/write mode before committing remote transactions
+ * so deferred triggers on remote servers can run in the right mode.
+ */
+#define CONSTRUCT_COMMIT_COMMAND(sql, entry) \
+	do { \
+		if ((read_only_level > 0) && !(entry)->xact_read_only) \
+			strcpy((sql), "SET TRANSACTION READ ONLY; COMMIT TRANSACTION"); \
+		else \
+			strcpy((sql), "COMMIT TRANSACTION"); \
+	} while(0)
+
 /* Macro for constructing abort command to be sent */
 #define CONSTRUCT_ABORT_COMMAND(sql, entry, toplevel) \
 	do { \
@@ -638,17 +652,35 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 		const char **keywords;
 		const char **values;
 		char	   *appname;
+		PGconn	   *start_conn;
 
 		construct_connection_params(server, user, &keywords, &values, &appname);
+
+		/*
+		 * Final security check on proxied keywords. Note that expand_dbname
+		 * is false below; we don't need to worry about parsing dbname itself.
+		 */
+		for (int i = 0; keywords[i]; i++)
+		{
+			if (!libpqsrv_is_valid_proxy_option(keywords[i]))
+				ereport(ERROR,
+						errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						errmsg("permission denied to set connection option \"%s\"",
+							   keywords[i]));
+		}
 
 		/* first time, allocate or get the custom wait event */
 		if (pgfdw_we_connect == 0)
 			pgfdw_we_connect = WaitEventExtensionNew("PostgresFdwConnect");
 
 		/* OK to make connection */
-		conn = libpqsrv_connect_params(keywords, values,
-									   false,	/* expand_dbname */
-									   pgfdw_we_connect);
+		start_conn =
+			libpqsrv_connect_params_start(keywords, values,
+										   /* expand_dbname = */ false);
+		PQsetNoticeReceiver(start_conn, libpqsrv_notice_receiver,
+							"received message via remote connection");
+		libpqsrv_connect_complete(start_conn, pgfdw_we_connect);
+		conn = start_conn;
 
 		if (!conn || PQstatus(conn) != CONNECTION_OK)
 			ereport(ERROR,
@@ -656,9 +688,6 @@ connect_pg_server(ForeignServer *server, UserMapping *user)
 					 errmsg("could not connect to server \"%s\"",
 							server->servername),
 					 errdetail_internal("%s", pchomp(PQerrorMessage(conn)))));
-
-		PQsetNoticeReceiver(conn, libpqsrv_notice_receiver,
-							"received message via remote connection");
 
 		/* Perform post-connection security checks. */
 		pgfdw_security_check(keywords, values, user, conn);
@@ -715,12 +744,18 @@ UserMappingPasswordRequired(UserMapping *user)
 	return true;
 }
 
+/*
+ * Return whether SCRAM pass-through is enabled.
+ *
+ * If use_scram_passthrough is specified in both the foreign server
+ * and the user mapping, the user mapping setting takes precedence.
+ */
 static bool
 UseScramPassthrough(ForeignServer *server, UserMapping *user)
 {
 	ListCell   *cell;
 
-	foreach(cell, server->options)
+	foreach(cell, user->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
 
@@ -728,7 +763,7 @@ UseScramPassthrough(ForeignServer *server, UserMapping *user)
 			return defGetBoolean(def);
 	}
 
-	foreach(cell, user->options)
+	foreach(cell, server->options)
 	{
 		DefElem    *def = (DefElem *) lfirst(cell);
 
@@ -930,7 +965,7 @@ begin_remote_xact(ConnCacheEntry *entry)
 			appendStringInfoString(&sql, "REPEATABLE READ");
 		if (ro)
 			appendStringInfoString(&sql, " READ ONLY");
-		if (XactDeferrable)
+		if (XactDeferrable && PQserverVersion(entry->conn) >= 90100)
 			appendStringInfoString(&sql, " DEFERRABLE");
 		entry->changing_xact_state = true;
 		do_sql_command(entry->conn, sql.data);
@@ -960,7 +995,7 @@ begin_remote_xact(ConnCacheEntry *entry)
 		if (entry->xact_depth == read_only_level)
 		{
 			entry->changing_xact_state = true;
-			do_sql_command(entry->conn, "SET transaction_read_only = on");
+			do_sql_command(entry->conn, "SET TRANSACTION READ ONLY");
 			entry->xact_read_only = true;
 			entry->changing_xact_state = false;
 		}
@@ -993,7 +1028,7 @@ begin_remote_xact(ConnCacheEntry *entry)
 		initStringInfo(&sql);
 		appendStringInfo(&sql, "SAVEPOINT s%d", entry->xact_depth + 1);
 		if (ro)
-			appendStringInfoString(&sql, "; SET transaction_read_only = on");
+			appendStringInfoString(&sql, "; SET TRANSACTION READ ONLY");
 		entry->changing_xact_state = true;
 		do_sql_command(entry->conn, sql.data);
 		entry->xact_depth++;
@@ -1174,6 +1209,24 @@ pgfdw_xact_callback(XactEvent event, void *arg)
 		return;
 
 	/*
+	 * If we are called for pre-commit cleanup, ensure read_only_level is set
+	 * for later processing.  Note that we need to do this because the local
+	 * transaction may have become read-only since the last remote operation.
+	 */
+	if (event == XACT_EVENT_PARALLEL_PRE_COMMIT ||
+		event == XACT_EVENT_PRE_COMMIT)
+	{
+		if (XactReadOnly)
+		{
+			if (read_only_level == 0)
+				read_only_level = 1;
+			Assert(read_only_level == 1);
+		}
+		else
+			Assert(read_only_level == 0);
+	}
+
+	/*
 	 * Scan all connection cache entries to find open remote transactions, and
 	 * close them.
 	 */
@@ -1189,6 +1242,8 @@ pgfdw_xact_callback(XactEvent event, void *arg)
 		/* If it has an open remote transaction, try to close it */
 		if (entry->xact_depth > 0)
 		{
+			char		sql[100];
+
 			elog(DEBUG3, "closing remote transaction on connection %p",
 				 entry->conn);
 
@@ -1204,14 +1259,17 @@ pgfdw_xact_callback(XactEvent event, void *arg)
 					pgfdw_reject_incomplete_xact_state_change(entry);
 
 					/* Commit all remote transactions during pre-commit */
+					CONSTRUCT_COMMIT_COMMAND(sql, entry);
 					entry->changing_xact_state = true;
 					if (entry->parallel_commit)
 					{
-						do_sql_command_begin(entry->conn, "COMMIT TRANSACTION");
+						do_sql_command_begin(entry->conn, sql);
 						pending_entries = lappend(pending_entries, entry);
 						continue;
 					}
-					do_sql_command(entry->conn, "COMMIT TRANSACTION");
+					do_sql_command(entry->conn, sql);
+					if ((read_only_level > 0) && !entry->xact_read_only)
+						entry->xact_read_only = true;
 					entry->changing_xact_state = false;
 
 					/*
@@ -1480,6 +1538,11 @@ pgfdw_inval_callback(Datum arg, SysCacheIdentifier cacheid, uint32 hashvalue)
  * Such connections can't safely be further used.  Re-establishing the
  * connection would change the snapshot and roll back any writes already
  * performed, so that's not an option, either. Thus, we must abort.
+ *
+ * Note: there might be open cursors that use the connection, so even if the
+ * connection cache entry is marked as such, we will retain it until abort
+ * cleanup of the main transaction, to ensure such open cursors can safely
+ * refer to the PGconn for the connection.
  */
 static void
 pgfdw_reject_incomplete_xact_state_change(ConnCacheEntry *entry)
@@ -1490,15 +1553,12 @@ pgfdw_reject_incomplete_xact_state_change(ConnCacheEntry *entry)
 	if (entry->conn == NULL || !entry->changing_xact_state)
 		return;
 
-	/* make sure this entry is inactive */
-	disconnect_pg_server(entry);
-
 	/* find server name to be shown in the message below */
 	server = GetForeignServer(entry->serverid);
 
 	ereport(ERROR,
 			(errcode(ERRCODE_CONNECTION_EXCEPTION),
-			 errmsg("connection to server \"%s\" was lost",
+			 errmsg("connection to server \"%s\" cannot be used due to abort cleanup failure",
 					server->servername)));
 }
 
@@ -2006,6 +2066,8 @@ pgfdw_finish_pre_commit_cleanup(List *pending_entries)
 	 */
 	foreach(lc, pending_entries)
 	{
+		char		sql[100];
+
 		entry = (ConnCacheEntry *) lfirst(lc);
 
 		Assert(entry->changing_xact_state);
@@ -2014,7 +2076,10 @@ pgfdw_finish_pre_commit_cleanup(List *pending_entries)
 		 * We might already have received the result on the socket, so pass
 		 * consume_input=true to try to consume it first
 		 */
-		do_sql_command_end(entry->conn, "COMMIT TRANSACTION", true);
+		CONSTRUCT_COMMIT_COMMAND(sql, entry);
+		do_sql_command_end(entry->conn, sql, true);
+		if ((read_only_level > 0) && !(entry)->xact_read_only)
+			entry->xact_read_only = true;
 		entry->changing_xact_state = false;
 
 		/* Do a DEALLOCATE ALL in parallel if needed */
@@ -2468,6 +2533,18 @@ postgres_fdw_connection(PG_FUNCTION_ARGS)
 	const char **values;
 	char	   *appname;
 	char	   *sep = "";
+
+	/*
+	 * SCRAM pass-through cannot work for subscriptions because the connection
+	 * happens in a worker process.
+	 */
+	if (UseScramPassthrough(server, user))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("SCRAM pass-through authentication is not supported for subscription connections"),
+				 errdetail("The foreign server or user mapping for user \"%s\" has \"use_scram_passthrough\" enabled.",
+						   GetUserNameFromId(userid, false)),
+				 errhint("Store a password in the user mapping instead.")));
 
 	construct_connection_params(server, user, &keywords, &values, &appname);
 

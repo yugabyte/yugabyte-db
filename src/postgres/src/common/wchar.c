@@ -26,9 +26,9 @@
  * this pair specifically.  Byte pair range constraints, in encoding
  * originator documentation, always excluded this pair.  No core conversion
  * could translate it.  However, longstanding verifychar implementations
- * accepted any non-NUL byte.  big5_to_euc_tw and big5_to_mic even translate
- * pairs not valid per encoding originator documentation.  To avoid tightening
- * core or non-core conversions in a security patch, we sought this one pair.
+ * accepted any non-NUL byte.  big5_to_euc_tw even translates pairs not
+ * valid per encoding originator documentation.  To avoid tightening core
+ * or non-core conversions in a security patch, we sought this one pair.
  *
  * PQescapeString() historically used spaces for BYTE1; many other values
  * could suffice for BYTE1.
@@ -618,7 +618,8 @@ mbbisearch(pg_wchar ucs, const struct mbinterval *table, int max)
 }
 
 
-/* The following functions define the column width of an ISO 10646
+/*
+ * The following functions define the column width of an ISO 10646
  * character as follows:
  *
  *	  - The null character (U+0000) has a column width of 0.

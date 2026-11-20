@@ -537,13 +537,8 @@ SELECT relname, old.level, old.relkind, old.relfilenode = new.relfilenode FROM o
  clstrpart33 |     2 | r       | f
 (7 rows)
 
--- CONCURRENTLY doesn't like partitioned tables
-REPACK (CONCURRENTLY) clstrpart;
-ERROR:  REPACK (CONCURRENTLY) is not supported for partitioned tables
-HINT:  Consider running the command on individual partitions.
-DROP TABLE clstrpart;
 -- Ownership of partitions is checked
-CREATE TABLE ptnowner(i int unique) PARTITION BY LIST (i);
+CREATE TABLE ptnowner(i int unique not null) PARTITION BY LIST (i);
 CREATE INDEX ptnowner_i_idx ON ptnowner(i);
 CREATE TABLE ptnowner1 PARTITION OF ptnowner FOR VALUES IN (1);
 CREATE ROLE regress_ptnowner;
@@ -561,15 +556,6 @@ SET SESSION AUTHORIZATION regress_ptnowner;
 CLUSTER ptnowner USING ptnowner_i_idx;
 WARNING:  permission denied to execute CLUSTER on "ptnowner2", skipping it
 RESET SESSION AUTHORIZATION;
-SELECT a.relname, a.relfilenode=b.relfilenode FROM pg_class a
-  JOIN ptnowner_oldnodes b USING (oid) ORDER BY a.relname COLLATE "C";
-  relname  | ?column? 
------------+----------
- ptnowner  | t
- ptnowner1 | f
- ptnowner2 | t
-(3 rows)
-
 DROP TABLE ptnowner;
 DROP ROLE regress_ptnowner;
 -- Test CLUSTER with external tuplesorting
@@ -711,9 +697,46 @@ SELECT * FROM clstr_expression WHERE -a = -3 ORDER BY -a, b;
 (4 rows)
 
 COMMIT;
+-- verify some error cases
+CREATE TABLE clstr_table_one (id int, val text);
+CREATE TABLE clstr_table_two (id int, val text);
+CREATE INDEX clstr_idx_b ON clstr_table_two (id);
+CLUSTER clstr_table_one USING clstr_idx_b;
+ERROR:  "clstr_idx_b" is not an index for table "clstr_table_one"
+CLUSTER clstr_table_one USING nonexistant;
+ERROR:  index "nonexistant" for table "clstr_table_one" does not exist
+CREATE INDEX clstr_hash_idx ON clstr_table_one USING hash (id);
+CLUSTER clstr_table_one USING clstr_hash_idx;
+ERROR:  cannot cluster on index "clstr_hash_idx" because access method does not support clustering
+CREATE INDEX clstr_partial_idx ON clstr_table_one (id) WHERE id > 0;
+CLUSTER clstr_table_one USING clstr_partial_idx;
+ERROR:  cannot cluster on partial index "clstr_partial_idx"
+REPACK pg_class USING INDEX pg_class_oid_index;
+ERROR:  permission denied: "pg_class" is a system catalog
+DETAIL:  System catalogs can only be clustered by the index they're already clustered on, if any, unless "allow_system_table_mods" is enabled.
+DROP TABLE clstr_table_one, clstr_table_two;
+-- verify that CLUSTER/REPACK don't touch a NO DATA matview
+CREATE MATERIALIZED VIEW clstr_matview AS
+    SELECT i FROM generate_series(1, 5) i
+    WITH NO DATA;
+CREATE INDEX clstr_matview_idx ON clstr_matview (i);
+SELECT relfilenode FROM pg_class WHERE oid = 'clstr_matview'::regclass \gset
+CLUSTER clstr_matview USING clstr_matview_idx;
+REPACK clstr_matview USING INDEX clstr_matview_idx;
+SELECT relfilenode = :relfilenode FROM pg_class WHERE oid = 'clstr_matview'::regclass;
+ ?column? 
+----------
+ t
+(1 row)
+
+DROP MATERIALIZED VIEW clstr_matview;
 ----------------------------------------------------------------------
 --
 -- REPACK
+--
+-- Note we cannot test working REPACK (CONCURRENTLY) here, because the
+-- tests are sometimes run with wal_level=minimal.  Tests for that appear
+-- elsewhere.
 --
 ----------------------------------------------------------------------
 -- REPACK handles individual tables identically to CLUSTER, but it's worth
@@ -773,9 +796,24 @@ ORDER BY 1;
  clstr_tst_pkey
 (3 rows)
 
--- Verify partial analyze works
+-- Verify REPACK (ANALYZE) works, including partial analyze.
 REPACK (ANALYZE) clstr_tst (a);
 REPACK (ANALYZE) clstr_tst;
+-- Plain REPACK is allowed in a transaction block.
+BEGIN;
+REPACK clstr_tst;
+ROLLBACK;
+-- REPACK (ANALYZE) is not allowed in a transaction block.
+BEGIN;
+REPACK (ANALYZE) clstr_tst;
+ERROR:  REPACK (ANALYZE) cannot run inside a transaction block
+ROLLBACK;
+-- REPACK is allowed within a PL, as long as there's no ANALYZE.
+DO $$ BEGIN EXECUTE 'REPACK clstr_tst'; END $$;
+DO $$ BEGIN EXECUTE 'REPACK (ANALYZE) clstr_tst'; END $$;
+ERROR:  REPACK (ANALYZE) cannot be executed from a function or procedure
+CONTEXT:  SQL statement "REPACK (ANALYZE) clstr_tst"
+PL/pgSQL function inline_code_block line 1 at EXECUTE
 REPACK (VERBOSE) clstr_tst (a);
 ERROR:  ANALYZE option must be specified when a column list is provided
 -- REPACK w/o argument performs no ordering, so we can only check which tables
@@ -806,10 +844,33 @@ ORDER BY o.relname;
  clstr_3
 (2 rows)
 
--- concurrently
-REPACK (CONCURRENTLY) pg_class;
-ERROR:  cannot repack relation "pg_class"
-HINT:  REPACK CONCURRENTLY is not supported for catalog relations.
+-- CLUSTER with rollbacked subtransaction, where the same row is inserted,
+-- updated, then rollbacked.
+BEGIN;
+-- Index scan required for CLUSTER, force it.
+SET LOCAL random_page_cost = 0.0001;
+SET LOCAL seq_page_cost = 1000;
+CREATE TABLE cluster_aborted_upd (a int, b int);
+CREATE INDEX cluster_aborted_upd_idx ON cluster_aborted_upd (b);
+INSERT INTO cluster_aborted_upd VALUES (1, 3);
+SAVEPOINT sp;
+UPDATE cluster_aborted_upd SET a = 2;
+ROLLBACK TO sp;
+CLUSTER cluster_aborted_upd USING cluster_aborted_upd_idx;
+COMMIT;
+-- One row expected.
+SELECT count(*) FROM cluster_aborted_upd;
+ count 
+-------
+     1
+(1 row)
+
+SELECT * FROM cluster_aborted_upd;
+ a | b 
+---+---
+ 1 | 3
+(1 row)
+
 -- clean up
 DROP TABLE clustertest;
 DROP TABLE clstr_1;
@@ -817,4 +878,6 @@ DROP TABLE clstr_2;
 DROP TABLE clstr_3;
 DROP TABLE clstr_4;
 DROP TABLE clstr_expression;
+DROP TABLE clstrpart;
+DROP TABLE cluster_aborted_upd;
 DROP USER regress_clstr_user;

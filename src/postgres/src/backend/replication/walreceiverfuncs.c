@@ -281,11 +281,6 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 	Assert(walrcv->walRcvState == WALRCV_STOPPED ||
 		   walrcv->walRcvState == WALRCV_WAITING);
 
-	if (conninfo != NULL)
-		strlcpy(walrcv->conninfo, conninfo, MAXCONNINFO);
-	else
-		walrcv->conninfo[0] = '\0';
-
 	/*
 	 * Use configured replication slot if present, and ignore the value of
 	 * create_temp_slot as the slot name should be persistent.  Otherwise, use
@@ -303,10 +298,19 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 		walrcv->is_temp_slot = create_temp_slot;
 	}
 
+	/*
+	 * While waiting for instructions, the WAL receiver uses the same
+	 * connection, so do not clobber the user-visible conninfo already saved.
+	 */
 	if (walrcv->walRcvState == WALRCV_STOPPED)
 	{
 		launch = true;
 		walrcv->walRcvState = WALRCV_STARTING;
+
+		if (conninfo != NULL)
+			strlcpy(walrcv->conninfo, conninfo, MAXCONNINFO);
+		else
+			walrcv->conninfo[0] = '\0';
 	}
 	else
 		walrcv->walRcvState = WALRCV_RESTARTING;
@@ -321,7 +325,12 @@ RequestXLogStreaming(TimeLineID tli, XLogRecPtr recptr, const char *conninfo,
 		walrcv->flushedUpto = recptr;
 		walrcv->receivedTLI = tli;
 		walrcv->latestChunkStart = recptr;
-		pg_atomic_write_u64(&walrcv->writtenUpto, recptr);
+
+		/*
+		 * Pairs with pg_atomic_read_membarrier_u64() in
+		 * GetWalRcvWriteRecPtr().
+		 */
+		pg_atomic_write_membarrier_u64(&walrcv->writtenUpto, recptr);
 	}
 	walrcv->receiveStart = recptr;
 	walrcv->receiveStartTLI = tli;
@@ -363,14 +372,17 @@ GetWalRcvFlushRecPtr(XLogRecPtr *latestChunkStart, TimeLineID *receiveTLI)
 
 /*
  * Returns the last+1 byte position that walreceiver has written.
- * This returns a recently written value without taking a lock.
+ *
+ * Use pg_atomic_read_membarrier_u64() to ensure that callers see up-to-date
+ * shared memory state, matching the barrier semantics provided by the
+ * spinlock in GetWalRcvFlushRecPtr() and other LSN-position functions.
  */
 XLogRecPtr
 GetWalRcvWriteRecPtr(void)
 {
 	WalRcvData *walrcv = WalRcv;
 
-	return pg_atomic_read_u64(&walrcv->writtenUpto);
+	return pg_atomic_read_membarrier_u64(&walrcv->writtenUpto);
 }
 
 /*

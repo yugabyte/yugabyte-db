@@ -909,6 +909,9 @@ SELECT decode('', 'base64url');  -- ''
 SELECT encode('\x01', 'base64url');  -- AQ
 SELECT decode('AQ', 'base64url');    -- \x01
 
+-- Make sure the same 1 byte input isn't accepted as base64
+SELECT decode('AQ', 'base64');    -- \x01
+
 -- 2 byte input
 SELECT encode('\x0102'::bytea, 'base64url');  -- AQI
 SELECT decode('AQI', 'base64url');            -- \x0102

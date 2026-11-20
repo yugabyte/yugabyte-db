@@ -94,11 +94,6 @@
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_parameter_acl) \
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_partitioned_table) \
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_proc) \
-	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_propgraph_element) \
-	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_propgraph_element_label) \
-	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_propgraph_label) \
-	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_propgraph_label_property) \
-	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_propgraph_property) \
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication) \
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication_namespace) \
 	YB_CATCACHE_TABLE_ENTRY(YbCatalogCacheTable, pg_publication_rel) \

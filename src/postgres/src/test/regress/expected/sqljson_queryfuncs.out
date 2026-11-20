@@ -337,6 +337,16 @@ SELECT JSON_VALUE('"purple"'::jsonb, 'lax $[*]' RETURNING rgb);
 
 SELECT JSON_VALUE('"purple"'::jsonb, 'lax $[*]' RETURNING rgb ERROR ON ERROR);
 ERROR:  value for domain rgb violates check constraint "rgb_check"
+SELECT x IS NULL AS is_null,
+       json_value(x, 'strict $.a' RETURNING sqljsonb_int_not_null DEFAULT 1 ON ERROR) AS jv
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
+ is_null | jv 
+---------+----
+ f       |  1
+ t       |  1
+ f       |  1
+(3 rows)
+
 SELECT JSON_VALUE(jsonb '[]', '$');
  json_value 
 ------------
@@ -433,6 +443,27 @@ SELECT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING int FORMAT JSON); -- RETURNING
 ERROR:  cannot specify FORMAT JSON in RETURNING clause of JSON_VALUE()
 LINE 1: ...CT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING int FORMAT JSO...
                                                              ^
+-- A DEFAULT expression must be coerced to the RETURNING type's typmod even
+-- when its base type already matches, but a matching NULL needs no coercion.
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT 99999.999 ON EMPTY);
+ERROR:  numeric field overflow
+DETAIL:  A field with precision 4, scale 1 must round to an absolute value less than 10^3.
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING varchar(3) DEFAULT 'toolong'::varchar(10) ON EMPTY);
+ERROR:  value too long for type character varying(3)
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT NULL::numeric ON EMPTY);
+ json_value 
+------------
+           
+(1 row)
+
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING bit(3) DEFAULT b'10101' ON EMPTY);
+ERROR:  bit string length 5 does not match type bit(3)
+SELECT JSON_VALUE(jsonb '{}', '$.a' RETURNING numeric(4,1) DEFAULT abs(NULL::numeric) ON EMPTY);
+ json_value 
+------------
+           
+(1 row)
+
 -- RETUGNING pseudo-types not allowed
 SELECT JSON_VALUE(jsonb '["1"]', '$[*]' RETURNING record);
 ERROR:  returning pseudo-types is not supported in SQL/JSON functions
@@ -452,6 +483,69 @@ FROM
  0 | -2
  1 |  2
  2 | -1
+(3 rows)
+
+-- Check that a NULL context item or path doesn't return a previous row's
+-- ON EMPTY / ON ERROR result (bug #19621).
+SELECT x IS NULL AS is_null,
+       json_value(x, '$.a' RETURNING int DEFAULT 42 ON EMPTY) AS jv
+FROM (VALUES ('{}'), (NULL), ('{}')) v(x);
+ is_null | jv 
+---------+----
+ f       | 42
+ t       |   
+ f       | 42
+(3 rows)
+
+SELECT x IS NULL AS is_null,
+       json_value(x, 'strict $.a' RETURNING int DEFAULT 42 ON ERROR) AS jv
+FROM (VALUES ('1'), (NULL), ('1')) v(x);
+ is_null | jv 
+---------+----
+ f       | 42
+ t       |   
+ f       | 42
+(3 rows)
+
+SELECT p IS NULL AS is_null,
+       json_value('{}', p RETURNING int DEFAULT 42 ON EMPTY) AS jv
+FROM (VALUES ('$.a'::jsonpath), (NULL), ('$.a'::jsonpath)) v(p);
+ is_null | jv 
+---------+----
+ f       | 42
+ t       |   
+ f       | 42
+(3 rows)
+
+SELECT x IS NULL AS is_null,
+       json_query(x, '$.a' DEFAULT '"empty"' ON EMPTY) AS jq
+FROM (VALUES ('{}'::jsonb), (NULL), ('{}'::jsonb)) v(x);
+ is_null |   jq    
+---------+---------
+ f       | "empty"
+ t       | 
+ f       | "empty"
+(3 rows)
+
+SELECT x IS NULL AS is_null,
+       json_exists(x, 'strict $.a' TRUE ON ERROR) AS je
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
+ is_null | je 
+---------+----
+ f       | t
+ t       | 
+ f       | t
+(3 rows)
+
+-- the default FALSE ON ERROR is affected too
+SELECT x IS NULL AS is_null,
+       json_exists(x, 'strict $.a') AS je
+FROM (VALUES ('1'::jsonb), (NULL), ('1'::jsonb)) v(x);
+ is_null | je 
+---------+----
+ f       | f
+ t       | 
+ f       | f
 (3 rows)
 
 SELECT JSON_VALUE(jsonb 'null', '$a' PASSING point ' (1, 2 )' AS a);
@@ -1452,6 +1546,32 @@ SELECT JSON_QUERY(jsonb 'null', '$"Xyz"' PASSING 1 AS "Xyz");
  1
 (1 row)
 
+-- Test PASSING and toasted values
+CREATE TABLE test_passing_toast (t text);
+ALTER TABLE test_passing_toast ALTER COLUMN t SET STORAGE EXTENDED;
+INSERT INTO test_passing_toast(t)
+  SELECT repeat(string_agg(to_char(g.i, 'FM0000'), ''), 50)
+  FROM generate_series(1, 500) g(i);
+ALTER TABLE test_passing_toast ALTER COLUMN t SET STORAGE EXTERNAL;
+INSERT INTO test_passing_toast(t)
+  SELECT repeat(string_agg(to_char(g.i, 'FM0000'), ''), 50)
+  FROM generate_series(1, 500) g(i);
+SELECT count(*) AS toasted_chunks
+  FROM test_passing_toast WHERE pg_column_toast_chunk_id(t) IS NOT NULL;
+ toasted_chunks 
+----------------
+              2
+(1 row)
+
+SELECT JSON_VALUE(jsonb 'null', '$a' PASSING t AS a) = t AS ok
+  FROM test_passing_toast;
+ ok 
+----
+ t
+ t
+(2 rows)
+
+DROP TABLE test_passing_toast;
 -- Test ON ERROR / EMPTY value validity for the function; all fail.
 SELECT JSON_EXISTS(jsonb '1', '$' DEFAULT 1 ON ERROR);
 ERROR:  invalid ON ERROR behavior
@@ -1468,6 +1588,77 @@ ERROR:  invalid ON ERROR behavior
 LINE 1: SELECT JSON_QUERY(jsonb '1', '$' TRUE ON ERROR);
                                          ^
 DETAIL:  Only ERROR, NULL, EMPTY ARRAY, EMPTY OBJECT, or DEFAULT expression is allowed in ON ERROR for JSON_QUERY().
+-- soft errors raised by the ON ERROR or ON EMPTY DEFAULT expression must always
+-- be rethrown
+SELECT JSON_VALUE('"a"', '$' RETURNING sqljsonb_int_not_null DEFAULT NULL ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  domain sqljsonb_int_not_null does not allow null values
+SELECT JSON_VALUE('"a"', '$' RETURNING int DEFAULT (NULL::sqljsonb_int_not_null + 0) ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  domain sqljsonb_int_not_null does not allow null values
+SELECT JSON_QUERY('"a"', '$' RETURNING int DEFAULT (NULL::sqljsonb_int_not_null + 0) ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  domain sqljsonb_int_not_null does not allow null values
+SELECT JSON_VALUE('"a"', '$' RETURNING int DEFAULT (('a' || (random() * 0)::int)::int + 0) ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  invalid input syntax for type integer: "a0"
+SELECT JSON_QUERY('"a"', '$' RETURNING int DEFAULT (('a' || (random() * 0)::int)::int + 0) ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  invalid input syntax for type integer: "a0"
+-- error. should report that the DEFAULT expression cannot be coerced to the
+-- RETURNING type, not a NOT NULL violation
+SELECT JSON_VALUE(jsonb '{"a": 1}', '$' RETURNING sqljsonb_int_not_null DEFAULT concat('y') ON ERROR);
+ERROR:  could not coerce ON ERROR expression (DEFAULT) to the RETURNING type
+DETAIL:  invalid input syntax for type integer: "y"
+-- domain constraints must not be checked once a soft error has already occurred
+CREATE DOMAIN queryfuncs_int AS int CHECK (1 / coalesce(VALUE, 0) = 0);
+SELECT JSON_VALUE(jsonb '"x"', '$' RETURNING int DEFAULT 11 ON ERROR);
+ json_value 
+------------
+         11
+(1 row)
+
+SELECT JSON_QUERY(jsonb '["x"]', '$' RETURNING int[] DEFAULT '{11}' ON ERROR);
+ json_query 
+------------
+ {11}
+(1 row)
+
+SELECT JSON_VALUE(jsonb '"x"', '$' RETURNING queryfuncs_int DEFAULT 11 ON ERROR);
+ json_value 
+------------
+         11
+(1 row)
+
+SELECT JSON_QUERY(jsonb '["x"]', '$' RETURNING queryfuncs_int[] DEFAULT '{11}' ON ERROR);
+ json_query 
+------------
+ {11}
+(1 row)
+
+CREATE TYPE compcoalesce AS (a int, b queryfuncs_int);
+SELECT JSON_QUERY(jsonb '{"a": "x"}', '$' RETURNING compcoalesce);
+ json_query 
+------------
+ 
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": 11}', '$' RETURNING compcoalesce);
+ json_query 
+------------
+ (1,11)
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": "B"}', '$' RETURNING compcoalesce);
+ json_query 
+------------
+ 
+(1 row)
+
+SELECT JSON_QUERY(jsonb '{"a": 1, "b": 0}', '$' RETURNING compcoalesce); -- error
+ERROR:  division by zero
+DROP TYPE compcoalesce;
+DROP DOMAIN queryfuncs_int;
 -- Test implicit coercion to a domain over fixed-length type specified in
 -- RETURNING
 CREATE DOMAIN queryfuncs_char2 AS char(2);
@@ -1536,3 +1727,52 @@ SELECT JSON_VALUE(jsonb '1234', '$' RETURNING bit(3)  DEFAULT 1::bit(3) ON ERROR
 SELECT JSON_VALUE(jsonb '"111"', '$.a'  RETURNING bit(3) DEFAULT '1111' ON EMPTY);
 ERROR:  bit string length 4 does not match type bit(3)
 DROP DOMAIN queryfuncs_d_varbit3;
+-- Check that a NULL result from a previous evaluation of JSON_VALUE()
+-- RETURNING json or jsonb doesn't leak into the next one (bug #19695).
+SELECT JSON_VALUE('null', '$' RETURNING jsonb), JSON_VALUE('123', '$' RETURNING jsonb);
+ json_value | json_value 
+------------+------------
+            | 123
+(1 row)
+
+SELECT JSON_VALUE(x, '$' RETURNING jsonb) FROM (VALUES ('1'::jsonb), ('null'), ('2')) v(x);
+ json_value 
+------------
+ 1
+ 
+ 2
+(3 rows)
+
+SELECT JSON_VALUE(x, '$' RETURNING json) FROM (VALUES ('1'::json), ('null'), ('2')) v(x);
+ json_value 
+------------
+ 1
+ 
+ 2
+(3 rows)
+
+-- same, with the NULL coming from ON EMPTY, ON ERROR, and a NULL input
+SELECT JSON_VALUE(x, '$.a' RETURNING jsonb) FROM (VALUES ('{"a": 1}'::jsonb), ('{}'), ('{"a": 2}')) v(x);
+ json_value 
+------------
+ 1
+ 
+ 2
+(3 rows)
+
+SELECT JSON_VALUE(x, 'strict $.a' RETURNING jsonb) FROM (VALUES ('{"a": 1}'::jsonb), ('[]'), ('{"a": 2}')) v(x);
+ json_value 
+------------
+ 1
+ 
+ 2
+(3 rows)
+
+SELECT JSON_VALUE(x, '$' RETURNING jsonb) FROM (VALUES ('1'::jsonb), (NULL), ('2')) v(x);
+ json_value 
+------------
+ 1
+ 
+ 2
+(3 rows)
+

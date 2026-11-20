@@ -71,7 +71,7 @@ static void verifybackup_per_wal_range_cb(JsonManifestParseContext *context,
 										  XLogRecPtr start_lsn,
 										  XLogRecPtr end_lsn);
 pg_noreturn static void report_manifest_error(JsonManifestParseContext *context,
-											  const char *fmt,...)
+											  const char *fmt, ...)
 			pg_attribute_printf(2, 3);
 
 static void verify_tar_backup(verifier_context *context, DIR *dir,
@@ -521,7 +521,7 @@ parse_manifest_file(char *manifest_path)
  * expects this function not to return.
  */
 static void
-report_manifest_error(JsonManifestParseContext *context, const char *fmt,...)
+report_manifest_error(JsonManifestParseContext *context, const char *fmt, ...)
 {
 	va_list		ap;
 
@@ -967,8 +967,12 @@ precheck_tar_backup_file(verifier_context *context, char *relpath,
 		tblspc_oid = (Oid) num;
 	}
 
-	/* Now, check the compression type of the tar */
-	if (!parse_tar_compress_algorithm(suffix, &compress_algorithm))
+	/*
+	 * If parse_tar_compress_algorithm returns exactly 0, there are no
+	 * characters between the prefix we already checked and the detected
+	 * suffix. Any other case is unexpected.
+	 */
+	if (parse_tar_compress_algorithm(suffix, &compress_algorithm) != 0)
 	{
 		report_backup_error(context,
 							"file \"%s\" is not expected in a tar format backup",
@@ -1250,7 +1254,7 @@ parse_required_wal(verifier_context *context, char *pg_waldump_path,
  * context says we should.
  */
 void
-report_backup_error(verifier_context *context, const char *pg_restrict fmt,...)
+report_backup_error(verifier_context *context, const char *pg_restrict fmt, ...)
 {
 	va_list		ap;
 
@@ -1267,7 +1271,7 @@ report_backup_error(verifier_context *context, const char *pg_restrict fmt,...)
  * Report a fatal error and exit
  */
 void
-report_fatal_error(const char *pg_restrict fmt,...)
+report_fatal_error(const char *pg_restrict fmt, ...)
 {
 	va_list		ap;
 
@@ -1399,6 +1403,7 @@ usage(void)
 	printf(_("  -q, --quiet                 do not print any output, except for errors\n"));
 	printf(_("  -s, --skip-checksums        skip checksum verification\n"));
 	printf(_("  -w, --wal-path=PATH         use specified path for WAL files\n"));
+	printf(_("      --wal-directory=PATH    (same as --wal-path, deprecated)\n"));
 	printf(_("  -V, --version               output version information, then exit\n"));
 	printf(_("  -?, --help                  show this help, then exit\n"));
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);

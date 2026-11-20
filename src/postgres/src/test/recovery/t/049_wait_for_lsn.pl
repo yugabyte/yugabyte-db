@@ -12,6 +12,11 @@ use Test::More;
 # These allow us to stop WAL streaming so waiters block, then resume it.
 my $saved_primary_conninfo;
 
+# Stop the walreceiver on $node by clearing primary_conninfo and waiting
+# until pg_stat_wal_receiver becomes empty.  Used to freeze the
+# walreceiver-tracked positions (writtenUpto, flushedUpto) so a fencepost
+# test can rely on them not advancing.  The previous value is saved for
+# resume_walreceiver().
 sub stop_walreceiver
 {
 	my ($node) = @_;
@@ -31,6 +36,9 @@ sub stop_walreceiver
 		"SELECT NOT EXISTS (SELECT * FROM pg_stat_wal_receiver);");
 }
 
+# Restart the walreceiver on $node by restoring primary_conninfo to the
+# value captured by stop_walreceiver() and waiting until walreceiver
+# reconnects.  Must be paired with a prior stop_walreceiver() call.
 sub resume_walreceiver
 {
 	my ($node) = @_;
@@ -42,6 +50,41 @@ sub resume_walreceiver
 
 	$node->poll_query_until('postgres',
 		"SELECT EXISTS (SELECT * FROM pg_stat_wal_receiver);");
+}
+
+# Verify the wait predicate "target <= currentLSN" at the boundary.
+# Given $current_lsn (the frozen position for $mode), check that:
+#   target == current        -> success (predicate is <=)
+#   target == current - 1    -> success
+#   target == current + 1    -> timeout
+# The caller must ensure that the relevant LSN position on $node is
+# actually frozen (e.g. walreceiver stopped and replay paused), otherwise
+# the "+1" case may racily succeed.  Returns ($lsn_minus, $lsn_plus) so
+# the caller can reuse them, e.g. to drive an async wakeup test.
+sub check_wait_for_lsn_fencepost
+{
+	my ($node, $mode, $current_lsn, $label) = @_;
+
+	my $lsn_minus = $node->safe_psql('postgres',
+		"SELECT ('$current_lsn'::pg_lsn - 1)::text");
+	my $lsn_plus = $node->safe_psql('postgres',
+		"SELECT ('$current_lsn'::pg_lsn + 1)::text");
+
+	foreach my $case (
+		[ $current_lsn, 'success', 'target == current succeeds', '5s' ],
+		[ $lsn_minus, 'success', 'target == current - 1 succeeds', '5s' ],
+		[ $lsn_plus, 'timeout', 'target == current + 1 times out', '500ms' ])
+	{
+		my ($target_lsn, $expected, $desc, $timeout) = @$case;
+		my $output = $node->safe_psql(
+			'postgres', qq[
+			WAIT FOR LSN '${target_lsn}'
+				WITH (MODE '$mode', timeout '$timeout', no_throw);]);
+
+		is($output, $expected, "$label: $desc");
+	}
+
+	return ($lsn_minus, $lsn_plus);
 }
 
 # Initialize primary node
@@ -170,10 +213,58 @@ $output = $node_standby->safe_psql(
 	WAIT FOR LSN '${lsn3}' WITH (timeout '10ms', no_throw);]);
 ok($output eq "timeout", "WAIT FOR returns correct status after timeout");
 
+# 4a. Check that aborting a subtransaction during WAIT FOR LSN cleans up the
+# shared wait-state.  Poll pg_stat_activity before canceling the first WAIT
+# FOR to ensure that the backend has registered itself in the waiters heap.
+# After rolling back to the savepoint, a second WAIT FOR in the same backend
+# must be able to register itself again.
+my $subxact_lsn = $node_primary->safe_psql('postgres',
+	"SELECT pg_current_wal_insert_lsn() + 10000000000");
+my $subxact_appname = 'wait_for_lsn_subxact_cleanup';
+my $subxact_session =
+  $node_primary->background_psql('postgres', on_error_stop => 0);
+$subxact_session->query_until(
+	qr/start/, qq[
+	SET application_name = '$subxact_appname';
+	BEGIN;
+	SAVEPOINT wait_cleanup;
+	\\echo start
+	WAIT FOR LSN '${subxact_lsn}' WITH (MODE 'primary_flush');
+	ROLLBACK TO wait_cleanup;
+	WAIT FOR LSN '${subxact_lsn}'
+		WITH (MODE 'primary_flush', timeout '10ms', no_throw);
+	COMMIT;
+]);
+$node_primary->poll_query_until(
+	'postgres',
+	"SELECT count(*) = 1 FROM pg_stat_activity
+	 WHERE application_name = '$subxact_appname'
+	   AND wait_event = 'WaitForWalFlush'"
+) or die "WAIT FOR LSN did not enter the primary_flush wait path";
+my $subxact_cancelled = $node_primary->safe_psql(
+	'postgres',
+	"SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+	 WHERE application_name = '$subxact_appname'
+	   AND wait_event = 'WaitForWalFlush'"
+);
+is($subxact_cancelled, 't', "canceled WAIT FOR LSN in subtransaction");
+$subxact_session->quit;
+chomp($subxact_session->{stdout});
+like(
+	$subxact_session->{stderr},
+	qr/canceling statement due to user request/,
+	"query cancel interrupted WAIT FOR LSN in subtransaction");
+is($subxact_session->{stdout},
+	"timeout", "second WAIT FOR LSN timed out after savepoint rollback");
+unlike(
+	$subxact_session->{stderr},
+	qr/server closed the connection unexpectedly/,
+	"WAIT FOR LSN after savepoint rollback did not disconnect");
+
 # 5. Check mode validation: standby modes error on primary, primary mode errors
 # on standby, and primary_flush works on primary.  Also check that WAIT FOR
-# triggers an error if called within another function or inside a transaction
-# with an isolation level higher than READ COMMITTED.
+# triggers an error if called within a function, procedure, anonymous DO block,
+# or inside a transaction with an isolation level higher than READ COMMITTED.
 
 # Test standby_flush on primary - should error
 $node_primary->psql(
@@ -191,18 +282,51 @@ $node_standby->psql(
 ok($stderr =~ /recovery is in progress/,
 	"get an error when running primary_flush on the standby");
 
+# A transaction-snapshot-mode transaction has no snapshot until its first
+# query, so WAIT FOR is allowed before that point.  The target is already
+# replayed here, so the command returns immediately.
+$output = $node_standby->safe_psql('postgres',
+	"BEGIN ISOLATION LEVEL REPEATABLE READ; WAIT FOR LSN '${lsn2}'; COMMIT;");
+ok($output eq "success",
+	"WAIT FOR is allowed before the transaction snapshot is taken");
+
 $node_standby->psql(
 	'postgres',
 	"BEGIN ISOLATION LEVEL REPEATABLE READ; SELECT 1; WAIT FOR LSN '${lsn3}';",
 	stderr => \$stderr);
 ok( $stderr =~
-	  /WAIT FOR must be called without an active or registered snapshot/,
+	  /WAIT cannot be executed while the current transaction holds a snapshot/,
 	"get an error when running in a transaction with an isolation level higher than REPEATABLE READ"
 );
+ok( $stderr =~
+	  /isolation level higher than READ COMMITTED, so it holds a snapshot/,
+	"the isolation level is given as the reason when it is the reason");
 
+# The same error at READ COMMITTED must not blame the isolation level.
+$node_standby->psql(
+	'postgres',
+	"BEGIN; DECLARE c CURSOR FOR SELECT 1; WAIT FOR LSN '${lsn3}';",
+	stderr => \$stderr);
+ok( $stderr =~
+	  /WAIT cannot be executed while the current transaction holds a snapshot/,
+	"get an error when a cursor holds a snapshot");
+unlike(
+	$stderr,
+	qr/isolation level/,
+	"the isolation level is not blamed at READ COMMITTED");
+
+# Test wrapping WAIT FOR into function, procedure, and anonymous DO block --
+# should error
 $node_primary->safe_psql(
 	'postgres', qq[
 CREATE FUNCTION pg_wal_replay_wait_wrap(target_lsn pg_lsn) RETURNS void AS \$\$
+  BEGIN
+    EXECUTE format('WAIT FOR LSN %L;', target_lsn);
+  END
+\$\$
+LANGUAGE plpgsql;
+
+CREATE PROCEDURE pg_wal_replay_wait_proc(target_lsn pg_lsn) AS \$\$
   BEGIN
     EXECUTE format('WAIT FOR LSN %L;', target_lsn);
   END
@@ -215,9 +339,22 @@ $node_standby->psql(
 	'postgres',
 	"SELECT pg_wal_replay_wait_wrap('${lsn3}');",
 	stderr => \$stderr);
-ok( $stderr =~
-	  /WAIT FOR must be called without an active or registered snapshot/,
-	"get an error when running within another function");
+ok($stderr =~ /WAIT can only be executed as a top-level statement/,
+	"get an error when running within a function");
+
+$node_standby->psql(
+	'postgres',
+	"CALL pg_wal_replay_wait_proc('${lsn3}');",
+	stderr => \$stderr);
+ok($stderr =~ /WAIT can only be executed as a top-level statement/,
+	"get an error when running within a procedure");
+
+$node_standby->psql(
+	'postgres',
+	"DO \$\$ BEGIN EXECUTE format('WAIT FOR LSN %L;', '${lsn3}'); END \$\$;",
+	stderr => \$stderr);
+ok($stderr =~ /WAIT can only be executed as a top-level statement/,
+	"get an error when running within a DO block");
 
 # 6. Check parameter validation error cases on standby before promotion
 my $test_lsn =
@@ -229,6 +366,14 @@ $node_standby->psql(
 	"WAIT FOR LSN '${test_lsn}' WITH (timeout '-1000ms');",
 	stderr => \$stderr);
 ok($stderr =~ /timeout cannot be negative/, "get error for negative timeout");
+
+# Test out of range timeout
+$node_standby->psql(
+	'postgres',
+	"WAIT FOR LSN '${test_lsn}' WITH (timeout '2147483648ms');",
+	stderr => \$stderr);
+ok($stderr =~ /invalid timeout value: "2147483648ms"/,
+	"get error for out of range timeout");
 
 # Test unknown parameter with WITH clause
 $node_standby->psql(
@@ -294,6 +439,12 @@ $output = $node_standby->safe_psql(
 ok($output eq "timeout",
 	"WAIT FOR WITH clause returns correct timeout status");
 
+# Test maximum timeout
+$output = $node_standby->safe_psql(
+	'postgres', qq[
+	WAIT FOR LSN '${lsn2}' WITH (timeout '2147483647ms', no_throw);]);
+ok($output eq "success", "maximum timeout value is accepted");
+
 # Test WITH clause error case - invalid option
 $node_standby->psql(
 	'postgres',
@@ -317,6 +468,42 @@ $node_standby->psql(
 	stderr => \$stderr);
 ok( $stderr =~ /conflicting or redundant options/,
 	"get error for duplicate MODE parameter");
+
+# An unsatisfied standby_replay wait must be rejected when the backend holds
+# a lock.  The relation lock covers the direct two-process cycle, while the
+# advisory lock is the return edge in the indirect three-process cycle.  The
+# short timeout keeps these tests bounded if the check regresses.
+$node_standby->psql(
+	'postgres', qq[
+	BEGIN;
+	SELECT count(*) FROM wait_test;
+	WAIT FOR LSN '${lsn3}' WITH (timeout '100ms');],
+	stderr => \$stderr);
+like(
+	$stderr,
+	qr/cannot wait for a standby LSN while holding locks/,
+	"reject replay wait while holding a relation lock");
+
+$node_standby->psql(
+	'postgres', qq[
+	BEGIN;
+	SELECT pg_advisory_xact_lock(42);
+	WAIT FOR LSN '${lsn3}' WITH (timeout '100ms');],
+	stderr => \$stderr);
+like(
+	$stderr,
+	qr/cannot wait for a standby LSN while holding locks/,
+	"reject replay wait while holding an advisory lock");
+
+# A wait whose target has already been reached returns without sleeping, so it
+# cannot join a cycle and stays allowed regardless of the locks held.
+my $reached = $node_standby->safe_psql(
+	'postgres', qq[
+	BEGIN;
+	LOCK TABLE wait_test IN ACCESS SHARE MODE;
+	WAIT FOR LSN '${lsn1}';]);
+is($reached, 'success',
+	"allow an already-reached wait while holding a relation lock");
 
 # 7a. Check the scenario of multiple standby_replay waiters.  We make 5
 # background psql sessions each waiting for a corresponding insertion.  When
@@ -651,5 +838,607 @@ for (my $i = 0; $i < 3; $i++)
 {
 	$wait_sessions[$i]->{run}->finish;
 }
+
+# 9. Archive-only standby tests: verify standby_write/standby_flush work
+# without a walreceiver.  These exercises the replay-position floor in
+# GetCurrentLSNForWaitType().
+#
+# We set up a separate primary with archiving and an archive-only standby
+# (has_restoring, no has_streaming), so no walreceiver ever starts and the
+# shared walreceiver positions (writtenUpto, flushedUpto) stay at their
+# zero-initialized values.
+
+my $arc_primary = PostgreSQL::Test::Cluster->new('arc_primary');
+$arc_primary->init(has_archiving => 1, allows_streaming => 1);
+$arc_primary->start;
+
+$arc_primary->safe_psql('postgres',
+	"CREATE TABLE arc_test AS SELECT generate_series(1,10) AS a");
+
+my $arc_backup_name = 'arc_backup';
+$arc_primary->backup($arc_backup_name);
+
+# Generate WAL that will be archived and replayed on the standby.
+$arc_primary->safe_psql('postgres',
+	"INSERT INTO arc_test VALUES (generate_series(11, 20))");
+my $arc_target_lsn =
+  $arc_primary->safe_psql('postgres', "SELECT pg_current_wal_insert_lsn()");
+
+# Force WAL to be archived by switching segments, then wait for archiving.
+my $arc_segment = $arc_primary->safe_psql('postgres',
+	"SELECT pg_walfile_name(pg_current_wal_lsn())");
+$arc_primary->safe_psql('postgres', "SELECT pg_switch_wal()");
+$arc_primary->poll_query_until('postgres',
+	qq{SELECT last_archived_wal >= '$arc_segment' FROM pg_stat_archiver}, 't')
+  or die "Timed out waiting for WAL archiving on arc_primary";
+
+# Create an archive-only standby: has_restoring but NOT has_streaming.
+# No primary_conninfo means no walreceiver will start.
+my $arc_standby = PostgreSQL::Test::Cluster->new('arc_standby');
+$arc_standby->init_from_backup($arc_primary, $arc_backup_name,
+	has_restoring => 1);
+$arc_standby->start;
+
+# Wait for the standby to replay past our target LSN via archive recovery.
+$arc_standby->poll_query_until('postgres',
+	qq{SELECT pg_wal_lsn_diff(pg_last_wal_replay_lsn(), '$arc_target_lsn') >= 0}
+) or die "Timed out waiting for archive replay on arc_standby";
+
+# Sanity: verify no walreceiver is running.
+$output = $arc_standby->safe_psql('postgres',
+	"SELECT count(*) FROM pg_stat_wal_receiver");
+is($output, '0', "arc_standby has no walreceiver");
+
+# 9a. Getter fallback: standby_write/standby_flush succeed immediately when
+# the target LSN has already been replayed, even though writtenUpto and
+# flushedUpto are zero.  GetCurrentLSNForWaitType() returns
+# Max(walrcv_pos, replay), so replay >= target satisfies the check on the
+# first loop iteration without ever sleeping.
+
+$output = $arc_standby->safe_psql(
+	'postgres', qq[
+	WAIT FOR LSN '${arc_target_lsn}'
+		WITH (MODE 'standby_write', timeout '3s', no_throw);]);
+ok($output eq "success",
+	"standby_write succeeds on archive-only standby (getter fallback)");
+
+$output = $arc_standby->safe_psql(
+	'postgres', qq[
+	WAIT FOR LSN '${arc_target_lsn}'
+		WITH (MODE 'standby_flush', timeout '3s', no_throw);]);
+ok($output eq "success",
+	"standby_flush succeeds on archive-only standby (getter fallback)");
+
+# 9b. Replay waker: standby_write/standby_flush waiters that go to sleep
+# (target > replay at entry) are woken when replay catches up.  This tests
+# that PerformWalRecovery() calls WaitLSNWakeup for STANDBY_WRITE and
+# STANDBY_FLUSH, not just STANDBY_REPLAY.
+#
+# Pause replay, archive more WAL, start background waiters, then resume
+# replay and verify the waiters complete.
+
+$arc_standby->safe_psql('postgres', "SELECT pg_wal_replay_pause()");
+
+# Generate more WAL and archive it.
+$arc_primary->safe_psql('postgres',
+	"INSERT INTO arc_test VALUES (generate_series(21, 30))");
+my $arc_target_lsn2 =
+  $arc_primary->safe_psql('postgres', "SELECT pg_current_wal_insert_lsn()");
+
+my $arc_segment2 = $arc_primary->safe_psql('postgres',
+	"SELECT pg_walfile_name(pg_current_wal_lsn())");
+$arc_primary->safe_psql('postgres', "SELECT pg_switch_wal()");
+$arc_primary->poll_query_until('postgres',
+	qq{SELECT last_archived_wal >= '$arc_segment2' FROM pg_stat_archiver},
+	't')
+  or die "Timed out waiting for WAL archiving on arc_primary (round 2)";
+
+# Start background waiters.  With replay paused, target > replay, so they
+# will sleep on WaitLatch.  They can only be woken by the replay-loop
+# WaitLSNWakeup calls.
+my $arc_write_session = $arc_standby->background_psql('postgres');
+$arc_write_session->query_until(
+	qr/start/, qq[
+	\\echo start
+	WAIT FOR LSN '${arc_target_lsn2}'
+		WITH (MODE 'standby_write', timeout '1d', no_throw);
+]);
+
+my $arc_flush_session = $arc_standby->background_psql('postgres');
+$arc_flush_session->query_until(
+	qr/start/, qq[
+	\\echo start
+	WAIT FOR LSN '${arc_target_lsn2}'
+		WITH (MODE 'standby_flush', timeout '1d', no_throw);
+]);
+
+# Verify both waiters are blocked.
+$arc_standby->poll_query_until('postgres',
+	"SELECT count(*) = 2 FROM pg_stat_activity WHERE wait_event LIKE 'WaitForWal%'"
+) or die "Timed out waiting for arc_standby waiters to block";
+
+# Resume replay.  The startup process should wake the STANDBY_WRITE and
+# STANDBY_FLUSH waiters as it replays past arc_target_lsn2.
+$arc_standby->safe_psql('postgres', "SELECT pg_wal_replay_resume()");
+
+$arc_write_session->quit;
+$arc_flush_session->quit;
+chomp($arc_write_session->{stdout});
+chomp($arc_flush_session->{stdout});
+
+is($arc_write_session->{stdout},
+	'success',
+	"standby_write waiter woken by replay on archive-only standby");
+is($arc_flush_session->{stdout},
+	'success',
+	"standby_flush waiter woken by replay on archive-only standby");
+
+$arc_standby->stop;
+$arc_primary->stop;
+
+# 10. Fresh-shmem walreceiver startup (29e7dbf5e4d).
+# RequestXLogStreaming() initializes writtenUpto/flushedUpto to the
+# segment-aligned receiveStart only when receiveStart was invalid.
+# Restart the standby with the primary stopped, so the walreceiver cannot
+# connect and advance these values past the initial one before we observe it.
+
+my $rcv_primary = PostgreSQL::Test::Cluster->new('rcv_primary');
+$rcv_primary->init(allows_streaming => 1);
+# No background WAL during our probes.
+$rcv_primary->append_conf('postgresql.conf', 'autovacuum = off');
+$rcv_primary->start;
+$rcv_primary->safe_psql('postgres',
+	"CREATE TABLE rcv_test AS SELECT generate_series(1,10) AS a");
+
+my $rcv_backup = 'rcv_backup';
+$rcv_primary->backup($rcv_backup);
+
+my $rcv_standby = PostgreSQL::Test::Cluster->new('rcv_standby');
+$rcv_standby->init_from_backup($rcv_primary, $rcv_backup, has_streaming => 1);
+$rcv_standby->start;
+
+# Switch WAL segments mid-stream so the replay ends mid-segment after the
+# upcoming standby restart.  That guarantees the initial value <
+# final replay LSN.
+$rcv_primary->safe_psql('postgres',
+	"INSERT INTO rcv_test VALUES (generate_series(11, 100))");
+$rcv_primary->safe_psql('postgres', "SELECT pg_switch_wal()");
+$rcv_primary->safe_psql('postgres',
+	"INSERT INTO rcv_test VALUES (generate_series(101, 110))");
+$rcv_primary->wait_for_catchup($rcv_standby);
+
+# Restart the standby with the primary down: WalRcvData is initialized, but
+# the walreceiver cannot connect and update writtenUpto/flushedUpto.  So,
+# the initial flushedUpto stays observable via pg_last_wal_receive_lsn().
+$rcv_standby->stop;
+$rcv_primary->stop;
+$rcv_standby->start;
+
+$rcv_standby->poll_query_until('postgres',
+	"SELECT pg_last_wal_receive_lsn() IS NOT NULL;")
+  or die "walreceiver initial value did not become visible";
+
+# Freeze the replay so the (received, replay] window stays observable.
+$rcv_standby->safe_psql('postgres', "SELECT pg_wal_replay_pause()");
+$rcv_standby->poll_query_until('postgres',
+	"SELECT pg_get_wal_replay_pause_state() = 'paused'")
+  or die "Timed out waiting for rcv_standby replay to pause";
+
+my $rcv_receive =
+  $rcv_standby->safe_psql('postgres', "SELECT pg_last_wal_receive_lsn()");
+my $rcv_replay =
+  $rcv_standby->safe_psql('postgres', "SELECT pg_last_wal_replay_lsn()");
+my $rcv_gap = $rcv_standby->safe_psql('postgres',
+	"SELECT pg_wal_lsn_diff('$rcv_replay'::pg_lsn, '$rcv_receive'::pg_lsn) > 0"
+);
+ok($rcv_gap eq 't',
+	"replay sits ahead of initial walreceiver flush position");
+
+my $rcv_receive_offset = $rcv_standby->safe_psql(
+	'postgres',
+	"SELECT mod(pg_wal_lsn_diff('$rcv_receive'::pg_lsn, '0/0'::pg_lsn),
+				setting::numeric)::int
+	   FROM pg_settings
+	  WHERE name = 'wal_segment_size'");
+is($rcv_receive_offset, '0',
+	"initial walreceiver flush position is segment-aligned");
+
+# WAIT FOR an $rcv_replay LSN succeeds in standby_write / standby_flush
+# modes thanks to GetCurrentLSNForWaitType() taking replay LSN as the floor.
+# We observe flushedUpto directly via pg_last_wal_receive_lsn().  writtenUpto
+# is covered indirectly: without the replay-position floor, standby_write would
+# wait at the seeded segment-start position and time out.
+foreach my $rcv_mode ('standby_write', 'standby_flush')
+{
+	$output = $rcv_standby->safe_psql(
+		'postgres', qq[
+		WAIT FOR LSN '${rcv_replay}'
+			WITH (MODE '$rcv_mode', timeout '5s', no_throw);]);
+	ok($output eq "success",
+		"$rcv_mode succeeds for already-replayed LSN after standby restart");
+}
+
+# Restore primary and resume replay so section 11 can reuse the clusters.
+# Generate fresh WAL after reconnecting so the walreceiver advances its
+# flush position past the replay position before we freeze both frontiers.
+$rcv_standby->safe_psql('postgres', "SELECT pg_wal_replay_resume()");
+$rcv_primary->start;
+$rcv_primary->safe_psql('postgres',
+	"INSERT INTO rcv_test VALUES (generate_series(111, 120))");
+$rcv_primary->wait_for_catchup($rcv_standby);
+
+# 11. Off-by-one boundary checks for the wait predicate target <=
+# currentLSN.  Stop the walreceiver before pausing replay (stopping
+# after pause can hang -- see section 7d) so both replay and
+# walreceiver positions are frozen.
+stop_walreceiver($rcv_standby);
+$rcv_standby->safe_psql('postgres', "SELECT pg_wal_replay_pause()");
+$rcv_standby->poll_query_until('postgres',
+	"SELECT pg_get_wal_replay_pause_state() = 'paused'")
+  or die "Timed out waiting for rcv_standby replay to pause";
+
+# 11a. standby_replay exact fencepost.  The replay position is frozen, so this
+# probes the standby_replay predicate directly.
+my $replay_lsn =
+  $rcv_standby->safe_psql('postgres', "SELECT pg_last_wal_replay_lsn()");
+my (undef, $replay_lsn_plus) =
+  check_wait_for_lsn_fencepost($rcv_standby, 'standby_replay', $replay_lsn,
+	'standby_replay');
+
+# 11b. standby_flush exact fencepost.  pg_last_wal_receive_lsn() exposes the
+# flushed walreceiver position even after walreceiver exits, so this probes
+# the standby_flush predicate directly.  standby_write has no stable
+# SQL-visible boundary once walreceiver is stopped; it is covered by the
+# replay-floor and waiter wakeup tests above.
+my $flush_lsn =
+  $rcv_standby->safe_psql('postgres', "SELECT pg_last_wal_receive_lsn()");
+my $flush_covers_replay = $rcv_standby->safe_psql('postgres',
+	"SELECT pg_wal_lsn_diff('$flush_lsn'::pg_lsn, '$replay_lsn'::pg_lsn) >= 0"
+);
+ok($flush_covers_replay eq 't',
+	"standby_flush boundary is not masked by replay floor");
+
+check_wait_for_lsn_fencepost($rcv_standby, 'standby_flush', $flush_lsn,
+	'standby_flush');
+
+# 11c. A sleeping waiter at current + 1 wakes once replay advances
+# past it.  Start the waiter while replay is still paused so it is
+# guaranteed to sleep at replay_lsn_plus regardless of whether
+# flush_lsn > replay_lsn.  Then resume replay and restart the
+# walreceiver to deliver new WAL.
+$rcv_primary->safe_psql('postgres',
+	"INSERT INTO rcv_test VALUES (generate_series(200, 210))");
+
+my $boundary_session = $rcv_standby->background_psql('postgres');
+$boundary_session->query_until(
+	qr/start/, qq[
+	\\echo start
+	WAIT FOR LSN '${replay_lsn_plus}'
+		WITH (MODE 'standby_replay', timeout '1d', no_throw);
+]);
+
+$rcv_standby->poll_query_until('postgres',
+	"SELECT count(*) > 0 FROM pg_stat_activity WHERE wait_event = 'WaitForWalReplay'"
+) or die "Boundary waiter did not sleep";
+
+$rcv_standby->safe_psql('postgres', "SELECT pg_wal_replay_resume()");
+resume_walreceiver($rcv_standby);
+$boundary_session->quit;
+chomp($boundary_session->{stdout});
+is($boundary_session->{stdout},
+	'success',
+	"standby_replay: waiter at current + 1 wakes when replay advances");
+
+# 11d. A standby_write waiter removed from the waiters heap by a stale wakeup
+# must re-register if its target has not actually been reached.
+SKIP:
+{
+	skip 'Required test extension is not installed', 2
+	  unless $rcv_primary->check_extension('test_wait_lsn');
+
+	$rcv_primary->safe_psql('postgres', 'CREATE EXTENSION test_wait_lsn');
+	$rcv_primary->wait_for_catchup($rcv_standby);
+
+	# Stop streaming before generating the target.  This keeps both the
+	# walreceiver write position and the replay position below the target.
+	stop_walreceiver($rcv_standby);
+	$rcv_primary->safe_psql('postgres', 'INSERT INTO rcv_test VALUES (300)');
+	my $stale_target = $rcv_primary->safe_psql('postgres',
+		'SELECT pg_current_wal_insert_lsn()');
+
+	# Keep WAIT FOR untimed.  After streaming resumes below, its own timeout
+	# could wake the backend and make the completion check pass even if the
+	# WAL-progress wakeup were lost.
+	my $stale_waiter_name = 'wait_for_lsn_stale_wakeup';
+	my $stale_session = $rcv_standby->background_psql('postgres',
+		connstr => $rcv_standby->connstr('postgres')
+		  . " application_name=$stale_waiter_name");
+
+	$stale_session->set_query_timer_restart();
+
+	my $stale_waiter_pid = $rcv_standby->safe_psql(
+		'postgres',
+		"SELECT pid FROM pg_stat_activity
+		 WHERE application_name = '$stale_waiter_name'");
+	die "could not determine stale waiter PID: '$stale_waiter_pid'"
+	  unless $stale_waiter_pid =~ /^[0-9]+$/;
+
+	$stale_session->query_until(
+		qr/started/, qq[
+		\\echo started
+		WAIT FOR LSN '$stale_target' WITH (MODE 'standby_write');
+		\\echo completed
+	]);
+
+	$rcv_standby->poll_query_until(
+		'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$stale_waiter_pid, 'standby_write', '$stale_target')
+	]
+	) or die "standby_write waiter did not register";
+
+	# The write position is below the target because the receiver was stopped
+	# before the target was generated.  Verify that replay is below it too.
+	$rcv_standby->safe_psql(
+		'postgres', qq[
+		SELECT pg_wal_lsn_diff(
+			'$stale_target'::pg_lsn, pg_last_wal_replay_lsn()) > 0
+	]) eq 't'
+	  or die "standby replay reached the target before the stale wakeup";
+
+	# Simulate the state left by a wakeup that became stale before the waiter
+	# could recheck its target.  The helper removes the waiter from the heap
+	# and wakes it without changing the actual write or replay positions.  To
+	# the waiter, this is indistinguishable from the position reaching the
+	# target and then decreasing before the recheck.
+	$rcv_standby->safe_psql('postgres',
+		"SELECT test_wait_lsn_wakeup('standby_write', '$stale_target')");
+
+	# The position is still below the target, so the waiter must restore its
+	# heap registration before sleeping again.
+	ok( $rcv_standby->poll_query_until(
+			'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$stale_waiter_pid, 'standby_write', '$stale_target')
+	]),
+		"standby_write waiter re-registers after a stale wakeup"
+	) or die "standby_write waiter did not re-register";
+
+	# Reach the target for real; WAL progress should wake the re-registered waiter.
+	resume_walreceiver($rcv_standby);
+
+	like(
+		$stale_session->query_until(qr/completed/, ''),
+		qr/^success\r?\ncompleted/m,
+		"standby_write waiter completes once the target is reached");
+	$stale_session->quit;
+}
+
+$rcv_standby->stop;
+$rcv_primary->stop;
+
+# 12. Timeline switch on a cascade standby.  A WAIT FOR LSN waiter on
+# a cascade standby must survive its upstream's promotion: the
+# cascade walreceiver reconnects on the new timeline and replay
+# continues across the boundary.
+
+my $tl_primary = PostgreSQL::Test::Cluster->new('tl_primary');
+$tl_primary->init(allows_streaming => 1);
+$tl_primary->append_conf('postgresql.conf', 'autovacuum = off');
+$tl_primary->start;
+$tl_primary->safe_psql('postgres',
+	"CREATE TABLE tl_test AS SELECT generate_series(1, 10) AS a");
+
+my $tl_backup = 'tl_backup';
+$tl_primary->backup($tl_backup);
+
+my $tl_standby1 = PostgreSQL::Test::Cluster->new('tl_standby1');
+$tl_standby1->init_from_backup($tl_primary, $tl_backup, has_streaming => 1);
+$tl_standby1->start;
+
+# standby2 cascades from standby1.
+my $tl_backup2 = 'tl_backup2';
+$tl_standby1->backup($tl_backup2);
+
+my $tl_standby2 = PostgreSQL::Test::Cluster->new('tl_standby2');
+$tl_standby2->init_from_backup($tl_standby1, $tl_backup2, has_streaming => 1);
+$tl_standby2->start;
+
+$tl_primary->safe_psql('postgres',
+	"INSERT INTO tl_test VALUES (generate_series(11, 20))");
+$tl_primary->wait_for_catchup($tl_standby1);
+$tl_standby1->wait_for_catchup($tl_standby2);
+
+# Target LSN well past current insert LSN, so reaching it requires
+# WAL produced on the new timeline.  Pause replay on standby2 to
+# guarantee the waiter is asleep when the switch happens.
+my $tl_target = $tl_primary->safe_psql('postgres',
+	"SELECT (pg_current_wal_insert_lsn() + 65536)::text");
+
+$tl_standby2->safe_psql('postgres', "SELECT pg_wal_replay_pause()");
+$tl_standby2->poll_query_until('postgres',
+	"SELECT pg_get_wal_replay_pause_state() = 'paused'")
+  or die "Timed out waiting for tl_standby2 replay to pause";
+
+my $tl_session = $tl_standby2->background_psql('postgres');
+$tl_session->query_until(
+	qr/start/, qq[
+	\\echo start
+	WAIT FOR LSN '${tl_target}'
+		WITH (MODE 'standby_replay', timeout '1d', no_throw);
+]);
+
+$tl_standby2->poll_query_until('postgres',
+	"SELECT count(*) > 0 FROM pg_stat_activity WHERE wait_event = 'WaitForWalReplay'"
+) or die "Cascade waiter did not sleep before promotion";
+
+# Promote standby1 to TLI 2; produce enough WAL on the new timeline
+# to push past tl_target and force a segment switch.
+$tl_standby1->promote;
+$tl_standby1->safe_psql('postgres',
+	"INSERT INTO tl_test VALUES (generate_series(21, 1020))");
+$tl_standby1->safe_psql('postgres', "SELECT pg_switch_wal()");
+
+$tl_standby2->safe_psql('postgres', "SELECT pg_wal_replay_resume()");
+
+$tl_standby2->poll_query_until('postgres',
+	"SELECT received_tli > 1 FROM pg_stat_wal_receiver")
+  or die "tl_standby2 did not follow upstream timeline switch";
+
+$tl_session->quit;
+chomp($tl_session->{stdout});
+is($tl_session->{stdout}, 'success',
+	"WAIT FOR LSN survives upstream promotion and timeline switch on cascade standby"
+);
+
+$tl_standby2->stop;
+$tl_standby1->stop;
+$tl_primary->stop;
+
+# This final test needs an injection-point-enabled build.  Earlier test nodes
+# have already been stopped, so check the extensions on its dedicated node.
+if ($ENV{enable_injection_points} ne 'yes')
+{
+	done_testing();
+	exit;
+}
+
+# 13. AdvanceXLInsertBuffer() asks XLogWrite() only to write WAL, but completing
+# a segment also advances the flush position.  Verify that this implicit flush
+# wakes primary_flush waiters.
+my $flush_wake_primary = PostgreSQL::Test::Cluster->new('flush_wake_primary');
+$flush_wake_primary->init(extra => ['--wal-segsize=1']);
+$flush_wake_primary->append_conf(
+	'postgresql.conf', qq[
+wal_buffers = 4
+autovacuum = off
+checkpoint_timeout = '1h'
+max_wal_size = '1GB'
+bgwriter_lru_maxpages = 0
+]);
+$flush_wake_primary->start;
+
+# The modules may be absent under installcheck.
+if (   !$flush_wake_primary->check_extension('injection_points')
+	|| !$flush_wake_primary->check_extension('test_wait_lsn'))
+{
+	$flush_wake_primary->stop;
+	done_testing();
+	exit;
+}
+
+is( $flush_wake_primary->safe_psql(
+		'postgres',
+		"SELECT setting::int FROM pg_settings WHERE name = 'wal_segment_size'"
+	),
+	1024 * 1024,
+	'dedicated node runs with 1MB WAL segments');
+
+# Keep the WAL writer out of XLogBackgroundFlush(), whose ordinary flush
+# wakeup would mask the path under test.
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	CREATE EXTENSION injection_points;
+	CREATE EXTENSION test_wait_lsn;
+	SELECT injection_points_attach('walwriter-before-background-flush', 'wait');
+]);
+$flush_wake_primary->wait_for_event('walwriter',
+	'walwriter-before-background-flush');
+
+my $writer = $flush_wake_primary->background_psql('postgres');
+$writer->set_query_timer_restart;
+
+# Begin in a fresh segment, then round the insert pointer up to its end.
+$writer->query_safe('SELECT pg_switch_wal()');
+my $target_lsn = $writer->query_safe(
+	q[
+	WITH p AS
+	(
+		SELECT pg_current_wal_insert_lsn() AS lsn,
+			   setting::numeric AS segsz
+		FROM pg_settings
+		WHERE name = 'wal_segment_size'
+	)
+	SELECT lsn + (segsz - (lsn - '0/0'::pg_lsn) % segsz)
+	FROM p
+]);
+
+is( $writer->query_safe(
+		"SELECT pg_current_wal_flush_lsn() < '$target_lsn'::pg_lsn"),
+	't',
+	'wakeup target is not flushed initially');
+
+my $waiter = $flush_wake_primary->background_psql('postgres');
+$waiter->set_query_timer_restart;
+my $waiter_pid = $waiter->query_safe('SELECT pg_backend_pid()');
+
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_attach('wait-for-lsn-after-register', 'wait');
+]);
+
+$waiter->query_until(
+	qr/^wait_started\r?$/m, qq[
+	\\echo wait_started
+	WAIT FOR LSN '$target_lsn'
+		WITH (MODE 'primary_flush', no_throw);
+	\\echo wait_finished
+]);
+$flush_wake_primary->wait_for_event('client backend',
+	'wait-for-lsn-after-register');
+
+is( $flush_wake_primary->safe_psql(
+		'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$waiter_pid, 'primary_flush', '$target_lsn')
+	]),
+	't',
+	'primary_flush waiter is registered before the implicit flush');
+
+# A 2MB nontransactional, non-flushing logical message assigns no XID and
+# dirties no relation buffers.  With four WAL buffers, it must recycle through
+# the target.  Keep its transaction open so implicit transaction completion
+# cannot call XLogSetAsyncXactLSN(); the xid-less rollback writes no WAL.
+$writer->query_safe('BEGIN');
+$writer->query_safe(
+	q[
+	SELECT pg_logical_emit_message(
+		false, 'wfl', repeat('x', 2 * 1024 * 1024), false)
+]);
+
+is( $writer->query_safe(
+		"SELECT pg_current_wal_flush_lsn() >= '$target_lsn'::pg_lsn"),
+	't',
+	'finishing a segment advanced flush through the target');
+
+# The waiter is still parked, so only a progress waker can remove it.
+is( $flush_wake_primary->safe_psql(
+		'postgres', qq[
+		SELECT test_wait_lsn_waiter_is_registered(
+			$waiter_pid, 'primary_flush', '$target_lsn')
+	]),
+	'f',
+	'implicit segment flush removes the primary_flush waiter');
+
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_detach('wait-for-lsn-after-register');
+	SELECT injection_points_wakeup('wait-for-lsn-after-register');
+]);
+
+like($waiter->query_until(qr/^wait_finished\r?$/m, ''),
+	qr/^success\r?$/m, 'primary_flush waiter returns success after release');
+
+# Detach first so that the WAL writer cannot immediately re-enter the point.
+$flush_wake_primary->safe_psql(
+	'postgres', q[
+	SELECT injection_points_detach('walwriter-before-background-flush');
+	SELECT injection_points_wakeup('walwriter-before-background-flush');
+]);
+
+$writer->query_safe('ROLLBACK');
+$writer->quit;
+$waiter->quit;
+$flush_wake_primary->stop;
 
 done_testing();

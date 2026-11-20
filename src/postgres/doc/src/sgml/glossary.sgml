@@ -199,8 +199,6 @@
      (but not the autovacuum workers),
      the <glossterm linkend="glossary-background-writer">background writer</glossterm>,
      the <glossterm linkend="glossary-checkpointer">checkpointer</glossterm>,
-     the <glossterm linkend="glossary-data-checksums-worker">data checksums worker</glossterm>,
-     the <glossterm linkend="glossary-data-checksums-worker-launcher">data checksums worker launcher</glossterm>,
      the <glossterm linkend="glossary-logger">logger</glossterm>,
      the <glossterm linkend="glossary-startup-process">startup process</glossterm>,
      the <glossterm linkend="glossary-wal-archiver">WAL archiver</glossterm>,
@@ -236,8 +234,8 @@
      which runs system- or user-supplied code.
      Serves as infrastructure for several features in
      <productname>PostgreSQL</productname>, such as
-     <glossterm linkend="glossary-replication">logical replication</glossterm>
-     and <glossterm linkend="glossary-parallel-query">parallel queries</glossterm>.
+     <glossterm linkend="glossary-replication">logical replication</glossterm> and
+     <glossterm linkend="glossary-parallel-query">parallel queries</glossterm>.
      In addition, <glossterm linkend="glossary-extension">Extensions</glossterm> can add
      custom background worker processes.
    </para>
@@ -574,28 +572,6 @@
   <glossentry>
    <glossterm>Data area</glossterm>
    <glosssee otherterm="glossary-data-directory" />
-  </glossentry>
-
-  <glossentry id="glossary-data-checksums-worker">
-   <glossterm>Data Checksums Worker</glossterm>
-   <glossdef>
-    <para>
-     A <glossterm linkend="glossary-background-worker">background worker</glossterm>
-     which enables data checksums in a specific database.
-    </para>
-   </glossdef>
-  </glossentry>
-
-  <glossentry id="glossary-data-checksums-worker-launcher">
-   <glossterm>Data Checksums Worker Launcher</glossterm>
-   <glossdef>
-    <para>
-     A <glossterm linkend="glossary-background-worker">background worker</glossterm>
-     which starts <glossterm linkend="glossary-data-checksums-worker"> data
-     checksum worker</glossterm> processes for enabling data checksums in each
-     database, or disables data checksums cluster-wide.
-    </para>
-   </glossdef>
   </glossentry>
 
   <glossentry id="glossary-database">
@@ -1953,21 +1929,6 @@
     <para>
      For more information, see
      <xref linkend="manage-ag-tablespaces"/>.
-    </para>
-   </glossdef>
-  </glossentry>
-
-  <glossentry id="glossary-temporal-leftovers">
-   <glossterm>Temporal leftovers</glossterm>
-   <glossdef>
-    <para>
-     After a temporal update or delete, the portion of history that was not
-     updated/deleted. When using ranges to track application time, there may be
-     zero, one, or two stretches of history that were not updated/deleted
-     (before and/or after the portion that was updated/deleted). New rows are
-     automatically inserted into the table to preserve that history. A single
-     multirange can accommodate the untouched history before and after the
-     update/delete, so there will be only zero or one leftover.
     </para>
    </glossdef>
   </glossentry>

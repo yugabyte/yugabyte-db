@@ -245,6 +245,9 @@ cfunc_hashtable_delete(CachedFunction *function)
  * The hashkey is returned into the caller-provided storage at *hashkey.
  * Note however that if a callResultType is incorporated, we've not done
  * anything about copying that.
+ *
+ * See comments for cached_function_compile() about how much of *fcinfo
+ * we're allowed to consider when forValidator is true.
  */
 static void
 compute_function_hashkey(FunctionCallInfo fcinfo,
@@ -297,6 +300,20 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	 */
 	if (procStruct->pronargs > 0)
 	{
+		/*
+		 * Protect against overrun of fixed-size hashkey->argtypes array. This
+		 * also protects later code in places such as PL/pgSQL. Ordinarily the
+		 * parser would have checked this long since, but it's possible that
+		 * we are looking at a pg_proc entry that was made by a server
+		 * executable with a different value of FUNC_MAX_ARGS.
+		 */
+		if (procStruct->pronargs > FUNC_MAX_ARGS)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg_plural("cannot pass more than %d argument to a function",
+								   "cannot pass more than %d arguments to a function",
+								   FUNC_MAX_ARGS,
+								   FUNC_MAX_ARGS)));
 		hashkey->nargs = procStruct->pronargs;
 		memcpy(hashkey->argtypes, procStruct->proargtypes.values,
 			   procStruct->pronargs * sizeof(Oid));
@@ -315,9 +332,12 @@ compute_function_hashkey(FunctionCallInfo fcinfo,
 	 * a function returning RECORD may depend on a column definition list to
 	 * determine its output rowtype.  If the caller needs the exact result
 	 * type to be part of the hash lookup key, we must run
-	 * get_call_result_type() to find that out.
+	 * get_call_result_type() to find that out.  However, in validation mode
+	 * the supplied fcinfo will likely not be complete enough for that to
+	 * work, so leave callResultType unfilled (implying that the resulting
+	 * hash entry will never match any actual calls for such functions).
 	 */
-	if (includeResultType)
+	if (includeResultType && !forValidator)
 	{
 		Oid			resultTypeId;
 		TupleDesc	tupdesc;
@@ -409,6 +429,7 @@ cfunc_resolve_polymorphic_argtypes(int numargs,
 					argtypes[i] = INT4RANGEOID;
 					break;
 				case ANYMULTIRANGEOID:
+				case ANYCOMPATIBLEMULTIRANGEOID:
 					argtypes[i] = INT4MULTIRANGEOID;
 					break;
 				default:
@@ -470,7 +491,10 @@ delete_function(CachedFunction *func)
  * include the actual result descriptor in the cache lookup key.
  *
  * If forValidator is true, we're only compiling for validation purposes,
- * and so some checks are skipped.
+ * and so some checks are skipped.  In this case the passed fcinfo need
+ * only provide the function OID and indications of whether the function
+ * is a trigger or event trigger (as tested via CALLED_AS_TRIGGER or
+ * CALLED_AS_EVENT_TRIGGER).
  *
  * Note: it's important for this to fall through quickly if the function
  * has already been compiled.

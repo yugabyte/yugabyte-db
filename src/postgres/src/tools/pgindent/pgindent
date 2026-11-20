@@ -35,7 +35,7 @@ my $bak_to_cleanup;
 END { unlink $bak_to_cleanup if defined $bak_to_cleanup; }
 
 # Update for pg_bsd_indent version
-my $INDENT_VERSION = "2.1.2";
+my $INDENT_VERSION = "2.1.3";
 
 # Our standard indent settings
 my $indent_opts =
@@ -237,6 +237,10 @@ sub write_source
 	return;
 }
 
+# Text of each alignas(...) call, stashed by pre_indent() and restored
+# by post_indent().
+my @alignas_stash;
+
 sub pre_indent
 {
 	my $source = shift;
@@ -265,12 +269,28 @@ sub pre_indent
 	# Protect wrapping in CATALOG()
 	$source =~ s!^(CATALOG\(.*)$!/*$1*/!gm;
 
+	# pg_bsd_indent doesn't know about alignas(), so a non-first struct
+	# member declared with it gets misindented.  Disguise each call as
+	# a plain identifier; stash the original text rather than embed it,
+	# so nested parens or line breaks in the argument aren't a problem.
+	@alignas_stash = ();
+	$source =~ s!
+		\b alignas \s*
+		( \( (?: [^()]++ | (?1) )*+ \) )
+	!
+		push(@alignas_stash, "alignas" . $1);
+		"alignas_" . $#alignas_stash . "_";
+	!gex;
+
 	return $source;
 }
 
 sub post_indent
 {
 	my $source = shift;
+
+	# Restore alignas(...)
+	$source =~ s!\balignas_(\d+)_!$alignas_stash[$1]!g;
 
 	# Restore CATALOG lines
 	$source =~ s!^/\*(CATALOG\(.*)\*/$!$1!gm;
@@ -287,10 +307,55 @@ sub post_indent
 	# Fix run-together comments to have a tab between them
 	$source =~ s!\*/(/\*.*\*/)$!*/\t$1!gm;
 
+	# Postprocess multiline comments except for /**... and /*-... ones
+	$source =~ s!^(/\*[^\*\-].*?\*/)!postprocess_multiline_comment($1)!mgse;
+
 	## Functions
 
 	# Use a single space before '*' in function return types
 	$source =~ s!^([A-Za-z_]\S*)[ \t]+\*$!$1 *!gm;
+
+	return $source;
+}
+
+sub postprocess_multiline_comment
+{
+	my $source = shift;
+	my @lines = split "\n", $source;
+
+	# Only reformat comments that actually span more than one line
+	if (scalar @lines < 2)
+	{
+		return $source;
+	}
+
+	# Split any text on the first line onto a separate line,
+	# but keep /* === and /* --- lines as is
+	if ($lines[0] !~ m!^/\*\s+[=-]+$!)
+	{
+		$lines[0] =~ s!/\*\s*(.+)!/\*\n * $1!;
+	}
+
+	# Apply these steps to all lines but the first
+	for my $i (1 .. scalar @lines - 1)
+	{
+		# Insert ' * ' if first non-white-space character is not '*'
+		$lines[$i] =~ s/^\s*/ \* / if $lines[$i] !~ /^\s*\*/;
+		# ... but that might leave us with trailing space
+		$lines[$i] =~ s/\s+$//;
+		# Require exactly one leading '*', and one space before it
+		$lines[$i] =~ s/^\s*\*+/ \*/;
+	}
+
+	# Split trailing "*/" onto its own line if not that already,
+	# but keep === */ and --- */ lines as is
+	if ($lines[-1] !~ m!^\s*[=-]+\s+\*/$!)
+	{
+		# this also removes any trailing whitespace
+		$lines[-1] =~ s!(.+?)\s+\*/!$1\n \*/!;
+	}
+
+	$source = join "\n", @lines;
 
 	return $source;
 }

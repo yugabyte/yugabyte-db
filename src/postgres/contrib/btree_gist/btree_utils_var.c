@@ -118,7 +118,7 @@ gbt_var_leaf2node(GBT_VARKEY *leaf, const gbtree_vinfo *tinfo, FmgrInfo *flinfo)
  *
  * If the underlying type is character data, the prefix length may point in
  * the middle of a multibyte character.
-*/
+ */
 static int32
 gbt_var_node_cp_len(const GBT_VARKEY *node, const gbtree_vinfo *tinfo)
 {
@@ -207,9 +207,9 @@ gbt_var_node_pf_match(const GBT_VARKEY_R *node, const bytea *query, const gbtree
 
 
 /*
-*  truncates / compresses the node key
-*  cpf_length .. common prefix length
-*/
+ *  truncates / compresses the node key
+ *  cpf_length .. common prefix length
+ */
 static GBT_VARKEY *
 gbt_var_node_truncate(const GBT_VARKEY *node, int32 cpf_length, const gbtree_vinfo *tinfo)
 {
@@ -571,6 +571,13 @@ gbt_var_consistent(GBT_VARKEY_R *key,
 {
 	bool		retval = false;
 
+	/*
+	 * Remember that f_cmp is for internal pages, f_eq etc for leaf pages, and
+	 * on internal pages we need to check gbt_var_node_pf_match too.
+	 *
+	 * The leaf-page tests use swapped operands (e.g., f_gt(query, lower)
+	 * means "lower < query"), which is why they look reversed.
+	 */
 	switch (strategy)
 	{
 		case BTLessEqualStrategyNumber:
@@ -611,8 +618,20 @@ gbt_var_consistent(GBT_VARKEY_R *key,
 					|| gbt_var_node_pf_match(key, query, tinfo);
 			break;
 		case BtreeGistNotEqualStrategyNumber:
-			retval = !(tinfo->f_eq(query, key->lower, collation, flinfo) &&
-					   tinfo->f_eq(query, key->upper, collation, flinfo));
+			if (is_leaf)
+				retval = !(tinfo->f_eq(query, key->lower, collation, flinfo));
+			else
+			{
+				/*
+				 * If the upper/lower bounds are equal and not truncated, then
+				 * all entries below this node must have exactly that value.
+				 * So we can avoid descending if the query equals both bounds.
+				 * In all other cases, we must descend.
+				 */
+				retval = tinfo->trnc ||
+					!(tinfo->f_cmp(query, key->lower, collation, flinfo) == 0 &&
+					  tinfo->f_cmp(query, key->upper, collation, flinfo) == 0);
+			}
 			break;
 		default:
 			retval = false;

@@ -245,8 +245,8 @@ search_directory(const char *directory, const char *fname, int *WalSegSz)
 
 			if (!IsValidWalSegSize(longhdr->xlp_seg_size))
 			{
-				pg_log_error(ngettext("invalid WAL segment size in WAL file \"%s\" (%d byte)",
-									  "invalid WAL segment size in WAL file \"%s\" (%d bytes)",
+				pg_log_error(ngettext("invalid WAL segment size in WAL file \"%s\" (%u byte)",
+									  "invalid WAL segment size in WAL file \"%s\" (%u bytes)",
 									  longhdr->xlp_seg_size),
 							 fname, longhdr->xlp_seg_size);
 				pg_log_error_detail("The WAL segment size must be a power of two between 1 MB and 1 GB.");
@@ -1242,7 +1242,7 @@ main(int argc, char **argv)
 	if (waldir != NULL)
 	{
 		/* Check whether the path looks like a tar archive by its extension */
-		if (parse_tar_compress_algorithm(waldir, &compression))
+		if (parse_tar_compress_algorithm(waldir, &compression) >= 0)
 		{
 			split_path(waldir, &private.archive_dir, &private.archive_name);
 		}
@@ -1286,7 +1286,8 @@ main(int argc, char **argv)
 				pg_fatal("could not open directory \"%s\": %m", waldir);
 		}
 
-		if (fname != NULL && parse_tar_compress_algorithm(fname, &compression))
+		if (fname != NULL &&
+			parse_tar_compress_algorithm(fname, &compression) >= 0)
 		{
 			private.archive_dir = waldir;
 			private.archive_name = fname;

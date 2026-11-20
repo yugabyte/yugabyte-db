@@ -55,6 +55,9 @@ RelationPutHeapTuple(Relation relation,
 	Assert(!((tuple->t_data->t_infomask & HEAP_XMAX_COMMITTED) &&
 			 (tuple->t_data->t_infomask & HEAP_XMAX_IS_MULTI)));
 
+	/* caller should have cleared the flag */
+	Assert(!HeapTupleHeaderIsDatum(tuple->t_data));
+
 	/* Add the tuple to the page */
 	pageHeader = BufferGetPage(buffer);
 
@@ -401,7 +404,7 @@ RelationAddBlocks(Relation relation, BulkInsertState bistate,
 	{
 		BlockNumber first_fsm_block = first_block + not_in_fsm_pages;
 
-		FreeSpaceMapVacuumRange(relation, first_fsm_block, last_block);
+		FreeSpaceMapVacuumRange(relation, first_fsm_block, last_block + 1);
 	}
 
 	if (bistate)

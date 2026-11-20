@@ -351,6 +351,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 errmsg("OVER specified, but %s is not a window function nor an aggregate function",
 							NameListToString(funcname)),
 					 parser_errposition(pstate, location)));
+		if (ignore_nulls != NO_NULLTREATMENT)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+			/*- translator: first %s is a null treatment option, eg IGNORE NULLS */
+					 errmsg("%s specified, but %s is not a window function",
+							"RESPECT/IGNORE NULLS", NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
 	}
 
 	/*
@@ -519,14 +526,13 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 						 errmsg("%s is not an ordered-set aggregate, so it cannot have WITHIN GROUP",
 								NameListToString(funcname)),
 						 parser_errposition(pstate, location)));
-
-			/* It also can't treat nulls as a window function */
-			if (ignore_nulls != NO_NULLTREATMENT)
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("aggregate functions do not accept RESPECT/IGNORE NULLS"),
-						 parser_errposition(pstate, location)));
 		}
+
+		if (ignore_nulls != NO_NULLTREATMENT)
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("aggregate functions do not accept RESPECT/IGNORE NULLS"),
+					 parser_errposition(pstate, location)));
 	}
 	else if (fdresult == FUNCDETAIL_WINDOWFUNC)
 	{
@@ -686,6 +692,32 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 											   rettype,
 											   false);
 
+	/*
+	 * Reject any attempt to call a function that takes or returns type
+	 * internal from SQL.  (The FUNCDETAIL_COERCION case does not reach this
+	 * check because of the early return above, but that's okay because we
+	 * disallow coercions to or from type internal.)  Note that we are
+	 * checking the resolved argument and result types, so this will reject
+	 * calls to polymorphic functions that pass internal-type arguments.  The
+	 * casting rules should prevent that anyway, since we won't cast internal
+	 * to any polymorphic type, but no harm in being doubly sure.
+	 */
+	for (int i = 0; i < nargsplusdefs; i++)
+	{
+		if (declared_arg_types[i] == INTERNALOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("functions accepting type \"%s\" cannot be called explicitly",
+							"internal"),
+					 parser_errposition(pstate, location)));
+	}
+	if (rettype == INTERNALOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("functions returning type \"%s\" cannot be called explicitly",
+						"internal"),
+				 parser_errposition(pstate, location)));
+
 	/* perform the necessary typecasting of arguments */
 	make_fn_arguments(pstate, fargs, actual_arg_types, declared_arg_types);
 
@@ -796,6 +828,22 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		aggref->location = location;
 
 		/*
+		 * The argument-count limit for aggregates is one less than for other
+		 * kinds of functions (cf. AggregateCreate).  Now that we know it's an
+		 * aggregate, apply the stricter limit.  We need an explicit check
+		 * because hypothetical-set aggregates don't have a fixed number of
+		 * arguments, so having matched the pg_proc entry proves nothing.
+		 */
+		if (list_length(fargs) > FUNC_MAX_ARGS - 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg_plural("aggregates cannot have more than %d argument",
+								   "aggregates cannot have more than %d arguments",
+								   FUNC_MAX_ARGS - 1,
+								   FUNC_MAX_ARGS - 1),
+					 parser_errposition(pstate, location)));
+
+		/*
 		 * Reject attempt to call a parameterless aggregate without (*)
 		 * syntax.  This is mere pedantry but some folks insisted ...
 		 */
@@ -859,6 +907,19 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("DISTINCT is not implemented for window functions"),
+					 parser_errposition(pstate, location)));
+
+		/*
+		 * As above, enforce the correct argument-count limit if it's really
+		 * an aggregate.
+		 */
+		if (wfunc->winagg && list_length(fargs) > FUNC_MAX_ARGS - 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg_plural("aggregates cannot have more than %d argument",
+								   "aggregates cannot have more than %d arguments",
+								   FUNC_MAX_ARGS - 1,
+								   FUNC_MAX_ARGS - 1),
 					 parser_errposition(pstate, location)));
 
 		/*
@@ -1019,7 +1080,8 @@ func_lookup_failure_details(int fgc_flags, List *argnames, bool proc_call)
 }
 
 
-/* func_match_argtypes()
+/*
+ * func_match_argtypes()
  *
  * Given a list of candidate functions (having the right name and number
  * of arguments) and an array of input datatype OIDs, produce a shortlist of
@@ -1062,7 +1124,8 @@ func_match_argtypes(int nargs,
 }								/* func_match_argtypes() */
 
 
-/* func_select_candidate()
+/*
+ * func_select_candidate()
  *		Given the input argtype array and more than one candidate
  *		for the function, attempt to resolve the conflict.
  *
@@ -1473,7 +1536,8 @@ func_select_candidate(int nargs,
 }								/* func_select_candidate() */
 
 
-/* func_get_detail()
+/*
+ * func_get_detail()
  *
  * Find the named function in the system catalogs.
  *
@@ -2053,9 +2117,7 @@ ParseComplexProjection(ParseState *pstate, const char *funcname, Node *first_arg
 	{
 		ParseNamespaceItem *nsitem;
 
-		nsitem = GetNSItemByRangeTablePosn(pstate,
-										   ((Var *) first_arg)->varno,
-										   ((Var *) first_arg)->varlevelsup);
+		nsitem = GetNSItemByVar(pstate, (Var *) first_arg);
 		/* Return a Var if funcname matches a column, else NULL */
 		return scanNSItemForColumn(pstate, nsitem,
 								   ((Var *) first_arg)->varlevelsup,
@@ -2330,7 +2392,7 @@ LookupFuncName(List *funcname, int nargs, const Oid *argtypes, bool missing_ok)
 Oid
 LookupFuncWithArgs(ObjectType objtype, ObjectWithArgs *func, bool missing_ok)
 {
-	Oid			argoids[FUNC_MAX_ARGS];
+	Oid			argoids[FUNC_MAX_ARGS] = {0};
 	int			argcount;
 	int			nargs;
 	int			i;
@@ -2693,9 +2755,6 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 			break;
 		case EXPR_KIND_WINDOW_PARTITION:
 		case EXPR_KIND_WINDOW_ORDER:
-			/* okay, these are effectively GROUP BY/ORDER BY */
-			pstate->p_hasTargetSRFs = true;
-			break;
 		case EXPR_KIND_WINDOW_FRAME_RANGE:
 		case EXPR_KIND_WINDOW_FRAME_ROWS:
 		case EXPR_KIND_WINDOW_FRAME_GROUPS:
@@ -2782,12 +2841,6 @@ check_srf_call_placement(ParseState *pstate, Node *last_srf, int location)
 			break;
 		case EXPR_KIND_CYCLE_MARK:
 			errkind = true;
-			break;
-		case EXPR_KIND_PROPGRAPH_PROPERTY:
-			err = _("set-returning functions are not allowed in property definition expressions");
-			break;
-		case EXPR_KIND_FOR_PORTION:
-			err = _("set-returning functions are not allowed in FOR PORTION OF expressions");
 			break;
 
 			/*

@@ -106,6 +106,8 @@ advice_item: TOK_TAG_JOIN_ORDER '(' join_order_target_list ')'
 			$$ = palloc0_object(pgpa_advice_item);
 			if (strcmp($1, "bitmap_heap_scan") == 0)
 				$$->tag = PGPA_TAG_BITMAP_HEAP_SCAN;
+			else if (strcmp($1, "do_not_scan") == 0)
+				$$->tag = PGPA_TAG_DO_NOT_SCAN;
 			else if (strcmp($1, "no_gather") == 0)
 				$$->tag = PGPA_TAG_NO_GATHER;
 			else if (strcmp($1, "seq_scan") == 0)
@@ -133,7 +135,7 @@ advice_item: TOK_TAG_JOIN_ORDER '(' join_order_target_list ')'
 				foreach_ptr(pgpa_advice_target, target, $3)
 				{
 					if (target->ttype == PGPA_TARGET_IDENTIFIER ||
-						list_length(target->children) == 1)
+						list_length(target->children) < 2)
 							pgpa_yyerror(result, parse_error_msg_p, yyscanner,
 										 "FOREIGN_JOIN targets must contain more than one relation identifier");
 				}
@@ -149,13 +151,12 @@ relation_identifier: identifier opt_ri_occurrence opt_partition opt_plan_name
 			$$->ttype = PGPA_TARGET_IDENTIFIER;
 			$$->rid.alias_name = $1;
 			$$->rid.occurrence = $2;
-			if (list_length($3) == 2)
+			if ($3 != NIL)
 			{
+				Assert(list_length($3) == 2);
 				$$->rid.partnsp = linitial($3);
 				$$->rid.partrel = lsecond($3);
 			}
-			else if ($3 != NIL)
-				$$->rid.partrel = linitial($3);
 			$$->rid.plan_name = $4;
 		}
 	;
@@ -196,14 +197,13 @@ identifier: TOK_IDENT
 	;
 
 /*
- * When generating advice, we always schema-qualify the partition name, but
- * when parsing advice, we accept a specification that lacks one.
+ * The partition name must always be schema-qualified. Otherwise, a relation
+ * identifier could refer to more than one partition of the same partitioned
+ * table, and relation identifiers are required to be unique.
  */
 opt_partition:
 	'/' identifier '.' identifier
 		{ $$ = list_make2($2, $4); }
-	| '/' identifier
-		{ $$ = list_make1($2); }
 	|
 		{ $$ = NIL; }
 	;
@@ -255,12 +255,18 @@ join_order_sublist:
 			$$ = palloc0_object(pgpa_advice_target);
 			$$->ttype = PGPA_TARGET_ORDERED_LIST;
 			$$->children = $2;
+			if ($2 == NIL)
+				pgpa_yyerror(result, parse_error_msg_p, yyscanner,
+							 "JOIN_ORDER targets must contain at least one relation identifier");
 		}
 	| '{' simple_target_list '}'
 		{
 			$$ = palloc0_object(pgpa_advice_target);
 			$$->ttype = PGPA_TARGET_UNORDERED_LIST;
 			$$->children = $2;
+			if ($2 == NIL)
+				pgpa_yyerror(result, parse_error_msg_p, yyscanner,
+							 "JOIN_ORDER targets must contain at least one relation identifier");
 		}
 	;
 

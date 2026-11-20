@@ -27,9 +27,11 @@
 #include "catalog/pg_type.h"
 #include "commands/sequence.h"
 #include "commands/trigger.h"
+#include "common/pg_lzcompress.h"
 #include "executor/executor.h"
 #include "executor/functions.h"
 #include "executor/spi.h"
+#include "foreign/foreign.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -44,8 +46,11 @@
 #include "tcop/tcopprot.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/expandedrecord.h"
 #include "utils/geo_decls.h"
+#include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/pg_locale.h"
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
@@ -164,7 +169,8 @@ overpaid(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(salary > 699);
 }
 
-/* New type "widget"
+/*
+ * New type "widget"
  * This used to be "circle", but I added circle to builtins,
  *	so needed to make sure the names do not collide. - tgl 97/04/21
  */
@@ -435,6 +441,116 @@ make_tuple_indirect(PG_FUNCTION_ARGS)
 	 * function into a container type (record, array, etc) it should be OK.
 	 */
 	PG_RETURN_POINTER(newtup->t_data);
+}
+
+/*
+ * Functions for testing expanded records built from a flat composite datum.
+ *
+ * make_expanded_record_from_datum() is only reachable via
+ * DatumGetExpandedRecord(), i.e. PG_GETARG_EXPANDED_RECORD(), which has no
+ * in-core callers.
+ */
+
+/*
+ * Round-trip a composite datum through an expanded record.  Exercises
+ * DatumGetExpandedRecord() and, via the flatten callback, ER_flatten_into().
+ */
+PG_FUNCTION_INFO_V1(expanded_record_identity);
+Datum
+expanded_record_identity(PG_FUNCTION_ARGS)
+{
+	ExpandedRecordHeader *erh = PG_GETARG_EXPANDED_RECORD(0);
+
+	PG_RETURN_EXPANDED_RECORD(erh);
+}
+
+/*
+ * Report the identity of an expanded record built from a flat datum.
+ *
+ * The typmod is only reported as "is the type's default", as the actual value
+ * for a blessed RECORD is not reproducible.  A named rowtype must end up with
+ * typmod -1, a RECORD with a registered one.
+ */
+PG_FUNCTION_INFO_V1(expanded_record_info);
+Datum
+expanded_record_info(PG_FUNCTION_ARGS)
+{
+	ExpandedRecordHeader *erh = PG_GETARG_EXPANDED_RECORD(0);
+	TupleDesc	tupdesc = expanded_record_get_tupdesc(erh);
+
+	PG_RETURN_TEXT_P(cstring_to_text(psprintf("type %s, typmod is default: %s, natts %d",
+											  format_type_be(erh->er_typeid),
+											  erh->er_typmod == -1 ? "yes" : "no",
+											  tupdesc->natts)));
+}
+
+/*
+ * Read one field out of an expanded record built from a flat datum, forcing
+ * deconstruct_expanded_record() and thus a deform against the descriptor.
+ */
+PG_FUNCTION_INFO_V1(expanded_record_field_text);
+Datum
+expanded_record_field_text(PG_FUNCTION_ARGS)
+{
+	ExpandedRecordHeader *erh = PG_GETARG_EXPANDED_RECORD(0);
+	int			fnum = PG_GETARG_INT32(1);
+	TupleDesc	tupdesc = expanded_record_get_tupdesc(erh);
+	Datum		val;
+	bool		isnull;
+	Oid			outfunc;
+	bool		typIsVarlena;
+
+	if (fnum < 1 || fnum > tupdesc->natts)
+		elog(ERROR, "field number %d out of range", fnum);
+
+	val = expanded_record_get_field(erh, fnum, &isnull);
+	if (isnull)
+		PG_RETURN_NULL();
+
+	getTypeOutputInfo(TupleDescAttr(tupdesc, fnum - 1)->atttypid,
+					  &outfunc, &typIsVarlena);
+
+	PG_RETURN_TEXT_P(cstring_to_text(OidOutputFunctionCall(outfunc, val)));
+}
+
+/*
+ * Return a copy of a composite datum with its version removed, i.e. as a
+ * cluster predating the composite tuple versioning would have stored it.
+ *
+ * Such datums cannot be produced through SQL, but they have to stay readable
+ * after a minor version upgrade or across pg_upgrade, so tests need a way to
+ * generate one.
+ */
+PG_FUNCTION_INFO_V1(make_tuple_unversioned);
+Datum
+make_tuple_unversioned(PG_FUNCTION_ARGS)
+{
+	HeapTupleHeader rec;
+
+	if (!type_is_rowtype(get_fn_expr_argtype(fcinfo->flinfo, 0)))
+		elog(ERROR, "argument must be of a composite type");
+
+	/* modified below, so a copy is needed */
+	rec = PG_GETARG_HEAPTUPLEHEADER_COPY(0);
+
+	if (!HeapTupleHeaderIsVersionedDatum(rec))
+		elog(ERROR, "composite datum is not versioned");
+
+	/*
+	 * The version occupies the fields an unversioned datum uses for its
+	 * typmod and item pointer, so restore what forming one would have left
+	 * there: datums of a named composite type carry a typmod of -1, and
+	 * heap_form_tuple() clears t_ctid.
+	 */
+	HeapTupleHeaderSetTypMod(rec, -1);
+	ItemPointerSetInvalid(&rec->t_ctid);
+	HeapTupleHeaderClearDatum(rec);
+
+	/*
+	 * Use PG_RETURN_POINTER() instead of PG_RETURN_HEAPTUPLEHEADER(), to
+	 * prevent HeapTupleHeaderGetDatum() from failing assertions.
+	 */
+	PG_RETURN_POINTER(rec);
 }
 
 PG_FUNCTION_INFO_V1(get_environ);
@@ -737,6 +853,8 @@ PG_FUNCTION_INFO_V1(test_fdw_connection);
 Datum
 test_fdw_connection(PG_FUNCTION_ARGS)
 {
+	/* Ensure the test fails if no valid user mapping exists. */
+	GetUserMapping(PG_GETARG_OID(0), PG_GETARG_OID(1));
 	PG_RETURN_TEXT_P(cstring_to_text("dbname=regress_doesnotexist user=doesnotexist password=secret"));
 }
 
@@ -1333,9 +1451,15 @@ test_translation(PG_FUNCTION_ARGS)
 		 * Apparently the customary workaround is for users to set the
 		 * LANGUAGE environment variable to provide a mapping.  Do so here to
 		 * ensure that the nls.sql regression test will work.
+		 *
+		 * With glibc and perhaps other implementations, LANGUAGE overrides
+		 * LC_MESSAGES, which we don't want either; so let's unset it if we're
+		 * not on Solaris.
 		 */
 #if defined(__sun__)
 		setenv("LANGUAGE", "es_ES.UTF-8:es", 1);
+#else
+		unsetenv("LANGUAGE");
 #endif
 		pg_bindtextdomain(TEXTDOMAIN);
 		inited = true;
@@ -1424,6 +1548,204 @@ test_instr_time(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_BOOL(true);
+}
+
+/*
+ * test_pglz_compress
+ *
+ * Compress the input using pglz_compress().  Only the "always" strategy is
+ * currently supported.
+ *
+ * Returns the compressed data, or NULL if compression fails.
+ */
+PG_FUNCTION_INFO_V1(test_pglz_compress);
+Datum
+test_pglz_compress(PG_FUNCTION_ARGS)
+{
+	bytea	   *input = PG_GETARG_BYTEA_PP(0);
+	char	   *source = VARDATA_ANY(input);
+	int32		slen = VARSIZE_ANY_EXHDR(input);
+	int32		maxout = PGLZ_MAX_OUTPUT(slen);
+	bytea	   *result;
+	int32		clen;
+
+	result = (bytea *) palloc(maxout + VARHDRSZ);
+	clen = pglz_compress(source, slen, VARDATA(result),
+						 PGLZ_strategy_always);
+	if (clen < 0)
+		PG_RETURN_NULL();
+
+	SET_VARSIZE(result, clen + VARHDRSZ);
+	PG_RETURN_BYTEA_P(result);
+}
+
+/*
+ * test_pglz_decompress
+ *
+ * Decompress the input using pglz_decompress().
+ *
+ * The second argument is the expected uncompressed data size.  The third
+ * argument is here for the check_complete flag.
+ *
+ * Returns the decompressed data, or raises an error if decompression fails.
+ */
+PG_FUNCTION_INFO_V1(test_pglz_decompress);
+Datum
+test_pglz_decompress(PG_FUNCTION_ARGS)
+{
+	bytea	   *input = PG_GETARG_BYTEA_PP(0);
+	int32		rawsize = PG_GETARG_INT32(1);
+	bool		check_complete = PG_GETARG_BOOL(2);
+	char	   *source = VARDATA_ANY(input);
+	int32		slen = VARSIZE_ANY_EXHDR(input);
+	bytea	   *result;
+	int32		dlen;
+
+	if (rawsize < 0)
+		elog(ERROR, "rawsize must not be negative");
+
+	result = (bytea *) palloc(rawsize + VARHDRSZ);
+
+	dlen = pglz_decompress(source, slen, VARDATA(result),
+						   rawsize, check_complete);
+	if (dlen < 0)
+		elog(ERROR, "pglz_decompress failed");
+
+	SET_VARSIZE(result, dlen + VARHDRSZ);
+	PG_RETURN_BYTEA_P(result);
+}
+
+static void
+test_case_mapping(pg_locale_t locale)
+{
+	char		buf[32];
+	size_t		n;
+
+	n = pg_strlower(NULL, 0, "AbC", 3, locale);
+	if (n != 3)
+		elog(ERROR, "pg_strlower() size probe returned %zu, expected 3", n);
+	n = pg_strlower(buf, 4, "AbC", 3, locale);
+	if (n != 3 || strcmp(buf, "abc") != 0)
+		elog(ERROR, "pg_strlower() produced \"%s\"", buf);
+
+	n = pg_strupper(NULL, 0, "AbC", 3, locale);
+	if (n != 3)
+		elog(ERROR, "pg_strupper() size probe returned %zu, expected 3", n);
+	n = pg_strupper(buf, 4, "AbC", 3, locale);
+	if (n != 3 || strcmp(buf, "ABC") != 0)
+		elog(ERROR, "pg_strupper() produced \"%s\"", buf);
+
+	n = pg_strfold(buf, 4, "AbC", 3, locale);
+	if (n != 3 || strcmp(buf, "abc") != 0)
+		elog(ERROR, "pg_strfold() produced \"%s\"", buf);
+
+	buf[0] = '\0';
+	n = pg_strtitle(buf, sizeof(buf), "hello-world", 11, locale);
+	if (n != 11)
+		elog(ERROR, "pg_strtitle() returned %zu, expected 11", n);
+	if (locale->ctype_is_c && strcmp(buf, "Hello-World") != 0)
+		elog(ERROR, "pg_strtitle() produced \"%s\"", buf);
+}
+
+static void
+test_collate(pg_locale_t locale)
+{
+	char		buf[32];
+	char		pfx[8];
+	char		x1[8];
+	char		x2[8];
+	size_t		n;
+
+	if (pg_strcoll("abc", "abc", locale) != 0 ||
+		pg_strncoll("abc", 3, "abc", 3, locale) != 0 ||
+		pg_strcoll("", "", locale) != 0)
+		elog(ERROR, "equal strings did not compare equal");
+
+	if (locale->collate_is_c)
+	{
+		if (locale->collate != NULL)
+			elog(ERROR, "collate_is_c but collate methods are set");
+		if (pg_strcoll("abc", "abd", locale) >= 0 ||
+			pg_strcoll("abd", "abc", locale) <= 0 ||
+			pg_strncoll("ab", 2, "abc", 3, locale) >= 0 ||
+			pg_strncoll("abc", 3, "ab", 2, locale) <= 0 ||
+			pg_strncoll("xyz", 3, "abc", 2, locale) <= 0)
+			elog(ERROR, "C-locale comparison result is wrong");
+
+		if (!pg_strxfrm_enabled(locale))
+			elog(ERROR, "pg_strxfrm_enabled() is false for C locale");
+		n = pg_strnxfrm(NULL, 0, "abc", 3, locale);
+		if (n != 3)
+			elog(ERROR, "pg_strnxfrm() size probe returned %zu, expected 3", n);
+		n = pg_strnxfrm(buf, 4, "abc", 3, locale);
+		if (n != 3 || strcmp(buf, "abc") != 0)
+			elog(ERROR, "pg_strnxfrm() produced \"%s\"", buf);
+		n = pg_strxfrm(buf, "abc", 4, locale);
+		if (n != 3 || strcmp(buf, "abc") != 0)
+			elog(ERROR, "pg_strxfrm() produced \"%s\"", buf);
+		n = pg_strnxfrm(buf, 3, "abc", 3, locale);
+		if (n != 3)
+			elog(ERROR, "pg_strnxfrm() destsize==srclen returned %zu", n);
+		n = pg_strnxfrm(buf, 2, "abc", 3, locale);
+		if (n != 3)
+			elog(ERROR, "pg_strnxfrm() short dest returned %zu", n);
+
+		if (!pg_strxfrm_prefix_enabled(locale))
+			elog(ERROR, "pg_strxfrm_prefix_enabled() is false for C locale");
+		n = pg_strnxfrm_prefix(NULL, 0, "abcdef", 6, locale);
+		if (n != 0)
+			elog(ERROR, "pg_strnxfrm_prefix() destsize 0 returned %zu", n);
+		n = pg_strnxfrm_prefix(pfx, 2, "abcdef", 6, locale);
+		if (n != 2 || memcmp(pfx, "ab", 2) != 0)
+			elog(ERROR, "pg_strnxfrm_prefix() produced a wrong prefix");
+		n = pg_strnxfrm_prefix(pfx, sizeof(pfx), "abc", 3, locale);
+		if (n != 3 || memcmp(pfx, "abc", 3) != 0)
+			elog(ERROR, "pg_strnxfrm_prefix() destsize>=srclen produced a wrong result");
+		n = pg_strxfrm_prefix(pfx, "abcdef", 2, locale);
+		if (n != 2 || memcmp(pfx, "ab", 2) != 0)
+			elog(ERROR, "pg_strxfrm_prefix() produced a wrong prefix");
+
+		if (pg_strxfrm(x1, "abc", sizeof(x1), locale) >= sizeof(x1) ||
+			pg_strxfrm(x2, "abd", sizeof(x2), locale) >= sizeof(x2) ||
+			(strcmp(x1, x2) < 0) != (pg_strcoll("abc", "abd", locale) < 0))
+			elog(ERROR, "pg_strxfrm() disagrees with pg_strcoll()");
+	}
+	else
+	{
+		char	   *tmp;
+
+		if (locale->collate == NULL)
+			elog(ERROR, "collate methods missing for non-C locale");
+
+		n = pg_strnxfrm(NULL, 0, "abc", 3, locale);
+		tmp = palloc(n + 1);
+		if (pg_strnxfrm(tmp, n + 1, "abc", 3, locale) > n)
+			elog(ERROR, "pg_strnxfrm() grew on the second call");
+		pfree(tmp);
+
+		if (pg_strxfrm_prefix_enabled(locale) &&
+			pg_strnxfrm_prefix(pfx, sizeof(pfx), "abc", 3, locale) > sizeof(pfx))
+			elog(ERROR, "pg_strnxfrm_prefix() exceeded destsize");
+	}
+}
+
+/*
+ * Test pg_locale.h APIs directly, to cover cases not easily reachable by SQL.
+ */
+PG_FUNCTION_INFO_V1(test_pg_locale_apis);
+Datum
+test_pg_locale_apis(PG_FUNCTION_ARGS)
+{
+	pg_locale_t locale;
+
+	locale = pg_newlocale_from_collation(PG_GETARG_OID(0));
+	if (locale == NULL)
+		elog(ERROR, "pg_newlocale_from_collation() returned NULL");
+
+	test_collate(locale);
+	test_case_mapping(locale);
+
+	PG_RETURN_VOID();
 }
 
 /* YB */

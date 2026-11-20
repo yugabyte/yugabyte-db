@@ -78,6 +78,12 @@ typedef struct XLogRecoveryCtlData
 	bool		SharedPromoteIsTriggered;
 
 	/*
+	 * SharedRecoverySubtransInitialized indicates whether hot standby
+	 * initialization has started pg_subtrans. Protected by info_lck.
+	 */
+	bool		SharedRecoverySubtransInitialized;
+
+	/*
 	 * recoveryWakeupLatch is used to wake up the startup process to continue
 	 * WAL replay, if it is waiting for WAL to arrive or promotion to be
 	 * requested.
@@ -112,8 +118,8 @@ typedef struct XLogRecoveryCtlData
 	TimestampTz recoveryLastXTime;
 
 	/*
-	 * timestamp of when we started replaying the current chunk of WAL data,
-	 * only relevant for replication or archive recovery
+	 * timestamp of when we caught up with the latest WAL chunk received from
+	 * streaming replication
 	 */
 	TimestampTz currentChunkStartTime;
 	/* Recovery pause state */
@@ -220,6 +226,8 @@ extern XLogRecPtr GetCurrentReplayRecPtr(TimeLineID *replayEndTLI);
 
 extern bool PromoteIsTriggered(void);
 extern bool CheckPromoteSignal(void);
+extern bool RecoverySubtransInitialized(void);
+extern void SetRecoverySubtransInitialized(void);
 extern void WakeupRecovery(void);
 
 extern void StartupRequestWalReceiverRestart(void);

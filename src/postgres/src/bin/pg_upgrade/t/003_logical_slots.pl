@@ -58,18 +58,18 @@ chdir ${PostgreSQL::Test::Utils::tmp_check};
 # TEST: Confirm pg_upgrade fails when the new cluster has wrong GUC values
 
 # Preparations for the subsequent test:
-# 1. Create two slots on the old cluster
+# 1. Create two slots in the old cluster
 $oldpub->start;
 $oldpub->safe_psql(
 	'postgres', qq[
-	SELECT pg_create_logical_replication_slot('test_slot1', 'test_decoding');
+	SELECT pg_create_logical_replication_slot('test_slot1', 'pgoutput');
 	SELECT pg_create_logical_replication_slot('test_slot2', 'test_decoding');
 	SELECT pg_create_logical_replication_slot('test_slot3', 'test_decoding');
 ]);
 $oldpub->stop();
 
 # 2. Set 'max_replication_slots' to be less than the number of slots (2)
-#	 present on the old cluster.
+#	 present in the old cluster.
 $newpub->append_conf('postgresql.conf', "max_replication_slots = 1");
 
 # pg_upgrade will fail because the new cluster has insufficient
@@ -78,7 +78,7 @@ command_checks_all(
 	[@pg_upgrade_cmd],
 	1,
 	[
-		qr/"max_replication_slots" \(1\) must be greater than or equal to the number of logical replication slots \(3\) on the old cluster/
+		qr/"max_replication_slots" \(1\) must be greater than or equal to the number of logical replication slots \(3\) in the old cluster/
 	],
 	[qr//],
 	'run of pg_upgrade where the new cluster has insufficient "max_replication_slots"'
@@ -89,6 +89,52 @@ ok(-d $newpub->data_dir . "/pg_upgrade_output.d",
 # Set 'max_replication_slots' to match the number of slots (3) present on the
 # old cluster. Both slots will be used for subsequent tests.
 $newpub->append_conf('postgresql.conf', "max_replication_slots = 3");
+
+# ------------------------------
+# TEST: Confirm pg_upgrade fails when slot plugins are prohibited by the new cluster
+
+$newpub->append_conf('postgresql.conf',
+	"output_plugin_libraries = 'pgoutput'");
+
+command_checks_all(
+	[@pg_upgrade_cmd],
+	1,
+	[
+		qr/Your installation contains logical replication slots with plugins/,
+		qr/that are not allowed by the new cluster's output_plugin_libraries/,
+	],
+	[qr//],
+	'run of pg_upgrade where the old cluster has untrusted output plugins');
+
+my $slots_filename;
+
+# Find a txt file that contains a list of logical replication slots that cannot
+# be upgraded. We cannot predict the file's path because the output directory
+# contains a milliseconds timestamp. File::Find::find must be used.
+find(
+	sub {
+		if ($File::Find::name =~ m/disallowed_output_plugins\.txt/)
+		{
+			$slots_filename = $File::Find::name;
+		}
+	},
+	$newpub->data_dir . "/pg_upgrade_output.d");
+
+# Check the report.
+my $content = slurp_file($slots_filename);
+like(
+	$content,
+	qr/The slot "test_slot2" uses plugin "test_decoding"/m,
+	'the previous test failed due to prohibited plugins');
+like(
+	$content,
+	qr/The slot "test_slot3" uses plugin "test_decoding"/m,
+	'the previous test failed due to prohibited plugins');
+unlike($content, qr/test_slot1/m, 'allowed plugin is not reported');
+
+# Fix things for the next tests.
+$newpub->append_conf('postgresql.conf',
+	"output_plugin_libraries = 'pgoutput, test_decoding'");
 
 
 # ------------------------------
@@ -127,11 +173,6 @@ command_checks_all(
 );
 
 # Verify the reason why the logical replication slot cannot be upgraded
-my $slots_filename;
-
-# Find a txt file that contains a list of logical replication slots that cannot
-# be upgraded. We cannot predict the file's path because the output directory
-# contains a milliseconds timestamp. File::Find::find must be used.
 find(
 	sub {
 		if ($File::Find::name =~ m/invalid_logical_slots\.txt/)
@@ -152,10 +193,8 @@ like(
 	slurp_file($slots_filename),
 	qr/The slot \"test_slot2\" has not consumed the WAL yet/m,
 	'the previous test failed due to unconsumed WALs');
-unlike(
-	slurp_file($slots_filename),
-	qr/test_slot3/m,
-	'caught-up slot is not reported');
+unlike(slurp_file($slots_filename),
+	qr/test_slot3/m, 'caught-up slot is not reported');
 
 
 # ------------------------------

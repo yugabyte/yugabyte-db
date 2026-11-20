@@ -1113,6 +1113,11 @@ get_all_vacuum_rels(MemoryContext vac_context, int options)
 			classForm->relkind != RELKIND_PARTITIONED_TABLE)
 			continue;
 
+		/* Skip temp relations belonging to other sessions */
+		if (classForm->relpersistence == RELPERSISTENCE_TEMP &&
+			!isTempOrTempToastNamespace(classForm->relnamespace))
+			continue;
+
 		/* check permissions of relation */
 		if (!vacuum_is_permitted_for_relation(relid, classForm, options))
 			continue;
@@ -1222,7 +1227,7 @@ vacuum_get_cutoffs(Relation rel, const VacuumParams *params,
 		ereport(WARNING,
 				(errmsg("cutoff for freezing multixacts is far in the past"),
 				 errhint("Close open transactions soon to avoid wraparound problems.\n"
-						 "You might also need to commit or roll back old prepared transactions, or drop stale replication slots.")));
+						 "You might also need to commit or roll back old prepared transactions.")));
 
 	/*
 	 * Determine the minimum freeze age to use: as specified by the caller, or
@@ -2486,6 +2491,14 @@ vacuum_delay_point(bool is_analyze)
 {
 	double		msec = 0;
 
+	/*
+	 * If we're holding locks or holding interrupts for some other reason,
+	 * don't sleep, because we don't want to hold locks any longer than
+	 * necessary.
+	 */
+	if (!INTERRUPTS_CAN_BE_PROCESSED())
+		return;
+
 	/* Always check for interrupts */
 	CHECK_FOR_INTERRUPTS();
 
@@ -2538,15 +2551,21 @@ vacuum_delay_point(bool is_analyze)
 	if (VacuumSharedCostBalance != NULL)
 		msec = compute_parallel_delay();
 	else if (VacuumCostBalance >= vacuum_cost_limit)
+	{
 		msec = vacuum_cost_delay * VacuumCostBalance / vacuum_cost_limit;
+
+		/*
+		 * Avoid uselessly long delays. The cost can accumulate far higher
+		 * than the limit, as delays are not applied while critical locks are
+		 * held or interrupts are pending.
+		 */
+		msec = Min(msec, vacuum_cost_delay * 4);
+	}
 
 	/* Nap if appropriate */
 	if (msec > 0)
 	{
 		instr_time	delay_start;
-
-		if (msec > vacuum_cost_delay * 4)
-			msec = vacuum_cost_delay * 4;
 
 		if (track_cost_delay_timing)
 			INSTR_TIME_SET_CURRENT(delay_start);
@@ -2624,6 +2643,9 @@ vacuum_delay_point(bool is_analyze)
 		 */
 		AutoVacuumUpdateCostLimit();
 
+		if (AmAutoVacuumWorkerProcess())
+			parallel_vacuum_propagate_shared_delay_params();
+
 		/* Might have gotten an interrupt while sleeping */
 		CHECK_FOR_INTERRUPTS();
 	}
@@ -2639,10 +2661,11 @@ vacuum_delay_point(bool is_analyze)
  * We allow each worker to update it as and when it has incurred any cost and
  * then based on that decide whether it needs to sleep.  We compute the time
  * to sleep for a worker based on the cost it has incurred
- * (VacuumCostBalanceLocal) and then reduce the VacuumSharedCostBalance by
- * that amount.  This avoids putting to sleep those workers which have done less
- * I/O than other workers and therefore ensure that workers
- * which are doing more I/O got throttled more.
+ * (VacuumCostBalanceLocal) and the number of active workers, as the cost
+ * limit is for the whole vacuum and not for each worker, and then reduce the
+ * VacuumSharedCostBalance by that amount. This avoids putting to sleep those
+ * workers which have done less I/O than other workers and therefore ensure
+ * that workers which are doing more I/O got throttled more.
  *
  * We allow a worker to sleep only if it has performed I/O above a certain
  * threshold, which is calculated based on the number of active workers
@@ -2675,8 +2698,18 @@ compute_parallel_delay(void)
 	if ((shared_balance >= vacuum_cost_limit) &&
 		(VacuumCostBalanceLocal > 0.5 * ((double) vacuum_cost_limit / nworkers)))
 	{
-		/* Compute sleep time based on the local cost balance */
-		msec = vacuum_cost_delay * VacuumCostBalanceLocal / vacuum_cost_limit;
+		/* Compute sleep time based on the local cost balance and nworkers */
+		msec = vacuum_cost_delay * VacuumCostBalanceLocal * nworkers /
+			vacuum_cost_limit;
+
+		/*
+		 * Avoid uselessly long delays, as in a non-parallel vacuum. Also
+		 * never sleep more than 1s at once, as sleeping any longer in
+		 * pg_usleep() keeps the process from responding to latches and
+		 * signals promptly.
+		 */
+		msec = Min(msec, Min(vacuum_cost_delay * 4 * nworkers, 1000));
+
 		pg_atomic_sub_fetch_u32(VacuumSharedCostBalance, VacuumCostBalanceLocal);
 		VacuumCostBalanceLocal = 0;
 	}

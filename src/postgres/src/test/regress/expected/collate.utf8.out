@@ -34,6 +34,13 @@ SELECT U&'\00C1\00E1' !~ '[[:alpha:]]' COLLATE regress_builtin_c;
 (1 row)
 
 DROP COLLATION regress_builtin_c;
+-- a '_' matches a multibyte character
+SELECT 'café' ILIKE 'caf_' COLLATE "C";
+ ?column? 
+----------
+ t
+(1 row)
+
 --
 -- Test PG_C_UTF8
 --
@@ -261,6 +268,12 @@ SELECT lower('ᾼΣͅΑ' COLLATE PG_UNICODE_FAST); -- 0391 0345 03A3 0345 0391
  lower 
 -------
  ᾳσͅα
+(1 row)
+
+SELECT lower(U&'\0300\03A3' COLLATE PG_UNICODE_FAST);
+ lower 
+-------
+ ̀σ
 (1 row)
 
 -- properties

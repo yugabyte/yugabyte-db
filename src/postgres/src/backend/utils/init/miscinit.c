@@ -849,8 +849,7 @@ InitializeSessionUserIdStandalone(void)
 	 * workers, in slot sync worker and in background workers.
 	 */
 	Assert(!IsUnderPostmaster || AmAutoVacuumWorkerProcess() ||
-		   AmLogicalSlotSyncWorkerProcess() || AmBackgroundWorkerProcess() ||
-		   AmDataChecksumsWorkerProcess());
+		   AmLogicalSlotSyncWorkerProcess() || AmBackgroundWorkerProcess());
 
 	/* call only once */
 	Assert(!OidIsValid(AuthenticatedUserId));

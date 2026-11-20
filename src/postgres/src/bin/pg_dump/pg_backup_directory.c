@@ -193,7 +193,7 @@ InitArchiveFmt_Directory(ArchiveHandle *AH)
  * Called by the Archiver when the dumper creates a new TOC entry.
  *
  * We determine the filename for this entry.
-*/
+ */
 static void
 _ArchiveEntry(ArchiveHandle *AH, TocEntry *te)
 {
@@ -262,6 +262,8 @@ _ReadExtraToc(ArchiveHandle *AH, TocEntry *te)
 		free(tctx->filename);
 		tctx->filename = NULL;
 	}
+	else if (first_dir_separator(tctx->filename) != NULL)
+		pg_fatal("invalid file name in archive: \"%s\"", tctx->filename);
 }
 
 /*
@@ -372,7 +374,7 @@ _PrintFileData(ArchiveHandle *AH, char *filename)
 
 /*
  * Print data for a given TOC entry
-*/
+ */
 static void
 _PrintTocData(ArchiveHandle *AH, TocEntry *te)
 {
@@ -432,6 +434,8 @@ _LoadLOs(ArchiveHandle *AH, TocEntry *te)
 		if (sscanf(line, "%u %" CppAsString2(MAXPGPATH) "s\n", &oid, lofname) != 2)
 			pg_fatal("invalid line in large object TOC file \"%s\": \"%s\"",
 					 tocfname, line);
+		if (first_dir_separator(lofname) != NULL)
+			pg_fatal("invalid file name in archive: \"%s\"", lofname);
 
 		StartRestoreLO(AH, oid, AH->public.ropt->dropSchema);
 		snprintf(path, MAXPGPATH, "%s/%s", ctx->directory, lofname);

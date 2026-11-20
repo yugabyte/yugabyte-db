@@ -545,10 +545,11 @@ WHERE <replaceable class="parameter">condition</replaceable>
    </para>
 
    <para>
-    Currently, subqueries are not allowed in <literal>WHERE</literal>
-    expressions, and the evaluation does not see any changes made by the
-    <command>COPY</command> itself (this matters when the expression
-    contains calls to <literal>VOLATILE</literal> functions).
+    Currently, subqueries, system columns, and generated columns are not
+    allowed in <literal>WHERE</literal> expressions, and the evaluation
+    does not see any changes made by the <command>COPY</command> itself
+    (this matters when the expression contains calls to
+    <literal>VOLATILE</literal> functions).
    </para>
 
     </listitem>

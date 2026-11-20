@@ -30,7 +30,6 @@ typedef struct OutputPluginOptions
 {
 	OutputPluginOutputType output_type;
 	bool		receive_rewrites;
-	bool		need_shared_catalogs;
 
 	/* YB */
 	List	   *yb_publication_names;

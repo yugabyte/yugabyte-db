@@ -302,6 +302,16 @@ CREATE COLLATION coll_dup_chk (LC_CTYPE = "POSIX", LOCALE = '');
 -- FROM conflicts with any other option
 CREATE COLLATION coll_dup_chk (FROM = "C", VERSION = "1");
 
+-- Regex exact-match optimization should use an index even when the expression
+-- and index have different collations, so long as the expression's collation
+-- is deterministic.  This example tests what we want because the optimizer
+-- does not perceive "C" collation (used by the system catalogs) as identical
+-- to "POSIX" collation.
+EXPLAIN (COSTS OFF)
+SELECT * FROM pg_class WHERE relname ~ '^pg_class$' COLLATE "POSIX";
+EXPLAIN (COSTS OFF)
+SELECT * FROM pg_class WHERE relname LIKE 'pg\_class' COLLATE "POSIX";
+
 --
 -- Clean up.  Many of these table names will be re-used if the user is
 -- trying to run any platform-specific collation tests later, so we

@@ -329,7 +329,7 @@ extern ModifyTablePath *create_modifytable_path(PlannerInfo *root,
 												List *withCheckOptionLists, List *returningLists,
 												List *rowMarks, OnConflictExpr *onconflict,
 												List *mergeActionLists, List *mergeJoinConditions,
-												ForPortionOfExpr *forPortionOf, int epqParam);
+												int epqParam);
 extern LimitPath *create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 									Path *subpath,
 									Node *limitOffset, Node *limitCount,
@@ -386,6 +386,7 @@ extern ParamPathInfo *get_joinrel_parampathinfo(PlannerInfo *root,
 												List **restrict_clauses);
 extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 												  Relids required_outer);
+extern ParamPathInfo *get_wrapper_parampathinfo(Path *subpath);
 extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,
 										   Relids required_outer);
 extern Bitmapset *get_param_path_clause_serials(Path *path);
