@@ -203,7 +203,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     "aws, GP2, false",
     "gcp, Persistent, false",
     "gcp, Hyperdisk_Balanced, true",
-    "azu, null, false"
+    "azu, null, false",
+    "azu, PremiumV2_LRS, false",
+    "azu, UltraSSD_LRS, false"
   })
   @Test
   public void testResizeNodeIopsThroughputAvailable(
@@ -221,8 +223,15 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Parameters({
-    "10, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, false",
+    "10, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, true",
     "0, Standard_DS2_v2, Standard_DS4_v2, UltraSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS2_v2, PremiumV2_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS4_v2, PremiumV2_LRS, true",
+    "-10, Standard_DS2_v2, Standard_DS2_v2, PremiumV2_LRS, false", // decrease volume
+    // The 4 TiB no-downtime limit does not apply to Premium SSD v2 and Ultra disks.
+    "5000, Standard_DS2_v2, Standard_DS2_v2, PremiumV2_LRS, true",
+    "5000, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, true",
+    "5000, Standard_DS2_v2, Standard_DS2_v2, Premium_LRS, false",
     "10, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, true",
     "10, Standard_DS2_v2, Standard_DS4_v2, StandardSSD_LRS, true",
     "10, Standard_DS2_v2, Standard_E2as_v5, StandardSSD_LRS, false", // local to no local
