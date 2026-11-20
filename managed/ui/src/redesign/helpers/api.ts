@@ -151,6 +151,12 @@ export const supportBundleQueryKey = {
     universeUuid,
     useV2Api,
     page
+  ],
+  estimate: (universeUuid: string, spec: unknown) => [
+    ...supportBundleQueryKey.ALL,
+    'estimate',
+    universeUuid,
+    spec
   ]
 };
 
