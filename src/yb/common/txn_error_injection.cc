@@ -38,20 +38,12 @@ bool ShouldInjectReadRestart(const ReadHybridTime& read_time) {
 }
 
 HybridTime InjectedReadRestartTime(const ReadHybridTime& read_time, const HybridTime safe_time) {
-  // The return value is guaranteed to be
-  // 1. > read_time (necessary to make progress)
-  // 2. <= global_limit (invariant necessary to avoid inconsistent reads)
-  const auto lower_bound =
-      std::min(std::max(safe_time, read_time.read.Incremented()), read_time.global_limit);
-  const auto upper_bound = read_time.global_limit;
-  const auto choice = RandomUniformInt(0, 3);
-  if (choice == 0) {
-    return lower_bound;
-  }
-  if (choice == 1) {
-    return upper_bound;
-  }
-  return HybridTime(RandomUniformInt(lower_bound.ToUint64(), upper_bound.ToUint64()));
+  // Like a real conflicting write, the restart time is no later than the tablet's safe time, which
+  // the response propagates to the reader's clock, unless the read time is already at or past the
+  // safe time: then it is read + 1, which the reader's clock passed when it picked the read time.
+  // The restart time must be > read (for the retry to make progress) and <= global_limit (so reads
+  // stay consistent).
+  return std::min(std::max(safe_time, read_time.read.Incremented()), read_time.global_limit);
 }
 
 } // namespace yb

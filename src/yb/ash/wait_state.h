@@ -332,6 +332,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetTabletForKey)
   (kRemotePgExec)
   (kIsDatabaseColocated)
+  (kRestartTransactionForRetry)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)
