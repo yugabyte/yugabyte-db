@@ -188,6 +188,21 @@ public class RedactingService {
       new CopyOnWriteArraySet<>(
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
+  /**
+   * Adds the sensitive gflag paths ({@code $..name}) of a release to {@link
+   * #SECRET_JSON_PATHS_LOGS}, each also with dashes for underscores. A JSON path matches a name
+   * only as spelled, and log redaction without a DB version knows these gflags only by these paths.
+   */
+  public static void addSensitiveGFlagPathsForLogs(Collection<String> paths) {
+    for (String path : paths) {
+      SECRET_JSON_PATHS_LOGS.add(JsonPath.compile(path));
+      String dashed = path.replace('_', '-');
+      if (!dashed.equals(path)) {
+        SECRET_JSON_PATHS_LOGS.add(JsonPath.compile(dashed));
+      }
+    }
+  }
+
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
   /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
@@ -269,7 +284,7 @@ public class RedactingService {
               try {
                 // ysql_hba_conf_csv is redacted field-by-field (ldapbindpasswd only), not
                 // wholesale.
-                if (path.getPath().contains("ysql_hba_conf_csv")) {
+                if (GFlagsUtil.canonicalGFlagName(path.getPath()).contains("ysql_hba_conf_csv")) {
                   return;
                 }
                 context.set(path, SECRET_REPLACEMENT);
@@ -403,7 +418,10 @@ public class RedactingService {
 
   /** A text value holding serialized JSON is redacted as a tree; any other as free text. */
   private static String redactTextValue(String text, Set<String> names) {
-    if (!HbaConfRedactor.mentionsLdapBindPasswd(text) && names.stream().noneMatch(text::contains)) {
+    // JSON in the text matches field names by canonical name, so a mixed spelling must get there.
+    String canonicalText = GFlagsUtil.canonicalGFlagName(text);
+    if (!HbaConfRedactor.mentionsLdapBindPasswd(text)
+        && names.stream().noneMatch(canonicalText::contains)) {
       return text;
     }
     String trimmed = text.trim();
@@ -449,8 +467,9 @@ public class RedactingService {
 
   /**
    * Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. Holds
-   * each gflag name with underscores and with dashes, for the text scans; a field or map key is
-   * matched by its {@link GFlagsUtil#canonicalGFlagName}, which covers mixed spellings too.
+   * each gflag name with underscores and with dashes, for the text scans, which don't match a mixed
+   * spelling. A field or map key, also in JSON held in a text value, is matched by its {@link
+   * GFlagsUtil#canonicalGFlagName}, which covers mixed spellings too.
    */
   private static Set<String> sensitiveNames(
       String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {

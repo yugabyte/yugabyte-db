@@ -1194,6 +1194,46 @@ public class GFlagsUtilTest extends FakeDBApplication {
     }
   }
 
+  /** A gflag stored with a null value under another spelling has nothing to restore. */
+  @Test
+  public void testSensitiveGFlagStoredAsNullUnderAnotherSpelling() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      Map<String, String> stored = new HashMap<>();
+      stored.put("ycql-ldap-bind-passwd", null);
+      stored.put("ysql-hba-conf-csv", null);
+
+      Map<String, String> changed =
+          Map.of(
+              "ycql_ldap_bind_passwd", "dummy-new-pw",
+              "ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-new-pw");
+      assertEquals(
+          changed, GFlagsUtil.mergeSensitiveGFlags(stored, changed, gFlagsValidation, "2.18"));
+
+      for (Map.Entry<String, String> redacted :
+          Map.of(
+                  "ycql_ldap_bind_passwd",
+                  SECRET_REPLACEMENT,
+                  "ysql_hba_conf_csv",
+                  "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT)
+              .entrySet()) {
+        PlatformServiceException e =
+            assertThrows(
+                PlatformServiceException.class,
+                () ->
+                    GFlagsUtil.mergeSensitiveGFlags(
+                        stored,
+                        Map.of(redacted.getKey(), redacted.getValue()),
+                        gFlagsValidation,
+                        "2.18"));
+        assertEquals(redacted.getKey(), BAD_REQUEST, e.getHttpStatus());
+      }
+    }
+  }
+
   /**
    * Changing other HBA fields while keeping REDACTED ldapbindpasswd throws BAD_REQUEST; the user
    * must supply the full ysql_hba_conf_csv with the actual ldapbindpasswd when editing HBA fields.

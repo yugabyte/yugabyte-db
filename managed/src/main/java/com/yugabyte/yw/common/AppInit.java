@@ -8,7 +8,6 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
-import com.jayway.jsonpath.JsonPath;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
@@ -78,7 +77,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.fips.FipsStatus;
@@ -461,7 +459,6 @@ public class AppInit {
         sensitiveGflags.addAll(r.getSensitiveGflags());
       }
     } while (pagedList.hasNext());
-    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+    RedactingService.addSensitiveGFlagPathsForLogs(sensitiveGflags);
   }
 }

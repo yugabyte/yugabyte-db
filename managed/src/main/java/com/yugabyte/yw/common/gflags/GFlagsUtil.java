@@ -3037,8 +3037,8 @@ public class GFlagsUtil {
     String canonicalName = canonicalGFlagName(name);
     return storedGFlags.entrySet().stream()
         .filter(stored -> canonicalGFlagName(stored.getKey()).equals(canonicalName))
-        .map(Map.Entry::getValue)
         .findFirst()
+        .map(Map.Entry::getValue)
         .orElse(null);
   }
 

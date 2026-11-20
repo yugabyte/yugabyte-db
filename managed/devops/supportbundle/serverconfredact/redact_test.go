@@ -269,13 +269,16 @@ func TestRedactDashedFlagNames(t *testing.T) {
 			t.Fatalf("%q -> %q: %v", c.input, out, err)
 		}
 	}
-	hba := `--ysql-hba-conf-csv="host all all 0.0.0.0/0 ldap ldapbindpasswd=dummypw ldapport=389"`
-	out := serverconfredact.RedactSensitiveInfo(hba, sensitive)
-	if strings.Contains(out, "dummypw") || !strings.HasPrefix(out, `--ysql-hba-conf-csv="host all`) {
-		t.Fatalf("%q: got %q", hba, out)
-	}
-	if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
-		t.Fatalf("%q -> %q: %v", hba, out, err)
+	for _, name := range []string{"ysql-hba-conf-csv", "ysql_hba-conf_csv"} {
+		hba := `--` + name + `="host all all 0.0.0.0/0 ldap ldapbindpasswd=dummypw ldapport=389"`
+		want := `--` + name + `="host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED ldapport=389"`
+		out := serverconfredact.RedactSensitiveInfo(hba, sensitive)
+		if out != want {
+			t.Fatalf("%q: got %q, want %q", hba, out, want)
+		}
+		if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
+			t.Fatalf("%q -> %q: %v", hba, out, err)
+		}
 	}
 }
 

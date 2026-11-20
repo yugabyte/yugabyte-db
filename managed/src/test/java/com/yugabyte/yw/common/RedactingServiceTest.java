@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.commissioner.tasks.LdapUnivSync;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData;
@@ -18,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -983,6 +985,44 @@ public class RedactingServiceTest {
     assertEquals(
         "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
         RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
+  /** JSON held in a text value matches a gflag name in any spelling, as the tree around it does. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInJsonText() {
+    ObjectNode payload =
+        Json.newObject()
+            .put(
+                "details",
+                "{\"ycql_ldap-bind_passwd\":\"dummy-mixed-pw\",\"webserver_port\":\"9000\"}");
+    JsonNode embedded =
+        Json.parse(
+            RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, true)
+                .get("details")
+                .asText());
+    assertEquals(SECRET_REPLACEMENT, embedded.get("ycql_ldap-bind_passwd").asText());
+    assertEquals("9000", embedded.get("webserver_port").asText());
+  }
+
+  /** Log redaction without a DB version knows a release's sensitive gflags by JSON path. */
+  @Test
+  public void testReleaseSensitiveGFlagPathsMatchDashedNames() {
+    Set<JsonPath> before = Set.copyOf(RedactingService.SECRET_JSON_PATHS_LOGS);
+    try {
+      RedactingService.addSensitiveGFlagPathsForLogs(Set.of("$..release_secret_flag"));
+      ObjectNode gflags =
+          Json.newObject()
+              .put("release_secret_flag", "dummy-pw")
+              .put("release-secret-flag", "dummy-pw")
+              .put("webserver-port", "9000");
+      JsonNode redacted =
+          RedactingService.filterSecretFields(gflags, RedactionTarget.LOGS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release_secret_flag").asText());
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release-secret-flag").asText());
+      assertEquals("9000", redacted.get("webserver-port").asText());
+    } finally {
+      RedactingService.SECRET_JSON_PATHS_LOGS.retainAll(before);
+    }
   }
 
   @Test

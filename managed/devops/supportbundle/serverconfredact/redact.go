@@ -34,8 +34,9 @@ var defaultPatterns = []string{
 // redact those in place instead.
 //
 // Patterns are sorted before use so that output does not depend on map iteration order. The Java
-// iterates a HashSet here and is order-dependent; sorting is a deliberate improvement, and is
-// safe because the redactors are applied to disjoint field names.
+// iterates a HashSet here and is order-dependent; sorting is a deliberate improvement. The order
+// doesn't change the output: the redactors apply to disjoint field names, apart from a name and
+// its dashed spelling, which redact the same flag lines, and redacting a value again keeps it.
 //
 // Each name is also matched with its underscores as dashes, which gflags reads the same way.
 func RedactSensitiveInfo(input string, sensitiveGflags []string) string {
