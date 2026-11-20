@@ -519,6 +519,7 @@ std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingAppl
 
 std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::TakePendingApply(
     const TransactionId& id) {
+  DCHECK_EQ(state_.load(std::memory_order_acquire), TransactionLoaderState::kCompleted);
   if (pending_applies_removed_.load(std::memory_order_acquire)) {
     return std::nullopt;
   }

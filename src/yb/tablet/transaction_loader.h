@@ -103,6 +103,7 @@ class TransactionLoader {
       EXCLUDES(pending_applies_mtx_);
 
   // Like GetPendingApply, but also removes it, so LoadFinished does not start it.
+  // Must be called after loading completed, otherwise the apply may not be loaded yet.
   std::optional<docdb::ApplyStateWithCommitInfo> TakePendingApply(const TransactionId& id)
       EXCLUDES(pending_applies_mtx_);
 

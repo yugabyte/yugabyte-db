@@ -1521,10 +1521,8 @@ class TransactionParticipant::Impl
         std::optional<docdb::ApplyStateWithCommitInfo> apply;
         if (!started_) {
           apply = loader_.TakePendingApply(txn->id());
-          if (!apply) {
-            LOG_WITH_PREFIX(DFATAL) << "No pending apply for applying transaction " << txn->id();
-            continue;
-          }
+          RSTATUS_DCHECK(
+              apply, IllegalState, "No pending apply for applying transaction $0", txn->id());
         }
         pending.emplace_back(txn, std::move(apply));
       }

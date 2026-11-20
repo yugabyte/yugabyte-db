@@ -544,7 +544,7 @@ TEST_F(BackupTxnTest, Consistency) {
 void BackupTxnTest::TestLargeTransactionApplyingOnFollower(ShutdownFollower shutdown_follower) {
   constexpr int kNumKeys = 500;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 1;
 
   ASSERT_OK(WaitForTableLeaders(cluster_.get(), table_->id(), kWaitTimeout * kTimeMultiplier));
   auto followers = ListTableTabletPeers(cluster_.get(), table_->id(), ListPeersFilter::kNonLeaders);
@@ -573,7 +573,8 @@ void BackupTxnTest::TestLargeTransactionApplyingOnFollower(ShutdownFollower shut
     auto* ts = cluster_->find_tablet_server(uuid);
     auto start = MonoTime::Now();
     ts->Shutdown();
-    // Applying the rest of the transaction takes about 50s.
+    // Shutdown waits for one delayed batch per tablet, while the rest of the transaction takes a
+    // delayed batch per record on each tablet.
     ASSERT_LT(MonoTime::Now() - start, MonoDelta(10s * kTimeMultiplier));
     std::erase_if(followers, [&uuid](const auto& peer) { return peer->permanent_uuid() == uuid; });
     ASSERT_OK(ts->Start());
