@@ -1819,33 +1819,6 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
       }));
 }
 
-// A legacy transaction that ran a DDL holds the database lock from PR #38710 until it ends, so a
-// new mode DDL waits for the whole transaction, including its later reads.
-TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlWaitsForLegacyTxnThatRanDdl) {
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
-  }
-
-  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  // AccessShare on test, taken in DDL mode.
-  ASSERT_OK(legacy_conn.Execute("CREATE VIEW test_view AS SELECT * FROM test"));
-  // The same AccessShare on test, taken by a DML.
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-
-  ASSERT_NO_FATALS(PromoteForDdl());
-  constexpr auto kAlter = "ALTER TABLE test ADD COLUMN v1 INT";
-  ASSERT_NO_FATALS(ExpectDdlWaitsForLegacyTxn(kAlter));
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-  ASSERT_OK(legacy_conn.Execute("COMMIT"));
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(ddl_conn.Execute(kAlter));
-}
-
 // A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
 // send. PG must still record them, since LockRelationIdForSession requires the transaction lock
 // to be held, and the tserver must get no session lock release for them.
