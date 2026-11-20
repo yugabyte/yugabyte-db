@@ -2824,6 +2824,15 @@ SignalBackends(void)
 			if (QUEUE_POS_EQUAL(pos, QUEUE_HEAD))
 				continue;		/* it's fully caught up already */
 
+			/*
+			 * YB: the postmaster cleans up after a killed listener
+			 * (YbCleanupListenStateForProc) without restarting, and cannot
+			 * reach the channel table, so the listener's entries stay behind
+			 * with no registered queue slot.  Skip them.
+			 */
+			if (IsYugaByteEnabled() && pid == InvalidPid)
+				continue;
+
 			Assert(pid != InvalidPid);
 
 			QUEUE_BACKEND_WAKEUP_PENDING(i) = true;
