@@ -64,6 +64,7 @@
 #include "utils/tuplestore.h"
 
 /* YB includes */
+#include "executor/ybRowModification.h"
 #include "utils/yb_tuplecache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -2854,6 +2855,12 @@ ExecBRDeleteTriggersNew(EState *estate, EPQState *epqstate,
 	}
 	else
 	{
+		/* YB: A YB row comes with the plan; check it as GetTupleForTrigger. */
+		if (IsYBRelation(relinfo->ri_RelationDesc) &&
+			!YbCheckTupleForTrigger(estate, relinfo->ri_RelationDesc,
+									fdw_trigtuple, tmresult, tmfd))
+			return false;
+
 		trigtuple = fdw_trigtuple;
 		ExecForceStoreHeapTuple(trigtuple, slot, false);
 	}
@@ -3157,6 +3164,12 @@ ExecBRUpdateTriggersNew(EState *estate, EPQState *epqstate,
 	}
 	else
 	{
+		/* YB: A YB row comes with the plan; check it as GetTupleForTrigger. */
+		if (IsYBRelation(relinfo->ri_RelationDesc) &&
+			!YbCheckTupleForTrigger(estate, relinfo->ri_RelationDesc,
+									fdw_trigtuple, tmresult, tmfd))
+			return false;
+
 		/* Put the FDW-supplied tuple into oldslot to unify the cases */
 		ExecForceStoreHeapTuple(fdw_trigtuple, oldslot, false);
 		trigtuple = fdw_trigtuple;

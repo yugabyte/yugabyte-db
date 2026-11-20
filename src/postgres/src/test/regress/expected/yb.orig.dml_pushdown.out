@@ -544,7 +544,7 @@ WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
 SELECT * FROM single_row;
  k | v1 | v2 
 ---+----+----
- 1 |  3 |  3
+ 1 |  3 |  1
 (1 row)
 
 -- Update row that doesn't exist.
@@ -553,7 +553,7 @@ WITH temp AS (UPDATE single_row SET v1 = 2 WHERE k = 2)
 SELECT * FROM single_row;
  k | v1 | v2 
 ---+----+----
- 1 |  3 |  3
+ 1 |  3 |  1
 (1 row)
 
 WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 2 RETURNING k, v1)
@@ -561,7 +561,7 @@ WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 2 RETURNING k, v1)
 SELECT * FROM single_row;
  k | v1 | v2 
 ---+----+----
- 1 |  3 |  3
+ 1 |  3 |  1
 (1 row)
 
 -- GHI 23461
@@ -578,7 +578,7 @@ WHERE k = 1;
 SELECT * FROM single_row;
  k | v1 | v2 
 ---+----+----
- 1 |  6 |  3
+ 1 |  6 |  1
 (1 row)
 
 -- Updates on a table with a secondary index
@@ -743,7 +743,7 @@ CALL update_single_row_proc(1, 2, 3);
 SELECT * FROM single_row WHERE k = 1;
  k | v1 | v2 
 ---+----+----
- 1 |  2 |  6
+ 1 |  2 |  4
 (1 row)
 
 DROP PROCEDURE update_single_row_proc;
