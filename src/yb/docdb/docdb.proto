@@ -176,6 +176,17 @@ message ConsensusFrontierPB {
   // compaction. Compacted when  MinSerialNo() is at least this value. Default 0 means
   // the index has no inherited parent data.
   optional uint64 split_min_chunk_serial_no = 13;
+
+  // Transaction APPLYING Raft index watermark, only meaningful on the largest frontier.
+  // Regular RocksDB: the highest APPLYING index applied to it.
+  // Intents RocksDB: every APPLYING index up to this one belongs to a transaction whose intents
+  // removal was written to this or an earlier memtable, or whose intents are left to the CDC
+  // intent SST file cleanup.
+  // While the regular value is above the intents one, an applied transaction may still have its
+  // intents on disk, so WAL GC and tablet bootstrap keep (and replay) APPLYING operations from the
+  // intents value: a replayed original APPLYING re-establishes the transaction's local commit
+  // time, and a re-delivered duplicate becomes a no-op instead of re-applying over a repacked row.
+  optional int64 txn_apply_op_index = 14;
 }
 
 message ApplyTransactionStatePB {

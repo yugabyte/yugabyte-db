@@ -90,6 +90,9 @@ struct TransactionApplyData {
 struct RemoveIntentsData {
   OpId op_id;
   HybridTime log_ht;
+  // TransactionParticipant::IntentsTxnApplyOpIndex as it will be once the intents of the removed
+  // transaction are removed. Set only when removing a single transaction; zero otherwise.
+  int64_t txn_apply_op_index = 0;
 };
 
 struct GetIntentsData {
@@ -177,8 +180,10 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status ProcessReplicated(const ReplicatedData& data);
 
+  // regular_txn_apply_op_index is the txn_apply_op_index of the regular RocksDB flushed frontier
+  // (see ConsensusFrontierPB).
   Status SetDB(
-      const docdb::DocDB& db,
+      const docdb::DocDB& db, int64_t regular_txn_apply_op_index,
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start);
 
   Status CheckAborted(const TransactionId& id);
@@ -239,6 +244,18 @@ class TransactionParticipant : public TransactionStatusManager {
       HybridTime min_start_ht_cdc_unstreamed_txns);
 
   OpId GetRetainOpId() const;
+
+  // The highest apply op index up to which every transaction applied on this tablet has its
+  // intents removal written to the intents RocksDB or its intents cleanup handed over to CDC;
+  // recorded in the intents RocksDB consensus frontier (see
+  // ConsensusFrontierPB.txn_apply_op_index). Zero when the feature is disabled or no apply has
+  // been seen yet.
+  int64_t IntentsTxnApplyOpIndex() const;
+
+  // Called once a transaction no longer needs its APPLYING operation retained in the WAL: its
+  // intents removal has been fully written to the intents RocksDB, or intents cleanup has been
+  // handed over to CDC. No-op for transactions that were never recorded as applied.
+  void StopTrackingUnremovedIntentsApply(const TransactionId& id);
 
   CoarseTimePoint GetCheckpointExpirationTime() const;
 
