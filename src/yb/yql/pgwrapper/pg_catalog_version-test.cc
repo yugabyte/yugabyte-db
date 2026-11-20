@@ -976,20 +976,26 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
   auto conn_bystander =
       ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, /* single_attempt = */ false));
 
+  const auto db_oid = ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kTestDatabase)));
+  LogWaiter delay_started(
+      ts1, Format("delaying $0 ms before RelationCacheInitializePhase3 for database $1",
+                  kDelayMs, db_oid));
   auto connect_future = std::async(std::launch::async, [&connect_to_ts1] {
     return ResultToStatus(connect_to_ts1(kTestDatabase, /* single_attempt = */ true));
   });
-  // Let the connection pass its database recheck and reach the delay, then drop the database, all
-  // before the delay ends.
-  std::this_thread::sleep_for(3s * kTimeMultiplier);
+  // Drop the database once the connection has passed its database recheck and is paused.
+  ASSERT_OK(delay_started.WaitFor(MonoDelta::FromMilliseconds(kDelayMs)));
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
   WaitForCatalogVersionToPropagate();
 
   const auto status = connect_future.get();
   LOG(INFO) << "Connection status: " << status;
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "does not exist");
-  ASSERT_STR_CONTAINS(status.ToString(), "It seems to have just been dropped or renamed.");
+  // Only the relcache.c check reports this OID form and detail. The InitPostgres recheck would
+  // name the database and say "dropped or renamed".
+  ASSERT_STR_CONTAINS(status.ToString(), Format("database $0 does not exist", db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "It seems to have just been dropped.");
   ASSERT_OK(conn_bystander.Fetch("SELECT 1"));
 }
 

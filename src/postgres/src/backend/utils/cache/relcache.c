@@ -7589,13 +7589,13 @@ YbTriggerInternalRelcacheBuild()
 	 * connection startup. The post-lock recheck in InitPostgres reads the
 	 * prefetched copy, which predates the database lock, so a DROP DATABASE
 	 * that committed while this backend was starting is only visible here.
-	 * Fail just this connection, the same way that recheck would.
+	 * Fail just this connection with FATAL, as that recheck does.
 	 */
 	if (dbname == NULL)
 		ereport(FATAL,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database %u does not exist", MyDatabaseId),
-				 errdetail("It seems to have just been dropped or renamed.")));
+				 errdetail("It seems to have just been dropped.")));
 
 	int			i;
 	for (i = 0; i < 20; i++)
