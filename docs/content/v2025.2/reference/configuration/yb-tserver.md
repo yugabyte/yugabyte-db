@@ -1334,7 +1334,7 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 Default: `28800000` (8 hours)
 {{% /tags/wrap %}}
 
-The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records. The value must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults are equal. If the value is larger, YB-Master and YB-TServer don't start and log `Must be no larger than cdc_wal_retention_time_secs * 1000`.
 
 ##### --cdc_wal_retention_time_secs
 
@@ -1343,7 +1343,7 @@ The time period, in milliseconds, after which the intents will be cleaned up if 
 Default: `28800` (8 hours)
 {{% /tags/wrap %}}
 
-WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
+WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK. `cdc_wal_retention_time_secs` * 1000 must be at least `cdc_intent_retention_ms`. Equal values are valid, and the defaults are equal. If WAL retention is shorter, YB-Master and YB-TServer don't start and log `Must be at least cdc_intent_retention_ms (in seconds)`.
 
 ##### --cdcsdk_table_processing_limit_per_run
 
