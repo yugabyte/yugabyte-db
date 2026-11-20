@@ -158,6 +158,18 @@ public class ManagedLoadBalancerUtil {
     return names;
   }
 
+  /** getCertNames in lower case: DNS names ignore case, so a case change restarts no tserver. */
+  public static Set<String> getCertNameSet(
+      UniverseDefinitionTaskParams details, @Nullable NodeDetails node) {
+    return toCertNameSet(getCertNames(details, node));
+  }
+
+  public static Set<String> toCertNameSet(Map<String, Integer> certNames) {
+    return certNames.keySet().stream()
+        .map(name -> name.toLowerCase(Locale.ROOT))
+        .collect(Collectors.toSet());
+  }
+
   /**
    * The load balancers that the cluster calls for: one private load balancer in each region of the
    * placement when enablePrivate is set, serving every active zone of the region. The tasks create,

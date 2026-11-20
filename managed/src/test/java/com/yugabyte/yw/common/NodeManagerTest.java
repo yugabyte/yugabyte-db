@@ -146,6 +146,8 @@ public class NodeManagerTest extends FakeDBApplication {
     nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
     assertEquals(Set.of(node.cloudInfo.private_ip, "10.150.0.5", "*.db.example.com"), sans);
+    // AnsibleConfigureServers records them, so a later edit can tell whether they changed.
+    assertEquals(Set.of("10.150.0.5", "*.db.example.com"), params.signedLoadBalancerCertNames);
   }
 
   private List<String> runOciReplaceRootVolume(boolean force) {

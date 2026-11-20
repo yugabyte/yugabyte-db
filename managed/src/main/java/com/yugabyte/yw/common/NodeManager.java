@@ -786,6 +786,10 @@ public class NodeManager extends DevopsBase {
                   serverCertFile,
                   serverKeyFile,
                   addLoadBalancerNames(clientRootCert, subjectAltName, loadBalancerNames));
+              if (clientRootCert.getCertType() == CertConfigType.SelfSigned) {
+                taskParam.signedLoadBalancerCertNames =
+                    ManagedLoadBalancerUtil.toCertNameSet(loadBalancerNames);
+              }
               rootCertPath = clientRootCert.getCertificate();
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);

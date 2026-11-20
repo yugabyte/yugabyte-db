@@ -106,17 +106,20 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.pekko.japi.function.Predicate;
 import org.junit.Before;
@@ -1651,6 +1654,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
               agent.setIp(invocation.getArgument(0));
               return agent;
             });
+    setCheckNodesAreSafeToTakeDown(mockClient);
     return Universe.saveDetails(
         universe.getUniverseUUID(),
         u -> {
@@ -1659,7 +1663,82 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           details.rootAndClientRootCASame = true;
           details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
           details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+          recordCertNames(details);
         });
+  }
+
+  // As NodeManager records them when it signs the certs.
+  private static void recordCertNames(UniverseDefinitionTaskParams details) {
+    ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
+    if (state == null) {
+      return;
+    }
+    details.nodeDetailsSet.stream()
+        .filter(n -> n.isTserver)
+        .forEach(
+            n ->
+                state
+                    .getCertNames()
+                    .put(
+                        n.nodeName,
+                        ManagedLoadBalancerUtil.getCertNames(details, n).keySet().stream()
+                            .map(name -> name.toLowerCase(Locale.ROOT))
+                            .collect(Collectors.toSet())));
+  }
+
+  @Test
+  public void testTurningOffKeepsTheCertsAndRestartsNoTserver() throws Exception {
+    givenManagedLoadBalancer(List.of("db.example.com"));
+    Universe universe = givenSelfSignedClientTls(defaultUniverse);
+
+    TaskInfo taskInfo = submitTask(flipManagedLoadBalancer(universe, false));
+
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(Set.of(), certCopiesRun());
+    assertEquals(Map.of(), serverCommandsRun());
+  }
+
+  @Test
+  public void testCertRestartTakesEachTserverOffTheLeaderBlacklistWithoutTheFollowerLagCheck()
+      throws Exception {
+    givenManagedLoadBalancer(List.of("db.example.com"));
+    Universe universe = givenSelfSignedClientTls(defaultUniverse);
+    factory.forUniverse(universe).setValue("yb.checks.follower_lag.enabled", "false");
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+    // The masters keep the blacklist that the last change wrote.
+    AtomicReference<CatalogEntityInfo.SysClusterConfigEntryPB> config =
+        new AtomicReference<>(
+            CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1).build());
+    Set<String> everBlacklisted = ConcurrentHashMap.newKeySet();
+    when(mockClient.getMasterClusterConfig())
+        .thenAnswer(i -> new GetMasterClusterConfigResponse(1111, "", config.get(), null));
+    when(mockClient.changeMasterClusterConfig(any()))
+        .thenAnswer(
+            i -> {
+              CatalogEntityInfo.SysClusterConfigEntryPB changed = i.getArgument(0);
+              config.set(changed);
+              changed
+                  .getLeaderBlacklist()
+                  .getHostsList()
+                  .forEach(h -> everBlacklisted.add(h.getHost()));
+              return new ChangeMasterClusterConfigResponse(1111, "", null);
+            });
+    UniverseDefinitionTaskParams taskParams = unchangedEdit(universe);
+    taskParams
+        .getPrimaryCluster()
+        .userIntent
+        .getManagedLoadBalancer()
+        .setDnsNames(List.of("db.example.com", "*.db.example.com"));
+
+    assertEquals(Success, submitTask(taskParams).getTaskState());
+
+    assertEquals(
+        universe.getTServers().stream()
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toSet()),
+        everBlacklisted);
+    assertEquals(0, config.get().getLeaderBlacklist().getHostsCount());
   }
 
   // NodeTaskParams JSON reads back as the base class, so read the subtask params as JSON.
@@ -1800,6 +1879,37 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(tservers, commands.keySet());
     commands.values().forEach(c -> assertEquals(List.of("yb-tserver STOP", "yb-tserver START"), c));
     assertEquals(tservers.size(), countRunSubTasks(taskInfo, TaskType.CheckFollowerLag));
+    // Each stop waits until its tserver is safe to take down.
+    List<String> checksAndStops =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .flatMap(
+                t -> {
+                  if (t.getTaskType() == TaskType.CheckNodesAreSafeToTakeDown) {
+                    return Stream.of(
+                        "check "
+                            + t.getTaskParams()
+                                .path("nodesToCheck")
+                                .path(0)
+                                .path("tserversList")
+                                .path(0)
+                                .path("nodeName")
+                                .asText());
+                  }
+                  if (t.getTaskType() == TaskType.AnsibleClusterServerCtl
+                      && param(t, "command").equals("stop")) {
+                    return Stream.of("stop " + param(t, "nodeName"));
+                  }
+                  return Stream.empty();
+                })
+            .collect(Collectors.toList());
+    assertEquals(
+        checksAndStops.stream()
+            .filter(s -> s.startsWith("stop "))
+            .flatMap(s -> Stream.of("check " + s.substring(5), s))
+            .collect(Collectors.toList()),
+        checksAndStops);
+    assertEquals(tservers.size() * 2, checksAndStops.size());
   }
 
   @Test

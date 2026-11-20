@@ -216,11 +216,11 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           }
           createManageLoadBalancerTasks(createLoadBalancerMap(details, null, null, null));
           // Ensure gives a load balancer deleted outside YBA a new address, which the certs must
-          // name. Not retryable, so details still holds the names the running certs carry.
+          // name.
           Set<String> lbCertNodes =
               getLoadBalancerCertNodes(details, ManagedLoadBalancerUtil::isEnabled);
           if (!lbCertNodes.isEmpty()) {
-            Predicate<String> isLbCertStale = isLoadBalancerCertStale(details);
+            Predicate<String> isLbCertStale = isLoadBalancerCertStale();
             createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
             createRebindProxiesTasks(Set.of(), lbCertNodes, isLbCertStale);
           }

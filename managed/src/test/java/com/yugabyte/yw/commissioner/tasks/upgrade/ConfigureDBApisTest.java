@@ -10,8 +10,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -59,9 +62,11 @@ import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -261,7 +266,51 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
                   ManagedLoadBalancerUtil.getPrivateName(clusterUuid),
                   "lbi-0123.elb.us-west-2.amazonaws.com"));
           details.setManagedLoadBalancerState(state);
+          // As NodeManager records them when it signs the certs.
+          details.nodeDetailsSet.stream()
+              .filter(n -> n.isTserver)
+              .forEach(
+                  n ->
+                      state
+                          .getCertNames()
+                          .put(
+                              n.nodeName,
+                              ManagedLoadBalancerUtil.getCertNames(details, n).keySet().stream()
+                                  .map(name -> name.toLowerCase(Locale.ROOT))
+                                  .collect(Collectors.toSet())));
         });
+  }
+
+  @Test
+  public void testRunAfterAFailedCertCopyStillReissuesTheCerts() throws Exception {
+    Universe universe = givenManagedLoadBalancerWithSelfSignedClientTls();
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    // Deleted outside YBA, so ensure recreates it under a new name, which the task saves.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    AtomicBoolean copyFails = new AtomicBoolean(true);
+    doAnswer(i -> copyFails.get() ? ShellResponse.create(1, "copy failed") : new ShellResponse())
+        .when(mockNodeManager)
+        .nodeCommand(
+            eq(NodeManager.NodeCommandType.Configure),
+            argThat(
+                p ->
+                    p instanceof AnsibleConfigureServers.Params
+                        && ((AnsibleConfigureServers.Params) p).type
+                            == UpgradeTaskParams.UpgradeTaskType.Certs));
+
+    assertEquals(
+        Failure, submitTask(params, TaskType.ConfigureDBApis, commissioner, -1).getTaskState());
+    copyFails.set(false);
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
+    TaskInfo rerun = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, rerun.getTaskState());
+    assertEquals(tservers, certCopiesRun());
   }
 
   // A skipped subtask ends in Success too, so ask the mocks what ran.

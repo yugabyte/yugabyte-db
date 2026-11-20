@@ -30,7 +30,6 @@ import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -181,22 +180,16 @@ public class EditUniverse extends EditUniverseTaskBase {
                   Comparator.<Cluster, Integer>comparing(
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
-      UniverseDefinitionTaskParams beforeEdit = getBeforeEditDetails(universe);
+      // A turn-off leaves the certs alone: extra names harm no client, and the next cert
+      // regeneration drops them.
       Set<String> lbCertNodes =
-          getLoadBalancerCertNodes(
-              taskParams(),
-              cluster -> {
-                Cluster old = beforeEdit.getClusterByUuid(cluster.uuid);
-                return old != null
-                    && (ManagedLoadBalancerUtil.isEnabled(old)
-                        || ManagedLoadBalancerUtil.isEnabled(cluster));
-              });
+          getLoadBalancerCertNodes(taskParams(), ManagedLoadBalancerUtil::isEnabled);
       // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
       // first. This creates the load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
         createEnsureManagedLoadBalancerTasks(cluster);
       }
-      Predicate<String> isLbCertStale = isLoadBalancerCertStale(beforeEdit);
+      Predicate<String> isLbCertStale = isLoadBalancerCertStale();
       // After ensure: it saves the addresses the certs carry.
       if (!lbCertNodes.isEmpty()) {
         // Rollback would restore the old names but not the certs on the nodes. Not the Once
@@ -343,15 +336,6 @@ public class EditUniverse extends EditUniverseTaskBase {
       }
     }
     log.info("Finished {} task.", getName());
-  }
-
-  /**
-   * The pre-edit snapshot, not the saved universe: the first attempt's freeze already saved the new
-   * setting. prevState is the fallback; on a first attempt it is still pre-edit.
-   */
-  private UniverseDefinitionTaskParams getBeforeEditDetails(Universe universe) {
-    StateTransitionDetails transition = universe.getStateTransitionDetails();
-    return transition != null ? transition.getBeforeUniverseDetails() : prevState;
   }
 
   /**

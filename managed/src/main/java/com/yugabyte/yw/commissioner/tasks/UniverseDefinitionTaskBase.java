@@ -7,7 +7,6 @@ import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -158,13 +157,11 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -2014,6 +2011,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       SubTaskGroupType subTaskGroupType,
       CertsRotateParams.CertRotationType rootCARotationType,
       CertsRotateParams.CertRotationType clientRootCARotationType) {
+    createCertUpdateTasks(
+        nodes,
+        certRotateAction,
+        subTaskGroupType,
+        rootCARotationType,
+        clientRootCARotationType,
+        params -> {});
+  }
+
+  protected void createCertUpdateTasks(
+      Collection<NodeDetails> nodes,
+      NodeManager.CertRotateAction certRotateAction,
+      SubTaskGroupType subTaskGroupType,
+      CertsRotateParams.CertRotationType rootCARotationType,
+      CertsRotateParams.CertRotationType clientRootCARotationType,
+      Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
     String subGroupDescription =
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
@@ -2024,6 +2037,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers.Params params =
           createCertUpdateParams(
               userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
+      paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(getUserTaskUUID());
@@ -4787,35 +4801,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         nodeName -> false);
   }
 
-  public static class LoadBalancerCertRuntimeInfo {
-    // Names in each tserver's cert after its restart in this task. Runtime info survives a retry.
-    @JsonProperty("lbCertNames")
-    Map<String, Set<String>> certNames = new ConcurrentHashMap<>();
-  }
-
-  // Lower case: DNS names are case-insensitive, and a case change alone must not restart tservers.
-  private static Set<String> getLoadBalancerCertNames(
-      UniverseDefinitionTaskParams details, NodeDetails node) {
-    return ManagedLoadBalancerUtil.getCertNames(details, node).keySet().stream()
-        .map(name -> name.toLowerCase(Locale.ROOT))
-        .collect(Collectors.toSet());
-  }
-
   /**
-   * Whether a tserver's cert names differ from the load balancer names that the universe holds when
-   * the test runs. Only run time knows: ensure gives a load balancer deleted outside YBA a new
-   * address. A cert that this task hasn't reissued carries the names of {@code before}.
+   * Whether a tserver's cert lacks the load balancer names that the universe holds when the test
+   * runs. Only run time knows: ensure gives a load balancer deleted outside YBA a new address. A
+   * cert with no recorded names counts as stale.
    */
-  protected Predicate<String> isLoadBalancerCertStale(UniverseDefinitionTaskParams before) {
+  protected Predicate<String> isLoadBalancerCertStale() {
     return nodeName -> {
       Universe universe = getUniverse();
-      NodeDetails node = universe.getNode(nodeName);
-      Set<String> running =
-          getRuntimeInfo(LoadBalancerCertRuntimeInfo.class).certNames.get(nodeName);
-      if (running == null) {
-        running = getLoadBalancerCertNames(before, node);
-      }
-      return !running.equals(getLoadBalancerCertNames(universe.getUniverseDetails(), node));
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
+      return state == null
+          || !ManagedLoadBalancerUtil.getCertNameSet(details, universe.getNode(nodeName))
+              .equals(state.getCertNames().get(nodeName));
     };
   }
 
@@ -4847,7 +4845,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected void createLoadBalancerCertCopyTasks(
       Set<String> nodeNames, Predicate<String> isCertStale) {
-    // Processes keep the old cert until they restart; same CA, so TLS works in between.
+    // Processes keep the old cert until they restart; same CA, so TLS works in between. The
+    // restart records the names: recorded here, a retry would skip a tserver not yet restarted.
     planToRunOnlyIf(
         t -> isCertStale.test(t.getTaskParams().path("nodeName").asText()),
         () ->
@@ -4858,7 +4857,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 NodeManager.CertRotateAction.ROTATE_CERTS,
                 SubTaskGroupType.RotatingCert,
                 CertsRotateParams.CertRotationType.None,
-                CertsRotateParams.CertRotationType.ServerCert));
+                CertsRotateParams.CertRotationType.ServerCert,
+                params -> params.skipLoadBalancerCertRecord = true));
   }
 
   /**
@@ -4904,9 +4904,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   private void createTserverRestartTasks(NodeDetails node, boolean rebind, boolean certNode) {
     List<NodeDetails> nodes = Collections.singletonList(node);
+    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    createCheckNodesAreSafeToTakeDownTask(
+        Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, tserver)),
+        null /* targetSoftwareVersion */,
+        false /* fallbackToSingleSplits */);
     stopProcessesOnNodes(
         nodes,
-        EnumSet.of(ServerType.TSERVER),
+        tserver,
         false /* removeMasterFromQuorum */,
         false /* deconfigure */,
         false /* flushTablets */,
@@ -4915,30 +4920,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (rebind) {
       createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
     }
-    // startProcessesOnNode, inlined: the cert record needs the restart's last group.
-    createServerControlTask(node, ServerType.TSERVER, "start")
-        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-    createWaitForServersTasks(nodes, ServerType.TSERVER)
-        .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-    SubTaskGroup restarted =
-        createWaitForServerReady(node, ServerType.TSERVER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-    removeFromLeaderBlackListIfAvailable(nodes, SubTaskGroupType.StartingNodeProcesses);
+    startProcessesOnNode(
+        node,
+        tserver,
+        SubTaskGroupType.StartingNodeProcesses,
+        false /* addMasterToQuorum */,
+        true /* wasStopped */,
+        true /* waitForServerReady */);
     // Followers catch up before the next stop, so no tablet loses its majority.
     if (isFollowerLagCheckEnabled()) {
-      restarted =
-          createCheckFollowerLagTask(node, ServerType.TSERVER)
-              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      createCheckFollowerLagTask(node, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }
+    // Last: until it runs, the cert counts as stale, so a retry restarts the tserver again.
     if (certNode) {
-      restarted.setAfterGroupRunListener(
-          g ->
-              updateRuntimeInfo(
-                  LoadBalancerCertRuntimeInfo.class,
-                  info ->
-                      info.certNames.put(
-                          node.nodeName,
-                          getLoadBalancerCertNames(getUniverse().getUniverseDetails(), node))));
+      createUpdateUniverseFieldsTask(
+              u -> {
+                UniverseDefinitionTaskParams details = u.getUniverseDetails();
+                Set<String> names =
+                    ManagedLoadBalancerUtil.getCertNameSet(details, u.getNode(node.nodeName));
+                details.updateManagedLoadBalancerState(
+                    state -> state.getCertNames().put(node.nodeName, names));
+              })
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
     }
   }
 
@@ -4947,11 +4951,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   // Each group that planner adds runs only if shouldRun holds when the group starts. Reaches the
   // groups of helpers that don't return them, such as stopProcessesOnNodes.
   private void planToRunOnlyIf(Predicate<ITask> shouldRun, Runnable planner) {
-    plannedShouldRun = shouldRun;
+    Predicate<ITask> outer = plannedShouldRun;
+    plannedShouldRun = outer == null ? shouldRun : outer.and(shouldRun);
     try {
       planner.run();
     } finally {
-      plannedShouldRun = null;
+      plannedShouldRun = outer;
     }
   }
 
