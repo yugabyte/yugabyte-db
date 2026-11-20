@@ -18288,6 +18288,10 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
  *
  * Do not allow users to set yb_read_after_commit_visibility
  * from within a txn block.
+ *
+ * ConnMgr can't replay a GUC that uses this hook, since the replay runs
+ * inside a transaction block. Such a GUC must also be marked
+ * GUC_YB_CONN_MGR_STICKY.
  */
 static bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
