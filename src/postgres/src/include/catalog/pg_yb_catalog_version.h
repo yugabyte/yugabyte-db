@@ -50,14 +50,6 @@ typedef FormData_yb_pg_catalog_version *Form_yb_pg_catalog_version;
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_yb_catalog_version_db_oid_index, 8012, YBCatalogVersionDbOidIndexId, on pg_yb_catalog_version using btree(db_oid oid_ops));
 
-/*
- * The class id of the per-database object lock that serializes DDLs
- * (PR #38710): DDLs that run in a separate DDL transaction with DDLs with
- * global object locks, and, with ysql_enable_concurrent_ddl off, DDLs with
- * global object locks with each other.
- * No catalog row has this OID. Declaring it keeps unused_oids from handing it
- * out, and genbki and duplicate_oids reject any catalog entry that reuses it.
- */
 DECLARE_OID_DEFINING_MACRO(YbDdlSerializationLockOid, 8129);
 
 #endif							/* PG_YB_CATALOG_VERSION_H */
