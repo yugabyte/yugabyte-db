@@ -270,6 +270,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               newReadReplica.userIntent.specificGFlags,
               gFlagsValidation,
               primaryCluster.userIntent.ybSoftwareVersion);
+      // The primary may store the restored values untrimmed, and the line break check rejects a
+      // trailing newline.
+      GFlagsUtil.trimFlags(newReadReplica.userIntent.specificGFlags);
     }
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
