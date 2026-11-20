@@ -297,6 +297,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             new ReleaseContainer(
                 mockReleaseMetadata, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseContainer);
+    doReturn(false).when(mockReleaseContainer).isDisabledOrDeleted();
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
         .when(mockReleaseContainer)
         .getFilePath(Architecture.x86_64);

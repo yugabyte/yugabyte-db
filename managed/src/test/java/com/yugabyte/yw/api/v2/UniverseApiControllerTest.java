@@ -5,6 +5,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
@@ -35,20 +36,29 @@ import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageBase;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
+import com.yugabyte.yba.v2.client.models.PlacementAZ;
+import com.yugabyte.yba.v2.client.models.PlacementCloud;
+import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.ProviderNodeSpec;
+import com.yugabyte.yba.v2.client.models.ProviderRootNodesSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
 import com.yugabyte.yba.v2.client.models.UniverseListApiFilter;
 import com.yugabyte.yba.v2.client.models.UniversePagedQuerySpec;
 import com.yugabyte.yba.v2.client.models.UniversePagedResp;
+import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
+import com.yugabyte.yba.v2.client.models.UniverseResourcesPerProvider;
 import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -66,6 +76,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -821,5 +833,125 @@ public class UniverseApiControllerTest extends UniverseTestBase {
             ApiException.class, () -> api.checkResizeOptions(customer.getUuid(), uUUID, spec));
     assertEquals(400, ex.getCode());
     assertThat(ex.getResponseBody(), containsString("provider_nodes_specs"));
+  }
+
+  @Test
+  public void testGetPerProviderDetails() throws ApiException, IOException {
+    setNewUIEnabled();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2(true);
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    ClusterPerProviderSpec primaryProviderSpec = clusterSpec.getProviderSpecs().get(0);
+    ClusterStorageSpec storageSpec =
+        primaryProviderSpec.getNodesSpecs().getTserverSpecification().getStorageSpec();
+
+    Provider secondProvider = ModelFactory.newProvider(customer, Common.CloudType.gcp, "gcp-2");
+    Region secondRegion = Region.create(secondProvider, "us-central1", "us-central1", "yb-image");
+    AvailabilityZone secondZone =
+        AvailabilityZone.createOrThrow(secondRegion, "gcp-az-1", "GCP AZ 1", "subnet-1");
+    ImageBundleDetails imageDetails = new ImageBundleDetails();
+    imageDetails.setArch(Architecture.aarch64);
+    imageDetails.setGlobalYbImage("yb-image-global");
+    ImageBundle imageBundle =
+        ImageBundle.create(secondProvider, "centos-image", imageDetails, true);
+    double coresPerNode = 4.0;
+    double memGbPerNode = 8.0;
+    InstanceType.upsert(
+        providerUuid,
+        ApiUtils.UTIL_INST_TYPE,
+        coresPerNode,
+        memGbPerNode,
+        new InstanceType.InstanceTypeDetails());
+    InstanceType.upsert(
+        secondProvider.getUuid(),
+        ApiUtils.UTIL_INST_TYPE,
+        coresPerNode,
+        memGbPerNode,
+        new InstanceType.InstanceTypeDetails());
+
+    clusterSpec.addProviderSpecsItem(
+        new ClusterPerProviderSpec()
+            .provider(secondProvider.getUuid())
+            .imageBundleUuid(imageBundle.getUuid())
+            .accessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE)
+            .networkingSpec(primaryProviderSpec.getNetworkingSpec())
+            .instanceTags(Map.of("itag1", "ival1"))
+            .nodesSpecs(
+                new ProviderRootNodesSpec()
+                    .tserverSpecification(
+                        new ProviderNodeSpec()
+                            .instanceType(ApiUtils.UTIL_INST_TYPE)
+                            .storageSpec(storageSpec))));
+
+    PlacementCloud primaryCloud = clusterSpec.getPlacementSpec().getCloudList().get(0);
+    PlacementRegion primaryRegion = primaryCloud.getRegionList().get(0);
+    List<PlacementAZ> primaryAzs = new ArrayList<>(primaryRegion.getAzList());
+    PlacementAZ replacedAz = primaryAzs.remove(0);
+    primaryRegion.setAzList(primaryAzs);
+    int replacedNodes = replacedAz.getNumNodesInAz();
+    int primaryNodes = primaryAzs.stream().mapToInt(PlacementAZ::getNumNodesInAz).sum();
+    PlacementCloud secondCloud =
+        new PlacementCloud()
+            .uuid(secondProvider.getUuid())
+            .code(secondProvider.getCode())
+            .regionList(
+                List.of(
+                    new PlacementRegion()
+                        .uuid(secondRegion.getUuid())
+                        .code(secondRegion.getCode())
+                        .name(secondRegion.getName())
+                        .azList(
+                            List.of(
+                                new PlacementAZ()
+                                    .uuid(secondZone.getUuid())
+                                    .name(secondZone.getName())
+                                    .subnet(secondZone.getSubnet())
+                                    .numNodesInAz(replacedNodes)
+                                    .replicationFactor(replacedAz.getReplicationFactor())
+                                    .leaderPreference(replacedAz.getLeaderPreference())
+                                    .leaderAffinity(true)))));
+    clusterSpec.getPlacementSpec().setCloudList(List.of(primaryCloud, secondCloud));
+
+    UniverseResourcesPerProvider universeResourcesPerProvider =
+        new UniverseApi().getUniverseResourcesPerProvider(customer.getUuid(), universeCreateSpec);
+    Map<String, UniverseResourceDetails> resourcesPerProvider =
+        universeResourcesPerProvider.getResourcesPerProvider();
+    assertThat(resourcesPerProvider.keySet(), hasSize(2));
+
+    UniverseResourceDetails primaryDetails = resourcesPerProvider.get(providerUuid.toString());
+    UniverseResourceDetails secondDetails =
+        resourcesPerProvider.get(secondProvider.getUuid().toString());
+    assertProviderResources(
+        primaryDetails,
+        primaryNodes,
+        primaryAzs.stream().map(PlacementAZ::getName).toArray(String[]::new),
+        storageSpec,
+        coresPerNode,
+        memGbPerNode);
+    assertProviderResources(
+        secondDetails,
+        replacedNodes,
+        new String[] {secondZone.getName()},
+        storageSpec,
+        coresPerNode,
+        memGbPerNode);
+    assertThat(
+        primaryDetails.getNumNodes() + secondDetails.getNumNodes(), is(clusterSpec.getNumNodes()));
+  }
+
+  private static void assertProviderResources(
+      UniverseResourceDetails details,
+      int numNodes,
+      String[] azNames,
+      ClusterStorageSpec storageSpec,
+      double coresPerNode,
+      double memGbPerNode) {
+    assertThat(details, notNullValue());
+    assertThat(details.getNumNodes(), is(numNodes));
+    assertThat(details.getAzList(), containsInAnyOrder(azNames));
+    int numVolumes = storageSpec.getNumVolumes();
+    assertThat(details.getVolumeCount(), is(numNodes * numVolumes));
+    assertThat(details.getVolumeSizeGb(), is(numNodes * numVolumes * storageSpec.getVolumeSize()));
+    assertThat(details.getNumCores(), is(numNodes * coresPerNode));
+    assertThat(details.getMemSizeGb(), is(numNodes * memGbPerNode));
   }
 }

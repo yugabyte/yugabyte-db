@@ -131,11 +131,11 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   private void validateKMSProviderConfigFormData(
-      ObjectNode formData, String keyProvider, UUID customerUUID) {
+      ObjectNode formData, String keyProvider, UUID customerUUID, boolean isCreate) {
     switch (KeyProvider.valueOf(keyProvider.toUpperCase())) {
       case OCI:
         try {
-          ociEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          ociEARServiceUtil.validateKMSProviderConfigFormData(formData, isCreate);
           LOG.info(
               "Finished validating OCI provider config form data for vault = "
                   + formData.path(OciKmsAuthConfigField.ociVaultId.fieldName).asText()
@@ -595,8 +595,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
+      if (KeyProvider.OCI.name().equals(keyProvider)) {
+        // Create picks the key by name and ignores a supplied OCID, so validate the named key.
+        formData.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+      }
       // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
+      validateKMSProviderConfigFormData(formData, keyProvider, customerUUID, true /* isCreate */);
       YBPTask task =
           kmsConfigHelper.submitCreateKMSConfig(
               customerUUID, Enum.valueOf(KeyProvider.class, keyProvider), formData);
@@ -657,7 +661,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       // add non-editable fields in formData from existing config.
       formData = addNonEditableFieldsData(formData, configUUID, config.getKeyProvider());
       // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, config.getKeyProvider().toString(), customerUUID);
+      validateKMSProviderConfigFormData(
+          formData, config.getKeyProvider().toString(), customerUUID, false /* isCreate */);
       UUID taskUUID =
           kmsConfigHelper.editKMSConfig(
               customerUUID, configUUID, config.getKeyProvider(), config.getName(), formData);

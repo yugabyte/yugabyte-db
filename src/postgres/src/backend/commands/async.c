@@ -349,6 +349,7 @@ static SlruCtlData NotifyCtlData;
 
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
+bool		yb_test_notifs_poller_error_holding_queue_lock = false;
 int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
@@ -3440,6 +3441,15 @@ ybNotifsPollerLoop()
 			ErrorData  *edata = CopyErrorData();
 
 			/*
+			 * The error may have been raised with NotifyQueueLock (and
+			 * NotifySLRULock) held, e.g. by an SLRU I/O failure while adding
+			 * entries to the queue. LWLocks are not re-entrant: acquiring
+			 * NotifyQueueLock below would wait on ourselves forever, and every
+			 * LISTEN on the node behind us.
+			 */
+			LWLockReleaseAll();
+
+			/*
 			 * A stale poller, say one whose slot was dropped under it, must
 			 * not report its error: the listeners it would terminate belong
 			 * to the poller that replaced it.
@@ -3732,6 +3742,12 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 		if (ybIsStaleNotifsPoller())
 			ybExitStaleNotifsPoller(NULL);
 
+		if (yb_test_notifs_poller_error_holding_queue_lock)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("test-only: notifications poller error while "
+							"holding NotifyQueueLock")));
+
 		if (asyncQueueIsFull())
 		{
 			LWLockRelease(NotifyQueueLock);
@@ -3886,6 +3902,52 @@ bool
 YbHasActiveOrPendingListen(void)
 {
 	return listenChannels != NIL || YbHasPendingListenAction();
+}
+
+/*
+ * Mark of pending notifications, including those in open subtransactions.
+ * READ COMMITTED merges the previous statement's notifications into the top
+ * level when the next statement starts, so the mark must include them to
+ * prevent rollback from dropping them.
+ */
+int
+YbPendingNotifiesMark(void)
+{
+	int			mark = 0;
+
+	for (NotificationList *notifies = pendingNotifies; notifies != NULL;
+		 notifies = notifies->upper)
+		mark += list_length(notifies->events);
+	return mark;
+}
+
+/*
+ * Drop the top-level pending notifications queued after mark. The query layer
+ * calls this when it retries a statement: the attempt it discards may have
+ * queued notifications that the retry queues again.
+ */
+void
+YbRollbackPendingNotifiesTo(int mark)
+{
+	NotificationList **notifies = &pendingNotifies;
+
+	while (*notifies != NULL && (*notifies)->nestingLevel > 1)
+		notifies = &(*notifies)->upper;
+	if (*notifies == NULL || list_length((*notifies)->events) <= mark)
+		return;
+
+	if (mark == 0)
+	{
+		*notifies = NULL;
+		return;
+	}
+
+	(*notifies)->events = list_truncate((*notifies)->events, mark);
+	if ((*notifies)->hashtab != NULL)
+	{
+		hash_destroy((*notifies)->hashtab);
+		(*notifies)->hashtab = NULL;
+	}
 }
 
 static void
