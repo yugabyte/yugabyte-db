@@ -2904,7 +2904,12 @@ class PgClientSession::Impl {
     }
 
     auto arena = ObtainArena(&context, *resp);
-    auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline(), arena);
+    // kLegacyCatalog, not kPlain: every catalog read sets or resets its read time, so resetting it
+    // here affects no other request. A leftover read point can predate the scanned index's birth
+    // time; key ranges need no snapshot, so let the tablet pick the read time.
+    auto session = EnsureSession(
+        PgClientSessionKind::kLegacyCatalog, context.GetClientDeadline(), arena);
+    session->SetReadPoint({});
 
     // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
     // instead of passing through YBSession.
