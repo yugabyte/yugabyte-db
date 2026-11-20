@@ -26,7 +26,9 @@
  *	  The SQL lifecycle functions record "manual" and "rename": finish swaps
  *	  the tables' names.  ALTER TABLE ... CONCURRENTLY records "alter_table"
  *	  and "swap".  "query" is the text of the statement that started the
- *	  job, which a swap cutover re-runs on the source.
+ *	  job, which a swap cutover re-runs on the source.  It can quote
+ *	  literals, so the catalog is not publicly readable; the
+ *	  yb_online_schema_change view shows only which command started the job.
  *
  *-------------------------------------------------------------------------
  */

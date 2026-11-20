@@ -19,6 +19,23 @@ BEGIN;
     table_oid = 8124,
     row_type_oid = 8125
   );
+
+  -- Must match yb_system_views.sql: query can quote literals.
+  REVOKE ALL ON pg_catalog.pg_yb_online_schema_change FROM public;
+COMMIT;
+
+-- Record the REVOKE above as initial privileges so pg_dump omits it.
+BEGIN;
+  SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+  UPDATE pg_catalog.pg_init_privs ip
+    SET initprivs = c.relacl
+    FROM pg_catalog.pg_class c
+    WHERE c.relnamespace = 'pg_catalog'::regnamespace
+      AND c.relname = 'pg_yb_online_schema_change'
+      AND ip.objoid = c.oid
+      AND ip.classoid = 'pg_catalog.pg_class'::regclass
+      AND ip.objsubid = 0
+      AND ip.privtype = 'i';
 COMMIT;
 
 BEGIN;
@@ -118,9 +135,10 @@ BEGIN
             p.error_message,
             m.created_at,
             m.updated_at,
-            m.origin,
-            m.cutover_mode,
-            m.query
+            CASE m.origin WHEN 'manual' THEN 'yb_begin_mirror_table'
+                          WHEN 'alter_table' THEN 'ALTER TABLE CONCURRENTLY'
+            END                                 AS command,
+            m.cutover_mode
         FROM pg_catalog.pg_yb_online_schema_change m,
              -- The master reports an active job's copy. The function is strict, so a
              -- NULL id skips the call for a job that has ended.
@@ -150,9 +168,8 @@ BEGIN;
   COMMENT ON COLUMN yb_online_schema_change.error_message IS 'Why the copy failed, shown only to a role that may ALTER the source.';
   COMMENT ON COLUMN yb_online_schema_change.created_at IS 'When the job began.';
   COMMENT ON COLUMN yb_online_schema_change.updated_at IS 'When the job last changed status.';
-  COMMENT ON COLUMN yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
+  COMMENT ON COLUMN yb_online_schema_change.command IS 'What started the job: yb_begin_mirror_table or ALTER TABLE CONCURRENTLY.';
   COMMENT ON COLUMN yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
-  COMMENT ON COLUMN yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown.';
 
   COMMENT ON TABLE pg_catalog.pg_yb_online_schema_change IS
       'Online schema change jobs, one row per job. The yb_online_schema_change view adds names and the progress of the copy.';
@@ -165,5 +182,5 @@ BEGIN;
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.status IS 'active, finished or aborted.';
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
-  COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown.';
+  COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown. The catalog is not publicly readable, since the text can hold literals.';
 COMMIT;
