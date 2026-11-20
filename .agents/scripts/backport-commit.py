@@ -555,11 +555,10 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str,
     Lints against $base_rev, default $upstream_remote/$branch; a stack layer
     passes the layer below it.
 
-    Master's lint.sh is a thin wrapper around lint.py that takes `--rev <base>`.
-    Release branches (2026.1, 2025.x, 2024.x) ship a different lint.sh -- a
-    cpplint runner that takes `-c` / `--changed-only`. We try `--rev` first
-    and fall back to `-c` if the flag isn't recognized, so the script works
-    on both regimes without copying files around.
+    lint.sh on master and on the active release branches (2024.2 and up) is
+    a thin wrapper around lint.py that takes `--rev <base>`. Older branches
+    ship a cpplint runner that takes `-c` / `--changed-only` instead, so if
+    `--rev` isn't recognized we fall back to `-c`.
 
     Raises ResumableConflict on lint failure.
     """
@@ -691,6 +690,29 @@ class Layer:
         self.change = m.group(2) if m else None
 
 
+def stack_layer_pr(gh_repo: str, task: str) -> Optional[dict]:
+    """Return the upstream PR from branch $task, preferring an open one.
+
+    The dict has url, number, state (OPEN / MERGED / CLOSED), isDraft and
+    mergeCommit. Aborts if the lookup fails, as existing_pr_url does.
+    """
+    prs = gh_cmd_json(["gh", "pr", "list", "-R", gh_repo, "--head", task,
+                       "--state", "all",
+                       "--json", "url,number,state,isDraft,mergeCommit,"
+                                 "headRepository,headRepositoryOwner"],
+                      check=False)
+    if not isinstance(prs, list):
+        fail(f"could not look up existing PRs for {task} on {gh_repo}. "
+             f"Check 'gh auth status' and the network, then re-run.")
+    mine = [pr for pr in prs
+            if f"{(pr.get('headRepositoryOwner') or {}).get('login', '')}/"
+               f"{(pr.get('headRepository') or {}).get('name', '')}".lower()
+            == gh_repo.lower()]
+    order = {"OPEN": 0, "MERGED": 1, "CLOSED": 2}
+    mine.sort(key=lambda pr: order.get(pr.get("state"), 3))
+    return mine[0] if mine else None
+
+
 def resolve_stack_commits(gh_repo: str, ref: str) -> list[str]:
     """Return the merge commits of the merged layers of a GitHub PR stack.
 
@@ -764,45 +786,69 @@ def cherry_pick_cmd(source: str) -> list[str]:
 def prepare_stack(*, gh_repo: str, upstream_remote: str, workspace: Path,
                   branch: str, layers: list[Layer], tasks: list[str],
                   chain_src: list[Optional[str]],
-                  rerun_hint: str) -> list[tuple[Layer, str, Optional[str]]]:
+                  rerun_hint: str) -> list[tuple[Layer, str, Optional[dict]]]:
     """Build one task branch per layer on $branch, each on the one below.
 
-    Returns (layer, task, existing PR URL or None) for each layer kept; a
-    layer whose change $branch already has is dropped. Resumable: a layer
-    whose task branch already holds its one commit (a conflict the user
-    resolved) is kept as is, and a layer with a PR is fetched from
-    upstream. Updates $chain_src[i] to the commit the next branch should
-    cherry-pick for layer i. Raises ResumableConflict on a conflict or a
-    lint failure.
+    Returns (layer, task, existing open PR or None) for each layer kept; a
+    layer whose change $branch already has, or whose backport PR merged, is
+    dropped. Resumable: a layer whose task branch already holds its one
+    commit (a conflict the user resolved) is kept as is, even if $branch
+    moved on since, and a layer with an open PR is fetched from upstream.
+    Updates $chain_src[i] to the commit the next branch should cherry-pick
+    for layer i. Raises ResumableConflict on a conflict or a lint failure.
     """
     parent = f"{upstream_remote}/{branch}"
-    kept: list[tuple[Layer, str, Optional[str]]] = []
+    kept: list[tuple[Layer, str, Optional[dict]]] = []
     for i, (layer, task) in enumerate(zip(layers, tasks)):
         print(f"---- layer {i + 1}/{len(layers)}: {task}")
         if git_ok("merge-base", "--is-ancestor", layer.commit, f"{upstream_remote}/{branch}"):
             info(f"{branch} already contains {layer.commit[:9]}; dropping this layer.")
             chain_src[i] = None
             continue
-        existing = existing_pr_url(gh_repo, gh_repo, task)
+        existing = stack_layer_pr(gh_repo, task)
+        if existing and existing["state"] == "MERGED":
+            # Its squash commit on $branch is the resolved change: chain
+            # from it.
+            info(f"{existing['url']} already merged this layer into {branch}; "
+                 f"dropping it.")
+            chain_src[i] = (existing.get("mergeCommit") or {}).get("oid")
+            continue
+        if existing and existing["state"] == "CLOSED":
+            fail(f"{existing['url']}, the PR for {task}, is closed. Reopen it "
+                 f"(gh pr reopen {existing['number']} -R {gh_repo}) and re-run.")
         if existing:
-            info(f"Existing backport PR found: {existing} -- keeping it")
+            info(f"Existing backport PR found: {existing['url']} -- keeping it")
             if git("symbolic-ref", "--short", "HEAD", check=False) != task:
-                run(["git", "fetch", upstream_remote, f"+{task}:{task}"])
+                proc = run(["git", "fetch", upstream_remote, f"+{task}:{task}"],
+                           check=False)
+                if proc.returncode != 0:
+                    if not git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{task}"):
+                        fail(f"could not fetch {task} from {upstream_remote}, and "
+                             f"there is no local {task}:\n{proc.stderr.strip()}")
+                    warn(f"could not fetch {task}; using the local {task}.")
             kept.append((layer, task, existing))
             parent = task
             chain_src[i] = task
             continue
 
         if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{task}"):
-            if not git_ok("merge-base", "--is-ancestor", parent, task):
-                fail(f"{task} is not based on {parent}. Delete it "
-                     f"('git branch -D {task}') and re-run.")
+            # $parent may have moved on since the last run (the release
+            # branch took other backports), so accept a layer on any commit
+            # $parent already contains.
             ahead = int(git("rev-list", "--count", f"{parent}..{task}"))
             if ahead > 1:
                 fail(f"{task} has {ahead} commits on top of {parent}; a layer "
                      f"must be one commit. Squash them and re-run.")
-            info(f"Checking out task branch: {task}")
-            run(["git", "checkout", task])
+            base = f"{task}^" if ahead else task
+            if not git_ok("merge-base", "--is-ancestor", base, parent):
+                fail(f"{task} is not based on {parent}. Delete it "
+                     f"('git branch -D {task}') and re-run.")
+            if ahead:
+                info(f"Checking out task branch: {task}")
+                run(["git", "checkout", task])
+            else:
+                info(f"Resetting task branch {task} to {parent}")
+                run(["git", "checkout", "-B", task, parent])
         else:
             info(f"Creating task branch: {task} (on {parent})")
             run(["git", "checkout", "-b", task, parent])
@@ -822,7 +868,7 @@ def prepare_stack(*, gh_repo: str, upstream_remote: str, workspace: Path,
         if not git("log", "-n1", "--format=%s", "HEAD").startswith(f"[BACKPORT {branch}]"):
             amend_message(layer.commit, branch, layer.pr_url)
         run_lint(workspace, upstream_remote, branch, task,
-                 base_rev=parent, stack_mode=True)
+                 base_rev=git("rev-parse", "HEAD^"), stack_mode=True)
         kept.append((layer, task, None))
         parent = task
         chain_src[i] = task
@@ -830,13 +876,14 @@ def prepare_stack(*, gh_repo: str, upstream_remote: str, workspace: Path,
 
 
 def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
-                  kept: list[tuple[Layer, str, Optional[str]]],
+                  kept: list[tuple[Layer, str, Optional[dict]]],
                   reviewers_override: Optional[str], preview: bool) -> int:
     """Push the new layers to upstream, open their PRs bottom up, and link them.
 
     Mirrors create-pr.sh: a layer with a PR below it opens as a draft and is
     marked ready once linked, so the CI that readiness starts already sees a
-    stack member. Returns 0, or 6 if `gh stack link` failed.
+    stack member. A draft left by an earlier run is marked ready too.
+    Returns 0, or 6 if `gh stack link` failed.
     """
     new = [(i, layer, task) for i, (layer, task, pr) in enumerate(kept) if not pr]
 
@@ -873,10 +920,12 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
              *[f"{t}:refs/heads/{t}" for _, _, t in new]])
 
     pr_nums: list[int] = []
-    opened_drafts: list[int] = []
+    drafts: list[int] = []
     for i, (layer, task, pr) in enumerate(kept):
         if pr:
-            pr_nums.append(int(pr.rsplit("/", 1)[1]))
+            pr_nums.append(pr["number"])
+            if i > 0 and pr.get("isDraft"):
+                drafts.append(pr["number"])
             continue
         base = branch if i == 0 else kept[i - 1][1]
         subject = git("log", "-n1", "--format=%s", task)
@@ -891,7 +940,7 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
         num = int(url.rsplit("/", 1)[1])
         pr_nums.append(num)
         if i > 0:
-            opened_drafts.append(num)
+            drafts.append(num)
         reviewers = (reviewers_override if reviewers_override is not None
                      else layer.reviewers)
         request_reviewers(gh_repo, num, reviewers)
@@ -907,11 +956,11 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
         info(f"Backport ERROR: the PRs are open, but linking them into a stack failed.")
         info(f"Fix the cause above, then run:")
         info(f"  gh stack link --remote {upstream_remote} --base {branch} {' '.join(nums)}")
-        if opened_drafts:
+        if drafts:
             info(f"  gh pr ready -R {gh_repo} <pr>   for each of: "
-                 f"{' '.join(map(str, opened_drafts))}")
+                 f"{' '.join(map(str, drafts))}")
         return 6
-    for num in opened_drafts:
+    for num in drafts:
         run(["gh", "pr", "ready", str(num), "-R", gh_repo])
     return 0
 
@@ -948,7 +997,9 @@ def main_stack(args, *, gh_repo: str, gh_user: str, upstream_remote: str,
     if args.local:      rerun_args.append("-l")
     if explicit_rev is not None:
         rerun_args.extend(["-r", explicit_rev])
-    rerun_args.extend(commits)
+    # Keep --stack: one merged layer as a bare SHA would rerun in
+    # single-commit mode.
+    rerun_args.extend(["--stack", args.stack] if args.stack else commits)
     rerun_args.extend(branches)
     rerun_hint = (".agents/scripts/backport-commit.sh "
                   + " ".join(shlex.quote(a) for a in rerun_args))

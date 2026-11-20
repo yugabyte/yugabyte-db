@@ -155,12 +155,12 @@ Only the top layer runs Jenkins. Every PR below it gets `Jenkins: skip` in its b
 
 The steps above apply per layer, with these differences:
 
-- **Resuming.** On a conflict or lint failure, the script stops on that layer's task branch. Resolve and `git cherry-pick --continue --no-edit` as in Step 2 (or amend the lint fix), then re-run **the same command, without `-x`**. The script reuses every layer branch that already holds its one commit and every layer that already has a PR, and continues from there. Never rewrite a layer below the one being resolved: the layers above are built on its SHA.
+- **Resuming.** On a conflict or lint failure, the script stops on that layer's task branch. Resolve and `git cherry-pick --continue --no-edit` as in Step 2 (or amend the lint fix), then re-run **the same command, without `-x`**. The script reuses every layer branch that already holds its one commit, even if the release branch has moved on since, and every layer that already has an open PR, and continues from there. A layer whose backport PR already merged is dropped, and the next branch chains from its merge commit. Never rewrite a layer below the one being resolved: the layers above are built on its SHA.
 - **Chaining.** Each layer on the next branch is cherry-picked from the same layer on the previous branch, so a resolution carries forward.
 - **Annotating.** Step 4 applies per layer PR: annotate each PR whose layer you resolved, or that chained from a resolved layer.
 - **Reporting.** In Step 5, list every layer PR per branch, bottom first, and name the top one as the PR whose Jenkins run covers the stack.
 
-After the PRs are open, the stack is an ordinary stack: update, sync, and land it with the stack-prs skill (`gh stack merge`, not `gh pr merge`).
+After the PRs are open, the stack is an ordinary stack: update, sync, and land it with the stack-prs skill (`gh stack merge`, not `gh pr merge`). The script deletes its local layer branches when it finishes, so before updating a layer, run `gh stack checkout <top-pr>` to get the stack locally. Landing needs no local branches.
 
 ## Notes
 

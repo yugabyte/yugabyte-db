@@ -93,7 +93,8 @@ layer's PR opens, since `gh stack link` needs at least two PRs.
 
 Backport a merged stack with `/backport-commit` and `--stack <pr>`.  It opens a stacked PR on each
 release branch, with that branch as the trunk, so everything below applies to it.  Every layer but
-the top one has `Jenkins: skip`, so the top layer's Jenkins run covers the whole stack.
+the top one has `Jenkins: skip`, so the top layer's Jenkins run covers the whole stack.  The script
+leaves no local branches, so run `gh stack checkout <top-pr>` before updating a layer.
 
 
 ## Updating a layer
