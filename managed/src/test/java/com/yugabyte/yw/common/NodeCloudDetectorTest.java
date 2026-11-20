@@ -87,10 +87,12 @@ public class NodeCloudDetectorTest {
       return respond(awsInstanceId);
     }
 
+    // A successful command's output comes back prefixed, as NodeActionRunner returns it.
     private ShellResponse respond(String body) {
       return body == null
           ? ShellResponse.create(CURL_HTTP_ERROR, "")
-          : ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, body);
+          : ShellResponse.create(
+              ShellResponse.ERROR_CODE_SUCCESS, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + body);
     }
   }
 
@@ -170,12 +172,24 @@ public class NodeCloudDetectorTest {
     FakeNode node = new FakeNode();
     node.imdsV2Token = "bad token";
     node.awsInstanceId = "i-0abc123";
-    // The token is unusable, so no probe may carry it; the v1 fallback still identifies AWS.
+    node.requireImdsV2 = true;
+    // The token is unusable, so no probe may carry it. Issuing one still identifies AWS, even on an
+    // instance that refuses IMDSv1.
     assertEquals(CloudType.aws, detect(node));
     assertTrue(
         node.commands.stream()
             .flatMap(List::stream)
             .noneMatch(a -> a.startsWith("X-aws-ec2-metadata-token:")));
+  }
+
+  @Test
+  public void testImdsV2NodeIsAwsWhenItsInstanceIdCannotBeRead() {
+    FakeNode node = new FakeNode();
+    node.imdsV2Token = "AQAEALtq_token_value";
+    node.requireImdsV2 = true;
+    // The instance-ID read fails, but only AWS issues the token: calling the node onprem would
+    // silently skip its federation.
+    assertEquals(CloudType.aws, detect(node));
   }
 
   @Test

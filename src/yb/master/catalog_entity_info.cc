@@ -208,14 +208,41 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
   }
 }
 
-TabletInfo::~TabletInfo() = default;
+TabletInfo::~TabletInfo() {
+  StopCountingReplicaLoad();
+}
+
+namespace {
+
+void AddReplicaLoad(const TabletReplicaMap& replicas, int64_t delta) {
+  for (const auto& [_, replica] : replicas) {
+    if (auto ts_desc = replica.ts_desc.lock()) {
+      ts_desc->AddReplicaLoad(delta);
+    }
+  }
+}
+
+}  // namespace
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
   std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
+  if (counts_replica_load_) {
+    // Add before removing so a concurrent reader never sees the count dip below the true value.
+    AddReplicaLoad(*replica_locations, 1);
+    AddReplicaLoad(*replica_locations_, -1);
+  }
   replica_locations_ = replica_locations;
+}
+
+void TabletInfo::StopCountingReplicaLoad() {
+  std::lock_guard l(lock_);
+  if (counts_replica_load_) {
+    AddReplicaLoad(*replica_locations_, -1);
+    counts_replica_load_ = false;
+  }
 }
 
 Status TabletInfo::CheckRunning() const {
@@ -989,12 +1016,16 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-Result<TabletInfos> TableInfo::GetTabletsIncludeInactive() const {
+Result<TabletInfos> TableInfo::GetTabletsIncludeInactive(SkipFreedTablets skip_freed) const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
   result.reserve(tablets_.size());
   for (const auto& [_, tablet_weak_ptr] : tablets_) {
-    result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
+    auto tablet =
+        skip_freed ? tablet_weak_ptr.lock() : VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (tablet) {
+      result.push_back(std::move(tablet));
+    }
   }
   return result;
 }

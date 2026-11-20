@@ -86,6 +86,7 @@ typedef enum {
 	YB_BE_YB_PARSE_COMPLETE = '6',
 	YB_BE_SYNC_ACK = 'Y',
 	YB_BE_YB_QUERY_ACK = '8',
+	YB_KIWI_BE_OBJECT_DROPPED = '7',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -212,6 +213,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "YBSyncAck";
 	case YB_BE_YB_QUERY_ACK:
 		return "YbQueryAck";
+	case YB_KIWI_BE_OBJECT_DROPPED:
+		return "YbObjectDropped";
 	}
 	return "Unknown";
 }

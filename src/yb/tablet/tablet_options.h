@@ -103,6 +103,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider;
+  IsTransactionalXClusterTargetProvider is_transactional_xcluster_target_provider = nullptr;
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;

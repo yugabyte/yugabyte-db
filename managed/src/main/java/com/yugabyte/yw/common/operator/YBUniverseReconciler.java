@@ -2937,6 +2937,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private UserIntent getReadReplicaUserIntent(
       UserIntent userIntent, YBUniverse ybUniverse, UUID customerUUID) {
     UserIntent readReplicaUserIntent = userIntent.clone();
+    readReplicaUserIntent.specificGFlags = SpecificGFlags.constructInherited();
     readReplicaUserIntent.numNodes = ybUniverse.getSpec().getReadReplica().getNumNodes().intValue();
     readReplicaUserIntent.replicationFactor =
         ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue();

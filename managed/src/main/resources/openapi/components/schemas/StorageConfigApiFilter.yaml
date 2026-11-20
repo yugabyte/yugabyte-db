@@ -1,0 +1,27 @@
+title: StorageConfigApiFilter
+description: |
+  StorageConfigApiFilter
+
+  Filters of the paged list of storage configurations. A storage configuration is listed when
+  it matches every filter given. Part of StorageConfigPagedQuerySpec.
+type: object
+properties:
+  storage_types:
+    description: Only configurations of these storage types
+    type: array
+    items:
+      $ref: "./StorageType.yaml"
+  name:
+    description: Only the configuration with this name
+    type: string
+    minLength: 1
+  states:
+    description: Only configurations in these states
+    type: array
+    items:
+      $ref: "./StorageConfigState.yaml"
+  in_use:
+    description: 'Only configurations in use (true) or not in use (false), as StorageConfigUsage.in_use reports it'
+    type: boolean
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

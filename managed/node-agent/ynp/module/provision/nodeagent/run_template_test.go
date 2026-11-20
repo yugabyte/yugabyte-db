@@ -88,6 +88,7 @@ func TestRunTemplateCertificateNameIsOneArgument(t *testing.T) {
 					"api_key":                   "api-key",
 					"provider_id":               "provider-123",
 					"tmp_directory":             filepath.Join(dir, "tmp"),
+					"yba_payload_dir":           filepath.Join(dir, "payload"),
 					"is_airgap":                 "False",
 					"configure_fips":            "False",
 					"ynp_dir":                   ynpDir,

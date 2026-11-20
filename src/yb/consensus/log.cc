@@ -1850,7 +1850,8 @@ OpId Log::GetLatestEntryOpId() const {
 
 WalEntryState Log::WalState(const OpId& op_id) {
   if (op_id > GetLatestEntryOpId()) {
-    return WalEntryState::kNone;
+    // Still queued, a fsync now would not cover it.
+    return WalEntryState::kAppended;
   }
   if (op_id <= last_durable_entry_op_id_.load(std::memory_order_acquire)) {
     return WalEntryState::kDurable;
@@ -2120,8 +2121,10 @@ Status Log::Close() {
       }
       // Now that we have shut background_sync_threadpool_token_, don't call ::Sync.
       // call ::DoSync instead.
+      // Also without an active segment, so the entries replayed at bootstrap become durable.
+      // WalState can no longer start a sync, and waiters for those entries would never finish.
+      RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
       if (active_segment_) {
-        RETURN_NOT_OK(DoSync(last_appended_entry_op_id_));
         RETURN_NOT_OK(CloseCurrentSegment());
         RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       }
@@ -2190,10 +2193,16 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
                                << " footer.max_replicate_index(): "
                                << footer.max_replicate_index();
 
-  if (footer.has_max_replicate_index() && op_id.index > footer.max_replicate_index()) {
+  // op_id is committed, so no entry written after it has an index <= op_id.index. A segment whose
+  // max index is op_id.index therefore holds nothing past op_id and can be linked whole without
+  // reading it. Equality is reported as kOpIdAfterSegment rather than kOpIdIsLast so the copy moves
+  // on to the next segment: the max may come from an older-term entry at op_id.index that was
+  // later overwritten, with op_id itself in a later segment.
+  if (footer.has_max_replicate_index() && op_id.index >= footer.max_replicate_index()) {
     return SegmentOpIdRelation::kOpIdAfterSegment;
   }
 
+  num_segment_op_id_relation_reads_.fetch_add(1, std::memory_order_acq_rel);
   auto read_entries = segment->ReadEntries();
   RETURN_NOT_OK(read_entries.status);
 

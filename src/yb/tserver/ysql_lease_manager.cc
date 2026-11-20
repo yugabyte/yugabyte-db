@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/master/master_ysql_lease.pb.h"
 
 #include "yb/rpc/messenger.h"
@@ -202,6 +204,7 @@ void YSQLLeaseManager::Impl::Shutdown() {
   if (lock_manager) {
     lock_manager->Shutdown();
   }
+  server_.object_lock_shared_state_manager()->Shutdown();
   lease_client_.Shutdown();
 }
 

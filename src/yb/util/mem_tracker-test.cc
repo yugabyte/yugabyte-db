@@ -356,8 +356,8 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   } else {
     // Consumption should decrease to near the original after the deallocation when
     // pageheap_free_bytes is not counted towards root consumption (the new default mode after
-    // D24883).
-    ASSERT_EQ(root->GetUpdatedConsumption(true /* force */), value);
+    // D24883). Allocations made meanwhile, by any thread, can take a few more tcmalloc pages.
+    ASSERT_NEAR(root->GetUpdatedConsumption(true /* force */), value, 64_KB);
   }
 }
 

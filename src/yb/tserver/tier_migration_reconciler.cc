@@ -183,7 +183,7 @@ TierReconcilePassStats TierMigrationReconciler::RunPass() {
     ++stats.tablets_with_target;
 
     const auto status = tablet->tier_migration_status();
-    if (status.pass_in_flight || status.state == TierMigrationStatus::State::kFailed) {
+    if (status.migration_pass_in_flight || status.state == TierMigrationStatus::State::kFailed) {
       count_state(status.state);
       continue;
     }

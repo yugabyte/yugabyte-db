@@ -17,6 +17,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -174,17 +176,35 @@ void TCMallocReleaseMemoryToSystem(int64_t bytes) {
 #endif
 }
 
-void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
+void TCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
 #if YB_GOOGLE_TCMALLOC
   const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
   const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
-  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(absl::ZeroDuration());
-  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::ZeroDuration());
+  tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
+      absl::Milliseconds(short_interval_ms));
+  tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
   TCMallocReleaseMemoryToSystem(bytes);
   tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
   tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
 #else
   TCMallocReleaseMemoryToSystem(bytes);
+#endif
+}
+
+void TCMallocReleaseMemoryToSystemIgnoringRecentDemand(int64_t bytes) {
+  TCMallocReleaseMemoryToSystemWithLookbacks(bytes, 0, 0);
+}
+
+void TCMallocDrainCpuCaches() {
+#if YB_GOOGLE_TCMALLOC
+  if (!tcmalloc::MallocExtension::PerCpuCachesActive()) {
+    return;
+  }
+  static const int num_cpus = base::MaxCPUIndex() + 1;
+  for (int cpu = 0; cpu < num_cpus; ++cpu) {
+    tcmalloc::MallocExtension::ReleaseCpuMemory(cpu);
+  }
 #endif
 }
 

@@ -304,6 +304,77 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   }, 30s * kTimeMultiplier, "Are tablets running", 1s));
 }
 
+// Global replica load breaks ties between tservers with equal load for the table being created.
+TEST_F(CreateTableITest, GlobalLoadBreaksTies) {
+  const int kNumServers = 3;
+  vector<string> ts_flags = {"--never_fsync", "--heartbeat_interval_ms=100"};
+  vector<string> master_flags = {"--enable_load_balancing=false", "--replication_factor=1"};
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name(),
+                                                kTableName.namespace_type()));
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  auto running_tablets = [&](int idx, const YBTableName& table) -> Result<int> {
+    int count = 0;
+    for (const auto& tablet : VERIFY_RESULT(cluster_->GetTablets(cluster_->tablet_server(idx)))) {
+      if (tablet.table_name() == table.table_name() &&
+          tablet.state() == tablet::RaftGroupStatePB::RUNNING) {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  // Two single-replica tablets land on two of the three tservers. Wait until the master has
+  // their replicas in its tablet locations; that is where it counts the global load from.
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(kTableName)
+            .schema(&client_schema)
+            .num_tablets(2)
+            .Create());
+  int idle_ts = -1;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(client_->GetTablets(
+        kTableName, -1, &tablets, /* partition_list_version = */ nullptr,
+        RequireTabletsRunning::kFalse));
+    std::set<std::string> hosting;
+    for (const auto& tablet : tablets) {
+      for (const auto& replica : tablet.replicas()) {
+        hosting.insert(replica.ts_info().permanent_uuid());
+      }
+    }
+    if (tablets.size() != 2 || hosting.size() != 2) {
+      return false;
+    }
+    idle_ts = -1;
+    for (int i = 0; i < kNumServers; i++) {
+      if (!hosting.contains(cluster_->tablet_server(i)->uuid())) {
+        idle_ts = i;
+      }
+    }
+    return idle_ts >= 0;
+  }, 30s * kTimeMultiplier, "First table placed"));
+
+  // The new table's tablet has equal (zero) table load everywhere, so it goes to the tserver
+  // with the fewest replicas overall.
+  const YBTableName kSecondTable(YQL_DATABASE_CQL, kTableName.namespace_name(), "second-table");
+  std::unique_ptr<client::YBTableCreator> second_creator(client_->NewTableCreator());
+  ASSERT_OK(second_creator->table_name(kSecondTable)
+            .schema(&client_schema)
+            .num_tablets(1)
+            .Create());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    int placed = 0;
+    for (int i = 0; i < kNumServers; i++) {
+      placed += VERIFY_RESULT(running_tablets(i, kSecondTable));
+    }
+    return placed == 1;
+  }, 30s * kTimeMultiplier, "Second table running"));
+  ASSERT_EQ(1, ASSERT_RESULT(running_tablets(idle_ts, kSecondTable)));
+}
+
 TEST_F(CreateTableITest, CreateTableWithoutQuorum) {
   const int kNumServers = 3;
   const int kNumTablets = 1;

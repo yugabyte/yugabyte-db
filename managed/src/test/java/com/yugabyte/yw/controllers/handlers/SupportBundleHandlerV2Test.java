@@ -217,7 +217,7 @@ public class SupportBundleHandlerV2Test extends FakeDBApplication {
   private FilesComponentSpec filesSpec(String componentName) {
     FilesComponentSpec spec = new FilesComponentSpec();
     spec.setComponentName(componentName);
-    spec.setScriptPath("bin/node_utils.sh");
+    spec.setScriptPath("bin/support_bundle_utils.sh");
     spec.setParams(
         List.of(manifest.getComponentConfigs().get(componentName).getScript().getEntrypoint()));
     spec.setRemoteTarPath("/tmp/" + componentName + "-${nodeName}.tar.gz");
@@ -291,7 +291,7 @@ public class SupportBundleHandlerV2Test extends FakeDBApplication {
   private static BashComponentSpec bashSpec(String componentName) {
     BashComponentSpec spec = new BashComponentSpec();
     spec.setComponentName(componentName);
-    spec.setScriptPath("bin/node_utils.sh");
+    spec.setScriptPath("bin/support_bundle_utils.sh");
     spec.setParams(List.of(componentName));
     spec.setRemoteTarPath("/tmp/" + componentName + "-${nodeName}.tar.gz");
     return spec;
