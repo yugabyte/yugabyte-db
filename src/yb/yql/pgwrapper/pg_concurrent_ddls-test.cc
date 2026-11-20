@@ -1094,10 +1094,13 @@ class PgReadIndexInCreatingTxnTest
 INSTANTIATE_TEST_SUITE_P(
     , PgReadIndexInCreatingTxnTest,
     ::testing::Combine(
-        ::testing::Values("READ COMMITTED", "REPEATABLE READ"), ::testing::Bool()),
+        ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"),
+        ::testing::Bool()),
     [](const ::testing::TestParamInfo<std::tuple<const char*, bool>>& info) {
+      const std::string isolation = std::get<0>(info.param);
       return Format(
-          "$0_$1", std::get<0>(info.param) == "READ COMMITTED"s ? "RC" : "RR",
+          "$0_$1",
+          isolation == "READ COMMITTED" ? "RC" : isolation == "REPEATABLE READ" ? "RR" : "SR",
           std::get<1>(info.param) ? "Fastpath" : "NoFastpath");
     });
 

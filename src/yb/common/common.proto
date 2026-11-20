@@ -370,9 +370,9 @@ message IndexInfoPB {
   optional BirthTimeState birth_time_state = 40;
 
   // Id of the transaction that created the index. Set only while birth_time_state is
-  // BIRTH_TIME_PENDING_DDL_COMMIT. That transaction wrote the index and so reads a complete one:
-  // the read guard serves its reads instead of making them wait for a commit that can only come
-  // after them.
+  // BIRTH_TIME_PENDING_DDL_COMMIT. This is required so that any readers done as part of the same
+  // transaction that does the CREATE INDEX are able to read even if the transaction's snapshot is
+  // older than the birth time of the index.
   optional bytes birth_time_pending_txn_id = 41;
 
   // When backfill fails, the status it failed with. Unlike backfill_error_message, this
