@@ -296,11 +296,7 @@ public class Commissioner {
         .filter(t -> UniverseTaskBase.getAllowedTasksOnFailure(t).getTaskTypes().contains(taskType))
         .ifPresent(
             t -> {
-              JsonNode rootNode = t.getTaskParams().get("originalTaskUUID");
-              UUID root =
-                  rootNode != null && !rootNode.isNull() && !rootNode.asText().isEmpty()
-                      ? UUID.fromString(rootNode.asText())
-                      : t.getUuid();
+              UUID root = t.getRootTaskUUID();
               log.info("Task {} reruns {}, whose chain starts at {}", taskType, t.getUuid(), root);
               taskParams.setOriginalTaskUUID(root);
             });

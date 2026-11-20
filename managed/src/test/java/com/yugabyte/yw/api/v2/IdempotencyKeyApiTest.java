@@ -289,6 +289,30 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
   }
 
   @Test
+  public void rerunOfAFailedTaskIsNotReportedAsItsRetry() {
+    // Another request reran the failed task: it names the task as its original but carries its
+    // own params, so it is not this request's task.
+    UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
+    task(taskUuid, TaskInfo.State.Failure, null);
+    customerTask(taskUuid);
+    UUID rerunUuid = UUID.randomUUID();
+    task(rerunUuid, TaskInfo.State.Running, taskUuid, null);
+    customerTask(rerunUuid);
+    DB.sqlUpdate(
+            "UPDATE customer_task SET create_time = create_time + interval '1 second'"
+                + " WHERE task_uuid = :uuid")
+        .setParameter("uuid", rerunUuid)
+        .execute();
+
+    Result retry = assertPlatformException(() -> createCert(certSpec("root"), KEY));
+
+    assertEquals(CONFLICT, retry.status());
+    JsonNode error = Json.parse(contentAsString(retry)).get("error");
+    assertEquals(taskUuid.toString(), error.get("task_uuid").asText());
+    assertFalse(error.has("latest_task_uuid"));
+  }
+
+  @Test
   public void taskRetriedAfterAShutdownIsReportedWithItsRetry() {
     // A shutdown aborted the task and YBA retried it automatically under a new UUID.
     UUID taskUuid = IdempotencyService.taskUuidFor(customerUuid, KEY);
@@ -323,11 +347,19 @@ public class IdempotencyKeyApiTest extends FakeDBApplication {
     assertTrue(CertificateInfo.getAll(customerUuid).isEmpty());
   }
 
-  private static void task(UUID uuid, TaskInfo.State state, UUID originalTaskUuid) {
+  private static void task(UUID uuid, TaskInfo.State state, UUID retriedTaskUuid) {
+    task(uuid, state, retriedTaskUuid, retriedTaskUuid);
+  }
+
+  private static void task(
+      UUID uuid, TaskInfo.State state, UUID originalTaskUuid, UUID previousTaskUuid) {
     TaskInfo task = new TaskInfo(TaskType.CreateBackup, uuid);
     ObjectNode params = Json.newObject();
     if (originalTaskUuid != null) {
       params.put("originalTaskUUID", originalTaskUuid.toString());
+    }
+    if (previousTaskUuid != null) {
+      params.put("previousTaskUUID", previousTaskUuid.toString());
     }
     task.setTaskParams(params);
     task.setOwner("");

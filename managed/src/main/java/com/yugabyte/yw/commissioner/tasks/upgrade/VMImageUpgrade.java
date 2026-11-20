@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.Pair;
@@ -48,7 +49,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -447,7 +447,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
    */
   private void restoreDeviceMappingsOfEarlierAttempts(Collection<NodeDetails> nodes) {
     UUID originalTaskUUID = taskParams().getOriginalTaskUUID();
-    if (originalTaskUUID == null) {
+    // The runtime config that turns off a retry's inheritance of runtime info turns this off too.
+    if (originalTaskUUID == null
+        || !confGetter.getGlobalConf(GlobalConfKeys.enableTaskRuntimeInfoOnRetry)) {
       return;
     }
     Set<UUID> nodeUuids =
@@ -459,10 +461,20 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     if (nodeUuids.isEmpty()) {
       return;
     }
+    UUID taskUUID = getUserTaskUUID();
+    // As on a retry, runtime info saved under another task version may not parse as this one's.
+    int taskVersion = TaskInfo.getOrBadRequest(taskUUID).getTaskVersion();
     Map<UUID, Map<String, String>> mappings = new HashMap<>();
-    for (TaskInfo attempt : getEarlierAttempts(originalTaskUUID)) {
+    for (TaskInfo attempt :
+        TaskInfo.findChain(
+            originalTaskUUID,
+            taskParams().getUniverseUUID(),
+            CustomerTask.TaskType.VMImageUpgrade)) {
       JsonNode attemptRuntimeInfo = attempt.getRuntimeInfo();
-      if (attemptRuntimeInfo == null || attemptRuntimeInfo.isNull()) {
+      if (attempt.getUuid().equals(taskUUID)
+          || attempt.getTaskVersion() != taskVersion
+          || attemptRuntimeInfo == null
+          || attemptRuntimeInfo.isNull()) {
         continue;
       }
       Json.fromJson(attemptRuntimeInfo, RuntimeInfo.class)
@@ -480,39 +492,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     log.info("Reusing the fstab mappings captured by earlier attempts for {}", mappings.keySet());
     runtimeInfo.deviceMappingByNode.putAll(mappings);
     updateRuntimeInfo(RuntimeInfo.class, info -> info.deviceMappingByNode.putAll(mappings));
-  }
-
-  /**
-   * The attempts of this upgrade before this task, oldest first: the task that started the chain,
-   * and its retries and reruns, which name it as originalTaskUUID.
-   */
-  private List<TaskInfo> getEarlierAttempts(UUID originalTaskUUID) {
-    Optional<TaskInfo> original = TaskInfo.maybeGet(originalTaskUUID);
-    if (!original.isPresent()) {
-      return Collections.emptyList();
-    }
-    // customer_task is indexed by target, while a filter on task_info's params would scan.
-    Set<UUID> taskUuids =
-        CustomerTask.find
-            .query()
-            .where()
-            .eq("target_uuid", taskParams().getUniverseUUID())
-            .eq("type", CustomerTask.TaskType.VMImageUpgrade)
-            .ge("create_time", original.get().getCreateTime())
-            .findList()
-            .stream()
-            .map(CustomerTask::getTaskUUID)
-            .collect(Collectors.toCollection(HashSet::new));
-    taskUuids.add(originalTaskUUID);
-    taskUuids.remove(getUserTaskUUID());
-    String root = originalTaskUUID.toString();
-    return TaskInfo.find(taskUuids).stream()
-        .filter(
-            t ->
-                t.getUuid().equals(originalTaskUUID)
-                    || root.equals(t.getTaskParams().path("originalTaskUUID").asText()))
-        .sorted(Comparator.comparing(TaskInfo::getCreateTime))
-        .collect(Collectors.toList());
   }
 
   private Map<String, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {

@@ -848,20 +848,39 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testVMImageUpgradeOciRerunReusesMappingOfEarlierRerun() {
     ImageBundle ociBundle = addOciNodes();
-    // A failed replacement leaves the node on its new root volume.
+    // A failed replacement leaves the node on its new root volume, without a node agent until a
+    // later replacement succeeds.
     Set<String> swappedNodes = ConcurrentHashMap.newKeySet();
+    Set<String> ipsWithoutAgent = ConcurrentHashMap.newKeySet();
     AtomicBoolean failNextReplacement = new AtomicBoolean(true);
     doAnswer(
             inv -> {
               String nodeName = ((ReplaceRootVolume.Params) inv.getArgument(1)).nodeName;
+              String ip =
+                  Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+                      .getNode(nodeName)
+                      .cloudInfo
+                      .private_ip;
               if (!swappedNodes.contains(nodeName) && failNextReplacement.getAndSet(false)) {
                 swappedNodes.add(nodeName);
+                ipsWithoutAgent.add(ip);
                 return ShellResponse.create(1, "Failed to update the boot volume");
               }
+              ipsWithoutAgent.remove(ip);
               return new ShellResponse();
             })
         .when(mockNodeManager)
         .nodeCommand(eq(NodeCommandType.Replace_Root_Volume), any());
+    doAnswer(
+            inv -> {
+              if (ipsWithoutAgent.contains(inv.<String>getArgument(0))) {
+                throw new RuntimeException(
+                    "Node agent must already be installed and in active state");
+              }
+              return upgradedNodeAgent(inv.getArgument(0));
+            })
+        .when(mockNodeAgentClient)
+        .getAndUpgradeOrThrow(anyString());
     failFstabReads(swappedNodes);
 
     // The first attempt fails on the first node, the rerun on the second, so only the rerun
@@ -883,6 +902,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         first.getUuid().toString(), third.getTaskParams().get("originalTaskUUID").asText());
     String secondNode =
         getSubTaskParams(second, TaskType.RunNodeCommand, null).get(0).get("nodeName").asText();
+    List<JsonNode> secondNodeStops = getStopsBeforeReplacement(third, secondNode);
+    assertFalse(secondNodeStops.isEmpty());
+    secondNodeStops.forEach(p -> assertTrue(p.toString(), p.get("isIgnoreError").asBoolean()));
     assertTrue(getSubTaskParams(third, TaskType.RunNodeCommand, secondNode).isEmpty());
     assertEquals("abc", getYnpMount(third, secondNode));
     checkUniverseNodesStates(defaultUniverse.getUniverseUUID());

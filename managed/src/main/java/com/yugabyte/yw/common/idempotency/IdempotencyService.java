@@ -243,6 +243,8 @@ public class IdempotencyService {
    * The newest retry of {@code original}, if YBA or a user retried it (e.g. YBA's automatic retry
    * of a task aborted by a shutdown), so that the client follows the task that is actually running.
    * Retries are separate customer tasks on the same target, whose task params name the original.
+   * Reruns name it too, but carry the params of another request, so only retries, which continue a
+   * previous task, count.
    */
   private static Optional<UUID> latestRetry(CustomerTask original) {
     // Retries of retries carry the same root, so one match on originalTaskUUID covers the chain.
@@ -258,7 +260,8 @@ public class IdempotencyService {
         // A primary-key probe of task_info per customer task of the target, not a JSON scan.
         .raw(
             "exists (select 1 from task_info ti where ti.uuid = t0.task_uuid"
-                + " and ti.task_params->>'originalTaskUUID' = ?)",
+                + " and ti.task_params->>'originalTaskUUID' = ?"
+                + " and ti.task_params->>'previousTaskUUID' is not null)",
             original.getTaskUUID().toString())
         .orderBy("create_time desc")
         .setMaxRows(1)

@@ -43,8 +43,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,6 +57,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -279,6 +282,46 @@ public class TaskInfo extends Model {
    */
   public void inherit(TaskInfo previousTaskInfo) {
     setRuntimeInfo(previousTaskInfo.getRuntimeInfo());
+  }
+
+  /** The first task of this task's retry, rollback and rerun chain. */
+  @JsonIgnore
+  public UUID getRootTaskUUID() {
+    return getRootTaskUUID(getTaskParams(), getUuid());
+  }
+
+  /**
+   * The first task of the chain of the task with the given params: the originalTaskUUID they name,
+   * or the task itself.
+   */
+  public static UUID getRootTaskUUID(@Nullable JsonNode taskParams, UUID taskUUID) {
+    JsonNode node = taskParams == null ? null : taskParams.get("originalTaskUUID");
+    if (node == null || node.isNull() || node.asText().isEmpty()) {
+      return taskUUID;
+    }
+    return UUID.fromString(node.asText());
+  }
+
+  /**
+   * The tasks of the given type on the target in the chain that starts at {@code rootTaskUUID},
+   * oldest first: the root and the retries and reruns that name it as originalTaskUUID.
+   */
+  public static List<TaskInfo> findChain(
+      UUID rootTaskUUID, UUID targetUUID, CustomerTask.TaskType type) {
+    // customer_task is indexed by target, while a filter on task_info's params would scan.
+    ExpressionList<CustomerTask> query =
+        CustomerTask.find.query().where().eq("target_uuid", targetUUID).eq("type", type);
+    // Chain tasks start after the root, unless it was deleted.
+    maybeGet(rootTaskUUID).ifPresent(root -> query.ge("create_time", root.getCreateTime()));
+    Set<UUID> taskUUIDs =
+        query.findList().stream()
+            .map(CustomerTask::getTaskUUID)
+            .collect(Collectors.toCollection(HashSet::new));
+    taskUUIDs.add(rootTaskUUID);
+    return find(taskUUIDs).stream()
+        .filter(t -> t.getUuid().equals(rootTaskUUID) || rootTaskUUID.equals(t.getRootTaskUUID()))
+        .sorted(Comparator.comparing(TaskInfo::getCreateTime))
+        .collect(Collectors.toList());
   }
 
   @JsonIgnore

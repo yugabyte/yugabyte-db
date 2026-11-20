@@ -800,14 +800,8 @@ public class CustomerTaskManager {
   private static void setRootOriginalTaskUUID(
       AbstractTaskParams taskParams, UUID failedTaskUUID, @Nullable JsonNode oldTaskParams) {
     UUID root = taskParams.getOriginalTaskUUID();
-    if (root == null && oldTaskParams != null) {
-      JsonNode originalNode = oldTaskParams.get("originalTaskUUID");
-      if (originalNode != null && !originalNode.isNull() && !originalNode.asText().isEmpty()) {
-        root = UUID.fromString(originalNode.asText());
-      }
-    }
     if (root == null) {
-      root = failedTaskUUID;
+      root = TaskInfo.getRootTaskUUID(oldTaskParams, failedTaskUUID);
     }
     taskParams.setOriginalTaskUUID(root);
   }
