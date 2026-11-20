@@ -95,6 +95,10 @@ class RunningTransactionContext {
 
   virtual Status CheckClosing() const = 0;
 
+  // TransactionParticipant::IntentsTxnApplyOpIndex as it will be once the intents of removed_id
+  // are removed.
+  virtual int64_t IntentsTxnApplyOpIndex(const TransactionId* removed_id) const = 0;
+
   virtual FastModeTransactionScope CreateFastModeTransactionScope(
       const TransactionMetadata& metadata) = 0;
 

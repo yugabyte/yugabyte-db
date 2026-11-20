@@ -46,6 +46,7 @@ void RemoveIntentsTask::Run() {
   RemoveIntentsData data;
   auto status = participant_context_.GetLastReplicatedData(&data);
   if (status.ok()) {
+    data.txn_apply_op_index = running_transaction_context_.IntentsTxnApplyOpIndex(&id_);
     status = applier_.RemoveIntents(data, reason_, id_);
   }
   LOG_IF_WITH_PREFIX(WARNING, !status.ok())

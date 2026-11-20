@@ -33,6 +33,9 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_reader.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
 
@@ -62,6 +65,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -88,6 +92,7 @@
 #include "yb/util/tsan_util.h"
 
 #include "yb/rpc/rpc_context.h"
+#include "yb/rpc/strand.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -107,14 +112,17 @@ DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
 DECLARE_bool(TEST_request_unknown_tables_during_perform);
+DECLARE_bool(TEST_skip_notify_applied);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_tablet_pause_apply_write_ops);
 DECLARE_bool(delete_intents_sst_files);
+DECLARE_bool(advance_intents_flushed_op_id_to_match_regular);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_colocated_table_tombstone_cache);
 DECLARE_bool(enable_schema_packing_gc);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_wal_retention_for_unremoved_intents);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(rocksdb_disable_compactions);
@@ -140,6 +148,9 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -153,6 +164,8 @@ DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_uint32(auto_compact_min_obsolete_keys_found);
 DECLARE_uint32(auto_compact_stat_window_seconds);
 DECLARE_uint32(yb_max_recursion_depth);
+DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
@@ -250,6 +263,11 @@ class PgMiniTestSingleNode : public PgMiniTest {
   size_t NumTabletServers() override {
     return 1;
   }
+
+  void TestReApplyAfterRepackOnBootstrap(
+      bool enable_wal_retention, bool advance_intents_flushed_op_id);
+
+  void TestWalGcReleasedAfterLastDistributedTxn(bool advance_intents_flushed_op_id);
 };
 
 class PgMiniTestFailOnConflict : public PgMiniTest {
@@ -4002,6 +4020,654 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
   ASSERT_EQ(res, 4);
   res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test2"));
   ASSERT_EQ(res, 1);
+}
+
+// Deterministic regression test for the "Duplicate-Apply" read-shadow data loss of GH #32163,
+// driving the real apply + packed-row repack + crash + bootstrap path in an in-process
+// MiniCluster.
+//
+// Mechanism:
+//   1. A distributed txn writes the victim value 449, commits, applies, and leaves the running set
+//      (MinRunningHybridTime -> kMax) so the repack may demote a later value. Intents removal is
+//      disabled (TEST_no_schedule_remove_intents), standing in for the window where the removal
+//      exists but is not yet durably flushed.
+//   2. A single-shard write sets 469 at a higher hybrid time; a forced repack (retention=0)
+//      demotes 469 into the packed-row base, BELOW 449's commit hybrid time.
+//   3. WAL aging (RunLogGC) tries to drop the segment holding the victim's original APPLYING.
+//      With the WAL retention (enable_wal_retention_for_unremoved_intents) the log GC floor pins
+//      the segment; with the retention disabled it is collected.
+//   4. A coordinator re-delivery (TEST_skip_notify_applied) lands a DUPLICATE APPLYING above the
+//      regular flushed frontier; an ungraceful crash leaves it unflushed; bootstrap replays it.
+//
+// With the retention, bootstrap also replays the original APPLYING, which re-establishes
+// local_commit_time, so the duplicate is recognized as already applied and the regular DB stays
+// clean. Without it (the control), the duplicate re-applies 449 above the demoted 469: silent,
+// durable data loss. Asserts the regular-DB dump, not SELECT v (read-path artifact; see the
+// assertion comment).
+//
+// advance_intents_flushed_op_id additionally covers the bootstrap side: it triggers
+// Tablet::MayModifyIntentsDbFlushedOpId, which moves the intents flushed op id past the victim's
+// APPLYING without any intents write. Both flushed op ids are then above the victim's APPLYING,
+// so only the retention rule (the regular RocksDB txn_apply_op_index is above the intents one)
+// keeps the bootstrap flushed-entries optimizer from skipping the original.
+void PgMiniTestSingleNode::TestReApplyAfterRepackOnBootstrap(
+    bool enable_wal_retention, bool advance_intents_flushed_op_id) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) =
+      enable_wal_retention;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  // Packed rows must be on for the repack to demote into the base (an unpromoted AUTO flag in a
+  // fresh mini-cluster).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Manufacture the duplicate APPLYING deterministically: apply locally but never ack the status
+  // tablet, so the coordinator keeps re-sending.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_notify_applied) = true;
+  // Large enough not to re-pin min_running during the fold, small enough to land a post-fold
+  // duplicate quickly.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_transaction_resend_applying_interval_usec) = 3000000 * kTimeMultiplier;
+  // Let RunLogGC drop segments as soon as the GC floor allows.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (1, 0)"));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = std::move(peers.front());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+
+  // Victim distributed txn: write 449, commit, wait for apply + leaving the running set so
+  // MinRunningHybridTime advances (only then can the fold demote a later value).
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 449 WHERE k = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "t"));
+  // The victim's APPLYING op is at or below this point in the log.
+  const auto post_apply_op = tablet_peer->GetLatestLogEntryOpId();
+  if (advance_intents_flushed_op_id) {
+    // Close the segment holding the victim's APPLYING: the flushed-entries optimizer skips whole
+    // segments, so only with the original APPLYING in its own closed segment can a too-high
+    // durable op id (the advance below) make bootstrap skip it.
+    ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+  }
+
+  // Later single-shard write (no intents) at a higher hybrid time.
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 469 WHERE k = 1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 469);
+
+  // Fold the regular DB only: 469 demoted into the packed-row base below 449's commit hybrid time.
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(cluster_->CompactTablets());
+  LOG(INFO) << "=== regular DB after fold (compaction) ===\n" << tablet->TEST_DocDBDumpStr();
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 469)
+      << "the fold itself must preserve the value";
+
+  // Make the victim's intents durable (so it can resurrect after WAL aging), then try to age the
+  // original APPLYING out of the WAL.
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  if (advance_intents_flushed_op_id) {
+    // No intents removal has been written on this tablet, so the intents RocksDB
+    // txn_apply_op_index is below the victim's APPLYING while the regular one is at it. A regular
+    // write + flush triggers the advance (regular-DB flush completion with an empty intents
+    // memtable).
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_advance_intents_flushed_op_id_to_match_regular) = true;
+    ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (2, 7)"));
+    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                            rocksdb::FlushReason::kTestOnly));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto op_ids = VERIFY_RESULT(tablet->GetPersistentState());
+          return op_ids.intents.valid() && op_ids.intents.index > post_apply_op.index;
+        },
+        10s * kTimeMultiplier, "intents flushed op id advanced past the victim's APPLYING"));
+  }
+  const auto pre_aging_op = tablet_peer->GetLatestLogEntryOpId();
+  ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+  if (enable_wal_retention) {
+    // The retention must pin the log GC floor at (or below) the victim's APPLYING op even though
+    // both RocksDBs are flushed past it, because the victim's intents removal is not durable.
+    // Run a few GC rounds and verify the segment survives.
+    for (int i = 0; i != 5; ++i) {
+      ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+    }
+    auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
+    const auto min_idx = log_reader->GetMinReplicateIndex();
+    ASSERT_TRUE(min_idx >= 0 && min_idx <= post_apply_op.index)
+        << "WAL retention for unremoved intents failed to hold the log: min replicate index "
+        << min_idx << " vs post-apply op " << post_apply_op;
+  } else {
+    // Control: without the retention, the original APPLYING ages out of the WAL, so it cannot
+    // replay-and-inoculate the duplicate on bootstrap. The GC anchor (earliest_needed_log_index)
+    // is pinned at the later single-shard write by an async retryable-request release, so one
+    // RunLogGC races it; retry until the segment is gone: the earliest retained op-id moves past
+    // the pre-aging latest op (or the WAL empties to -1).
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+          auto log_reader = VERIFY_RESULT(tablet_peer->log()->GetLogReader());
+          const auto min_idx = log_reader->GetMinReplicateIndex();
+          return min_idx < 0 || min_idx > pre_aging_op.index;
+        },
+        60s * kTimeMultiplier, "original APPLYING aged out of the WAL"));
+  }
+  // Wait for a post-fold duplicate APPLYING (op-id > regular flushed frontier) to replicate.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return tablet_peer->GetLatestLogEntryOpId().index > pre_aging_op.index;
+      },
+      60s * kTimeMultiplier, "post-fold duplicate APPLYING replicated"));
+  LOG(INFO) << "Intents present before crash: " << CountIntents(cluster_.get());
+
+  tablet.reset();
+  tablet_peer.reset();
+
+  LOG(INFO) << "Ungraceful restart";
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  auto v = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1"));
+  LOG(INFO) << "Post-bootstrap read v = " << v
+            << " (read alone is contaminated by the kept intent; durable check is the dump below)";
+
+  // Durable check: whether the regular DB carries a re-applied 449 delta above the repacked base.
+  // Assert the on-disk state, not SELECT v: TEST_no_schedule_remove_intents keeps the committed
+  // intent, which the read-path applies on the fly, so SELECT may read 449 though the regular DB
+  // is correct (read-path artifact). The dump cleanly separates lossy from clean.
+  auto regular_dump = ASSERT_RESULT(DumpTableLeadersDocDB(cluster_.get(), "t"));
+  LOG(INFO) << "=== POST-BOOTSTRAP regular DB ===\n" << regular_dump;
+  if (enable_wal_retention) {
+    ASSERT_EQ(regular_dump.find("-> 449"), std::string::npos)
+        << "DATA LOSS: the regular DB carries a re-applied 449 delta above the repacked 469:\n"
+        << regular_dump;
+  } else {
+    // The control documents that the scenario is real and that the flag gates the fix: with the
+    // retention off, the duplicate APPLYING must re-apply 449.
+    ASSERT_NE(regular_dump.find("-> 449"), std::string::npos)
+        << "control did not reproduce the re-apply; the test scenario lost its bite:\n"
+        << regular_dump;
+  }
+}
+
+TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedOnBootstrap) {
+  TestReApplyAfterRepackOnBootstrap(
+      /* enable_wal_retention = */ true, /* advance_intents_flushed_op_id = */ false);
+}
+
+TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedWithAdvancedIntentsFlushedOpId) {
+  TestReApplyAfterRepackOnBootstrap(
+      /* enable_wal_retention = */ true, /* advance_intents_flushed_op_id = */ true);
+}
+
+TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackWithoutWalRetention) {
+  TestReApplyAfterRepackOnBootstrap(
+      /* enable_wal_retention = */ false, /* advance_intents_flushed_op_id = */ false);
+}
+
+// User-visible coverage of the WAL GC side of the retention rule: for a transaction whose intents
+// removal is written but not yet flushed, both RocksDBs' flushed op ids are above its APPLYING,
+// so only the rule in Tablet::EarliestNeededLogIndex (the flushed regular txn_apply_op_index is
+// above the flushed intents one) keeps the APPLYING in the WAL. This test drives that exact state
+// through the re-apply-after-repack scenario and asserts what a user sees:
+//   1. The victim txn (449) applies with removal scheduling off; a later single-shard write (469)
+//      is repacked below the victim's commit hybrid time; the victim's WAL segment is closed.
+//   2. A second txn plus flushes move both flushed op ids past the victim's APPLYING, while the
+//      flushed intents txn_apply_op_index stays below it (no removal is flushed).
+//   3. Removal scheduling and applied notifications are re-enabled, so the removals get written
+//      but stay in the intents memtable. Log GC then runs: only the rule keeps the victim's
+//      segment.
+//   4. An ungraceful restart loses the unflushed removals, and a duplicate APPLYING above the
+//      flushed frontiers replays at bootstrap. With the rule the original APPLYING replays first
+//      and the duplicate is a no-op; without it (remove the unremoved-intents block in
+//      Tablet::EarliestNeededLogIndex to see this test fail) the duplicate re-applies 449 over
+//      the repacked 469: user-visible data loss.
+// The verdict is the query result; internal state is read only to sequence the scenario and to
+// guard the preconditions that keep the test discriminating.
+TEST_F(PgMiniTestSingleNode, ReApplyAfterRepackPreventedWithUnflushedIntentsRemoval) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Manufacture duplicate APPLYINGs deterministically: apply locally but never ack the status
+  // tablet, so the coordinator keeps re-sending until the acks are re-enabled below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_notify_applied) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_transaction_resend_applying_interval_usec) = 3000000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+  // Keep the intents compaction filter from scheduling cleanup until the removal step below
+  // turns it on explicitly.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 3600000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (1, 0)"));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = std::move(peers.front());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  auto* participant = tablet->transaction_participant();
+  ASSERT_NE(participant, nullptr);
+
+  // Victim distributed txn: write 449, commit, wait for apply. Removal scheduling is off, so the
+  // participant keeps tracking it and no removal can claim its APPLYING.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 449 WHERE k = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "t"));
+  const auto post_apply_op = tablet_peer->GetLatestLogEntryOpId();
+
+  // Later single-shard write at a higher hybrid time, then the fold: the packed-row compaction
+  // demotes 469 into the base below 449's commit hybrid time.
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 469 WHERE k = 1"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(cluster_->CompactTablets());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 469)
+      << "the fold itself must preserve the value";
+
+  // Close the victim's WAL segment before the intents flush point below, so that whether it
+  // survives the later GC depends only on the retention floor, not on newer ops sharing its
+  // segment.
+  ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+
+  // Second distributed txn, then flushes: the intents flushed op id moves past the victim's
+  // APPLYING, while the flushed intents txn_apply_op_index stays below it. The regular flush
+  // drains the second txn's apply writes so the regular DB imposes no GC floor of its own later.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (2, 7)"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitForNoRunningTransactions(cluster_.get(), "t"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  // Scenario preconditions, not the verdict: they keep the test discriminating. The intents
+  // flushed op id must be past the victim while the flushed intents txn_apply_op_index stays
+  // below it.
+  const auto persistent_op_ids = ASSERT_RESULT(tablet->GetPersistentState());
+  ASSERT_GT(persistent_op_ids.intents.index, post_apply_op.index)
+      << "the scenario needs the intents flushed op id above the victim's APPLYING";
+  const auto flushed_intents_txn_apply_op_index =
+      ASSERT_RESULT(tablet->FlushedTxnApplyOpIndex(docdb::StorageDbType::kIntents));
+  ASSERT_LT(flushed_intents_txn_apply_op_index, post_apply_op.index)
+      << "flushed intents txn_apply_op_index " << flushed_intents_txn_apply_op_index
+      << " vs post-apply op " << post_apply_op;
+
+  // Wait for a duplicate APPLYING above both flushed frontiers, so bootstrap will replay it.
+  const auto post_flush_op = tablet_peer->GetLatestLogEntryOpId();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return tablet_peer->GetLatestLogEntryOpId().index > post_flush_op.index;
+      },
+      60s * kTimeMultiplier, "post-flush duplicate APPLYING replicated"));
+
+  // Let the skipped removals happen for real: re-enable applied acks (the coordinator completes
+  // the transactions and forgets them) and removal scheduling, and let the intents compaction
+  // filter schedule cleanup (the status of a forgotten transaction resolves to NotFound). The
+  // removal writes land in the intents memtable and stay unflushed (SkipFlush keeps the loop
+  // itself from flushing them), so the participant's in-memory value moves past the victim while
+  // the flushed intents txn_apply_op_index stays below it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_notify_applied) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 0;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+        return participant->IntentsTxnApplyOpIndex() >= post_apply_op.index;
+      },
+      60s * kTimeMultiplier, "victim's intents removal written"));
+
+  // WAL aging: with the retention rule the victim's closed segment survives these rounds; without
+  // it the floor rises to the flushed op ids and the segment is collected.
+  for (int i = 0; i != 5; ++i) {
+    ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+  }
+  LOG(INFO) << "Intents present before crash: " << CountIntents(cluster_.get());
+
+  tablet.reset();
+  tablet_peer.reset();
+
+  LOG(INFO) << "Ungraceful restart";
+  ASSERT_OK(RestartCluster());
+
+  // The crash lost the unflushed removal writes, so the intents are back and cleanup re-runs
+  // (removal scheduling is on now). Wait it out so the read below is served purely from the
+  // regular DB rather than from a committed intent the read path applies on the fly.
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        RETURN_NOT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+        return CountIntents(cluster_.get()) == 0;
+      },
+      60s * kTimeMultiplier, "intents cleaned up after bootstrap"));
+
+  // The user-visible verdict: a re-applied 449 shadows the repacked 469.
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 1")), 469)
+      << "DATA LOSS: the duplicate APPLYING re-applied 449 over the repacked 469";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 2")), 7);
+}
+
+// Once every applied transaction's intents removal is flushed there is nothing left to retain,
+// so log GC must proceed past the last distributed transaction even if the tablet then only takes
+// single-shard writes, which record no apply and write no intents. Runs with and without the
+// intents flushed op id advance on regular flushes.
+void PgMiniTestSingleNode::TestWalGcReleasedAfterLastDistributedTxn(
+    bool advance_intents_flushed_op_id) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_advance_intents_flushed_op_id_to_match_regular) =
+      advance_intents_flushed_op_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS"));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = std::move(peers.front());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  auto* participant = tablet->transaction_participant();
+  ASSERT_NE(participant, nullptr);
+
+  // One distributed transaction. Wait until its intents removal is written, then make it durable.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (1, 1), (2, 2)"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> { return CountIntents(cluster_.get()) == 0; },
+      60s * kTimeMultiplier, "intents removal written"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  const auto bound = participant->IntentsTxnApplyOpIndex();
+  ASSERT_GT(bound, 0);
+  const auto post_txn_op = tablet_peer->GetLatestLogEntryOpId();
+
+  // Single-shard writes only (autocommit single-row updates by primary key), in a few closed
+  // segments.
+  OpId end_of_first_batch;
+  for (int batch = 0; batch != 3; ++batch) {
+    for (int i = 0; i != 100; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = $0 WHERE k = 1", i));
+    }
+    if (batch == 0) {
+      end_of_first_batch = tablet_peer->GetLatestLogEntryOpId();
+    }
+    ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+  }
+  ASSERT_GT(end_of_first_batch.index, post_txn_op.index);
+  // The stream must really have been single-shard: no apply recorded, no intents written.
+  ASSERT_EQ(participant->IntentsTxnApplyOpIndex(), bound);
+  ASSERT_EQ(CountIntents(cluster_.get()), 0);
+
+  // The regular flush persists the stream (and runs the intents flushed op id advance when it is
+  // enabled). Log GC must then collect the first batch's segment.
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+        auto log_reader = VERIFY_RESULT(tablet_peer->log()->GetLogReader());
+        const auto min_idx = log_reader->GetMinReplicateIndex();
+        return min_idx < 0 || min_idx > end_of_first_batch.index;
+      },
+      60s * kTimeMultiplier,
+      Format("log GC collects segments past the last distributed transaction (post txn op $0, "
+             "end of first batch $1)", post_txn_op, end_of_first_batch)));
+}
+
+TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterLastDistributedTxn) {
+  TestWalGcReleasedAfterLastDistributedTxn(/* advance_intents_flushed_op_id = */ true);
+}
+
+TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterLastDistributedTxnWithoutFlushedOpIdAdvance) {
+  TestWalGcReleasedAfterLastDistributedTxn(/* advance_intents_flushed_op_id = */ false);
+}
+
+// The intents removal that would record the last distributed transaction's apply index in the
+// intents RocksDB may never be flushed: here the transaction's intents reach an SST before it
+// commits and the intents SST file cleanup deletes that SST once the transaction has applied.
+// The removal then either wrote nothing, or is still in the intents memtable when the server
+// crashes. After the restart the transaction is not loaded, so nothing is tracked and no removal
+// write follows. Log GC must still proceed while the tablet then only takes single-shard writes.
+TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterLastDistributedTxnAndCrash) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS"));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = std::move(peers.front());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+
+  // One distributed transaction whose intents are flushed to an SST before it commits.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (1, 1), (2, 2)"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(conn.CommitTransaction());
+  // Wait for the removal to be written and for the intents SST file cleanup to delete the SST.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::vector<rocksdb::LiveFileMetaData> files;
+        tablet->intents_db()->GetLiveFilesMetaData(&files);
+        return CountIntents(cluster_.get()) == 0 && files.empty();
+      },
+      60s * kTimeMultiplier, "intents removed and intents SST deleted"));
+  // Scenario precondition, not the verdict: the apply is flushed (the file cleanup flushes the
+  // regular DB before it deletes the SST). Nothing flushes the intents DB after the removal.
+  ASSERT_GT(ASSERT_RESULT(tablet->FlushedTxnApplyOpIndex(docdb::StorageDbType::kRegular)), 0);
+
+  tablet.reset();
+  tablet_peer.reset();
+  LOG(INFO) << "Ungraceful restart";
+  ASSERT_OK(RestartCluster());
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        peers = VERIFY_RESULT(
+            ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+        return peers.size() == 1;
+      },
+      60s * kTimeMultiplier, "tablet leader elected after restart"));
+  tablet_peer = std::move(peers.front());
+  tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  // The transaction's intents are gone with the deleted SST, so it was not loaded.
+  ASSERT_EQ(CountIntents(cluster_.get()), 0);
+
+  // Single-shard writes only, in a few closed segments.
+  OpId end_of_first_batch;
+  for (int batch = 0; batch != 3; ++batch) {
+    for (int i = 0; i != 100; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = $0 WHERE k = 1", i));
+    }
+    if (batch == 0) {
+      end_of_first_batch = tablet_peer->GetLatestLogEntryOpId();
+    }
+    ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+  }
+  ASSERT_EQ(CountIntents(cluster_.get()), 0);
+
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+        auto log_reader = VERIFY_RESULT(tablet_peer->log()->GetLogReader());
+        const auto min_idx = log_reader->GetMinReplicateIndex();
+        return min_idx < 0 || min_idx > end_of_first_batch.index;
+      },
+      60s * kTimeMultiplier,
+      Format("log GC collects segments past the last distributed transaction (end of first "
+             "batch $0)", end_of_first_batch)));
+}
+
+namespace {
+
+// Occupies the tablet's strand, on which intents removals run, until released.
+class BlockStrandTask : public rpc::StrandTask {
+ public:
+  void Run() override {
+    started_.CountDown();
+    release_.Wait();
+  }
+
+  void Done(const Status& /* status */) override {
+    done_.CountDown();
+  }
+
+  void WaitStarted() { started_.Wait(); }
+  void Release() { release_.CountDown(); }
+  void WaitDone() { done_.Wait(); }
+
+ private:
+  CountDownLatch started_{1};
+  CountDownLatch release_{1};
+  CountDownLatch done_{1};
+};
+
+} // namespace
+
+// Two transactions with their intents in separate SST files. The first one applies while the
+// second is still running, and the intents SST file cleanup deletes its file before its intents
+// removal runs, so that removal writes nothing. The second one is then rolled back, and the
+// cleanup deletes its file before its removal runs as well. No flushed intents removal carries
+// the first transaction's apply index, and no transaction is left to write one. Log GC must still
+// proceed while the tablet then only takes single-shard writes.
+TEST_F(PgMiniTestSingleNode, WalGcReleasedAfterRolledBackLastDistributedTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wal_retention_for_unremoved_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS"));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "t", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet_peer = std::move(peers.front());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+
+  auto intents_files = [&tablet] {
+    std::vector<rocksdb::LiveFileMetaData> files;
+    tablet->intents_db()->GetLiveFilesMetaData(&files);
+    return files.size();
+  };
+  // Returns once every task that is in the strand's queue now has run.
+  auto run_queued_strand_tasks = [&tablet_peer] {
+    BlockStrandTask marker;
+    marker.Release();
+    tablet_peer->StrandEnqueue(&marker);
+    marker.WaitDone();
+  };
+  auto log_flushed_values = [&tablet](const char* when) {
+    LOG(INFO) << when << ": flushed regular txn_apply_op_index "
+              << AsString(tablet->FlushedTxnApplyOpIndex(docdb::StorageDbType::kRegular))
+              << ", flushed intents txn_apply_op_index "
+              << AsString(tablet->FlushedTxnApplyOpIndex(docdb::StorageDbType::kIntents));
+  };
+
+  // The first transaction, with its intents in an SST of their own.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t(k, v) VALUES (1, 1), (2, 2)"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  // The second transaction starts after that flush. Its intents go to a second SST.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("INSERT INTO t(k, v) VALUES (3, 3)"));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents,
+                          rocksdb::FlushReason::kTestOnly));
+  ASSERT_EQ(intents_files(), 2);
+
+  // The first transaction applies while its intents removal is held back. The second one is
+  // running, so the cleanup deletes the first SST.
+  {
+    BlockStrandTask block;
+    tablet_peer->StrandEnqueue(&block);
+    block.WaitStarted();
+    ASSERT_OK(conn.CommitTransaction());
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> { return intents_files() == 1; },
+        60s * kTimeMultiplier, "SST of the first transaction deleted"));
+    block.Release();
+    block.WaitDone();
+  }
+  run_queued_strand_tasks();
+  log_flushed_values("After the removal of the first transaction");
+
+  // The second transaction is rolled back while its intents removal is held back. Nothing is
+  // running after it, and the cleanup deletes the second SST.
+  {
+    BlockStrandTask block;
+    tablet_peer->StrandEnqueue(&block);
+    block.WaitStarted();
+    ASSERT_OK(conn2.RollbackTransaction());
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> { return intents_files() == 0; },
+        60s * kTimeMultiplier, "SST of the second transaction deleted"));
+    block.Release();
+    block.WaitDone();
+  }
+  run_queued_strand_tasks();
+  log_flushed_values("After the removal of the second transaction");
+  ASSERT_EQ(CountIntents(cluster_.get()), 0);
+  // Scenario precondition, not the verdict: the apply is flushed (the file cleanup flushes the
+  // regular DB before it deletes an SST).
+  ASSERT_GT(ASSERT_RESULT(tablet->FlushedTxnApplyOpIndex(docdb::StorageDbType::kRegular)), 0);
+
+  // Single-shard writes only, in a few closed segments.
+  OpId end_of_first_batch;
+  for (int batch = 0; batch != 3; ++batch) {
+    for (int i = 0; i != 100; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = $0 WHERE k = 1", i));
+    }
+    if (batch == 0) {
+      end_of_first_batch = tablet_peer->GetLatestLogEntryOpId();
+    }
+    ASSERT_OK(tablet_peer->RunLogGC(/*rollover=*/true));
+  }
+  ASSERT_EQ(CountIntents(cluster_.get()), 0);
+
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular,
+                          rocksdb::FlushReason::kTestOnly));
+  auto status = WaitFor(
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(tablet_peer->RunLogGC(/*rollover=*/false));
+        auto log_reader = VERIFY_RESULT(tablet_peer->log()->GetLogReader());
+        const auto min_idx = log_reader->GetMinReplicateIndex();
+        return min_idx < 0 || min_idx > end_of_first_batch.index;
+      },
+      60s * kTimeMultiplier,
+      Format("log GC collects segments past the last distributed transaction (end of first "
+             "batch $0)", end_of_first_batch));
+  log_flushed_values("At the end");
+  ASSERT_OK(status);
 }
 
 TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {

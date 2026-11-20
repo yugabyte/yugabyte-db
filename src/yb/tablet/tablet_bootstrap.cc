@@ -158,6 +158,8 @@ DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
 
 DECLARE_bool(enable_flush_retryable_requests);
 
+DECLARE_bool(enable_wal_retention_for_unremoved_intents);
+
 namespace yb::tablet {
 
 using namespace std::literals; // NOLINT
@@ -270,6 +272,11 @@ struct ReplayState {
 
   // Op id of the quiescent marker, which persistent_state was raised to. Empty without a marker.
   OpId quiescent_marker_op_id;
+
+  // Raft index from which APPLYING operations are replayed because an applied transaction may
+  // still have its intents on disk, see docdb::UnremovedIntentsRetainIndex. Nullopt when there is
+  // none. Applied in addition to GetLowestOpIdToReplay.
+  std::optional<int64_t> unremoved_intents_retain_index;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -407,6 +414,7 @@ OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_l
       << ", intents_op_id=" << persistent_state.intents
       << ", vector_indexes=" << AsString(persistent_state.vector_indexes)
       << ", quiescent_marker_op_id=" << quiescent_marker_op_id
+      << ", unremoved_intents_retain_index=" << AsString(unremoved_intents_retain_index)
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -1393,6 +1401,12 @@ class TabletBootstrap {
         // Determine whether we have an intents DB.
         tablet_->intents_db() || (test_hooks_ && test_hooks_->HasIntentsDB()),
         kBootstrapOptimizerLogPrefix);
+    // The original APPLYING of a transaction that may still have its intents on disk must replay
+    // before any re-delivered duplicate, so replay also starts at or below this Raft index. It has
+    // no term, so a segment's first operation is compared with it by index. An operation written
+    // before that first operation with the same or a higher index was overwritten by it, so every
+    // committed operation from the first operation's index on is in that segment or a later one.
+    const auto unremoved_intents_retain_index = replay_state_->unremoved_intents_retain_index;
 
     // OpId::Max() can avoid bootstrapping the retryable requests.
     OpId last_op_id_in_retryable_requests = OpId::Max();
@@ -1481,7 +1495,9 @@ class TabletBootstrap {
             first_op_time - retryable_requests_retain_interval;
       }
 
-      const auto is_first_op_id_low_enough = op_id <= op_id_replay_lowest;
+      const auto is_first_op_id_low_enough =
+          op_id <= op_id_replay_lowest &&
+          (!unremoved_intents_retain_index || op_id.index <= *unremoved_intents_retain_index);
       const auto is_first_op_id_low_enough_for_retryable_requests =
           op_id <= last_op_id_in_retryable_requests;
       const auto is_first_op_time_early_enough_for_retryable_requests =
@@ -1521,6 +1537,9 @@ class TabletBootstrap {
         // requests where last_op_id_in_retryable_requests=OpId::Max().
         // If the first segment is unclosed, it needs read all entries to build footer anyways, so
         // it's also unnecessary to get the starting offset to start replaying.
+        // With an unremoved intents retain index the segment is replayed from its beginning: it
+        // may have been chosen by Raft index, and then the operation to start from is not
+        // necessarily in it.
         const auto first_segment = *iter;
         const auto current_segment_may_contain_unflushed_change_metadata_op =
             is_lazy_superblock_flush_enabled &&
@@ -1529,6 +1548,7 @@ class TabletBootstrap {
         if (FLAGS_skip_flushed_entries_in_first_replayed_segment &&
             is_first_op_id_low_enough_for_retryable_requests &&
             !current_segment_may_contain_unflushed_change_metadata_op &&
+            !unremoved_intents_retain_index &&
             first_segment->HasLogIndexInFooter()) {
           const auto first_op_index_to_replay =
               std::min(op_id_replay_lowest.index, last_op_id_in_retryable_requests.index);
@@ -1618,6 +1638,13 @@ class TabletBootstrap {
         replay_state_->max_committed_hybrid_time =
             down_cast<docdb::ConsensusFrontier*>(frontier.get())->hybrid_time();
       }
+    }
+
+    if (FLAGS_enable_wal_retention_for_unremoved_intents &&
+        !FLAGS_force_recover_flushed_frontier && tablet_->intents_db()) {
+      replay_state_->unremoved_intents_retain_index = docdb::UnremovedIntentsRetainIndex(
+          VERIFY_RESULT(tablet_->FlushedTxnApplyOpIndex(docdb::StorageDbType::kRegular)),
+          VERIFY_RESULT(tablet_->FlushedTxnApplyOpIndex(docdb::StorageDbType::kIntents)));
     }
 
     if (FLAGS_force_recover_flushed_frontier) {

@@ -105,23 +105,11 @@ Result<ColumnTombstoneCounters> GetColumnTombstoneCounters(
   };
 }
 
+// The column tombstone tests below call WaitForNoRunningTransactions before compacting:
 // Tablet::CompactionHybridTimeConstraints feeds MinRunningHybridTime() to HandleOtherRange, so a
 // transaction that is still running or applying pulls other_min below a column tombstone's hybrid
 // time. CanHaveOtherDataBefore then becomes true and the whole keep/drop branch is skipped, which
 // fails every assertion in these tests at once.
-Status WaitForNoRunningTransactions(MiniCluster* cluster, const std::string& table_name) {
-  for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(
-           cluster, table_name, ListPeersFilter::kAll))) {
-    auto* participant = VERIFY_RESULT(peer->shared_tablet())->transaction_participant();
-    if (!participant) {
-      continue;
-    }
-    RETURN_NOT_OK(WaitFor(
-        [participant] { return participant->MinRunningHybridTime() == HybridTime::kMax; },
-        30s * kTimeMultiplier, Format("No running transactions on $0", peer->tablet_id())));
-  }
-  return Status::OK();
-}
 
 } // namespace
 
