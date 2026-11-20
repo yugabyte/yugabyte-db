@@ -2223,6 +2223,14 @@ Status PgApiImpl::RecreateTransaction() {
   return pg_txn_manager_->RecreateTransaction();
 }
 
+void PgApiImpl::CarryReadRestart(CarryToNextTxn carry) {
+  pg_txn_manager_->CarryReadRestartToNextTransaction(carry);
+}
+
+void PgApiImpl::CarryTransactionPriority(CarryToNextTxn carry) {
+  pg_txn_manager_->CarryPriorityToNextTransaction(carry);
+}
+
 Status PgApiImpl::RestartTransaction() {
   ClearSessionState();
   return pg_txn_manager_->RestartTransaction();

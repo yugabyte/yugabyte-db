@@ -1782,7 +1782,7 @@ pgsm_create_hash_entry(uint64 bucket_id, uint64 queryid, PlanInfo * plan_info)
 static void
 pgsm_store(pgsmEntry * entry, bool yb_is_sensitive_stmt)
 {
-	if (yb_is_calling_internal_sql_for_ddl)
+	if (yb_is_calling_internal_sql_for_ddl || yb_replay_in_progress)
 		return;
 
 	pgsmEntry  *shared_hash_entry;

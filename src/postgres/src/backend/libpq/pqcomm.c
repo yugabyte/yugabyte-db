@@ -135,6 +135,9 @@ static int	PqSendPointer;		/* Next index to store a byte in PqSendBuffer */
 static int	PqSendStart;		/* Next index to send a byte in PqSendBuffer */
 static int	PqSendYbSavedBufPos;	/* Value of PqSendPointer to restore
 									 * during statement restart */
+static bool PqSendYbDiscardOutput = false;	/* Drop output past
+												 * PqSendYbSavedBufPos instead of
+												 * sending it */
 static bool PqSendYbNonRestartableData; /* Indicates whether data sent to user
 										 * should be treated as preventing
 										 * transparent restarts. This should
@@ -329,6 +332,24 @@ void
 YBRestoreOutputBufferPosition(void)
 {
 	PqSendPointer = PqSendYbSavedBufPos;
+}
+
+/*
+ * While set, output past the saved position is dropped instead of sent.
+ * A replay retry re-runs statements whose replies the client already got.
+ * Should ONLY be called after YBSaveOutputBufferPosition.
+ */
+void
+YBSetOutputDiscard(bool discard)
+{
+	/*
+	 * With the buffer full at the saved position, discarding back to it frees
+	 * no room and internal_putbytes would spin.  The bytes before it are
+	 * earlier replies the client gets anyway, so send them first.
+	 */
+	if (discard && PqSendYbSavedBufPos >= PqSendBufferSize)
+		(void) internal_flush();
+	PqSendYbDiscardOutput = discard;
 }
 
 
@@ -1422,6 +1443,12 @@ socket_flush(void)
 static int
 internal_flush(void)
 {
+	if (PqSendYbDiscardOutput)
+	{
+		PqSendPointer = PqSendYbSavedBufPos;
+		return 0;
+	}
+
 	if (PqSendYbNonRestartableData)
 	{
 		YBMarkDataSent();

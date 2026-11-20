@@ -703,6 +703,8 @@ class PgApiImpl {
   Status BeginTransaction(int64_t start_time, uint64_t origination_time);
   Status RecreateTransaction();
   Status RestartTransaction();
+  void CarryTransactionPriority(CarryToNextTxn carry);
+  void CarryReadRestart(CarryToNextTxn carry);
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();

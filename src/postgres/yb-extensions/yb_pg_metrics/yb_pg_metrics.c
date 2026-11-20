@@ -1352,7 +1352,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static void
 ybpgm_Store(YbStatementType type, uint64_t time, uint64_t rows)
 {
-	if (yb_is_calling_internal_sql_for_ddl)
+	if (yb_is_calling_internal_sql_for_ddl || yb_replay_in_progress)
 		return;
 
 	struct YbcPgmEntry *entry = &ybpgm_table[type];

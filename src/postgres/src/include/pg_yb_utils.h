@@ -801,6 +801,31 @@ extern bool yb_is_non_atomic_commit_done;
  */
 extern bool yb_enable_retry_after_non_atomic_commit;
 
+/*
+ * Restart a transaction for a query layer retry by aborting it and replaying
+ * its idempotent statements (BEGIN, SET, ...) in a new transaction.  See the
+ * "Replay retry" section of tcop/README.
+ */
+extern bool yb_enable_replay_retry;
+
+/*
+ * yb_enable_replay_retry as it was when the current transaction started.  A
+ * change inside a transaction applies from the next one, so a transaction
+ * never switches between the in-place restart and the replay.  An error
+ * would not do: the connection manager re-applies session settings at points
+ * the client did not choose.
+ */
+extern bool yb_replay_retry_in_txn;
+
+/* Size cap, in kB, of the replay log; past it the transaction is not retried. */
+extern int	yb_replay_retry_log_limit;
+
+/*
+ * True while a replay retry re-runs earlier statements, so statistics count
+ * them as part of the retry rather than as new executions.
+ */
+extern bool yb_replay_in_progress;
+
 extern char *yb_extra_commands_to_retry_string;
 extern bool *yb_extra_commands_to_retry;
 

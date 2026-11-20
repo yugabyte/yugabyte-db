@@ -57,6 +57,7 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "yb/yql/pgwrapper/raw_pg_conn.h"
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
@@ -190,125 +191,6 @@ TraceparentInfo GenerateTraceparentWithFlags(std::string_view flags) {
 TraceparentInfo GenerateTraceparent() {
   return GenerateTraceparentWithFlags("01");
 }
-
-// Minimal wire-protocol client for what libpq cannot send: an Execute with a row limit, which
-// suspends the portal so later Execute+Sync cycles run without a Bind.
-class RawPgConn {
- public:
-  Status Connect(const HostPort& host_port, const std::string& user, const std::string& db) {
-    auto endpoint = VERIFY_RESULT(ParseEndpoint(host_port.ToString(), 0));
-    RETURN_NOT_OK(socket_.Init(0));
-    RETURN_NOT_OK(socket_.Connect(endpoint));
-    std::string body;
-    AppendInt32(&body, 3 << 16);  // protocol 3.0
-    AppendCString(&body, "user");
-    AppendCString(&body, user);
-    AppendCString(&body, "database");
-    AppendCString(&body, db);
-    body.push_back(0);
-    RETURN_NOT_OK(Send(0, body));
-    return ReadUntilReadyForQuery();
-  }
-
-  Status SimpleQuery(const std::string& sql) {
-    std::string body;
-    AppendCString(&body, sql);
-    RETURN_NOT_OK(Send('Q', body));
-    return ReadUntilReadyForQuery();
-  }
-
-  Status Parse(const std::string& stmt, const std::string& query) {
-    std::string body;
-    AppendCString(&body, stmt);
-    AppendCString(&body, query);
-    AppendInt16(&body, 0);  // no parameter types
-    RETURN_NOT_OK(Send('P', body));
-    RETURN_NOT_OK(Send('S', ""));
-    return ReadUntilReadyForQuery();
-  }
-
-  Status BindExecute(const std::string& portal, const std::string& stmt, int32_t max_rows) {
-    std::string body;
-    AppendCString(&body, portal);
-    AppendCString(&body, stmt);
-    AppendInt16(&body, 0);  // no parameter format codes
-    AppendInt16(&body, 0);  // no parameters
-    AppendInt16(&body, 0);  // no result format codes
-    RETURN_NOT_OK(Send('B', body));
-    return Execute(portal, max_rows);
-  }
-
-  Status Execute(const std::string& portal, int32_t max_rows) {
-    std::string body;
-    AppendCString(&body, portal);
-    AppendInt32(&body, max_rows);
-    RETURN_NOT_OK(Send('E', body));
-    RETURN_NOT_OK(Send('S', ""));
-    return ReadUntilReadyForQuery();
-  }
-
- private:
-  static void AppendInt32(std::string* out, int32_t value) {
-    for (int shift = 24; shift >= 0; shift -= 8) {
-      out->push_back(static_cast<char>((value >> shift) & 0xff));
-    }
-  }
-
-  static void AppendInt16(std::string* out, int16_t value) {
-    out->push_back(static_cast<char>((value >> 8) & 0xff));
-    out->push_back(static_cast<char>(value & 0xff));
-  }
-
-  static void AppendCString(std::string* out, const std::string& value) {
-    out->append(value);
-    out->push_back(0);
-  }
-
-  static int32_t ReadInt32(const uint8_t* buf) {
-    return (buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3];
-  }
-
-  MonoTime Deadline() const { return MonoTime::NowPlus(30s * kTimeMultiplier); }
-
-  // type 0 is the startup message, which has no type byte.
-  Status Send(char type, const std::string& body) {
-    std::string msg;
-    if (type) {
-      msg.push_back(type);
-    }
-    AppendInt32(&msg, narrow_cast<int32_t>(body.size() + 4));
-    msg += body;
-    return socket_.BlockingWrite(
-        pointer_cast<const uint8_t*>(msg.data()), msg.size(), Deadline());
-  }
-
-  Status ReadUntilReadyForQuery() {
-    for (;;) {
-      uint8_t header[5];
-      RETURN_NOT_OK(socket_.BlockingRecv(header, sizeof(header), Deadline()));
-      std::string body(ReadInt32(header + 1) - 4, 0);
-      if (!body.empty()) {
-        RETURN_NOT_OK(socket_.BlockingRecv(
-            pointer_cast<uint8_t*>(body.data()), body.size(), Deadline()));
-      }
-      switch (header[0]) {
-        case 'Z':
-          return Status::OK();
-        case 'E':
-          return STATUS_FORMAT(QLError, "Server error: $0", body);
-        case 'R':
-          if (ReadInt32(pointer_cast<const uint8_t*>(body.data())) != 0) {
-            return STATUS(NotSupported, "Only trust authentication is supported");
-          }
-          break;
-        default:
-          break;
-      }
-    }
-  }
-
-  Socket socket_;
-};
 
 class OtlpHttpCollector {
   // All executor node span names produced by YbGetExecNodeSpanName() in execProcnode.c.

@@ -22,3 +22,4 @@
 
 extern void YBSaveOutputBufferPosition(bool sending_non_restartable_data);
 extern void YBRestoreOutputBufferPosition(void);
+extern void YBSetOutputDiscard(bool discard);
