@@ -1680,8 +1680,10 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     // the clear, so that no release-all can be deferred into the map after it was read.
     if (state->reload_in_loaded_term) {
       for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
-        // The flag means the txn has finished. A still running DDL txn keeps its locks and
-        // releases them itself when it finishes.
+        // The flag means the txn has finished: only a release with no subtxn id and no locks
+        // sets it, and tservers send that only at txn end. Mid-txn releases, including the
+        // phased-DDL session lock release_all, carry a subtxn id. A still running DDL txn keeps
+        // its locks and releases them itself when it finishes.
         if (verifier_state.release_all_deferred) {
           ysql_ddl_txns_release_all_deferred_.insert(txn_id);
         }
