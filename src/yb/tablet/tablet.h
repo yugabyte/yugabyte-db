@@ -208,7 +208,8 @@ struct TierReconcileResult {
   // The pass's verdict changed status.state. A change made under the pass by
   // SetTierMigrationTarget is not counted: that call reports its own.
   bool state_changed = false;
-  // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
+  // A split child whose RocksDB parent data has not been compacted away yet: nothing scanned or
+  // scheduled. The reconciler counts these and reports them through its metrics.
   bool awaiting_post_split_compaction = false;
 };
 
@@ -1543,6 +1544,10 @@ class Tablet : public AbstractTablet,
   // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
   // data still present, or with a vector index post-split compaction still required.
   bool NeedPostSplitCompaction();
+
+  // Split child whose RocksDB parent data has not been compacted away yet. The RocksDB half of
+  // NeedPostSplitCompaction(); the tier migration pass waits on this alone.
+  bool HasUncompactedRocksDbParentData() const;
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
