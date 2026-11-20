@@ -1114,7 +1114,7 @@ class PgReadIndexInCreatingTxnTest
 
 namespace {
 
-const auto kReadIndexInCreatingTxnIsolationLevels =
+const auto kIsolationLevels =
     ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE");
 
 std::string ReadIndexInCreatingTxnTestName(
@@ -1132,7 +1132,7 @@ std::string ReadIndexInCreatingTxnTestName(
 INSTANTIATE_TEST_SUITE_P(
     , PgReadIndexInCreatingTxnTest,
     ::testing::Combine(
-        kReadIndexInCreatingTxnIsolationLevels, ::testing::Bool(), ::testing::Bool(),
+        kIsolationLevels, ::testing::Bool(), ::testing::Bool(),
         ::testing::Values(false)),
     ReadIndexInCreatingTxnTestName);
 
@@ -1140,7 +1140,7 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(
     Colocated, PgReadIndexInCreatingTxnTest,
     ::testing::Combine(
-        kReadIndexInCreatingTxnIsolationLevels, ::testing::Values(true), ::testing::Bool(),
+        kIsolationLevels, ::testing::Values(true), ::testing::Bool(),
         ::testing::Values(true)),
     ReadIndexInCreatingTxnTestName);
 
