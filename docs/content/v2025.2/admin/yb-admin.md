@@ -2399,6 +2399,10 @@ yb-admin \
 * *replication-group-id*: The replication group identifier.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
+{{< note title="Note" >}}
+In v2025.2.9.0, for xCluster replication with automatic DDL mode, avoid disabling replication (`0`) while DDL statements are being replicated. A DDL in progress on the target when replication is paused is terminated. This behavior is specific to v2025.2.9.0 and does not occur in earlier versions. The issue will be fixed in a later release.
+{{< /note >}}
+
 #### get_xcluster_safe_time
 
 Reports the current xCluster safe time for each namespace, which is the time at which reads will be performed.
