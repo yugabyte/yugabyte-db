@@ -110,6 +110,10 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
     "If true, pause before persisting release request acked from all tservers.");
 
+DEFINE_test_flag(bool, pause_obj_lock_acquire_before_persist, false,
+    "If true, pause after an acquire request is granted by the master leader's local lock manager, "
+    "before persisting it.");
+
 DEFINE_test_flag(bool, pause_obj_lock_acquire_before_relaunch_check, false,
     "If true, pause after an acquire request is acked by all tservers, before checking whether "
     "the fanout must be relaunched for lease changes.");
@@ -562,6 +566,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   // Returns true if relaunched.
   Result<bool> RelaunchIfNecessary();
   void DoneAll();
+  Status BeforeRpcs();
   Status AfterRpcs();
   void DoCallbackAndRespond(const Status& s);
   Status DoPersistRequestUnlocked(const ScopedLeaderSharedLock& l);
@@ -726,7 +731,10 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
 template <class Resp>
 void FillErrorIfRequired(const Status& status, Resp& resp) {
   if (!status.ok()) {
-    if (status.IsIllegalState() && status.message().ToBuffer() == kNotTheMasterLeader) {
+    // An epoch change means a new leadership term began while the request was in flight. Have the
+    // client retry against the current leader.
+    if (status.IsIllegalState() && (status.message().ToBuffer() == kNotTheMasterLeader ||
+                                    status.message().ToBuffer() == kEpochChanged)) {
       resp.mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     } else {
       resp.mutable_error()->set_code(MasterErrorPB::UNKNOWN_ERROR);
@@ -1256,9 +1264,6 @@ void ObjectLockInfoManager::Impl::LockObject(
       *req_shared, deadline,
       [req_shared, epoch, requestor_latest_lease_epoch, deadline, txn_id,
        wait_state_ptr, callback = std::move(callback), this](Status s) mutable {
-        if (s.ok()) {
-          s = PersistRequest(epoch, *req_shared, txn_id);
-        }
         if (!s.ok()) {
           LOG(WARNING) << "Failed to acquire object locks locally: " << s;
           callback(s);
@@ -1786,20 +1791,26 @@ void ObjectLockInfoManager::Impl::RelaunchInProgressRequests(
 
 void ObjectLockInfoManager::Impl::Clear() {
   catalog_manager_.AssertLeaderLockAcquiredForWriting();
-  LockGuard lock(mutex_);
-  object_lock_infos_map_.clear();
-  unacked_release_tservers_.clear();
-  release_failures_.clear();
-  fenced_tservers_.clear();
-  if (local_lock_manager_) {
-    local_lock_manager_->Shutdown();
+  tserver::TSLocalLockManagerPtr old_local_lock_manager;
+  {
+    LockGuard lock(mutex_);
+    object_lock_infos_map_.clear();
+    unacked_release_tservers_.clear();
+    release_failures_.clear();
+    fenced_tservers_.clear();
+    old_local_lock_manager = std::exchange(
+        local_lock_manager_,
+        std::make_shared<tserver::TSLocalLockManager>(
+            clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
+            master_.metric_entity()));
+    // Otherwise Start() has not run yet and will start it.
+    if (waiting_txn_registry_) {
+      local_lock_manager_->Start(waiting_txn_registry_.get());
+    }
   }
-  local_lock_manager_.reset(new tserver::TSLocalLockManager(
-      clock_, master_.tablet_server(), master_, lock_manager_thread_pool_.get(),
-      master_.metric_entity()));
-  // Otherwise Start() has not run yet and will start it.
-  if (waiting_txn_registry_) {
-    local_lock_manager_->Start(waiting_txn_registry_.get());
+  // Shutdown waits for in-progress requests to drain, so don't hold mutex_ across it.
+  if (old_local_lock_manager) {
+    old_local_lock_manager->Shutdown();
   }
 }
 
@@ -2235,6 +2246,10 @@ Result<bool> UpdateAllTServers<AcquireObjectLockRequestPB>::LaunchRpcs() {
 template <class Req>
 Status UpdateAllTServers<Req>::Launch() {
   TRACE_FUNC();
+  if (auto s = BeforeRpcs(); !s.ok()) {
+    DoCallbackAndRespond(s);
+    return Status::OK();
+  }
   auto launched = LaunchRpcs();
   if (!launched.ok()) {
     DoCallbackAndRespond(launched.status());
@@ -2393,6 +2408,20 @@ template <class Req>
 Status UpdateAllTServers<Req>::DoPersistRequest() {
   SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
   return DoPersistRequestUnlocked(l);
+}
+
+template <class Req>
+Status UpdateAllTServers<Req>::BeforeRpcs() {
+  return Status::OK();
+}
+
+// Under the leader lock, so that an acquire from an earlier epoch can't write into the in-memory
+// state that the catalog load clears and rebuilds.
+template <>
+Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
+  TRACE_FUNC();
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_acquire_before_persist);
+  return DoPersistRequest();
 }
 
 template <>
