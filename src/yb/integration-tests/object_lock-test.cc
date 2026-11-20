@@ -2658,6 +2658,8 @@ TEST_F_EX(
       kTimeout, "wait for the catalog load with the acquire callback still paused"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = false;
+  // The client's first attempt has the whole request deadline, so it can't time out and retry on
+  // its own. Succeeding requires the paused callback's epoch-changed error to be retryable.
   ASSERT_OK(ResolveFutureStatus(ddl_future));
   ASSERT_OK(ReleaseLockGlobally(client_.get(), TSUuid(0), kTxn1, kLeaseEpoch));
 }
