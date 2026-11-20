@@ -171,10 +171,13 @@ def main() -> int:
     if dataset is None:
         parser.error(f'unknown dataset {args.dataset}; use one of {", ".join(sorted(DATASETS))}')
     tool = args.tool or default_tool()
-    if tool is None:
+    # A dry run needs no build.
+    if args.dry_run:
+        tool = tool or 'hnsw_tool'
+    elif tool is None:
         sys.exit('No release build of hnsw_tool; build it with '
                  '"./yb_build.sh release --target hnsw_tool", or pass --tool')
-    if shutil.which(tool) is None:
+    elif shutil.which(tool) is None:
         sys.exit(f'{tool}: no such executable')
 
     dataset_dir = os.path.join(args.cache_dir, args.dataset)
