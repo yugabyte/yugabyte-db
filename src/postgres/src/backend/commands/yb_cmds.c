@@ -1366,9 +1366,11 @@ YbATAltersPartitions(List **subcmds, int subcmds_size)
  * (attmissingval) instead of rewriting the table; see
  * AddRelationNewConstraints.  YB rows come from DocDB and never see
  * attmissingval, so PG's decision is safe only if DocDB got the same value.
- * YBCPrepareAlterTableCmd uses this function to decide what to send DocDB,
- * and ATExecAddColumn uses it to force a rewrite when PG chose a missing
- * value that DocDB doesn't have.
+ * YBCPrepareAlterTableCmd uses this function to decide what to send DocDB.
+ * While yb_enable_add_column_missing_default is on, ATExecAddColumn also uses
+ * it to force a rewrite when PG chose a missing value that DocDB doesn't
+ * have; with the flag off, it does not rewrite (see the comment there and
+ * #38681).
  *
  * The volatility check must look at the planned expression, as PG does:
  * planning can inline a VOLATILE SQL function such as
