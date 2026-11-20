@@ -291,19 +291,22 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
-    "support.] Use this flag to toggle support for concurrent DDLs.");
-DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "When true, DDLs with global object locks in the same database run concurrently unless they "
+    "lock the same objects. When false, they run one at a time. Either way they wait for DDLs in "
+    "the same database that run in a separate DDL transaction without object locks.");
+
+DEFINE_NON_RUNTIME_int32(ysql_separate_ddl_txn_lock_hold_heartbeats, 2,
+    "After a DDL that runs in a separate DDL transaction bumps the catalog version, the number of "
+    "heartbeat intervals its statement keeps holding the lock that serializes it with DDLs with "
+    "global object locks, so that those DDLs on other nodes can learn of the change first. "
+    "Applies only while the transaction takes local object locks. 0 disables the wait.");
+DEFINE_validator(ysql_separate_ddl_txn_lock_hold_heartbeats, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(

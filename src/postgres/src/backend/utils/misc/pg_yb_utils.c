@@ -128,6 +128,7 @@
 #include "rusagestub.h"
 #endif
 #include "storage/ipc.h"
+#include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -2944,6 +2945,32 @@ YbTrackAlteredTableId(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * Serializes a DDL that runs in a separate DDL transaction with DDLs with
+ * global object locks in the same database (PR #38568). The lock is taken in
+ * the transaction that runs the statement, before the separate DDL transaction
+ * starts, because the separate DDL transaction takes no object locks.
+ */
+static void
+YbLockDatabaseForLegacyDdl(void)
+{
+	LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0, RowExclusiveLock);
+}
+
+/*
+ * The counterpart of YbLockDatabaseForLegacyDdl for a DDL with global object
+ * locks (PR #38568). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
+ * instead of SHARE, so DDLs with global object locks in one database also run
+ * one at a time. Every DDL of the transaction takes it, so that a DDL after a
+ * rolled back savepoint takes it again.
+ */
+static void
+YbLockDatabaseForGlobalDdl(void)
+{
+	LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
+					   *YBCGetGFlags()->ysql_enable_concurrent_ddl ? ShareLock : ExclusiveLock);
+}
+
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
@@ -2967,6 +2994,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		ddl_transaction_state.use_regular_txn_block = false;
+		YbLockDatabaseForLegacyDdl();
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 
 		if (yb_force_catalog_update_on_next_ddl)
@@ -2988,6 +3016,8 @@ void
 YBAddDdlTxnState(YbDdlMode mode)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
+
+	YbLockDatabaseForGlobalDdl();
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -3888,6 +3918,18 @@ YBCommitTransactionContainingDDL()
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
 		yb_catalog_prefetch_wave_pending = true;
+
+		/*
+		 * Best effort: a DDL with global object locks learns of this DDL only
+		 * through the heartbeat, so hold the database lock of
+		 * YbLockDatabaseForLegacyDdl for a few heartbeat intervals, which lets
+		 * a DDL that waits for it on another node usually see this DDL's
+		 * catalog changes. The statement's transaction holds that lock when it
+		 * takes local but not global object locks.
+		 */
+		if (YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
+			pg_usleep((long) *YBCGetGFlags()->ysql_separate_ddl_txn_lock_hold_heartbeats *
+					  YBGetHeartbeatIntervalMs() * 1000L);
 	}
 }
 
