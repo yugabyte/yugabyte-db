@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <optional>
 #include <unordered_map>
 
 #include "yb/common/common_fwd.h"
@@ -134,6 +135,14 @@ class ConsensusFrontier : public storage::UserFrontier {
     max_value_level_ttl_expiration_time_ = ht;
   }
 
+  int64_t txn_apply_op_index() const {
+    return txn_apply_op_index_;
+  }
+
+  void set_txn_apply_op_index(int64_t value) {
+    txn_apply_op_index_ = value;
+  }
+
   uint64_t GetHybridTimeAsUInt64() const override {
     return hybrid_time_.ToUint64();
   }
@@ -167,6 +176,9 @@ class ConsensusFrontier : public storage::UserFrontier {
  private:
   OpId op_id_;
   HybridTime hybrid_time_;
+
+  // See ConsensusFrontierPB.txn_apply_op_index. Zero means none.
+  int64_t txn_apply_op_index_ = 0;
 
   // We use this to keep track of the maximum history cutoff hybrid time used in any compaction, and
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
@@ -241,6 +253,12 @@ void AddTableSchemaVersion(
 
 uint64_t ExtractGlobalFilter(Slice filter);
 void IterateCotablesFilter(Slice filter, const std::function<void(uint32_t, uint64_t)>& callback);
+
+// Returns the Raft index from which APPLYING operations must be kept in the WAL and replayed
+// because an applied transaction may still have its intents on disk, or nullopt when there is
+// none. Zero means from the start of the log. See ConsensusFrontierPB.txn_apply_op_index.
+std::optional<int64_t> UnremovedIntentsRetainIndex(
+    int64_t regular_txn_apply_op_index, int64_t intents_txn_apply_op_index);
 
 template <class DB>
 OpId MaxPersistentOpIdForDb(DB* db, bool invalid_if_no_new_data) {
