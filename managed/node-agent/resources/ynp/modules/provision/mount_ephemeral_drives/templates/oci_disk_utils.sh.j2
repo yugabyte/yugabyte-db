@@ -1,0 +1,61 @@
+# Copyright (c) YugabyteDB, Inc.
+#
+# OCI data disk discovery helpers.
+#
+# YBA attaches OCI block volumes to the running instance without a device path,
+# so the kernel names the boot and data volumes in whatever order it finds
+# them. The boot volume is not always sda, and the data volume YBA requests as
+# sdb can be sda.
+#
+# The caller defines:
+#   DEV_ROOT            (normally /dev)
+#   DEFAULT_SSD_DRIVES  the device names YBA requested, e.g. "sdb sdc"
+#   mounts              the mount paths YBA requested
+
+# A free data disk is a whole disk without partitions, unlike the boot volume,
+# that is mounted, if at all, only at a YBA mount path.
+oci_disk_is_free_data_disk() {
+  local name=$1
+  local entry=""
+  local mount_point=""
+  local entries=0
+
+  while read -r entry mount_point; do
+    entries=$((entries + 1))
+    if [[ -n "$mount_point" && " ${mounts[*]} " != *" $mount_point "* ]]; then
+      return 1
+    fi
+  done < <(lsblk -nr -o NAME,MOUNTPOINT "$DEV_ROOT/$name" 2>/dev/null || true)
+  [[ $entries -eq 1 ]]
+}
+
+# Resolve the requested device names to data disks. A requested name that is a
+# free data disk is kept, so the result is YBA's names whenever the boot volume
+# is sda. Any other requested sd name, such as the boot volume's, is replaced by
+# a free data disk that YBA did not request. Local NVMe names are kept.
+get_oci_drives() {
+  local name=""
+  local device_type=""
+  local -a requested=()
+  local -a spare=()
+  local -a drives=()
+
+  read -r -a requested <<< "$DEFAULT_SSD_DRIVES"
+  while read -r name device_type; do
+    if [[ "$device_type" == "disk" && "$name" =~ ^sd[a-z]+$ && \
+          " ${requested[*]} " != *" $name "* ]] && oci_disk_is_free_data_disk "$name"; then
+      spare+=("$name")
+    fi
+  done < <(lsblk -dnr -o NAME,TYPE 2>/dev/null || true)
+
+  for name in "${requested[@]}"; do
+    if [[ "$name" =~ ^sd[a-z]+$ && -n "${spare[0]:-}" ]] && \
+       ! oci_disk_is_free_data_disk "$name"; then
+      echo "Requested disk $name is not a free data disk. Using ${spare[0]} instead."
+      name=${spare[0]}
+      spare=("${spare[@]:1}")
+    fi
+    drives+=("$name")
+  done
+  get_oci_drives_rv="${drives[*]}"
+}
