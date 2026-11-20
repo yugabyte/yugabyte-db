@@ -1572,6 +1572,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams, -1);
     assertEquals(Failure, taskInfo.getTaskState());
+    UUID failedTaskUUID = taskInfo.getUuid();
     // Do not fail the task due to server control RPC.
     doAnswer(inv -> ServerControlOutput.newBuilder().build())
         .when(mockNodeAgentClient)
@@ -1589,6 +1590,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     taskInfo = submitTask(taskParams, -1);
     assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        failedTaskUUID.toString(), taskInfo.getTaskParams().get("originalTaskUUID").asText());
   }
 
   @Test

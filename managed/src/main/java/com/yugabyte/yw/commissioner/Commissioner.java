@@ -15,6 +15,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskParams;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -264,12 +265,45 @@ public class Commissioner {
   @Transactional
   private RunnableTask createRunnableTask(
       TaskParams creationParams, @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+    setRerunOriginalTaskUUID(creationParams.getTaskType(), creationParams.getTaskParams());
     // Create the task runnable object based on the various parameters passed in.
     RunnableTask taskRunnable = taskExecutor.createRunnableTask(creationParams);
     if (preTaskSubmitWork != null) {
       preTaskSubmitWork.accept(taskRunnable);
     }
     return taskRunnable;
+  }
+
+  /**
+   * A new submission of the task type whose failed run froze the universe (a rerun) names the root
+   * of that run's retry/rollback/rerun chain as originalTaskUUID, as retries and rollbacks do, so
+   * that it can find what the attempts before it did.
+   */
+  private static void setRerunOriginalTaskUUID(TaskType taskType, ITaskParams taskParams) {
+    if (taskParams.getPreviousTaskUUID() != null
+        || taskParams.getOriginalTaskUUID() != null
+        || !UniverseTaskBase.isRerunnable(taskType)) {
+      return;
+    }
+    UUID targetUuid = taskParams.getTargetUuid(taskType);
+    if (targetUuid == null) {
+      return;
+    }
+    Universe.maybeGet(targetUuid)
+        .map(u -> u.getUniverseDetails().placementModificationTaskUuid)
+        .flatMap(TaskInfo::maybeGet)
+        .filter(t -> t.getTaskType() == taskType)
+        .filter(t -> UniverseTaskBase.getAllowedTasksOnFailure(t).getTaskTypes().contains(taskType))
+        .ifPresent(
+            t -> {
+              JsonNode rootNode = t.getTaskParams().get("originalTaskUUID");
+              UUID root =
+                  rootNode != null && !rootNode.isNull() && !rootNode.asText().isEmpty()
+                      ? UUID.fromString(rootNode.asText())
+                      : t.getUuid();
+              log.info("Task {} reruns {}, whose chain starts at {}", taskType, t.getUuid(), root);
+              taskParams.setOriginalTaskUUID(root);
+            });
   }
 
   private void onTaskCreated(RunnableTask taskRunnable, ITaskParams taskParams) {

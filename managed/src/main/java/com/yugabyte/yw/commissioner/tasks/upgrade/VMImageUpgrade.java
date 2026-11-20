@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -32,9 +33,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -45,6 +48,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -60,6 +64,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Slf4j
 @Retryable
@@ -125,6 +130,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   @Override
   public NodeState getNodeState() {
     return NodeState.VMImageUpgrade;
+  }
+
+  /**
+   * An earlier attempt that left the node in this state may have deleted its node agent record,
+   * which ReplaceRootVolume does before the swap, so the stop can fail. A rerun is a first try, so
+   * the base doesn't tolerate that, but the node gets a new root volume and agent anyway.
+   */
+  @Override
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return super.isIgnoreStopError(upgradeContext, nodeDetails)
+        || nodeDetails.state == NodeState.VMImageUpgrade;
   }
 
   @Override
@@ -391,6 +407,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   private void restoreRuntimeInfoAndPrepareVolumes(
       Collection<NodeDetails> nodes, Map<String, ImageSettings> imageSettingsMap) {
+    restoreDeviceMappingsOfEarlierAttempts(nodes);
     // Restore mount-path -> UUID mappings from a prior attempt so YNPProvisioning can remount.
     runtimeInfo.deviceMappingByNode.forEach(
         (nodeUuid, mapping) ->
@@ -420,6 +437,82 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                         info.volumesCreated = true;
                       }));
     }
+  }
+
+  /**
+   * A rerun doesn't inherit the runtime info of the attempts before it, but a node they left
+   * mid-upgrade may already be on its new root volume, whose fstab has no data mounts and which the
+   * yugabyte user can't log in to before provisioning. So CaptureFstab can't run there again: reuse
+   * the mappings those attempts captured, and save them for a retry or rerun of this task.
+   */
+  private void restoreDeviceMappingsOfEarlierAttempts(Collection<NodeDetails> nodes) {
+    UUID originalTaskUUID = taskParams().getOriginalTaskUUID();
+    if (originalTaskUUID == null) {
+      return;
+    }
+    Set<UUID> nodeUuids =
+        nodes.stream()
+            .filter(n -> n.state != NodeState.Live)
+            .map(NodeDetails::getNodeUuid)
+            .filter(nodeUuid -> !runtimeInfo.deviceMappingByNode.containsKey(nodeUuid))
+            .collect(Collectors.toSet());
+    if (nodeUuids.isEmpty()) {
+      return;
+    }
+    Map<UUID, Map<String, String>> mappings = new HashMap<>();
+    for (TaskInfo attempt : getEarlierAttempts(originalTaskUUID)) {
+      JsonNode attemptRuntimeInfo = attempt.getRuntimeInfo();
+      if (attemptRuntimeInfo == null || attemptRuntimeInfo.isNull()) {
+        continue;
+      }
+      Json.fromJson(attemptRuntimeInfo, RuntimeInfo.class)
+          .deviceMappingByNode
+          .forEach(
+              (nodeUuid, mapping) -> {
+                if (nodeUuids.contains(nodeUuid)) {
+                  mappings.put(nodeUuid, mapping);
+                }
+              });
+    }
+    if (mappings.isEmpty()) {
+      return;
+    }
+    log.info("Reusing the fstab mappings captured by earlier attempts for {}", mappings.keySet());
+    runtimeInfo.deviceMappingByNode.putAll(mappings);
+    updateRuntimeInfo(RuntimeInfo.class, info -> info.deviceMappingByNode.putAll(mappings));
+  }
+
+  /**
+   * The attempts of this upgrade before this task, oldest first: the task that started the chain,
+   * and its retries and reruns, which name it as originalTaskUUID.
+   */
+  private List<TaskInfo> getEarlierAttempts(UUID originalTaskUUID) {
+    Optional<TaskInfo> original = TaskInfo.maybeGet(originalTaskUUID);
+    if (!original.isPresent()) {
+      return Collections.emptyList();
+    }
+    // customer_task is indexed by target, while a filter on task_info's params would scan.
+    Set<UUID> taskUuids =
+        CustomerTask.find
+            .query()
+            .where()
+            .eq("target_uuid", taskParams().getUniverseUUID())
+            .eq("type", CustomerTask.TaskType.VMImageUpgrade)
+            .ge("create_time", original.get().getCreateTime())
+            .findList()
+            .stream()
+            .map(CustomerTask::getTaskUUID)
+            .collect(Collectors.toCollection(HashSet::new));
+    taskUuids.add(originalTaskUUID);
+    taskUuids.remove(getUserTaskUUID());
+    String root = originalTaskUUID.toString();
+    return TaskInfo.find(taskUuids).stream()
+        .filter(
+            t ->
+                t.getUuid().equals(originalTaskUUID)
+                    || root.equals(t.getTaskParams().path("originalTaskUUID").asText()))
+        .sorted(Comparator.comparing(TaskInfo::getCreateTime))
+        .collect(Collectors.toList());
   }
 
   private Map<String, ImageSettings> getImageSettingsForNodes(Set<NodeDetails> nodes) {
