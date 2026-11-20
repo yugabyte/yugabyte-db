@@ -6844,8 +6844,8 @@ static struct config_real ConfigureNamesReal[] =
 	{
 		{"yb_parallel_setup_cost_per_relation", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Sets the planner's estimate of the cost a parallel "
-						 "worker pays to open each relation in its plan, "
-						 "charged on top of parallel_setup_cost."),
+						 "worker pays to open each table and index in its "
+						 "plan, charged on top of parallel_setup_cost."),
 			NULL,
 			GUC_EXPLAIN
 		},

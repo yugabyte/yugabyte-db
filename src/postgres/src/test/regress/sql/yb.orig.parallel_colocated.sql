@@ -263,7 +263,6 @@ SELECT count(*), max(k), min(k) FROM pctest3 WHERE k > 123;
 -- Try with parallel hints instead of setting costing GUCs.
 reset parallel_setup_cost;
 reset parallel_tuple_cost;
-reset yb_parallel_setup_cost_per_relation;
 
 -- Parallel index scan
 /*+ Parallel(pctest1 2 hard) */

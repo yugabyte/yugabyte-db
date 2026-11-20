@@ -40,15 +40,16 @@ startup_cost += parallel_setup_cost
 
 `parallel_setup_cost` is upstream's GUC with a YB default of 4080
 (`YB_DEFAULT_PARALLEL_SETUP_COST`). `yb_parallel_setup_cost_per_relation` is a
-YB GUC with a default of 120 (`YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION`),
-which is six catalog reads at the default `yb_local_roundtrip_cost` of 20. Both
-defaults are in `src/postgres/src/include/optimizer/cost.h`.
+YB GUC with a default of 60 (`YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION`),
+which is three catalog reads at the default `yb_local_roundtrip_cost` of 20.
+Both defaults are in `src/postgres/src/include/optimizer/cost.h`.
 
-`relations` is the number of base relations scanned under the Gather, counted
-by `yb_count_scan_relations()` on the Gather's subpath:
+`relations` is the number of tables and indexes scanned under the Gather,
+counted by `yb_count_scan_relations()` on the Gather's subpath:
 
-- A scan of a table counts as one relation whatever the scan type, because a
-  worker primes a table and the index it scans together.
+- A Seq Scan counts one relation, the table. An Index Scan or Index Only Scan
+  counts two, the table and the index, whichever index it is. A bitmap scan
+  counts the table and each index under it.
 - An Append or Merge Append counts the sum of its children, so a partitioned
   table counts once for each partition left after plan-time pruning.
 - A join counts both of its inputs.
@@ -65,7 +66,7 @@ Setting `yb_parallel_setup_cost_per_relation` to 0 removes the charge. The
 parallel regress tests that set `parallel_setup_cost` to 0 to force a parallel
 plan set this GUC to 0 as well. Because the charge is fixed for a given plan,
 a binary without the GUC reproduces it for a plan with a single Gather by
-setting `parallel_setup_cost` to `4080 + 120 * relations`.
+setting `parallel_setup_cost` to `4080 + 60 * relations`.
 
 The cost is charged in `startup_cost` because startup cost is neither divided
 by the parallel divisor nor reduced by LIMIT interpolation, and a rescan
@@ -80,11 +81,30 @@ fetch the worker initializes every scan node in its copy of the plan, and
 opening a relation builds a relcache entry from catalog rows the worker has to
 read. `EXPLAIN (ANALYZE, DIST)` reports these as Catalog Read Requests.
 
-For an index scan on the primary key of each of R partitions, a worker makes
-22 + 6 R catalog reads: six for each table with its primary key, and 22 that do
-not depend on R. A one-relation plan makes 25 to 30 depending on the query, and
-a scan through a secondary index made the same 27 as a scan through the primary
-key.
+A worker makes three catalog reads for each table and three for each index its
+plan opens. For an index scan on the primary key of each of R partitions that
+is 22 + 6 R reads: six for each partition with its primary key, and 22 that do
+not depend on R. A plan of one table and one index makes 25 to 30 depending on
+the query, and a scan through a secondary index made the same 27 as a scan
+through the primary key.
+
+`yb.orig.parallel_launch_estimate` in the planner estimates schedule checks
+these counts against the charge. In its harness, on the laptop on 2026-11-19:
+
+- A Seq Scan of each of R partitions made 16 + 3 R reads, and an Index Scan by
+  the primary key or by a secondary index, an Index Only Scan, and a hash join
+  of the partitions with a table each added six for each partition.
+- Unique, covering, expression and partial indexes read the same as a plain
+  index, and non-colocated, hash-partitioned and 42-column tables the same as
+  a plain table.
+- A table with a column default, a check constraint, a generated column, a
+  foreign key, a trigger or a row security policy took one more read for each
+  table, four in all. In queries of one table, the first table of such a kind
+  also added reads that a second table did not: 2 for a trigger or a foreign
+  key, and about 10 for a generated column, a policy, or a default with a
+  check constraint.
+- A worker reads the catalog only for the partitions left after pruning at
+  executor startup, five reads for each under an Index Scan.
 
 A worker opens every relation under a Parallel Append even though it scans only
 a share of them: the count per worker is the same at every worker count from 1
@@ -124,6 +144,9 @@ was under 12% in every cell on the three-node cluster and under 3% in most.
 
 Execution time in milliseconds on the three-node cluster, from a node that does
 not host the master leader:
+
+In these tables a relation is a partition scanned through its primary key,
+which the model counts as two relations.
 
 | relations | serial | 1 | 2 | 4 | 8 | 12 |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -374,7 +397,7 @@ m6i.4xlarge:
 
 | | flat | per worker | per relation | per worker per relation |
 | --- | ---: | ---: | ---: | ---: |
-| charged | 4,080 | 0 | 120 | 0 |
+| charged, for a partition with its primary key | 4,080 | 0 | 120 | 0 |
 | measured, preload flag off | 6,900 | 430 | 570 | 30 |
 | measured, preload flag on | 39,000 | 3,700 | 70 | 6 |
 
@@ -387,10 +410,15 @@ the scan type and on how many rows the scan returned, and the serial plan of
 the #36851 query at 122 to 129. At 127 the measured rows of the table are 42%
 of the figures shown.
 
-- **The per-relation default is a lower bound.** 120 prices the six reads at
-  the local round-trip cost. The measured delay is 1.8 to 2.0 ms per relation,
-  about five times that at 300 units per millisecond and about twice that at
+- **The per-relation default is a lower bound.** 60 prices the three reads of
+  a table or an index at the local round-trip cost, 120 for a partition with
+  its primary key. The measured delay is 1.8 to 2.0 ms for such a partition,
+  about five times the 120 at 300 units per millisecond and about twice at
   127.
+- **Table properties are not counted.** A table with a default, a check
+  constraint, a generated column, a foreign key, a trigger or a policy takes a
+  fourth read, and the first such table in a worker's plan takes up to about
+  10 more once.
 - **Nothing is charged per worker.** Neither the 1.4 ms per worker nor the
   0.08 to 0.11 ms per worker per relation enters the cost, so adding workers
   still lowers the cost of a plan whose launch gets slower.
@@ -406,8 +434,9 @@ of the figures shown.
   fixed delay grows with the tables in the database and, faster than linearly,
   with the functions. The model reads neither preload gflag.
 - **Partitions pruned at executor startup are counted.** The count is taken
-  after plan-time pruning only. What a worker reads for a plan that prunes at
-  executor startup was not measured.
+  after plan-time pruning only, and a worker reads the catalog only for the
+  partitions left after pruning at executor startup. A plan of 25 partitions
+  that keeps one is charged for 25.
 - **One zone only.** All nodes of the three-node cluster were in one
   availability zone. A master leader in another zone or region was not
   measured.
@@ -461,8 +490,12 @@ the defaults absorb:
 7. Measure the cost units per millisecond of serial plans on the same cluster,
    for example from an ordered scan with a storage filter under a range of
    LIMIT values, whose time is proportional to its scan's startup cost.
-8. Convert `b` to cost units at that ratio and update
-   `YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION`.
+8. Convert `b` to cost units at that ratio. With one Index Scan for each
+   partition, `b` is the delay of a table and an index together, so
+   `YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION` is half of it.
+9. Run `org.yb.pgsql.TestPgRegressPlannerEstimates`. Its
+   `yb.orig.parallel_launch_estimate` fails when a worker no longer makes three
+   catalog reads for each table and index.
 
 Changing the default moves plan choice for every query that scans more than a
 few relations in parallel, so the parallel and partition regress suites need

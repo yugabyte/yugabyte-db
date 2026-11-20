@@ -284,6 +284,7 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
 static int	yb_count_scan_relations(Path *path);
+static int	yb_count_bitmap_indexes(Path *bitmapqual);
 
 
 /*
@@ -520,9 +521,9 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 
 	/*
 	 * YB: a worker starts with empty catalog caches and builds a relcache
-	 * entry for every relation its plan opens, each a few round trips to the
-	 * master.  The workers prime concurrently, so the delay before the first
-	 * tuple grows with the relation count rather than the worker count.
+	 * entry for every table and index its plan opens, each a few round trips
+	 * to the master.  The workers prime concurrently, so the delay before the
+	 * first tuple grows with the relation count rather than the worker count.
 	 */
 	startup_cost += yb_parallel_setup_cost_per_relation *
 		yb_count_scan_relations(path->subpath);
@@ -11588,12 +11589,14 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
 
 /*
  * yb_count_scan_relations
- *	  Count the base relations the given path tree scans.
+ *	  Count the relations the given path tree scans: each table, and each
+ *	  index that a scan of the table uses.
  *
  * A parallel worker starts with empty catalog caches, so each of these costs
- * it a relcache build against the master before its first fetch.  Only the
- * partitions left after plan-time pruning are in the tree; run-time pruning
- * is not modeled.
+ * it a relcache build against the master before its first fetch.  An index
+ * is a relation of its own: a worker reads as much of the catalog for the
+ * index as for the table.  Only the partitions left after plan-time pruning
+ * are in the tree; run-time pruning is not modeled.
  */
 static int
 yb_count_scan_relations(Path *path)
@@ -11612,12 +11615,16 @@ yb_count_scan_relations(Path *path)
 				count = 1;
 			break;
 		case T_IndexPath:
-			/* The table and the index it uses are primed together. */
-			count = 1;
+			/* the table and the index */
+			count = 2;
 			break;
 		case T_BitmapHeapPath:
+			count = 1 +
+				yb_count_bitmap_indexes(((BitmapHeapPath *) path)->bitmapqual);
+			break;
 		case T_YbBitmapTablePath:
-			count = 1;
+			count = 1 +
+				yb_count_bitmap_indexes(((YbBitmapTablePath *) path)->bitmapqual);
 			break;
 		case T_TidPath:
 		case T_TidRangePath:
@@ -11676,6 +11683,32 @@ yb_count_scan_relations(Path *path)
 		default:
 			break;
 	}
+
+	return count;
+}
+
+/*
+ * yb_count_bitmap_indexes
+ *	  Count the index scans under the bitmapqual of a bitmap scan.
+ */
+static int
+yb_count_bitmap_indexes(Path *bitmapqual)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		foreach(lc, ((BitmapAndPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		foreach(lc, ((BitmapOrPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else
+		count = 1;
 
 	return count;
 }
