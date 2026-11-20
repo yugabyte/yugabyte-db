@@ -216,6 +216,7 @@ YbResetBatchFn_t
 YbRowBounds
 YbRowKey
 YbRowModification
+YbRowModificationKind
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData

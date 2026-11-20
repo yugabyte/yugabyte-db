@@ -31,6 +31,7 @@
 
 /* YB includes */
 #include "access/yb_lockrows.h"
+#include "executor/ybRowModification.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
 static bool
@@ -253,7 +254,10 @@ lnext:
 		Assert(IsYBBackedRelation(erm->relation) == yb_mode);
 		if (yb_mode)
 		{
-			if (!YbGetSkipIntentsOptimizationInfoWrite(erm->relation).skip_intents)
+			/* Where heap_lock_tuple reports TM_SelfModified */
+			if (YbIsLockedRowModified(estate, erm->relation, datum))
+				test = TM_SelfModified;
+			else if (!YbGetSkipIntentsOptimizationInfoWrite(erm->relation).skip_intents)
 				test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy, estate,
 									handle);
 			else
@@ -571,6 +575,7 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 	if (row_lock_for_yb_rel_found)
 	{
 		yb_info->are_row_marks_for_yb_rels = true;
+		YbBeginLockRows();
 
 		/*
 		 * YB: Evaluate whether the plan can use SKIP LOCKED read-ahead based on
@@ -615,6 +620,8 @@ ExecInitLockRows(LockRows *node, EState *estate, int eflags)
 void
 ExecEndLockRows(LockRowsState *node)
 {
+	if (node->yb_info.are_row_marks_for_yb_rels)
+		YbEndLockRows();
 	YbReleaseBufferedTuplestore(node);
 	/* We may have shut down EPQ already, but no harm in another call */
 	EvalPlanQualEnd(&node->lr_epqstate);

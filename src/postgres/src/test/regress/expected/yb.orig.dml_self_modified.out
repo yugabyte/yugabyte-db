@@ -308,8 +308,214 @@ SELECT * FROM sm_ioc WHERE id = 1;
 (1 row)
 
 COMMIT;
+-- Single-row UPDATE and DELETE, which do not fetch the row, act on it once
+-- too.  Writable CTEs that nothing references run after the main statement,
+-- the later one first.
+CREATE TABLE sm_single (k int PRIMARY KEY, v int, w int);
+CREATE INDEX ON sm_single (w);
+INSERT INTO sm_single VALUES (1, 0, 10), (2, 0, 20), (3, 0, 30), (4, 0, 40);
+WITH a AS (UPDATE sm_single SET v = v + 1 WHERE k = 1)
+UPDATE sm_single SET v = v + 10 WHERE k = 1;
+WITH a AS (UPDATE sm_single SET v = v + 1 WHERE k = 2),
+     b AS (UPDATE sm_single SET v = v + 10 WHERE k = 2)
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+-- The deleted row stays deleted.
+WITH a AS (UPDATE sm_single SET v = 7 WHERE k = 3)
+DELETE FROM sm_single WHERE k = 3;
+-- The moved row is not left behind.
+WITH a AS (UPDATE sm_single SET v = 7 WHERE k = 4)
+UPDATE sm_single SET k = 14 WHERE k = 4;
+SELECT * FROM sm_single ORDER BY k;
+ k  | v  | w  
+----+----+----
+  1 | 10 | 10
+  2 | 10 | 20
+ 14 |  0 | 40
+(3 rows)
+
+SET enable_seqscan = off;
+SELECT k FROM sm_single WHERE w > 0 ORDER BY k;
+ k  
+----
+  1
+  2
+ 14
+(3 rows)
+
+RESET enable_seqscan;
+-- A row the statement inserted is invisible to its single-row UPDATE.
+WITH i AS (INSERT INTO sm_single VALUES (5, 0, 50))
+UPDATE sm_single SET v = 99 WHERE k = 5;
+SELECT * FROM sm_single WHERE k = 5;
+ k | v | w  
+---+---+----
+ 5 | 0 | 50
+(1 row)
+
+-- A volatile function that updates the row being updated.
+CREATE FUNCTION sm_single_bump(int) RETURNS int LANGUAGE sql VOLATILE AS
+  $$ UPDATE sm_single SET v = v + 100 WHERE k = $1 RETURNING v $$;
+UPDATE sm_single SET v = sm_single_bump(1) WHERE k = 1;
+ERROR:  tuple to be updated was already modified by an operation triggered by the current command
+HINT:  Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.
+SELECT * FROM sm_single WHERE k = 1;
+ k | v  | w  
+---+----+----
+ 1 | 10 | 10
+(1 row)
+
+-- ON CONFLICT DO UPDATE cannot update a row that another node of the command
+-- or a BEFORE trigger inserted.
+WITH i AS (INSERT INTO sm_ioc VALUES (10, 0) RETURNING id)
+INSERT INTO sm_ioc SELECT id, 1 FROM i ON CONFLICT (id) DO UPDATE SET v = 99;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+WITH i AS (INSERT INTO sm_ioc VALUES (11, 0) ON CONFLICT DO NOTHING RETURNING id)
+INSERT INTO sm_ioc SELECT id, 1 FROM i ON CONFLICT (id) DO UPDATE SET v = 99;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+WITH c AS (INSERT INTO sm_ioc VALUES (12, 0) ON CONFLICT (id) DO UPDATE SET v = 99)
+INSERT INTO sm_ioc VALUES (12, 0);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+CREATE FUNCTION sm_ioc_pre() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF pg_trigger_depth() = 1 THEN
+    INSERT INTO sm_ioc VALUES (NEW.id, -100);
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER sm_ioc_pre BEFORE INSERT ON sm_ioc
+  FOR EACH ROW EXECUTE FUNCTION sm_ioc_pre();
+INSERT INTO sm_ioc VALUES (13, 1) ON CONFLICT (id) DO UPDATE SET v = 1;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+INSERT INTO sm_ioc VALUES (14, 1) ON CONFLICT (id) DO NOTHING;
+DROP TRIGGER sm_ioc_pre ON sm_ioc;
+SELECT * FROM sm_ioc WHERE id >= 10 ORDER BY id;
+ id |  v   
+----+------
+ 14 | -100
+(1 row)
+
+-- A statement inserting into a partitioned table conflicts with the row
+-- another node inserted into its partition.
+CREATE TABLE sm_part (id int PRIMARY KEY, v int) PARTITION BY RANGE (id);
+CREATE TABLE sm_part1 PARTITION OF sm_part FOR VALUES FROM (0) TO (10);
+WITH i AS (INSERT INTO sm_part1 VALUES (1, 0) RETURNING id)
+INSERT INTO sm_part SELECT id, 1 FROM i ON CONFLICT (id) DO UPDATE SET v = 99;
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
+-- A row lock skips a row that its command or a later one modified.
+CREATE TABLE sm_lock (k int PRIMARY KEY, v int);
+INSERT INTO sm_lock SELECT g, 0 FROM generate_series(1, 30) g;
+WITH u AS (UPDATE sm_lock SET v = 1 WHERE k = 1 RETURNING k)
+SELECT t.k, t.v, (SELECT count(*) FROM u) AS updated FROM sm_lock t
+  WHERE t.k = 1 FOR UPDATE OF t;
+ k | v | updated 
+---+---+---------
+(0 rows)
+
+SELECT * FROM sm_lock WHERE k = 1;
+ k | v 
+---+---
+ 1 | 1
+(1 row)
+
+CREATE FUNCTION sm_lock_loop() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r record; n int := 0;
+BEGIN
+  FOR r IN SELECT k FROM sm_lock WHERE k <= 20 ORDER BY k FOR UPDATE LOOP
+    UPDATE sm_lock SET v = v + 10 WHERE k = r.k + 1;
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END $$;
+BEGIN;
+SELECT sm_lock_loop();
+ sm_lock_loop 
+--------------
+           19
+(1 row)
+
+SELECT k, v FROM sm_lock WHERE k BETWEEN 10 AND 13 ORDER BY k;
+ k  | v  
+----+----
+ 10 | 10
+ 11 | 10
+ 12 |  0
+ 13 | 10
+(4 rows)
+
+ROLLBACK;
+BEGIN;
+DECLARE sm_lock_cur CURSOR FOR SELECT k FROM sm_lock WHERE k <= 5 ORDER BY k FOR UPDATE;
+FETCH sm_lock_cur;
+ k 
+---
+ 1
+(1 row)
+
+UPDATE sm_lock SET v = 5 WHERE k = 2;
+DELETE FROM sm_lock WHERE k = 3;
+FETCH ALL FROM sm_lock_cur;
+ k 
+---
+ 4
+ 5
+(2 rows)
+
+-- Rows modified before the cursor opened are locked.
+DECLARE sm_lock_cur2 CURSOR FOR SELECT k FROM sm_lock WHERE k <= 5 ORDER BY k FOR UPDATE;
+FETCH ALL FROM sm_lock_cur2;
+ k 
+---
+ 1
+ 2
+ 4
+ 5
+(4 rows)
+
+COMMIT;
+-- An UPDATE ... FROM whose target is the inner side of a join with repeated
+-- matches updates each row once.
+CREATE TABLE sm_small (k int PRIMARY KEY, v int);
+CREATE TABLE sm_many (k int, x int);
+INSERT INTO sm_small VALUES (1, 0), (2, 0);
+INSERT INTO sm_many SELECT g % 2 + 1, g FROM generate_series(1, 1000) g;
+ANALYZE sm_small, sm_many;
+SET enable_mergejoin = off;
+SET enable_nestloop = off;
+EXPLAIN (COSTS OFF) UPDATE sm_small SET v = sm_small.v + 1 FROM sm_many
+  WHERE sm_small.k = sm_many.k;
+                 QUERY PLAN                  
+---------------------------------------------
+ Update on sm_small
+   ->  Hash Join
+         Hash Cond: (sm_many.k = sm_small.k)
+         ->  Seq Scan on sm_many
+         ->  Hash
+               ->  Seq Scan on sm_small
+(6 rows)
+
+UPDATE sm_small SET v = sm_small.v + 1 FROM sm_many WHERE sm_small.k = sm_many.k;
+SELECT * FROM sm_small ORDER BY k;
+ k | v 
+---+---
+ 1 | 1
+ 2 | 1
+(2 rows)
+
+RESET enable_mergejoin;
+RESET enable_nestloop;
 DROP TABLE sm_target, sm_src, sm_inh, sm_trig, sm_parent, sm_child, sm_cte,
-  sm_bt, sm_ioc CASCADE;
+  sm_bt, sm_ioc, sm_single, sm_part, sm_lock, sm_small, sm_many CASCADE;
 NOTICE:  drop cascades to table sm_inh_child
 DROP FUNCTION sm_log(), sm_log_transition(), sm_skip_large(), sm_bt_touch(),
-  sm_bump(int), sm_bt_touch_and_fail();
+  sm_bump(int), sm_bt_touch_and_fail(), sm_single_bump(int), sm_ioc_pre(),
+  sm_lock_loop();

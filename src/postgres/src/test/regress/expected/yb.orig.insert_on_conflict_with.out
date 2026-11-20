@@ -61,51 +61,19 @@ BEGIN;
 WITH w(i) AS (
     INSERT INTO with_a VALUES (generate_series(6, 11)) ON CONFLICT (i) DO NOTHING RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 TABLE with_a;
- i  
-----
- 22
- 21
- 15
- 14
- 13
- 12
-  9
-  8
-  7
-  6
-  5
-  4
-  3
-  2
-  1
-(15 rows)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ABORT;
 BEGIN;
 WITH w(i) AS (
     INSERT INTO with_a VALUES (11) RETURNING i
 ) INSERT INTO with_a VALUES (generate_series(10, 15)) ON CONFLICT (i) DO UPDATE SET i = EXCLUDED.i + (SELECT i FROM w);
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 TABLE with_a;
- i  
-----
- 22
- 21
- 15
- 14
- 13
- 12
-  9
-  8
-  7
-  6
-  5
-  4
-  3
-  2
-  1
-(15 rows)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ABORT;
 BEGIN;
 WITH w(i) AS (

@@ -333,24 +333,10 @@ WITH w AS (
     INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{2, 44, 66, 8, 1111}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + 10 RETURNING i, p
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 1, 4, 6, 2}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
 NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1 count=4
-NOTICE:  parttrigtrig_insert8 parttrigtab_odd BEFORE INSERT i=1111 count=7
+ERROR:  ON CONFLICT DO UPDATE command cannot affect row a second time
+HINT:  Ensure that no rows proposed for insertion within the same command have duplicate constrained values.
 SELECT * FROM parttrigtab_parent ORDER BY i;
-  i   | p 
-------+---
-    0 | f
-    2 | f
-    3 | t
-    4 | f
-    6 | f
-    8 | f
-   12 | f
-   18 | f
-   44 | f
-   66 | f
- 1001 | t
- 1111 | t
-(12 rows)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ABORT;
 -- Value that has both BEFORE ROW trigger and triggers WITH statement through
 -- ON CONFLICT DO UPDATE.  If not for global tracking of inserted keys, this
