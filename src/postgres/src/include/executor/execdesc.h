@@ -57,14 +57,11 @@ typedef struct QueryDesc
 	struct Instrumentation *query_instr;	/* query level instrumentation */
 
 	/*
-	 * YB_TODO_PG19MERGE: PG removed totaltime, added query_instr. Verify
-	 * if the YB comment below is still accurate and if any other changes are
-	 * needed.
-	 */
-	/*
-	 * YB: An additional instrumentation field to collect async RPC stats. This
-	 * needs to be a separate field because its life cycle is distinct from
-	 * that of 'totaltime'.
+	 * YB: Query-level DocDB RPC stats, accumulated at the end of each
+	 * top-level ExecutorRun and ExecutorFinish.  This is separate from
+	 * query_instr because query_instr is allocated only when
+	 * query_instr_options requests it, while these stats are needed for every
+	 * query, and because a plain Instrumentation has no yb_instr.
 	 */
 	struct NodeInstrumentation *yb_query_stats;
 
