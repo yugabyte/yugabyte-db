@@ -2865,7 +2865,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Lock protecting state_, leader_ready_term_
   mutable simple_spinlock state_lock_;
-  State state_ GUARDED_BY(state_lock_);
+  std::atomic<State> state_ GUARDED_BY(state_lock_);
+
+  // Lock-free read of state_; writers hold state_lock_.
+  State StateNoLock() const NO_THREAD_SAFETY_ANALYSIS { return state_.load(); }
 
   // Used to defer Master<->TabletServer work from reactor threads onto a thread where
   // blocking behavior is permissible.

@@ -723,7 +723,7 @@ TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   ASSERT_NO_FATALS(check_all_masters(leader));
 
-  // The mini cluster's simulated network puts the only tserver in the same group as the first two
+  // The mini cluster's simulated network puts the only TServer in the same group as the first two
   // masters; a leader elsewhere cannot reach it, and teardown's cluster check would then time out.
   auto* successor = cluster_->mini_master(leader == cluster_->mini_master(0) ? 1 : 0);
   {

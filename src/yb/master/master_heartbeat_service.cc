@@ -452,7 +452,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
 
   consensus::ConsensusStatePB cpb;
   Status s;
-  // The locked config read runs only for a tserver whose config index is behind.
+  // The locked config read runs only for a TServer whose config index is behind.
   auto config_index = catalog_manager_->GetCommittedConfigIndex();
   if (!config_index.ok() || *config_index > req->config_index()) {
     s = catalog_manager_->GetCurrentConfig(&cpb);

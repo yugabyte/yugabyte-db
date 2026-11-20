@@ -1190,7 +1190,7 @@ CatalogManager::~CatalogManager() {
 Status CatalogManager::Init() {
   {
     std::lock_guard l(state_lock_);
-    CHECK_EQ(kConstructed, state_);
+    CHECK_EQ(kConstructed, state_.load());
     state_ = kStarting;
   }
 
@@ -1242,7 +1242,7 @@ Status CatalogManager::Init() {
 
   {
     std::lock_guard l(state_lock_);
-    CHECK_EQ(kStarting, state_);
+    CHECK_EQ(kStarting, state_.load());
     state_ = kRunning;
   }
 
@@ -2313,7 +2313,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     std::lock_guard l(state_lock_);
     if (PREDICT_FALSE(state_ != kRunning)) {
       return STATUS_FORMAT(ServiceUnavailable,
-          "Catalog manager is shutting down. State: $0", state_);
+          "Catalog manager is shutting down. State: $0", state_.load());
     }
   }
 
@@ -2343,6 +2343,12 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
 
 Status CatalogManager::CheckLeaderRoleAndReadyTerm() const {
   AssertLeaderLockAcquiredForReading();
+  const auto state = StateNoLock();
+  if (PREDICT_FALSE(state != kRunning)) {
+    return STATUS_FORMAT(ServiceUnavailable,
+        "Catalog manager is shutting down. State: $0", state);
+  }
+
   const auto [role, term] = VERIFY_RESULT(tablet_peer()->GetRaftConsensus())->GetRoleAndTerm();
   if (PREDICT_FALSE(role != PeerRole::LEADER)) {
     return STATUS_FORMAT(

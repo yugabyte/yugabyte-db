@@ -91,7 +91,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     std::lock_guard l(catalog_->state_lock_);
     if (PREDICT_FALSE(catalog_->state_ != CatalogManager::kRunning)) {
       catalog_status_ = STATUS_FORMAT(ServiceUnavailable,
-          "Catalog manager is not initialized. State: $0", catalog_->state_);
+          "Catalog manager is not initialized. State: $0", catalog_->state_.load());
       return;
     }
     epoch_.pitr_count = catalog_->sys_catalog_->pitr_count();
