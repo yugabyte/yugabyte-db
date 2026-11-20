@@ -2387,6 +2387,28 @@ TEST_F(PgObjectLocksTestSlowHeartbeat, GlobalDdlSeesEarlierDdlInSeparateTxn) {
       " ORDER BY attnum")), "k, 1; v, 2; c1, 3; c2, 4");
 }
 
+// The propagation wait is only for a DDL in a separate DDL transaction. A DDL with global object
+// locks needs none: the release of its global locks carries the new catalog versions. So with the
+// wait set, a DDL with global object locks still finishes well within it.
+TEST_F(PgObjectLocksTestSlowHeartbeat, GlobalDdlDoesNotWaitForPropagation) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+  }
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
+  auto global_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  const auto start = MonoTime::Now();
+  ASSERT_OK(global_conn.Execute("ALTER TABLE t ADD COLUMN c INT"));
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "ALTER with global object locks took " << elapsed;
+  // The fixture's wait is 6 s.
+  ASSERT_LT(elapsed, MonoDelta::FromSeconds(3 * kTimeMultiplier));
+}
+
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).
 //
 // Neither flag is a runtime flag, so each takes a rolling restart. In the first,
