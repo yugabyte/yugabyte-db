@@ -432,12 +432,12 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
 
   getRegionListDiff = (placementInfo: Cluster['placementInfo']) => {
     return placementInfo?.cloudList?.map((cloud) => {
-      return cloud.regionList.map((region) => {
+      return (cloud.regionList ?? []).map((region) => {
         return (
           <Box display="flex" key={region.code} mt={1} flexDirection="column">
             <Typography variant="h5">{region.code}</Typography>
             <Box pl={2}>
-              {region.azList.map((az) => (
+              {(region.azList ?? []).map((az) => (
                 <Typography key={az.name} variant="body2">
                   {az.name} - {az.numNodesInAZ ?? '---'} node
                 </Typography>

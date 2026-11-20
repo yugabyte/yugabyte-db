@@ -87,9 +87,12 @@ export const withDefaultClusterType = (
 
 const IDENTITY_FIELDS = ['clusterType', 'code', 'name', 'uuid'];
 
+const UNVERIFIABLE_FIELDS = ['masterGFlags', 'tserverGFlags', 'specificGFlags'];
+
 // How many of the values the delta element changed to the payload element has, or null if one
-// differs. A value the payload lacks cannot be checked (the taskDiff is taken from the task params at
-// freeze, which have fields the request does not, e.g. masterMoveStage), so it counts for nothing.
+// differs. The taskDiff is taken from the task params at freeze, not the request, so a value or list
+// the payload lacks (e.g. masterMoveStage) counts for nothing, and so do the gflag fields, which a
+// task rewrites with the effective flags.
 const matchScore = (delta: any, payload: any, side: 'old' | 'new' = 'new'): number | null => {
   if (isDeltaNode(delta)) {
     const missing = side === 'new' ? 'DELETE' : 'ADD';
@@ -103,6 +106,7 @@ const matchScore = (delta: any, payload: any, side: 'old' | 'new' = 'new'): numb
     let total = 0;
     for (const d of delta) {
       if (isDeltaNode(d) && d.$deltaType === (side === 'new' ? 'DELETE' : 'ADD')) continue;
+      if (payload === undefined) return 0;
       const scores = (Array.isArray(payload) ? payload : [])
         .map((p) => matchScore(d, p, side))
         .filter((score): score is number => score !== null);
@@ -114,6 +118,7 @@ const matchScore = (delta: any, payload: any, side: 'old' | 'new' = 'new'): numb
   if (typeof delta === 'object' && delta !== null) {
     let total = 0;
     for (const [key, value] of Object.entries(delta)) {
+      if (UNVERIFIABLE_FIELDS.includes(key)) continue;
       const score = matchScore(value, payload?.[key], side);
       if (score === null) return null;
       total += score;
@@ -126,9 +131,10 @@ const matchScore = (delta: any, payload: any, side: 'old' | 'new' = 'new'): numb
 
 /**
  * The taskDiff drops the identity fields (clusterType, code, name, uuid) of a modified list
- * element, e.g. the AZ whose leader preference changed. The audit payload has the full details after
- * the task, so take them from it: the modified elements are a subsequence of the payload's list, so
- * match them in order by the values they changed to.
+ * element, e.g. the AZ whose leader preference changed. The audit payload is the request, which
+ * has the full details, so take them from it. Modified AZs, regions and clouds keep their order in
+ * the request, so they are matched in order by the values they changed to. Clusters are not: the
+ * request can list them in any order, so each one is matched on its own.
  */
 export const withIdentityFromPayload = (
   taskDiff: any,
@@ -146,7 +152,7 @@ export const withIdentityFromPayload = (
         return element;
       }
       const scored = payload
-        .map((p, i) => ({ i, score: i >= cursor ? matchScore(element, p) : null }))
+        .map((p, i) => ({ i, score: isClusters || i >= cursor ? matchScore(element, p) : null }))
         .filter(({ score }) => score !== null && score >= 1) as { i: number; score: number }[];
       const best = Math.max(0, ...scored.map(({ score }) => score));
       let candidates = scored.filter(({ score }) => score === best);
@@ -166,7 +172,7 @@ export const withIdentityFromPayload = (
         return element;
       }
       const index = candidates[0].i;
-      cursor = index + 1;
+      if (!isClusters) cursor = index + 1;
       const identity = pick(payload[index], IDENTITY_FIELDS);
       return {
         ...identity,
@@ -205,5 +211,32 @@ export const withUnchangedIntentFromPayload = (taskDiff: any, payload: any): any
       const restored = pick(source?.userIntent, ['dedicatedNodes', 'providerType']);
       return { ...cluster, userIntent: { ...restored, ...userIntent } };
     })
+  };
+};
+
+/**
+ * An edit that submits only the read replica (Cluster target) has no primary in the task params, so
+ * the delta marks the primary as deleted. It was not removed: drop that node.
+ */
+export const withoutDeletedPrimary = (taskDiff: any, payload: any): any => {
+  const clusters = taskDiff?.clusters;
+  const payloadClusters = payload?.clusters;
+  if (
+    !Array.isArray(clusters) ||
+    !Array.isArray(payloadClusters) ||
+    payloadClusters.some((c) => c?.clusterType === 'PRIMARY')
+  ) {
+    return taskDiff;
+  }
+  return {
+    ...taskDiff,
+    clusters: clusters.filter(
+      (c) =>
+        !(
+          isDeltaNode(c) &&
+          c.$deltaType === 'DELETE' &&
+          (c.$oldValue as any)?.clusterType === 'PRIMARY'
+        )
+    )
   };
 };

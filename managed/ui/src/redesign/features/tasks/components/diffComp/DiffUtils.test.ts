@@ -64,14 +64,13 @@ describe('getGFlagDiffs without a delta', () => {
 });
 
 describe('getGFlagDiffs from the delta only', () => {
-  it('does not list a legacy flag that moved into specificGFlags with the same value', () => {
+  it('does not list a flag that moved from masterGFlags into specificGFlags unchanged', () => {
     const cluster = (userIntent: unknown) => ({
       clusters: [{ clusterType: 'PRIMARY', userIntent }]
     });
     const before = cluster({ masterGFlags: { a: '1' } });
     const after = cluster({
-      masterGFlags: { a: '1' },
-      specificGFlags: { perProcessFlags: { value: { MASTER: { b: '2' } } } }
+      specificGFlags: { perProcessFlags: { value: { MASTER: { a: '1', b: '2' } } } }
     });
     expect(getGFlagDiffs(before, after).master).toEqual([
       { name: 'b', old: null, new: '2', default: '' }

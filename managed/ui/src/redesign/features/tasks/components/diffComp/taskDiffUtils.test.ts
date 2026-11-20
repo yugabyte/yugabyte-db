@@ -4,6 +4,7 @@ import {
   withDefaultClusterType,
   withIdentityFromPayload,
   withUnchangedIntentFromPayload,
+  withoutDeletedPrimary,
   isDeltaNode
 } from './taskDiffUtils';
 
@@ -278,5 +279,60 @@ describe('identity with task-internal fields', () => {
     const payload = { clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }] };
     const out = withDefaultClusterType({ clusters: [{ a: 1 }] }, payload);
     expect(out.clusters[0].clusterType).toBeUndefined();
+  });
+});
+
+describe('withoutDeletedPrimary', () => {
+  const deleted = { $deltaType: 'DELETE', $oldValue: { clusterType: 'PRIMARY', uuid: 'p' } };
+  const rr = { userIntent: { x: 1 } };
+  it('drops the deleted primary when the payload has no primary', () => {
+    const out = withoutDeletedPrimary(
+      { clusters: [deleted, rr] },
+      { clusters: [{ clusterType: 'ASYNC' }] }
+    );
+    expect(out.clusters).toEqual([rr]);
+  });
+  it('keeps it when the payload has a primary', () => {
+    const diff = { clusters: [deleted] };
+    expect(
+      withoutDeletedPrimary(diff, {
+        clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }]
+      })
+    ).toBe(diff);
+  });
+});
+
+describe('cluster identity when the payload lists the read replica first', () => {
+  it('matches each cluster on its own', () => {
+    const d = (o: number, n: number) => ({
+      userIntent: { volume: { $deltaType: 'REPLACE', $oldValue: o, $newValue: n } }
+    });
+    const out = withIdentityFromPayload(
+      { clusters: [d(1, 2), d(3, 4)] },
+      {
+        clusters: [
+          { clusterType: 'ASYNC', uuid: 'r', userIntent: { volume: 4 } },
+          { clusterType: 'PRIMARY', uuid: 'p', userIntent: { volume: 2 } }
+        ]
+      }
+    );
+    expect(out.clusters.map((c: any) => c.clusterType)).toEqual(['PRIMARY', 'ASYNC']);
+  });
+
+  it('ignores gflag fields the task rewrites', () => {
+    const diff = {
+      clusters: [
+        {
+          userIntent: {
+            masterGFlags: { $deltaType: 'REPLACE', $oldValue: { a: '1' }, $newValue: { a: '2' } },
+            numNodes: { $deltaType: 'REPLACE', $oldValue: 3, $newValue: 4 }
+          }
+        }
+      ]
+    };
+    const out = withIdentityFromPayload(diff, {
+      clusters: [{ clusterType: 'PRIMARY', userIntent: { masterGFlags: { a: '1' }, numNodes: 4 } }]
+    });
+    expect(out.clusters[0].clusterType).toBe('PRIMARY');
   });
 });

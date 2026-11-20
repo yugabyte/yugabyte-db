@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { isEmpty } from 'lodash';
 import { toast } from 'react-toastify';
 import { YBModal } from '../../../components';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
@@ -37,7 +38,11 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   const [differ, setDiffer] = useState<BaseDiff<DiffComponentProps, any> | null>(null);
   // we need to check if this task is a retried tasks
   // if it is, we need to get the previous task details
-  const { data: taskDetails, isSuccess, isLoading: isSubTaskDetailsLoading } = useQuery(
+  const {
+    data: taskDetails,
+    isSuccess,
+    isLoading: isSubTaskDetailsLoading
+  } = useQuery(
     ['subTasks-parent', currentTask!.id!],
     () => fetchRootSubTaskDetails(currentTask!.id!, currentTask!.targetUUID),
     {
@@ -66,11 +71,22 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     currentTask?.target === TargetType.UNIVERSE && currentTask?.type === TaskType.SOFTWARE_UPGRADE;
 
   // SoftwareUpgradeDiff reads task.details, not the diff data, so it renders without an audit row.
+  // A retry records its taskDiff on its own audit row. Use it when the root row has none, e.g. the
+  // first attempt failed a precheck before the freeze.
+  const retryAuditNeeded =
+    !!auditData && isEmpty(auditData.taskDiff) && auditData.taskUUID !== currentTask?.id;
+  const { data: retryAuditData, isLoading: isRetryAuditLoading } = useQuery(
+    ['auditData-retry', currentTask?.id],
+    () => getAuditLog(currentTask!.id!),
+    { enabled: !!currentTask && visible && retryAuditNeeded, select: (data) => data.data }
+  );
+  const diffAuditData = isEmpty(auditData?.taskDiff) && retryAuditData ? retryAuditData : auditData;
+
   const taskDiffDetails = useMemo(
     () =>
-      mapAuditLogToTaskDiffApiResp(auditData) ??
+      mapAuditLogToTaskDiffApiResp(diffAuditData) ??
       (isSoftwareUpgrade ? { beforeData: {}, afterData: {}, uuid: '', parentUuid: '' } : undefined),
-    [auditData, isSoftwareUpgrade]
+    [diffAuditData, isSoftwareUpgrade]
   );
 
   useEffect(() => {
@@ -114,7 +130,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     return null;
   }
 
-  if (isSubTaskDetailsLoading || isAuditQueryLoading) {
+  if (isSubTaskDetailsLoading || isAuditQueryLoading || (retryAuditNeeded && isRetryAuditLoading)) {
     return (
       <div style={{ position: 'absolute', top: '30%', left: '50%' }}>
         <YBLoadingCircleIcon />

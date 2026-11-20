@@ -23,6 +23,7 @@ import {
   getTaskDiffValue,
   withDefaultClusterType,
   withUnchangedIntentFromPayload,
+  withoutDeletedPrimary,
   withIdentityFromPayload
 } from './components/diffComp/taskDiffUtils';
 import {
@@ -111,7 +112,7 @@ export const mapAuditLogToTaskDiffApiResp = (
   const taskDiff = withUnchangedIntentFromPayload(
     withDefaultClusterType(
       withIdentityFromPayload(
-        auditLog.taskDiff,
+        withoutDeletedPrimary(auditLog.taskDiff, auditLog.payload),
         auditLog.payload,
         (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
       ),
