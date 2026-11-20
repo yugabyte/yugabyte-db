@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -20,8 +21,12 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
 
@@ -108,33 +113,64 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
     cluster.userIntent.getManagedLoadBalancer().setEnablePublic(true);
 
     PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                ManagedLoadBalancerUtil.validateNewCluster(
-                    cluster,
-                    cluster,
-                    app.injector().instanceOf(RuntimeConfGetter.class),
-                    mockCloudAPIFactory));
+        assertThrows(PlatformServiceException.class, () -> validateNew(cluster, List.of(cluster)));
 
     assertEquals("Public load balancers are not supported yet", e.getMessage());
     cluster.userIntent.getManagedLoadBalancer().setEnablePrivate(false);
     assertEquals(List.of(), ManagedLoadBalancerUtil.planLoadBalancers(cluster, null));
   }
 
+  @Test
+  public void testReadReplicaCanHaveAManagedLoadBalancerButAnAddonClusterCannot() {
+    Cluster readReplica = cluster(ClusterType.ASYNC, true, null);
+    Cluster addon = cluster(ClusterType.ADDON, true, null);
+
+    validateNew(readReplica, List.of(cluster(ClusterType.PRIMARY, false, null), readReplica));
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> validateNew(addon, List.of(addon)));
+
+    assertEquals(
+        "A managed load balancer is available only for the primary and read replica clusters",
+        e.getMessage());
+  }
+
+  private void validateNew(Cluster cluster, List<Cluster> clusters) {
+    ManagedLoadBalancerUtil.validateNewCluster(
+        cluster, clusters, app.injector().instanceOf(RuntimeConfGetter.class), mockCloudAPIFactory);
+  }
+
   private Universe universe;
 
-  private void validateEdit(Cluster current, Cluster updated) {
+  // The universe holds the saved clusters; the edit changes some of them into the edited ones.
+  private void validateEdit(List<Cluster> saved, List<Cluster> edited) {
     if (universe == null) {
       universe = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
     }
-    ManagedLoadBalancerUtil.validateEditedCluster(
-        universe,
-        updated,
-        current,
-        updated,
-        app.injector().instanceOf(RuntimeConfGetter.class),
-        mockCloudAPIFactory);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.clusters = new ArrayList<>(saved);
+              u.setUniverseDetails(details);
+            });
+    Map<UUID, Cluster> clustersAfterEdit = new LinkedHashMap<>();
+    saved.forEach(c -> clustersAfterEdit.put(c.uuid, c));
+    edited.forEach(c -> clustersAfterEdit.put(c.uuid, c));
+    for (Cluster updated : edited) {
+      ManagedLoadBalancerUtil.validateEditedCluster(
+          universe,
+          clustersAfterEdit.values(),
+          universe.getCluster(updated.uuid),
+          updated,
+          app.injector().instanceOf(RuntimeConfGetter.class),
+          mockCloudAPIFactory);
+    }
+  }
+
+  private void validateEdit(Cluster current, Cluster updated) {
+    updated.uuid = current.uuid;
+    validateEdit(List.of(current), List.of(updated));
   }
 
   @Test
@@ -195,19 +231,136 @@ public class ManagedLoadBalancerUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUniverseWithManagedLoadBalancerRejectsLbNameOnEveryCluster() {
+  public void testAnyManagedClusterKeepsLbNameOffEveryCluster() {
     Cluster managedPrimary = cluster(ClusterType.PRIMARY, true, null);
-    Cluster primaryWithLbName = cluster(ClusterType.PRIMARY, true, "byo-lb");
+    Cluster managedPrimaryWithLbName = cluster(ClusterType.PRIMARY, true, "byo-lb");
+    Cluster primaryWithLbName = cluster(ClusterType.PRIMARY, false, "byo-lb");
+    Cluster managedReadReplica = cluster(ClusterType.ASYNC, true, null);
+    Cluster readReplicaWithLbName = cluster(ClusterType.ASYNC, false, "rr-lb");
+
+    // Create: a managed cluster's own zones, and the other cluster's.
+    assertThrows(
+        PlatformServiceException.class,
+        () -> validateNew(managedPrimaryWithLbName, List.of(managedPrimaryWithLbName)));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> validateNew(managedReadReplica, List.of(primaryWithLbName, managedReadReplica)));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> validateNew(managedPrimary, List.of(managedPrimary, readReplicaWithLbName)));
+    // UpdateLoadBalancerConfig on a universe whose read replica is managed.
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            ManagedLoadBalancerUtil.validateNoLbNames(
+                List.of(cluster(ClusterType.PRIMARY, false, null), managedReadReplica),
+                primaryWithLbName));
+    // An edit that names a load balancer on the primary of a universe with a managed read replica.
+    Cluster primary = cluster(ClusterType.PRIMARY, false, null);
+    Cluster editedPrimary = cluster(ClusterType.PRIMARY, false, "byo-lb");
+    editedPrimary.uuid = primary.uuid;
+    assertThrows(
+        PlatformServiceException.class,
+        () -> validateEdit(List.of(primary, managedReadReplica), List.of(editedPrimary)));
+    // A universe without managed load balancers keeps using its own.
+    validateNew(readReplicaWithLbName, List.of(primaryWithLbName, readReplicaWithLbName));
+  }
+
+  @Test
+  public void testTakeoverOfBothClustersNeedsOneEditThatTurnsOnBoth() {
+    Cluster primary = cluster(ClusterType.PRIMARY, false, "byo-lb");
     Cluster readReplica = cluster(ClusterType.ASYNC, false, "rr-lb");
+    Cluster managedPrimary = cluster(ClusterType.PRIMARY, true, "byo-lb");
+    managedPrimary.uuid = primary.uuid;
+    Cluster managedReadReplica = cluster(ClusterType.ASYNC, true, "rr-lb");
+    managedReadReplica.uuid = readReplica.uuid;
+
+    validateEdit(List.of(primary, readReplica), List.of(managedPrimary, managedReadReplica));
+    // Out of scope: one cluster at a time, as v1 edits do, mixes the two kinds.
+    assertThrows(
+        PlatformServiceException.class,
+        () -> validateEdit(List.of(primary, readReplica), List.of(managedPrimary)));
+  }
+
+  private void saveLoadBalancer(Cluster cluster, UUID regionUuid, String name) {
+    universe = ModelFactory.createUniverse(ModelFactory.testCustomer().getId());
+    ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+    state.put(
+        new ManagedLoadBalancer(
+            cluster.uuid, regionUuid, ManagedLoadBalancer.Scheme.PRIVATE, List.of(), name, null));
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.setManagedLoadBalancerState(state);
+              u.setUniverseDetails(details);
+            });
+  }
+
+  // Deleting either cluster would delete a load balancer that both have.
+  @Test
+  public void testTwoClustersCannotTakeOverOneLoadBalancer() {
+    Cluster primary = cluster(ClusterType.PRIMARY, false, "shared-lb");
+    Cluster readReplica = cluster(ClusterType.ASYNC, false, "shared-lb");
+    Cluster managedPrimary = cluster(ClusterType.PRIMARY, true, "shared-lb");
+    managedPrimary.uuid = primary.uuid;
+    Cluster managedReadReplica = cluster(ClusterType.ASYNC, true, "shared-lb");
+    managedReadReplica.uuid = readReplica.uuid;
+    Cluster readReplicaWithoutLb = cluster(ClusterType.ASYNC, false, null);
+    readReplicaWithoutLb.uuid = readReplica.uuid;
+
+    PlatformServiceException shared =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                validateEdit(
+                    List.of(primary, readReplica), List.of(managedPrimary, managedReadReplica)));
+    // One cluster takes it over, and the other leaves it in the same edit.
+    validateEdit(List.of(primary, readReplica), List.of(managedPrimary, readReplicaWithoutLb));
+
+    assertEquals(
+        "Another cluster of the universe has load balancer shared-lb, so this cluster can't take"
+            + " it over",
+        shared.getMessage());
+  }
+
+  @Test
+  public void testReadReplicaCannotTakeOverThePrimarysManagedLoadBalancer() {
+    Cluster managedPrimary = cluster(ClusterType.PRIMARY, true, null);
+    UUID regionUuid = UUID.randomUUID();
+    Cluster readReplica = cluster(ClusterType.ASYNC, false, null);
+    readReplica.placementInfo.cloudList.get(0).regionList.get(0).uuid = regionUuid;
+    Cluster takeover = cluster(ClusterType.ASYNC, true, "lbi-primary");
+    takeover.uuid = readReplica.uuid;
+    takeover.placementInfo.cloudList.get(0).regionList.get(0).uuid = regionUuid;
+    saveLoadBalancer(managedPrimary, regionUuid, "lbi-primary");
 
     assertThrows(
         PlatformServiceException.class,
-        () -> ManagedLoadBalancerUtil.validateNoLbNames(primaryWithLbName, primaryWithLbName));
-    assertThrows(
-        PlatformServiceException.class,
-        () -> ManagedLoadBalancerUtil.validateNoLbNames(managedPrimary, readReplica));
-    // A universe without managed load balancers keeps using its own.
-    ManagedLoadBalancerUtil.validateNoLbNames(
-        cluster(ClusterType.PRIMARY, false, null), readReplica);
+        () -> validateEdit(List.of(managedPrimary, readReplica), List.of(takeover)));
+  }
+
+  @Test
+  public void testNoClusterNamesALoadBalancerThatTurningOffDeletes() {
+    Cluster primary = cluster(ClusterType.PRIMARY, false, null);
+    Cluster managedReadReplica = cluster(ClusterType.ASYNC, true, null);
+    saveLoadBalancer(managedReadReplica, UUID.randomUUID(), "lbi-rr");
+    Cluster primaryWithLbName = cluster(ClusterType.PRIMARY, false, "lbi-rr");
+    primaryWithLbName.uuid = primary.uuid;
+    Cluster readReplicaOff = cluster(ClusterType.ASYNC, false, null);
+    readReplicaOff.uuid = managedReadReplica.uuid;
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                validateEdit(
+                    List.of(primary, managedReadReplica),
+                    List.of(primaryWithLbName, readReplicaOff)));
+
+    assertEquals(
+        "Turning off the managed load balancer deletes lbi-rr, so lbName can't name it",
+        e.getMessage());
   }
 }
