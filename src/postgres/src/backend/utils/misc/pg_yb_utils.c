@@ -2946,28 +2946,47 @@ YbTrackAlteredTableId(Oid relid)
 }
 
 /*
- * Serializes a DDL that runs in a separate DDL transaction with DDLs with
- * global object locks in the same database (PR #38710). The lock is taken in
- * the transaction that runs the statement, before the separate DDL transaction
- * starts, because the separate DDL transaction takes no object locks.
- */
-static void
-YbLockDatabaseForLegacyDdl(void)
-{
-	LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0, RowExclusiveLock);
-}
-
-/*
- * The counterpart of YbLockDatabaseForLegacyDdl for a DDL with global object
- * locks (PR #38710). With ysql_enable_concurrent_ddl off it takes EXCLUSIVE
- * instead of SHARE, so DDLs with global object locks in one database also run
- * one at a time.
+ * With ysql_enable_concurrent_ddl off, DDLs with global object locks in one
+ * database run one at a time: each takes this lock in EXCLUSIVE mode. With it
+ * on, they take no lock here and run as concurrently as object locks allow.
  */
 static void
 YbLockDatabaseForGlobalDdl(void)
 {
-	LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
-					   *YBCGetGFlags()->ysql_enable_concurrent_ddl ? ShareLock : ExclusiveLock);
+	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl)
+		LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
+						   ExclusiveLock);
+}
+
+/*
+ * A CREATE INDEX that builds the index across several transactions keeps the
+ * lock of YbLockDatabaseForGlobalDdl as a session lock until it finishes, as
+ * it keeps its lock on the table, so that no other DDL in the database runs
+ * between its phases. It cannot block: the transaction already holds the
+ * lock. Returns whether it took the lock, for
+ * YbUnlockDatabaseForIndexBuildSession.
+ */
+bool
+YbLockDatabaseForIndexBuildSession(void)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, YbDdlSerializationLockOid,
+					   InvalidOid, 0);
+	if (!LockHeldByMe(&tag, ExclusiveLock))
+		return false;
+	(void) LockAcquire(&tag, ExclusiveLock, true, false);
+	return true;
+}
+
+void
+YbUnlockDatabaseForIndexBuildSession(void)
+{
+	LOCKTAG		tag;
+
+	SET_LOCKTAG_OBJECT(tag, MyDatabaseId, YbDdlSerializationLockOid,
+					   InvalidOid, 0);
+	LockRelease(&tag, ExclusiveLock, true);
 }
 
 void
@@ -2993,7 +3012,6 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		ddl_transaction_state.use_regular_txn_block = false;
-		YbLockDatabaseForLegacyDdl();
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 
 		if (yb_force_catalog_update_on_next_ddl)
@@ -3917,24 +3935,6 @@ YBCommitTransactionContainingDDL()
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
 		yb_catalog_prefetch_wave_pending = true;
-
-		/*
-		 * Best effort: a DDL with global object locks on another node learns of
-		 * this DDL's invalidation messages only when its node's heartbeat brings
-		 * the new catalog version. So hold the database lock of
-		 * YbLockDatabaseForLegacyDdl for
-		 * ysql_separate_ddl_txn_inval_propagation_wait_ms milliseconds, to let
-		 * them propagate before such a DDL that waits for the lock goes on. The
-		 * flag is 0, no wait, by default. A DDL with global object locks needs no
-		 * such wait: the release of its global locks carries the new catalog
-		 * versions, and each tserver applies them before it unlocks.
-		 * statement_timeout can cut the wait short: its signal ends pg_usleep,
-		 * and the statement still succeeds, since its DDL has committed.
-		 */
-		if (*YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms > 0 &&
-			YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
-			pg_usleep((long) *YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms *
-					  1000L);
 	}
 }
 

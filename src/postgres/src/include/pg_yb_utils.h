@@ -1199,6 +1199,8 @@ typedef enum YbDdlMode
 } YbDdlMode;
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
+extern bool YbLockDatabaseForIndexBuildSession(void);
+extern void YbUnlockDatabaseForIndexBuildSession(void);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);

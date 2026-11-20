@@ -647,6 +647,7 @@ DefineIndex(Oid relationId,
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
 	bool		yb_skip_index_creation;
+	bool		yb_database_session_locked = false;
 	/* Use PG catalog snapshot for catalog reads */
 	const bool 	yb_should_run_in_autonomous_transaction =
 		!YBCUsingObjectLocksGloballyForCurrentTxn();
@@ -2173,6 +2174,8 @@ DefineIndex(Oid relationId,
 	 * hold lock on the parent table.  This might need to change later.
 	 */
 	LockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
+	/* YB: Likewise for the database DDL lock, when the transaction holds it. */
+	yb_database_session_locked = YbLockDatabaseForIndexBuildSession();
 
 	PopActiveSnapshot();
 
@@ -2455,6 +2458,8 @@ DefineIndex(Oid relationId,
 	 * Last thing to do is release the session-level lock on the parent table.
 	 */
 	UnlockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
+	if (yb_database_session_locked)
+		YbUnlockDatabaseForIndexBuildSession();
 
 	pgstat_progress_end_command();
 
