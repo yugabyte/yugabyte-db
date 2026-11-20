@@ -222,8 +222,6 @@ static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, Re
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
 								 Relids relids, List *or_clauses,
 								 IndexClauseSet *clauseset);
-static bool yb_indexcol_has_equality_clause(IndexOptInfo *index, int indexcol,
-											List *indexclauses);
 static List *yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 										 IndexOptInfo *index,
 										 ScanDirection scandir,
@@ -5183,12 +5181,21 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		}
 
 		/*
-		 * An equality index clause already pins this key to one value, so a
-		 * derived equality would add a second condition on the key without
-		 * narrowing the scan.
+		 * An equality index clause already pins this key to one value.  A
+		 * derived equality would be a second condition on the key and would
+		 * not narrow the scan.
+		 *
+		 * A batched nested loop turns a join equality into "key = ANY
+		 * (batch)".  Each batch element still pins the key to one value.  The
+		 * equality skipped here would be derived from the join clauses.  It
+		 * would be batched element by element with the join equality.
+		 *
+		 * A join equality does not suppress the equality derived from the
+		 * restriction clauses.  That one is derived on the restriction clause
+		 * set.  get_join_index_paths then copies it into each join clause
+		 * set.
 		 */
-		if (yb_indexcol_has_equality_clause(index, i,
-											clauseset->indexclauses[i]))
+		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
 			continue;
 
 		if (or_clauses != NULL)
@@ -5262,37 +5269,6 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 	table_close(base_rel, NoLock);
 	if (outer_relids)
 		bms_free(outer_relids);
-}
-
-/*
- * yb_indexcol_has_equality_clause
- *	  Whether indexclauses, the index clauses matched to key column indexcol
- *	  of index, hold an equality on that column per its operator family.
- */
-static bool
-yb_indexcol_has_equality_clause(IndexOptInfo *index, int indexcol,
-								List *indexclauses)
-{
-	ListCell   *lc;
-
-	foreach(lc, indexclauses)
-	{
-		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		ListCell   *lc2;
-
-		foreach(lc2, iclause->indexquals)
-		{
-			Expr	   *clause = lfirst_node(RestrictInfo, lc2)->clause;
-
-			if (is_opclause(clause) &&
-				list_length(((OpExpr *) clause)->args) == 2 &&
-				get_op_opfamily_strategy(((OpExpr *) clause)->opno,
-										 index->opfamily[indexcol]) ==
-				BTEqualStrategyNumber)
-				return true;
-		}
-	}
-	return false;
 }
 
 /*

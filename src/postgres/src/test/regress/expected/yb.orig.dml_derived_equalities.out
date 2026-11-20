@@ -145,7 +145,37 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM or
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
 (1 row)
 
-DROP TABLE orders;
+-- A yb_hash_code condition on a hash key is not an equality on the key, so the
+-- equality on the key is still derived
+CREATE TABLE orders_hash (
+    order_id int,
+    user_id int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(user_id) % 5) STORED,
+    PRIMARY KEY (bucket_id HASH, user_id ASC, order_id ASC)
+);
+INSERT INTO orders_hash SELECT i, 100 + i % 10 FROM generate_series(1, 20) i;
+ANALYZE orders_hash;
+\set query ':P SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: order_id
+   ->  Index Scan using orders_hash_pkey on orders_hash
+         Index Cond: ((yb_hash_code(bucket_id) = 49348) AND (bucket_id = (yb_hash_code(105) % 5)) AND (user_id = 105))
+(4 rows)
+
+SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        5 |     105 |         2
+       15 |     105 |         2
+(2 rows)
+
+DROP TABLE orders, orders_hash;
 -- Tests for joins
 CREATE TABLE users (
     id int,
@@ -298,6 +328,29 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN
          Storage Filter: (id = ANY ('{50,60,70}'::integer[]))
    ->  Index Scan using orders_gen_pkey on orders_gen o
          Index Cond: ((bucket_id = (yb_hash_code(u.id) % 5)) AND (user_id = u.id))
+(5 rows)
+
+-- A join equality on the bucket key.  The equality that the join clause on
+-- user_id would derive is not added to the batch.
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND o.bucket_id = yb_hash_code(u.id) % 5;
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((u.id = o.user_id) AND ((yb_hash_code(u.id) % 5) = o.bucket_id))
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+(5 rows)
+
+-- The join equality does not suppress the equality derived from a constant
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.bucket_id = yb_hash_code(u.id) % 5 WHERE o.user_id = 50;
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((yb_hash_code(u.id) % 5) = o.bucket_id)
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = ANY (ARRAY[(yb_hash_code(u.id) % 5), (yb_hash_code($1) % 5), (yb_hash_code($2) % 5), ..., (yb_hash_code($1023) % 5)])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (5 rows)
 
 -- Equality conditions in outer joins
