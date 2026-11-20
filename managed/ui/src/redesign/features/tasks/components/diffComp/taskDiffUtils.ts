@@ -63,6 +63,10 @@ export const withDefaultClusterType = (
   if (!Array.isArray(clusters) || clusters.length === 0) {
     return taskDiff;
   }
+  // A request without cluster types (e.g. the v2 resize body) tells nothing about the clusters.
+  if (!payload?.clusters?.some((c: any) => c?.clusterType)) {
+    payload = undefined;
+  }
   // An added cluster is in the target, so its type is taken; a deleted one is not.
   const taken = clusters.map((c) =>
     isDeltaNode(c)
@@ -230,28 +234,17 @@ export const withUnchangedIntentFromPayload = (taskDiff: any, payload: any): any
 };
 
 /**
- * An edit that submits only the read replica (Cluster target) has no primary in the task params, so
- * the delta marks the primary as deleted. It was not removed: drop that node.
+ * Edit and Resize never remove a cluster, but the target of a task that submits only one cluster
+ * (a read replica edit, a primary resize) lacks the other, so the delta marks it as deleted. Drop
+ * those nodes.
  */
-export const withoutDeletedPrimary = (taskDiff: any, payload: any): any => {
+export const withoutDeletedClusters = (taskDiff: any): any => {
   const clusters = taskDiff?.clusters;
-  const payloadClusters = payload?.clusters;
-  if (
-    !Array.isArray(clusters) ||
-    !Array.isArray(payloadClusters) ||
-    payloadClusters.some((c) => c?.clusterType === 'PRIMARY')
-  ) {
+  if (!Array.isArray(clusters)) {
     return taskDiff;
   }
   return {
     ...taskDiff,
-    clusters: clusters.filter(
-      (c) =>
-        !(
-          isDeltaNode(c) &&
-          c.$deltaType === 'DELETE' &&
-          (c.$oldValue as any)?.clusterType === 'PRIMARY'
-        )
-    )
+    clusters: clusters.filter((c) => !(isDeltaNode(c) && c.$deltaType === 'DELETE'))
   };
 };

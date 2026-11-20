@@ -4,7 +4,7 @@ import {
   withDefaultClusterType,
   withIdentityFromPayload,
   withUnchangedIntentFromPayload,
-  withoutDeletedPrimary,
+  withoutDeletedClusters,
   isDeltaNode
 } from './taskDiffUtils';
 
@@ -301,23 +301,18 @@ describe('identity with task-internal fields', () => {
   });
 });
 
-describe('withoutDeletedPrimary', () => {
-  const deleted = { $deltaType: 'DELETE', $oldValue: { clusterType: 'PRIMARY', uuid: 'p' } };
-  const rr = { userIntent: { x: 1 } };
-  it('drops the deleted primary when the payload has no primary', () => {
-    const out = withoutDeletedPrimary(
-      { clusters: [deleted, rr] },
-      { clusters: [{ clusterType: 'ASYNC' }] }
-    );
-    expect(out.clusters).toEqual([rr]);
+describe('withoutDeletedClusters', () => {
+  const deleted = { $deltaType: 'DELETE', $oldValue: { clusterType: 'ASYNC', uuid: 'r' } };
+  const changed = { userIntent: { x: 1 } };
+  it('drops the clusters the task did not submit', () => {
+    expect(withoutDeletedClusters({ clusters: [changed, deleted] }).clusters).toEqual([changed]);
   });
-  it('keeps it when the payload has a primary', () => {
-    const diff = { clusters: [deleted] };
-    expect(
-      withoutDeletedPrimary(diff, {
-        clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }]
-      })
-    ).toBe(diff);
+});
+
+describe('withDefaultClusterType with a payload without cluster types', () => {
+  it('treats the first cluster as primary, as for no payload', () => {
+    const out = withDefaultClusterType({ clusters: [{ a: 1 }] }, { clusters: [{ uuid: 'r' }] });
+    expect(out.clusters[0].clusterType).toBe('PRIMARY');
   });
 });
 
