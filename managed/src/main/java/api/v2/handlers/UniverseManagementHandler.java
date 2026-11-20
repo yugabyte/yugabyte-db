@@ -494,6 +494,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               newReadReplica.userIntent.specificGFlags,
               gFlagsValidation,
               primaryCluster.userIntent.ybSoftwareVersion);
+      // The primary may store the restored values untrimmed, and the line break check rejects a
+      // trailing newline.
+      GFlagsUtil.trimFlags(newReadReplica.userIntent.specificGFlags);
     }
     // Intent is cloned from primary. Omitted dedicated_nodes must default to false (schema),
     // not inherit dedicated mode from the primary cluster.
