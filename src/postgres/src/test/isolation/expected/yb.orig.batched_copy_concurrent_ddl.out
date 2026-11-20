@@ -272,7 +272,7 @@ t
 
 step s1_copy_pf: <... completed>
 step s2_add_fk_pf: <... completed>
-ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
+ERROR:  insert or update on table "pf1" violates foreign key constraint "pf_fk"
 step s2_pf_result: SELECT count(*) AS loaded, count(*) FILTER (WHERE w NOT IN (SELECT id FROM p)) AS orphans, (SELECT count(*) FROM pg_constraint WHERE conrelid = 'pf'::regclass AND contype = 'f' AND convalidated) AS valid_fks FROM pf;
 loaded|orphans|valid_fks
 ------+-------+---------

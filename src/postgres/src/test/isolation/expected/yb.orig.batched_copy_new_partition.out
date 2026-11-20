@@ -1,6 +1,7 @@
 Parsed test spec with 3 sessions
 
-starting permutation: s3_lock s1_copy_def_first attach s3_unlock where
+starting permutation: def_fixed_oid s3_lock s1_copy_def_first attach s3_unlock where
+step def_fixed_oid: SET yb_enable_create_with_table_oid = on; CREATE TABLE pt_def PARTITION OF pt DEFAULT WITH (table_oid = 50003);
 step s3_lock: SELECT pg_advisory_lock(1);
 pg_advisory_lock
 ----------------
@@ -16,7 +17,7 @@ t
 (1 row)
 
 step s1_copy_def_first: <... completed>
-ERROR:  schema version mismatch for table 00003566000030008000000000004287: expected 1, got 0
+ERROR:  schema version mismatch for table 0000356600003000800000000000c353: expected 1, got 0
 step attach: <... completed>
 step where: SELECT tableoid::regclass::text AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
 part  |count
@@ -26,7 +27,8 @@ pt_def|    1
 (2 rows)
 
 
-starting permutation: s3_lock s1_copy_def_later attach s3_unlock where
+starting permutation: def s3_lock s1_copy_def_later attach s3_unlock where
+step def: CREATE TABLE pt_def PARTITION OF pt DEFAULT;
 step s3_lock: SELECT pg_advisory_lock(1);
 pg_advisory_lock
 ----------------
@@ -42,15 +44,16 @@ t
 (1 row)
 
 step s1_copy_def_later: <... completed>
-ERROR:  new row for relation "pt_def" violates partition constraint
 step where: SELECT tableoid::regclass::text AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
 part|count
 ----+-----
 pt1 |   40
-(1 row)
+pt3 |   10
+(2 rows)
 
 
-starting permutation: s3_lock s1_copy_def_later create_part s3_unlock where
+starting permutation: def s3_lock s1_copy_def_later create_part s3_unlock where
+step def: CREATE TABLE pt_def PARTITION OF pt DEFAULT;
 step s3_lock: SELECT pg_advisory_lock(1);
 pg_advisory_lock
 ----------------
