@@ -47,6 +47,12 @@ static inline int mm_loop_read_stop(mm_loop_t *loop, mm_fd_t *fd)
 	return loop->poll->iface->read(loop->poll, fd, NULL, NULL, 0);
 }
 
+static inline int yb_mm_loop_read_hangup(mm_loop_t *loop, mm_fd_t *fd,
+					 mm_fd_callback_t on_read, void *arg)
+{
+	return loop->poll->iface->yb_read_hangup(loop->poll, fd, on_read, arg);
+}
+
 static inline int mm_loop_write(mm_loop_t *loop, mm_fd_t *fd,
 				mm_fd_callback_t on_write, void *arg)
 {

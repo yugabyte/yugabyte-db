@@ -2489,11 +2489,13 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			continue;
 		} else if (status == OD_WAIT_SYNC) {
 			/*
-			 * YB: Park the client read by removing its FD from epoll
-			 * so co-routine doesn't get woken up for any bytes the client
-			 * pipelines after the Sync.
+			 * YB: Stop reading the client until ReadyForQuery, but
+			 * watch it for a hangup, as upstream Odyssey and Postgres
+			 * do, so a client that goes away is noticed even with
+			 * unread bytes ahead of its FIN. A half-closed client is
+			 * treated as gone.
 			 */
-			int rc = od_io_read_stop(client->relay.src);
+			int rc = yb_od_io_read_hangup_start(client->relay.src);
 			if (rc != 0) {
 				od_error(&instance->logger, "wait sync", client, server,
 					"failed to stop client read: %s",
