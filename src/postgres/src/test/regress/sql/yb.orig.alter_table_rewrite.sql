@@ -738,18 +738,5 @@ SET enable_seqscan = off;
 EXPLAIN (COSTS OFF) SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
 SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
 RESET enable_seqscan;
--- With DocDB missing values disabled, PG still stores a missing value, so
--- ADD COLUMN must rewrite the table to fill existing rows.
-SET yb_enable_add_column_missing_default = off;
-TRUNCATE add_col_default_info;
-INSERT INTO add_col_default_info
-    SELECT relfilenode FROM pg_class WHERE relname = 'add_col_default_test';
-ALTER TABLE add_col_default_test ADD COLUMN c3 int NOT NULL DEFAULT 5;
-SELECT CASE WHEN m.relfilenode = c.relfilenode THEN 'relfilenode reused'
-            ELSE 'relfilenode changed' END
-FROM add_col_default_info m, pg_class c
-WHERE c.relname = 'add_col_default_test';
-SELECT * FROM add_col_default_test ORDER BY id;
-RESET yb_enable_add_column_missing_default;
 DROP TABLE add_col_default_test;
 DROP FUNCTION add_col_default_fn();
