@@ -296,11 +296,8 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
     "by object locks. When false, they run one at a time.");
 
 DEFINE_NON_RUNTIME_int32(ysql_separate_ddl_txn_inval_propagation_wait_ms, 0,
-    "After a DDL that runs in a separate DDL transaction bumps the catalog version, how many "
-    "milliseconds its statement keeps holding the lock that serializes it with DDLs with global "
-    "object locks, to let its invalidation messages propagate through the heartbeat to the nodes "
-    "of DDLs that wait for that lock. Applies only while the transaction takes local object "
-    "locks. 0, the default, disables the wait.");
+    "After a DDL that runs in a separate DDL transaction bumps the catalog version, wait this "
+    "many milliseconds to let its invalidation messages propagate. 0 disables the wait.");
 DEFINE_validator(ysql_separate_ddl_txn_inval_propagation_wait_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
