@@ -163,6 +163,9 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
       createDeconfigureShellConfiguredMasterTasks(
           collectExistingNodesConfiguredAsMasters(universe, before, target));
 
+      // The destroyed ADDs' tservers registered while blacklisted; remove them before the clear.
+      createRemoveTabletServersTask(universe, addedNodes, SubTaskGroupType.RemovingUnusedServers);
+
       // Clear orphaned server_blacklist from the pre-checkpoint ADD blacklist step, including
       // destroyed ADD IPs so they can be reused (on-prem DECOMMISSIONED skip is in
       // ModifyBlackList).

@@ -122,11 +122,10 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
 
       createUpdateUniverseIntentTask(taskParamsCluster);
 
-      // Wait for the master leader to hear from all tservers.
-      // NOTE: Universe expansion will fail in the master leader failover scenario - if a node
-      // is down externally for >15 minutes and the master leader then marks the node down for
-      // real. Then that down TServer will timeout this task and universe expansion will fail.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Wait for the master leader to hear from the replacement tserver.
+      createWaitForTServerHeartBeatsTask(
+              PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet))
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Configure cross-cloud federated IAM on the cluster's nodes (so the replacement is set up)
       // only if the universe is already federated.

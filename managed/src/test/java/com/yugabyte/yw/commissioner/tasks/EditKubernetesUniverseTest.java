@@ -119,8 +119,11 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.RemoveTabletServerResponse;
 import org.yb.client.YBClientApi;
 import org.yb.util.PeerInfo;
+import org.yb.util.ServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -681,6 +684,72 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         KUBERNETES_REMOVE_POD_TASKS,
         getExpectedRemovePodTaskResults(),
         "remove");
+  }
+
+  @Test
+  public void testRemoveNodeRemovesTserverFromMaster() throws Exception {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybEditRemoveDeadTservers.getKey(), "true");
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.0\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts("yb-master-0.svc.cluster.local", 1234));
+    setDumpEntitiesMock(defaultUniverse, "yb-tserver-2", false);
+    String removedPodIp = defaultUniverse.getNode("yb-tserver-2").cloudInfo.private_ip;
+    ListTabletServersResponse listResponse = mock(ListTabletServersResponse.class);
+    when(listResponse.getTabletServersList())
+        .thenReturn(List.of(new ServerInfo("ts-uuid", removedPodIp, 9100, false, "")));
+    when(mockClient.listTabletServers()).thenReturn(listResponse);
+    when(mockClient.removeTabletServer("ts-uuid"))
+        .thenReturn(new RemoveTabletServerResponse(0, "", null));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.numNodes = 2;
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 2;
+
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskType> types =
+        taskInfo.getSubTasks().stream()
+            .sorted(Comparator.comparing(TaskInfo::getPosition))
+            .map(TaskInfo::getTaskType)
+            .collect(Collectors.toList());
+    int removeIdx = types.indexOf(TaskType.RemoveTabletServers);
+    assertTrue(removeIdx > types.indexOf(TaskType.WaitForDuration));
+    assertEquals(removeIdx + 1, types.lastIndexOf(TaskType.ModifyBlackList));
+    verify(mockClient).removeTabletServer("ts-uuid");
   }
 
   @Test

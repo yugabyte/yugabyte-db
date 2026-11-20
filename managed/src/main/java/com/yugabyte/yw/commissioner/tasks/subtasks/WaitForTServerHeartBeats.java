@@ -10,24 +10,25 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.google.api.client.util.Throwables;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClientApi;
 
-// Helper class to wait for a minimum number of tservers to heartbeat to the
-// master leader. Currently the minimum is the same as the replication factor,
-// so that next set of tasks like creating a table will not lack tserver resources.
+// Waits until the master leader reports the tservers of the given nodes as live, so that the next
+// tasks, like creating a table, do not lack tserver resources.
 @Slf4j
-public class WaitForTServerHeartBeats extends AbstractTaskBase {
+public class WaitForTServerHeartBeats extends UniverseTaskBase {
 
-  // Timeout when minimum number of tservers have not heartbeatean to master leader.
+  // Timeout when the tservers have not heartbeaten to the master leader.
   private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
 
   // Time to wait (in millisec) during each iteration of check.
@@ -39,7 +40,10 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   }
 
   // Parameters for tserver heartbeat wait task.
-  public static class Params extends UniverseTaskParams {}
+  public static class Params extends UniverseTaskParams {
+    // Names of the nodes whose tservers must be live; null means every tserver in the universe.
+    public Set<String> nodeNames;
+  }
 
   @Override
   protected Params taskParams() {
@@ -54,46 +58,52 @@ public class WaitForTServerHeartBeats extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    int numTservers = universe.getTServers().size();
-    try (YBClientApi client = ybService.getUniverseClient(universe)) {
-      log.info(
-          "Running {}: masterAddresses={}, numTservers={}.",
-          getName(),
-          universe.getMasterAddresses(),
-          numTservers);
-      int numTries = 1;
-      long start = System.currentTimeMillis();
-      boolean timedOut = false;
-      do {
-        try {
-          int currentNumTservers = client.listTabletServers().getTabletServersCount();
-
-          log.info("{} tservers heartbeating to master leader.", currentNumTservers);
-
-          if (currentNumTservers >= numTservers) {
-            break;
-          }
-
-          log.info(
-              "Waiting to make sure {} tservers are heartbeating to master leader; retrying "
-                  + "after {}ms. Tried {} times.",
-              numTservers,
-              WAIT_EACH_ATTEMPT_MS,
-              numTries);
-          waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
-          numTries++;
-        } catch (CancellationException e) {
-          throw e;
-        } catch (Exception e) {
-          log.warn("{}: ignoring error '{}'.", getName(), e.getMessage());
-        }
-        timedOut = System.currentTimeMillis() >= start + TIMEOUT_SERVER_WAIT_MS;
-      } while (!timedOut);
-      if (timedOut) {
-        throw new RuntimeException(getName() + " timed out.");
-      }
-    } catch (Exception e) {
-      Throwables.propagate(e);
+    Set<String> expected = getExpectedNodeNames(universe);
+    log.info(
+        "Running {}: masterAddresses={}, nodes={}.",
+        getName(),
+        universe.getMasterAddresses(),
+        expected);
+    Set<String> missing = new HashSet<>(expected);
+    if (missing.isEmpty()) {
+      return;
     }
+    int numTries = 1;
+    long start = System.currentTimeMillis();
+    while (true) {
+      try {
+        missing.removeAll(
+            getLiveTserverNodes(universe).stream()
+                .map(NodeDetails::getNodeName)
+                .collect(Collectors.toSet()));
+        if (missing.isEmpty()) {
+          return;
+        }
+        log.info(
+            "Waiting for the tservers on {} to heartbeat to master leader; retrying after {}ms."
+                + " Tried {} times.",
+            missing,
+            WAIT_EACH_ATTEMPT_MS,
+            numTries);
+        waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
+        numTries++;
+      } catch (CancellationException e) {
+        throw e;
+      } catch (Exception e) {
+        log.warn("{}: ignoring error '{}'.", getName(), e.getMessage());
+      }
+      if (System.currentTimeMillis() >= start + TIMEOUT_SERVER_WAIT_MS) {
+        throw new RuntimeException(getName() + " timed out waiting for the tservers on " + missing);
+      }
+    }
+  }
+
+  private Set<String> getExpectedNodeNames(Universe universe) {
+    if (taskParams().nodeNames == null) {
+      return universe.getTServers().stream()
+          .map(NodeDetails::getNodeName)
+          .collect(Collectors.toSet());
+    }
+    return taskParams().nodeNames;
   }
 }

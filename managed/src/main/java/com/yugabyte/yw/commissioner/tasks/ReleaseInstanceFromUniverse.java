@@ -170,6 +170,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       // If the node fails in Adding state during ADD action, IP may not be available.
       // Check to make sure that the node IP is available.
       if (Util.getNodeIp(universe, currentNode) != null) {
+        createRemoveTabletServersTask(
+            universe, currentNodeDetails, SubTaskGroupType.ReleasingInstance);
         // Create a task for removal of this server from blacklist on master leader.
         createModifyBlackListTask(
                 null /* addNodes */,

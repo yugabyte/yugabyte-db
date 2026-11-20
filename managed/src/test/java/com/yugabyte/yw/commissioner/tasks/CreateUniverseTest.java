@@ -70,7 +70,6 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
@@ -176,14 +175,12 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
         new ChangeMasterClusterConfigResponse(1111, "", null);
     // ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
-    ListTabletServersResponse mockListTabletServersResponse = mock(ListTabletServersResponse.class);
-    when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
-      when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      mockLiveTabletServersFromUniverses(mockClient);
       IsServerReadyResponse mockServerReadyResponse = mock(IsServerReadyResponse.class);
       when(mockServerReadyResponse.getNumNotRunningTablets()).thenReturn(0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean()))

@@ -77,7 +77,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -99,15 +98,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(defaultUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
     setDefaultNodeState(onPremUniverse, NodeState.Removed, DEFAULT_NODE_NAME);
 
-    // WaitForTServerHeartBeats mock.
-    ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
-    when(mockResponse.getTabletServersCount()).thenReturn(7);
-
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
-      when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      mockLiveTabletServersFromUniverses(mockClient);
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
       when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);

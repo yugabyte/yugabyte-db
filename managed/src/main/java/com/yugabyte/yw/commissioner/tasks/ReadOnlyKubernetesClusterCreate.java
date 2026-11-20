@@ -150,8 +150,9 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Wait for a master leader to hear from the new tservers.
+      createWaitForTServerHeartBeatsTask(tserversAdded)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update PDB policy for the universe.
       if (universe.getUniverseDetails().useNewHelmNamingStyle) {

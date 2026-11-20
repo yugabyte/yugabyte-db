@@ -147,6 +147,8 @@ public class RollbackAddNodeToUniverse extends UniverseDefinitionTaskBase {
                 true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
         // Match Release: clear blacklist for the IP that Add may have registered.
+        // No tserver registry removal here, unlike Release: rollback runs only before this tserver
+        // starts, so it never registered.
         if (currentNode.cloudInfo != null
             && StringUtils.isNotBlank(currentNode.cloudInfo.private_ip)) {
           createModifyBlackListTask(

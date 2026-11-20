@@ -155,6 +155,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "in editUniverse",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ybEditRemoveDeadTservers =
+      new ConfKeyInfo<>(
+          "yb.edit.remove_dead_tservers",
+          ScopeType.UNIVERSE,
+          "Remove Dead TServers From Master",
+          "Remove the tservers a task permanently removes from the master's tserver registry",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> ybEditRemoveDeadTserversTimeout =
+      new ConfKeyInfo<>(
+          "yb.edit.remove_dead_tservers_timeout",
+          ScopeType.UNIVERSE,
+          "Remove Dead TServers Timeout",
+          "How long to retry removing dead tservers from the master before giving up",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> ybNumReleasesToKeepDefault =
       new ConfKeyInfo<>(
           "yb.releases.num_releases_to_keep_default",

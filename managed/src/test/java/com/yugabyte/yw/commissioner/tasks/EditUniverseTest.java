@@ -127,8 +127,10 @@ import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.ListTabletServersResponse;
+import org.yb.client.RemoveTabletServerResponse;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.PeerInfo;
+import org.yb.util.ServerInfo;
 import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
@@ -282,7 +284,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         new ChangeMasterClusterConfigResponse(1111, "", null);
     ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
     ListTabletServersResponse mockListTabletServersResponse = mock(ListTabletServersResponse.class);
-    when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
@@ -303,14 +304,18 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLoadMoveCompletion())
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
-      ListLiveTabletServersResponse mockListLiveTabletServersResponse =
-          mock(ListLiveTabletServersResponse.class);
-      lenient()
-          .when(mockListLiveTabletServersResponse.getTabletServers())
-          .thenReturn(new ArrayList<>());
-      lenient()
-          .when(mockClient.listLiveTabletServers())
-          .thenReturn(mockListLiveTabletServersResponse);
+      // Reports only the live tservers an edit in progress added. The heartbeat wait needs them,
+      // and the consistency and rollback membership checks see no other tservers, as the mock
+      // client is shared by every universe and the test remaps the IPs of existing nodes.
+      mockLiveTabletServersFromUniverses(
+          mockClient,
+          (universe, node) -> {
+            StateTransitionDetails transition = universe.getStateTransitionDetails();
+            return transition != null
+                && node.state == NodeDetails.NodeState.Live
+                && transition.getBeforeUniverseDetails().nodeDetailsSet.stream()
+                    .noneMatch(n -> Objects.equals(n.getNodeName(), node.getNodeName()));
+          });
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -2713,6 +2718,58 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       assertNull(universe.getStateTransitionDetails());
       verify(mockNodeManager, atLeastOnce())
           .nodeCommand(eq(NodeManager.NodeCommandType.Destroy), any());
+    } finally {
+      clearAbortOrPausePositions();
+    }
+  }
+
+  @Test
+  public void testRollbackEditUniverseRemovesAddedTserversFromMaster() throws Exception {
+    Universe universe = defaultUniverse;
+    Set<String> beforeNames =
+        universe.getNodes().stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    enableManualEditRollback(universe);
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.ybEditRemoveDeadTservers.getKey(), "true");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    setAbortPosition(UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.SetupYNP));
+    try {
+      TaskInfo failedEdit = submitTask(taskParams);
+      assertEquals(Aborted, failedEdit.getTaskState());
+      universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+      List<ServerInfo> addedTservers = new ArrayList<>();
+      for (NodeDetails node : universe.getNodes()) {
+        if (!beforeNames.contains(node.getNodeName())) {
+          addedTservers.add(
+              new ServerInfo(
+                  "ts-" + node.getNodeName(), node.cloudInfo.private_ip, 9100, false, ""));
+        }
+      }
+      assertFalse(addedTservers.isEmpty());
+      ListTabletServersResponse listResponse = mock(ListTabletServersResponse.class);
+      when(listResponse.getTabletServersList()).thenReturn(addedTservers);
+      when(mockClient.listTabletServers()).thenReturn(listResponse);
+      when(mockClient.removeTabletServer(anyString()))
+          .thenReturn(new RemoveTabletServerResponse(0, "", null));
+      stubNodeManagerOkWithInstancesPresent();
+      clearAbortOrPausePositions();
+
+      TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+
+      assertEquals(Success, rollbackInfo.getTaskState());
+      List<TaskType> types =
+          rollbackInfo.getSubTasks().stream()
+              .sorted(Comparator.comparing(TaskInfo::getPosition))
+              .map(TaskInfo::getTaskType)
+              .collect(Collectors.toList());
+      int removeIdx = types.indexOf(TaskType.RemoveTabletServers);
+      assertTrue(removeIdx > types.indexOf(TaskType.AnsibleDestroyServer));
+      assertTrue(removeIdx < types.lastIndexOf(TaskType.ModifyBlackList));
+      for (ServerInfo tserver : addedTservers) {
+        verify(mockClient).removeTabletServer(tserver.getUuid());
+      }
     } finally {
       clearAbortOrPausePositions();
     }

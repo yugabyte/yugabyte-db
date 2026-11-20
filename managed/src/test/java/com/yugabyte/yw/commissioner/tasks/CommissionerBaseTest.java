@@ -160,11 +160,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.ArgumentCaptor;
@@ -1219,6 +1221,40 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     + "    Leap status     : Normal"));
   }
 
+  /**
+   * Reports every tserver node with an IP, in every universe, as live, read when the call is made.
+   * For tasks whose heartbeat wait checks nodes that get their IPs during the task.
+   */
+  protected void mockLiveTabletServersFromUniverses(YBClientApi mockClient) throws Exception {
+    mockLiveTabletServersFromUniverses(mockClient, (universe, node) -> true);
+  }
+
+  /** As above, for the tserver nodes that match {@code isLive}. */
+  protected void mockLiveTabletServersFromUniverses(
+      YBClientApi mockClient, BiPredicate<Universe, NodeDetails> isLive) throws Exception {
+    ListLiveTabletServersResponse response = mock(ListLiveTabletServersResponse.class);
+    lenient()
+        .when(response.getTabletServers())
+        .thenAnswer(
+            invocation -> {
+              List<TabletServerInfo> servers = new ArrayList<>();
+              for (Universe universe : Universe.getAllWithoutResources()) {
+                for (NodeDetails node : universe.getTServers()) {
+                  if (!isLive.test(universe, node)
+                      || StringUtils.isBlank(node.cloudInfo.private_ip)) {
+                    continue;
+                  }
+                  TabletServerInfo info = new TabletServerInfo();
+                  info.setPrivateRpcAddress(
+                      HostAndPort.fromParts(node.cloudInfo.private_ip, node.tserverRpcPort));
+                  servers.add(info);
+                }
+              }
+              return servers;
+            });
+    lenient().when(mockClient.listLiveTabletServers()).thenReturn(response);
+  }
+
   protected void setMockLiveTabletServers(YBClientApi mockClient, Universe universe) {
     try {
       List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
@@ -1246,7 +1282,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       }
       ListLiveTabletServersResponse listLiveTabletServersResponse =
           mock(ListLiveTabletServersResponse.class);
-      when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
+      lenient()
+          .when(listLiveTabletServersResponse.getTabletServers())
+          .thenReturn(tabletServerInfoList);
       when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
     } catch (Exception e) {
       fail(e.getMessage());
