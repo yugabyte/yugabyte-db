@@ -88,6 +88,11 @@ class DocOperation {
   virtual dockv::IntentTypeSet GetIntentTypes(IsolationLevel isolation_level) const {
     return dockv::GetIntentTypesForWrite(isolation_level);
   }
+
+  // YSQL command id that the intents of this operation's writes record.
+  virtual std::optional<uint32_t> CommandId() const {
+    return std::nullopt;
+  }
 };
 
 template <DocOperationType OperationType, class RequestPB>

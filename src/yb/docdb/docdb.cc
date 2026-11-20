@@ -329,6 +329,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   };
 
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    doc_write_batch.SetCommandId(doc_op->CommandId());
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
       VLOG_WITH_FUNC(4) << "Apply " << AsString(*doc_op) << " failed: " << AsString(s);
