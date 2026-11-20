@@ -988,14 +988,15 @@ TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
     return ResultToStatus(connect_to_ts1(kTestDatabase, SingleAttempt::kTrue));
   });
   // Drop the database once the connection has passed its database recheck and is paused. The
-  // DROP must commit before the pause ends; fail with a clear message if it was too slow, rather
-  // than on the connection unexpectedly succeeding.
+  // DROP must commit before the pause ends. The pause started a little before the log line
+  // arrived here, so require the DROP to finish within half the pause; if it is slower, fail
+  // with that reason rather than on the connection unexpectedly succeeding.
   ASSERT_OK(delay_started.WaitFor(MonoDelta::FromMilliseconds(kDelayMs)));
-  const auto pause_start = MonoTime::Now();
+  const auto log_seen = MonoTime::Now();
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
-  const auto drop_time = MonoTime::Now() - pause_start;
-  ASSERT_LT(drop_time, MonoDelta::FromMilliseconds(kDelayMs))
-      << "DROP DATABASE did not commit within the connection's pause";
+  const auto drop_time = MonoTime::Now() - log_seen;
+  ASSERT_LT(drop_time, MonoDelta::FromMilliseconds(kDelayMs / 2))
+      << "DROP DATABASE took too long to be sure it committed within the connection's pause";
   WaitForCatalogVersionToPropagate();
 
   const auto status = connect_future.get();

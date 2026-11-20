@@ -7583,6 +7583,7 @@ YbTriggerInternalRelcacheBuild()
 {
 	const char *dbname = YBCGetDatabaseName(MyDatabaseId);
 	MemoryContext oldcxt;
+	int			i;
 
 	/*
 	 * This is the first live (non-prefetched) read of pg_database during
@@ -7597,7 +7598,6 @@ YbTriggerInternalRelcacheBuild()
 				 errmsg("database %u does not exist", MyDatabaseId),
 				 errdetail("It seems to have just been dropped.")));
 
-	int			i;
 	for (i = 0; i < 20; i++)
 	{
 		/* Trigger an internal connection to rebuild the relcache file. */
