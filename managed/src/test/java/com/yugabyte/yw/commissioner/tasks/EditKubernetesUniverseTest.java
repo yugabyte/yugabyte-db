@@ -1925,6 +1925,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(1, universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.numNodes);
+    // Code that reads clusters.get(0) as the primary must still get the primary.
+    assertEquals(
+        UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+        universe.getUniverseDetails().clusters.get(0).clusterType);
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
@@ -1938,9 +1942,33 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     StateTransitionDetails details = universe.getStateTransitionDetails();
     assertNotNull(details);
     assertTrue(details.isRollbackSafe());
-    // The primary is not edited, so the checkpoint keeps it as part of the target.
-    assertNotNull(details.getTargetUniverseDetails().getPrimaryCluster());
+    // The primary is not edited, so the checkpoint keeps it as part of the target, first.
+    assertEquals(
+        UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+        details.getTargetUniverseDetails().clusters.get(0).clusterType);
     assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+
+    rollBackReadReplicaOnlyEdit(failedEdit);
+  }
+
+  @Test
+  public void testRollbackEditKubernetesUniverseOfReadReplicaOnlyEditWithPrimaryLastCheckpoint()
+      throws InterruptedException {
+    TaskInfo failedEdit = failReadReplicaOnlyEdit();
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // A checkpoint whose target lists the primary after the read replica, as an older build wrote
+    // it. The rollback must still restore the primary first.
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    target.clusters.sort(
+        Comparator.comparing(
+            c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY));
+    JsonNode primaryLastDelta =
+        DeltaEvaluator.buildDeltaJsonTree(
+            details.getBeforeUniverseDetails(), target, new NodeDetailsArrayComparator());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.setStateTransitionDetails(new StateTransitionDetails(true, primaryLastDelta)));
 
     rollBackReadReplicaOnlyEdit(failedEdit);
   }
