@@ -1819,11 +1819,8 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
       }));
 }
 
-// A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
-// later takes the same lock in the same transaction finds it there and does not send it, so a new
-// mode DDL does not wait for the DML. That gap no longer shows: the CREATE VIEW also took the
-// database lock from PR #38710 in the transaction that ran it, and the
-// transaction holds it until it ends, so the new mode DDL waits for the whole transaction.
+// A legacy transaction that ran a DDL holds the database lock from PR #38710 until it ends, so a
+// new mode DDL waits for the whole transaction, including its later reads.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlWaitsForLegacyTxnThatRanDdl) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
