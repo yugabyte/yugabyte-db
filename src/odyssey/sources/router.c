@@ -1271,21 +1271,36 @@ od_router_status_t od_router_attach(od_router_t *router,
 					 * Close the connection first so that we attempt to make a
 					 * new connection only when PGPROC slot has been released
 					 */
-					od_backend_close_connection(idle_server);
+					yb_od_backend_close_connection(idle_server, false);
 					od_pg_server_pool_set(&idle_route->server_pool,
 							      idle_server,
 							      OD_SERVER_UNDEF);
 					idle_server->route = NULL;
+
+					/*
+					 * YB: Transfer slot from idle server to new server if its
+					 * backend has exited. Otherwise the slot stays held until
+					 * it does, and we wait like any client at the limit.
+					 */
+					if (idle_server->yb_backend_exited ||
+					    !idle_server->yb_slot_claimed) {
+						idle_server->yb_slot_claimed = false;
+						yb_slot_claimed = true;
+					} else {
+						yb_hold_backend_slot(idle_server);
+					}
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
 
-					/* YB: Claim again, the slot is held if the backend hasn't exited */
 					od_route_lock(route);
-					continue;
+					// We are allowed to spun new server connection now that we
+					// have made space for ourselves.
+					if (yb_slot_claimed)
+						break;
+				} else {
+					// No available idle servers. We have to wait.
+					od_route_lock(route);
 				}
-
-				// No available idle servers. We have to wait.
-				od_route_lock(route);
 			}
 		}
 

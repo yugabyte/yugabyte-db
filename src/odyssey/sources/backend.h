@@ -15,6 +15,8 @@ typedef struct {
 	od_list_t link;
 } yb_exiting_backend_t;
 
+void yb_od_backend_close_connection(od_server_t *, bool);
+void yb_hold_backend_slot(od_server_t *);
 int yb_backend_release_slots_of_exited(od_router_t *);
 void yb_backend_free_exiting(od_router_t *);
 

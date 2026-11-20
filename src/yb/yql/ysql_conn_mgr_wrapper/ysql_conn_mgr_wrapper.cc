@@ -207,7 +207,7 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
     "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
     "excess is returned to the OS. Set to 0 to disable periodic GC.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 5,
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 20,
     "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
     "backend's socket to be closed when closing the backend connection. A backend that is still "
     "open after this keeps its connection slot until it exits, which is checked every second. "

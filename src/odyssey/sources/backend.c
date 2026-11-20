@@ -150,26 +150,32 @@ static inline bool yb_od_backend_drain_until_eof(od_server_t *server)
 	return backend_closed;
 }
 
-static void yb_hold_slot_until_backend_exits(od_server_t *server)
+void yb_hold_backend_slot(od_server_t *server)
 {
 	od_instance_t *instance = server->global->instance;
 	od_router_t *router = server->global->router;
 
-	yb_exiting_backend_t *backend = malloc(sizeof(*backend));
-	if (backend == NULL)
-		return;
-	backend->fd = dup(machine_fd(server->io.io));
-	if (backend->fd == -1) {
-		free(backend);
+	assert(server->yb_slot_claimed && !server->yb_backend_exited);
+	server->yb_slot_claimed = false;
+
+	yb_exiting_backend_t *backend = NULL;
+	if (server->yb_exiting_fd != -1)
+		backend = malloc(sizeof(*backend));
+	if (backend == NULL) {
+		if (server->yb_exiting_fd != -1)
+			close(server->yb_exiting_fd);
+		server->yb_exiting_fd = -1;
+		yb_release_backend_slot(router);
 		return;
 	}
+	backend->fd = server->yb_exiting_fd;
+	server->yb_exiting_fd = -1;
 	od_list_init(&backend->link);
 
 	pthread_mutex_lock(&router->yb_exiting_backends_lock);
 	od_list_append(&router->yb_exiting_backends, &backend->link);
 	pthread_mutex_unlock(&router->yb_exiting_backends_lock);
 
-	server->yb_slot_claimed = false;
 	od_log(&instance->logger, "backend", NULL, server,
 	       "backend did not exit within %d ms, holding its connection slot until it does",
 	       (int)instance->config.yb_backend_drain_timeout_ms);
@@ -225,11 +231,19 @@ void yb_backend_free_exiting(od_router_t *router)
 
 void od_backend_close_connection(od_server_t *server)
 {
+	/* YB */
+	yb_od_backend_close_connection(server, true);
+}
+
+void yb_od_backend_close_connection(od_server_t *server, bool settle_slot)
+{
 	/* YB NOTE: Log the type of the backend being closed. */
 	od_instance_t *instance = server->global->instance;
 	od_debug(&instance->logger, "backend", NULL, server,
 		"closing %s backend connection",
 		server->yb_auth_backend ? "auth" : "regular");
+
+	server->yb_backend_exited = true;
 
 	/* failed to connect to endpoint, so notring to do */
 	if (server->io.io == NULL) {
@@ -243,9 +257,12 @@ void od_backend_close_connection(od_server_t *server)
 				 "failed to send Terminate, skipping drain");
 		} else {
 			/* YB: Wait for backend to close socket */
-			if (!yb_od_backend_drain_until_eof(server) &&
+			server->yb_backend_exited =
+				yb_od_backend_drain_until_eof(server);
+			if (!server->yb_backend_exited &&
 			    server->yb_slot_claimed)
-				yb_hold_slot_until_backend_exits(server);
+				server->yb_exiting_fd =
+					dup(machine_fd(server->io.io));
 		}
 	}
 
@@ -267,10 +284,14 @@ cleanup:
 	 * if this server actually claimed one. Servers created for cancel
 	 * requests, logical replication, etc. never claim slots.
 	 */
-	if (server->yb_slot_claimed) {
-		yb_release_backend_slot((od_router_t *)server->global->router);
-		server->yb_slot_claimed = false;
+	if (!settle_slot || !server->yb_slot_claimed)
+		return;
+	if (!server->yb_backend_exited) {
+		yb_hold_backend_slot(server);
+		return;
 	}
+	yb_release_backend_slot((od_router_t *)server->global->router);
+	server->yb_slot_claimed = false;
 }
 
 /* YB: Max bytes of key data to hex-dump per log line (300 * 3 chars = 900, fits in OD_LOGLINE_MAXLEN). */
