@@ -207,12 +207,14 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcmalloc_gc_interval, 300,
     "overhead exceeds tcmalloc_max_free_bytes_percentage of currently-allocated bytes, the "
     "excess is returned to the OS. Set to 0 to disable periodic GC.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 100,
+DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, backend_drain_timeout_ms, 5,
     "Upper bound in milliseconds for which Connection Manager will synchronously wait for a "
-    "backend's socket to be closed when closing the backend connection. Setting this to 0 "
-    "skips the wait entirely, which may cause subsequent connection attempts to fail with "
-    "'sorry, too many clients already'. Setting it too high can cause Connection Manager "
-    "worker threads to block on closing sockets, reducing throughput.");
+    "backend's socket to be closed when closing the backend connection. A backend that is still "
+    "open after this keeps its connection slot until it exits, which is checked every second. "
+    "Setting this to 0 skips the wait. Setting it too low makes more closed backends hold their "
+    "slot until that check, so at the connection limit a new backend connection can be delayed "
+    "by up to 1 second. Setting it too high can cause Connection Manager worker threads to block "
+    "on closing sockets, reducing throughput.");
 
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Maximum number of pending TCP connections queued by the kernel on "

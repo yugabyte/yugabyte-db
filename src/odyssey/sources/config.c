@@ -70,7 +70,7 @@ void od_config_init(od_config_t *config)
 	config->yb_max_prepared_statements = 0;
 	config->yb_tcmalloc_gc_interval = 300;
 	config->yb_wait_for_rfq_on_sync = true;
-	config->yb_backend_drain_timeout_ms = 100;
+	config->yb_backend_drain_timeout_ms = 5;
 	config->yb_data_directory = NULL;
 
 	od_list_init(&config->listen);

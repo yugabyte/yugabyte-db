@@ -9,6 +9,8 @@
 #include <assert.h>
 
 #include <errno.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <kiwi.h>
 #include <machinarium.h>
@@ -82,7 +84,7 @@ static inline uint64_t yb_monotonic_time_us(void)
  * The caller always proceeds with od_io_close() when we return -- the drain is
  * a best-effort wait.
  */
-static inline void yb_od_backend_drain_until_eof(od_server_t *server)
+static inline bool yb_od_backend_drain_until_eof(od_server_t *server)
 {
 	od_instance_t *instance = server->global->instance;
 	od_io_t *io = &server->io;
@@ -90,11 +92,12 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 	int rc;
 	uint64_t timeout_ms = instance->config.yb_backend_drain_timeout_ms;
 
-	/* 0 disables the drain entirely. */
+	/* 0 skips the synchronous wait. */
 	if (timeout_ms == 0)
-		return;
+		return false;
 
 	uint64_t start_us = yb_monotonic_time_us();
+	bool backend_closed = false;
 
 	/*
 	 * Will be called with locks held, make sure to not call any function that
@@ -115,6 +118,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 			od_debug(&instance->logger, "backend-drain", NULL,
 				 server, "drain complete (EOF) after %" PRIu64 " us",
 				 yb_monotonic_time_us() - start_us);
+			backend_closed = true;
 			break;
 		}
 		if (rc > 0)
@@ -132,6 +136,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 				 server,
 				 "drain ended with errno=%d after %" PRIu64 " us",
 				 errno_, yb_monotonic_time_us() - start_us);
+			backend_closed = true;
 			break;
 		}
 
@@ -142,6 +147,80 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 	od_debug(&instance->logger, "backend-drain", NULL, server,
 		 "finished draining, rc=%d, elapsed=%d us", (int)rc,
 		 (int)(yb_monotonic_time_us() - start_us));
+	return backend_closed;
+}
+
+static void yb_hold_slot_until_backend_exits(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	od_router_t *router = server->global->router;
+
+	yb_exiting_backend_t *backend = malloc(sizeof(*backend));
+	if (backend == NULL)
+		return;
+	backend->fd = dup(machine_fd(server->io.io));
+	if (backend->fd == -1) {
+		free(backend);
+		return;
+	}
+	od_list_init(&backend->link);
+
+	pthread_mutex_lock(&router->yb_exiting_backends_lock);
+	od_list_append(&router->yb_exiting_backends, &backend->link);
+	pthread_mutex_unlock(&router->yb_exiting_backends_lock);
+
+	server->yb_slot_claimed = false;
+	od_log(&instance->logger, "backend", NULL, server,
+	       "backend did not exit within %d ms, holding its connection slot until it does",
+	       (int)instance->config.yb_backend_drain_timeout_ms);
+}
+
+int yb_backend_release_slots_of_exited(od_router_t *router)
+{
+	char buf[4096];
+	int released = 0;
+	od_list_t *i, *n;
+
+	pthread_mutex_lock(&router->yb_exiting_backends_lock);
+	od_list_foreach_safe(&router->yb_exiting_backends, i, n)
+	{
+		yb_exiting_backend_t *backend =
+			od_container_of(i, yb_exiting_backend_t, link);
+		ssize_t rc;
+		while ((rc = recv(backend->fd, buf, sizeof(buf),
+				  MSG_DONTWAIT)) > 0)
+			;
+		if (rc == -1 && (errno == EAGAIN || errno == EWOULDBLOCK ||
+				 errno == EINTR))
+			continue;
+		close(backend->fd);
+		od_list_unlink(&backend->link);
+		free(backend);
+		yb_release_backend_slot(router);
+		released++;
+	}
+	pthread_mutex_unlock(&router->yb_exiting_backends_lock);
+
+	if (released > 0) {
+		od_instance_t *instance = router->global->instance;
+		od_debug(&instance->logger, "backend", NULL, NULL,
+			 "released %d slots of exited backends", released);
+	}
+	return released;
+}
+
+void yb_backend_free_exiting(od_router_t *router)
+{
+	od_list_t *i, *n;
+	od_list_foreach_safe(&router->yb_exiting_backends, i, n)
+	{
+		yb_exiting_backend_t *backend =
+			od_container_of(i, yb_exiting_backend_t, link);
+		close(backend->fd);
+		free(backend);
+	}
+	od_list_init(&router->yb_exiting_backends);
+	pthread_mutex_destroy(&router->yb_exiting_backends_lock);
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -164,7 +243,9 @@ void od_backend_close_connection(od_server_t *server)
 				 "failed to send Terminate, skipping drain");
 		} else {
 			/* YB: Wait for backend to close socket */
-			yb_od_backend_drain_until_eof(server);
+			if (!yb_od_backend_drain_until_eof(server) &&
+			    server->yb_slot_claimed)
+				yb_hold_slot_until_backend_exits(server);
 		}
 	}
 

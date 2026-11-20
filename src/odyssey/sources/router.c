@@ -39,6 +39,8 @@ void od_router_init(od_router_t *router, od_global_t *global)
 	router->router_err_logger = od_err_logger_create_default();
 	router->yb_max_logical_client_version = 0;
 	router->yb_backends_in_use = 0;
+	pthread_mutex_init(&router->yb_exiting_backends_lock, NULL);
+	od_list_init(&router->yb_exiting_backends);
 }
 
 static inline int od_router_immed_close_server_cb(od_server_t *server,
@@ -83,6 +85,8 @@ void od_router_free(od_router_t *router)
 	od_route_pool_free(&router->route_pool);
 	od_rules_free(&router->rules);
 	pthread_mutex_destroy(&router->lock);
+	/* YB */
+	yb_backend_free_exiting(router);
 	od_err_logger_free(router->router_err_logger);
 }
 
@@ -1262,14 +1266,6 @@ od_router_status_t od_router_attach(od_router_t *router,
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;
-					/*
-					 * YB: Transfer slot from idle server to new server. To do
-					 * this, we set `yb_slot_claimed` of the idle server to true
-					 * so it doesn't decrement the global counter on exit and this
-					 * slot is then taken to be transferred to the new server
-					 */
-					idle_server->yb_slot_claimed = false;
-					yb_slot_claimed = true;
 
 					/*
 					 * Close the connection first so that we attempt to make a
@@ -1283,10 +1279,9 @@ od_router_status_t od_router_attach(od_router_t *router,
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
 
-					// We are allowed to spun new server connection now that we
-					// have made space for ourselves.
+					/* YB: Claim again, the slot is held if the backend hasn't exited */
 					od_route_lock(route);
-					break;
+					continue;
 				}
 
 				// No available idle servers. We have to wait.

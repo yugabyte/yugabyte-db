@@ -379,6 +379,11 @@ static void od_cron(void *arg)
 		/* mark and sweep expired idle server connections */
 		od_cron_expire(cron);
 
+		/* YB */
+		if (yb_backend_release_slots_of_exited(cron->global->router) > 0)
+			yb_signal_all_routes(cron->global->router, NULL,
+					     instance->config.yb_enable_multi_route_pool);
+
 		/* update statistics */
 		if (++stats_tick >= instance->config.stats_interval) {
 			od_cron_stat(cron);
