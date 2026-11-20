@@ -376,4 +376,25 @@ Status XClusterDDLReplicationSwitchoverTest::Switchover() {
   return Status::OK();
 }
 
+Status XClusterDDLReplicationSwitchoverTest::SwitchoverBack() {
+  LOG(INFO) << "===== Beginning switchover back: checkpoint A";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  RETURN_NOT_OK(CheckpointReplicationGroup(
+      kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  LOG(INFO) << "===== Switchover back: set up replication from A to B";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  RETURN_NOT_OK(CreateReplicationFromCheckpoint(
+      cluster_B_->mini_cluster_->GetMasterAddresses(), kReplicationGroupId));
+  LOG(INFO) << "===== Continuing switchover back: drop replication from B to A";
+  SetReplicationDirection(ReplicationDirection::BToA);
+  RETURN_NOT_OK(DeleteOutboundReplicationGroup(kBackwardsReplicationGroupId));
+  LOG(INFO) << "===== Finishing switchover back: wait for A to no longer be in readonly mode";
+  SetReplicationDirection(ReplicationDirection::AToB);
+  RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
+      VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_A_));
+  LOG(INFO) << "===== Switchover back done";
+
+  return Status::OK();
+}
+
 }  // namespace yb

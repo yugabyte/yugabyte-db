@@ -15,7 +15,7 @@ model: sonnet
 Create a tracking issue for a YugabyteDB change: either a **GitHub issue** in
 `yugabyte/yugabyte-db` (the default for core DB code) or a **JIRA ticket** (the
 default for YBA/platform work). Return the resulting issue number / JIRA key so
-it can feed into `/create-pr` or `/create-diff`.
+it can feed into `/create-pr`.
 
 ## Confidentiality — read before you write anything public
 
@@ -78,6 +78,11 @@ Step 3c also needs the Atlassian tool that adds a comment to a JIRA issue.
   For a security report, draft it in the policy's format and hand it to the
   user to send; file no issue. Then check for duplicates as it describes.
 - YBA / platform code (`managed/`) → **JIRA ticket**.
+- A security vulnerability, in any part of the repo → **JIRA ticket** of type
+  `Vulnerability`, never `Task` or `Bug` and never a GitHub issue. Give it the CVE
+  IDs if there are any, the affected package and its location, a severity, and
+  the Target Version. Don't set Fix Version; automation fills it in when the fix
+  lands. See `src/AGENTS.md` § Security and customer-sensitive changes.
 
 Ask the user whether they are an internal (Yugabyte) filer when the issue is
 sensitive or carries internal links or artifacts. Don't infer it.
@@ -193,7 +198,7 @@ links go in a comment on the synced JIRA ticket, never on GitHub. If the
 Output:
 
 - The issue URL (from `gh issue create`) or the JIRA key + link.
-- The reference in the form you'd hand to `/create-pr` or `/create-diff`
+- The reference in the form you'd hand to `/create-pr`
   (a GitHub number like `#31151`, or a JIRA key like `PLAT-20518`).
 
 For a security report (Step 1), report that no issue was filed and that the
@@ -215,6 +220,5 @@ Then clean up any temp files created during this run.
   issue.
 - The GitHub title the template proposes (e.g. `[DocDB] Title`) is the raw issue
   title. The `[<issue>,...] <Component>: <Title>` PR/commit format is applied
-  later by `/create-pr` or `/create-diff` — don't pre-format the issue title that
-  way.
+  later by `/create-pr` — don't pre-format the issue title that way.
 - This skill only *creates* the tracker. Opening the PR/diff is a separate step.

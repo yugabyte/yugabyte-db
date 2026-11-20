@@ -16,19 +16,19 @@ generalized views to Pierre.
 
 ## How it works
 
-![](./img/anon_generalized.png)
+![Anon Generalized image](./img/anon_generalized.png)
 
 ## Learning Objective
 
 In this section, we will learn:
 
--   The difference between masking and generalization
--   The concept of \"K-anonymity\"
+- The difference between masking and generalization
+- The concept of \"K-anonymity\"
 
 ## The \"employee\" table
 
 
-``` { .run-postgres parse_query=False }
+```text { .run-postgres parse_query=False }
 DROP TABLE IF EXISTS employee CASCADE;
 
 CREATE TABLE employee (
@@ -113,10 +113,10 @@ Pierre just proved that asthma is caused by green eyes.
 The \'asthma\' and \'eyes\' are considered as indirect identifiers.
 
 ``` run-postgres
-SECURITY LABEL FOR anon ON COLUMN v_asthma_eyes.eyes
+SECURITY LABEL FOR k_anonymity ON COLUMN v_asthma_eyes.eyes
 IS 'INDIRECT IDENTIFIER';
 
-SECURITY LABEL FOR anon ON COLUMN v_asthma_eyes.asthma
+SECURITY LABEL FOR k_anonymity ON COLUMN v_asthma_eyes.asthma
 IS 'INDIRECT IDENTIFIER';
 ```
 
@@ -179,7 +179,9 @@ SELECT anon.k_anonymity('v_staff_per_month');
 In this case, the k factor is 1 which means that at least one unique
 individual can be identified directly by his/her first and last dates.
 
-## Exercices
+Note that the security label provider is `k_anonymity` and not `anon`.
+
+## Exercises
 
 ### E401 - Simplify `v_staff_per_month` and decrease granularity
 
@@ -218,7 +220,7 @@ FROM employee;
 '[]' will include the upper bound
 :::
 
-----
+------------------------------------------------------------------------
 
 ``` run-postgres
 SELECT *

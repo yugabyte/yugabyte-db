@@ -23,7 +23,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -144,15 +143,17 @@ public class TlsToggle extends UpgradeTaskBase {
       // Setting allow_insecure to true can be done in non-restart way.
       createNonRestartUpgradeTaskFlow(
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
-            createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
-            Map<String, String> gflags = new HashMap<>();
-            gflags.put("allow_insecure_connections", "true");
+            ServerType processType = getSingle(processTypes);
+            createGFlagUpdateTasks(1, nodeList, processType);
+            Universe universe = getUniverse();
             createSetFlagInMemoryTasks(
                     nodeList,
-                    getSingle(processTypes),
+                    processType,
                     (node, params) -> {
                       params.force = true;
-                      params.gflags = gflags;
+                      params.gflags = new HashMap<>();
+                      params.gflags.put("allow_insecure_connections", "true");
+                      addUserYsqlPgConfCsv(params.gflags, universe, node, processType);
                     })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
@@ -185,14 +186,16 @@ public class TlsToggle extends UpgradeTaskBase {
           (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
             ServerType processType = getSingle(processTypes);
             createGFlagUpdateTasks(2, nodeList, processType);
-            Map<String, String> gflags = new HashMap<>();
-            gflags.put("allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
+            Universe universe = getUniverse();
             createSetFlagInMemoryTasks(
                     nodeList,
                     processType,
                     (node, params) -> {
                       params.force = true;
-                      params.gflags = gflags;
+                      params.gflags = new HashMap<>();
+                      params.gflags.put(
+                          "allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
+                      addUserYsqlPgConfCsv(params.gflags, universe, node, processType);
                     })
                 .setSubTaskGroupType(getTaskSubGroupType());
           },

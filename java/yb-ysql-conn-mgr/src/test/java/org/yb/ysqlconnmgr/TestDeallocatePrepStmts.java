@@ -353,6 +353,7 @@ public class TestDeallocatePrepStmts extends BaseYsqlConnMgr {
                       3, matchCount);
         assertFalse("Expected SQL-level prepared statement to be dropped " +
                       "by DEALLOCATE ALL", sqlStmtFound);
+        waitForStickyConnections(0);
 
         pstmt1.execute();
         pstmt2.execute();

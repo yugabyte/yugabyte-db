@@ -60,6 +60,10 @@ class TestConfig:
     rel_build_root: str
     archive_sha256sum: Optional[str]
     compiler_type: str
+    # gs:// URL of archive_for_workers when the workers download it from GCS instead of receiving
+    # it through Spark. Set by the driver once the archive is there (uploaded, or found from an
+    # earlier run); None otherwise.
+    archive_gcs_url: Optional[str]
 
     def __init__(
             self,
@@ -77,6 +81,7 @@ class TestConfig:
         self.rel_build_root = rel_build_root
         self.archive_sha256sum = archive_sha256sum
         self.compiler_type = compiler_type
+        self.archive_gcs_url = None
 
     def get_run_test_script_path(self) -> str:
         return os.path.join(self.yb_src_root, 'build-support', 'run-test.sh')
@@ -111,6 +116,17 @@ class TestResult:
     # The test exited 0 but its report says it skipped itself (GTEST_SKIP, a platform gate), and
     # was reported to CSI as skipped. Not a pass, for anything that would repeat a pass.
     skipped: bool = False
+
+    # CSI has a failed execution of this test from an earlier attempt of its Spark task, whose
+    # results Spark dropped when the executor was lost (csi_report.create_test). Whatever this
+    # execution's exit code is, the test has failed in this build.
+    failed_in_earlier_task_attempt: bool = False
+
+    # Whether the test counts as failed for what acts on a failure: the failed-test list, the fail
+    # repetitions and the runs on the baseline.
+    @property
+    def failed(self) -> bool:
+        return self.exit_code != 0 or self.failed_in_earlier_task_attempt
 
     def log_artifact_upload_errors(self) -> None:
         for copy_result in [self.artifact_copy_result, self.spark_error_copy_result]:

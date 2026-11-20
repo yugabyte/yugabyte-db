@@ -23,6 +23,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -47,6 +48,12 @@ struct TierReconcilePassStats {
   uint32_t tablets_done = 0;
   uint32_t tablets_failed = 0;
 };
+
+// The wire form of a tablet's migration status, shared by the tablet report
+// (ReportedTabletPB.tier_migration_state) and the AlterTabletTier / GetTabletTierInfo responses.
+TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status);
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb);
 
 // Background driver of tiered-storage migration, one per tserver. A tablet's target tier is
 // persisted in its superblock (by AlterTabletTier, by creation from a tablespace, and carried
