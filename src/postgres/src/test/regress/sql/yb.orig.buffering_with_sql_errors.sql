@@ -537,3 +537,61 @@ SET SESSION ROLE yb_extension;
 SET yb_speculatively_execute_pl_statements TO true;
 SET yb_whitelist_extra_statements_for_pl_speculative_execution TO true;
 
+RESET ROLE;
+RESET yb_speculatively_execute_pl_statements;
+RESET yb_whitelist_extra_statements_for_pl_speculative_execution;
+
+-- GH-35471: An exception block's subtransaction abort must not flush writes
+-- that the failed statement left in the buffer. Here (1, 1) is a buffered
+-- duplicate when the CHECK on (2, -1) fails. In READ COMMITTED, restoring the
+-- outer statement's read point during the abort used to flush it, raising a
+-- duplicate key error mid-abort and crashing the backend at COMMIT.
+CREATE TABLE t_abort_buf (k INT PRIMARY KEY, v INT CHECK (v > 0));
+INSERT INTO t_abort_buf VALUES (1, 1);
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+DO $$
+BEGIN
+  INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'caught unique_violation';
+END $$;
+COMMIT;
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+DO $$
+BEGIN
+  INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'caught check_violation';
+END $$;
+INSERT INTO t_abort_buf VALUES (3, 3);
+COMMIT;
+SELECT * FROM t_abort_buf ORDER BY k;
+
+-- Same, from a function called per row of an outer INSERT that is itself
+-- buffering writes.
+CREATE TABLE t_abort_buf_outer (k INT PRIMARY KEY);
+CREATE FUNCTION f_abort_buf(x INT) RETURNS INT AS $$
+BEGIN
+  BEGIN
+    INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+  EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE 'caught check_violation for %', x;
+  END;
+  RETURN x;
+END $$ LANGUAGE plpgsql;
+BEGIN ISOLATION LEVEL READ COMMITTED;
+INSERT INTO t_abort_buf_outer SELECT f_abort_buf(g) FROM generate_series(1, 3) g;
+COMMIT;
+SELECT * FROM t_abort_buf_outer ORDER BY k;
+SELECT * FROM t_abort_buf ORDER BY k;
+
+-- A top-level abort doesn't clear the buffer itself until its end. The query
+-- wrapper's error handler (yb_exec_query_wrapper_one_attempt) resets it first,
+-- so the buffered duplicate (1, 1) is never flushed.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+ROLLBACK;
+INSERT INTO t_abort_buf VALUES (1, 1), (2, -1);
+SELECT * FROM t_abort_buf ORDER BY k;
