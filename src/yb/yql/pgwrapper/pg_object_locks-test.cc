@@ -2211,12 +2211,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyAndGlobalDdlOnSameTable) {
 
 // A DDL with global object locks must see a DDL in a separate DDL transaction that committed before
 // it, though only the heartbeat brings the other DDL's catalog version to its node (PR #38710). The
-// longer heartbeat keeps ts2 behind for a while after the first DDL commits.
+// longer heartbeat keeps ts2 behind for a while after the first DDL commits. The wait that covers
+// this is off by default, so the fixture turns it on.
 class PgObjectLocksTestSlowHeartbeat : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--heartbeat_interval_ms=3000");
+    opts->extra_tserver_flags.emplace_back("--ysql_separate_ddl_txn_lock_hold_heartbeats=2");
   }
 };
 

@@ -296,11 +296,12 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
     "lock the same objects. When false, they run one at a time. Either way they wait for DDLs in "
     "the same database that run in a separate DDL transaction without object locks.");
 
-DEFINE_NON_RUNTIME_int32(ysql_separate_ddl_txn_lock_hold_heartbeats, 2,
+DEFINE_NON_RUNTIME_int32(ysql_separate_ddl_txn_lock_hold_heartbeats, 0,
     "After a DDL that runs in a separate DDL transaction bumps the catalog version, the number of "
     "heartbeat intervals its statement keeps holding the lock that serializes it with DDLs with "
     "global object locks, so that those DDLs on other nodes can learn of the change first. "
-    "Applies only while the transaction takes local object locks. 0 disables the wait.");
+    "Applies only while the transaction takes local object locks. 0, the default, disables the "
+    "wait.");
 DEFINE_validator(ysql_separate_ddl_txn_lock_hold_heartbeats, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_validator(enable_object_locking_for_table_locks,
