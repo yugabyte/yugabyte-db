@@ -1212,7 +1212,9 @@ public class AsyncYBClient implements AutoCloseable {
 
   /**
    * Remove a tablet server from the master's registry. The master accepts it only for a tserver
-   * that is not live, is on the server blacklist and hosts no tablet replicas.
+   * that is not live, is on the server blacklist and hosts no tablet replicas. Masters older than
+   * 2025.1.0.0-b1 and 2.25.1.0-b1 lack this RPC and fail the call with a NonRecoverableException,
+   * so callers check the master's version first.
    *
    * @param permanentUuid the tablet server's permanent UUID
    * @return a deferred object that yields the master's response. When the master refuses,
