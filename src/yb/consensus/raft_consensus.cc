@@ -150,6 +150,18 @@ DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
 DEFINE_test_flag(int32, delay_before_added_to_leader_ms, 0,
     "Delay a leader round before NotifyAddedToLeader, i.e. before its hybrid time is assigned.");
 
+DEFINE_RUNTIME_uint32(raft_deferred_update_delay_ms, 5,
+    "Defer an UpdateConsensus that would carry nothing a client waits on by this many "
+    "milliseconds, so that a write arriving within the window carries it instead of queueing "
+    "behind that RPC. Covers commit-index-only updates, and with raft_defer_applying_replication "
+    "/ raft_defer_applied_in_all_involved_tablets, batches holding only a transaction's APPLYING "
+    "/ APPLIED_IN_ALL_INVOLVED_TABLETS records; those delay applying the transaction's intents / "
+    "removing its status record by up to the same amount. 0 disables. Must not exceed "
+    "raft_heartbeat_interval_ms, which already bounds how long an idle follower waits.");
+
+DEFINE_validator(raft_deferred_update_delay_ms,
+    FLAG_LE_FLAG_VALIDATOR(raft_heartbeat_interval_ms));
+
 DEFINE_test_flag(string, delay_update_consensus_before_mark_committed_tablet_id, "",
     "If non-empty, delay UpdateConsensus before MarkOperationsAsCommitted for this tablet id.");
 
@@ -234,7 +246,8 @@ DEFINE_validator(raft_heartbeat_interval_ms,
     FLAG_DELAYED_COND_VALIDATOR(
         _value < FINAL_FLAG_VALUE(leader_lease_duration_ms),
         yb::Format("Must be strictly less than leader_lease_duration_ms: $0",
-            FINAL_FLAG_VALUE(leader_lease_duration_ms))));
+            FINAL_FLAG_VALUE(leader_lease_duration_ms))),
+    FLAG_GE_FLAG_VALIDATOR(raft_deferred_update_delay_ms));
 
 DEFINE_UNKNOWN_int32(ht_lease_duration_ms, 2000,
              "Hybrid time leader lease duration. A leader keeps establishing a new lease or "
@@ -474,6 +487,8 @@ RaftConsensus::RaftConsensus(
       withhold_votes_until_(MonoTime::Min()),
       step_down_check_tracker_(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
+      deferred_signal_tracker_(
+          "deferred_signal_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       deprecated_follower_memory_pressure_rejections_(
           tablet_metric_entity->FindOrCreateMetric<Counter>(
@@ -1190,6 +1205,10 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
 
   queue_->RegisterObserver(this);
 
+  // An index armed in an earlier term may have been truncated and reused; it must not match a
+  // new op and make UpdateMajorityReplicated skip its signal.
+  deferred_signal_op_index_.store(0, std::memory_order_release);
+
   // Refresh queue and peers before initiating NO_OP.
   RefreshConsensusQueueAndPeersUnlocked();
 
@@ -1266,6 +1285,8 @@ Status RaftConsensus::BecomeReplicaUnlocked(
   // we're stepping down.
   queue_->SetNonLeaderMode();
 
+  deferred_signal_tracker_.Abort();
+
   peer_manager_->Close();
 
   // TODO: https://github.com/yugabyte/yugabyte-db/issues/5522. Add unit tests for this metric.
@@ -1303,6 +1324,9 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
 Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds) {
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
   TEST_PAUSE_IF_FLAG(TEST_pause_before_replicate_batch);
+  const auto deferred_update_delay_ms = FLAGS_raft_deferred_update_delay_ms;
+  bool defer_signal = false;
+  bool schedule_deferred_signal = false;
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
@@ -1323,9 +1347,30 @@ Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* pr
       RETURN_NOT_OK(round->CheckBoundTerm(current_term));
     }
     RETURN_NOT_OK(AppendNewRoundsToQueueUnlocked(rounds, processed_rounds));
+
+    defer_signal =
+        deferred_update_delay_ms > 0 && state_->GetActiveConfigUnlocked().peers_size() > 1 &&
+        std::all_of(rounds.begin(), rounds.end(), [](const auto& round) {
+          return round->replication_deferrable();
+        });
+    if (defer_signal) {
+      deferred_signal_op_index_.store(
+          state_->GetLastReceivedOpIdUnlocked().index, std::memory_order_release);
+      schedule_deferred_signal = !deferred_signal_armed_.exchange(true, std::memory_order_acq_rel);
+    }
   }
 
-  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+  if (defer_signal) {
+    // Shares the commit-index deferral's task: the request it sends carries the commit index as
+    // well as the queued ops. An already-armed task covers this batch too.
+    if (schedule_deferred_signal) {
+      deferred_signal_tracker_.Schedule(
+          std::bind(&RaftConsensus::SignalDeferredRequest, this, _1),
+          1ms * deferred_update_delay_ms);
+    }
+  } else {
+    peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+  }
   RETURN_NOT_OK(ExecuteHook(POST_REPLICATE));
   return Status::OK();
 }
@@ -1569,19 +1614,76 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   if (committed_index_changed &&
       state_->GetActiveRoleUnlocked() == PeerRole::LEADER) {
+    const bool nothing_left_to_replicate =
+        *committed_op_id == state_->GetLastReceivedOpIdUnlocked();
+    // With no remote peers (RF 1) there is nobody to carry the commit index to.
+    const bool has_remote_peers = state_->GetActiveConfigUnlocked().peers_size() > 1;
+
     // If all operations were just committed, and we don't have pending operations, then
     // we write an empty batch that contains committed index.
     // This affects only our local log, because followers have different logic in this scenario.
-    if (*committed_op_id == state_->GetLastReceivedOpIdUnlocked()) {
+    if (nothing_left_to_replicate) {
       auto status = queue_->AppendOperations({}, *committed_op_id, state_->Clock().Now());
       LOG_IF_WITH_PREFIX(DFATAL, !status.ok() && !status.IsServiceUnavailable())
           << "Failed to append empty batch: " << status;
     }
 
+    // Deferring only helps when the signal would carry nothing but the commit index; with ops
+    // pending the next request carries it anyway, and scheduling per write is pure overhead.
+    const auto deferred_update_delay_ms = FLAGS_raft_deferred_update_delay_ms;
+    const bool defer_signal =
+        deferred_update_delay_ms > 0 && nothing_left_to_replicate && has_remote_peers;
+    // Only a deferred batch is left to send: its pending task fires within the delay and carries
+    // the new commit index, so signalling now would just send that batch early.
+    const bool deferred_batch_pending =
+        deferred_update_delay_ms > 0 && !nothing_left_to_replicate && has_remote_peers &&
+        deferred_signal_op_index_.load(std::memory_order_acquire) ==
+            state_->GetLastReceivedOpIdUnlocked().index;
+    bool schedule_deferred_signal = false;
+    if (defer_signal) {
+      // Under the lock, like DoReplicateBatch: storing after unlock() could overwrite the larger
+      // index of a deferrable batch appended in between, and the surviving task would skip it.
+      deferred_signal_op_index_.store(committed_op_id->index, std::memory_order_release);
+      schedule_deferred_signal = !deferred_signal_armed_.exchange(true, std::memory_order_acq_rel);
+    }
+
     lock.unlock();
+    if (deferred_batch_pending) {
+      return;
+    }
     // No need to hold the lock while calling SignalRequest.
-    peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+    if (!defer_signal) {
+      peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
+      return;
+    }
+    // An already-armed task fires within the delay and carries this commit index too.
+    if (schedule_deferred_signal) {
+      deferred_signal_tracker_.Schedule(
+          std::bind(&RaftConsensus::SignalDeferredRequest, this, _1),
+          1ms * deferred_update_delay_ms);
+    }
   }
+}
+
+void RaftConsensus::SignalDeferredRequest(const Status& status) {
+  // Cleared first: an arming that races with this run schedules a new task, at worst a redundant
+  // signal, rather than leaving an op behind with no task to send it.
+  deferred_signal_armed_.store(false, std::memory_order_release);
+  if (!status.ok()) {
+    VLOG_WITH_PREFIX(1) << "Deferred peer signal aborted: " << status;
+    return;
+  }
+  {
+    // Ops appended since this was armed carry the commit index, and their own signal sends them.
+    // Firing anyway could pick up a batch mid-append and split it across two round trips; the
+    // lock waits out an append in progress.
+    auto lock = state_->LockForRead();
+    if (state_->GetLastReceivedOpIdUnlocked().index >
+            deferred_signal_op_index_.load(std::memory_order_acquire)) {
+      return;
+    }
+  }
+  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 }
 
 void RaftConsensus::AppendEmptyBatchToLeaderLog() {
@@ -1757,7 +1859,12 @@ Status RaftConsensus::Update(
 
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
     if (delay != MonoDelta::kZero) {
-      std::this_thread::sleep_for(delay.ToSteadyDuration());
+      // Resetting the delay to zero ends a hold that is already in progress.
+      const auto hold_end = CoarseMonoClock::now() + delay.ToSteadyDuration();
+      while (CoarseMonoClock::now() < hold_end &&
+             TEST_delay_update_.load(std::memory_order_acquire) != MonoDelta::kZero) {
+        std::this_thread::sleep_for(10ms);
+      }
     } else if (FLAGS_TEST_delay_update_consensus_requests_ms != 0) {
       std::this_thread::sleep_for(1ms * FLAGS_TEST_delay_update_consensus_requests_ms);
     }
@@ -2217,6 +2324,11 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
 
   // 4 - Mark operations as committed
   RETURN_NOT_OK(MarkOperationsAsCommittedUnlocked(request, deduped_req, last_from_leader));
+
+  if (request.has_all_replicated_op_id()) {
+    all_replicated_index_from_leader_.store(
+        request.all_replicated_op_id().index(), std::memory_order_release);
+  }
 
   // Fill the response with the current state. We will not mutate anymore state until
   // we actually reply to the leader, we'll just wait for the messages to be durable.
@@ -3115,6 +3227,7 @@ void RaftConsensus::StartShutdown() {
     // Transition to kShuttingDown state.
     CHECK_OK(state_->LockForShutdown(&lock));
     step_down_check_tracker_.StartShutdown();
+    deferred_signal_tracker_.StartShutdown();
   }
 
   // Close the peer manager.
@@ -3145,6 +3258,7 @@ void RaftConsensus::CompleteShutdown() {
   }
 
   step_down_check_tracker_.CompleteShutdown();
+  deferred_signal_tracker_.CompleteShutdown();
 
   // Shut down things that might acquire locks during destruction.
   raft_pool_concurrent_token_->Shutdown();
@@ -3812,6 +3926,12 @@ OpId RaftConsensus::GetLastAppliedOpId() {
 
 OpId RaftConsensus::GetAllAppliedOpId() {
   return queue_->GetAllAppliedOpId();
+}
+
+int64_t RaftConsensus::GetAllReplicatedIndex() const {
+  return std::max(
+      queue_->GetAllReplicatedOpId().index,
+      all_replicated_index_from_leader_.load(std::memory_order_acquire));
 }
 
 Status RaftConsensus::CheckReadyAsRbsSource() {

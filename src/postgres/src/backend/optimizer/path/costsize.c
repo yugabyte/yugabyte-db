@@ -106,7 +106,10 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
+#include "commands/defrem.h"
 #include "executor/ybExpr.h"
+#include "optimizer/planner.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
@@ -178,6 +181,8 @@ double		yb_inter_zone_roundtrip_cost = YB_DEFAULT_INTER_ZONE_ROUNDTRIP_COST;
 double		yb_inter_zone_transfer_cost = YB_DEFAULT_INTER_ZONE_TRANSFER_COST;
 double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
+double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
+double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -583,6 +588,28 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	path->path.total_cost = (startup_cost + run_cost + input_total_cost);
 }
 
+static bool
+ybShouldPenalizeMergeOption(IndexPath *path)
+{
+	bool penalize = false;
+	if (path->indexinfo->yb_options != NIL)
+	{
+		int mergeOptionValue = ybGetValueForMergeOption(path->indexinfo->yb_options);
+		if (mergeOptionValue >= 0)
+		{
+			if (path->yb_index_path_info.merge_scan_info == NULL)
+			{
+				if (mergeOptionValue == 1)
+					penalize = true;
+			}
+			else if (mergeOptionValue == 0)
+				penalize = true;
+		}
+	}
+
+	return penalize;
+}
+
 /*
  * cost_index
  *	  Determines and returns the cost of scanning a relation using an index.
@@ -659,7 +686,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											  path->indexclauses);
 	}
 
-	if (!enable_indexscan)
+	if (!enable_indexscan ||
+		ybShouldPenalizeMergeOption(path) /* YB */ )
 		startup_cost += disable_cost;
 	/* we don't need to check enable_indexonlyscan; indxpath.c does that */
 
@@ -7834,6 +7862,11 @@ yb_exist_conditions_on_all_hash_keys(IndexOptInfo *index,
  * This logic can be reused to identify non-strictest index conditions, and use
  * them as filters instead. The decision should also be propagated forward to
  * pggate to remove duplicate logic from `YbBindScanKeys`.
+ *
+ * 'strictest_in_batch_share', when not NULL, receives the share of the batch
+ * size that the strictest condition carries when it is a batched IN list that
+ * shares its batch with the batched conditions on other columns
+ * (yb_batched_clauses), and 0 otherwise.
  */
 static void
 yb_analyze_conditions_on_current_column(PlannerInfo *root,
@@ -7842,7 +7875,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 										int index_col,
 										List *index_conditions,
 										YbIndexCondTypes *strictest_condition_type,
-										int *strictest_in_expr_array_length)
+										int *strictest_in_expr_array_length,
+										double *strictest_in_batch_share)
 {
 	/* Check if exist equality or IN conditions on the index column */
 	bool		in_expr = false;
@@ -7852,6 +7886,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 	ListCell   *lc;
 
 	*strictest_in_expr_array_length = INT_MAX;
+	if (strictest_in_batch_share)
+		*strictest_in_batch_share = 0;
 
 	foreach(lc, index_conditions)
 	{
@@ -7879,13 +7915,16 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 
 					int			in_expr_array_length;
 
-					in_expr_array_length = yb_batch_expr_size(root,
-															  baserel->relid,
-															  other_operand);
+					in_expr_array_length =
+						(int) rint(yb_batch_expr_size(root, baserel->relid,
+													  other_operand));
 
 					if (*strictest_in_expr_array_length > in_expr_array_length)
 					{
 						*strictest_in_expr_array_length = in_expr_array_length;
+						if (strictest_in_batch_share)
+							*strictest_in_batch_share =
+								castNode(YbBatchedExpr, other_operand)->share;
 					}
 				}
 				else
@@ -7931,6 +7970,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 			if (*strictest_in_expr_array_length > in_expr_array_length)
 			{
 				*strictest_in_expr_array_length = in_expr_array_length;
+				if (strictest_in_batch_share)
+					*strictest_in_batch_share = 0;
 			}
 		}
 		else if (IsA(clause, NullTest))
@@ -7948,6 +7989,8 @@ yb_analyze_conditions_on_current_column(PlannerInfo *root,
 	if (equality_expr)
 	{
 		*strictest_condition_type |= EQUALITY_EXPR;
+		if (strictest_in_batch_share)
+			*strictest_in_batch_share = 0;
 	}
 	else if (in_expr)
 	{
@@ -8044,12 +8087,25 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 	{
 		YbIndexCondTypes current_column_strictest_cond_type = 0;
 		int			strictest_in_expr_array_length;
+		double		strictest_in_batch_share;
 
 		yb_analyze_conditions_on_current_column(root, baserel, index,
 												index_col,
 												index_conditions_on_each_column[index_col],
 												&current_column_strictest_cond_type,
-												&strictest_in_expr_array_length);
+												&strictest_in_expr_array_length,
+												&strictest_in_batch_share);
+
+		/*
+		 * The IN list of this column.  A batched IN list that shares its
+		 * batch with other columns counts its share of the batch size: the
+		 * shares cross into one target per tuple of the batch
+		 * (yb_batched_clauses).
+		 */
+		Cardinality	in_list_length = strictest_in_expr_array_length;
+
+		if (strictest_in_batch_share > 0)
+			in_list_length = strictest_in_batch_share;
 
 		Selectivity selectivity_current_key_conds;
 
@@ -8091,15 +8147,19 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				 * we cap the number of seeks by the number of unique values
 				 * of current key for each group of prefix keys. Otherwise we
 				 * may absurdbly over-estimate seeks for IN filters.
+				 *
+				 * A batched IN list that shares its batch with other columns
+				 * is not capped: the shares multiply to the tuples of the
+				 * batch, each of which is a target, and a cap on one share
+				 * would drop tuples from that count.
 				 */
-				if (index_col > 0)
+				if (index_col > 0 && strictest_in_batch_share == 0)
 				{
 					Cardinality	num_unique_values_per_prefix_group =
 						num_groups_of_index_key_prefixes[index_col] /
 						num_groups_of_index_key_prefixes[index_col - 1];
 
-					if (num_unique_values_per_prefix_group <
-						strictest_in_expr_array_length)
+					if (num_unique_values_per_prefix_group < in_list_length)
 					{
 						*num_seeks += num_unique_values_per_prefix_group;
 						*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
@@ -8107,16 +8167,14 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 					}
 					else
 					{
-						*num_seeks += strictest_in_expr_array_length;
-						*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
-							strictest_in_expr_array_length;
+						*num_seeks += in_list_length;
+						*num_nexts += MAX_NEXTS_TO_AVOID_SEEK * in_list_length;
 					}
 				}
 				else
 				{
-					*num_seeks += strictest_in_expr_array_length;
-					*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
-						strictest_in_expr_array_length;
+					*num_seeks += in_list_length;
+					*num_nexts += MAX_NEXTS_TO_AVOID_SEEK * in_list_length;
 				}
 
 				/*
@@ -8180,6 +8238,15 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 								  yb_get_attdistinctcount(baserel_oid,
 														  index->indexkeys[0]));
 			}
+
+			/*
+			 * The share of a batched IN list that shares its batch with
+			 * other columns is the number of this column's values per value
+			 * of the columns before it.
+			 */
+			if (strictest_in_batch_share > 0)
+				num_unique_values_per_prefix_key_group =
+					strictest_in_batch_share;
 
 			if ((current_column_strictest_cond_type &
 				 (LOWER_BOUND_INEQUALITY_EXPR |
@@ -8247,9 +8314,8 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				 */
 				if (current_column_strictest_cond_type & IN_EXPR)
 				{
-					*num_seeks += strictest_in_expr_array_length;
-					*num_nexts += MAX_NEXTS_TO_AVOID_SEEK *
-						strictest_in_expr_array_length;
+					*num_seeks += in_list_length;
+					*num_nexts += MAX_NEXTS_TO_AVOID_SEEK * in_list_length;
 				}
 				else if (current_column_strictest_cond_type &
 						 (EQUALITY_EXPR |
@@ -9292,7 +9358,7 @@ yb_estimate_distinct_index_scan(PlannerInfo *root,
 
 		yb_analyze_conditions_on_current_column(root, baserel, index, col,
 												conds, &cond_type,
-												&in_list_length);
+												&in_list_length, NULL);
 		if (conds != NIL)
 			col_selectivity = clauselist_selectivity(root, conds,
 													 baserel->relid,
@@ -9732,16 +9798,31 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	bms_free(non_pushable_attnums);
 
 	/*
-	 * Sort the index conditions into `index_conditions_on_each_column`.
+	 * The index conditions as they are estimated, a batched one in its
+	 * batched form (yb_batched_clauses), sorted into
+	 * `index_conditions_on_each_column`.  The scan's parameterized clauses
+	 * decide which index conditions share a batch, as they do for ppi_rows.
 	 */
+	index_conditions = get_quals_from_indexclauses(path->indexclauses);
+	if (YB_PATH_NEEDS_BATCHED_RELS(&path->path))
+	{
+		Relids		batchedrelids = YB_PATH_REQ_OUTER_BATCHED(&path->path);
+		List	   *groups =
+			yb_clause_batched_groups(path->path.param_info->ppi_clauses,
+									 batchedrelids, baserel->relids);
+
+		index_conditions = yb_batched_clauses(root, baserel, index_conditions,
+											  batchedrelids, groups);
+	}
+
 	index_conditions_on_each_column = palloc0(sizeof(List *) * index->nkeycolumns);
-	index_conditions = NIL;
 	index_col = 0;
+
+	ListCell   *lc_cond = list_head(index_conditions);
 
 	foreach(lc, path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		ListCell   *lc2;
 		int			index_qual_col = iclause->indexcol;
 
 		while (index_col != index_qual_col)
@@ -9750,24 +9831,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			Assert(index_col < index->nkeycolumns);
 		}
 
-		foreach(lc2, iclause->indexquals)
+		for (int i = 0; i < list_length(iclause->indexquals); i++)
 		{
-			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-
-			if (path->path.param_info)
-			{
-				Relids		batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
-				RestrictInfo *batched_rinfo;
-
-				batched_rinfo =
-					yb_get_batched_restrictinfo(rinfo, batched,
-												path->path.parent->relids);
-				if (batched_rinfo)
-					rinfo = batched_rinfo;
-			}
 			index_conditions_on_each_column[index_col] =
-				lappend(index_conditions_on_each_column[index_col], rinfo);
-			index_conditions = lappend(index_conditions, rinfo);
+				lappend(index_conditions_on_each_column[index_col],
+						lfirst(lc_cond));
+			lc_cond = lnext(index_conditions, lc_cond);
 		}
 	}
 
@@ -10607,20 +10676,51 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
 
 	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
-	if (!enable_indexscan)
+	if (!enable_indexscan || ybShouldPenalizeMergeOption(path))
 		startup_cost += disable_cost;
 
-	/* TODO(#29078): cost this better. */
-	if (path->yb_index_path_info.merge_scan_stream_cols)
+	if (path->yb_index_path_info.merge_scan_info)
 	{
 		/*
-		 * We need merge index scans to cost higher than plain index scans to
-		 * avoid doing merge scan where it doesn't give any gains for upper
-		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
-		 * STD_FUZZ_FACTOR = 1.01.
+		 * The merge's own work: per row passed up, a constant overhead plus
+		 * one heap step to pick the next row from the streams, about
+		 * log2(streams) comparisons, on top of the index scan's cost.  A
+		 * merge scan must never beat the same index scan without the merge:
+		 * it wins a slot only where an upper node uses its order.  The floor
+		 * keeps it at least 2 % above that scan where the term is smaller,
+		 * outside add_path's fuzz, so the plain path survives and stays the
+		 * cheapest.  Part of the floor goes on startup_cost: a join or Limit
+		 * over the two scans can be within the fuzz on total cost, and
+		 * add_path then falls back to startup_cost before pathkeys.
 		 */
-		startup_cost *= 1.02;
-		run_cost *= 1.02;
+		int			num_streams =
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_info->stream_cols);
+		Cardinality merge_rows;
+		Cost		merge_cost;
+		Cost		plain_startup_cost = startup_cost;
+		Cost		plain_total_cost = startup_cost + run_cost;
+
+		/*
+		 * A secondary index with its own read request merges the index
+		 * streams and then fetches base rows by ybctid in merged order, so
+		 * every matched index tuple goes through the heap before the
+		 * base-table filters apply.  A primary key, an index-only scan or an
+		 * embedded secondary index merges the base-table result instead.  As
+		 * elsewhere in this function, a colocated base relation stands in for
+		 * the embedded case.
+		 *
+		 * The planned stream count can be 0 or 1 (an empty or single-element
+		 * IN list, see #36359), and the heap still runs once per row, so
+		 * charge at least one comparison.
+		 */
+		merge_rows = (is_primary_index || index_only || baserel_is_colocated) ?
+			num_baserel_result_rows : num_index_tuples_matched;
+		merge_cost = cpu_operator_cost * merge_rows *
+			(yb_merge_scan_row_cost_factor +
+			 yb_merge_scan_stream_cost_factor * log2(Max(num_streams, 2)));
+		startup_cost = plain_startup_cost * 1.02;
+		run_cost += Max(merge_cost, 0.02 * plain_total_cost) -
+			0.02 * plain_startup_cost;
 	}
 
 	/*
@@ -11028,27 +11128,20 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * We require only that the OUTER is sorted on a join key: take the leading
  * outer pathkey and find a mergejoinable join clause whose equivalence class
  * matches it (no inner pathkey is needed).  Both sides' statistics are used,
- * in different roles: the INNER histogram supplies a single boundary value --
- * its lowest join key (highest for a DESC outer) -- and the OUTER's own
- * statistics estimate the fraction of outer rows that sort before that
- * boundary.  This is the outer half of what initial_cost_mergejoin derives.
- *
- * We make that fraction FILTER-AWARE
- * (yb_bnl_outer_skip_selectivity): the full-column fraction ignores the outer
- * scan's own restriction, so multiplying it by the already restricted
- * outer_path_rows over-counts the skip whenever the outer is itself bounded
- * to start at/above the inner's matching range (e.g. "outer.k >= c" with
+ * in different roles: the INNER supplies a single boundary value, its first
+ * join key in the outer's sort order, and the OUTER's own statistics estimate
+ * the fraction of outer rows that sort before that boundary.  This is the
+ * outer half of what initial_cost_mergejoin derives, and
+ * yb_bnl_outer_skip_selectivity seeds it as mergejoinscansel does and adjusts
+ * it with yb_adjust_scansel_for_restrictions: the outer's own range bounds
+ * remove leading mismatches the full column counts (e.g. "outer.k >= c" with
  * c >= min(inner.k) has NO leading mismatch, yet the full-column fraction is
- * large).  Conditioning the fraction on the outer relation's baserestrictinfo
- * collapses it to ~0 there while preserving a genuine low-key prefix.  Merge
- * join conditions its start fraction on the join key's own range bounds
- * instead, which also reach a join-relation outer, whose restriction list
- * here is empty, and it tightens the fraction by the inner's range bounds,
- * which do not move this skip.
+ * large), and the inner's bound on the side where its keys start moves its
+ * first key, since the inner's restrictions apply on every probe.
  *
  * Returns 0 (the conservative fallback merge join also uses) when the outer is
  * unsorted, no mergejoinable join clause matches the leading pathkey, or the
- * stats/bounds needed for a filter-aware estimate are unavailable.
+ * statistics the estimate needs are unavailable.
  */
 static double
 yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
@@ -11096,8 +11189,7 @@ yb_bnl_outer_skip_rows(PlannerInfo *root, Path *outer_path,
 			yb_bnl_outer_skip_selectivity(root, (Node *) rinfo->clause,
 										  opathkey->pk_opfamily,
 										  opathkey->pk_strategy,
-										  outer_path->parent->relids,
-										  outer_path->parent->baserestrictinfo);
+										  outer_path->parent->relids);
 		if (outerstartsel < 0.0)
 			return 0.0;
 
@@ -11276,4 +11368,203 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
 	}
 
 	return root->yb_limit_tuples;
+}
+
+/*
+ * yb_batched_clauses
+ *	  The clauses of a parameterized scan of rel in the form the scan is
+ *	  estimated with: a clause that has a batched form over batchedrelids is
+ *	  replaced by that form, and the others are returned as they are.
+ *
+ * A batched clause probes rel with a batch of outer values per rescan, and
+ * eqsel multiplies its per-value selectivity by the number of values
+ * (yb_batch_expr_size).  The batched clauses one batch feeds are zipped into
+ * one row comparison against the batch's tuples (createplan.c), so the batch
+ * probes rel once per tuple, not once per combination of the clauses' values.
+ * Each of those clauses is given a share of the batch size on a copy of its
+ * batched form, and the shares multiply to the batch size.  A clause with a
+ * batch of its own keeps the whole batch size.
+ *
+ * One batch feeds the clauses whose batched relations one join batches:
+ * clauses with a relation in common, since one join batches a relation, and
+ * clauses linked by one of groups.  A caller that passes only some of the
+ * scan's parameterized clauses passes in groups the sets of relations that
+ * those clauses read together (yb_clause_batched_groups).  The links come from
+ * the clauses alone, not from the groups that paths accumulate on the
+ * ParamPathInfo, so the estimate does not depend on the order the paths are
+ * built in.  Clauses on disjoint relations may be fed by nested joins, each
+ * with a batch of its own.
+ *
+ * The shares are assigned in clause order, each at most the reciprocal of its
+ * clause's selectivity, where eqsel would clamp it, and the last clause takes
+ * the rest; the selectivities then multiply to the estimate for the batch in
+ * any clause order.  yb_cost_index passes the clauses in index column order,
+ * so the leading key columns take as many values as they have, and
+ * yb_estimate_seeks_nexts_in_index_scan, which crosses the columns' shares as
+ * IN lists, counts one target per tuple of the batch.
+ *
+ * As var_eq_non_const does for one value, the estimate assumes that a probe
+ * tuple has rows in rel, so it matches at least one.  When the per-value
+ * selectivities multiply to less than one row of rel, rel has fewer rows than
+ * value combinations and its columns are not independent.  The clauses then
+ * carry rows_scale factors that together raise the estimate to one row per
+ * probe tuple, each clause taking as much as keeps its selectivity within
+ * one.  eqsel applies them.  They scale the rows the clauses select and leave
+ * the shares alone, so the seek and next estimate still counts one target per
+ * tuple of the batch.
+ */
+List *
+yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
+				   Relids batchedrelids, List *groups)
+{
+	int			nclauses = list_length(clauses);
+	RestrictInfo **batched = palloc0(nclauses * sizeof(RestrictInfo *));
+	Relids	   *relids = palloc0(nclauses * sizeof(Relids));
+	int		   *set = palloc(nclauses * sizeof(int));
+	Selectivity *sel = palloc0(nclauses * sizeof(Selectivity));
+	double	   *share = palloc0(nclauses * sizeof(double));
+	double	   *rows_scale = palloc0(nclauses * sizeof(double));
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, clauses)
+	{
+		int			i = foreach_current_index(lc);
+
+		batched[i] = yb_get_batched_restrictinfo(lfirst(lc), batchedrelids,
+												 rel->relids);
+		if (batched[i])
+			relids[i] = bms_intersect(batched[i]->right_relids,
+									  batchedrelids);
+		set[i] = i;
+	}
+
+	/* Label the clauses one batch feeds with one set number. */
+	for (int i = 0; i < nclauses; i++)
+	{
+		for (int j = i + 1; batched[i] && j < nclauses; j++)
+		{
+			bool		together = bms_overlap(relids[i], relids[j]);
+			ListCell   *lc2;
+
+			foreach(lc2, groups)
+			{
+				Relids		group = (Relids) lfirst(lc2);
+
+				if (bms_overlap(relids[i], group) &&
+					bms_overlap(relids[j], group))
+					together = true;
+			}
+
+			if (batched[j] && together && set[j] != set[i])
+			{
+				int			from = set[j];
+
+				for (int k = 0; k < nclauses; k++)
+				{
+					if (set[k] == from)
+						set[k] = set[i];
+				}
+			}
+		}
+	}
+
+	for (int s = 0; s < nclauses; s++)
+	{
+		int			last = -1;
+		int			nmembers = 0;
+		double		remaining = 0;
+		Selectivity joint_sel = 1.0;
+
+		/*
+		 * The set's batch size, the smallest of its clauses' (each capped by
+		 * its own outer rows), and the product of their per-value
+		 * selectivities, estimated as for an unbatched parameterized scan.
+		 */
+		for (int i = 0; i < nclauses; i++)
+		{
+			double		batch_size;
+
+			if (!batched[i] || set[i] != s)
+				continue;
+
+			last = i;
+			nmembers++;
+			batch_size = yb_batch_expr_size(root, rel->relid,
+											get_rightop(batched[i]->clause));
+			if (remaining == 0 || batch_size < remaining)
+				remaining = batch_size;
+			sel[i] = clause_selectivity(root, list_nth(clauses, i),
+										rel->relid, JOIN_INNER, NULL);
+			joint_sel *= sel[i];
+		}
+
+		if (nmembers < 2)
+			continue;
+
+		for (int i = 0; i < last; i++)
+		{
+			if (!batched[i] || set[i] != s)
+				continue;
+
+			share[i] = remaining;
+			if (sel[i] > 0 && 1.0 / sel[i] < share[i])
+				share[i] = 1.0 / sel[i];
+			remaining /= share[i];
+		}
+		share[last] = remaining;
+
+		double		rows_per_probe = rel->tuples * joint_sel;
+
+		if (rows_per_probe > 0 && rows_per_probe < 1.0)
+		{
+			double		scale = 1.0 / rows_per_probe;
+
+			for (int i = 0; i <= last && scale > 1.0; i++)
+			{
+				double		room;
+
+				if (!batched[i] || set[i] != s)
+					continue;
+
+				/* The factor that takes this clause's selectivity to one. */
+				room = 1.0 / (sel[i] * share[i]);
+				if (room <= 1.0)
+					continue;
+
+				rows_scale[i] = Min(scale, room);
+				scale /= rows_scale[i];
+			}
+		}
+	}
+
+	foreach(lc, clauses)
+	{
+		int			i = foreach_current_index(lc);
+		RestrictInfo *rinfo = lfirst(lc);
+
+		if (share[i] > 0)
+		{
+			YbBatchedExpr *bexpr;
+
+			rinfo = copyObject(batched[i]);
+			bexpr = castNode(YbBatchedExpr, get_rightop(rinfo->clause));
+			bexpr->share = share[i];
+			bexpr->rows_scale = rows_scale[i];
+		}
+		else if (batched[i])
+			rinfo = batched[i];
+
+		result = lappend(result, rinfo);
+		bms_free(relids[i]);
+	}
+
+	pfree(batched);
+	pfree(relids);
+	pfree(set);
+	pfree(sel);
+	pfree(share);
+	pfree(rows_scale);
+
+	return result;
 }

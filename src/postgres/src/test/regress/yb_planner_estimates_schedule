@@ -26,6 +26,7 @@ test: yb.orig.bnl_cost_parity_setup
 
 test: yb.orig.bnl_inner_estimate
 test: yb.orig.bnl_cost_parity
+test: yb.orig.bnl_cost_parity_partitioned
 
 # Dependency for the join skip-rows cost tests
 test: yb.orig.join_cost_skip_rows_setup

@@ -1,5 +1,5 @@
 ---
-description: Backport a Phorge-landed commit (or revision) to one or more YugabyteDB release branches as Phorge/arc revisions
+description: Backport a commit to YugabyteDB release branches as Phorge/arc revisions. Only when the user explicitly asks for Phorge; /backport-commit (GitHub PRs) is the default
 argument-hint: <commit-sha|Dxxxxx> [<branch> ...]
 allowed-tools: Bash(backport.sh *)
 model: sonnet
@@ -7,7 +7,7 @@ model: sonnet
 
 Backport a change that landed through Phorge to one or more YugabyteDB release branches using `backport.sh`. It cherry-picks (or `arc patch`es, for a `Dxxxxx` argument) onto each release branch, rewrites the message to `[BACKPORT <branch>] …` with an `Original commit: <sha> / <Dxxxxx>` line in the Summary, and publishes each branch with `arc diff -- origin/<branch>`. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.
 
-**This command produces Phorge/arc revisions.** A backport should go through the same review system the original went through, so if the original landed as a GitHub PR — subject ends `(#NNNNN)`, committer is `GitHub <noreply@github.com>`, and the body has no `Differential Revision:` line — stop and use `/backport-commit` instead. If neither pattern matches cleanly, ask the user rather than guessing.
+**This command produces Phorge/arc revisions, and is opt-in.** GitHub PRs via `/backport-commit` are the default for every backport, including Phorge-landed originals. Phorge stops accepting new diffs on 2026-11-23; from then on this command cannot work, so use `/backport-commit`. Use this command only when the user explicitly asks for a Phorge backport, and only for an original that landed via Phorge (its body has a `Differential Revision:` line).
 
 This command is self-contained by design: it shares no content with `/backport-commit`, so once YugabyteDB finishes moving to GitHub PRs, deleting this file is the whole cleanup.
 
@@ -79,7 +79,7 @@ Once **all** conflicts are resolved (and only then):
 
 2. `git cherry-pick --continue --no-edit` to land the resolved commit. The script strips the stale `Differential Revision:` line from `.git/MERGE_MSG` for you before exiting, so `--continue --no-edit` won't carry the original revision's tag onto the backport commit — don't re-add it. If the resolved diff is empty, run `git cherry-pick --skip` instead.
 
-3. **Track every resolution, trivial or not**, so a reviewer can see what was changed vs. the original commit. Record `<path>:<line>` and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Also remember **which branch** the resolution was on.
+3. **Track every resolution, trivial or not**, so a reviewer can see what was changed vs. the original commit. Record `<path>:<line>`, a short reason code such as `adjacent-lines` (only the surrounding lines differ on the branch) or `missing-prerequisite` (something the change depends on is not on the branch), and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Group the entries by step: the branch the cherry-pick came from (check the script output for the source) and the branch it went to.
 
 4. **Record those notes in the commit message**, not in a post-hoc comment — there is no Phorge equivalent of a GitHub PR body patch that doesn't risk an `arc diff --update` re-upload. Amend the body to add a `Merge conflicts:` block **inside the Summary section**, above the `Reviewers:`/`Subscribers:` fields. Free text placed after `Subscribers:` makes `arc diff` hang on a prompt. The script's own `git commit --amend` preserves the rest of the body verbatim, so the block survives into the published revision's summary. For example, the Summary section becomes:
 
@@ -89,11 +89,12 @@ Once **all** conflicts are resolved (and only then):
    <original summary text>
 
    Merge conflicts:
-   - src/yb/master/catalog_manager.cc:1843 — kept master's call signature; release branch lost the `epoch` arg
-   - src/yb/master/catalog_manager.h:412 — moved the new method below the existing private block
+   master --> 2025.2:
+   - src/yb/master/catalog_manager.cc:1843 — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+   - src/yb/master/catalog_manager.h:412 — [adjacent-lines] placed the new method after 2025.2's extra private method
    ```
 
-   Annotate **every** branch where you ran `git cherry-pick --continue`, trivial or not. "Trivial" describes how easy the resolution was, not whether it warrants disclosure. Branches that picked up a resolved diff via chaining need no annotation — that's already implicit in the branch they chained from.
+   Annotate **every** branch where you ran `git cherry-pick --continue`, trivial or not. "Trivial" describes how easy the resolution was, not whether it warrants disclosure. A chained branch's block lists the cherry-pick steps that needed resolution, starting with the one onto this branch and ending with the one from `master`. `backport.sh` carries the earlier steps' lines forward, so add any lines for the step onto this branch at the top. A step that applied cleanly gets no line, because `backport.sh` publishes it without stopping.
 
 5. **Run the linter** from the repo root and confirm it is clean before re-running:
    ```

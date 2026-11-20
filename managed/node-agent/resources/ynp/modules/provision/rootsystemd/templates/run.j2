@@ -55,9 +55,11 @@ uninstall_root_systemd_services
 {% for service_file in service_files | split_string %}
 tmp_file=$(mktemp)
 echo '{% include service_file %}' > "$tmp_file"
-mv "$tmp_file" "${systemd_dir}/{{ service_file }}"
-chmod 644 "${systemd_dir}/{{ service_file }}"
+# install writes a new file, so the unit gets the SELinux label of the unit dir.
+install -m 0644 "$tmp_file" "${systemd_dir}/{{ service_file }}"
+rm -f "$tmp_file"
 {% endfor %}
+{% include "install_yb_launchers.sh.j2" %}
 echo '{% include "yb_user_sudoers.j2" %}' > "$yb_user_sudoers_file"
 if ! visudo -cf "$yb_user_sudoers_file"; then
     echo "Failed to validate $yb_user_sudoers_file"

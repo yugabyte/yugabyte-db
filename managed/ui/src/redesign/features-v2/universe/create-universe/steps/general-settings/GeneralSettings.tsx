@@ -162,6 +162,11 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
     saveInstanceByProvider({});
   }, [providerSetKey, providerCount, saveInstanceByProvider]);
 
+  // The lowercase rule depends on the selected providers; resolvers only revalidate the changed field.
+  useEffect(() => {
+    if (methods.getValues(UNIVERSE_NAME)) methods.trigger(UNIVERSE_NAME);
+  }, [providerSetKey, methods]);
+
   // The library span toggle cannot be disabled. Kubernetes stays single-cloud.
   useEffect(() => {
     if (!Array.isArray(cloud) || !includesKubernetesCloud(cloud)) return;

@@ -243,7 +243,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             confGetter
                 .getConfForScope(universe, UniverseConfKeys.xclusterBootstrapProducerTimeout)
                 .toMillis());
-    return ybService.getClientWithConfig(clientConfig);
+    return ybService.getClientWithConfig(clientConfig.withClientCertOf(universe));
   }
 
   protected Map<String, String> bootstrapProducer(

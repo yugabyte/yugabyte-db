@@ -40,7 +40,6 @@
 #include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(logtostderr);
-DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 DECLARE_bool(ysql_conn_mgr_use_auth_backend);
 DECLARE_bool(ysql_conn_mgr_cert_auth);
 DECLARE_bool(ysql_conn_mgr_enable_multi_route_pool);
@@ -80,6 +79,7 @@ DECLARE_uint32(ysql_conn_mgr_tcmalloc_gc_interval);
 DECLARE_uint32(ysql_conn_mgr_backend_drain_timeout_ms);
 DECLARE_uint32(ysql_conn_mgr_socket_listen_backlog);
 DECLARE_bool(ysql_conn_mgr_full_tls_handshake);
+DECLARE_bool(ysql_conn_mgr_pool_attach_check);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -293,8 +293,6 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
     {"{%server_lifetime%}", std::to_string(FLAGS_ysql_conn_mgr_server_lifetime)},
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)},
-    {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
-    {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
     {"{%yb_cert_auth%}", BoolToString(FLAGS_ysql_conn_mgr_cert_auth)},
     {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
@@ -328,7 +326,8 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
       PgDeriveSocketDir(postgres_address_)}, // Return unix socket
             //  file path = "/tmp/.yb.host_ip:port"
     {"{%yb_socket_listen_backlog%}",
-      std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)}};
+      std::to_string(FLAGS_ysql_conn_mgr_socket_listen_backlog)},
+    {"{%pool_attach_check%}", BoolToString(FLAGS_ysql_conn_mgr_pool_attach_check)}};
 
   RETURN_NOT_OK(AddSslConfig(ysql_conn_mgr_configs));
 

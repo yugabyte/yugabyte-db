@@ -50,6 +50,7 @@ Run Java tests satisfying a particular regex:
 """
 
 import argparse
+import contextlib
 import errno
 import functools
 import getpass
@@ -57,6 +58,7 @@ import glob
 import gzip
 import json
 import logging
+import math
 import operator
 import os
 import platform
@@ -76,7 +78,7 @@ from datetime import datetime
 
 from collections import defaultdict
 
-from typing import List, Dict, Set, Tuple, Optional, Any, cast
+from typing import List, Dict, Iterator, Set, Tuple, Optional, Any, cast
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -145,6 +147,26 @@ NEW_TEST_LIMIT = 50
 # test it never reached would otherwise read as new.
 NEW_TEST_MIN_KNOWN_RATIO = 0.9
 
+# Least share of a job's tests that must have an expected run time for the job to be packed
+# (--pack_target_sec, see plan_spark_tasks). A durations file that covers less than this was most
+# likely written from another lane's launch or from one that ended early, and the times it does
+# have are then not to be trusted either.
+PACK_MIN_KNOWN_RATIO = 0.9
+
+# The largest job, in test attempts, that is packed (see plan_spark_tasks). A job this small is
+# what packing is for: with one test per task it asks for an executor per test, and each sets up a
+# build tree to run a handful of them. A larger job keeps every executor it gets busy for long, so
+# one test per task wastes little there, and it is where a lost executor would cost a packed job
+# the most.
+PACK_MAX_TESTS = 1000
+
+# How many tasks, running and waiting, the cluster scaling daemon counts per node when it sizes a
+# Linux Spark cluster, where a node has one core (see plan_spark_tasks).
+SCALING_DAEMON_TASKS_PER_NODE = 25
+
+# How long to wait for the Spark master's status page when asking who holds the cluster's cores.
+SPARK_MASTER_UI_TIMEOUT_SEC = 10
+
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
 # scaling in (symptom: "Master removed our application: FAILED"). Submit the job for the
 # not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
@@ -212,11 +234,30 @@ THREAD_JOIN_TIMEOUT_SEC = 10
 
 ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
 
+# An archive already in GCS is reused only while younger than this. The bucket has to keep an
+# object for longer than this plus the longest run: a worker downloads the archive at its first
+# task on that tree, for the baseline tree hours into the run, and fails its tasks if a lifecycle
+# rule has deleted the object by then.
+ARCHIVE_GCS_MAX_REUSE_AGE_SEC = 24 * 3600
+GCP_METADATA_TOKEN_URL = (
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token')
+GCS_DOWNLOAD_ATTEMPTS = 3
+GCS_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+# The untar script's first command: it waits for the lock on fd 200, which the script opens on the
+# lock file. A caller that already holds that lock (hold_archive_lock) puts the no-op in its place.
+UNTAR_SCRIPT_TAKE_LOCK_CMD = 'flock -w 180 200 || exit 5'
+UNTAR_SCRIPT_LOCK_HELD_CMD = ': # the caller holds the lock'
+# How long a task waits in hold_archive_lock: for another task's download and extraction, where the
+# untar script's own wait only has an extraction to sit out.
+ARCHIVE_LOCK_WAIT_SEC = 20 * 60
+ARCHIVE_LOCK_POLL_SEC = 0.2
+
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
     PATH=/usr/local/bin:$PATH
-    flock -w 180 200 || exit 5
+    {take_lock}
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/{archive_sha_file_name}'
@@ -284,6 +325,14 @@ g_max_num_test_failures = sys.maxsize
 # Job groups whose Spark job was explicitly cancelled (because the number of test failures reached
 # the limit)
 g_cancelled_job_groups: Set[str] = set()
+# Packing several tests into one Spark task (see plan_spark_tasks). The target is the expected run
+# time a task should hold, in seconds; 0 turns packing off.
+g_pack_target_sec: float = 0
+# Expected run time of a test in seconds, by its descriptor without the attempt index. Loaded from
+# --test_durations_file, then set for every test of the main pass to the time it took there.
+g_expected_test_time_sec: Dict[str, float] = {}
+# The Spark master's web UI, e.g. http://host:8080, which says how many cores the cluster has.
+g_spark_master_ui_url: Optional[str] = None
 
 
 # Name of the job group each Spark job runs in, so when some jobs share Spark context we can:
@@ -370,7 +419,8 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
             '-x', '*.sw?', '-x', '*.pyc']
         subprocess.check_call(zip_cmd_args, cwd=os.path.join(conf.yb_src_root, 'python'))
         spark_context.addPyFile(yb_python_zip_path)
-    if conf.archive_for_workers is not None:
+    if archive_sent_through_spark(conf):
+        assert conf.archive_for_workers is not None
         remember_archive_for_workers(conf.archive_for_workers)
     # Send every remembered archive, not just this conf's. A re-created context starts with nothing
     # distributed, and the baseline tree's archive went to the context this one replaces -
@@ -384,6 +434,163 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
 def remember_archive_for_workers(archive_path: str) -> None:
     if archive_path not in g_spark_archives:
         g_spark_archives.append(archive_path)
+
+
+# Whether conf's archive reaches the workers through Spark's addFile. An archive the driver
+# published to GCS is not: Spark copies every added file to every executor before its first task,
+# needed or not, so adding it as well would bring back the transfer the GCS path avoids.
+def archive_sent_through_spark(conf: yb_dist_tests.TestConfig) -> bool:
+    return conf.archive_for_workers is not None and conf.archive_gcs_url is None
+
+
+def gcs_object_age_sec(gcs_url: str) -> Optional[float]:
+    """Age of the GCS object in seconds, or None if it does not exist or cannot be described."""
+    result = subprocess.run(
+        ['gcloud', 'storage', 'objects', 'describe', gcs_url,
+         '--format=value(creation_time)'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    created = result.stdout.strip()
+    if result.returncode != 0 or not created:
+        return None
+    try:
+        created_at = datetime.fromisoformat(created.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return time.time() - created_at.timestamp()
+
+
+# TODO(DEVOPS-4059): the archive reaches the workers in two ways, from GCS on a GCP cluster and
+# through Spark's file server everywhere else. Make object storage the one way on AWS clusters too:
+# an S3 prefix, with the upload, the reuse check and the download handling s3:// as they do gs://.
+def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]) -> None:
+    """
+    Uploads conf's worker archive under the gs:// prefix (--archive_gcs_prefix), named by its
+    checksum, and records its URL in conf.archive_gcs_url, so that the workers download it from GCS
+    instead of all fetching it from the driver through Spark's file server, where the driver's
+    network link is the limit. Best-effort: without the prefix, on macOS, or if the upload fails,
+    the URL stays unset and the archive goes through Spark as before. The caller passes a prefix
+    only for a Spark cluster on GCP: the workers get their GCS credentials from the GCP metadata
+    server, and nothing on a worker falls back to Spark.
+    """
+    prefix = (prefix or '').strip()
+    if not prefix or is_macos() or not conf.archive_for_workers or not conf.archive_sha256sum:
+        return
+    if not prefix.startswith('gs://'):
+        logging.warning("--archive_gcs_prefix %s is not a gs:// URL, sending the archive through "
+                        "Spark", prefix)
+        return
+    gcs_url = '%s/%s.tar.gz' % (prefix.rstrip('/'), conf.archive_sha256sum)
+    start_time_sec = time.time()
+    try:
+        age_sec = gcs_object_age_sec(gcs_url)
+        reused = age_sec is not None and age_sec < ARCHIVE_GCS_MAX_REUSE_AGE_SEC
+        if not reused:
+            subprocess.check_call(['gcloud', 'storage', 'cp', conf.archive_for_workers, gcs_url])
+    except (OSError, subprocess.CalledProcessError) as error:
+        logging.warning("Could not upload %s to %s, sending it through Spark instead: %s",
+                        conf.archive_for_workers, gcs_url, error)
+        return
+    conf.archive_gcs_url = gcs_url
+    logging.info("Workers will download the archive from %s (%s, %.1f sec)", gcs_url,
+                 'already there' if reused else 'uploaded', time.time() - start_time_sec)
+
+
+def parse_gcs_url(gcs_url: str) -> Tuple[str, str]:
+    if not gcs_url.startswith('gs://'):
+        raise ValueError("Not a gs:// URL: %s" % gcs_url)
+    bucket, _, object_name = gcs_url[len('gs://'):].partition('/')
+    if not bucket or not object_name:
+        raise ValueError("No bucket or object name in %s" % gcs_url)
+    return bucket, object_name
+
+
+# Runs on a Spark worker. Streams the object to dest_path with the worker VM's own service account
+# (from the GCP metadata server, so the worker needs no key file), hashing it on the way, and moves
+# it into place only if the checksum matches. Retries a few times before giving up.
+def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: str) -> None:
+    import hashlib
+    import urllib.parse
+    import urllib.request
+
+    bucket, object_name = parse_gcs_url(gcs_url)
+    media_url = 'https://storage.googleapis.com/storage/v1/b/%s/o/%s?alt=media' % (
+        urllib.parse.quote(bucket, safe=''), urllib.parse.quote(object_name, safe=''))
+    last_error: Optional[Exception] = None
+    for attempt in range(1, GCS_DOWNLOAD_ATTEMPTS + 1):
+        tmp_path = '%s.download.%d' % (dest_path, random.randint(0, 2**32))
+        start_time_sec = time.time()
+        try:
+            token_request = urllib.request.Request(
+                GCP_METADATA_TOKEN_URL, headers={'Metadata-Flavor': 'Google'})
+            with urllib.request.urlopen(token_request, timeout=30) as token_response:
+                access_token = json.load(token_response)['access_token']
+            media_request = urllib.request.Request(
+                media_url, headers={'Authorization': 'Bearer ' + access_token})
+            sha256 = hashlib.sha256()
+            with urllib.request.urlopen(media_request, timeout=300) as response, \
+                    open(tmp_path, 'wb') as output_file:
+                while True:
+                    chunk = response.read(GCS_DOWNLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+                    output_file.write(chunk)
+            actual_sha256sum = sha256.hexdigest()
+            if actual_sha256sum != expected_sha256sum:
+                raise IOError("SHA256 sum of %s is %s, expected %s" % (
+                    gcs_url, actual_sha256sum, expected_sha256sum))
+            os.replace(tmp_path, dest_path)
+            logging.info("Downloaded %s in %.1f sec", gcs_url, time.time() - start_time_sec)
+            return
+        except Exception as error:
+            last_error = error
+            logging.warning("Attempt %d of %d to download %s failed: %s",
+                            attempt, GCS_DOWNLOAD_ATTEMPTS, gcs_url, error)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if attempt < GCS_DOWNLOAD_ATTEMPTS:
+                time.sleep(5 * attempt)
+    raise IOError("Could not download %s: %s" % (gcs_url, last_error))
+
+
+# Runs on a Spark worker. Holds the untar script's lock (flock on the same file), waiting up to
+# ARCHIVE_LOCK_WAIT_SEC for it, and yields the locked file descriptor: a child process given it
+# (pass_fds) keeps the lock for as long as it runs, even if this process is killed first.
+@contextlib.contextmanager
+def hold_archive_lock(lock_path: str) -> Iterator[int]:
+    import fcntl
+
+    deadline_sec = time.time() + ARCHIVE_LOCK_WAIT_SEC
+    with open(lock_path, 'a') as lock_file:
+        while True:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() >= deadline_sec:
+                    raise IOError("Could not lock %s in %d sec" % (
+                        lock_path, ARCHIVE_LOCK_WAIT_SEC))
+                time.sleep(ARCHIVE_LOCK_POLL_SEC)
+        try:
+            yield lock_file.fileno()
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+# Runs on a Spark worker, before the untar script and under the same hold of its lock (the caller's
+# hold_archive_lock), so no other task can change the tree or download in between. Downloads conf's
+# archive from GCS to archive_path, unless the tree extracted from it is already in place (the
+# untar script then skips extraction and never reads the archive) or the archive is already there.
+def fetch_archive_from_gcs_if_needed(conf: yb_dist_tests.TestConfig, archive_path: str) -> None:
+    assert conf.archive_gcs_url is not None and conf.archive_sha256sum is not None
+    sha_file_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
+    if os.path.isfile(sha_file_path):
+        with open(sha_file_path) as sha_file:
+            if sha_file.read().strip() == conf.archive_sha256sum:
+                return
+    if os.path.exists(archive_path):
+        return
+    download_archive_from_gcs(conf.archive_gcs_url, archive_path, conf.archive_sha256sum)
 
 
 # Distributes every remembered archive to the current context. Called on each context creation, so a
@@ -536,9 +743,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                       env_vars: Dict[str, str],
                       job_log_prefix: str) -> None:
     """
-    Runs one test attempt as a Spark task: run_tests_job maps this over the test descriptors, so
-    Spark executes as many copies concurrently as the cluster has cores, and this is where a test is
-    actually executed.
+    Runs one test attempt inside a Spark task: run_tests_job calls this for each test attempt of a
+    task (one, unless the job is packed - see plan_spark_tasks), Spark runs as many tasks
+    concurrently as the cluster has cores, and this is where a test is actually executed.
 
     conf is the submitting job's tree config, unpickled from the task closure, so it is this
     task's own copy rather than module state a previous task on this worker happened to leave
@@ -601,7 +808,12 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt, rerun)
+        csi_id, failed_in_earlier_task_attempt = csi_report.create_test(
+            test_descriptor, start_time_sec, attempt, rerun)
+        if failed_in_earlier_task_attempt:
+            logging.info(
+                f"{job_log_prefix}Test {test_descriptor} failed in an earlier attempt of this "
+                f"Spark task (this is attempt {attempt}); it counts as failed whatever it does now")
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
@@ -654,8 +866,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             f"{elapsed_time_sec:.2f} seconds, exit code: {exit_code}{additional_log_message}")
         csi_result = 'passed'
         if exit_code != 0:
-            fail_count.add(1)
             csi_result = 'failed'
+        if exit_code != 0 or failed_in_earlier_task_attempt:
+            # The count of the earlier attempt was dropped with the rest of its results.
+            fail_count.add(1)
 
         artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
         spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
@@ -728,7 +942,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             artifact_paths=rel_artifact_paths,
             artifact_copy_result=artifact_copy_result,
             spark_error_copy_result=spark_error_copy_result,
-            skipped=csi_result == 'skipped'))
+            skipped=csi_result == 'skipped',
+            failed_in_earlier_task_attempt=failed_in_earlier_task_attempt))
         return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
@@ -738,6 +953,26 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         if timer_thread is not None:
             timer_thread.cancel()
             timer_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+
+
+def run_spark_task(test_descriptor_strs: List[str], fail_count: Any, test_results: Any,
+                   rerun: bool,
+                   conf: yb_dist_tests.TestConfig,
+                   env_vars: Dict[str, str],
+                   job_log_prefix: str) -> None:
+    """
+    Runs the test attempts of one Spark task in sequence on this executor: one attempt, or the
+    several that plan_spark_tasks packed together.
+
+    The results of a task reach the driver only when the whole task finishes. When an attempt
+    raises or the executor is lost, Spark runs the whole task again, and the results of the
+    attempts that had already finished are dropped with it: those tests run and report once more.
+    What a test did before the loss is still in CSI, and a test that had failed stays a failed one
+    (TestResult.failed_in_earlier_task_attempt).
+    """
+    for test_descriptor_str in test_descriptor_strs:
+        parallel_run_test(test_descriptor_str, fail_count, test_results, rerun, conf, env_vars,
+                          job_log_prefix)
 
 
 def get_bash_shebang() -> str:
@@ -766,7 +1001,9 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
 
     worker_tmp_dir = os.path.abspath(SparkFiles.getRootDirectory())
     archive_path = os.path.join(worker_tmp_dir, archive_name)
-    if not os.path.exists(archive_path):
+    lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            conf.yb_src_root.replace('/', '__'))
+    if not conf.archive_gcs_url and not os.path.exists(archive_path):
         raise IOError("Archive not found: %s" % archive_path)
     # We install the code into the same path where it was installed on the main build node (Jenkins
     # worker or dev server), but put it in as separate variable to have flexibility to change it
@@ -785,8 +1022,6 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
         # We also copy the temporary script here for later reference.
         untar_script_path_for_reference = os.path.join(
                 worker_tmp_dir, 'untar_archive_once.sh')
-        lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
-                conf.yb_src_root.replace('/', '__'))
         bash_shebang = get_bash_shebang()
         with open(untar_script_path, 'w') as untar_script_file:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
@@ -800,10 +1035,21 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
                 lock_path=lock_path,
                 remote_yb_src_job_dir=remote_yb_src_job_dir,
                 remote_yb_src_root=remote_yb_src_root,
+                take_lock=(UNTAR_SCRIPT_LOCK_HELD_CMD if conf.archive_gcs_url
+                           else UNTAR_SCRIPT_TAKE_LOCK_CMD),
                 untar_script_path=untar_script_path,
                 untar_script_path_for_reference=untar_script_path_for_reference))
         os.chmod(untar_script_path, 0o755)
-        subprocess.check_call(untar_script_path)
+        if conf.archive_gcs_url:
+            # Not sent through Spark. One hold of the lock covers the download and the untar
+            # script: released in between, another task could replace the tree after it was found
+            # in place (the script would then look for an archive that was never downloaded), or
+            # start a second download of an archive that is about to be extracted.
+            with hold_archive_lock(lock_path) as lock_fd:
+                fetch_archive_from_gcs_if_needed(conf, archive_path)
+                subprocess.check_call(untar_script_path, pass_fds=(lock_fd,))
+        else:
+            subprocess.check_call(untar_script_path)
 
     except subprocess.CalledProcessError as e:
         logging.exception(f"Error initializing the remote task:\n"
@@ -1360,6 +1606,188 @@ def run_spark_action(action: Any, job_group: str, cancel_requested: threading.Ev
     return results
 
 
+# A time as CSI reports it for a test: ISO 8601 in UTC, e.g. 2026-01-31T10:20:30.123Z.
+def parse_csi_time(value: str) -> float:
+    time_format = '%Y-%m-%dT%H:%M:%S.%f%z' if '.' in value else '%Y-%m-%dT%H:%M:%S%z'
+    return datetime.strptime(value, time_format).timestamp()
+
+
+# The expected run time of this lane's tests, in seconds, from the file the pipeline wrote from a
+# previous CSI launch of the lane. One test per line: its uniqueId (the descriptor without the
+# attempt index), and the start and end time CSI recorded for it, separated by tabs. Lines that do
+# not parse are skipped: an estimate is then missing for that test, which only leaves it alone in
+# its task. Bytes that are not UTF-8 are replaced and cannot fail the read: such a line then names
+# no test, or does not parse.
+def load_test_durations(path: str) -> Dict[str, float]:
+    durations: Dict[str, float] = {}
+    num_bad_lines = 0
+    with open(path, 'r', encoding='utf-8', errors='replace') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if not line:
+                continue
+            fields = line.split('\t')
+            try:
+                if len(fields) != 3:
+                    raise ValueError(line)
+                seconds = parse_csi_time(fields[2].strip()) - parse_csi_time(fields[1].strip())
+                if seconds < 0:
+                    raise ValueError(line)
+            except ValueError:
+                num_bad_lines += 1
+                continue
+            durations[fields[0].strip()] = seconds
+    logging.info("Loaded the expected run time of %d tests from %s (%d lines skipped)",
+                 len(durations), path, num_bad_lines)
+    return durations
+
+
+# The cores of the cluster that applications other than this one hold, as the Spark master reports
+# them, or None when the master's web UI is not known or does not answer. A worker has one core
+# here, so this is the number of executors other applications have on the cluster now.
+def get_cores_of_other_apps() -> Optional[int]:
+    import urllib.request
+    if not g_spark_master_ui_url:
+        return None
+    status_url = g_spark_master_ui_url.rstrip('/') + '/json/'
+    try:
+        own_app_id = getattr(spark_context, 'applicationId', None)
+        with urllib.request.urlopen(status_url, timeout=SPARK_MASTER_UI_TIMEOUT_SEC) as response:
+            status = json.loads(response.read().decode('utf-8'))
+        return sum(
+            int(app['cores']) for app in status['activeapps'] if app['id'] != own_app_id)
+    except Exception as ex:
+        logging.warning(
+            "Could not read the cores other applications hold from %s: %s", status_url, ex)
+        return None
+
+
+# Groups test attempts into Spark tasks of at most target_sec of expected run time each, first-fit
+# over the attempts from the longest down. Alone in its task: an attempt whose test has no expected
+# run time, or one of target_sec or more. Two attempts of one test never share a task.
+def pack_tests(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        expected_sec_by_test: Dict[str, float],
+        target_sec: float) -> List[List[yb_dist_tests.TestDescriptor]]:
+    def expected_sec(test_descriptor: yb_dist_tests.TestDescriptor) -> float:
+        return expected_sec_by_test.get(
+            test_descriptor.descriptor_str_without_attempt_index, math.inf)
+
+    alone: List[List[yb_dist_tests.TestDescriptor]] = []
+    packs: List[List[yb_dist_tests.TestDescriptor]] = []
+    pack_sec: List[float] = []
+    pack_test_names: List[Set[str]] = []
+    for test_descriptor in sorted(test_descriptors, key=expected_sec, reverse=True):
+        test_sec = expected_sec(test_descriptor)
+        if test_sec >= target_sec:
+            alone.append([test_descriptor])
+            continue
+        test_name = test_descriptor.descriptor_str_without_attempt_index
+        for i in range(len(packs)):
+            if pack_sec[i] + test_sec <= target_sec and test_name not in pack_test_names[i]:
+                packs[i].append(test_descriptor)
+                pack_sec[i] += test_sec
+                pack_test_names[i].add(test_name)
+                break
+        else:
+            packs.append([test_descriptor])
+            pack_sec.append(test_sec)
+            pack_test_names.append({test_name})
+    return alone + packs
+
+
+# Decides the Spark tasks of a job: for each task, the test attempts it runs in sequence on one
+# executor.
+#
+# A task normally runs one test, and with dynamic allocation every task waiting asks for an executor
+# of its own. An executor sets up the build tree before its first test, which takes minutes, so a
+# job of short tests on a cluster with free workers pays one setup per test. With packing
+# (--pack_target_sec) a task holds about that much expected run time, and the job asks for as many
+# executors as it has such tasks. Executors still pull tasks from one queue, so a slow task only
+# means its executor takes fewer of them.
+#
+# Every rule falls back to one test per task, which is exactly a job without packing:
+#   - A job of more than PACK_MAX_TESTS test attempts is not packed.
+#   - A test with no expected run time, or one at least as long as the target, is alone in its task
+#     (pack_tests). Tests in one task run in a fixed sequence, so an estimate that is too low makes
+#     the tests behind a slow one wait, where a test alone costs at most one setup.
+#   - A job is packed only if at least PACK_MIN_KNOWN_RATIO of its tests have an expected run time.
+#   - Two attempts of one test never share a task (pack_tests), so repetitions of a test keep being
+#     spread over executors the way separate tasks are.
+#   - A job is packed only if other applications hold enough of the cluster's cores now: one for
+#     each of the job's tasks, and as many as the nodes the cluster scaling daemon would give the
+#     job by itself with one test per task (SCALING_DAEMON_TASKS_PER_NODE tests a node, at least
+#     one). The daemon sizes a cluster by the number of tasks running and waiting, which assumes
+#     one test per task, so a packed job that needed the cluster to grow would get far too few
+#     nodes. Cores that other applications hold belong to a cluster that is in use: the job waits
+#     for them to come free and takes one per task. Cores nobody holds do not count, nor do the
+#     ones this application holds from an earlier job: the daemon removes idle workers within a
+#     pass or two, and every worker once no task is running or waiting on the cluster. A job that
+#     shares the Spark context with another one (shares_context) counts half of those cores as
+#     its own.
+#
+# What a packed task changes when its executor is lost (a worker can go away under a running task):
+# Spark runs the task again, as it does for a task of one, but the results of the tests that had
+# finished in it never reached the driver, so those run and report a second time. A test that
+# failed before the loss still counts as failed, from what CSI recorded (csi_report.create_test);
+# without CSI, a test that fails and then passes in the second run is taken as passed. A pack's
+# failures also reach the failure limit only when the pack ends.
+#
+# Expected run times come from --test_durations_file for the main pass. For the jobs after it (the
+# re-runs of failed tests, on the diff and on the baseline, and the new-test repetitions) they are
+# the times the main pass just measured in this build.
+#
+# TODO(DEVOPS-4058): this leaves two task models, one test per task and packed tasks, with the
+# rules above choosing between them. Once packing has run in production for a while, make packed
+# tasks the only model: an expected run time for every test, with a default where there is no
+# history, and a cluster scaling daemon that sizes a cluster by packed tasks, so that the
+# cluster-size rule can go.
+def plan_spark_tasks(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        job_group: str,
+        shares_context: bool) -> List[List[yb_dist_tests.TestDescriptor]]:
+    one_test_per_task = [[test_descriptor] for test_descriptor in test_descriptors]
+    num_tests = len(test_descriptors)
+    if g_pack_target_sec <= 0 or num_tests < 2:
+        return one_test_per_task
+
+    def not_packed(reason: str) -> List[List[yb_dist_tests.TestDescriptor]]:
+        logging.info("Job %s: one test per task for its %d tests: %s",
+                     job_group, num_tests, reason)
+        return one_test_per_task
+
+    if num_tests > PACK_MAX_TESTS:
+        return not_packed("more than %d" % PACK_MAX_TESTS)
+
+    known_sec = [
+        g_expected_test_time_sec[test_descriptor.descriptor_str_without_attempt_index]
+        for test_descriptor in test_descriptors
+        if test_descriptor.descriptor_str_without_attempt_index in g_expected_test_time_sec]
+    if len(known_sec) < PACK_MIN_KNOWN_RATIO * num_tests:
+        return not_packed("only %d of them have an expected run time" % len(known_sec))
+
+    other_cores = get_cores_of_other_apps()
+    if other_cores is None:
+        return not_packed("the cores other applications hold on the cluster are not known")
+    if shares_context:
+        other_cores //= 2
+
+    # The nodes the scaling daemon would give this job by itself with one test per task.
+    unpacked_nodes = max(1, num_tests // SCALING_DAEMON_TASKS_PER_NODE)
+    packs = pack_tests(test_descriptors, g_expected_test_time_sec, g_pack_target_sec)
+    if max(len(packs), unpacked_nodes) > other_cores:
+        return not_packed(
+            "%d tasks of %d sec, or the %d nodes it would get with one test per task, are more "
+            "than the %d cores of other applications it can count on" %
+            (len(packs), g_pack_target_sec, unpacked_nodes, other_cores))
+    logging.info(
+        "Job %s: %d tests packed into %d task(s) of at most %d sec of expected run time each "
+        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d cores of "
+        "other applications to count on)", job_group, num_tests, len(packs), g_pack_target_sec,
+        sum(known_sec), len(known_sec), num_tests - len(known_sec), other_cores)
+    return packs
+
+
 # Run the tests in parallel on Spark. This is executed on the main Spark driver.
 def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool,
                   conf: yb_dist_tests.TestConfig,
@@ -1446,9 +1874,14 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
 
     # Randomize test order to avoid any kind of skew.
     random.shuffle(test_descriptors)
+    # One element, and so one Spark task, per list of test attempts to run in sequence on one
+    # executor: a single attempt unless the job is packed.
+    spark_tasks = plan_spark_tasks(test_descriptors, job_group, shares_context)
+    random.shuffle(spark_tasks)
     test_names_rdd = spark_context.parallelize(  # type: ignore
-            [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-            numSlices=len(test_descriptors))
+            [[test_descriptor.descriptor_str for test_descriptor in spark_task]
+             for spark_task in spark_tasks],
+            numSlices=len(spark_tasks))
 
     try:
         if counter_thread is not None:
@@ -1459,8 +1892,8 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
         # tree config.
         job_log_prefix = f"[{job_group}] " if shares_context else ''
         run_spark_action(lambda: test_names_rdd.map(
-            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun,
-                                                conf, env_vars, job_log_prefix)
+            lambda test_names: run_spark_task(test_names, fail_count, test_results, rerun,
+                                              conf, env_vars, job_log_prefix)
         ).collect(), job_group, cancel_requested)
 
     finally:
@@ -1635,7 +2068,8 @@ def filter_already_run_on_baseline(
 # Runs once during setup, before the Spark context exists, so the driver does not hold an idle
 # context while tar runs.
 def prepare_baseline_conf_and_archive(
-        baseline_build_root: str, send_archive_to_workers: bool) -> yb_dist_tests.TestConfig:
+        baseline_build_root: str, send_archive_to_workers: bool,
+        archive_gcs_prefix: Optional[str] = None) -> yb_dist_tests.TestConfig:
     conf = yb_dist_tests.make_conf_for_build_root(
         baseline_build_root, send_archive_to_workers,
         yb_dist_tests.BASELINE_ARCHIVE_FOR_WORKERS_NAME)
@@ -1643,6 +2077,7 @@ def prepare_baseline_conf_and_archive(
     if send_archive_to_workers:
         # Include the baseline tree's own Maven repo, as its build recorded it.
         create_archive_and_record_checksum(conf, get_mvn_local_repo(conf.build_root))
+        publish_archive_to_gcs(conf, archive_gcs_prefix)
 
     return conf
 
@@ -1966,7 +2401,7 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
     suite_var_name = 'YB_CSI_' + test_descriptor.language
     skip_time = time.time()
     os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
-    csi_id = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
+    csi_id, _ = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
     csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'],
                           launch=csi_report.env_launch())
 
@@ -2047,7 +2482,7 @@ def run_new_test_repetitions(args: argparse.Namespace,
             # repeating it would hang reps - 1 executions of nothing on a skipped item while the
             # tag told readers its first attempt passed.
             num_new_skipped += 1
-        elif result.exit_code == 0:
+        elif not result.failed:
             new_passed.append(result.test_descriptor)
         else:
             num_new_failed += 1
@@ -2214,6 +2649,23 @@ def main() -> None:
                              'line, written by the pipeline from CSI. The baseline '
                              '--new_test_repetitions calls a test new against; without it '
                              'nothing is repeated.')
+    parser.add_argument('--pack_target_sec', type=float, default=0,
+                        help='Pack several tests into one Spark task, so that a task holds about '
+                             'this many seconds of expected run time and a job of short tests '
+                             'asks for fewer executors. Tests without an expected run time and '
+                             'tests at least this long keep a task of their own. 0, the default, '
+                             'runs one test per task. Needs --spark_master_ui_url, and '
+                             '--test_durations_file for the main pass.')
+    parser.add_argument('--test_durations_file',
+                        help='A file path with the run time of tests in a previous launch of this '
+                             'lane, written by the pipeline from CSI. One test per line: its '
+                             'uniqueId (descriptor without attempt index) and the start and end '
+                             'time CSI recorded, separated by tabs. Used by --pack_target_sec for '
+                             'the main pass.')
+    parser.add_argument('--spark_master_ui_url',
+                        help='URL of the Spark master\'s web UI, e.g. http://host:8080. '
+                             '--pack_target_sec asks it for the cores other applications hold '
+                             'on the cluster, and packs a job only if they are enough for it.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
@@ -2233,6 +2685,12 @@ def main() -> None:
                         help='When --send_archive_to_workers is specified, use this option to '
                              're-create the archive that we would send to workers even if it '
                              'already exists.')
+    parser.add_argument('--archive_gcs_prefix',
+                        help='A gs:// prefix. With --send_archive_to_workers, upload the archive '
+                             'there and have the workers download it from GCS instead of '
+                             'receiving it through Spark from this host. Only for a Spark cluster '
+                             'on GCP. Ignored on macOS; if the upload fails, the archive goes '
+                             'through Spark.')
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'
@@ -2275,6 +2733,23 @@ def main() -> None:
     verbose = args.verbose
 
     configure_logging()
+
+    # Nothing may log before configure_logging(): a log call on the unconfigured root logger
+    # installs the default handler, which drops INFO, and configure_logging() then changes nothing.
+    global g_pack_target_sec
+    global g_spark_master_ui_url
+    global g_expected_test_time_sec
+    if args.pack_target_sec < 0:
+        fatal_error("--pack_target_sec must not be negative, got: {}".format(args.pack_target_sec))
+    g_pack_target_sec = args.pack_target_sec
+    g_spark_master_ui_url = args.spark_master_ui_url
+    if g_pack_target_sec > 0 and args.test_durations_file:
+        try:
+            g_expected_test_time_sec = load_test_durations(args.test_durations_file)
+        except OSError:
+            # The file is an optimization input. Without it the main pass runs one test per task.
+            logging.exception("Could not read %s; the main pass will not be packed",
+                              args.test_durations_file)
 
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
@@ -2423,6 +2898,7 @@ def main() -> None:
             create_archive_and_record_checksum(conf, mvn_local_repo)
         else:
             yb_dist_tests.compute_archive_sha256sum(conf)
+        publish_archive_to_gcs(conf, args.archive_gcs_prefix)
 
     # Same for the baseline tree, if the failed tests are going to run on it. Best-effort like the
     # rest of the baseline work: anything wrong with that tree (an out-of-tree Maven repo, a partial
@@ -2431,7 +2907,7 @@ def main() -> None:
     if args.baseline_build_root:
         try:
             baseline_conf = prepare_baseline_conf_and_archive(
-                args.baseline_build_root, args.send_archive_to_workers)
+                args.baseline_build_root, args.send_archive_to_workers, args.archive_gcs_prefix)
         except Exception:
             logging.exception("Could not prepare the baseline build at %s for the workers; "
                               "not running the failed tests on it", args.baseline_build_root)
@@ -2500,7 +2976,11 @@ def main() -> None:
         app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, spark_test_cnt)]
     init_spark_context(conf, app_name_details)
 
-    if baseline_conf is not None and baseline_conf.archive_for_workers is not None:
+    if baseline_conf is not None and baseline_conf.archive_gcs_url is not None:
+        # Only the workers that run a task on the baseline tree download it, when they get one.
+        logging.info("Baseline test run: enabled; workers download the baseline archive from %s",
+                     baseline_conf.archive_gcs_url)
+    elif baseline_conf is not None and baseline_conf.archive_for_workers is not None:
         # Send the baseline build's worker archive along with the diff's. Workers rebuild the
         # baseline tree at its own yb_src_root - a distinct path from the diff tree
         # (path-identity) - so both can be there at once. Without archives there is nothing to
@@ -2532,6 +3012,16 @@ def main() -> None:
 
     test_phase_end_time = time.time()
 
+    # The jobs after the main pass repeat tests that have just run in this build, so the time each
+    # took here is the best estimate there is for packing them (plan_spark_tasks). The longest one
+    # when a test has several results.
+    main_pass_time_sec: Dict[str, float] = {}
+    for main_pass_result in results:
+        test_name = main_pass_result.test_descriptor.descriptor_str_without_attempt_index
+        main_pass_time_sec[test_name] = max(
+            main_pass_result.elapsed_time_sec, main_pass_time_sec.get(test_name, 0))
+    g_expected_test_time_sec.update(main_pass_time_sec)
+
     test_exit_codes = set([result.exit_code for result in results])
 
     # Success if we got results for all the tests we intended to run.
@@ -2551,9 +3041,11 @@ def main() -> None:
     total_test_run_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
-        if result.exit_code != 0:
+        if result.failed:
             how_test_failed = ""
-            if result.failed_without_output:
+            if result.exit_code == 0:
+                how_test_failed = " in an earlier attempt of its Spark task"
+            elif result.failed_without_output:
                 how_test_failed = " without any output"
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1

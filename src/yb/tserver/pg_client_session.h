@@ -58,6 +58,7 @@ class PgSessionGuard;
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
+    (StartTableBackfill) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateTable) \
@@ -68,6 +69,7 @@ class PgSessionGuard;
     (DropTablegroup) \
     (FetchData) \
     (RollbackToSubTransaction) \
+    (RestartTransactionForRetry) \
     (TruncateTable) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \

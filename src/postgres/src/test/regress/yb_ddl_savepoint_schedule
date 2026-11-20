@@ -7,3 +7,4 @@ test: yb.orig.ddl_savepoint
 test: yb.orig.ddl_exceptions
 test: yb.orig.ddl_rc_rollback
 test: yb.orig.ddl_savepoint_toggle
+test: yb.orig.ddl_savepoint_parallel

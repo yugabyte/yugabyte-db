@@ -55,6 +55,7 @@ DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(disable_global_object_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
@@ -242,10 +243,10 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
 }
 
 // pg_partman keeps its existing behavior unless these features are on, so tell a user who set its
-// flag explicitly. The infra auto flags are left out because they stay off until an upgrade is
-// finalized. Advisory locks are left out because with them off, pg_partman fails instead of keeping
-// its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a warning at
-// startup would not track.
+// flag explicitly. The infra auto flags are left out because they are off only before an upgrade
+// is finalized. Advisory locks are left out because with them off, pg_partman fails instead of
+// keeping its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a
+// warning at startup would not track.
 void WarnIfPgPartmanFlagHasNoEffect() {
   if (!FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks ||
       google::GetCommandLineFlagInfoOrDie("ysql_yb_pg_partman_use_native_txn_ddl_and_locks")
@@ -258,6 +259,9 @@ void WarnIfPgPartmanFlagHasNoEffect() {
   }
   if (!FLAGS_enable_object_locking_for_table_locks) {
     off.push_back("enable_object_locking_for_table_locks=false");
+  }
+  if (FLAGS_disable_global_object_locks) {
+    off.push_back("disable_global_object_locks=true");
   }
   if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     off.push_back("ysql_yb_enable_ddl_savepoint_support=false");

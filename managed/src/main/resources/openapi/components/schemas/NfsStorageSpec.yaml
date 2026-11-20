@@ -1,0 +1,33 @@
+title: NfsStorageSpec
+description: |
+  NfsStorageSpec
+
+  An NFS share mounted at the same path on every database node. Part of StorageSpec.
+type: object
+required:
+  - storage_type
+  - backup_location
+properties:
+  storage_type:
+    $ref: "./StorageType.yaml"
+  backup_location:
+    description: Absolute path of the NFS mount on the database nodes. Can't be changed after creation.
+    type: string
+    example: /mnt/nfs
+    minLength: 1
+  bucket:
+    description: Directory under backup_location that holds the backups. Defaults to yugabyte_backup.
+    type: string
+    minLength: 1
+  volumes:
+    description: 'NFS volumes to check, in the backup prechecks, for being mounted on the nodes'
+    type: array
+    items:
+      type: string
+  region_locations:
+    description: 'Per-region backup locations, for universes that store each region''s backup in that region'
+    type: array
+    items:
+      $ref: "./NfsRegionLocation.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

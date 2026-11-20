@@ -55,6 +55,17 @@ var createAWSProviderCmd = &cobra.Command{
 				formatter.Colorize("Cannot set both credentials and use-iam-instance-profile"+
 					"\n", formatter.RedColor))
 		}
+		regions, err := cmd.Flags().GetStringArray("region")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		zones, err := cmd.Flags().GetStringArray("zone")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if err := providerutil.ValidateCreateZoneRegions(regions, zones); err != nil {
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -386,14 +397,9 @@ func buildAWSImageBundles(
 			))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

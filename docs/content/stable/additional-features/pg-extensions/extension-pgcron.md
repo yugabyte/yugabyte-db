@@ -57,9 +57,7 @@ SELECT cron.schedule('process-updates', '5 seconds', 'CALL process_updates()');
 
 If you need to run jobs in multiple databases, use `cron.schedule_in_database()`.
 
-When running jobs, keep in mind the following:
-
-- It may take up to 60 seconds for job changes to get picked up by the pg_cron leader.
+When running jobs, keep in mind that it may take up to 60 seconds for job changes to get picked up by the pg_cron leader.
 
 For more information on how to schedule jobs, refer to the [pg_cron documentation](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_cron/README.md).
 
@@ -69,11 +67,11 @@ pg_cron runs jobs on one node of the cluster, the pg_cron leader.
 
 - **Failed runs are not retried.** Check `cron.job_run_details` for runs with status `failed` and decide whether to run them again manually. A run recorded as `failed` after a leader change may still have completed its work, so check before running a job again that is not safe to repeat.
 - **Node failure or restart.** If the leader node fails or is restarted, for example during a rolling restart or upgrade, its running jobs fail, and another node becomes the leader and runs new jobs.
-- **Planned leader change.** The leader can also move to another node, for example during internal tablet balancing. The old leader stops starting jobs at once, and its running jobs get at least `pg_cron_leader_lease_sec` minus 15 seconds to complete. Jobs still running after that are canceled and recorded as `failed`.
+- **Planned leader change.** The leader can also move to another node, for example during internal tablet balancing.
 
-To give long-running jobs more time to complete during a planned leader change, increase `pg_cron_leader_lease_sec` on all YB-TServers.
+    In v2026.1.4.0 and later, the old leader stops starting jobs at once, and its running jobs get at least [pg_cron_leader_lease_sec](../../../reference/configuration/yb-tserver/#pg-cron-leader-lease-sec) minus 15 seconds to complete. Jobs still running after that are canceled and recorded as `failed`. To give long-running jobs more time to complete during a planned leader change, increase `pg_cron_leader_lease_sec` on all YB-TServers. After a leader change, the new leader starts running jobs only after about `pg_cron_leader_lease_sec` seconds, so a larger value also delays jobs after any leader change.
 
-Note: after a leader change, the new leader starts running jobs only after about `pg_cron_leader_lease_sec` seconds, so a larger value also delays jobs after any leader change.
+    In earlier v2026.1 releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
 
 ## Best practices
 

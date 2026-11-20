@@ -55,6 +55,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (IsTruncateTableDone)
     (IsYsqlDdlVerificationDone)
     (LaunchBackfillIndexForTable)
+    (StartTableBackfill)
     (ListNamespaces)
     (ListTablegroups)
     (ListTables)

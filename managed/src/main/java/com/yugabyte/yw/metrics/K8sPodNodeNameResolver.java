@@ -14,6 +14,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,9 +138,11 @@ public class K8sPodNodeNameResolver {
       }
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       boolean isReadReplica = cluster.clusterType == ClusterType.ASYNC;
+      Map<UUID, Map<String, String>> zoneConfigs =
+          KubernetesUtil.getConfigPerProviderZone(provider);
       for (Region region : provider.getRegions()) {
         for (AvailabilityZone az : region.getZones()) {
-          String azName = az.getName();
+          String azName = isMultiAZ ? az.getCode() : null;
           String helmReleaseName;
           String namespace;
           try {
@@ -150,14 +154,14 @@ public class K8sPodNodeNameResolver {
                     azName,
                     isReadReplica,
                     newNamingStyle);
-            // AZ-level KUBENAMESPACE overrides are read from az config in
-            // KubernetesUtil.getKubernetesNamespace; we don't have that map wired in cleanly
-            // here (it would require touching several call sites for a rarely-used override),
-            // so we compute the derived-name form and let the pod-prefix match (which is
-            // always exact for new naming style) win when both apply.
             namespace =
                 KubernetesUtil.getKubernetesNamespace(
-                    isMultiAZ, nodePrefix, azName, null, newNamingStyle, isReadReplica);
+                    isMultiAZ,
+                    nodePrefix,
+                    azName,
+                    zoneConfigs.get(az.getUuid()),
+                    newNamingStyle,
+                    isReadReplica);
           } catch (Exception e) {
             LOG.warn(
                 "Failed to compute helm release / namespace for universe={} cluster={} az={}",

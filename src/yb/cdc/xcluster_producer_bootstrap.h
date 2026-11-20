@@ -56,6 +56,11 @@ class XClusterProducerBootstrap {
 
   Status UpdateCdcStateTableWithCheckpoints();
 
+  // Records the checkpointed tablets of each stream in the master. If that fails, for example on a
+  // master leader change, the bootstrap still succeeds and the streams keep blocking splits until
+  // they turn ACTIVE.
+  Status RecordStreamBootstrapInfo();
+
   void PrepareResponse();
 
   Result<bool> IsBootstrapRequired();

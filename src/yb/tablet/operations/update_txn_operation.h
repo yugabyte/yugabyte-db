@@ -33,6 +33,10 @@ class UpdateTxnOperation
     return true;
   }
 
+  // APPLYING (participant) and APPLIED_IN_ALL_INVOLVED_TABLETS (status tablet) are replicated after
+  // the client was acked, just as the client's next transaction starts writing to the same tablets.
+  bool replication_deferrable() const override;
+
  private:
   Result<TransactionCoordinator*> transaction_coordinator() const;
   Status Prepare(IsLeaderSide is_leader_side) override;

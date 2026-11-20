@@ -86,6 +86,7 @@ typedef enum {
 	YB_BE_YB_PARSE_COMPLETE = '6',
 	YB_BE_SYNC_ACK = 'Y',
 	YB_BE_YB_QUERY_ACK = '8',
+	YB_KIWI_BE_OBJECT_DROPPED = '7',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -129,6 +130,20 @@ static inline char *kiwi_fe_type_to_string(int type)
 		return "CopyFail";
 	}
 	return "Unknown";
+}
+
+static inline bool yb_kiwi_fe_is_internal_type(int type)
+{
+	switch (type) {
+	case KIWI_FE_AUTH:
+	case KIWI_FE_SET_SESSION_PARAMETER:
+	case YB_KIWI_FE_YB_PARSE:
+	case KIWI_FE_SET_GUC_DEFAULTS:
+	case KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS:
+	case YB_KIWI_FE_YB_THROW_ERROR:
+		return true;
+	}
+	return false;
 }
 
 static inline char *kiwi_be_type_to_string(int type)
@@ -198,6 +213,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "YBSyncAck";
 	case YB_BE_YB_QUERY_ACK:
 		return "YbQueryAck";
+	case YB_KIWI_BE_OBJECT_DROPPED:
+		return "YbObjectDropped";
 	}
 	return "Unknown";
 }

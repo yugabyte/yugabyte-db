@@ -128,9 +128,9 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) 
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
     std::string sync_point, std::string expected_error, bool poll_catalog_tables,
     bool use_batching_and_throttling) {
-  // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
+  // Make UpdatePeersAndMetrics and CDC background tasks run frequently.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       poll_catalog_tables;
 
@@ -190,7 +190,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   };
 
   auto metadata_clean_timeout =
-      MonoDelta::FromSeconds(10 * FLAGS_catalog_manager_bg_task_wait_ms * kTimeMultiplier);
+      MonoDelta::FromMilliseconds(10 * FLAGS_catalog_manager_cdc_bg_task_wait_ms * kTimeMultiplier);
   ASSERT_OK(WaitFor(
       metadata_cleanup_condition, metadata_clean_timeout,
       "Wait for stream_metadata and cdc_state entries cleanup"));

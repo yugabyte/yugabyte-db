@@ -381,6 +381,19 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     }
   }
 
+  // Records the node_exporter sidecars as serving TLS, so a test can see whether a task rewrote it.
+  protected void recordNodeExporterHttps() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true")),
+            false /* incrementVersion */);
+  }
+
+  protected boolean isNodeExporterHttpsRecorded() {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).isNodeExporterHttps();
+  }
+
   protected TaskInfo submitTask(
       UpgradeTaskParams taskParams, TaskType taskType, Commissioner commissioner) {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -398,6 +411,24 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       assertNull(e.getMessage());
     }
     return null;
+  }
+
+  /**
+   * Whether the server at {@code ip} is in {@code azUuid}. Looks at the universe in the DB, as
+   * POD_INFO replaces the nodes while the upgrade runs.
+   */
+  protected boolean isNodeInAz(String ip, UUID azUuid) {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+        .anyMatch(node -> azUuid.equals(node.azUuid) && ip.equals(node.cloudInfo.private_ip));
+  }
+
+  /** Asserts one CheckSoftwareVersion per pod, counted from the universe POD_INFO left. */
+  protected void assertCheckSoftwareVersionRanForAllNodes(TaskInfo taskInfo) {
+    assertEquals(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().size(),
+        taskInfo.getSubTasks().stream()
+            .filter(task -> task.getTaskType() == TaskType.CheckSoftwareVersion)
+            .count());
   }
 
   /** Adds a one-node read replica cluster in the primary's zone. */
@@ -472,5 +503,23 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     assertTrue(
         "Read replica commands: " + commands,
         readReplicaCommands.stream().allMatch(p -> p.path("isReadOnlyCluster").asBoolean()));
+  }
+
+  protected void setImmutableYbcUniverseState(
+      boolean useYbdbInbuiltYbc,
+      String ybSoftwareVersion,
+      UniverseDefinitionTaskParams.SoftwareUpgradeState softwareUpgradeState) {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.setUseYbdbInbuiltYbc(useYbdbInbuiltYbc);
+              userIntent.ybSoftwareVersion = ybSoftwareVersion;
+              details.softwareUpgradeState = softwareUpgradeState;
+              u.setUniverseDetails(details);
+            },
+            false);
   }
 }

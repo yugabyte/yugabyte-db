@@ -303,6 +303,9 @@ class StatusHolder {
   void SetError(const Status& status);
   void Reset();
 
+  // Keeps the first error: ignores an OK status, and any error once one is set.
+  void UpdateError(const Status& status);
+
  private:
   std::atomic<bool> is_ok_{true};
   mutable std::mutex mutex_;

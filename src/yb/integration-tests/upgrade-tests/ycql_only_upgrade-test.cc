@@ -22,6 +22,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/integration-tests/cql_test_util.h"
+
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -135,9 +137,99 @@ class YcqlOnlyUpgradeTest : public UpgradeTestBase {
     return WaitForClusterToStabilize();
   }
 
+  std::unique_ptr<CppCassandraDriver> MakeCqlDriver() {
+    std::vector<std::string> hosts;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+    return std::make_unique<CppCassandraDriver>(
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kFalse);
+  }
+
   client::TableHandle table_;
   int32 row_count_ = 0;
 };
+
+namespace {
+
+const std::string kUuidV0 = "f2222222-2222-0222-8222-222222222222";
+const std::string kUuidV4 = "9e107d9d-372b-4b6a-8d0a-2f5c7c8e1a3b";
+const std::string kUuidV6 = "f1111111-1111-6111-8111-111111111111";
+const std::string kUuidV7 = "0b9a2f3c-5d4e-7f60-9a1b-2c3d4e5f6a7b";
+
+using CassCollectionPtr =
+    std::unique_ptr<CassCollection, FuncDeleter<CassCollection, &cass_collection_free>>;
+
+Status CheckCass(CassError error) {
+  SCHECK_EQ(error, CASS_OK, IllegalState, cass_error_desc(error));
+  return Status::OK();
+}
+
+Result<CassUuid> ToCassUuid(const std::string& uuid) {
+  CassUuid result;
+  RETURN_NOT_OK(CheckCass(cass_uuid_from_string(uuid.c_str(), &result)));
+  return result;
+}
+
+Result<CassCollectionPtr> CassUuidSet(const std::vector<std::string>& uuids) {
+  CassCollectionPtr result(cass_collection_new(CASS_COLLECTION_TYPE_SET, uuids.size()));
+  for (const auto& uuid : uuids) {
+    RETURN_NOT_OK(
+        CheckCass(cass_collection_append_uuid(result.get(), VERIFY_RESULT(ToCassUuid(uuid)))));
+  }
+  return result;
+}
+
+// Values of the frozen key columns s, m and n of the table below, with every UUID converted to CQL
+// text by uuid_to_cql.
+std::vector<std::string> FrozenUuidKey(
+    const std::function<std::string(const std::string&)>& uuid_to_cql) {
+  const auto v0 = uuid_to_cql(kUuidV0);
+  const auto v4 = uuid_to_cql(kUuidV4);
+  const auto v6 = uuid_to_cql(kUuidV6);
+  const auto v7 = uuid_to_cql(kUuidV7);
+  return {
+      Format("{$0, $1, $2, $3}", v4, v6, v7, v0),
+      Format("{$0: 4, $1: 7}", v4, v7),
+      Format("{{$0, $1}, {$2}}", v4, v7, v6)};
+}
+
+std::string FrozenUuidKeyCondition(
+    const std::function<std::string(const std::string&)>& uuid_to_cql) {
+  const auto key = FrozenUuidKey(uuid_to_cql);
+  return Format("s = $0 AND m = $1 AND n = $2", key[0], key[1], key[2]);
+}
+
+std::string AsIs(const std::string& uuid) {
+  return uuid;
+}
+
+std::string BlobAsUuid(const std::string& uuid) {
+  std::string blob = "0x" + uuid;
+  blob.erase(std::remove(blob.begin(), blob.end(), '-'), blob.end());
+  return Format("blobasuuid($0)", blob);
+}
+
+// Binds the same key as FrozenUuidKey to the first three variables, elements in the same order.
+Status BindFrozenUuidKey(CassandraStatement* statement) {
+  auto set = VERIFY_RESULT(CassUuidSet({kUuidV4, kUuidV6, kUuidV7, kUuidV0}));
+  CassCollectionPtr map(cass_collection_new(CASS_COLLECTION_TYPE_MAP, 2));
+  for (const auto& [uuid, value] : {std::pair(kUuidV4, 4), std::pair(kUuidV7, 7)}) {
+    RETURN_NOT_OK(
+        CheckCass(cass_collection_append_uuid(map.get(), VERIFY_RESULT(ToCassUuid(uuid)))));
+    RETURN_NOT_OK(CheckCass(cass_collection_append_int32(map.get(), value)));
+  }
+  CassCollectionPtr nested(cass_collection_new(CASS_COLLECTION_TYPE_SET, 2));
+  for (const auto& inner : {std::vector{kUuidV4, kUuidV7}, std::vector{kUuidV6}}) {
+    RETURN_NOT_OK(CheckCass(
+        cass_collection_append_collection(nested.get(), VERIFY_RESULT(CassUuidSet(inner)).get())));
+  }
+  RETURN_NOT_OK(CheckCass(cass_statement_bind_collection(statement->get(), 0, set.get())));
+  RETURN_NOT_OK(CheckCass(cass_statement_bind_collection(statement->get(), 1, map.get())));
+  return CheckCass(cass_statement_bind_collection(statement->get(), 2, nested.get()));
+}
+
+} // namespace
 
 TEST_F(YcqlOnlyUpgradeTest, TestUpgrade) {
   ASSERT_OK(UpgradeClusterToCurrentVersion());
@@ -149,6 +241,55 @@ TEST_F(YcqlOnlyUpgradeTest, TestUpgrade) {
   ASSERT_OK(InsertRowsAndValidate());
 
   ASSERT_NOK_STR_CONTAINS(StartYsqlMajorCatalogUpgrade(), "YSQL is not enabled");
+}
+
+// A version from before #28566 stores the elements of frozen sets and the keys of frozen maps in
+// the old UUID order. After the upgrade, the row must be found by its key written as literals, with
+// blobasuuid() and as bind variables, and updated and deleted in place.
+TEST_F(YcqlOnlyUpgradeTest, FrozenUuidCollectionKey) {
+  {
+    auto driver = MakeCqlDriver();
+    auto session = ASSERT_RESULT(driver->CreateSession());
+    ASSERT_OK(session.ExecuteQuery("CREATE KEYSPACE frozen_uuid"));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE TABLE frozen_uuid.t (s frozen<set<uuid>>, m frozen<map<uuid, int>>, "
+        "n frozen<set<frozen<set<uuid>>>>, v int, PRIMARY KEY ((s, m, n)))"));
+    const auto key = FrozenUuidKey(AsIs);
+    ASSERT_OK(session.ExecuteQueryFormat(
+        "INSERT INTO frozen_uuid.t (s, m, n, v) VALUES ($0, $1, $2, 1)", key[0], key[1], key[2]));
+  }
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion());
+
+  auto driver = MakeCqlDriver();
+  auto session = ASSERT_RESULT(driver->CreateSession());
+  auto count_rows = [&session] {
+    return session.FetchValue<int64_t>("SELECT COUNT(*) FROM frozen_uuid.t");
+  };
+
+  for (const auto& uuid_to_cql : {AsIs, BlobAsUuid}) {
+    EXPECT_EQ(1, ASSERT_RESULT(session.FetchValue<int32_t>(Format(
+        "SELECT v FROM frozen_uuid.t WHERE $0", FrozenUuidKeyCondition(uuid_to_cql)))));
+  }
+  auto select = ASSERT_RESULT(
+      session.Prepare("SELECT v FROM frozen_uuid.t WHERE s = ? AND m = ? AND n = ?"));
+  auto select_statement = select.Bind();
+  ASSERT_OK(BindFrozenUuidKey(&select_statement));
+  ASSERT_OK(session.ExecuteAndProcessOneRow(select_statement, [](const CassandraRow& row) {
+    EXPECT_EQ(1, row.Value(0).As<int32_t>());
+  }));
+
+  ASSERT_OK(session.ExecuteQueryFormat(
+      "UPDATE frozen_uuid.t SET v = 2 WHERE $0", FrozenUuidKeyCondition(AsIs)));
+  EXPECT_EQ(1, ASSERT_RESULT(count_rows()));
+  EXPECT_EQ(2, ASSERT_RESULT(session.FetchValue<int32_t>("SELECT v FROM frozen_uuid.t")));
+
+  auto remove = ASSERT_RESULT(
+      session.Prepare("DELETE FROM frozen_uuid.t WHERE s = ? AND m = ? AND n = ?"));
+  auto remove_statement = remove.Bind();
+  ASSERT_OK(BindFrozenUuidKey(&remove_statement));
+  ASSERT_OK(session.Execute(remove_statement));
+  EXPECT_EQ(0, ASSERT_RESULT(count_rows()));
 }
 
 TEST_F(YcqlOnlyUpgradeTest, TestRollback) {

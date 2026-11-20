@@ -16,7 +16,7 @@ type: docs
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../explore/linear-scalability/data-distribution/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../architecture/docdb-sharding/cluster-balancing/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 

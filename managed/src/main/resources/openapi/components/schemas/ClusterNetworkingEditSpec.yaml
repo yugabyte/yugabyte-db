@@ -5,3 +5,8 @@ properties:
   enable_exposing_service:
     description: Whether to create a load balancer service for this cluster.
     $ref: "./ExposingServiceState.yaml"
+  managed_load_balancer:
+    description: 'Turns the load balancers that YBA manages on or off. When turned on, YBA takes over the load balancer that every zone of a region names in lb_name. Omit to leave the existing value unchanged.'
+    $ref: "./ManagedLoadBalancerSpec.yaml"
+    x-yba-api-since: 2.31.0.0
+    x-yba-api-visibility: preview

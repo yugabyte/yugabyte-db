@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.HashMap;
@@ -172,9 +173,11 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
 
       // Delete before restore: the restore drops the state of load balancers that the failed edit
       // created, for example for a new region.
+      ManagedLoadBalancerState lbState =
+          universe.getUniverseDetails().getManagedLoadBalancerState();
       List<ManagedLoadBalancer> plannedLbs =
           before.clusters.stream()
-              .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c).stream())
+              .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c, lbState).stream())
               .collect(Collectors.toList());
       createDeleteManagedLoadBalancerTasks(
           lb -> plannedLbs.stream().noneMatch(lb::matches), false /* ignoreErrors */);

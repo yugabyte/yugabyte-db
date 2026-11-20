@@ -2,15 +2,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -24,6 +27,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -32,6 +36,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -42,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
@@ -51,6 +57,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.CommonTypes;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.GetYsqlMajorCatalogUpgradeStateResponse;
 import org.yb.client.IsInitDbDoneResponse;
@@ -76,6 +83,9 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     super.setUp();
     setFollowerLagMock();
     setUnderReplicatedTabletsMock();
+    lenient()
+        .when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(YB_SOFTWARE_VERSION_NEW));
     // Catalog-upgrade subtasks use getClient(timeout) -> getClientWithConfig.
     lenient().when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
@@ -146,6 +156,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     assertEquals(Success, taskInfo.getTaskState());
+    assertCheckSoftwareVersionRanForAllNodes(taskInfo);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
@@ -153,6 +164,36 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
     assertEquals(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeFailsWhenMasterRefusesAutoFlagPromotion() throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.PromoteAutoFlags
+                        && task.getTaskState() == Failure));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
@@ -273,6 +314,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
     assertEquals(Success, taskInfo.getTaskState());
+    assertCheckSoftwareVersionRanForAllNodes(taskInfo);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
@@ -826,5 +868,68 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
     assertTrue(
         "Forward upgrade must still helm-upgrade to the target software version",
         helmVersions.contains(YB_SOFTWARE_VERSION_NEW));
+  }
+
+  @Test
+  public void testUpgradeRejectedWhenTargetVersionLacksInbuiltYbc() {
+    setupUniverseSingleAZ(false, true);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2025.1.0.0-b1";
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(
+        e.getMessage(), e.getMessage().contains("uses ybdb inbuilt ybc, which software version"));
+    assertTrue(e.getMessage(), e.getMessage().contains("Disable ybdb inbuilt ybc"));
+  }
+
+  @Test
+  public void testUpgradeAllowedWhenTargetVersionSupportsInbuiltYbc() {
+    setupUniverseSingleAZ(false, true);
+    setImmutableYbcUniverseState(true, "2025.2.0.0-b1", SoftwareUpgradeState.Ready);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2025.2.1.0-b1";
+    taskParams.verifyParams(defaultUniverse, true);
+  }
+
+  @Test
+  public void testSoftwareUpgradeFailsWhenServerVersionMismatch() throws Exception {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseMultiAZ(false, true);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+
+    UUID staleAz = defaultUniverse.getNodes().iterator().next().azUuid;
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenAnswer(
+            invocation ->
+                Optional.of(
+                    isNodeInAz(invocation.getArgument(1), staleAz)
+                        ? YB_SOFTWARE_VERSION_OLD
+                        : YB_SOFTWARE_VERSION_NEW));
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(
+                task ->
+                    task.getTaskType() == TaskType.CheckSoftwareVersion
+                        && task.getTaskState() == Failure
+                        && task.getErrorMessage() != null
+                        && task.getErrorMessage().contains("Expected version")));
+    verify(mockClient, never()).promoteAutoFlags(anyString(), anyBoolean(), anyBoolean());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        YB_SOFTWARE_VERSION_OLD,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    assertEquals(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.UpgradeFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 }

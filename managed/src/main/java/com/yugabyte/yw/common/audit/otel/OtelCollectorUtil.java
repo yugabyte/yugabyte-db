@@ -284,6 +284,29 @@ public class OtelCollectorUtil {
     return uuids;
   }
 
+  /** Exporters the VM config renders, including paused audit exporters. */
+  public static Set<UUID> getVmConfigExporterUuids(TelemetryConfig tc) {
+    Set<UUID> uuids = getActiveExporterUuids(tc);
+    if (tc != null
+        && tc.getAuditLogConfig() != null
+        && tc.getAuditLogConfig().getUniverseLogsExporterConfig() != null) {
+      tc.getAuditLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> uuids.add(c.getExporterUuid()));
+    }
+    return uuids;
+  }
+
+  /**
+   * Returns the export_telemetry_config row, or null. No userIntent fallback: K8s helm values and
+   * the K8s in-memory ysql_pg_conf_csv must read the same source.
+   */
+  public static TelemetryConfig getPersistedTelemetryConfig(UUID universeUUID) {
+    return ExportTelemetryConfig.getForUniverse(universeUUID)
+        .map(ExportTelemetryConfig::getTelemetryConfig)
+        .orElse(null);
+  }
+
   /**
    * The universe's current full telemetry config. The ExportTelemetryConfig table is the source of
    * truth, but audit/query/metrics are also mirrored into the primary cluster userIntent by paths
@@ -297,10 +320,10 @@ public class OtelCollectorUtil {
    * those callers.
    */
   public static TelemetryConfig getCurrentTelemetryConfig(Universe universe) {
-    TelemetryConfig fromTable =
-        ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
-            .map(ExportTelemetryConfig::getTelemetryConfig)
-            .orElseGet(TelemetryConfig::new);
+    TelemetryConfig fromTable = getPersistedTelemetryConfig(universe.getUniverseUUID());
+    if (fromTable == null) {
+      fromTable = new TelemetryConfig();
+    }
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     return TelemetryConfig.builder()
         .auditLogConfig(

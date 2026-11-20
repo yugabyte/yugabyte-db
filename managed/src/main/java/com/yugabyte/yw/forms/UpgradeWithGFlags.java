@@ -5,7 +5,7 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.datadoghq.com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -135,6 +135,9 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       GFlagsUtil.validateGFlagValues(newCluster.userIntent);
       GFlagsUtil.validateFipsCompliancy(
           newCluster.userIntent, universe.getUniverseDetails().fipsEnabled);
+      GFlagsUtil.validateNodeToNodeClientCerts(
+          newCluster.userIntent,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.useNodeToNodeClientCerts);
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
         for (NodeDetails nodeDetails : universe.getNodesInCluster(curCluster.uuid)) {

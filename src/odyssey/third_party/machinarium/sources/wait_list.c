@@ -33,18 +33,9 @@ static inline void init_sleepy(mm_sleepy_t *sleepy)
 static inline void release_sleepy_with_lock(mm_wait_list_t *wait_list,
 					    mm_sleepy_t *sleepy)
 {
-	// in case sleepy wasn't released from list due to timeout
-
-	if (mm_atomic_u64_value(&sleepy->released) == 0) {
-		mm_sleeplock_lock(&wait_list->lock);
-
-		// need to check once again, in case some notify has released
-		// this sleepy between first check and locking
-		// once-again checking will be performed inside release_sleepy
-		release_sleepy(wait_list, sleepy);
-
-		mm_sleeplock_unlock(&wait_list->lock);
-	}
+	mm_sleeplock_lock(&wait_list->lock);
+	release_sleepy(wait_list, sleepy);
+	mm_sleeplock_unlock(&wait_list->lock);
 }
 
 mm_wait_list_t *mm_wait_list_create()
@@ -128,10 +119,11 @@ void mm_wait_list_notify(mm_wait_list_t *wait_list)
 
 	release_sleepy(wait_list, sleepy);
 
-	mm_sleeplock_unlock(&wait_list->lock);
-
 	int event_mgr_fd;
 	event_mgr_fd = mm_eventmgr_signal(&sleepy->event);
+
+	mm_sleeplock_unlock(&wait_list->lock);
+
 	if (event_mgr_fd > 0) {
 		mm_eventmgr_wakeup(event_mgr_fd);
 	}

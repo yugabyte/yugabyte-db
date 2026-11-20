@@ -942,6 +942,21 @@ Status XClusterManager::DeleteXClusterWalAnchorStreams(
       xcluster::ReplicationGroupId(req->replication_group_id()), source_table_ids);
 }
 
+Status XClusterManager::RecordXClusterStreamBootstrapInfo(
+    const RecordXClusterStreamBootstrapInfoRequestPB* req,
+    RecordXClusterStreamBootstrapInfoResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  XClusterStreamCheckpointedTablets stream_tablets;
+  for (const auto& stream : req->streams()) {
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
+    stream_tablets[stream_id].assign(
+        stream.checkpointed_tablet_ids().begin(), stream.checkpointed_tablet_ids().end());
+  }
+  return XClusterSourceManager::RecordXClusterStreamBootstrapInfo(stream_tablets, epoch);
+}
+
 Status XClusterManager::GetXClusterOutboundReplicationGroups(
     const GetXClusterOutboundReplicationGroupsRequestPB* req,
     GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,

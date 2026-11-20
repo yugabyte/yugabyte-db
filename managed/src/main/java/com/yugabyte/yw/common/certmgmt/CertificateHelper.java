@@ -1054,7 +1054,7 @@ public class CertificateHelper {
     return getPrivateKey(FileUtils.readFileToString(new File(path)));
   }
 
-  private static boolean verifySignature(X509Certificate cert, String key) {
+  static boolean verifySignature(X509Certificate cert, String key) {
     try {
       // Add the security provider in case verifySignature was never called.
       getKeyPairObject();
@@ -1212,8 +1212,7 @@ public class CertificateHelper {
     }
   }
 
-  private static boolean verifyCertValidity(
-      X509Certificate cert, X509Certificate potentialRootCert) {
+  static boolean verifyCertValidity(X509Certificate cert, X509Certificate potentialRootCert) {
     try {
       cert.verify(potentialRootCert.getPublicKey());
       return true;

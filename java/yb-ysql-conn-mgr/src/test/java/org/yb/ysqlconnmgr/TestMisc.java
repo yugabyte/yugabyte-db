@@ -418,6 +418,53 @@ public class TestMisc extends BaseYsqlConnMgr {
     testSequenceFunctions("SELECT lastval()");
   }
 
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledMode() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_curval_lastval");
+  }
+
+  // pooled_with_currval_lastval is accepted as a synonym of pooled_with_curval_lastval.
+  @Test
+  public void testCurrvalLastvalUndefinedInPooledModeAlias() throws Exception {
+    testCurrvalLastvalUndefinedHelper("pooled_with_currval_lastval");
+  }
+
+  // currval/lastval before any nextval must raise PG's usual error. This guards against bringing
+  // back the fallback that returned the start value, which the next nextval then handed out again.
+  private void testCurrvalLastvalUndefinedHelper(String mode) throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_conn_mgr_sequence_support_mode",
+                                                     mode));
+
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE SEQUENCE undef_seq START 1");
+
+      try {
+        stmt.executeQuery("SELECT currval('undef_seq')");
+        fail("Expected currval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "currval of sequence \"undef_seq\" is not yet defined in this session"));
+      }
+
+      try {
+        stmt.executeQuery("SELECT lastval()");
+        fail("Expected lastval before nextval to fail");
+      } catch (SQLException e) {
+        assertTrue(e.getMessage(), e.getMessage().contains(
+            "lastval is not yet defined in this session"));
+      }
+
+      ResultSet rs = stmt.executeQuery("SELECT nextval('undef_seq')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong(1));
+      assertConnectionStickyState(stmt, false);
+    }
+  }
+
   private void testPgPreparedStatementsStateHelper() throws Exception {
     Properties props = new Properties();
     props.setProperty("prepareThreshold", "1");
@@ -525,6 +572,46 @@ public class TestMisc extends BaseYsqlConnMgr {
     // Connection Manager can handle this corner case.
     disableWarmupModeAndRestartCluster();
     testPreparedStatementHashCollisionsHelper();
+  }
+
+  @Test
+  public void testAttachAfterBackendTerminated() throws Exception {
+    // With warmup disabled the test user's pool has a single backend, so the
+    // next query is attached to the terminated one.
+    disableWarmupModeAndRestartCluster();
+
+    try (Connection suConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement suStmt = suConn.createStatement()) {
+      suStmt.execute("CREATE ROLE test_user LOGIN");
+
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withUser("test_user")
+               .connect();
+           Statement stmt = conn.createStatement()) {
+        int terminatedPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", terminatedPid, -1);
+
+        // TODO(#36754): drop the wait once the attach check also handles
+        // POLLIN (upstream Odyssey #1787).
+        // Wait for the backend to exit and close its socket; a fixed sleep is
+        // not enough in slow (e.g. TSAN) builds.
+        try (ResultSet rs = suStmt.executeQuery(String.format(
+                 "SELECT pg_terminate_backend(%d, 60000)", terminatedPid))) {
+          assertTrue(rs.next());
+          assertTrue("pg_terminate_backend failed for pid " + terminatedPid,
+                     rs.getBoolean(1));
+        }
+
+        // The pooled server is dead; connection manager must skip it instead
+        // of failing the query.
+        int newPid = getProcessId(stmt);
+        assertNotEquals("Failed to obtain the process ID.", newPid, -1);
+        assertNotEquals("Query ran on the terminated backend", terminatedPid, newPid);
+      }
+    }
   }
 
   @Test

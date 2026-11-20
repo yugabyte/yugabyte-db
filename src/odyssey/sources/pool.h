@@ -41,6 +41,7 @@ struct od_rule_pool {
 	int smart_discard;
 	int cancel;
 	int rollback;
+	int attach_check;
 
 	// --------  makes sense only for transaction pooling ---------------------------
 	int reserve_prepared_statement;

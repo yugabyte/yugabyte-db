@@ -10,9 +10,11 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(config = CentralConfig.class, uses = DateTimeMapper.class)
 public interface UserMapper {
+  UserMapper INSTANCE = Mappers.getMapper(UserMapper.class);
 
   @Mapping(target = "spec", source = "v1User")
   @Mapping(target = "info", source = "v1User")

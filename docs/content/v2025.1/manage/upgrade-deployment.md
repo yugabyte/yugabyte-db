@@ -22,7 +22,7 @@ type: docs
 Ensure that you are using the most up-to-date version of the software to optimize performance, access new features, and safeguard against software bugs.
 {{< /tip >}}
 
-YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../explore/linear-scalability/data-distribution/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
+YugabyteDB is a distributed database that can be installed on multiple nodes. Upgrades happen in-place with minimal impact on availability and performance. This is achieved using a rolling upgrade process, where each node/process is upgraded one node at a time. YugabyteDB [automatically rebalances](../../architecture/docdb-sharding/cluster-balancing/) the cluster as nodes/processes are taken down and brought back up during the upgrade.
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
@@ -90,6 +90,8 @@ For some xCluster setups, before upgrading, you should run a verification script
   - Auto Analyze (ysql_enable_auto_analyze=true)
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel query (yb_enable_parallel_append=true)
+
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension and you are upgrading from v2024.2, first save the DDL of every table that uses the `vector` type and export its data. Then drop those tables and the extension, upgrade and finalize, and recreate the extension, tables, and data. The `vector` type OID in v2024.2 is assigned when the extension is created and does not match the fixed OID in v2025.1, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed. Rows written in v2024.2 cannot be used for vector indexes. For the full steps, see [Upgrading from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrading-from-v2024-2).
 
 ## Upgrade YugabyteDB cluster
 

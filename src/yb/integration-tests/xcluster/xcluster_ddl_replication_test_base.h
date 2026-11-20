@@ -119,6 +119,9 @@ class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTestBa
   // Perform switchover from A->B to B->A.
   Status Switchover();
 
+  // Reverse of Switchover(): B->A back to A->B.
+  Status SwitchoverBack();
+
   Cluster* cluster_A_ = &producer_cluster_;
   Cluster* cluster_B_ = &consumer_cluster_;
   const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =

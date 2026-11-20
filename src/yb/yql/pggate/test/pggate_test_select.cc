@@ -13,6 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <algorithm>
+#include <tuple>
+#include <unordered_map>
+
 #include "catalog/pg_namespace_d.h"
 
 #include "yb/common/constants.h"
@@ -21,6 +25,8 @@
 #include "yb/client/client.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -434,23 +440,40 @@ Status CheckRanges(
       end_keys.back().empty(), InternalError,
       Format("Wrong last range end key: '$0'", Slice(end_keys.back()).ToDebugHexString()));
 
-  auto get_range_rows_count = [conn, &table_name](Slice lo, Slice hi) -> Result<int64_t> {
-    std::string predicate = "TRUE";
-    if (!lo.empty()) {
-      const auto ybctid = GetYbctid(lo);
-      predicate += Format(
-          " AND ybctid >= decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
-    }
-    if (!hi.empty()) {
-      const auto ybctid = GetYbctid(hi);
-      predicate += Format(
-          " AND ybctid < decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
-    }
-    return conn->FetchRow<int64_t>(
-        Format("SELECT count(*) FROM $0 WHERE $1", table_name, predicate));
-  };
+  // Fetch all window rows as hex-encoded ybctids once and count rows per range locally, otherwise
+  // one count(*) query per range takes most of the whole test runtime. Hex encoding preserves
+  // ybctid byte order.
+  std::string window_predicate = "TRUE";
+  if (!lower_bound_key.empty()) {
+    const auto ybctid = GetYbctid(lower_bound_key);
+    window_predicate += Format(
+        " AND ybctid >= decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
+  }
+  if (!upper_bound_key.empty()) {
+    const auto ybctid = GetYbctid(upper_bound_key);
+    window_predicate += Format(
+        " AND ybctid < decode('$0', 'hex')", strings::b2a_hex(ybctid.cdata(), ybctid.size()));
+  }
+  auto window_ybctids = VERIFY_RESULT(conn->FetchRows<std::string>(Format(
+      "SELECT encode(ybctid, 'hex') FROM $0 WHERE $1", table_name, window_predicate)));
+  std::sort(window_ybctids.begin(), window_ybctids.end());
+  const auto window_rows = static_cast<int64_t>(window_ybctids.size());
 
-  const auto window_rows = VERIFY_RESULT(get_range_rows_count(lower_bound_key, upper_bound_key));
+  // Returns the number of window rows falling into [lo, hi), empty bound means the corresponding
+  // window bound. Don't limit to the window - a boundary outside of the window produces a
+  // negative count and fails the window covering check below.
+  auto get_range_rows_count = [&window_ybctids](Slice lo, Slice hi) -> int64_t {
+    auto bound_it = [&window_ybctids](Slice key, bool empty_means_end) {
+      if (key.empty()) {
+        return empty_means_end ? window_ybctids.end() : window_ybctids.begin();
+      }
+      const auto ybctid = GetYbctid(key);
+      return std::lower_bound(
+          window_ybctids.begin(), window_ybctids.end(),
+          strings::b2a_hex(ybctid.cdata(), ybctid.size()));
+    };
+    return bound_it(hi, /* empty_means_end = */ true) - bound_it(lo, /* empty_means_end = */ false);
+  };
 
   int64_t sum = 0;
   int64_t max_range_rows = 0;
@@ -458,9 +481,8 @@ Status CheckRanges(
   for (const auto& key : end_keys) {
     const Slice boundary =
         key.empty() ? (is_forward ? upper_bound_key : lower_bound_key) : Slice(key);
-    const auto range_rows = VERIFY_RESULT(
-        is_forward ? get_range_rows_count(moving, boundary)
-                   : get_range_rows_count(boundary, moving));
+    const auto range_rows = is_forward ? get_range_rows_count(moving, boundary)
+                                       : get_range_rows_count(boundary, moving);
     sum += range_rows;
     max_range_rows = range_rows > max_range_rows ? range_rows : max_range_rows;
     moving = boundary;
@@ -485,6 +507,10 @@ Status CheckRanges(
   return Status::OK();
 }
 
+// Fetches all key ranges for the (lower_bound_key, upper_bound_key) window of the table, forward
+// and backward, with and without in-tablet paging, and runs CheckRanges on every returned set.
+// Empty bound means the window is not bounded from that side. Returns the number of ranges, if
+// min_key/max_key are set - also returns the smallest/largest boundary key received.
 Result<size_t> TestGetTableKeyRanges(
     pgwrapper::PGConn* conn, const std::string& table_name, YbcPgOid database_oid,
     YbcPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key, uint64_t range_size_bytes,
@@ -680,6 +706,152 @@ TEST_F_EX(
   const auto window_upper = dockv::MakeDocKey(5000).Encode().ToStringBuffer();
   ASSERT_OK(TestGetTableKeyRanges(
       &conn, "t", db_oid, table_oid, lower_bound, window_upper, kRangeSizeBytes, kMaxKeyLength));
+}
+
+TEST_F_EX(PggateTestSelect, GetHashShardedTableKeyRanges, PggateTestSelectWithYsql) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kMaxKeyLength = 1_KB;
+  constexpr auto kRangeSizeBytes = 16_KB;
+
+  ASSERT_OK(Init(
+      "GetHashShardedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+
+  auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
+
+  const auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
+
+  // Hash-sharded table, pre-split into 3 tablets by hash code. GetTableKeyRanges enumerates
+  // hash-code-ordered encoded DocKeys (0x47 + hash + values), so the helpers work unchanged; only
+  // the bound construction differs (hash has no value-ordered bound - see below).
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE th(k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+  const auto table_oid = ASSERT_RESULT(
+      conn.FetchRow<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='th'"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO th SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp"));
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+  for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(ts_idx, {}));
+  }
+
+  // Results of the queries below without parallel workers, to compare with the parallel runs.
+  constexpr auto kForwardQuery = "SELECT * FROM th ORDER BY yb_hash_code(k), k";
+  constexpr auto kUnorderedQuery = "SELECT * FROM th";
+  constexpr auto kBackwardQuery = "SELECT * FROM th ORDER BY yb_hash_code(k) DESC, k DESC";
+  ASSERT_OK(conn.Execute("SET max_parallel_workers_per_gather = 0"));
+  std::unordered_map<std::string, std::vector<std::tuple<int32_t, int32_t>>> serial_rows;
+  for (const auto* query : {kForwardQuery, kUnorderedQuery, kBackwardQuery}) {
+    serial_rows[query] = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(query)));
+    ASSERT_EQ(serial_rows[query].size(), 10000);
+  }
+  std::ranges::sort(serial_rows[kUnorderedQuery]);
+
+  // Runs the query with a parallel plan and checks that it returns the same rows as the serial
+  // run. EXPLAIN ANALYZE reports "Workers Launched: N" only for a plan that ran in parallel, and N
+  // must be non-zero.
+  auto check_parallel_query = [&](const char* query, bool is_ordered,
+                                  const char* extra_plan_part = nullptr) -> Status {
+    const auto plan = VERIFY_RESULT(conn.FetchAllAsString(
+        Format("EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) $0", query)));
+    LOG(INFO) << "Parallel plan for [" << query << "]:\n" << plan;
+    SCHECK_STR_CONTAINS(plan, "Parallel");
+    SCHECK_STR_CONTAINS(plan, "Workers Launched:");
+    if (extra_plan_part) {
+      SCHECK_STR_CONTAINS(plan, extra_plan_part);
+    }
+    SCHECK_STR_NOT_CONTAINS(plan, "Workers Launched: 0");
+    auto rows = VERIFY_RESULT((conn.FetchRows<int32_t, int32_t>(query)));
+    if (!is_ordered) {
+      std::ranges::sort(rows);
+    }
+    const auto& expected_rows = serial_rows.at(query);
+    SCHECK(rows == expected_rows, IllegalState,
+           Format("Parallel query [$0] returned $1 rows that differ from $2 serial rows",
+                  query, rows.size(), expected_rows.size()));
+    return Status::OK();
+  };
+
+  // Verify end-to-end parallel query execution. Force a YB parallel scan.
+  for (const char* guc : {"SET yb_enable_base_scans_cost_model = true",
+                          "SET yb_parallel_range_rows = 100",
+                          "SET min_parallel_table_scan_size = 0",
+                          "SET parallel_setup_cost = 0",
+                          "SET parallel_tuple_cost = 0",
+                          "SET max_parallel_workers_per_gather = 4"}) {
+    ASSERT_OK(conn.Execute(guc));
+  }
+  ASSERT_OK(check_parallel_query(kForwardQuery, /* is_ordered = */ true));
+  ASSERT_OK(check_parallel_query(kUnorderedQuery, /* is_ordered = */ false));
+
+  // A parallel scan in reverse hash code order pages the tablets in reverse, so it eventually
+  // drives Tablet::GetTabletKeyRanges backward. enable_sort=off forces a reverse (backward) index
+  // scan instead of a sort over a forward scan.
+  ASSERT_OK(conn.Execute("SET enable_sort TO off"));
+  ASSERT_OK(check_parallel_query(kBackwardQuery, /* is_ordered = */ true, "Backward"));
+  ASSERT_OK(conn.Execute("RESET enable_sort"));
+
+  // Reset parallel-forcing GUCs, otherwise every verification query below starts
+  // max_parallel_workers_per_gather parallel workers and workers startup takes most of the test
+  // runtime.
+  for (const char* guc : {"RESET yb_enable_base_scans_cost_model",
+                          "RESET yb_parallel_range_rows",
+                          "RESET min_parallel_table_scan_size",
+                          "RESET parallel_setup_cost",
+                          "RESET parallel_tuple_cost",
+                          "RESET max_parallel_workers_per_gather"}) {
+    ASSERT_OK(conn.Execute(guc));
+  }
+
+  // Whole-table window.
+  ASSERT_OK(TestGetTableKeyRanges(
+      &conn, "th", db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes, kMaxKeyLength));
+
+  // Hash tables have no value-ordered bounds, so instead of building a bound from a column value
+  // (as the range test does with MakeDocKey), derive a real boundary key from a forward ranges
+  // fetch and reuse it as a scan bound - exactly how the parallel scan pages across tablets.
+  std::vector<std::string> boundaries;
+  ASSERT_OK(FetchAllTableKeyRanges(
+      db_oid, table_oid, /* is_forward = */ true, Slice(), Slice(),
+      std::numeric_limits<uint64_t>::max(), kRangeSizeBytes, kMaxKeyLength, &boundaries));
+  // Tablet::GetTabletKeyRanges returns the start of the tablet as the encoded hash partition key
+  // [kUInt16Hash, B]. Other boundaries are DocKeys inside the tablets.
+  const auto tablet_boundary = std::ranges::find_if(boundaries, [](const std::string& key) {
+    return key.size() == 1 + dockv::PartitionSchema::kPartitionKeySize &&
+           key[0] == dockv::KeyEntryTypeAsChar::kUInt16Hash;
+  });
+  ASSERT_NE(tablet_boundary, boundaries.end());
+  const auto mid_bound = *tablet_boundary;
+
+  // Windows bounded by the tablet boundary from each side. The first backward request of the
+  // first window has the tablet boundary as its upper bound, and the parallel scan sends such
+  // requests each time it moves to the previous tablet.
+  ASSERT_OK(TestGetTableKeyRanges(
+      &conn, "th", db_oid, table_oid, /* lower_bound_key = */ Slice(), mid_bound, kRangeSizeBytes,
+      kMaxKeyLength));
+  ASSERT_OK(TestGetTableKeyRanges(
+      &conn, "th", db_oid, table_oid, mid_bound, /* upper_bound_key = */ Slice(), kRangeSizeBytes,
+      kMaxKeyLength));
+
+  // Split the middle hash tablet, the only one with both partition keys set. Then the ranges are
+  // enumerated over the child tablets, whose SST files are still shared with the parent, and the
+  // requests routed to the parent by the stale partition list are retried on the children.
+  {
+    const auto tablet_id = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT tablet_id FROM yb_local_tablets WHERE table_name = 'th' "
+        "AND partition_key_start IS NOT NULL AND partition_key_end IS NOT NULL "
+        "ORDER BY partition_key_end DESC LIMIT 1"));
+    LOG(INFO) << "Splitting hash tablet: " << tablet_id;
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    TestAdminClient admin_client(cluster_.get(), client.get());
+    ASSERT_OK(admin_client.SplitTabletAndWait(
+        kDatabaseName, "th", /* wait_for_parent_deletion = */ false, tablet_id));
+  }
+
+  ASSERT_OK(TestGetTableKeyRanges(
+      &conn, "th", db_oid, table_oid, Slice(), Slice(), kRangeSizeBytes, kMaxKeyLength));
 }
 
 TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql) {

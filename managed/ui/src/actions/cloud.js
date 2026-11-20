@@ -530,6 +530,10 @@ export function listAccessKeys(providerUUID) {
   };
 }
 
+export function listAllAccessKeys() {
+  return axios.get(getCustomerEndpoint() + '/access_keys');
+}
+
 export function listAccessKeysResponse(response) {
   return {
     type: LIST_ACCESS_KEYS_RESPONSE,

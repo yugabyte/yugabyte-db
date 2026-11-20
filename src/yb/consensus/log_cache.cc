@@ -288,11 +288,11 @@ void LogCache::LogCallback(bool overwritten_cache,
 }
 
 Result<int64_t> LogCache::earliest_op_index() const {
-  auto ret = VERIFY_RESULT(log_->GetLogReader())->GetMinReplicateIndex();
-  if (ret == -1) { // No finalized log files yet.  Query the active log.
-    ret = log_->GetMinReplicateIndex();
-  }
-  return ret;
+  return log_->EarliestOpIndex();
+}
+
+Result<int64_t> LogCache::min_anchorable_index() const {
+  return log_->MinAnchorableIndex();
 }
 
 Result<log::ReadableLogSegmentPtr> CheckHasFooter(
@@ -358,7 +358,7 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   }
 
   // If it misses, read from the log.
-  return VERIFY_RESULT(log_->GetLogReader())->LookupOpId(op_index);
+  return log_->LookupOpId(op_index);
 }
 
 Result<int64_t> LogCache::LookupOpWalSegmentNumber(int64_t op_index) const {

@@ -1,6 +1,7 @@
 import * as Yup from 'yup';
 import { TFunction } from 'i18next';
 import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
+import { InstanceSettingsViewMode } from './dtos';
 import { CloudType, StorageType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   getDiskIopsRange,
@@ -16,23 +17,34 @@ export const InstanceSettingsValidationSchema = (
   useK8CustomResources: boolean,
   provider: CloudType | undefined,
   useDedicatedNodes: boolean,
-  maxVolumeCount = 32
+  maxVolumeCount = 32,
+  // Fields in a section the modal doesn't render can't show their error, so skip them.
+  viewMode: InstanceSettingsViewMode = 'all',
+  editMode = false,
+  // K8VolumeInfoField renders the storageClass input only when this is true
+  k8sOverrideEnabled = false
 ) => {
   const isK8s = provider === 'kubernetes';
   const requireTserverK8Spec = isK8s && useK8CustomResources;
   const volumeInfoSchema = requireTserverK8Spec
-    ? K8VolumeInfoValidationSchema(t, maxVolumeCount)
-    : DeviceInfoValidationSchema(t, maxVolumeCount);
+    ? K8VolumeInfoValidationSchema(t, maxVolumeCount, k8sOverrideEnabled)
+    : DeviceInfoValidationSchema(t, maxVolumeCount, false);
   const masterHardwareShown = !!useDedicatedNodes || (isK8s && useK8CustomResources);
+  const validateTserver = viewMode !== 'masterOnly';
+  const validateMaster = viewMode !== 'tserverOnly';
   const requiresSeparateMasterHardware = (keepSame: unknown) => {
     const same = Array.isArray(keepSame) ? keepSame[0] : keepSame;
-    return masterHardwareShown && !same;
+    return validateMaster && masterHardwareShown && !same;
   };
+  const tserverVolumeInfoSchema = validateTserver ? volumeInfoSchema : Yup.mixed().nullable();
 
   return Yup.object().shape({
-    arch: Yup.string()
-      .oneOf(Object.values(ArchitectureType), t('validation.invalidArchitecture'))
-      .required(t('validation.required', { field: 'CPU Architecture' })),
+    // CPUArchField isn't rendered in edit mode (universes may have no arch)
+    arch: editMode
+      ? Yup.string().nullable()
+      : Yup.string()
+          .oneOf(Object.values(ArchitectureType), t('validation.invalidArchitecture'))
+          .required(t('validation.required', { field: 'CPU Architecture' })),
 
     imageBundleUUID: Yup.string()
       .nullable()
@@ -58,6 +70,7 @@ export const InstanceSettingsValidationSchema = (
         'instance-type-required',
         t('validation.required', { field: 'Instance Type' }),
         function (value) {
+          if (!validateTserver) return true;
           if (!isK8s || (isK8s && !useK8CustomResources)) {
             return value !== null && value !== undefined && value !== '';
           }
@@ -84,7 +97,7 @@ export const InstanceSettingsValidationSchema = (
         }
       ),
 
-    deviceInfo: volumeInfoSchema,
+    deviceInfo: tserverVolumeInfoSchema,
 
     masterDeviceInfo: Yup.mixed().when('keepMasterTserverSame', {
       is: (keepSame: unknown) => requiresSeparateMasterHardware(keepSame),
@@ -92,9 +105,10 @@ export const InstanceSettingsValidationSchema = (
       otherwise: Yup.mixed().nullable()
     }),
 
-    tserverK8SNodeResourceSpec: requireTserverK8Spec
-      ? K8NodeSpecValidationSchema(t)
-      : Yup.mixed().nullable(),
+    tserverK8SNodeResourceSpec:
+      requireTserverK8Spec && validateTserver
+        ? K8NodeSpecValidationSchema(t)
+        : Yup.mixed().nullable(),
 
     masterK8SNodeResourceSpec: Yup.mixed().when('keepMasterTserverSame', {
       is: (keepSame: unknown) => requireTserverK8Spec && requiresSeparateMasterHardware(keepSame),
@@ -117,7 +131,7 @@ export const InstanceSettingsValidationSchema = (
           const { parent } = this;
           const enableEbsVolumeEncryption = parent?.enableEbsVolumeEncryption;
 
-          if (enableEbsVolumeEncryption) {
+          if (validateTserver && enableEbsVolumeEncryption) {
             return value !== null && value !== undefined && value !== '';
           }
           return true;
@@ -126,7 +140,7 @@ export const InstanceSettingsValidationSchema = (
       .test('ebs-kms-config-duplicate', t('kmsValidationMsg'), function (value) {
         const earKmsConfig = (this.options.context as InstanceSettingsValidationContext | undefined)
           ?.earKmsConfig;
-        if (!value || !earKmsConfig) return true;
+        if (!validateTserver || !value || !earKmsConfig) return true;
         return value !== earKmsConfig;
       })
   });
@@ -168,7 +182,12 @@ const requiredPositiveNumber = (t: TFunction, field: string, min = 1, max?: numb
       return n <= max;
     });
 
-export const DeviceInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) => {
+export const DeviceInfoValidationSchema = (
+  t: TFunction,
+  maxVolumeCount = 32,
+  // VolumeInfoField (what this schema validates) never renders storageClass, so callers pass false.
+  requireStorageClass = true
+) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
     numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, maxVolumeCount),
@@ -252,7 +271,9 @@ export const DeviceInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) =>
       .test(
         'storage-class-required',
         t('validation.required', { field: 'Storage Class' }),
-        (value) => value !== null && value !== undefined && String(value).trim() !== ''
+        (value) =>
+          !requireStorageClass ||
+          (value !== null && value !== undefined && String(value).trim() !== '')
       ),
 
     // null ok for k8 / ephemeral
@@ -270,7 +291,12 @@ export const DeviceInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) =>
   });
 };
 
-export const K8VolumeInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) => {
+export const K8VolumeInfoValidationSchema = (
+  t: TFunction,
+  maxVolumeCount = 32,
+  // K8VolumeInfoField shows storageClass only when k8sOverrideEnabled
+  requireStorageClass = true
+) => {
   return Yup.object().shape({
     volumeSize: requiredPositiveNumber(t, 'Volume Size', 1),
     numVolumes: requiredPositiveNumber(t, 'Number of Volumes', 1, maxVolumeCount),
@@ -279,7 +305,9 @@ export const K8VolumeInfoValidationSchema = (t: TFunction, maxVolumeCount = 32) 
       .test(
         'storage-class-required',
         t('validation.required', { field: 'Storage Class' }),
-        (value) => value !== null && value !== undefined && String(value).trim() !== ''
+        (value) =>
+          !requireStorageClass ||
+          (value !== null && value !== undefined && String(value).trim() !== '')
       )
   });
 };

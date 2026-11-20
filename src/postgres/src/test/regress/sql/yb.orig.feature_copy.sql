@@ -39,9 +39,11 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
+\.
 
 -- too many columns in column list: should fail
 COPY x (a, b, c, d, e, d, c) from stdin;
+\.
 
 -- missing data: should fail
 COPY x from stdin;
@@ -182,10 +184,12 @@ ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL(b));
+\.
 ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
+\.
 ROLLBACK;
 
 -- Test NOT NULL constraint enforcement on columns omitted from the COPY column
@@ -624,9 +628,78 @@ select * from upsert_guard_test3 order by h;
 /*+IndexOnlyScan(upsert_guard_test3 upsert_guard_idx3)*/
 select v1 from upsert_guard_test3 where v1 > 0 order by v1;
 
+-- Test H: COPY into a partitioned table whose secondary index exists only
+-- on one partition. Each partition that rows are routed to is checked.
+create table upsert_guard_part8 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part8_a partition of upsert_guard_part8
+    for values from (1) to (100);
+create table upsert_guard_part8_b partition of upsert_guard_part8
+    for values from (100) to (200);
+create unique index upsert_guard_part8_a_v1 on upsert_guard_part8_a (v1);
+insert into upsert_guard_part8 values (1, 10), (2, 20), (101, 1010);
+
+-- COPY REPLACE routed only to the partition without the index: upsert works.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+101,1011
+\.
+
+-- COPY REPLACE routed to the partition with the index: error.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+102,1020
+1,11
+\.
+
+-- yb_enable_upsert_mode: one warning for the partition with the index, whose
+-- rows are inserted normally; the other partition still upserts.
+set yb_enable_upsert_mode = true;
+copy upsert_guard_part8 from stdin with (format csv);
+101,1012
+3,30
+102,1020
+4,40
+\.
+
+-- A conflicting row in the partition with the index is a duplicate key error.
+copy upsert_guard_part8 from stdin with (format csv);
+1,12
+\.
+set yb_enable_upsert_mode = false;
+
+select * from upsert_guard_part8 order by h;
+
+-- Index should be consistent with the partition.
+/*+IndexOnlyScan(upsert_guard_part8_a upsert_guard_part8_a_v1)*/
+select v1 from upsert_guard_part8_a where v1 > 0 order by v1;
+
+-- Test I: COPY REPLACE into a partitioned table whose trigger exists only on
+-- one partition.
+create table upsert_guard_part9 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part9_a partition of upsert_guard_part9
+    for values from (1) to (100);
+create function upsert_guard_part9_trig() returns trigger as $$
+begin
+    raise notice 'trigger fired for h = %', new.h;
+    return new;
+end;
+$$ language plpgsql;
+create trigger upsert_guard_part9_a_trig before insert on upsert_guard_part9_a
+    for each row execute function upsert_guard_part9_trig();
+insert into upsert_guard_part9 values (1, 10);
+
+copy upsert_guard_part9 from stdin with (format csv, replace);
+1,11
+\.
+
+select * from upsert_guard_part9 order by h;
+
 -- clean up
 DROP TABLE upsert_guard_test1;
 DROP TABLE upsert_guard_test3;
+DROP TABLE upsert_guard_part8;
+DROP TABLE upsert_guard_part9;
+DROP FUNCTION upsert_guard_part9_trig();
 DROP TABLE forcetest;
 DROP TABLE x;
 DROP TABLE y;

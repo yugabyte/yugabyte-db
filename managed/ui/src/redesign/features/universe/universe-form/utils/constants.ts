@@ -1,3 +1,9 @@
+import { CloudType } from './dto';
+
+// GCP and Kubernetes resource names must be lowercase. Shared by the v1 and v2 universe forms.
+export const LOWERCASE_ONLY_NAME_CLOUDS = [CloudType.gcp, CloudType.kubernetes];
+export const LOWERCASE_ONLY_NAME_REGEX = /^[a-z0-9-]*$/;
+
 // ------------Universe Form Fields Path Start------------
 
 //Cloud config

@@ -36,19 +36,19 @@ check_root_systemd_services() {
     else
         mkdir -p "${systemd_dir}"
     fi
-# Configure the systemd unit files
+# Configure the systemd unit files. install writes a new file, so the unit gets the SELinux label
+# of the unit dir instead of the temp dir's.
+    unit_owner_args=()
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        unit_owner_args=(-o {{ yb_user }} -g {{ yb_user }})
+    fi
 {% for service_file in service_files | split_string %}
     tmp_file=$(mktemp)
     echo '{% include service_file %}' > "$tmp_file"
-    if [ "$SUDO_ACCESS" = "true" ]; then
-        chown {{ yb_user }}:{{ yb_user }} "$tmp_file"
-        su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
-        su - {{ yb_user }} -c "chmod 644 ${systemd_dir}/{{ service_file }}"
-    else
-        mv "$tmp_file" "${systemd_dir}/{{ service_file }}"
-        chmod 644 "${systemd_dir}/{{ service_file }}"
-    fi
+    install -m 0644 "${unit_owner_args[@]}" "$tmp_file" "${systemd_dir}/{{ service_file }}"
+    rm -f "$tmp_file"
 {% endfor %}
+{% include "install_yb_launchers.sh.j2" %}
 {% endif %}
 
 {% if configure_cgroup == 'True' %}
