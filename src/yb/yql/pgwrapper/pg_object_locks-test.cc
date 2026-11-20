@@ -939,9 +939,7 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_global_object_locking_infra=false");
-    // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
-    // release builds. The flag validators require it with enable_object_locking_for_table_locks,
-    // so pin it on for every build type.
+    // These tests run DDLs with global object locks concurrently.
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
   }
 
@@ -1507,6 +1505,18 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
     }, 15s * kTimeMultiplier, Format("a $0 on $1 to wait", mode, table)));
   }
 
+  // Runs `ddl` on ts2 and expects it to time out: a DDL that ran in a separate DDL transaction
+  // earlier in the open transaction on ts1 holds the database lock from PR #38568 until the
+  // transaction ends. Neither pg_locks nor ASH shows that wait, so the timeout
+  // is the signal.
+  void ExpectDdlWaitsForLegacyTxn(const std::string& ddl) {
+    auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(1)));
+    ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
+    auto status = ddl_conn.Execute(ddl);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "canceling statement due to statement timeout");
+  }
+
   // Waits until ASH on ts2 samples a backend there waiting in WaitForLockers, which a CREATE INDEX
   // with global object locks calls before the backfill. That wait does not show in pg_locks.
   void WaitForWaitForLockers() {
@@ -1811,11 +1821,10 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
 
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
 // later takes the same lock in the same transaction finds it there and does not send it, so a new
-// mode DDL does not wait for the DML. This gap is accepted. It can hit a lock weaker than a
-// writer's RowExclusive that a DDL of the transaction took first: AccessShare (CREATE VIEW, as
-// here), or RowShare on the referenced table (the row checks of ADD FOREIGN KEY). The reader keeps
-// reading its snapshot and commits.
-TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInDdlMode) {
+// mode DDL does not wait for the DML. That gap no longer shows: the CREATE VIEW also took the
+// database lock from PR #38568 in the transaction that ran it, and the
+// transaction holds it until it ends, so the new mode DDL waits for the whole transaction.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlWaitsForLegacyTxnThatRanDdl) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -1832,12 +1841,12 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInD
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
 
   ASSERT_NO_FATALS(PromoteForDdl());
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  // If the reader's lock were sent, the ALTER would wait for it and hit this timeout.
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
-  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+  constexpr auto kAlter = "ALTER TABLE test ADD COLUMN v1 INT";
+  ASSERT_NO_FATALS(ExpectDdlWaitsForLegacyTxn(kAlter));
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute(kAlter));
 }
 
 // A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
@@ -1922,7 +1931,9 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
 // transaction of the same session, which takes no object locks. Its end must leave the locks of
 // the session's transaction alone. Releasing locks for it would unregister the session's lock owner
 // and drop the local locks that the transaction took through shared memory, so a table rewrite with
-// global object locks would not wait for the reader.
+// global object locks would not wait for the reader. The rewrite now waits first for the database
+// lock that the CREATE TABLE took in the transaction (#32224), which the transaction also holds
+// until it ends.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1938,16 +1949,12 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   ASSERT_OK(legacy_conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
 
   ASSERT_NO_FATALS(PromoteForDdl());
-  auto alter_future = std::async(std::launch::async, [&]() -> Status {
-    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
-    return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
-  });
-  ASSERT_NO_FATALS(WaitForWaitingLock("test", "AccessExclusiveLock"));
+  constexpr auto kAlter = "ALTER TABLE test ALTER COLUMN v TYPE BIGINT";
+  ASSERT_NO_FATALS(ExpectDdlWaitsForLegacyTxn(kAlter));
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-  ASSERT_EQ(alter_future.wait_for(0s), std::future_status::timeout);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
-  ASSERT_OK(alter_future.get());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute(kAlter));
 }
 
 // An autonomous DDL takes no object locks, so nothing makes it wait for a reader without global
@@ -2071,6 +2078,167 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   LOG(INFO) << "CREATE TABLE: " << create_future.get();
   ASSERT_OK(legacy_conn.Execute("SET test.slow = 'off'"));
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
+}
+
+// Tests for #32224.
+//
+// Two overlapping DDLs must not both commit unless both take global object locks (PR #38568). A
+// DDL in a transaction without global object locks runs in a separate DDL transaction ("legacy"
+// below).
+//
+// With ysql_enable_concurrent_ddl off (#34673), DDLs with global object locks do not overlap
+// either.
+//
+// The first two parameters say whether the first and the second DDL take global object locks; the
+// third turns ysql_enable_concurrent_ddl off. A DDL takes global object locks on ts2, whose object
+// locking infra flag is promoted, and in a separate DDL transaction on ts1. The first DDL alters a,
+// and a ddl_command_end event trigger holds it open, after its catalog writes and before it
+// commits, while the second DDL alters b. "Overlap" means the second DDL commits while the first is
+// held, and the first commits as well.
+class PgObjectLocksTestOverlappingDdls
+    : public PgObjectLocksTestMixModeDuringPromotion,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--ysql_enable_concurrent_ddl=$0", !std::get<2>(GetParam())));
+    // Two DDLs in separate DDL transactions conflict only when both increment the catalog
+    // version.
+    opts->extra_tserver_flags.emplace_back(Format(
+        "--ysql_pg_conf_csv=$0,yb_always_increment_catalog_version_on_ddl=true",
+        MaxQueryLayerRetriesConf(2)));
+  }
+
+  ExternalTabletServer* TsForDdl(bool global_object_locks) {
+    return cluster_->tablet_server(global_object_locks ? 1 : 0);
+  }
+};
+
+TEST_P(PgObjectLocksTestOverlappingDdls, OnlyDdlsWithGlobalObjectLocksOverlap) {
+  const auto [first_global, second_global, concurrent_ddl_off] = GetParam();
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "ysql_yb_enable_global_object_locking_infra", "true"));
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION slow_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$$$ BEGIN "
+        "IF current_setting('test.slow', true) = 'on' THEN PERFORM pg_sleep($0); END IF; "
+        "END $$$$", 20 * kTimeMultiplier));
+    ASSERT_OK(conn.Execute(
+        "CREATE EVENT TRIGGER slow_ddl ON ddl_command_end EXECUTE FUNCTION slow_ddl()"));
+  }
+  WaitForCatalogVersionToPropagate();
+
+  const std::string first_ddl = "ALTER TABLE a ADD COLUMN v INT";
+  auto* first_ts = TsForDdl(first_global);
+  auto first_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+  ASSERT_OK(first_conn.Execute("SET test.slow = 'on'"));
+  auto first_future = std::async(std::launch::async, [&first_conn, &first_ddl]() {
+    return first_conn.Execute(first_ddl);
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+  ASSERT_OK(LoggedWaitFor([&observer, &first_ddl]() -> Result<bool> {
+    auto sleeping = observer.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0' AND wait_event = 'PgSleep'",
+        first_ddl));
+    if (!sleeping.ok()) {
+      LOG(INFO) << "pg_stat_activity: " << sleeping.status();
+      return false;
+    }
+    return *sleeping > 0;
+  }, 30s * kTimeMultiplier, "the first DDL to sleep in the event trigger"));
+
+  auto second_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*TsForDdl(second_global)));
+  const auto second_status = second_conn.Execute("ALTER TABLE b ADD COLUMN v INT");
+  const bool second_ended_while_first_held =
+      first_future.wait_for(0s) == std::future_status::timeout;
+  const auto first_status = first_future.get();
+  LOG(INFO) << "first DDL: " << first_status << ", second DDL: " << second_status
+            << ", second ended while first held: " << second_ended_while_first_held;
+
+  const bool overlapped =
+      first_status.ok() && second_status.ok() && second_ended_while_first_held;
+  ASSERT_EQ(overlapped, first_global && second_global && !concurrent_ddl_off);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DdlModes, PgObjectLocksTestOverlappingDdls,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool, bool>>& info) {
+      return Format(
+          "$0Then$1$2", std::get<0>(info.param) ? "Global" : "Legacy",
+          std::get<1>(info.param) ? "Global" : "Legacy",
+          std::get<2>(info.param) ? "ConcurrentDdlDisabled" : "");
+    });
+
+// Case 6 of the upgrade design for #32224: a DDL in a separate DDL transaction and a DDL with
+// global object locks on the same table must not run in parallel (PR #38568). The first
+// transaction started before the promotion, so its ALTER runs in a separate DDL transaction, and
+// the database lock it takes stays until the transaction ends. The second transaction cached t
+// before that ALTER, and its own ALTER must wait for the first transaction.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyAndGlobalDdlOnSameTable) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  }
+
+  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(legacy_conn.Execute("BEGIN"));
+  // Starts the transaction before the promotion without reading t: a read would take a lock on t
+  // that the second ALTER waits for anyway (#36572).
+  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int32_t>("SELECT 1")), 1);
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
+  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(new_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
+  ASSERT_OK(new_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM t")), 1);
+
+  ASSERT_OK(legacy_conn.Execute("ALTER TABLE t ADD COLUMN c1 INT"));
+  // Neither pg_locks nor ASH shows the wait, so the timeout is the signal.
+  ASSERT_NOK_STR_CONTAINS(
+      new_conn.Execute("ALTER TABLE t ADD COLUMN c2 INT"),
+      "canceling statement due to statement timeout");
+  ASSERT_OK(new_conn.Execute("ROLLBACK"));
+  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+}
+
+// A DDL with global object locks must see a DDL in a separate DDL transaction that committed before
+// it, though only the heartbeat brings the other DDL's catalog version to its node (PR #38568). The
+// longer heartbeat keeps ts2 behind for a while after the first DDL commits.
+class PgObjectLocksTestSlowHeartbeat : public PgObjectLocksTestMixModeDuringPromotion {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--heartbeat_interval_ms=3000");
+  }
+};
+
+TEST_F(PgObjectLocksTestSlowHeartbeat, GlobalDdlSeesEarlierDdlInSeparateTxn) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
+  }
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
+  auto global_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(global_conn.Fetch("SELECT * FROM t"));
+
+  auto separate_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(separate_conn.Execute("ALTER TABLE t ADD COLUMN c1 INT"));
+  ASSERT_OK(global_conn.Execute("ALTER TABLE t ADD COLUMN c2 INT"));
+
+  ASSERT_EQ(ASSERT_RESULT(separate_conn.FetchAllAsString(
+      "SELECT attname, attnum FROM pg_attribute WHERE attrelid = 't'::regclass AND attnum > 0"
+      " ORDER BY attnum")), "k, 1; v, 2; c1, 3; c2, 4");
 }
 
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).
