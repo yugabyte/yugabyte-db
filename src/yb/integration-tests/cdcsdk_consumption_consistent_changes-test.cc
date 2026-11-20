@@ -5858,7 +5858,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALStopsPollingDroppedTable)
 //   transaction, which is shipped instead.
 void CDCSDKConsumptionConsistentChangesTest::TestDmlAndDropTableInTxnBlock(
     bool transactional_ddl) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) =
       transactional_ddl;
   ToggleDDLMode(/* use_legacy = */ false);
   ASSERT_OK(SetUpWithParams(
@@ -6188,7 +6188,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Any DDL which causes table rewrite should send the pub refresh signal to the walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN serial_col SERIAL"));
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     ASSERT_TRUE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
   } else {
     // Consume the DDL record.
@@ -6214,7 +6214,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     ASSERT_FALSE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
   } else {
     // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet
