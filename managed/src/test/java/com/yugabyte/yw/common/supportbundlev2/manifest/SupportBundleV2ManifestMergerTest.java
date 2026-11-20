@@ -242,7 +242,8 @@ public class SupportBundleV2ManifestMergerTest {
   }
 
   /**
-   * ClusterConfig reaches its v1 component; NodeHealthLogs is dropped until node_utils.sh has it.
+   * ClusterConfig reaches its v1 component; NodeHealthLogs is dropped until support_bundle_utils.sh
+   * has it.
    */
   @Test
   public void clusterConfigPassesThroughAndNodeHealthLogsIsDropped() {
@@ -319,7 +320,7 @@ public class SupportBundleV2ManifestMergerTest {
     assertEquals(1, merged.getFilesComponentSpecs().size());
     FilesComponentSpec universeLogs = merged.getFilesComponentSpecs().get(0);
     assertEquals("UniverseLogs", universeLogs.getComponentName());
-    assertEquals("bin/node_utils.sh", universeLogs.getScriptPath());
+    assertEquals("bin/support_bundle_utils.sh", universeLogs.getScriptPath());
     assertEquals(
         "/tmp/universe-logs-${bundleUuid}-${nodeName}.tar.gz", universeLogs.getRemoteTarPath());
     assertEquals("yugabyte", universeLogs.getLinuxUser());
@@ -419,7 +420,7 @@ public class SupportBundleV2ManifestMergerTest {
             .addFilesComponentSpecsItem(
                 new FilesComponentSpec()
                     .componentName("UniverseLogs")
-                    .scriptPath("bin/node_utils.sh")
+                    .scriptPath("bin/support_bundle_utils.sh")
                     .params(List.of("create_universe_logs_bundle"))
                     .remoteTarPath("/tmp/universe-logs-${bundleUuid}-${nodeName}.tar.gz"));
 
@@ -438,7 +439,7 @@ public class SupportBundleV2ManifestMergerTest {
             .addBashComponentSpecsItem(
                 new BashComponentSpec()
                     .componentName("collect_data_dir_map")
-                    .scriptPath("bin/node_utils.sh"));
+                    .scriptPath("bin/support_bundle_utils.sh"));
 
     SupportBundleCreateSpec merged = merger.mergeIfNeeded(partial);
 
@@ -699,14 +700,14 @@ public class SupportBundleV2ManifestMergerTest {
           "    UniverseLogs:",
           "      enabled: false",
           "      script:",
-          "        scriptFile: \"bin/node_utils.sh\"",
+          "        scriptFile: \"bin/support_bundle_utils.sh\"",
           "        entrypoint: \"create_universe_logs_bundle\"",
           "      params:",
           "        remoteTarPathTemplate: \"${defaults.remoteTmpDir}/universe-logs.tar.gz\"",
           "    GFlags:",
           "      enabled: true",
           "      script:",
-          "        scriptFile: \"bin/node_utils.sh\"",
+          "        scriptFile: \"bin/support_bundle_utils.sh\"",
           "        entrypoint: \"create_gflags_bundle\"",
           "      params:",
           "        dirFlag: \"--node_home_dir\"",
@@ -717,14 +718,14 @@ public class SupportBundleV2ManifestMergerTest {
           "    collect_data_dir_map:",
           "      enabled: true",
           "      script:",
-          "        scriptFile: \"bin/node_utils.sh\"",
+          "        scriptFile: \"bin/support_bundle_utils.sh\"",
           "        entrypoint: \"collect_data_dir_map\"",
           "      params:",
           "        remoteTarPathTemplate: \"${defaults.remoteTmpDir}/data-dir-map.tar.gz\"",
           "    collect_cdc_state:",
           "      enabled: false",
           "      script:",
-          "        scriptFile: \"bin/node_utils.sh\"",
+          "        scriptFile: \"bin/support_bundle_utils.sh\"",
           "        entrypoint: \"collect_cdc_state\"",
           "      params:",
           "        remoteTarPathTemplate: \"${defaults.remoteTmpDir}/cdc-state.tar.gz\"",
@@ -791,7 +792,7 @@ public class SupportBundleV2ManifestMergerTest {
     spec.getDefaults().setMountPath("/mnt/d0");
     spec.getDefaults().setRemoteTmpDir("/tmp");
     Component component = new Component();
-    component.getScript().setScriptFile("bin/node_utils.sh");
+    component.getScript().setScriptFile("bin/support_bundle_utils.sh");
     component.getScript().setEntrypoint("collect_custom");
     component
         .getParams()

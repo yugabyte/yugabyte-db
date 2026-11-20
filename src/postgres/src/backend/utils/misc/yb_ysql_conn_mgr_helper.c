@@ -43,6 +43,7 @@
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
@@ -932,6 +933,26 @@ YbSendFatalForLogicalConnectionPacket()
 	CHECK_FOR_INTERRUPTS();
 }
 
+void
+YbSendConnMgrObjectDropped(char kind, Oid oid)
+{
+	static bool sent = false;
+	StringInfoData buf;
+
+	/*
+	 * This is sent at-most-once by a normal backend as well
+	 * as parallel workers to their leader.
+	 */
+	if (sent || !YbIsClientYsqlConnMgr() || whereToSendOutput != DestRemote)
+		return;
+	sent = true;
+
+	pq_beginmessage(&buf, '7');
+	pq_sendbyte(&buf, kind);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
+}
+
 bool
 yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 									GucSource source)
@@ -1136,4 +1157,20 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+/*
+ * Whether a startup parameter name is reserved for the connection manager:
+ * anything with the yb_ycm_internal_ prefix, the legacy names that guc.c
+ * still maps onto reserved parameters, and yb_conn_mgr_client_hostname, which
+ * pg_stat_activity reports as the logical client's hostname.
+ */
+bool
+YbIsConnMgrReservedStartupParameter(const char *name)
+{
+	return pg_strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
+						  strlen(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX)) == 0 ||
+		pg_strcasecmp(name, "yb_conn_mgr_client_hostname") == 0 ||
+		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
+		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
 }

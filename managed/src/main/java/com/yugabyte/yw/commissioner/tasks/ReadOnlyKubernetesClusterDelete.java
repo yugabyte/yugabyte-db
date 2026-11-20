@@ -92,7 +92,11 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    addBasicPrecheckTasks();
+    // After a failed create the read replica is inconsistent by definition (e.g. pods that never
+    // registered), so these checks would block deleting it.
+    if (!isPlacementLockHeldBy(universe, TaskType.ReadOnlyKubernetesClusterCreate)) {
+      addBasicPrecheckTasks();
+    }
   }
 
   @Override
@@ -282,6 +286,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.azCode = az;
+    params.isForceDelete = params().isForceDelete;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);

@@ -147,6 +147,36 @@ YbComputePasswordValidUntil(bool has_valid_until_clause,
 	return true;
 }
 
+/*
+ * YB: Run AlterSetting as the bootstrap superuser, for a yb_db_admin member
+ * setting a per-role password policy GUC (see AlterRoleSet).  The GUC
+ * permission checks in AlterSetting's validation pass are shared with
+ * ALTER DATABASE ... SET and CREATE/ALTER FUNCTION ... SET; becoming
+ * superuser for just this call grants the exception here without widening
+ * those checks.  The user is restored explicitly, also on error, rather than
+ * relying on transaction or subtransaction abort to reset it.
+ */
+static void
+YbAlterSettingAsSuperuser(Oid databaseid, Oid roleid,
+						  VariableSetStmt *setstmt)
+{
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
+	PG_TRY();
+	{
+		AlterSetting(databaseid, roleid, setstmt);
+	}
+	PG_FINALLY();
+	{
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+	}
+	PG_END_TRY();
+}
+
 
 /* Check if current user has createrole privileges */
 static bool
@@ -1272,6 +1302,8 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	Oid			databaseid = InvalidOid;
 	Oid			roleid = InvalidOid;
 
+	bool		yb_db_admin_as_superuser = false;
+
 	if (stmt->role)
 	{
 		check_rolespec_name(stmt->role,
@@ -1303,6 +1335,11 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		 * To mess with a superuser you gotta be superuser; otherwise you need
 		 * CREATEROLE plus admin option on the target role; unless you're just
 		 * trying to change your own settings
+		 *
+		 * YB: or be yb_db_admin setting a per-role password policy GUC of a
+		 * non-superuser role, as ALTER ROLE <role> SET/RESET <guc> (not
+		 * IN DATABASE, not ALL, not RESET ALL).  That statement then runs as
+		 * superuser, which is what lets it pass the GUC's PGC_SUSET check.
 		 */
 		if (roleform->rolsuper)
 		{
@@ -1315,9 +1352,13 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 		}
 		else
 		{
+			yb_db_admin_as_superuser =
+				(stmt->database == NULL && !superuser() &&
+				 YbDbAdminCanSetRoleSetting(stmt->setstmt->name));
+
 			if ((!have_createrole_privilege() ||
 				 !is_admin_of_role(GetUserId(), roleid))
-				&& roleid != GetUserId())
+				&& roleid != GetUserId() && !yb_db_admin_as_superuser)
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("permission denied to alter role"),
@@ -1357,7 +1398,10 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 							   "SUPERUSER")));
 	}
 
-	AlterSetting(databaseid, roleid, stmt->setstmt);
+	if (yb_db_admin_as_superuser)
+		YbAlterSettingAsSuperuser(databaseid, roleid, stmt->setstmt);
+	else
+		AlterSetting(databaseid, roleid, stmt->setstmt);
 
 	return roleid;
 }

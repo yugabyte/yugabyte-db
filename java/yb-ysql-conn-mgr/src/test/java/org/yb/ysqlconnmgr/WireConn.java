@@ -44,6 +44,7 @@ public class WireConn implements AutoCloseable {
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30000;
   private static final String USER = "yugabyte";
   private static final String DATABASE = "yugabyte";
+  private static final int SSL_REQUEST_CODE = 80877103;
 
   private final Socket socket;
   private final DataOutputStream out;
@@ -145,7 +146,7 @@ public class WireConn implements AutoCloseable {
     private ConnectionEndpoint endpoint = ConnectionEndpoint.YSQL_CONN_MGR;
     private int protocolVersion = PgWireProtocol.protocolVersion(3, 0);
     private boolean gssEncRequestFirst = false;
-    private boolean tls = false;
+    private boolean ssl;
 
     Builder(MiniYBCluster cluster) {
       this.cluster = cluster;
@@ -163,13 +164,6 @@ public class WireConn implements AutoCloseable {
       return this;
     }
 
-    // Sends an SSLRequest and runs the TLS handshake before startup. The server certificate is
-    // not verified.
-    public Builder tls() {
-      this.tls = true;
-      return this;
-    }
-
     // Bypasses the connection manager when set to POSTGRES.
     public Builder endpoint(ConnectionEndpoint endpoint) {
       this.endpoint = endpoint;
@@ -183,6 +177,13 @@ public class WireConn implements AutoCloseable {
 
     public Builder socketTimeoutMs(int socketTimeoutMs) {
       this.socketTimeoutMs = socketTimeoutMs;
+      return this;
+    }
+
+    // Sends an SSLRequest and runs the TLS handshake before the startup message.
+    // The server certificate is not verified.
+    public Builder ssl() {
+      this.ssl = true;
       return this;
     }
 
@@ -224,8 +225,7 @@ public class WireConn implements AutoCloseable {
         if (gssEncRequestFirst) {
           sendRequestCode(socket, PgWireProtocol.GSS_ENC_REQUEST_CODE, 'N');
         }
-        if (tls) {
-          sendRequestCode(socket, PgWireProtocol.SSL_REQUEST_CODE, 'S');
+        if (ssl) {
           socket = startTls(socket, target);
         }
         WireConn conn = new WireConn(socket);
@@ -256,19 +256,33 @@ public class WireConn implements AutoCloseable {
       }
     }
 
-    private Socket startTls(Socket plain, InetSocketAddress target) throws Exception {
-      TrustManager[] trustAll = { new X509TrustManager() {
-        @Override public void checkClientTrusted(X509Certificate[] chain, String authType) {}
-        @Override public void checkServerTrusted(X509Certificate[] chain, String authType) {}
-        @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-      } };
-      SSLContext ctx = SSLContext.getInstance("TLS");
-      ctx.init(null, trustAll, null);
-      SSLSocket tlsSocket = (SSLSocket) ctx.getSocketFactory().createSocket(
-          plain, target.getHostString(), target.getPort(), true /* autoClose */);
-      tlsSocket.setSoTimeout(socketTimeoutMs);
-      tlsSocket.startHandshake();
-      return tlsSocket;
+    private static SSLSocket startTls(Socket plain, InetSocketAddress target) throws Exception {
+      DataOutputStream plainOut = new DataOutputStream(plain.getOutputStream());
+      plainOut.writeInt(8);
+      plainOut.writeInt(SSL_REQUEST_CODE);
+      plainOut.flush();
+      int reply = plain.getInputStream().read();
+      if (reply != 'S') {
+        throw new IOException("Server refused SSL, replied " + reply);
+      }
+
+      SSLContext context = SSLContext.getInstance("TLS");
+      context.init(null, new TrustManager[] {new X509TrustManager() {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+          return new X509Certificate[0];
+        }
+      }}, null);
+      SSLSocket socket = (SSLSocket) context.getSocketFactory().createSocket(
+          plain, target.getHostString(), target.getPort(), true);
+      socket.startHandshake();
+      return socket;
     }
   }
 }

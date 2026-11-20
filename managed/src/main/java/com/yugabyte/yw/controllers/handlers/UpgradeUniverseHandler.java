@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -102,6 +104,7 @@ public class UpgradeUniverseHandler {
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
   private final GFlagsValidation gFlagsValidation;
+  private final ReleaseManager releaseManager;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -115,7 +118,8 @@ public class UpgradeUniverseHandler {
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
       SoftwareUpgradeHelper softwareUpgradeHelper,
-      GFlagsValidation gFlagsValidation) {
+      GFlagsValidation gFlagsValidation,
+      ReleaseManager releaseManager) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -127,6 +131,7 @@ public class UpgradeUniverseHandler {
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.gFlagsValidation = gFlagsValidation;
+    this.releaseManager = releaseManager;
   }
 
   public UUID restartUniverse(
@@ -153,6 +158,10 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    ReleaseContainer release = releaseManager.getReleaseByVersion(requestParams.ybSoftwareVersion);
+    if (release != null) {
+      release.raiseIfDisabledOrDeleted();
+    }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
@@ -354,12 +363,27 @@ public class UpgradeUniverseHandler {
       if (universeCluster == null || universeCluster.userIntent == null) {
         continue;
       }
+      UserIntent stored = universeCluster.userIntent;
+      if (stored.specificGFlags != null && stored.specificGFlags.isInheritFromPrimary()) {
+        // The read replica runs with the primary's gflags, and the UI sends the primary's
+        // (redacted) gflags as the read replica's own when it stops inheriting.
+        stored = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      }
+      SpecificGFlags storedGFlags = stored.specificGFlags;
+      if (storedGFlags == null) {
+        // Defensive: create and the V315 migration always set specificGFlags. Without this, a
+        // cluster stored without them would get a 400 for a value its deprecated maps hold.
+        storedGFlags =
+            SpecificGFlags.construct(
+                MapUtils.emptyIfNull(stored.masterGFlags),
+                MapUtils.emptyIfNull(stored.tserverGFlags));
+      }
       clusterParam.userIntent.specificGFlags =
           GFlagsUtil.mergeSensitiveSpecificGFlags(
-              universeCluster.userIntent.specificGFlags,
+              storedGFlags,
               clusterParam.userIntent.specificGFlags,
               gFlagsValidation,
-              universeCluster.userIntent.ybSoftwareVersion);
+              stored.ybSoftwareVersion);
     }
   }
 

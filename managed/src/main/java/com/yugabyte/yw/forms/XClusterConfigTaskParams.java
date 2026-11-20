@@ -151,6 +151,43 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     //  to make it consistent with the DR config api.
   }
 
+  /**
+   * Used by the edit/set-tables flow when the table-set computation (and its universe RPCs) is
+   * deferred to {@link com.yugabyte.yw.commissioner.tasks.EditXClusterConfig} instead of being run
+   * synchronously in the controller. The task computes the table-set fields and copies them onto
+   * these params via {@link #mergeComputedSetTablesParams}. Only the requested {@code tables},
+   * {@code bootstrapParams}, and {@code autoIncludeIndexTables} are taken from {@code editFormData}
+   * so that the task performs only the set-tables operation, even if the request also carried other
+   * edit fields (e.g. {@code status}).
+   */
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig, XClusterConfigEditFormData editFormData) {
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.xClusterConfig = xClusterConfig;
+    XClusterConfigEditFormData setTablesForm = new XClusterConfigEditFormData();
+    setTablesForm.tables = editFormData.tables;
+    setTablesForm.bootstrapParams = editFormData.bootstrapParams;
+    setTablesForm.autoIncludeIndexTables = editFormData.autoIncludeIndexTables;
+    this.editFormData = setTablesForm;
+    this.bootstrapParams = editFormData.bootstrapParams;
+    updatePitrParams(xClusterConfig);
+  }
+
+  /**
+   * Copies the table-set fields computed by the task (typically via {@code
+   * XClusterConfigController.getSetTablesTaskParams}) back onto these params so the task's
+   * subtask-building logic can read them.
+   */
+  public void mergeComputedSetTablesParams(XClusterConfigTaskParams computed) {
+    this.tableInfoList = computed.tableInfoList;
+    this.mainTableIndexTablesMap = computed.mainTableIndexTablesMap;
+    this.tableIdsToAdd = computed.tableIdsToAdd;
+    this.tableIdsToRemove = computed.tableIdsToRemove;
+    this.sourceTableIdsWithNoTableOnTargetUniverse =
+        computed.sourceTableIdsWithNoTableOnTargetUniverse;
+    this.bootstrapParams = computed.bootstrapParams;
+  }
+
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigEditFormData editFormData,

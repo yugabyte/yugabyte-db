@@ -2207,8 +2207,8 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		if (yb_skip_unmodified)
 			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
 															estate),
-										ExecGetUpdatedCols(resultRelInfo,
-														   estate));
+										ExecGetAllUpdatedCols(resultRelInfo,
+															  estate));
 
 		for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 		{

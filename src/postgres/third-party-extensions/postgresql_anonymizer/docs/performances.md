@@ -32,7 +32,7 @@ instance takes approximately 25 minutes (see [MR 107] for more details).
 Dynamic Masking
 ------------------------------------------------------------------------------
 
-With dynamic masking, the real data is replaced on-the-fly **every time**  a
+With dynamic masking, the real data is replaced on-the-fly **every time** a
 masked user sends a query to the database. This means that the masking users
 will have slower response time than regular (unmasked) users. This is
 generally ok because usually masked users are not considered as important as

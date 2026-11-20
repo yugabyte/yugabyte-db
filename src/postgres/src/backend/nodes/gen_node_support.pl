@@ -833,10 +833,10 @@ _equal${n}(const $n *a, const $n *b)
 		{
 			print $cff "\tCOPY_SCALAR_FIELD($f.yb_distinct_prefixlen);\n" unless $copy_ignore;
 			print $cff "\tCOPY_SCALAR_FIELD($f.yb_lock_mechanism);\n" unless $copy_ignore;
-			print $cff "\tCOPY_NODE_FIELD($f.merge_scan_stream_cols);\n" unless $copy_ignore;
+			print $cff "\tCOPY_NODE_FIELD($f.merge_scan_info);\n" unless $copy_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.yb_distinct_prefixlen);\n" unless $equal_ignore;
 			print $eff "\tCOMPARE_SCALAR_FIELD($f.yb_lock_mechanism);\n" unless $equal_ignore;
-			print $eff "\tCOMPARE_NODE_FIELD($f.merge_scan_stream_cols);\n" unless $equal_ignore;
+			print $eff "\tCOMPARE_NODE_FIELD($f.merge_scan_info);\n" unless $equal_ignore;
 		}
 		elsif (elem $t, @scalar_types or elem $t, @enum_types)
 		{
@@ -1180,10 +1180,10 @@ _read${n}(void)
 		{
 			print $off "\tWRITE_INT_FIELD($f.yb_distinct_prefixlen);\n";
 			print $off "\tWRITE_ENUM_FIELD($f.yb_lock_mechanism, YbLockMechanism);\n";
-			print $off "\tWRITE_NODE_FIELD($f.merge_scan_stream_cols);\n";
+			print $off "\tWRITE_NODE_FIELD($f.merge_scan_info);\n";
 			print $rff "\tREAD_INT_FIELD($f.yb_distinct_prefixlen);\n" unless $no_read;
 			print $rff "\tREAD_ENUM_FIELD($f.yb_lock_mechanism, YbLockMechanism);\n" unless $no_read;
-			print $rff "\tREAD_NODE_FIELD($f.merge_scan_stream_cols);\n" unless $no_read;
+			print $rff "\tREAD_NODE_FIELD($f.merge_scan_info);\n" unless $no_read;
 		}
 		elsif ($t eq 'Selectivity')
 		{

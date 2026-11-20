@@ -671,6 +671,9 @@ update_proconfig_value(ArrayType *a, List *set_items)
 	{
 		VariableSetStmt *sstmt = lfirst_node(VariableSetStmt, l);
 
+		/* YB: some GUCs cannot be applied when the function is called */
+		YbValidateFunctionSetItem(sstmt);
+
 		if (sstmt->kind == VAR_RESET_ALL)
 			a = NULL;
 		else

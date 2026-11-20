@@ -2065,6 +2065,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 												  YB_SINGLE_SHARD_TRANSACTION :
 												  YB_TRANSACTIONAL),
 												 changingPart,
+												 false /* persist_missing_row */ ,
 												 estate);
 
 		/*
@@ -2114,7 +2115,8 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 
 		/* Delete index entries of the old tuple */
-		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple,
+							  false /* persist_missing_row */ , estate);
 	}
 
 	/*

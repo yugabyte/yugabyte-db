@@ -133,7 +133,7 @@ public class TestProtocolNegotiation extends BaseYsqlConnMgr {
   @Test
   public void testNegotiationAfterTls() throws Exception {
     checkStartup(rawConnBuilder()
-                     .tls()
+                     .ssl()
                      .protocolVersion(protocolVersion(3, GREASE_MINOR))
                      .startupParam(GREASE_OPTION, ""),
                  true, GREASE_OPTION).close();

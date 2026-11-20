@@ -368,10 +368,11 @@ ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation 
 
 static void
 ybcindelete(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
-			struct IndexInfo *indexInfo)
+			struct IndexInfo *indexInfo, bool persist_missing_row)
 {
 	if (!index->rd_index->indisprimary)
 		YBCExecuteDeleteIndex(index, values, isnull, ybctid,
+							  persist_missing_row,
 							  doBindsForIdxWrite, NULL /* indexstate */ );
 }
 
