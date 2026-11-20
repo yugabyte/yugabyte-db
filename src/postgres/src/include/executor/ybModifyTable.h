@@ -309,6 +309,8 @@ extern bool YbCanUseUpsertMode(ResultRelInfo *resultRelInfo,
  */
 extern int	YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo);
 
+extern bool YbSecondaryIndicesGetOneEntryPerRow(ResultRelInfo *resultRelInfo);
+
 /*
  * Returns whether the current slot satisfies the partial index's predicate.
  */

@@ -20,6 +20,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.yb.YBTestRunner;
+import org.yb.util.BuildTypeUtil;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -97,8 +98,11 @@ public class TestPgRegressPgAsync extends BasePgRegressTestPorted {
     // PG's expected output for isolation test async-notify, introduce a sleep in
     // isolationtester.c after completing execution of each step and before
     // checking for notifications. The observed round trip is a few hundred ms, so
-    // keep enough headroom for a loaded machine.
-    envs.put("YB_ISOLATION_TEST_WAIT_FOR_NOTIFS_MS", "1000");
+    // keep enough headroom for a loaded machine. A statement's notifications are
+    // queued only once its whole transaction has been streamed, which for the
+    // 1000-notification step takes over a second on sanitizer builds.
+    envs.put("YB_ISOLATION_TEST_WAIT_FOR_NOTIFS_MS",
+        String.valueOf(BuildTypeUtil.nonSanitizerVsSanitizer(1000, 3000)));
     return envs;
   }
 }

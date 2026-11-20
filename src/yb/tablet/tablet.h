@@ -277,6 +277,14 @@ struct TabletScopedRWOperationPauses {
   std::array<ScopedRWOperationPause*, 2> AsArray() {
     return {&blocking_rocksdb_shutdown_start, &not_blocking_rocksdb_shutdown_start};
   }
+
+  // Releases the pauses in the reverse order of StartShutdownStorages, the same order the
+  // destructor uses: not blocking operation first, then blocking operation. Callers rely on this
+  // order, so changing it requires renaming the method or adding an explicit order parameter.
+  void Reset() {
+    not_blocking_rocksdb_shutdown_start.Reset();
+    blocking_rocksdb_shutdown_start.Reset();
+  }
 };
 
 class Tablet : public AbstractTablet,
@@ -674,10 +682,6 @@ class Tablet : public AbstractTablet,
   Status MarkBackfillDone(
       const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
-  // Used to finalize the birth_time of a nonconcurrently built index on its tablets.
-  Status MarkNonConcurrentIndexDone(
-      const OpId& op_id, const TableId& table_id, uint64_t birth_time);
-
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
@@ -842,7 +846,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage. Records (target_tier, target_path_id) as this tablet's placement intent:
   // persists it to the superblock (RaftGroupMetadata::SetTargetTier) and points new flushes and
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
-  // the superblock write but still re-points the DB and resets the migration status.
+  // the superblock write but still re-points the DB and resets the migration status. A DB
+  // re-point that fails after the superblock write still resets the status and reports the
+  // persisted target, then returns the error for the caller to retry.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
   // (TSTabletManager::SelectPathIdForTier). A different target is refused with ServiceUnavailable
   // while a migration pass is in flight: nothing changes the target under a running pass. The
@@ -1455,11 +1461,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
   // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target
   // while a pass is in flight, so a pass always runs toward the current persisted target; the
-  // same target is a re-assert. Sets *changed when the target or the migration state changed,
-  // for the caller to report (NotifyTierStateChanged) once it has released the locks. Set on
-  // failure too once the superblock holds the new target: the master, the next open and the
-  // reconciler act on the superblock, so a target the DB could not be re-pointed at must still
-  // be reported (the retry re-points the DB).
+  // same target is a re-assert. Sets *changed to whether the target or the migration state
+  // changed, for the caller to report (NotifyTierStateChanged) once it has released the locks;
+  // set on an error too, since a failed DB update comes after the target is persisted.
   Status SetTierMigrationTargetUnlocked(
       const std::string& target_tier, uint32_t target_path_id, bool* changed)
       REQUIRES(tier_target_mutex_);

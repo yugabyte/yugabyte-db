@@ -3166,8 +3166,6 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::TableBackfillChunkResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
-  UNUSED_TS_ADMIN_METHOD(MarkNonConcurrentIndexDone, tablet::ChangeMetadataRequestPB,
-                         tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
   UNUSED_TS_ADMIN_METHOD(AlterTabletTier, tserver::AlterTabletTierRequestPB,

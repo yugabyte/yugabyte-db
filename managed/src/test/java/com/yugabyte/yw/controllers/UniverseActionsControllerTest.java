@@ -11,7 +11,9 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -23,6 +25,7 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -238,6 +241,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
           universeDetails.upsertPrimaryCluster(userIntent, null, null);
+          universeDetails.universePaused = true;
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
@@ -256,6 +260,30 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Resume)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testUniversePauseAlreadyPaused() {
+    Universe u = createUniverse(customer.getId());
+    Universe.saveDetails(
+        u.getUniverseUUID(), universe -> universe.getUniverseDetails().universePaused = true);
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/pause";
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("POST", url, authToken));
+    assertBadRequest(result, "as it is already paused");
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testUniverseResumeNotPaused() {
+    Universe u = createUniverse(customer.getId());
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/resume";
+    Result result = assertPlatformException(() -> doRequestWithAuthToken("POST", url, authToken));
+    assertBadRequest(result, "as it is not paused");
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test

@@ -106,8 +106,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kXClusterInboundReplicationGroupSetup)
   (kXClusterTableSetup)
   (kXClusterFailover)
-  (kXClusterWalAnchorDeletion)
-  (kMarkNonConcurrentIndexDone));
+  (kXClusterWalAnchorDeletion));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:

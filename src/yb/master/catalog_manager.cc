@@ -668,8 +668,10 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "so search resolves rows without the reverse mapping, and such a table writes no reverse "
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
-    "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet.");
+    "store the payload. Creating an index that stores the payload fails on a table that writes the "
+    "reverse mapping without owning it, see enable_table_owned_vector_reverse_mapping. Disabled by "
+    "default, because deleted vectors are not removed yet from the indexes of a table that writes "
+    "no reverse mapping.");
 
 DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "Temporary, until the tenant of a vector index can be specified when the index is created, "
@@ -699,14 +701,6 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
     false, true,
     "Enable support for tablespace-based transaction locality.");
-
-// AutoFlag so that no index is left pending forever: (1) an old master that becomes leader before
-// the CREATE INDEX transaction is verified does not finalize the index, and (2) after a rollback,
-// indexes that were still pending stay pending, and nothing finalizes them on re-upgrade.
-DEFINE_RUNTIME_AUTO_bool(enable_ysql_index_birth_time_state, kLocalPersisted, false, true,
-    "Track state for a YSQL index whether birth_time is set or pending "
-    "(IndexInfoPB.birth_time_state). This is required to decide if reads should throw a retryable "
-    "error if the birth time is not yet final to avoid inconsistent results.");
 
 DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false,
     "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
@@ -1492,8 +1486,7 @@ void CatalogManager::ValidateIndexTablesPostLoad(
         table_id, std::move(indexes),
         [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/,
-            IndexInfoPB::BirthTimeState /*birth_time_state*/) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/) {
           DCHECK(status.ok());
           if (!status.ok()) {
             LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
@@ -1510,12 +1503,6 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table = CHECK_RESULT(GetTableById(index_id));
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
-          // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
-          auto& index_pb = index_table_wlock.mutable_data()->pb;
-          if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
-                                               IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {
-            index_pb.mutable_index_info()->clear_birth_time_state();
-          }
           index_table_wlock.Commit();
           tables_to_persist->emplace(index_id);
         });
@@ -4740,24 +4727,25 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
-// Returns the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
-// not final yet, and which build path finalizes it. Vector indexes are not covered by the read
-// guard.
-IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
-    const CreateTableRequestPB& req, const IndexInfoPB& index_info, bool index_backfill_enabled) {
-  if (!FLAGS_enable_ysql_index_birth_time_state || index_info.has_vector_idx_options()) {
-    return IndexInfoPB::BIRTH_TIME_FINAL;
+// An index on a table that does not write the reverse mapping must store the payload, it is the
+// only way for its search to resolve rows. Compaction drops deleted vectors of an index which
+// stores payloads via the reverse mapping when the table writes it, and only a table which owns the
+// reverse mapping has entries for the vectors backfilled into such an index.
+Result<bool> VectorIndexStoresPayload(
+    const TablePropertiesPB& indexed_table_properties, const std::string& index_name,
+    const std::string& indexed_table_name) {
+  if (indexed_table_properties.skip_vector_reverse_mapping()) {
+    return true;
   }
-  if (index_backfill_enabled && !req.skip_index_backfill()) {
-    // Finalized when backfill completes (BackfillTable::AllowCompactionsToGCDeleteMarkers).
-    return IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL;
+  if (!FLAGS_vector_index_store_payload) {
+    return false;
   }
-  if (req.skip_index_backfill() && req.has_transaction() && req.ysql_yb_ddl_rollback_enabled()) {
-    // Finalized when the CREATE INDEX transaction commits (HandleSuccessfulYsqlDdlTxn). That only
-    // runs for tables with DDL transaction verification, so without it the index stays FINAL.
-    return IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
-  }
-  return IndexInfoPB::BIRTH_TIME_FINAL;
+  SCHECK(indexed_table_properties.owns_vector_reverse_mapping(), NotSupported, Format(
+      "Vector index $0 cannot store payloads, see vector_index_store_payload: its table $1 "
+      "writes the vector reverse mapping without owning it. Turn off vector_index_store_payload, "
+      "or recreate the table with it off while enable_table_owned_vector_reverse_mapping is on",
+      index_name, indexed_table_name));
+  return true;
 }
 
 } // namespace
@@ -5038,12 +5026,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
-      // An index on a table that does not write the reverse mapping must store the payload, it is
-      // the only way for its search to resolve rows.
       auto indexed_table_lock = indexed_table->LockForRead();
-      vector_index_options.set_store_payload(
-          FLAGS_vector_index_store_payload ||
-          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
+      vector_index_options.set_store_payload(VERIFY_RESULT(VectorIndexStoresPayload(
+          indexed_table_lock->schema().table_properties(), req.name(),
+          indexed_table_lock->name())));
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
@@ -5073,14 +5059,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
       auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
-    }
-  }
-
-  if (req.has_index_info() && is_pg_table) {
-    const auto birth_time_state =
-        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
-    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
-      index_info.set_birth_time_state(birth_time_state);
     }
   }
 
@@ -7219,8 +7197,7 @@ void CatalogManager::GetBackfillStatus(
   // Utility functor to respond with the provided error for the remaining indexes.
   auto callback_failure = [&callback, &indexes](const Status& status) {
     for (const auto& index : indexes) {
-      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0},
-               IndexInfoPB::BIRTH_TIME_FINAL);
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0});
     }
   };
 
@@ -7270,15 +7247,13 @@ void CatalogManager::GetBackfillStatus(
 
   for (const auto& [index_id, backfill_status] : indexes_for_callback) {
     uint64_t birth_time = 0;
-    auto birth_time_state = IndexInfoPB::BIRTH_TIME_FINAL;
     if (auto index_table = GetTableInfo(index_id)) {
       auto l = index_table->LockForRead();
-      if (l->pb.has_index_info()) {
+      if (l->pb.has_index_info() && l->pb.index_info().has_birth_time()) {
         birth_time = l->pb.index_info().birth_time();
-        birth_time_state = l->pb.index_info().birth_time_state();
       }
     }
-    callback(Status::OK(), index_id, backfill_status, birth_time, birth_time_state);
+    callback(Status::OK(), index_id, backfill_status, birth_time);
   }
 
   // Notify the caller with the remaining indexes. There's a chance some of the indexes
@@ -7349,8 +7324,7 @@ Status CatalogManager::GetBackfillStatus(
         table_id, std::move(indexes),
         [&index_to_identifier_map, &resp](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time,
-            IndexInfoPB::BirthTimeState birth_time_state) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time) {
           auto identifier_it = index_to_identifier_map.find(index_id);
           CHECK(identifier_it != index_to_identifier_map.end());
           auto* index_status = resp->add_index_status();
@@ -7360,7 +7334,6 @@ Status CatalogManager::GetBackfillStatus(
             if (birth_time != 0) {
               index_status->set_birth_time(birth_time);
             }
-            index_status->set_birth_time_state(birth_time_state);
           } else {
              StatusToPB(status, index_status->mutable_error());
           }
@@ -7971,7 +7944,8 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   // The deletion is persisted and committed, so a failure from here on is not rolled back. A
-  // failed alter of the indexed table is returned at the end, after the steps below have run.
+  // failed alter of the indexed table or a failure to delete the tablets of a table is returned
+  // at the end, after the steps below have run.
   Status post_persist_status;
   if (op.altered_indexed_table) {
     post_persist_status = SendAlterTableRequest(op.altered_indexed_table->info, epoch);
@@ -8033,46 +8007,20 @@ Status CatalogManager::DeleteTableInternal(
   for (const auto& table : tables) {
     LOG(INFO) << "Deleting table: " << table.ToString();
 
-    // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
-        *table.table_info_with_write_lock, table.delete_retainer, epoch));
-    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
-    // it is possible that the tablet is already removed from table by a racing thread and
-    // in that case colocated_tablet will be nullptr.
-    if (table.table_info_with_write_lock->IsSecondaryTable()) {
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
-      for (const auto& colocated_tablet :
-               VERIFY_RESULT(table.table_info_with_write_lock->GetTabletsIncludeInactive())) {
-        // Send a RemoveTableFromTablet() request to each
-        // colocated parent tablet replica in the table.
-        if (!table.delete_retainer.IsHideOnly()) {
-          LOG(INFO)
-              << "Notifying tablet with id " << colocated_tablet->tablet_id()
-              << " to remove this colocated table " << table.table_info_with_write_lock->name()
-              << " from its metadata.";
-          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-              master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
-              epoch);
-          table.table_info_with_write_lock->AddTask(call);
-          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-        } else {
-          // Set the snapshot schedules that prevented the table from getting deleted.
-          const auto retained_by_snapshot_schedules =
-              table.delete_retainer.RetainedBySnapshotSchedules();
-          if (!retained_by_snapshot_schedules.empty()) {
-            auto tablet_lock = colocated_tablet->LockForWrite();
+    // Don't stop on a failure as nothing retries the remaining tables -- their tablets
+    // would keep running and the DDL verification would never complete (#37744).
+    auto status = DeleteOrHideTablets(table, epoch);
 
-            *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-                retained_by_snapshot_schedules;
+    std::pair<const TableInfo*, Status*> sync_point_arg {
+        table.table_info_with_write_lock.info.get(), &status };
+    TEST_SYNC_POINT_CALLBACK("DeleteTableInternal::AfterDeleteOrHideTablets", &sync_point_arg);
 
-            // Upsert to sys catalog and commit to memory.
-            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
-            tablet_lock.Commit();
-          }
-          CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
-        }
+    if (!status.ok()) {
+      status = status.CloneAndPrepend(
+          Format("Failed to delete or hide tablets of $0", table.ToString()));
+      LOG(WARNING) << status;
+      if (post_persist_status.ok()) {
+        post_persist_status = std::move(status);
       }
     }
   }
@@ -8125,9 +8073,11 @@ Status CatalogManager::DeleteTableInternal(
     TRACE("No system tables to delete");
   }
 
-  LOG(INFO) << "Successfully initiated deletion of "
-            << (req->is_index_table() ? "index" : "table") << " with "
-            << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  if (post_persist_status.ok()) {
+    LOG(INFO) << "Successfully initiated deletion of "
+              << (req->is_index_table() ? "index" : "table") << " with "
+              << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  }
 
   TEST_SYNC_POINT("DeleteTableInternal::End");
 
@@ -12387,6 +12337,60 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
   return Status::OK();
 }
 
+Status CatalogManager::DeleteOrHideTablets(
+    const DeletingTableData& table, const LeaderEpoch& epoch) {
+  // Send a DeleteTablet() request to each tablet replica in the table.
+  RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
+      *table.table_info_with_write_lock, table.delete_retainer, epoch));
+  if (!table.table_info_with_write_lock->IsSecondaryTable()) {
+    return Status::OK();
+  }
+
+  // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+  // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+  // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+  // it is possible that the tablet is already removed from table by a racing thread and
+  // in that case colocated_tablet will be nullptr.
+  RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
+
+  // A vector index lives on the tablets of its indexed table. When both are dropped, the tablets
+  // may be freed by the background cleanup before the index gets here. It is ok to skip them as
+  // a freed tablet is already deleted -- there is nothing to remove the index from.
+  auto colocated_tablets = VERIFY_RESULT(
+      table.table_info_with_write_lock->GetTabletsIncludeInactive(SkipFreedTablets::kTrue));
+  for (const auto& colocated_tablet : colocated_tablets) {
+    // Send a RemoveTableFromTablet() request to each
+    // colocated parent tablet replica in the table.
+    if (table.delete_retainer.IsHideOnly()) {
+      // Set the snapshot schedules that prevented the table from getting deleted.
+      const auto retained_by_snapshot_schedules =
+          table.delete_retainer.RetainedBySnapshotSchedules();
+      if (!retained_by_snapshot_schedules.empty()) {
+        auto tablet_lock = colocated_tablet->LockForWrite();
+
+        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+            retained_by_snapshot_schedules;
+
+        // Upsert to sys catalog and commit to memory.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
+        tablet_lock.Commit();
+      }
+      CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
+    } else {
+      LOG(INFO)
+          << "Notifying tablet with id " << colocated_tablet->tablet_id()
+          << " to remove this colocated table " << table.table_info_with_write_lock->name()
+          << " from its metadata.";
+      auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+          master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+          epoch);
+      table.table_info_with_write_lock->AddTask(call);
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
@@ -13338,14 +13342,15 @@ Status CatalogManager::SendCreateTabletRequests(
       for (const auto& entry : cdc_stream_map_) {
         const auto stream = entry.second;
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
-        // one stream with replication slot consumption exists on the namespace.
+        // one stream with replication slot consumption on the namespace takes the table.
         if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
             (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
              IsCdcLogicalReplicationStream(*stream) &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
-                 stream->DetectPublicationChangesImplicitly()))) {
+                 stream->DetectPublicationChangesImplicitly()) &&
+             CDCSDKStreamTakesNewTable(*stream, *tablet->table()))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }

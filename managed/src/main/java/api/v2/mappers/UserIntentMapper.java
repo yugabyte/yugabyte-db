@@ -1041,17 +1041,30 @@ public interface UserIntentMapper {
   }
 
   default SpecificGFlags v1SpecificGFlagsFromClusterGFlags(ClusterGFlags v2ClusterGFlags) {
+    return toSpecificGFlags(v2ClusterGFlags, false);
+  }
+
+  /**
+   * omittedAsEmpty maps an omitted master or tserver map to an empty one, which create and
+   * add-cluster need because SpecificGFlags.construct and clone() throw on a null map. Resize must
+   * leave it off: there an empty map would replace the stored gflags.
+   */
+  private static SpecificGFlags toSpecificGFlags(
+      ClusterGFlags v2ClusterGFlags, boolean omittedAsEmpty) {
     if (v2ClusterGFlags == null) {
       return new SpecificGFlags();
     }
     SpecificGFlags specificGFlags =
-        SpecificGFlags.construct(v2ClusterGFlags.getMaster(), v2ClusterGFlags.getTserver());
+        SpecificGFlags.construct(
+            processGFlags(v2ClusterGFlags.getMaster(), omittedAsEmpty),
+            processGFlags(v2ClusterGFlags.getTserver(), omittedAsEmpty));
     if (v2ClusterGFlags.getAzGflags() != null) {
       Map<UUID, PerProcessFlags> perAz = new HashMap<>();
       for (Entry<String, AvailabilityZoneGFlags> entry : v2ClusterGFlags.getAzGflags().entrySet()) {
+        AvailabilityZoneGFlags azGFlags = entry.getValue();
         PerProcessFlags perProc = new PerProcessFlags();
-        perProc.value.put(ServerType.MASTER, entry.getValue().getMaster());
-        perProc.value.put(ServerType.TSERVER, entry.getValue().getTserver());
+        perProc.value.put(ServerType.MASTER, processGFlags(azGFlags.getMaster(), omittedAsEmpty));
+        perProc.value.put(ServerType.TSERVER, processGFlags(azGFlags.getTserver(), omittedAsEmpty));
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);
@@ -1064,8 +1077,13 @@ public interface UserIntentMapper {
     return specificGFlags;
   }
 
+  private static Map<String, String> processGFlags(
+      Map<String, String> gflags, boolean omittedAsEmpty) {
+    return gflags == null && omittedAsEmpty ? new HashMap<>() : gflags;
+  }
+
   default SpecificGFlags clusterSpecToSpecificGFlags(ClusterSpec clusterSpec) {
-    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterSpec.getGflags());
+    SpecificGFlags specificGFlags = toSpecificGFlags(clusterSpec.getGflags(), true);
     if (clusterSpec.getClusterType() != null
         && !clusterSpec.getClusterType().equals(ClusterTypeEnum.PRIMARY)) {
       // do not set inherit from primary as v2 manually defaults to true behaviour
@@ -1075,7 +1093,7 @@ public interface UserIntentMapper {
   }
 
   default SpecificGFlags clusterAddSpecToSpecificGFlags(ClusterAddSpec clusterAddSpec) {
-    SpecificGFlags specificGFlags = v1SpecificGFlagsFromClusterGFlags(clusterAddSpec.getGflags());
+    SpecificGFlags specificGFlags = toSpecificGFlags(clusterAddSpec.getGflags(), true);
     // do not set inherit from primary as v2 manually defaults to true behaviour
     specificGFlags.setInheritFromPrimary(false);
     return specificGFlags;

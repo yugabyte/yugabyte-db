@@ -237,6 +237,10 @@ DEFINE_UNKNOWN_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 m
     "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
     "unresponsive_ts_rpc_timeout_ms");
 
+DEFINE_test_flag(bool, fail_tier_target_db_update, false,
+    "Fail the regular DB's target_path_id update in SetTierMigrationTarget, after the target is "
+    "persisted.");
+
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
     "If set to value greater than 0, every nth row will be corrupted in the backfill process "
     "to create an inconsistency between the index and the indexed tables where n is the "
@@ -263,10 +267,6 @@ DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
 
 DEFINE_test_flag(uint64, backfill_paging_size, 0,
     "If set > 0, returns early after processing this number of rows.");
-
-DEFINE_test_flag(bool, fail_tier_target_set_options, false,
-    "Tiered storage: fail re-pointing the regular DB at a new target tier, after the target is "
-    "persisted in the superblock.");
 
 DEFINE_test_flag(bool, skip_write_stop_check_in_should_apply_write, false,
     "When true, ShouldApplyWrite() does not check AreWritesStopped(). "
@@ -859,7 +859,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
@@ -3420,7 +3421,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
-    index_info.emplace(table_info.index_info());
+    index_info.emplace(table_info.index_info(), ht);
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
@@ -3709,17 +3710,6 @@ Status Tablet::MarkBackfillDone(
   auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
-    return status;
-  }
-  return metadata_->Flush();
-}
-
-Status Tablet::MarkNonConcurrentIndexDone(
-    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
-  LOG_WITH_PREFIX(INFO) << "Setting non-concurrent index as done";
-  auto status = metadata_->OnNonConcurrentIndexDone(op_id, table_id, birth_time);
-  if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Triggering non-concurrent index done failed: " << status;
     return status;
   }
   return metadata_->Flush();
@@ -5008,7 +4998,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -5625,15 +5621,15 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
   bool changed = false;
-  Status status;
+  Status write_status;
   {
     std::lock_guard lock(tier_target_mutex_);
-    status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
   }
   if (changed) {
     NotifyTierStateChanged();
   }
-  return status;
+  return write_status;
 }
 
 Status Tablet::SetTierMigrationTargetUnlocked(
@@ -5654,18 +5650,16 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   }
   if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
-    // Persisted, so reported whatever happens below.
-    *changed = true;
   }
-  if (PREDICT_FALSE(FLAGS_TEST_fail_tier_target_set_options)) {
-    return STATUS(IOError, "Failing SetOptions due to FLAGS_TEST_fail_tier_target_set_options");
+  const auto db_status = FLAGS_TEST_fail_tier_target_db_update
+      ? STATUS(IOError, "Injected target_path_id update failure")
+      : regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}});
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    const bool state_changed = ReassertTierIntentUnlocked();
+    *changed = state_changed || !same_target;
   }
-  RETURN_NOT_OK_PREPEND(
-      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-      "Failed to set target_path_id on regular DB");
-
-  std::lock_guard lock(tier_migration_mutex_);
-  *changed = ReassertTierIntentUnlocked() || *changed;
+  RETURN_NOT_OK_PREPEND(db_status, "Failed to set target_path_id on regular DB");
   return Status::OK();
 }
 
@@ -5858,11 +5852,11 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
 
   bool changed = false;
   std::optional<TierMigrationStatus> in_flight;
-  Status set_target_status;
+  Status write_status;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    set_target_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
-    if (set_target_status.ok()) {
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    if (write_status.ok()) {
       std::lock_guard lock(tier_migration_mutex_);
       if (tier_migration_status_.migration_pass_in_flight) {
         in_flight = tier_migration_status_;
@@ -5872,7 +5866,7 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
   if (changed) {
     NotifyTierStateChanged();
   }
-  RETURN_NOT_OK(set_target_status);
+  RETURN_NOT_OK(write_status);
   if (in_flight) {
     // Only the same target gets past the write with a pass in flight: that pass already serves
     // this request, re-asserted just now like any accepted one, so report it.
@@ -7471,8 +7465,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

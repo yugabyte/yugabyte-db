@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -47,19 +48,24 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
   @Override
   public void validate(CustomerConfigData data) {
+    validate(data, null);
+  }
+
+  /**
+   * A config saved with both a JSON key and {@code USE_GCP_IAM}, which an earlier YBA accepted,
+   * keeps taking edits such as a rename while it keeps that combination, but cannot turn on
+   * federation.
+   */
+  @Override
+  public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
     super.validate(data);
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
-
-    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
-    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
-    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
-    if (gcsData.useGcpIam) {
-      return;
-    }
+    CustomerConfigStorageGCSData storedGcs = (CustomerConfigStorageGCSData) stored;
 
     // Should not contain neither or both json creds and use GCP IAM flag.
-    if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
+    if ((StringUtils.isBlank(gcsData.gcsCredentialsJson) && !gcsData.useGcpIam)
+        || newlyViolates(CustomerConfigStorageGCSValidator::hasKeyWithGcpIam, gcsData, storedGcs)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
       validationErrorsMap.put(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
@@ -68,6 +74,27 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
           CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
           "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
       throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
+    }
+
+    // Federation runs only through USE_GCP_IAM, and a JSON key takes priority over it on the DB
+    // nodes, so a config saved with a key and USE_GCP_IAM, which the check above lets keep both,
+    // cannot turn on federation. Federation with a JSON key and without USE_GCP_IAM is accepted:
+    // the key is then the credential of YBA and the DB nodes alike, which BackupHelper counts as
+    // YBA's own (see BackupHelper.hasCredentialsOfItsOwn).
+    if (newlyViolates(
+        CustomerConfigStorageGCSValidator::hasFederationWithKeyAndGcpIam, gcsData, storedGcs)) {
+      throwBeanConfigDataValidatorError(
+          CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
+          "USE_CROSS_CLOUD_FEDERATION cannot be turned on while both GCS_CREDENTIALS_JSON and"
+              + " USE_GCP_IAM are set. Remove GCS_CREDENTIALS_JSON to federate through"
+              + " USE_GCP_IAM.");
+    }
+
+    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
+    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
+    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
+    if (gcsData.useGcpIam) {
+      return;
     }
 
     Storage storage = null;
@@ -121,5 +148,13 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
         throwBeanConfigDataValidatorError(fieldName, exp.getMessage(), exp);
       }
     }
+  }
+
+  private static boolean hasKeyWithGcpIam(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useGcpIam && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
+  }
+
+  private static boolean hasFederationWithKeyAndGcpIam(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useCrossCloudFederation && hasKeyWithGcpIam(gcsData);
   }
 }

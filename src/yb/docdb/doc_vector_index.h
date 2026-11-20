@@ -214,6 +214,8 @@ class DocVectorIndex {
   // Capacity of a new mutable chunk when the insert does not specify one.
   virtual size_t DefaultChunkCapacity() const = 0;
 
+  // options.tenant is the tenant of the query, see PgVectorReadOptionsPB::tenant. An index with
+  // tenants searches only the tenant of the query, and fails when the query has none.
   // Also returns the vectors tied in distance with the last of options.max_num_results vectors, up
   // to vector_index_max_extra_tied_results of them.
   virtual Result<DocVectorIndexSearchResult> Search(

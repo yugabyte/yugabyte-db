@@ -67,8 +67,7 @@
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(enable_tiered_storage);
-
-DECLARE_bool(TEST_fail_tier_target_set_options);
+DECLARE_bool(TEST_fail_tier_target_db_update);
 
 namespace yb::tablet {
 
@@ -759,34 +758,6 @@ TEST_F(TierMigrationTest, TargetChangeDuringScanIsRefused) {
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
 }
 
-// A target that reached the superblock but whose DB re-point failed is still reported: the
-// master, the next open and the reconciler act on the superblock, and the retry re-points the DB.
-// Without the report the master keeps the old target until something unrelated re-reports.
-TEST_F(TierMigrationTest, PersistedTargetIsReportedWhenRepointingDbFails) {
-  std::atomic<int> state_changes{0};
-  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
-      .files_moved = nullptr,
-      .files_failed = nullptr,
-      .wake_reconciler = {},
-      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
-  }));
-  WriteFileWithKey(1);
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_set_options) = true;
-  ASSERT_NOK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
-  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
-  ASSERT_EQ(state_changes.load(), 1);  // the persisted target, with the state still kNone
-  ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kNone);
-
-  // The retry finds the same target persisted, re-points the DB and asserts the intent.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_set_options) = false;
-  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
-  ASSERT_EQ(state_changes.load(), 2);  // kNone -> kInProgress
-  WriteFileWithKey(2);
-  auto info = ASSERT_RESULT(tablet()->GetTierInfo());
-  ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 1u);  // the flush followed the re-pointed DB
-}
-
 // A same-target AlterTabletTier lands between a reconciler pass's scan and its verdict. The
 // re-assert puts the converged tablet back to kInProgress and reports it; the verdict then restores
 // kDone and must report that too, so it is measured against the state it replaces, not the one the
@@ -891,6 +862,34 @@ TEST_F(TierMigrationTest, CurrentStorageTierMatchesTierInfo) {
   ASSERT_NO_FATALS(check(""));  // One on each disk: straddling.
   ASSERT_NO_FATALS(move(second, kTargetPathId));
   ASSERT_NO_FATALS(check("hdd"));  // Converged.
+}
+
+// A target write whose DB update fails has still persisted the target, so the state is
+// re-asserted and the target reported before the error reaches the caller. The retry then sees
+// the same target in the same state and reports nothing new.
+TEST_F(TierMigrationTest, FailedDbUpdateStillReportsPersistedTarget) {
+  std::atomic<int> state_changes{0};
+  tablet()->TEST_SetTierMigrationHooks(std::make_shared<TierMigrationHooks>(TierMigrationHooks{
+      .files_moved = nullptr,
+      .files_failed = nullptr,
+      .wake_reconciler = {},
+      .tier_state_changed = [&state_changes](const TabletId&) { ++state_changes; },
+  }));
+  WriteFileWithKey(1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_db_update) = true;
+  auto failed = tablet()->AlterTabletTier("hdd", kTargetPathId);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tier_target_db_update) = false;
+  ASSERT_NOK(failed);
+  ASSERT_TRUE(failed.status().IsIOError()) << failed.status();
+  ASSERT_EQ(tablet()->metadata()->target_storage_tier(), "hdd");
+  ASSERT_EQ(tablet()->tier_migration_status().state, TierMigrationStatus::State::kInProgress);
+  ASSERT_EQ(state_changes.load(), 1);  // The persisted target, reported despite the error.
+
+  auto status = ASSERT_RESULT(tablet()->AlterTabletTier("hdd", kTargetPathId));
+  ASSERT_EQ(status.files_total, 1u);
+  ASSERT_EQ(state_changes.load(), 1);  // Same target, still in progress: nothing new.
+  ASSERT_RESULT(WaitForPassToFinish());
 }
 
 // Only a reconciler pass declares convergence, and only from a scan of its own: the pass that

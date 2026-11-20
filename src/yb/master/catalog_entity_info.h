@@ -72,6 +72,7 @@ namespace yb::master {
 class RetryingRpcTask;
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+YB_STRONGLY_TYPED_BOOL(SkipFreedTablets);
 
 // Per table structure for external cluster snapshot importing to this cluster.
 // Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
@@ -857,7 +858,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   Result<TabletInfos> GetTablets(GetTabletsMode mode = GetTabletsMode::kOrderByPartitions) const;
-  Result<TabletInfos> GetTabletsIncludeInactive() const;
+  // Fails if a tablet is freed, unless `skip_freed` is set. Skipping is required for secondary
+  // tables whose tablets are owned by another table, e.g. vector indexes -- the tablets are
+  // deleted with that table and may be freed first.
+  Result<TabletInfos> GetTabletsIncludeInactive(
+      SkipFreedTablets skip_freed = SkipFreedTablets::kFalse) const;
+
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get info of the specified index.
