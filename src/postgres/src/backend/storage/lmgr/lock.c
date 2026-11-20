@@ -5191,8 +5191,13 @@ YbTxnObjectLockTags(void)
 	hash_seq_init(&status, LockMethodLocalHash);
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
+		/*
+		 * A tag that stays in the local lock table has nothing in DocDB to
+		 * carry, and a session lock on it would reach the tserver.
+		 */
 		if (locallock->nLocks <= 0 ||
-			LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD)
+			LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD ||
+			!YbIsObjectLockTag(&locallock->tag.lock))
 			continue;
 		for (int i = 0; i < locallock->numLockOwners; i++)
 		{
