@@ -1428,10 +1428,13 @@ RecordTransactionCommit(void)
 		 * Use a real test not just an Assert to check this, since it's a bit
 		 * fragile.
 		 *
-		 * YB: Dropping a YB relation drops its local stats entry, but the
-		 * transaction may not have a PG XID, so the premise above does not hold.
-		 * The stats are dropped regardless.
-		 * YB relations do not register pending relfile deletes, so the nrels
+		 * YB: Catalog changes go to DocDB and assign no PG XID, so the premise
+		 * above does not hold for stats.  Dropping a stats entry with no XID
+		 * happens both for YB relations and for temp DDL that writes no rows,
+		 * such as DROP TABLE on a temp table or a rewrite of an empty one
+		 * (whose transient heap is dropped).  The stats are dropped
+		 * regardless.  Pending relfile deletes are registered only for temp
+		 * relations, which smgrGetPendingDeletes leaves out, so the nrels
 		 * check still applies.
 		 */
 		if (nrels != 0 || (ndroppedstats != 0 && !IsYugaByteEnabled()))
