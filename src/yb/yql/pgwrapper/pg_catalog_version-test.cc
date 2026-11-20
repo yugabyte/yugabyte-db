@@ -2441,11 +2441,11 @@ DROP TABLE tempTable2;
   // (post-backfill WaitForBackendsCatalogVersion). Object locking is off by default in debug
   // builds (fastdebug, ASAN, TSAN), so they check the second pair of values.
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 83914U);
-    ASSERT_EQ(fingerprint, 2733663305904414579UL);
+    ASSERT_EQ(result.size(), 84010U);
+    ASSERT_EQ(fingerprint, 3099281988253736322UL);
   } else {
-    ASSERT_EQ(result.size(), 83860U);
-    ASSERT_EQ(fingerprint, 9039095303751064355UL);
+    ASSERT_EQ(result.size(), 83956U);
+    ASSERT_EQ(fingerprint, 13605096517610510818UL);
   }
 }
 

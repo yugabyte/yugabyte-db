@@ -2810,14 +2810,14 @@ SET pgaudit.log_relation = on;
 CREATE TABLE graph_vertex (id int PRIMARY KEY, name text);
 INSERT INTO graph_vertex VALUES (1, 'alice'), (2, 'bob');
 CREATE PROPERTY GRAPH graph_test VERTEX TABLES (graph_vertex); -- YB: property graphs not supported
-ERROR:  this feature is not supported in Yugabyte
+ERROR:  syntax error at or near "PROPERTY" at character 8
 --
 -- Session logged on the property graph (object type PROPERTY GRAPH) and on the
 -- underlying vertex table because log = read and log_relation = on
 SELECT name
   FROM GRAPH_TABLE (graph_test MATCH (v IS graph_vertex) COLUMNS (v.name))
  ORDER BY name; -- YB: fails due to prior CREATE failure
-ERROR:  relation "graph_test" does not exist at character 33
+ERROR:  syntax error at or near "MATCH" at character 44
 SELECT 'yb'; -- YB: bump audit number to stay same with upstream
 NOTICE:  AUDIT: SESSION,14,1,READ,SELECT,,,SELECT 'yb',<not logged>
  ?column? 
@@ -2826,7 +2826,7 @@ NOTICE:  AUDIT: SESSION,14,1,READ,SELECT,,,SELECT 'yb',<not logged>
 (1 row)
 
 DROP PROPERTY GRAPH graph_test; -- YB: fails due to prior CREATE failure
-ERROR:  property graph "graph_test" does not exist
+ERROR:  syntax error at or near "PROPERTY" at character 6
 DROP TABLE graph_vertex;
 --
 -- Test that a role substatement (GRANT) collected as the last command of a DDL

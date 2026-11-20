@@ -109,8 +109,8 @@ ORDER BY pgss.queryid ASC
 /* __YB_STAT_PLANS_SKIP */;
                               query                               | times_match | time_positive | calls 
 ------------------------------------------------------------------+-------------+---------------+-------
- SELECT relname FROM pg_class WHERE relname = $1 AND relkind = $2 | t           | t             |     1
  SELECT val FROM qpm_timing_test WHERE id = $1                    | t           | t             |     5
+ SELECT relname FROM pg_class WHERE relname = $1 AND relkind = $2 | t           | t             |     1
 (2 rows)
 
 -- Test 3: Non-top-level read query with track='all'.
@@ -143,9 +143,9 @@ ORDER BY pgss.queryid ASC
 /* __YB_STAT_PLANS_SKIP */;
                               query                               | times_match | time_positive | calls 
 ------------------------------------------------------------------+-------------+---------------+-------
- SELECT relname FROM pg_class WHERE relname = $1 AND relkind = $2 | t           | t             |     1
  SELECT count(*)        FROM qpm_timing_test                      | t           | t             |     1
  SELECT val FROM qpm_timing_test WHERE id = $1                    | t           | t             |     5
+ SELECT relname FROM pg_class WHERE relname = $1 AND relkind = $2 | t           | t             |     1
 (3 rows)
 
 -- Cleanup

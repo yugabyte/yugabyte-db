@@ -96,7 +96,7 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
      .expected_errors =
          {"database name = \"name_check_db",
           "role name = \"name_check_role",
-          "All the database, role and tablespace names should have only valid characters."},
+          "Your installation contains databases, roles, or tablespaces with names"},
      .teardown_stmts =
          {"DROP DATABASE \"name_check_db\nx\"",
           "DROP ROLE \"name_check_role\nx\""}},
