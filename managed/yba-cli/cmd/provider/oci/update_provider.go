@@ -6,7 +6,6 @@ package oci
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -280,14 +279,19 @@ var updateOCIProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if err := validateOCIImageBundlesNotRemoved(
+		if err := providerutil.ValidateImageBundleEdits(
 			removeImageBundles, editImageBundles, editImageBundleRegionOverrides,
+			providerImageBundles,
 		); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		regionCodes := ociRegionCodes(providerRegions)
-		providerImageBundles = removeOCIImageBundles(removeImageBundles, providerImageBundles)
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		providerImageBundles, err = editOCIImageBundles(
 			editImageBundles,
 			providerImageBundles,
@@ -744,26 +748,6 @@ func addOCIZones(
 	return zones
 }
 
-func removeOCIImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
-}
-
 // applyOCIRegionImageEdit updates per-region images. machineImage applies only
 // when the provider has one region. overrides update the named regions.
 func applyOCIRegionImageEdit(
@@ -818,30 +802,6 @@ func validateOCIBundlesCoverAddedRegions(
 					"add --edit-image-bundle-region-override "+
 					"image-bundle-uuid=%s::region-name=%s::machine-image=<image-ocid>",
 				ib.GetName(), ib.GetUuid(), code, ib.GetUuid(), code)
-		}
-	}
-	return nil
-}
-
-// validateOCIImageBundlesNotRemoved rejects edits of a bundle that the same
-// update removes; otherwise the edit is dropped or reported as an unknown bundle.
-func validateOCIImageBundlesNotRemoved(
-	removeImageBundles, editImageBundles, editRegionOverrides []string,
-) error {
-	edited := make([]string, 0, len(editImageBundles)+len(editRegionOverrides))
-	for _, raw := range editImageBundles {
-		edited = append(edited,
-			providerutil.BuildImageBundleMapFromString(raw, "edit")["uuid"])
-	}
-	for _, raw := range editRegionOverrides {
-		edited = append(edited,
-			providerutil.BuildImageBundleRegionOverrideMapFromString(raw, "edit")["uuid"])
-	}
-	for _, uuid := range edited {
-		if slices.Contains(removeImageBundles, uuid) {
-			return fmt.Errorf(
-				"image bundle %s is removed with --remove-image-bundle in the same command "+
-					"and cannot also be edited", uuid)
 		}
 	}
 	return nil
