@@ -285,6 +285,8 @@ extern bool RelationSupportsSysCache(Oid relid);
 /* YB */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+extern long YbGetCatalogCachePreloadedRows(int cache_id);
+extern long YbGetCatalogCachePreloadedLists(int cache_id);
 #ifndef NDEBUG
 extern bool YbCheckCatalogCacheIndexNameTable();
 extern bool YbCheckSysCacheNames();
