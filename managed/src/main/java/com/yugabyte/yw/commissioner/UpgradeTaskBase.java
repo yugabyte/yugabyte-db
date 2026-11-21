@@ -170,10 +170,32 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     super(baseTaskDependencies);
   }
 
+  /**
+   * True if the upgrade stops or restarts at least one master process. Some tasks (ResizeNode) also
+   * put tserver-only nodes in mastersList, so only nodes with a master count.
+   */
+  public static boolean restartsMasters(
+      UpgradeOption upgradeOption, @Nullable MastersAndTservers nodesToBeRestarted) {
+    return upgradeOption != UpgradeOption.NON_RESTART_UPGRADE
+        && nodesToBeRestarted != null
+        && nodesToBeRestarted.mastersList.stream().anyMatch(n -> n.isMaster);
+  }
+
+  /**
+   * True if the task needs the KMS universe key precheck. A task whose nodesToBeRestarted lists
+   * masters that it never restarts overrides this to return false.
+   */
+  protected boolean needsUniverseKeyCheck() {
+    return restartsMasters(taskParams().upgradeOption, getNodesToBeRestarted());
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
+    if (needsUniverseKeyCheck()) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()

@@ -127,13 +127,20 @@ public abstract class EncryptionAtRestService<T extends SupportedAlgorithmInterf
     // Retrieve through KMS provider if no cache entry exists
     if (keyVal == null) {
       LOG.debug("Universe key cache entry empty. Retrieving key from service");
-      keyVal = retrieveKeyWithService(configUUID, keyRef, encryptionContext);
-      // Update the cache entry
-      if (keyVal != null) {
-        EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
-      } else {
+      keyVal = retrieveKeyFromKms(universeUUID, configUUID, keyRef, encryptionContext);
+      if (keyVal == null) {
         LOG.warn("Could not retrieve key from key ref for universe " + universeUUID);
       }
+    }
+    return keyVal;
+  }
+
+  /** Gets the key from KMS, never from the cache, and refreshes the cache on success. */
+  public byte[] retrieveKeyFromKms(
+      UUID universeUUID, UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
+    byte[] keyVal = retrieveKeyWithService(configUUID, keyRef, encryptionContext);
+    if (keyVal != null) {
+      EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
     }
     return keyVal;
   }

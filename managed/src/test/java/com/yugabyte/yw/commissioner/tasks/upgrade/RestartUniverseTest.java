@@ -144,4 +144,27 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private MockUpgrade initMockUpgrade() {
     return initMockUpgrade(RestartUniverse.class);
   }
+
+  // A restart must fail before it stops any process when KMS cannot return the universe key.
+  @Test
+  public void testRollingRestartFailsBeforeStopWhenKmsKeyUnavailable() {
+    verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE);
+  }
+
+  @Test
+  public void testNonRollingRestartFailsBeforeStopWhenKmsKeyUnavailable() {
+    verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE);
+  }
+
+  private void verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption option) {
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    RestartTaskParams taskParams = new RestartTaskParams();
+    taskParams.upgradeOption = option;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+  }
 }

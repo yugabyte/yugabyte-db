@@ -47,6 +47,12 @@ public class ModifyMetricsExportConfig extends UpgradeTaskBase {
     return NodeState.Reprovisioning;
   }
 
+  // Metrics export restarts no process.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    return false;
+  }
+
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
     return fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);

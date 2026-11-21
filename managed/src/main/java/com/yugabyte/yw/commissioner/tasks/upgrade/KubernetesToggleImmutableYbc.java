@@ -38,6 +38,12 @@ public class KubernetesToggleImmutableYbc extends KubernetesUpgradeTaskBase {
     return (KubernetesToggleImmutableYbcParams) taskParams;
   }
 
+  // YBC runs only on tservers, so this task never restarts a master pod.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    return false;
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);

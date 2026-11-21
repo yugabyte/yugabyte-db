@@ -94,9 +94,29 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     if (isResumeTask()) {
+      // A canary resume can still restart masters, so keep the KMS key check.
+      if (needsUniverseKeyCheck()) {
+        createCheckUniverseKeyInKmsTask(universe);
+      }
       return;
     }
     createPrecheckTasks(universe, taskParams().ybSoftwareVersion);
+  }
+
+  // Catalog rollback recovery restarts every master, even when masters already at the target
+  // version are filtered out of nodesToBeRestarted. It can run only on this catalog upgrade path.
+  // Deciding whether it will run needs a master RPC, so check on the whole path instead.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    if (super.needsUniverseKeyCheck()) {
+      return true;
+    }
+    Universe universe = getUniverse();
+    return taskParams().upgradeOption != UpgradeOption.NON_RESTART_UPGRADE
+        && softwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            taskParams().ybSoftwareVersion);
   }
 
   @Override

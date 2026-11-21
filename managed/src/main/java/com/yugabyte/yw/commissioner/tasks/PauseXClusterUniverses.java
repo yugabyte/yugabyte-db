@@ -19,6 +19,20 @@ public class PauseXClusterUniverses extends XClusterConfigTaskBase {
     super(baseTaskDependencies, xClusterUniverseService);
   }
 
+  // The source is locked first. Check both keys then, so a target KMS failure does not leave the
+  // source frozen.
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+    if (!universe.getUniverseUUID().equals(xClusterConfig.getSourceUniverseUUID())) {
+      return;
+    }
+    createCheckUniverseKeyInKmsTask(universe);
+    createCheckUniverseKeyInKmsTask(
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()));
+  }
+
   @Override
   public void run() {
     log.info("Running {}", getName());

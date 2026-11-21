@@ -40,6 +40,12 @@ public class UpgradeKubernetesYbcGFlags extends KubernetesUpgradeTaskBase {
     return SubTaskGroupType.UpdatingYbcGFlags;
   }
 
+  // YBC runs only on tservers, so this task never restarts a master pod.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    return false;
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {

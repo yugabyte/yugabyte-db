@@ -134,6 +134,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
@@ -1194,6 +1195,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /**
+   * Adds a precheck that fails the task if YBA cannot get the active universe key from KMS. Use it
+   * in tasks that stop, start or restart masters, so they do not leave masters without the key.
+   */
+  protected void createCheckUniverseKeyInKmsTask(Universe universe) {
+    // Not EncryptionAtRestUtil.getNumUniverseKeys: it turns a DB error into 0, which would skip
+    // the check.
+    if (KmsHistory.countUniverseKeysWithActiveMasterKey(universe.getUniverseUUID()) == 0
+        || !confGetter.getConfForScope(universe, UniverseConfKeys.kmsUniverseKeyPrecheckEnabled)) {
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckUniverseKeyInKms",
+        subTaskGroup -> {
+          CheckUniverseKeyInKms.Params params = new CheckUniverseKeyInKms.Params();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          CheckUniverseKeyInKms task = createTask(CheckUniverseKeyInKms.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   public SubTaskGroup createDestroyEncryptionAtRestTask() {
