@@ -159,6 +159,7 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscForeignKey
 YbOscJob
 YbOscReplayState
 YbOscSingleReturnExprFn

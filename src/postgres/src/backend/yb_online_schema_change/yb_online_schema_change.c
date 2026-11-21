@@ -25,6 +25,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -337,8 +338,11 @@ yb_begin_mirror_table(PG_FUNCTION_ARGS)
 /*
  * yb_wait_mirror_table(job_id)
  *
- * Wait for the job's copy to finish, which leaves the job ready to finish.
- * Errors out if the copy failed.  Running it again is safe.
+ * Wait for the job's copy to finish, then add the source's foreign keys to
+ * the target and validate them, which leaves the job ready to finish.  The
+ * foreign keys are added here rather than at the cutover so that their
+ * validation scan does not run under the cutover's AccessExclusiveLock.
+ * Running it again is safe: foreign keys already on the target are skipped.
  */
 Datum
 yb_wait_mirror_table(PG_FUNCTION_ARGS)
@@ -359,6 +363,21 @@ yb_wait_mirror_table(PG_FUNCTION_ARGS)
 		pg_usleep(100000L);		/* 100ms */
 	}
 	ErrorIfCopyFailed(jobId, &bf);
+
+	/*
+	 * Does not block DML, but conflicts with the AccessExclusiveLock of a
+	 * concurrent finish or abort.  The relations are not opened: the ALTER
+	 * TABLE that adds the foreign keys fails on a table this session holds
+	 * open (CheckTableNotInUse).
+	 */
+	LockRelationOid(job.source_table_oid, ShareUpdateExclusiveLock);
+	LockRelationOid(job.target_table_oid, ShareUpdateExclusiveLock);
+
+	/* A finish or an abort may have committed while this waited. */
+	FetchJobOrError(jobId, &job);
+	ErrorIfEnded(&job);
+
+	YbOscPromoteForeignKeys(job.source_table_oid, job.target_table_oid);
 
 	PG_RETURN_VOID();
 }
@@ -397,7 +416,7 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
 	 */
 	YbOscGetKeyWitnessAttnums(srcRel, dstRel);
 
-	YbOscEnsureSrcNoForeignKeys(srcRel);
+	YbOscCheckForeignKeysPromoted(srcOid, dstOid);
 
 	YbOscDropTrigger(srcRel);
 
@@ -407,6 +426,18 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
 			 YB_OSC_OLD_TABLE_PREFIX, (long long) jobId);
 
 	const char *srcName = pstrdup(RelationGetRelationName(srcRel));
+
+	/*
+	 * Closed, keeping the locks, around the ALTER TABLE that drops the foreign
+	 * keys; see CheckTableNotInUse.
+	 */
+	table_close(dstRel, NoLock);
+	table_close(srcRel, NoLock);
+
+	YbOscDropForeignKeys(srcOid);
+
+	srcRel = table_open(srcOid, NoLock);
+	dstRel = table_open(dstOid, NoLock);
 
 	YbOscRenameTable(srcRel, oldName);
 	YbOscRenameTable(dstRel, srcName);
