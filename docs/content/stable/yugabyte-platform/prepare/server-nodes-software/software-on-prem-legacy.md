@@ -15,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Legacy provisioning deprecated" >}}
-Legacy automatic and fully manual provisioning are deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned with these methods continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. Assisted manual provisioning has been removed. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+Legacy provisioning is being phased out. For information about why the older methods are being replaced, see [Why the script exists](../../prepare/server-nodes-software/software-on-prem/#why-the-script-exists). [Provisioning with the node agent script](../software-on-prem/#how-to-prepare-the-nodes-for-use-in-a-database-cluster) is recommended for new universes when YugabyteDB Anywhere has no sudo. Existing universes provisioned with these methods continue to work. For information about which provisioning method to use, and what methods are supported, see [Choose a provisioning method](../../prepare/server-nodes-software/software-on-prem/#choose-a-provisioning-method).
 {{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -48,7 +48,9 @@ How you provision nodes for use with an on-premises provider depends on the SSH 
 | Restrictive | All other cases (you disallow SSH login to a root-privileged user at setup time). | In this mode, you'll manually install each prerequisite software component. | See [Fully Manual Provisioning](../software-on-prem-manual/). |
 <!-- | Medium | You can allow SSH to a root-privileged user, AND<br>You can't provide YugabyteDB Anywhere with SSH login credentials for that user; however you can enter the password interactively. | In this mode, you run a script on the VM, and are prompted for a password for each sudo action to install the required software. | See [Assisted Manual Provisioning](../software-on-prem-assist/). |-->
 
-Note that, for Permissive mode, the root-privileged SSH user can have any username except `yugabyte`. When YugabyteDB Anywhere later uses the provided SSH user to sign in and prepare the node, it will automatically create and configure a second user named `yugabyte`, which will be largely de-privileged, and will have very limited sudo commands available to it. YugabyteDB Anywhere uses the `yugabyte` user to run the various YugabyteDB software processes.
+For more information, see [Choose a provisioning method](../software-on-prem/#choose-a-provisioning-method).
+
+Note that, for Permissive mode, the root-privileged SSH user can have any username except `yugabyte`. YugabyteDB Anywhere creates and uses the `yugabyte` user to run the various YugabyteDB software processes.
 
 SSH access is required for initial setup of a new database cluster (and when adding new nodes to the cluster). After setup is completed, SSH can be disabled, at your option. Leaving SSH enabled, however, is still recommended to provide access to nodes for troubleshooting.
 
