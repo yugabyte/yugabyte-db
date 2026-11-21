@@ -50,6 +50,7 @@ import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -351,6 +352,132 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private Universe prepareK8sUniverseWithLdapOverrides(String universeName) {
+    when(mockConfig.getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade(universeName);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = K8S_OVERRIDES;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", K8S_OVERRIDES));
+        });
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRestoresRedactedLdapSecrets() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides LDAP Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = redacted + edit;
+              p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    assertEquals(K8S_OVERRIDES + edit, argCaptor.getValue().universeOverrides);
+    assertEquals(Map.of("az-1", K8S_OVERRIDES), argCaptor.getValue().azOverrides);
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithRedactedOverridesUnchanged() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides Unchanged Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    // Restored first, they equal the stored overrides.
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.universeOverrides = redacted;
+                      p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+                    },
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "No kubernetes overrides modified.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRejectsRedactedInNewAz() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides New AZ Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.azOverrides = new HashMap<>(Map.of("az-1", redacted, "az-2", redacted)),
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesResizeRestoresRedactedOverrides() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpdateKubernetesDiskSize);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Resize LDAP Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.setForceResizeNode(true);
+              UserIntent userIntent = p.getPrimaryCluster().userIntent;
+              userIntent.universeOverrides = redacted;
+              userIntent.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            ResizeNodeParams.class,
+            "resize_node");
+    assertOk(result);
+
+    // The resize task runs the edit's overrides check and applies the request's overrides.
+    ArgumentCaptor<ResizeNodeParams> argCaptor = ArgumentCaptor.forClass(ResizeNodeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.UpdateKubernetesDiskSize), argCaptor.capture());
+    UserIntent submitted = argCaptor.getValue().getPrimaryCluster().userIntent;
+    assertEquals(K8S_OVERRIDES, submitted.universeOverrides);
+    assertEquals(Map.of("az-1", K8S_OVERRIDES), submitted.azOverrides);
+  }
+
+  @Test
+  public void testKubernetesResizeRejectsRedactedOverridesInANewAz() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Resize New AZ Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.setForceResizeNode(true);
+                      p.getPrimaryCluster().userIntent.azOverrides =
+                          new HashMap<>(Map.of("az-1", redacted, "az-2", redacted));
+                    },
+                    ResizeNodeParams.class,
+                    "resize_node"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test
