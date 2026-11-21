@@ -122,6 +122,9 @@ class XClusterDDLReplicationSwitchoverTest : public XClusterDDLReplicationTestBa
   // Reverse of Switchover(): B->A back to A->B.
   Status SwitchoverBack();
 
+  // Waits until no TServer of cluster treats namespace_id as a possible automatic mode target.
+  Status WaitForNotAutomaticTargetOnAllTServers(const NamespaceId& namespace_id, Cluster* cluster);
+
   Cluster* cluster_A_ = &producer_cluster_;
   Cluster* cluster_B_ = &consumer_cluster_;
   const xcluster::ReplicationGroupId kBackwardsReplicationGroupId =
