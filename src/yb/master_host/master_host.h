@@ -488,7 +488,7 @@ class MasterInfoHandle {
   MasterHost& host_;
 };
 
-// The host of the yb-master-rs process, from the flags. Throws if they ask for something the Rust
+// The host of the yb-master process, from the flags. Throws if they ask for something the Rust
 // master does not support.
 std::unique_ptr<MasterHost> CreateMasterHost();
 

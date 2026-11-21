@@ -291,46 +291,17 @@ ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
-# Actual master executable. In LTO mode, can also act as the tablet server if executed through a
-# symlink named as the tablet server executable.
-add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
-set(YB_MASTER_EXE_DEPS
+# The C++ master, only for tests that ask for C++ masters until it is deleted. yb-master is the Rust
+# master (src/yb/master_host).
+add_executable(yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master_main.cc)
+set(YB_MASTER_CPP_EXE_DEPS
     master
     ${YB_BASE_LIBS})
 if(NOT DEFINED YB_LTO_ENABLED)
   message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
 endif()
 if(YB_LTO_ENABLED)
-  # In LTO mode, the master executable can also function as the tablet server.
-  list(APPEND YB_MASTER_EXE_DEPS tserver_main_impl)
-  # The LTO binary statically merges docdb, which calls the ybgate C API in yb_pgbackend.  yb_docdb
-  # links yb_pgbackend PRIVATE, so (unlike the dynamic build, which resolves it at load time via
-  # libyb_docdb.so's DT_NEEDED) the flattened LTO link needs yb_pgbackend on the executable link
-  # line for lto.py to pull in its objects.
-  list(APPEND YB_MASTER_EXE_DEPS yb_pgbackend)
+  # master_main.cc dispatches to the tablet server in LTO builds.
+  list(APPEND YB_MASTER_CPP_EXE_DEPS tserver_main_impl yb_pgbackend)
 endif()
-target_link_libraries(
-  "${YB_MASTER_DYNAMIC_EXE_NAME}"
-  ${YB_MASTER_EXE_DEPS})
-
-# Generate master_flags.xml
-set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
-add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
-  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper"
-    "--program_name" "${YB_MASTER_DYNAMIC_EXE_NAME}"
-    "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
-    "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
-  BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
-
-# Generate auto_flags.json
-set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
-list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
-  "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
-  "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
-  "--output_file_path" "${AUTO_FLAGS_FILE}"
-  "--previous_auto_flags_file" "${YB_SRC_ROOT}/src/yb/previous_auto_flags.json")
-add_custom_target(
-  gen_auto_flags_json ALL
-  COMMAND ${GEN_AUTO_FLAGS_COMMAND}
-  BYPRODUCTS "${AUTO_FLAGS_FILE}"
-  DEPENDS "${YB_MASTER_DYNAMIC_EXE_NAME}" "${YB_TSERVER_DYNAMIC_EXE_NAME}")
+target_link_libraries(yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} ${YB_MASTER_CPP_EXE_DEPS})

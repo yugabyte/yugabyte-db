@@ -306,8 +306,8 @@ server::RpcAndWebServerBase& MiniMaster::server() const {
 }
 
 void MiniMaster::CheckCppMaster(const char* accessor) const {
-  LOG_IF(FATAL, rust_) << "MiniMaster::" << accessor << "() needs the C++ master's internals, "
-                       << "so this test cannot run with YB_RUST_MASTER until it is ported (W14)";
+  LOG_IF(FATAL, rust_) << "MiniMaster::" << accessor << "() needs the C++ master's internals; "
+                       << "run this test with YB_RUST_MASTER=0 until it is ported";
 }
 
 void MiniMaster::SetCustomAddresses(const std::vector<std::string> &master_addresses,

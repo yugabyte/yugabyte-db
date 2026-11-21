@@ -11,7 +11,7 @@
 // under the License.
 
 // MiniCluster with the Rust master embedded in the test process (D12): what lets in-process tests
-// run against Rust masters with YB_RUST_MASTER.
+// run against Rust masters.
 
 #include <memory>
 #include <thread>
@@ -65,9 +65,6 @@ class RustMasterMiniClusterTest : public YBTest {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-#ifndef YB_WITH_RUST_MASTER
-    GTEST_SKIP() << "This build has no Rust master (--skip-rust)";
-#endif
     // Tservers retire split parents (DeleteNotServingTablet) from this periodic cleanup.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     // Tablet sizes reach the master in metrics heartbeats; read once, when a tserver starts.

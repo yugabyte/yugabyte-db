@@ -756,16 +756,20 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * Whether the master at {@code index} runs as the Rust master ({@code yb-master-rs}), as in
-   * the C++ ExternalMiniCluster: {@code YB_RUST_MASTER} set to "1" or "all" makes every master
-   * Rust, "mixed" only the first.
+   * Whether the master at {@code index} runs as the Rust master ({@code yb-master}) rather than
+   * the C++ master ({@code yb-master-cpp}), as in the C++ ExternalMiniCluster: {@code
+   * YB_RUST_MASTER} set to "0" or "cpp" makes every master C++; "mixed" makes only the first
+   * master Rust.
    */
   private static boolean isRustMaster(int index) {
     final String mode = System.getenv("YB_RUST_MASTER");
     if (mode == null) {
+      return true;
+    }
+    if (mode.equals("0") || mode.equals("cpp")) {
       return false;
     }
-    return mode.equals("1") || mode.equals("all") || (mode.equals("mixed") && index == 0);
+    return !mode.equals("mixed") || index == 0;
   }
 
   /**
@@ -779,7 +783,7 @@ public class MiniYBCluster implements AutoCloseable {
       throws Exception {
     final boolean rust = isRustMaster(masterIndex);
     List<String> masterCmdLine = Lists.newArrayList(
-      TestUtils.findBinary(rust ? "yb-master-rs" : "yb-master"),
+      TestUtils.findBinary(rust ? "yb-master" : "yb-master-cpp"),
       "--flagfile=" + flagsPath,
       "--fs_wal_dirs=" + dataDirPath,
       "--fs_data_dirs=" + dataDirPath,

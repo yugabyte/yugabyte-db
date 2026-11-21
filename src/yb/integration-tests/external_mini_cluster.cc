@@ -239,8 +239,8 @@ std::string GetMasterBinaryName() {
   return kMasterBinaryNamePrefix + FLAGS_dynamically_linked_exe_suffix;
 }
 
-std::string GetRustMasterBinaryName() {
-  return std::string(kMasterBinaryNamePrefix) + "-rs" + FLAGS_dynamically_linked_exe_suffix;
+std::string GetCppMasterBinaryName() {
+  return std::string(kMasterBinaryNamePrefix) + "-cpp" + FLAGS_dynamically_linked_exe_suffix;
 }
 
 std::string GetTServerBinaryName() {
@@ -528,8 +528,8 @@ std::string ExternalMiniCluster::GetMasterBinaryPath() const {
   return GetBinaryPath(GetMasterBinaryName());
 }
 
-std::string ExternalMiniCluster::GetRustMasterBinaryPath() const {
-  return GetBinaryPath(GetRustMasterBinaryName());
+std::string ExternalMiniCluster::GetCppMasterBinaryPath() const {
+  return GetBinaryPath(GetCppMasterBinaryName());
 }
 
 std::string ExternalMiniCluster::GetTServerBinaryPath() const {
@@ -567,8 +567,8 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
   const bool rust = exe_override.empty() &&
       master::IsRustMaster(opts_.rust_masters, add_new_master_at_);
   string exe = !exe_override.empty() ? exe_override
-      : rust ? GetBinaryPath(GetRustMasterBinaryName())
-      : GetBinaryPath(GetMasterBinaryName());
+      : rust ? GetBinaryPath(GetMasterBinaryName())
+      : GetBinaryPath(GetCppMasterBinaryName());
 
   vector<string> flags = opts_.extra_master_flags;
   // Disable WAL fsync for tests

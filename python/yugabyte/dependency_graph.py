@@ -536,12 +536,13 @@ class DependencyGraphTest(unittest.TestCase):
         self.assertEqual(make_set(expected_affected_basenames), affected_basenames)
 
     def test_master_main(self) -> None:
+        # yb-master is the Rust master; its main() is master_host_main.cc.
         self.assert_all_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
                 self.get_yb_master_target()
-            ], 'master_main.cc')
+            ], 'master_host_main.cc')
 
-        self.assert_all_unaffected_by(['yb-tserver'], 'master_main.cc')
+        self.assert_all_unaffected_by(['yb-tserver'], 'master_host_main.cc')
 
     def test_tablet_server_main(self) -> None:
         should_be_affected = [

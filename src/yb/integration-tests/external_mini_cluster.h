@@ -125,7 +125,8 @@ struct ExternalMiniClusterOptions {
   // Number of masters to start.
   size_t num_masters = 1;
 
-  // Masters started without an explicit binary that run yb-master-rs.
+  // Masters started without an explicit binary that run the Rust master (yb-master); the others
+  // run the C++ master (yb-master-cpp).
   RustMasters rust_masters = RustMastersFromEnv();
 
   // Number of TS to start.
@@ -369,7 +370,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status ClearBlacklist(ExternalMaster* master);
 
   // Start a new master with `peer_addrs` as the master_addresses parameter. `exe` overrides the
-  // master binary, e.g. to start the Rust master (yb-master-rs).
+  // master binary, e.g. to start the C++ master (GetCppMasterBinaryPath).
   // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
   // cluster.
   Result<ExternalMasterPtr> StartMaster(
@@ -705,7 +706,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::string GetDaemonBinPath() const { return daemon_bin_path_; }
   void SetDaemonBinPath(const std::string& bin_path);
   std::string GetMasterBinaryPath() const;
-  std::string GetRustMasterBinaryPath() const;
+  // The C++ master of this build, for tests that ask for C++ masters.
+  std::string GetCppMasterBinaryPath() const;
   std::string GetTServerBinaryPath() const;
 
   // Checks whether user has enabled connection manager

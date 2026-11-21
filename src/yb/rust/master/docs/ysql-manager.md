@@ -27,8 +27,9 @@ Rust leader created before this existed have no `initdb_done`, and the restore w
 
 `IsInitDbDone` answers from the YSQL catalog config row.
 
-`yb-master-rs` calls `SetDefaultInitialSysCatalogSnapshotFlags` at startup, as `yb-master` does,
-so the snapshot path defaults to the one shipped with the binary.
+`yb-master` calls `SetDefaultInitialSysCatalogSnapshotFlags` at startup, as the C++ master did,
+so the snapshot path defaults to the one shipped with the binary. The build's snapshot
+(`initial_sys_catalog_snapshot`) is written by the Rust master.
 
 ## YSQL operation leases (K3)
 

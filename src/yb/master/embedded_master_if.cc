@@ -33,16 +33,16 @@ EmbeddedMasterFactory& Factory() {
 RustMasters RustMastersFromEnv() {
   const char* value = getenv("YB_RUST_MASTER");
   if (value == nullptr) {
-    return RustMasters::kNone;
+    return RustMasters::kAll;
   }
   const std::string_view mode(value);
-  if (mode == "1" || mode == "all") {
-    return RustMasters::kAll;
+  if (mode == "0" || mode == "cpp") {
+    return RustMasters::kNone;
   }
   if (mode == "mixed") {
     return RustMasters::kFirst;
   }
-  return RustMasters::kNone;
+  return RustMasters::kAll;
 }
 
 bool IsRustMaster(RustMasters mode, size_t index) {

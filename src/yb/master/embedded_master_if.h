@@ -33,8 +33,8 @@ namespace yb::master {
 // Which masters a test cluster runs as the Rust master, with leading allowed.
 YB_DEFINE_ENUM(RustMasters, (kNone)(kAll)(kFirst));
 
-// The default from the YB_RUST_MASTER environment variable: "1" or "all" for kAll, "mixed" for
-// kFirst (one Rust master among C++ ones), anything else for kNone.
+// The default from the YB_RUST_MASTER environment variable: "0" or "cpp" for kNone (C++ masters),
+// "mixed" for kFirst (one Rust master among C++ ones), anything else or unset for kAll.
 RustMasters RustMastersFromEnv();
 
 // Whether the master at `index` of a cluster runs as the Rust master under `mode`.

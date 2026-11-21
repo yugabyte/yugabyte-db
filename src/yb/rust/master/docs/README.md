@@ -2,7 +2,8 @@
 
 The Rust master replaces the C++ master in `src/yb/master` one layer at a time on the
 `feature-stack/hari-yb-master-rust` branch, and lands on main in one merge that also deletes the
-C++ master. Until then the branch builds both: the C++ `yb-master` and the Rust `yb-master-rs`.
+C++ master. `yb-master` is the Rust master; until the C++ master is deleted, the branch also builds
+it as `yb-master-cpp`, only for tests that ask for C++ masters (`YB_RUST_MASTER=0`).
 
 The sys-catalog tablet (Raft, WAL, DocDB) stays the shared C++ engine, hosted by
 `src/yb/master_host/`. Rust owns the master logic above it.
@@ -42,7 +43,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 
 | Crate | Owns |
 |---|---|
-| `master-server` | The static library `yb-master-rs` links: flag registration, runtime, the host-facing trait implementations, wiring |
+| `master-server` | The static library `yb-master` links: flag registration, runtime, the host-facing trait implementations, wiring |
 | `master-rpc-handlers` | Master RPC handlers: the methods every master serves (some through the host), the core leader methods, `NOT_THE_LEADER` or `NotSupported` for the rest |
 | `master-catalog-entity` | Sys-catalog rows by `SysRowEntryType` and the in-memory entity |
 | `master-sys-catalog` | `SysCatalogStore`: scans, Raft writes, the apply stream; `FakeSysCatalog` |

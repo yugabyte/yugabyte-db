@@ -128,7 +128,7 @@ public class MiniYBDaemon {
         String executablePath = items[2];
         String executableBasename = new File(executablePath).getName();
 
-        if (executableBasename.equals("yb-master")) {
+        if (executableBasename.startsWith("yb-master")) {
           totalMasterRssKB += rssKB;
           ++numMasters;
           masterTserverPsLines.add(line);

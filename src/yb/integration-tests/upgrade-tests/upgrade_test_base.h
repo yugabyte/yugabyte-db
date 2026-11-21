@@ -112,7 +112,8 @@ class UpgradeTestBase : public ExternalMiniClusterITestBase {
 
   std::string old_version_bin_path_, current_version_bin_path_;
   std::string old_version_master_bin_path_, current_version_master_bin_path_;
-  // YB_RUST_MASTER asked for Rust masters: they run yb-master-rs in the current version.
+  // The masters run the Rust master (yb-master) in the current version, unless YB_RUST_MASTER asks
+  // for C++ masters (yb-master-cpp).
   bool rust_current_masters_ = false;
   std::string old_version_tserver_bin_path_, current_version_tserver_bin_path_;
 

@@ -68,7 +68,7 @@ fn run_master() -> i32 {
     match run() {
         Ok(()) => 0,
         Err(e) => {
-            tracing::error!("yb-master-rs failed: {e}");
+            tracing::error!("yb-master failed: {e}");
             1
         }
     }

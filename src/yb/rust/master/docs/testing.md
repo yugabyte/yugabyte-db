@@ -33,7 +33,7 @@ re-serialize identically. That check is manual: the release binary is not part o
 ## Integration tests
 
 `src/yb/integration-tests/rust_master-itest.cc` runs the Rust master in a quorum of C++ masters
-(ExternalMiniCluster, YSQL off; skipped when `yb-master-rs` is not built):
+(`yb-master-cpp`; ExternalMiniCluster, YSQL off):
 
 ```bash
 ./yb_build.sh release --cxx-test rust_master-itest --gtest_filter RustMasterTest.FollowerKeepsSameCatalog
@@ -53,20 +53,21 @@ re-serialize identically. That check is manual: the release binary is not part o
 | `LiveTserverListVersion` | Tservers echo the live-list version and the Rust leader answers "unchanged"; after a tserver stops, the others get the new list and keep heartbeating. |
 | `CreatesUniverseLikeCpp` | A quorum of Rust masters creates a universe whose default rows equal those of a universe C++ masters created (random ids, uuids and the password salt aside), and every master holds them. |
 
-### Running existing tests against Rust masters
+### Rust and C++ masters in tests
 
-`ExternalMiniClusterOptions::rust_masters` starts masters as `yb-master-rs`, which may lead:
-`kAll` for every master, `kFirst` for one Rust master among C++ ones. Its default comes from `YB_RUST_MASTER` (`1` or `all`, `mixed`), so an existing
-ExternalMiniCluster test runs against Rust masters with, for example:
+Tests run Rust masters by default. `ExternalMiniClusterOptions::rust_masters` says which masters
+run the Rust master (`yb-master`) and which the C++ one (`yb-master-cpp`): `kAll` (the default),
+`kFirst` for one Rust master among C++ ones, `kNone` for C++ masters. Its default comes from
+`YB_RUST_MASTER`: `0` or `cpp` for `kNone`, `mixed` for `kFirst`. To compare with the C++ master:
 
 ```bash
-YB_RUST_MASTER=1 ./yb_build.sh release --cxx-test master_failover-itest
+YB_RUST_MASTER=0 ./yb_build.sh release --cxx-test master_failover-itest
 ```
 
 A test that starts masters with an explicit binary keeps it.
 
 `MiniClusterOptions::rust_masters` does the same for MiniCluster tests, with the same
-`YB_RUST_MASTER` default: MiniMaster runs those masters in the test process (see
+`YB_RUST_MASTER` default: MiniMaster runs Rust masters in the test process (see
 [cpp-host.md](cpp-host.md#embedded-in-a-test-process)). A Rust MiniMaster has no C++ `Master`:
 `master()` is null, and accessors of C++ master objects (`catalog_manager()`, `ts_manager()`,
 `flush_manager()`) fail the test at once rather than skipping it, so the tests that still need
@@ -77,7 +78,7 @@ DDL served by them: a table's tablets are created on every replica and serve rea
 before and after a leader change, the new leader alters and drops it, and a transactional table
 gets `system.transactions` created first.
 
-Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
+Java tests read the same variable: `MiniYBCluster` starts C++ masters as `yb-master-cpp`.
 
 ### Reading master state in tests
 

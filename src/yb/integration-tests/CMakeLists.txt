@@ -136,16 +136,13 @@ target_link_libraries(integration-tests
   test_echo_service_proto
   tools_test_utils)
 
-# MiniCluster runs Rust masters in-process with YB_RUST_MASTER
-# (src/yb/master_host/embedded_master.h).
-# src/yb/master_host is configured after this directory, so this checks the same condition.
-if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
-  target_link_libraries(integration-tests yb_master_rs_embedded)
-  target_compile_definitions(integration-tests PRIVATE YB_WITH_RUST_MASTER)
-endif()
+# MiniCluster runs Rust masters in-process (src/yb/master_host/embedded_master.h).
+target_link_libraries(integration-tests yb_master_rs_embedded)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
+  # The C++ master, for tests that ask for C++ masters (YB_RUST_MASTER=0).
+  yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
   gen_auto_flags_json
@@ -189,15 +186,8 @@ ADD_YB_TEST(client-stress-test)
 ADD_YB_TEST(cluster_trace-test)
 ADD_YB_TEST(rust_master-itest)
 ADD_YB_TEST(rust_master_mini_cluster-test)
-if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
-  target_compile_definitions(rust_master_mini_cluster-test PRIVATE YB_WITH_RUST_MASTER)
-endif()
-if(NOT "$ENV{YB_SKIP_RUST}" STREQUAL "1")
-  # The executables the test runs (it is skipped when Rust is not built).
-  add_dependencies(rust_master-itest
-    yb-master-rs${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master-tserver-sim master-conformance
-    sys-catalog-tool)
-endif()
+# The executables the test runs.
+add_dependencies(rust_master-itest master-tserver-sim master-conformance sys-catalog-tool)
 ADD_YB_TEST(tablet_server-itest)
 ADD_YB_TEST(tablet-split-itest)
 ADD_YB_TEST(cdcsdk_gflag-test)

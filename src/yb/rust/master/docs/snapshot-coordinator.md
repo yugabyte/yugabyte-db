@@ -131,5 +131,5 @@ snapshot, deletion and cleanup, a tablet gone during deletion, schedules (one pe
 validated edits, deletion), a restore to completion, hidden-object cleanup, clones a previous
 leader left unfinished being aborted, and the outcome and aggregation rules.
 
-`yb-admin-snapshot-schedule-test` runs against Rust masters with `YB_RUST_MASTER=1`
+`yb-admin-snapshot-schedule-test` runs against Rust masters
 ([testing.md](testing.md)).

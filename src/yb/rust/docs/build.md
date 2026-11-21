@@ -3,11 +3,11 @@
 `yb_build.sh` builds it like any other target:
 
 ```bash
-./yb_build.sh release --target yb-master-rs --sj --skip-pg-parquet --no-odyssey --no-ybc
+./yb_build.sh release --target yb-master --sj --skip-pg-parquet --no-odyssey --no-ybc
 ./yb_build.sh release --target rust_checks   # rustfmt, clippy -D warnings, cargo test
 ```
 
-`--skip-rust` leaves out `src/yb/rust`, `src/yb/rust_bridge` and every component's C++ host.
+`yb-master` is the Rust master, so every build needs the Rust toolchain; `--skip-rust` is gone.
 
 `--build-master-ui` first builds the master's web UI (`master/web/ui`, needs Node.js 22) into
 `$BUILD_ROOT/master-ui`; while that directory has an `index.html`, the Cargo steps get
@@ -29,7 +29,7 @@ An offline vendor archive is required before the Rust master merges to main.
 CMake owns every final link, so sanitizer runtimes, tcmalloc, rpaths and the post-build steps work
 unchanged. Cargo builds three kinds of output:
 
-- **One static library per executable.** `yb-master-rs` links `libmaster_server.a`, built from
+- **One static library per executable.** `yb-master` links `libmaster_server.a`, built from
   `master/server`, which depends on every other crate it needs. Two Rust static libraries in one
   executable would each carry the Rust standard library.
 - **Build tools.** `yb-cxxgen` writes the C++ half of every `#[cxx::bridge]` into

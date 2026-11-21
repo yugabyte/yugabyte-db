@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// main() of yb-master-rs, the Rust master. The process host is C++ and the master logic is the
+// main() of yb-master, the Rust master. The process host is C++ and the master logic is the
 // Rust static library built from src/yb/rust/master/server; see
 // src/yb/rust/master/docs/cpp-host.md.
 
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
 #if YB_LTO_ENABLED
     return yb::tserver::TabletServerMain(argc, argv);
 #else
-    LOG(FATAL) << "yb-master-rs executable can only function as yb-tserver in LTO mode. "
+    LOG(FATAL) << "yb-master executable can only function as yb-tserver in LTO mode. "
                << "The basename of argv[0] is: " << executable_basename;
 #endif
   }

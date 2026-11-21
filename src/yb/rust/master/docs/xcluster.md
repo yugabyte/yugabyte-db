@@ -168,4 +168,4 @@ stream at op 0 (and none while new-table processing is disabled), deleting a gro
 namespace, the repair RPCs, paused streams in heartbeats, a dropped table kept until its streams
 expire, the target's setup from the ready streams and its refusal reaching the source, a target
 namespace in one inbound group only, replication status from tserver reports, and failover refusals
-and the stale-failover cleanup, against a fake host, tserver and target. End to end: `xcluster_db_scoped-test` with `YB_RUST_MASTER=1`.
+and the stale-failover cleanup, against a fake host, tserver and target. End to end: `xcluster_db_scoped-test`.

@@ -36,7 +36,7 @@ find_program(YB_CARGO_EXECUTABLE cargo
 if(NOT YB_CARGO_EXECUTABLE)
   message(FATAL_ERROR
           "cargo not found. The Rust yb-master needs Rust ${YB_RUST_TOOLCHAIN_VERSION} "
-          "(see src/yb/rust/docs/build.md), or pass --skip-rust to yb_build.sh.")
+          "(see src/yb/rust/docs/build.md).")
 endif()
 
 # rustup reads rust-toolchain.toml when cargo runs from inside src/yb/rust; without rustup the

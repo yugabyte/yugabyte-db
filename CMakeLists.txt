@@ -920,7 +920,8 @@ endforeach()
 
 # Rust code (src/yb/rust) and its C++ hosts. Needs cargo; see src/yb/rust/docs/build.md.
 if("$ENV{YB_SKIP_RUST}" STREQUAL "1")
-  message("Skipping Rust code because YB_SKIP_RUST is set to 1")
+  message(FATAL_ERROR "YB_SKIP_RUST (--skip-rust) is no longer supported: yb-master is the Rust "
+                      "master. See src/yb/rust/docs/build.md for the toolchain.")
 else()
   include(YugabyteRust)
   add_subdirectory(src/yb/rust_bridge)

@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// The Rust master (yb-master-rs) in a quorum of C++ masters. As a follower it joins, keeps the same
+// The Rust master (yb-master) in a quorum of C++ masters (yb-master-cpp). As a follower it joins, keeps the same
 // sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
 // restore, and answers the follower-servable RPCs. As the leader it serves the cluster, client and
 // heartbeat RPCs (src/yb/rust/master/docs/testing.md).
@@ -86,10 +86,7 @@ class RustMasterTest : public YBTest {
     opts.rust_masters = RustMasters::kNone;
     cluster_ = std::make_unique<ExternalMiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
-    rust_master_exe_ = BinaryPath("yb-master-rs");
-    if (!Env::Default()->FileExists(rust_master_exe_)) {
-      GTEST_SKIP() << "yb-master-rs is not built (yb_build.sh --skip-rust?)";
-    }
+    rust_master_exe_ = BinaryPath("yb-master");
     ASSERT_OK(cluster_->WaitForLeaderCommitTermAdvance());
     client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
