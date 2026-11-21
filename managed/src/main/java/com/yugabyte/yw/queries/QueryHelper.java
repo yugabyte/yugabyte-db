@@ -288,7 +288,8 @@ public class QueryHelper {
                       ip,
                       node.ysqlServerHttpPort,
                       QueryApi.YSQL,
-                      new ApiHelper(this.wsClient, materializer));
+                      new ApiHelper(this.wsClient, materializer),
+                      !slowQueryDisableCommandLogging);
 
               Future<JsonNode> future = threadPool.submit(callable);
               futures.add(future);
@@ -299,7 +300,8 @@ public class QueryHelper {
                       ip,
                       node.yqlServerHttpPort,
                       QueryApi.YCQL,
-                      new ApiHelper(this.wsClient, materializer));
+                      new ApiHelper(this.wsClient, materializer),
+                      !slowQueryDisableCommandLogging);
               future = threadPool.submit(callable);
               futures.add(future);
               break;

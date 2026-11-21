@@ -20,6 +20,8 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.QueryDistributionSuggestionResponse;
 import com.yugabyte.yw.models.Universe;
@@ -45,10 +47,13 @@ import lombok.extern.slf4j.Slf4j;
 public class UniversePerfHandler {
 
   private NodeUniverseManager nodeUniverseManager;
+  private RuntimeConfGetter confGetter;
 
   @Inject
-  public UniversePerfHandler(NodeUniverseManager nodeUniverseManager) {
+  public UniversePerfHandler(
+      NodeUniverseManager nodeUniverseManager, RuntimeConfGetter confGetter) {
     this.nodeUniverseManager = nodeUniverseManager;
+    this.confGetter = confGetter;
   }
 
   private static final String DEFAULT_DATABASE = "postgres";
@@ -77,6 +82,10 @@ public class UniversePerfHandler {
 
     final String query =
         "select jsonb_agg(t) from (select calls, query from pg_stat_statements) as t;";
+    boolean logCmdOutput =
+        !confGetter.getConfForScope(universe, UniverseConfKeys.slowQueryDisableCommandLogging);
+    long timeoutSec = confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs);
+    UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
 
     List<QueryDistributionSuggestionResponse.NodeQueryDistributionDetails>
         nodeQueryDistributionDetailsList = new ArrayList<>();
@@ -99,7 +108,15 @@ public class UniversePerfHandler {
       int numSelect = 0;
       int numDelete = 0;
       ShellResponse shellResponse =
-          nodeUniverseManager.runYsqlCommand(liveNode, universe, DEFAULT_DATABASE, query);
+          nodeUniverseManager.runYsqlCommand(
+              liveNode,
+              universe,
+              DEFAULT_DATABASE,
+              query,
+              timeoutSec,
+              userIntent.isYSQLAuthEnabled(),
+              userIntent.enableConnectionPooling,
+              logCmdOutput);
       String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
 
       if (jsonData == null || jsonData.isEmpty()) {
@@ -138,8 +155,18 @@ public class UniversePerfHandler {
           }
         }
       } catch (IOException ioe) {
-        log.error(
-            "Unable to parse universeQueryDistributionSuggestion query response {}", jsonData, ioe);
+        if (logCmdOutput) {
+          log.error(
+              "Unable to parse universeQueryDistributionSuggestion query response {}",
+              jsonData,
+              ioe);
+        } else {
+          // The parser's message can quote the response, which holds users' query text.
+          log.error(
+              "Unable to parse universeQueryDistributionSuggestion query response from node {}: {}",
+              liveNode.getNodeName(),
+              ioe.getClass().getSimpleName());
+        }
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Error while parsing query distribution response for universe");
       }

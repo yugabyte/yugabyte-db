@@ -294,7 +294,7 @@ public class YsqlQueryExecutor {
                   authEnabled,
                   cpEnabled,
                   logCmdOutput)
-              .processErrors("Ysql Query Execution Error");
+              .processErrors("Ysql Query Execution Error", logCmdOutput);
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
       return response;
@@ -311,7 +311,15 @@ public class YsqlQueryExecutor {
       }
 
     } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
+      if (logCmdOutput) {
+        LOG.error(e.getMessage(), e);
+      } else {
+        // The parser's message can quote the response.
+        LOG.error(
+            "Failed to parse the response of a query on node {}: {}",
+            node.getNodeName(),
+            e.getClass().getSimpleName());
+      }
       response.put("error", "Failed to parse response: " + e.getMessage());
     }
     return response;
@@ -382,7 +390,7 @@ public class YsqlQueryExecutor {
           nodeUniverseManager
               .runYsqlBatchCommands(
                   node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled, logCmdOutput)
-              .processErrors("YSQL query batch execution error");
+              .processErrors("YSQL query batch execution error", logCmdOutput);
       response.put("result", shellResponse.message);
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));

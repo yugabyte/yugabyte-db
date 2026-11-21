@@ -143,9 +143,12 @@ def check_ssh2_bin_present():
         return False
 
 
-def run_command(args, num_retry=1, timeout=1, **kwargs):
-    cmd_as_str = quote_cmd_line_for_bash(args)
-    logging.info("[app] Executing command \"{}\"".format(cmd_as_str))
+def run_command(args, num_retry=1, timeout=1, skip_cmd_logging=False, **kwargs):
+    # With skip_cmd_logging, neither the command nor its error output is logged: both can hold
+    # secrets or users' query text. The raised error still has the output.
+    cmd_as_str = "<not logged>" if skip_cmd_logging else quote_cmd_line_for_bash(args)
+    if not skip_cmd_logging:
+        logging.info("[app] Executing command \"{}\"".format(cmd_as_str))
     while num_retry > 0:
         num_retry = num_retry - 1
         try:
@@ -154,12 +157,13 @@ def run_command(args, num_retry=1, timeout=1, **kwargs):
             output, err = process.communicate()
             if process.returncode != 0:
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                  cmd_as_str, process.returncode, err))
+                  cmd_as_str, process.returncode, "<not logged>" if skip_cmd_logging else err))
                 raise YBOpsRuntimeError(err.decode('utf-8'))
             return output.decode('utf-8')
 
         except Exception as ex:
-            logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
+            logging.error("Failed to run command [[ {} ]]: {}".format(
+                cmd_as_str, type(ex).__name__ if skip_cmd_logging else ex))
             sleep_or_raise(num_retry, timeout, ex)
 
 
@@ -466,7 +470,7 @@ class SSHClient(object):
                 self.hostname,
                 self.port, self.username,
                 self.key, command=command)
-            output = run_command(cmd)
+            output = run_command(cmd, skip_cmd_logging=skip_cmd_logging)
             return 0, output, None
 
     def close_connection(self):

@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -14,6 +15,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -29,7 +35,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import kamon.instrumentation.play.GuiceModule;
@@ -37,6 +45,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.pac4j.play.LogoutController;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -280,6 +289,84 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
             anyBoolean(),
             anyBoolean(),
             eq(false));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testParseErrorLogsResponseOnlyWhenLoggingEnabled(boolean logCmdOutput) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setDbName("postgres");
+    queryParams.setQuery("SELECT query FROM pg_stat_statements");
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            ShellResponse.create(0, " jsonb_agg\n---\n [{\"query\": sentinel_query}]\n(1 row)"));
+    List<JsonNode> results = new ArrayList<>();
+
+    List<String> logged =
+        loggedErrors(
+            YsqlQueryExecutor.class,
+            () ->
+                results.add(
+                    ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe, queryParams, node, logCmdOutput)));
+
+    assertTrue(results.get(0).has("error"));
+    assertEquals(1, logged.size());
+    assertEquals(logged.get(0), logCmdOutput, logged.get(0).contains("sentinel_query"));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testFailedQueriesLogOutputOnlyWhenLoggingEnabled(boolean logCmdOutput) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setDbName("postgres");
+    queryParams.setQuery("SELECT 1");
+    ShellResponse failure = ShellResponse.create(1, "ERROR:  sentinel_query");
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(failure);
+    when(mockNodeUniverseManager.runYsqlBatchCommands(
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(failure);
+    List<JsonNode> results = new ArrayList<>();
+
+    List<String> logged =
+        loggedErrors(
+            ShellResponse.class,
+            () -> {
+              results.add(
+                  ysqlQueryExecutor.executeQueryInNodeShell(
+                      universe, queryParams, node, logCmdOutput));
+              results.add(
+                  ysqlQueryExecutor.executeQueryBatchInNodeShell(
+                      universe, "postgres", List.of("SELECT 1"), node, logCmdOutput));
+            });
+
+    assertEquals(2, logged.size());
+    for (String line : logged) {
+      assertEquals(line, logCmdOutput, line.contains("sentinel_query"));
+    }
+    // Callers get the output either way.
+    for (JsonNode result : results) {
+      assertEquals("ERROR:  sentinel_query", result.get("error").asText());
+    }
+  }
+
+  private static List<String> loggedErrors(Class<?> loggerClass, Runnable action) {
+    Logger logger = (Logger) LoggerFactory.getLogger(loggerClass);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      action.run();
+    } finally {
+      logger.detachAppender(appender);
+    }
+    return appender.list.stream()
+        .filter(event -> Level.ERROR.equals(event.getLevel()))
+        .map(ILoggingEvent::getFormattedMessage)
+        .collect(Collectors.toList());
   }
 
   @Test
