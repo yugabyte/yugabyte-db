@@ -1211,6 +1211,24 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Remove a tablet server from the master's registry. The master accepts it only for a tserver
+   * that is not live, is on the server blacklist and hosts no tablet replicas. Masters older than
+   * 2025.1.0.0-b1 and 2.25.1.0-b1 lack this RPC and fail the call with a NonRecoverableException,
+   * so callers check the master's version first.
+   *
+   * @param permanentUuid the tablet server's permanent UUID
+   * @return a deferred object that yields the master's response. When the master refuses,
+   *     including for a tablet server it does not know (TABLET_SERVER_NOT_FOUND), it yields a
+   *     {@link MasterErrorException} whose {@code error} field carries the master's error.
+   */
+  public Deferred<RemoveTabletServerResponse> removeTabletServer(String permanentUuid) {
+    checkIsClosed();
+    RemoveTabletServerRequest rpc = new RemoveTabletServerRequest(this.masterTable, permanentUuid);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the list of all the masters.
    *
    * @return a deferred object that yields a list of masters

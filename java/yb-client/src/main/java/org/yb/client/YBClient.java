@@ -434,6 +434,23 @@ public class YBClient implements YBClientApi {
   }
 
   /**
+   * Remove a tablet server from the master's registry. The master accepts it only for a tserver
+   * that is not live, is on the server blacklist and hosts no tablet replicas. Masters older than
+   * 2025.1.0.0-b1 and 2.25.1.0-b1 lack this RPC and fail the call with a NonRecoverableException,
+   * so callers check the master's version first.
+   *
+   * @param permanentUuid the tablet server's permanent UUID
+   * @return the master's response
+   * @throws MasterErrorException when the master refuses, including for a tablet server it does
+   *     not know (TABLET_SERVER_NOT_FOUND); its {@code error} field carries the master's error
+   */
+  @Override
+  public RemoveTabletServerResponse removeTabletServer(String permanentUuid) throws Exception {
+    Deferred<RemoveTabletServerResponse> d = asyncClient.removeTabletServer(permanentUuid);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the list of all the masters.
    *
    * @return a list of masters
