@@ -29,10 +29,13 @@ class YsqlMajorUpgradePasswordcheckTest : public YsqlMajorUpgradeTestBase {
 };
 
 // The upgrade restores each role's password pre-hashed, so passwordcheck must accept a pre-hashed
-// SCRAM password.
+// SCRAM password. passwordcheck must still refuse a password equal to the user name, before and
+// after the upgrade.
 TEST_F(YsqlMajorUpgradePasswordcheckTest, ScramPassword) {
   static constexpr auto kPasswordQuery =
       "SELECT rolpassword FROM pg_authid WHERE rolname = 'scram_user'";
+  static constexpr auto kNamePasswordStatement = "CREATE USER name_user PASSWORD 'name_user'";
+  static constexpr auto kNamePasswordError = "password must not contain user name";
 
   ASSERT_OK(ExecuteStatements({
       // yugabyte's default password is its name, which passwordcheck refuses (GH#26660).
@@ -43,6 +46,7 @@ TEST_F(YsqlMajorUpgradePasswordcheckTest, ScramPassword) {
   {
     auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
     password = ASSERT_RESULT(conn.FetchRow<std::string>(kPasswordQuery));
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(kNamePasswordStatement), kNamePasswordError);
   }
   ASSERT_TRUE(password.starts_with("SCRAM-SHA-256$")) << password;
 
@@ -50,6 +54,7 @@ TEST_F(YsqlMajorUpgradePasswordcheckTest, ScramPassword) {
 
   auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(kPasswordQuery)), password);
+  ASSERT_NOK_STR_CONTAINS(conn.Execute(kNamePasswordStatement), kNamePasswordError);
 }
 
 }  // namespace yb
