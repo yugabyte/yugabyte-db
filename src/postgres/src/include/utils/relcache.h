@@ -190,4 +190,7 @@ extern void YbPrefetchRequiredData(bool preload_rel_cache);
  */
 extern void YbFinishStaleCatalogPrefetch(void);
 
+extern void YbCheckRelfilenodeUnchanged(Relation rel);
+extern void YbResetRelfilenodeChecks(void);
+
 #endif							/* RELCACHE_H */
