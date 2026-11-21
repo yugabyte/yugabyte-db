@@ -166,21 +166,22 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait)
 		if (childreloid == reloid)
 			continue;
 
-		if (yb_children_locked)
-			;					/* YB: locked above */
-		else if (!nowait)
-			LockRelationOid(childreloid, lockmode);
-		else if (!ConditionalLockRelationOid(childreloid, lockmode))
+		if (!yb_children_locked)	/* YB: else locked above */
 		{
-			/* try to throw error by name; relation could be deleted... */
-			char	   *relname = get_rel_name(childreloid);
+			if (!nowait)
+				LockRelationOid(childreloid, lockmode);
+			else if (!ConditionalLockRelationOid(childreloid, lockmode))
+			{
+				/* try to throw error by name; relation could be deleted... */
+				char	   *relname = get_rel_name(childreloid);
 
-			if (!relname)
-				continue;		/* child concurrently dropped, just skip it */
-			ereport(ERROR,
-					(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-					 errmsg("could not obtain lock on relation \"%s\"",
-							relname)));
+				if (!relname)
+					continue;		/* child concurrently dropped, just skip it */
+				ereport(ERROR,
+						(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+						 errmsg("could not obtain lock on relation \"%s\"",
+								relname)));
+			}
 		}
 
 		/*
