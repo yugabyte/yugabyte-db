@@ -242,6 +242,7 @@ class PgClient {
   Result<uint64_t> GetCatalogMasterVersion();
 
   Result<uint32_t> GetXClusterRole(uint32_t db_oid);
+  Result<uint64_t> GetXClusterSafeTime(const std::string& key);
 
   Status CreateSequencesDataTable();
 

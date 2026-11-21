@@ -43,6 +43,11 @@ class CdcsdkManager : public CdcsdkManagerIf {
   void FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp)
       EXCLUDES(cdc_table_registry_mutex_);
 
+  cdc::CdcTablePollerRegistryPB GetCdcTableRegistry() EXCLUDES(cdc_table_registry_mutex_) {
+    std::lock_guard l(cdc_table_registry_mutex_);
+    return cdc_table_registry_;
+  }
+
  private:
   // Recomputes the registry of tablets that the CDC table pollers on the tservers poll.
   Status RefreshCdcTableRegistry() EXCLUDES(cdc_table_registry_mutex_);

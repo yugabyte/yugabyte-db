@@ -76,6 +76,10 @@ Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
     LOG_WITH_PREFIX(INFO) << "Polling from checkpoint "
                           << next_request_->checkpoint.ShortDebugString() << ", safe time "
                           << next_request_->safe_hybrid_time;
+    // Only sent to the CDC service once the changes before it were in the CDC table.
+    if (next_request_->safe_hybrid_time > 0) {
+      UpdateSafeTime(HybridTime(next_request_->safe_hybrid_time));
+    }
   }
 
   req->set_stream_id(producer_tablet_info_.stream_id.ToString());
@@ -132,9 +136,12 @@ void CdcTablePoller::ChangesApplied(const XClusterOutputClientResponse& response
   next.max_index_in_sort_window = resp.max_index_in_sort_window();
   next_request_ = std::move(next);
 
-  // TODO: safe time. Every change of this tablet that commits up to the safe hybrid time of the
-  // response is in the CDC table now. Publishing that time, and the minimum across the tablets of
-  // a database, is what will let the walsender read the table in commit order.
+  // Every change of this tablet that commits up to the safe time of the response is in the CDC
+  // table now. The consumer publishes it, the master takes the minimum over the tablets of the
+  // stream, and the walsender reads the CDC table up to that minimum.
+  if (next_request_->safe_hybrid_time > 0) {
+    UpdateSafeTime(HybridTime(next_request_->safe_hybrid_time));
+  }
 }
 
 }  // namespace yb::tserver

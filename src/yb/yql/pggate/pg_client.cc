@@ -1387,6 +1387,19 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.xcluster_role();
   }
 
+  Result<uint64_t> GetXClusterSafeTime(const std::string& key) {
+    tserver::PgGetXClusterSafeTimeRequestPB req;
+    tserver::PgGetXClusterSafeTimeResponsePB resp;
+
+    req.set_key(key);
+    // Shares the ASH RPC code of GetXClusterRole, which avoids a change to wait_state.h.
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetXClusterSafeTime, req, resp,
+        PggateRPC::kGetXClusterRole));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.safe_time_ht();
+  }
+
   Status CreateSequencesDataTable() {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
@@ -2326,6 +2339,10 @@ Result<uint64_t> PgClient::GetCatalogMasterVersion() {
 
 Result<uint32_t> PgClient::GetXClusterRole(uint32_t db_oid) {
   return impl_->GetXClusterRole(db_oid);
+}
+
+Result<uint64_t> PgClient::GetXClusterSafeTime(const std::string& key) {
+  return impl_->GetXClusterSafeTime(key);
 }
 
 Status PgClient::CreateSequencesDataTable() {

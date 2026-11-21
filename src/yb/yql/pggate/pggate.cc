@@ -2200,6 +2200,10 @@ Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
   return pg_client_.GetXClusterRole(db_oid);
 }
 
+Result<uint64_t> PgApiImpl::GetXClusterSafeTime(const std::string& key) {
+  return pg_client_.GetXClusterSafeTime(key);
+}
+
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     PgStatement* stmt, const YbcPgTypeEntity* tuple_type_entity, const YbcPgTypeAttrs* type_attrs,

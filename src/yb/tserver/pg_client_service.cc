@@ -1182,6 +1182,21 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return Status::OK();
   }
 
+  Status GetXClusterSafeTime(
+      const PgGetXClusterSafeTimeRequestPB& req, PgGetXClusterSafeTimeResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto* xcluster_context = session_context_.xcluster_context;
+    if (!xcluster_context) {
+      return Status::OK();
+    }
+    // Not yet received from the master, or not yet computed: the caller waits either way.
+    auto safe_time = xcluster_context->GetSafeTime(req.key());
+    if (safe_time.ok() && *safe_time) {
+      resp->set_safe_time_ht((*safe_time)->ToUint64());
+    }
+    return Status::OK();
+  }
+
   Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,

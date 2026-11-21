@@ -182,6 +182,11 @@ YbcStatus YBCGetCronLastMinute(int64_t* last_minute);
 
 int YBCGetXClusterRole(uint32_t db_oid);
 
+// The xCluster safe time this tserver has for key, or 0 if it has none yet. The key of a CDCSDK
+// stream whose changes are written to a CDC table is its stream id: every change that commits
+// before that time is in the CDC table.
+YbcStatus YBCGetXClusterSafeTime(const char *key, uint64_t *safe_time_ht);
+
 //--------------------------------------------------------------------------------------------------
 // YB Bitmap Scan Operations
 //--------------------------------------------------------------------------------------------------

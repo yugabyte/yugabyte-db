@@ -28,11 +28,15 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
+#include "yb/cdc/xcluster_types.h"
+
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"
@@ -594,9 +598,11 @@ XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeF
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
   const bool include_stream_id = FLAGS_xcluster_safe_time_table_include_stream_id;
+  const auto cdc_table_registry = catalog_manager_->cdcsdk_manager().GetCdcTableRegistry();
 
   if (latest_config_version == cluster_config_version_ &&
-      include_stream_id == producer_tablet_keys_have_stream_id_) {
+      include_stream_id == producer_tablet_keys_have_stream_id_ &&
+      cdc_table_registry.version() == cdc_table_registry_version_) {
     return Status::OK();
   }
 
@@ -642,10 +648,32 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     }
   }
 
+  // The CDC table pollers publish the safe times of the tablets of a CDCSDK stream like the pollers
+  // of an xCluster stream do. Their minimum is kept under the stream id rather than a namespace id,
+  // so that the reads and compactions of the database are not held to it. The walsender of the
+  // stream reads the CDC table up to it.
+  for (const auto& stream : cdc_table_registry.streams()) {
+    const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
+    auto add_tablet = [&](const TabletId& tablet_id) REQUIRES(mutex_) -> Status {
+      const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+          xcluster::kCdcTableReplicationGroupId, tablet_id, /* producer_table_id= */ "",
+          stream_id));
+      producer_tablet_namespace_map_[key] = stream_id.ToString();
+      return Status::OK();
+    };
+    for (const auto& tablet_id : stream.tablet_ids()) {
+      RETURN_NOT_OK(add_tablet(tablet_id));
+    }
+    if (stream.poll_sys_catalog()) {
+      RETURN_NOT_OK(add_tablet(kSysCatalogTabletId));
+    }
+  }
+
   // It's important to use the version and flag value we got before getting the registry, as they
   // could have changed again.
   cluster_config_version_ = latest_config_version;
   producer_tablet_keys_have_stream_id_ = include_stream_id;
+  cdc_table_registry_version_ = cdc_table_registry.version();
 
   return Status::OK();
 }
