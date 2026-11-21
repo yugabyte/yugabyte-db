@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 namespace yb::ash {
@@ -25,6 +26,8 @@ class MetadataSerializerFactory;
 
 class WaitStateInfo;
 using WaitStateInfoPtr = std::shared_ptr<WaitStateInfo>;
+
+enum class WaitStateCode : uint32_t;
 
 struct AshMetadata;
 struct AshAuxInfo;

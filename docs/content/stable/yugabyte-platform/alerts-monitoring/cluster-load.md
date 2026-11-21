@@ -50,7 +50,7 @@ Color shows where that time went:
 | Client | The application is pacing the PostgreSQL protocol. The driver is reading a result or sending the next command. |
 | DiskIO | DocDB storage I/O on the tablet server, such as WAL append and sync, tablet files, and compaction. This is not local PostgreSQL I/O. |
 | IO | Filesystem I/O inside the YSQL backend: local WAL, catalog files, temporary files, `COPY`, logical decoding, checkpoints, and similar. A large slice points at temporary files, catalog churn, or WAL on the PostgreSQL data directory, not at tablet **DiskIO**. |
-| Lock | Waiting on a heavyweight lock, LWLock, or buffer pin. |
+| Lock | Waiting on a heavyweight lock, LWLock, or buffer pin. On the tablet servers, this includes waiting for a table lock (`ObjectLock_WaitInQueue` and `ObjectLock_WaitOnMaster`). |
 | RPCWait | Wait event type for an RPC that has not returned. That includes a YSQL backend in the TServerWait class, a tablet server waiting on another RPC (Raft replication, conflict resolution, or a transaction-status lookup), and a YCQL client waiting on DocDB or the master. A tall band can be Raft replication on the tablet servers. |
 | Timeout | A deliberate sleep, such as `pg_sleep`, conflict backoff, or vacuum pacing. Not client I/O and not lock contention. |
 | TServerWait | Wait event class for a YSQL backend waiting on a table, index, catalog, or transaction RPC. Every event in this class has type RPCWait. With **Group by** set to **Wait Event Type**, those samples are in the **RPCWait** band. |

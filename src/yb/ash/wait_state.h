@@ -197,6 +197,8 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kBackfillIndex_WaitToBackfillTablet)
     (kXCluster_WaitForSafeTime)
     (kXCluster_RateLimiter)
+    (kObjectLock_WaitInQueue)
+    (kObjectLock_WaitOnMaster)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -710,6 +712,26 @@ class WaitStateTracker {
   WaitStateTrackerShard& ShardForPtr(const WaitStateInfoPtr& p);
 
   std::vector<WaitStateTrackerShard> shards_;
+};
+
+// Tracks a wait state with a WaitStateTracker for the lifetime of the object, so that the ASH
+// collector samples it.
+class ScopedWaitStateTracking {
+ public:
+  ScopedWaitStateTracking(WaitStateTracker& tracker, WaitStateInfoPtr wait_state)
+      : tracker_(tracker), wait_state_(std::move(wait_state)) {
+    tracker_.Track(wait_state_);
+  }
+
+  ~ScopedWaitStateTracking() {
+    tracker_.Untrack(wait_state_);
+  }
+
+ private:
+  WaitStateTracker& tracker_;
+  const WaitStateInfoPtr wait_state_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedWaitStateTracking);
 };
 
 struct WaitStateSnapshot {

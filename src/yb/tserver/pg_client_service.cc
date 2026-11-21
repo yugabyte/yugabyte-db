@@ -2411,6 +2411,9 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       AddWaitStatesToResponse(
           ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
           resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
+      AddWaitStatesToResponse(
+          ash::SharedMemoryPgAcquireObjectLockTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(

@@ -180,6 +180,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | DumpRunningRpc_WaitOnReactor | WaitOnCondition | Tablet ID | DumpRunningRpcs is waiting on reactor threads. |
 | ConflictResolution_ResolveConficts | RPCWait | Tablet ID | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | Tablet ID | A read/write RPC is waiting for conflicting transactions to complete. |
+| ObjectLock_WaitInQueue | Lock | | An object (table) lock request is waiting in the YB-TServer's object lock wait queue for conflicting locks to be released. Object lock waits are not reported as `LockedBatchEntry_Lock`, which is for DocDB row-level locks. In earlier versions, they were not reported as lock waits: YSQL sampled the waiting backend as `OnCpu_Active`. |
+| ObjectLock_WaitOnMaster | Lock | | A global object (table) lock request, such as a DDL's, is waiting on YB-Master, which acquires the lock on all YB-TServers. This includes waiting for conflicting locks to be released. |
 | WaitForReadTime | WaitOnCondition | Tablet ID | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
 | XCluster_WaitingForGetChanges | RPCWait | Target Tablet ID | An xCluster poller on the target universe is waiting for changes from the source universe. |
 | RemoteBootstrap_StartRemoteSession | RPCWait | Tablet ID | A remote bootstrap client is waiting for a remote session to be started on the remote bootstrap server. |
