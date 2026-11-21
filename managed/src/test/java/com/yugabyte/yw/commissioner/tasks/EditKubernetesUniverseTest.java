@@ -2457,6 +2457,35 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testMasterFullMoveKeepsYbcEnabled() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().setYbcInstalled(true);
+              u.getUniverseDetails().getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+            });
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.ybSoftwareVersion = FULL_MOVE_VERSION;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> helm =
+        subtasks(
+            planEdit(newIntent, pi),
+            TaskType.KubernetesCommandExecutor,
+            p ->
+                ImmutableSet.of("HELM_INSTALL", "HELM_UPGRADE")
+                    .contains(p.path("commandType").asText()));
+    assertFalse(helm.isEmpty());
+    for (TaskInfo t : helm) {
+      assertTrue(t.getTaskParams().path("enableYbc").asBoolean());
+    }
+  }
+
+  @Test
   public void testZoneReplaceMasterAddressPropagation() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     String oldMasters = expectedMasterAddresses(currentPlacement());
