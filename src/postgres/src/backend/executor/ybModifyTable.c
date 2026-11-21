@@ -1759,6 +1759,13 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	YBCApplyWriteStmt(delete_stmt, rel);
+
+	/*
+	 * Before the caller deletes the row's index entries, as a full cache
+	 * refresh reached from AcceptInvalidationMessages there would.
+	 */
+	if (yb_test_invalidate_caches_after_catalog_delete)
+		InvalidateSystemCachesExtended(false, false);
 }
 
 void
