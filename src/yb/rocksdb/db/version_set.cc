@@ -2596,6 +2596,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   // queue our request
   ManifestWriter w(mu, column_family_data, edit);
   manifest_writers_.push_back(&w);
+  DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply:Queued");
   while (!w.done && &w != manifest_writers_.front()) {
     w.cv.Wait();
   }
@@ -2826,8 +2827,19 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     prev_log_number_ = edit->prev_log_number_.value_or(0);
     if (flushed_frontier_override) {
       flushed_frontier_ = flushed_frontier_override;
-    } else if (edit->flushed_frontier_) {
-      UpdateFlushedFrontier(edit->flushed_frontier_, edit->frontier_modification_mode_);
+    } else {
+      if (edit->flushed_frontier_) {
+        UpdateFlushedFrontier(edit->flushed_frontier_, edit->frontier_modification_mode_);
+      }
+      // The other edits of the group were written to the MANIFEST as well, and recovery merges the
+      // flushed frontier of every edit, so do the same here. Without the non-decreasing check:
+      // LogAndApplyHelper merged the previous flushed frontier into each edit, so the frontier of
+      // one edit can be below the one of an earlier edit of the same group.
+      for (auto* batch_edit : batch_edits) {
+        if (batch_edit != edit && batch_edit->flushed_frontier_) {
+          UpdateFlushedFrontierNoSanityChecking(batch_edit->flushed_frontier_);
+        }
+      }
     }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,

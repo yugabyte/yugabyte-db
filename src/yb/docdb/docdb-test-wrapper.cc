@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <thread>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
 
@@ -18,7 +20,10 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/yb_partition.h"
 
 DECLARE_bool(ysql_enable_cdr_metadata);
@@ -1853,6 +1858,77 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
   LOG(INFO) << "Checking that flushed frontier is still set to "
             << regular_db_->GetFlushedFrontier()->ToString();
   ASSERT_EQ(*new_user_frontier_ptr, *regular_db_->GetFlushedFrontier());
+}
+
+// The flushed frontier of every version edit written in one MANIFEST group commit must be applied
+// in memory, not only the one of the edit whose writer did the MANIFEST write. Otherwise readers of
+// the flushed frontier see a value below the durable one until a later edit or a restart.
+TEST_P(DocDBTestWrapper, YB_DEBUG_ONLY_TEST(FlushedFrontierOfGroupCommittedEdits)) {
+  ASSERT_OK(DisableCompactions());
+
+  // Hold the first MANIFEST write, so that the two edits issued after it queue behind it and are
+  // then written as one group, by the writer of whichever of them queued first.
+  std::atomic<bool> hold_write{true};
+  std::atomic<int> num_manifest_writes{0};
+  CountDownLatch write_started(1);
+  CountDownLatch release_write(1);
+  SyncPoint::GetInstance()->SetCallBack(
+      "VersionSet::LogAndApply:WriteManifest", [&](void*) {
+        ++num_manifest_writes;
+        if (hold_write.exchange(false)) {
+          write_started.CountDown();
+          release_write.Wait();
+        }
+      });
+  // Counts the edits that queue while the first write is held.
+  constexpr int kNumQueuedEdits = 2;
+  std::atomic<int> num_queued{0};
+  CountDownLatch queued(kNumQueuedEdits);
+  SyncPoint::GetInstance()->SetCallBack(
+      "VersionSet::LogAndApply:Queued", [&](void*) {
+        if (!hold_write && num_queued++ < kNumQueuedEdits) {
+          queued.CountDown();
+        }
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto modify = [this](const ConsensusFrontier& frontier) {
+    EXPECT_OK(regular_db_->ModifyFlushedFrontier(
+        frontier.Clone(), rocksdb::FrontierModificationMode::kUpdate));
+  };
+  ConsensusFrontier held;
+  held.set_op_id({1, 1});
+  ConsensusFrontier with_op_id;
+  with_op_id.set_op_id({1, 10});
+  // The two queued edits set different fields, so whichever of their writers does the write, the
+  // field of the other edit shows whether its frontier was applied.
+  const auto kHybridTime = HybridTime::FromMicros(20);
+  ConsensusFrontier with_hybrid_time;
+  with_hybrid_time.set_hybrid_time(kHybridTime);
+
+  std::thread held_thread([&] { modify(held); });
+  write_started.Wait();
+  std::thread op_id_thread([&] { modify(with_op_id); });
+  std::thread hybrid_time_thread([&] { modify(with_hybrid_time); });
+  // Both edits must be in the queue before the held write is released.
+  queued.Wait();
+  release_write.CountDown();
+  held_thread.join();
+  op_id_thread.join();
+  hybrid_time_thread.join();
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+  // The held write, then one write for both queued edits.
+  ASSERT_EQ(num_manifest_writes, 2);
+
+  for (auto reopened : {false, true}) {
+    if (reopened) {
+      ASSERT_OK(ReopenRocksDB());
+    }
+    const auto frontier = down_cast<ConsensusFrontier&>(*regular_db_->GetFlushedFrontier());
+    ASSERT_EQ(frontier.op_id(), OpId(1, 10)) << "reopened: " << reopened;
+    ASSERT_EQ(frontier.hybrid_time(), kHybridTime) << "reopened: " << reopened;
+  }
 }
 
 // Handy code to analyze some DB.
