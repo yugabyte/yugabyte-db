@@ -314,3 +314,49 @@ explain (costs off)
                      Index Cond: (b <= 300)
 (10 rows)
 
+--
+-- Cost and cost inputs of a Bitmap Table Scan over a partial index.  The index
+-- predicate, a BitmapOr, an IN list and repeated quals are part of the estimate.
+--
+create index i_r_b_e_ge_1k on r (b asc) where e >= 1000;
+create function explain_query_debug_json(query_sql text)
+returns table (explain_line json)
+language plpgsql as
+$$
+begin
+  return query execute 'EXPLAIN (FORMAT json, ANALYZE, DEBUG, DIST, SUMMARY off) ' || query_sql;
+end;
+$$;
+set yb_explain_hide_non_deterministic_fields = off;
+select
+  qid,
+  bts->'Plan Rows' bmts_rows,
+  bts->'Estimated Seeks' bmts_seeks,
+  bts->'Estimated Nexts' bmts_nexts,
+  bts->'Estimated Table Roundtrips' bmts_roundtrips,
+  bts->'Total Cost' bmts_cost,
+  bts->'Plans'->0->'Plan Rows' bmis_rows
+from
+  (values
+    (1, $q$/*+ BitmapScan(r i_r_b_e_ge_1k) */select * from r where b <= 5000 and e >= 1000$q$),
+    (2, $q$/*+ BitmapScan(r i_r_b_e_ge_1k) */select * from r where b <= 5000 and e >= 1100$q$),
+    (3, $q$/*+ BitmapScan(r) */select * from r where (b <= 5000 and e >= 1000) or pk <= 100$q$),
+    (4, $q$/*+ BitmapScan(r i_r_b_e_ge_1k) */select * from r where b in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) and e >= 1000$q$),
+    (5, format($q$/*+ BitmapScan(r i_r_b_e_ge_1k) */select * from r where b in (%1$s) and b in (%1$s) and e >= 1000 and d <= 6000 and d <= 6000$q$,
+               (select string_agg(i::text, ', ') from generate_series(9001, 12000) i)))
+  ) q(qid, query),
+  lateral explain_query_debug_json(query) js,
+  lateral to_json(js.explain_line->0->'Plan') bts
+order by qid;
+ qid | bmts_rows | bmts_seeks | bmts_nexts | bmts_roundtrips | bmts_cost | bmis_rows 
+-----+-----------+------------+------------+-----------------+-----------+-----------
+   1 | 954       | 954        | 954        | 1               | 858.87    | 5000
+   2 | 549       | 954        | 954        | 1               | 636.83    | 5000
+   3 | 1046      | 1047       | 1046       | 2               | 977.30    | 5099
+   4 | 2         | 2          | 2          | 1               | 51.54     | 12
+   5 | 68        | 139        | 139        | 1               | 644.46    | 729
+(5 rows)
+
+reset yb_explain_hide_non_deterministic_fields;
+drop function explain_query_debug_json;
+drop index i_r_b_e_ge_1k;
