@@ -792,8 +792,8 @@ Status CreateCdcChangesTableIfNotExists(
            row_ybctid BYTEA NOT NULL,
            origin_id INT,
            op CHAR(1) NOT NULL,
-           before JSONB,
-           after JSONB,
+           before BYTEA,
+           after BYTEA,
            primary_key_values JSONB,
            PRIMARY KEY (bucket_id HASH, commit_time ASC, transaction_id ASC, record_time ASC,
                         write_id ASC, table_id ASC, row_ybctid ASC)

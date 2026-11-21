@@ -36,6 +36,8 @@ package yb.cdc;
 option java_package = "org.yb.cdc";
 
 import "yb/common/common_net.proto";
+import "yb/common/value.proto";
+import "yb/rpc/lightweight_message.proto";
 
 message ProducerTabletListPB {
   // List of tablet ids, start and end keys for a given producer table.
@@ -89,6 +91,22 @@ message ProducerEntryPB {
   uint32 validated_auto_flags_config_version = 6; // [default = 0] implicit in proto3
   // Whether automatic ddl mode is enabled for all streams in this replication group.
   bool automatic_ddl_mode = 7;
+}
+
+// A column of a before or after image of the CDC table, with its value as the CDC service sends it
+// to a walsender, undecoded.
+message CdcTableColumnPB {
+  optional int32 attnum = 1;
+  // The type OID of the column, 0 when DocDB records none, for example for an enum.
+  optional uint32 type_oid = 2;
+  // Unset for NULL.
+  optional QLValuePB value = 3 [(rpc.lightweight_field).pointer = true];
+}
+
+// The before or after image of a change, as stored in the CDC table: serialized, in a bytea column.
+// A column that the change does not carry is absent from the list.
+message CdcTableImagePB {
+  repeated CdcTableColumnPB columns = 1;
 }
 
 // One CDCSDK stream whose changes the CDC table pollers write into the CDC table of its database.
