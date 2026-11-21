@@ -147,7 +147,6 @@ XClusterPoller::XClusterPoller(
       is_stream_paused_(is_stream_paused),
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   DCHECK_NE(GetLeaderTerm(), yb::OpId::kUnknownTerm);
-  DCHECK(source_client_ || is_stream_paused_);
   if (wait_state_) {
     auto status = InitializeWaitState(ts_uuid);
     if (!status.ok()) {
@@ -379,7 +378,8 @@ void XClusterPoller::DoPoll() {
     return;
   }
 
-  if (!source_client_) {
+  auto* get_changes_client = GetChangesClient();
+  if (!get_changes_client) {
     // Pause-only poller whose stream was resumed. The consumer recreates it with a source client.
     MarkFailed("the stream was resumed and this pause-only poller has no source client");
     return;
@@ -457,29 +457,11 @@ void XClusterPoller::DoPoll() {
   }
 
   cdc::GetChangesRequestPB req;
-  req.set_stream_id(producer_tablet_info_.stream_id.ToString());
-  req.set_tablet_id(producer_tablet_info_.tablet_id);
-  req.set_serve_as_proxy(FLAGS_cdc_consumer_use_proxy_forwarding);
-  // If we finished processing a ChangeMetadataOp, then we need to force update the cdc_state
-  // checkpoint. This ensures that if the poller restarts, it will only go back at most 1 schema
-  // version.
-  // If this poller ever restarts while processed_change_metadata_op_in_last_poll_ is still true,
-  // then the next poller will start at the previous checkpoint (before the ChangeMetadataOp).
-  req.set_force_update_cdc_state_checkpoint(processed_change_metadata_op_in_last_poll_);
-
-  if (FLAGS_enable_xcluster_auto_flag_validation && auto_flags_version_) {
-    req.set_auto_flags_config_version(auto_flags_version_->GetCompatibleVersion());
-  }
-
-  cdc::CDCCheckpointPB checkpoint;
-  *checkpoint.mutable_op_id() = op_id_;
-  if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
-    // Only send non-zero checkpoints in request.
-    // If we don't know the latest checkpoint, then XClusterProducer can use the checkpoint from
-    // cdc_state table.
-    // This is useful in scenarios where a new tablet peer becomes replication leader for a
-    // producer tablet and is not aware of the last checkpoint.
-    *req.mutable_from_checkpoint() = checkpoint;
+  auto prepare_status = PrepareGetChangesRequest(&req);
+  if (!prepare_status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Failed to prepare GetChanges request: " << prepare_status;
+    IncrementPollFailures();
+    return SchedulePoll();
   }
 
   auto handle = rpcs_->Prepare();
@@ -496,7 +478,7 @@ void XClusterPoller::DoPoll() {
   *handle = rpc::xcluster::CreateGetChangesRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       nullptr, /* RemoteTablet: will get this from 'req' */
-      &source_client_->GetYbClient(), &req,
+      get_changes_client, &req,
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
           const Status& status, cdc::GetChangesResponsePB&& resp) {
         RpcCallback(
@@ -508,6 +490,49 @@ void XClusterPoller::DoPoll() {
 
   SET_WAIT_STATUS(XCluster_WaitingForGetChanges);
   SetHandleAndSendRpc(handle);
+}
+
+client::YBClient* XClusterPoller::GetChangesClient() {
+  return source_client_ ? &source_client_->GetYbClient() : nullptr;
+}
+
+Status XClusterPoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
+  req->set_stream_id(producer_tablet_info_.stream_id.ToString());
+  req->set_tablet_id(producer_tablet_info_.tablet_id);
+  req->set_serve_as_proxy(FLAGS_cdc_consumer_use_proxy_forwarding);
+  // If we finished processing a ChangeMetadataOp, then we need to force update the cdc_state
+  // checkpoint. This ensures that if the poller restarts, it will only go back at most 1 schema
+  // version.
+  // If this poller ever restarts while processed_change_metadata_op_in_last_poll_ is still true,
+  // then the next poller will start at the previous checkpoint (before the ChangeMetadataOp).
+  req->set_force_update_cdc_state_checkpoint(processed_change_metadata_op_in_last_poll_);
+
+  if (FLAGS_enable_xcluster_auto_flag_validation && auto_flags_version_) {
+    req->set_auto_flags_config_version(auto_flags_version_->GetCompatibleVersion());
+  }
+
+  cdc::CDCCheckpointPB checkpoint;
+  *checkpoint.mutable_op_id() = op_id_;
+  if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
+    // Only send non-zero checkpoints in request.
+    // If we don't know the latest checkpoint, then XClusterProducer can use the checkpoint from
+    // cdc_state table.
+    // This is useful in scenarios where a new tablet peer becomes replication leader for a
+    // producer tablet and is not aware of the last checkpoint.
+    *req->mutable_from_checkpoint() = checkpoint;
+  }
+  return Status::OK();
+}
+
+void XClusterPoller::ChangesApplied(const XClusterOutputClientResponse& response) {
+  op_id_ = response.last_applied_op_id;
+
+  if (response.get_changes_response->has_safe_hybrid_time()) {
+    // Once all changes have been successfully applied we can update the safe time.
+    UpdateSafeTime(HybridTime(response.get_changes_response->safe_hybrid_time()));
+  }
+
+  processed_change_metadata_op_in_last_poll_ = response.processed_change_metadata_op;
 }
 
 Status XClusterPoller::DoPausePoller() {
@@ -729,16 +754,9 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
     apply_failures_ = static_cast<uint32>(
         std::max(static_cast<int64>(apply_failures_) - 2, static_cast<int64>(0)));
 
-    op_id_ = response.last_applied_op_id;
-
     idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
-    if (response.get_changes_response->has_safe_hybrid_time()) {
-      // Once all changes have been successfully applied we can update the safe time.
-      UpdateSafeTime(HybridTime(response.get_changes_response->safe_hybrid_time()));
-    }
-
-    processed_change_metadata_op_in_last_poll_ = response.processed_change_metadata_op;
+    ChangesApplied(response);
   }
 
   SchedulePoll();

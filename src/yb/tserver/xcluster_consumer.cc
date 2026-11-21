@@ -14,6 +14,7 @@
 #include "yb/tserver/xcluster_consumer.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 
 #include "yb/client/client.h"
@@ -34,10 +35,12 @@
 
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rpc/rpc.h"
 
+#include "yb/tserver/cdc_table_poller.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/tserver/xcluster_output_client.h"
@@ -128,6 +131,20 @@ Result<SchemaVersion> ProcessSchemaVersionsAndGetMinSchemaVersion(
   }
   return min_schema_version;
 }
+
+// The CDC table pollers are kept with the xCluster pollers, which are keyed by replication group.
+const xcluster::ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
+
+// The poller of the sys catalog tablet does not run on the leader of that tablet. It polls for as
+// long as the master names this tserver, which is when its tablet is in the registry.
+constexpr int64_t kCdcTableSysCatalogLeaderTerm = 1;
+int64_t GetCdcTableSysCatalogLeaderTerm(const TabletId&) { return kCdcTableSysCatalogLeaderTerm; }
+
+std::shared_future<client::YBClient*> MakeReadyClientFuture(client::YBClient& client) {
+  std::promise<client::YBClient*> promise;
+  promise.set_value(&client);
+  return promise.get_future().share();
+}
 }  // namespace
 
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
@@ -157,6 +174,8 @@ XClusterConsumer::XClusterConsumer(
       connect_to_pg_func_(std::move(connect_to_pg_func)),
       get_namespace_info_func_(std::move(get_namespace_info_func)),
       xcluster_context_(xcluster_context),
+      cdc_state_table_(
+          std::make_unique<cdc::CDCStateTable>(MakeReadyClientFuture(local_client))),
       ts_uuid_(ts_uuid) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
       FLAGS_apply_changes_max_send_rate_mbps * 1_MB));
@@ -225,6 +244,9 @@ void XClusterConsumer::Shutdown() {
   for (const auto& poller : pollers_to_shutdown) {
     poller->StartShutdown();
   }
+
+  // A CDC table poller reading its checkpoint would otherwise hold up the thread pool shutdown.
+  cdc_state_table_->Shutdown();
 
   if (thread_pool_) {
     thread_pool_->Shutdown();
@@ -321,6 +343,8 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
 
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
+  // The map also holds the CDC table tablets, which the xCluster registry does not carry.
+  AddCdcTableTablets();
   decltype(uuid_master_addrs_) old_uuid_master_addrs;
   uuid_master_addrs_.swap(old_uuid_master_addrs);
 
@@ -375,6 +399,92 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
   xcluster_context_.UpdateTargetNamespacesInAutomaticModeSet(target_namespaces_in_automatic_mode);
   // Wake up the background thread to stop old pollers and start new ones.
   YB_PROFILE(run_thread_cond_.notify_all());
+}
+
+void XClusterConsumer::HandleCdcTableRegistry(const cdc::CdcTablePollerRegistryPB& registry) {
+  std::lock_guard write_lock_master(master_data_mutex_);
+  if (is_shutdown_ || registry.version() == cdc_table_registry_.version()) {
+    return;
+  }
+  LOG_WITH_PREFIX(INFO) << "Updating CDC table poller registry: " << registry.ShortDebugString();
+  cdc_table_registry_ = registry;
+
+  auto& tablet_infos = producer_consumer_tablet_map_from_master_;
+  for (auto it = tablet_infos.begin(); it != tablet_infos.end();) {
+    it = it->is_cdc_table ? tablet_infos.erase(it) : std::next(it);
+  }
+  AddCdcTableTablets();
+
+  // Only now, so that the master resends a registry that we did not get to apply.
+  cdc_table_registry_version_.store(registry.version(), std::memory_order_release);
+  YB_PROFILE(run_thread_cond_.notify_all());
+}
+
+void XClusterConsumer::AddCdcTableTablets() {
+  cdc_table_streams_.clear();
+  for (const auto& stream : cdc_table_registry_.streams()) {
+    auto stream_id = xrepl::StreamId::FromString(stream.stream_id());
+    if (!stream_id.ok()) {
+      LOG_WITH_PREFIX(DFATAL) << "Invalid stream id in CDC table poller registry: "
+                              << stream.stream_id();
+      continue;
+    }
+    cdc_table_streams_[*stream_id] = stream;
+
+    auto add_tablet = [this, &stream, &stream_id](const TabletId& tablet_id)
+                          REQUIRES(master_data_mutex_) {
+      producer_consumer_tablet_map_from_master_.emplace(xcluster::XClusterTabletInfo{
+          .producer_tablet_info =
+              {kCdcTableReplicationGroupId, *stream_id, tablet_id, /* table_id= */ ""},
+          .consumer_tablet_info = {tablet_id, stream.cdc_table_id()},
+          .disable_stream = false,
+          .automatic_ddl_mode = false,
+          .is_cdc_table = true});
+    };
+    for (const auto& tablet_id : stream.tablet_ids()) {
+      add_tablet(tablet_id);
+    }
+    // No tserver hosts the sys catalog tablet, so the master names the one to poll it.
+    if (stream.poll_sys_catalog() &&
+        cdc_table_registry_.sys_catalog_poller_ts_uuid() == ts_uuid_) {
+      add_tablet(master::kSysCatalogTabletId);
+    }
+  }
+}
+
+void XClusterConsumer::StartCdcTablePoller(
+    const xcluster::XClusterTabletInfo& tablet_info, int64_t leader_term) {
+  const auto& producer_tablet_info = tablet_info.producer_tablet_info;
+  const auto* stream = FindOrNull(cdc_table_streams_, producer_tablet_info.stream_id);
+  if (!stream) {
+    LOG_WITH_PREFIX(DFATAL) << "No CDC table stream for " << producer_tablet_info.ToString();
+    return;
+  }
+
+  const bool is_sys_catalog = producer_tablet_info.tablet_id == master::kSysCatalogTabletId;
+  std::function<int64_t(const TabletId&)> get_leader_term = get_leader_term_func_;
+  if (is_sys_catalog) {
+    get_leader_term = GetCdcTableSysCatalogLeaderTerm;
+  }
+  auto poller = std::make_shared<CdcTablePoller>(
+      producer_tablet_info, tablet_info.consumer_tablet_info, stream->namespace_id(),
+      thread_pool_.get(), rpcs_.get(), local_client_, this, leader_term,
+      std::move(get_leader_term), ts_uuid_, *cdc_state_table_);
+  // The sys catalog tablet only returns changes of the catalog tables of the stream.
+  poller->InitCdcTablePoller(
+      rate_limiter_.get(),
+      is_sys_catalog
+          ? std::nullopt
+          : std::make_optional<std::unordered_set<TableId>>(
+                stream->published_table_ids().begin(), stream->published_table_ids().end()));
+
+  LOG_WITH_PREFIX(INFO) << "Start polling tablet " << producer_tablet_info.tablet_id
+                        << " of stream " << producer_tablet_info.stream_id
+                        << " into CDC table " << stream->cdc_table_id();
+  pollers_map_[producer_tablet_info] = poller;
+  // Not added to error_collector_: its errors are reported to the master per xCluster replication
+  // group, and this poller belongs to none.
+  poller->SchedulePoll();
 }
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
@@ -488,13 +598,21 @@ void XClusterConsumer::TriggerPollForNewTablets() {
     const auto& producer_tablet_info = entry.producer_tablet_info;
     const auto& consumer_tablet_info = entry.consumer_tablet_info;
     const auto& replication_group_id = producer_tablet_info.replication_group_id;
+    // A CDC table entry names the polled tablet as the consumer tablet, so its poller runs where
+    // that tablet's leader is. The sys catalog tablet is the exception, see AddCdcTableTablets.
+    const bool is_cdc_table_sys_catalog =
+        entry.is_cdc_table && producer_tablet_info.tablet_id == master::kSysCatalogTabletId;
+    const auto get_leader_term = [this, is_cdc_table_sys_catalog, &consumer_tablet_info] {
+      return is_cdc_table_sys_catalog ? kCdcTableSysCatalogLeaderTerm
+                                      : get_leader_term_func_(consumer_tablet_info.tablet_id);
+    };
     bool start_polling;
     {
       SharedLock read_lock_pollers(pollers_map_mutex_);
       // Iff we are the leader we will get a valid term.
       start_polling =
           !pollers_map_.contains(producer_tablet_info) &&
-          get_leader_term_func_(consumer_tablet_info.tablet_id) != yb::OpId::kUnknownTerm;
+          get_leader_term() != yb::OpId::kUnknownTerm;
 
       // Update the Master Addresses, if altered after setup.
       if (ContainsKey(remote_clients_, replication_group_id) &&
@@ -514,11 +632,15 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         continue;
       }
       std::lock_guard write_lock_pollers(pollers_map_mutex_);
-      const auto leader_term = get_leader_term_func_(consumer_tablet_info.tablet_id);
+      const auto leader_term = get_leader_term();
 
       // Check again, since we unlocked.
       start_polling =
           !pollers_map_.contains(producer_tablet_info) && leader_term != yb::OpId::kUnknownTerm;
+      if (start_polling && entry.is_cdc_table) {
+        StartCdcTablePoller(entry, leader_term);
+        continue;
+      }
       if (start_polling) {
         // This is a new tablet, trigger a poll.
         // See if we need to create a new client connection.

@@ -45,6 +45,7 @@
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "utils/array.h"
+#include "utils/fmgrprotos.h"
 #include "utils/guc.h"
 #include "utils/guc_tables.h"
 #include "utils/lsyscache.h"
@@ -598,6 +599,18 @@ YbgSplitArrayDatum(uint64_t datum,
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 					  (Datum **) result_datum_array, NULL /* nullsp */ , nelems);
+	PG_STATUS_OK();
+}
+
+YbgStatus
+YbgJsonbFromCString(const char *json, char **data, size_t *len)
+{
+	PG_SETUP_ERROR_REPORTING();
+	struct varlena *jsonb = (struct varlena *)
+		DatumGetPointer(DirectFunctionCall1(jsonb_in, CStringGetDatum(json)));
+
+	*data = VARDATA_ANY(jsonb);
+	*len = VARSIZE_ANY_EXHDR(jsonb);
 	PG_STATUS_OK();
 }
 

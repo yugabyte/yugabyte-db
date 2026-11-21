@@ -1400,6 +1400,13 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 bool
 yb_is_publishable_relation(Relation rel)
 {
+	/*
+	 * The CDC table holds the changes of the published tables. Publishing it
+	 * would make its own writes show up as changes.
+	 */
+	if (strcmp(RelationGetRelationName(rel), YB_CDC_CHANGES_TABLE_NAME) == 0)
+		return false;
+
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 			(yb_cdcsdk_stream_tables_without_primary_key ||
 			 YBRelationHasPrimaryKey(rel)));

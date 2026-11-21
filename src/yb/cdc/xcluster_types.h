@@ -68,6 +68,10 @@ struct XClusterTabletInfo {
   bool disable_stream;
   // Whether or not we are using automatic DDL replication for this tablet.
   bool automatic_ddl_mode;
+  // Not xCluster: a tablet of this universe whose CDCSDK changes are written to the CDC table.
+  // consumer_tablet_info then names the polled tablet itself, so that the poller runs on that
+  // tablet's leader, and the CDC table.
+  bool is_cdc_table = false;
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };

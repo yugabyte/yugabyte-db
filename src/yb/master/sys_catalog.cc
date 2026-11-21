@@ -2427,6 +2427,43 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
   return kPgInvalidOid;
 }
 
+Result<SysCatalogTable::PgPublicationTables> SysCatalogTable::ReadPgPublicationTables(
+    PgOid database_oid) {
+  TRACE_EVENT0("master", __func__);
+  PgPublicationTables result;
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+
+  // Calls 'row_func' with the value of 'column_name' for every row of the catalog table.
+  auto scan_column = [this, database_oid](
+                         PgOid table_oid, const std::string& column_name,
+                         const std::function<void(const QLValuePB&)>& row_func) -> Status {
+    auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, ReadHybridTime()));
+    const auto& schema = read_data.schema();
+    const auto col_id = VERIFY_RESULT(schema.ColumnIdByName(column_name)).rep();
+    dockv::ReaderProjection projection(schema, {col_id});
+    auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+    {
+      docdb::DocPgsqlScanSpec spec(schema, /* condition= */ nullptr);
+      RETURN_NOT_OK(iter->Init(spec));
+    }
+    qlexpr::QLTableRow row;
+    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      const auto& col = row.GetValue(col_id);
+      SCHECK_FORMAT(col, Corruption, "Could not read column $0", column_name);
+      row_func(col->get());
+    }
+    return Status::OK();
+  };
+
+  RETURN_NOT_OK(scan_column(kPgPublicationOid, "puballtables", [&result](const QLValuePB& value) {
+    result.all_tables |= value.bool_value();
+  }));
+  RETURN_NOT_OK(scan_column(kPgPublicationRelOid, "prrelid", [&result](const QLValuePB& value) {
+    result.rel_oids.insert(value.uint32_value());
+  }));
+  return result;
+}
+
 // Fetch the oid and relfilenode from pg_class of yb_system database for the given relnamespace
 // and table_name. This function services the request sent by PG backends (connected to dbs other
 // than yb_system) to fetch info for tables in yb_system. There's no reason for these backends to

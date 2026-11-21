@@ -56,6 +56,10 @@ class Messenger;
 class Rpcs;
 }  // namespace rpc
 
+namespace cdc {
+class CDCStateTable;
+}  // namespace cdc
+
 namespace client {
 class XClusterRemoteClientHolder;
 }  // namespace client
@@ -94,6 +98,13 @@ class XClusterConsumer : public XClusterConsumerIf {
   // Return the value stored in cluster_config_version_. Since we are reading an atomic variable,
   // we don't need to hold the mutex.
   int32_t cluster_config_version() const override NO_THREAD_SAFETY_ANALYSIS;
+
+  void HandleCdcTableRegistry(const cdc::CdcTablePollerRegistryPB& registry) override
+      EXCLUDES(master_data_mutex_);
+
+  uint64_t cdc_table_registry_version() const override {
+    return cdc_table_registry_version_.load(std::memory_order_acquire);
+  }
 
   void TEST_IncrementNumSuccessfulWriteRpcs() { TEST_num_successful_write_rpcs_++; }
 
@@ -176,6 +187,13 @@ class XClusterConsumer : public XClusterConsumerIf {
       REQUIRES_SHARED(master_data_mutex_);
 
   void RemoveFromPollersMap(const xcluster::ProducerTabletInfo producer_tablet_info);
+
+  // Adds the tablets of cdc_table_registry_ that this tserver may poll to
+  // producer_consumer_tablet_map_from_master_.
+  void AddCdcTableTablets() REQUIRES(master_data_mutex_);
+
+  void StartCdcTablePoller(const xcluster::XClusterTabletInfo& tablet_info, int64_t leader_term)
+      REQUIRES_SHARED(master_data_mutex_) REQUIRES(pollers_map_mutex_);
 
   void SetRateLimiterSpeed();
 
@@ -285,6 +303,14 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   std::mutex safe_time_callback_mutex_;
   std::vector<std::function<void()>> safe_time_callbacks_ GUARDED_BY(safe_time_callback_mutex_);
+
+  // The streams whose changes are polled into CDC tables, as last sent by the master.
+  cdc::CdcTablePollerRegistryPB cdc_table_registry_ GUARDED_BY(master_data_mutex_);
+  std::unordered_map<xrepl::StreamId, cdc::CdcTableStreamEntryPB> cdc_table_streams_
+      GUARDED_BY(master_data_mutex_);
+  std::atomic<uint64_t> cdc_table_registry_version_{0};
+  // The CDC table pollers read their initial checkpoints from it.
+  std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   const std::string& ts_uuid_;
 };

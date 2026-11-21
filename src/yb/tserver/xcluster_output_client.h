@@ -50,7 +50,24 @@ struct XClusterOutputClientResponse {
 
 class XClusterPoller;
 
-class XClusterOutputClient : public XClusterAsyncExecutor {
+// What a poller needs from the component that applies the changes it has polled.
+class XClusterOutputClientIf {
+ public:
+  virtual ~XClusterOutputClientIf() = default;
+
+  virtual void StartShutdown() = 0;
+  virtual void CompleteShutdown() = 0;
+
+  // Applies the changes asynchronously and then invokes XClusterPoller::ApplyChangesCallback,
+  // whether or not they were applied successfully.
+  virtual void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) = 0;
+
+  virtual void UpdateSchemaVersionMappings(
+      const cdc::XClusterSchemaVersionMap& schema_version_map,
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) = 0;
+};
+
+class XClusterOutputClient : public XClusterAsyncExecutor, public XClusterOutputClientIf {
  public:
   XClusterOutputClient(
       XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
@@ -61,13 +78,11 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   void StartShutdown() override;
   void CompleteShutdown() override;
 
-  // Async call for applying changes. Will invoke the apply_changes_clbk when the changes are
-  // applied, or when any error occurs.
-  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp);
+  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
 
   void UpdateSchemaVersionMappings(
       const cdc::XClusterSchemaVersionMap& schema_version_map,
-      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map);
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) override;
 
  private:
   std::string LogPrefix() const override {

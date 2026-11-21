@@ -2780,6 +2780,14 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     xcluster_consumer->HandleMasterHeartbeatResponse(consumer_registry, cluster_config_version);
   }
 
+  if (resp.has_cdc_table_registry()) {
+    if (!xcluster_consumer) {
+      RETURN_NOT_OK(CreateXClusterConsumer());
+      xcluster_consumer = GetXClusterConsumer();
+    }
+    xcluster_consumer->HandleCdcTableRegistry(resp.cdc_table_registry());
+  }
+
   // Check whether the cluster is a producer of a CDC stream.
   if (resp.has_xcluster_enabled_on_producer() && resp.xcluster_enabled_on_producer()) {
     RETURN_NOT_OK(SetCDCServiceEnabled());
@@ -2836,6 +2844,13 @@ ReplicationInfoPB TabletServer::GetClusterReplicationInfo() const {
 
 int32_t TabletServer::cluster_config_version() const {
   return cluster_config_.version.load(std::memory_order_acquire);
+}
+
+uint64_t TabletServer::cdc_table_registry_version() const {
+  // The version the consumer has applied, not the last one received, so that the master resends
+  // a registry that did not reach the consumer.
+  auto* xcluster_consumer = GetXClusterConsumer();
+  return xcluster_consumer ? xcluster_consumer->cdc_table_registry_version() : 0;
 }
 
 Result<uint32_t> TabletServer::XClusterConfigVersion() const {
