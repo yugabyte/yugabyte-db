@@ -501,6 +501,7 @@ Result<PGConn> SetDefaultTransactionIsolation(
     Result<PGConn> connection, IsolationLevel isolation_level);
 Result<IsolationLevel> EffectiveIsolationLevel(PGConn* conn);
 Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size);
+Status SetDefaultTransactionIsolation(PGConn& conn, IsolationLevel isolation_level);
 
 class PGConnPerf {
  public:

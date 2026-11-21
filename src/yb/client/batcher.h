@@ -31,13 +31,21 @@
 //
 #pragma once
 
-#include <unordered_map>
+#include <atomic>
+#include <optional>
+#include <map>
+#include <memory>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/ash/ash_fwd.h"
 
 #include "yb/client/async_rpc.h"
+#include "yb/client/client_utils.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/request_id_allocator.h"
 #include "yb/client/transaction.h"
@@ -441,6 +449,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   std::optional<TransactionMetadata> background_transaction_meta_ = std::nullopt;
 
   std::optional<TransactionMetadata> object_locking_txn_meta_;
+
+  bool is_interested_in_single_rpc_used_read_time_{false};
+  std::optional<TabletReadTime> used_read_time_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

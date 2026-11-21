@@ -16,6 +16,7 @@
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
+#include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/yb_op.h"
@@ -84,11 +85,7 @@ void YBSession::RestartNonTxnReadPoint(const Restart restart) {
 }
 
 void YBSession::SetReadPoint(const ReadHybridTime& read_time, const TabletId& tablet_id) {
-  ConsistentReadPoint::HybridTimeMap local_limits;
-  if (!tablet_id.empty()) {
-    local_limits.emplace(tablet_id, read_time.local_limit);
-  }
-  read_point()->SetReadTime(read_time, std::move(local_limits));
+  SetReadPointTabletReadTime(*read_point(), read_time, tablet_id);
 }
 
 bool YBSession::IsRestartRequired() {

@@ -14,8 +14,13 @@
 #pragma once
 
 #include <future>
+#include <string>
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -41,6 +46,17 @@ std::vector<internal::RemoteTabletPtr> FilterTabletsByKeyRange(
     const std::vector<internal::RemoteTabletPtr>& all_tablets,
     const std::string& partition_key_start,
     const std::string& partition_key_end);
+
+struct TabletReadTime {
+  TabletId tablet_id;
+  ReadHybridTime value;
+
+  std::string ToString() const;
+};
+
+void SetReadPointTabletReadTime(
+    ConsistentReadPoint& read_point, const ReadHybridTime& read_time, TabletIdView tablet_id);
+void SetReadPointTabletReadTime(ConsistentReadPoint& read_point, const TabletReadTime& read_time);
 
 } // namespace client
 } // namespace yb

@@ -17,6 +17,7 @@
 #include <concepts>
 #include <span>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -353,6 +354,41 @@ Result<PGResultPtr> CheckResult(PGResultPtr src, const std::string& command) {
       Format("Fetch '$0' failed: $1, message: $2", command, status, msg),
       Slice() /* msg2 */,
       PgsqlError(GetSqlState(result))).CloneAndAddErrorCode(AuxilaryMessage(msg));
+}
+
+constexpr std::initializer_list<std::pair<IsolationLevel, std::string_view>> kTxnIsoLevelMapping =
+    {{IsolationLevel::READ_COMMITTED, "READ COMMITTED"},
+     {IsolationLevel::SNAPSHOT_ISOLATION, "REPEATABLE READ"},
+     {IsolationLevel::SERIALIZABLE_ISOLATION, "SERIALIZABLE"}};
+
+Result<std::string_view> ToPgTxnIsolationLevel(IsolationLevel isolation_level) {
+  auto it = std::ranges::find_if(
+      kTxnIsoLevelMapping,
+      [isolation_level](const auto& item) { return item.first == isolation_level; });
+  RSTATUS_DCHECK(
+      it != kTxnIsoLevelMapping.end(), NotFound, "Unknown isolation level $0", isolation_level);
+  return it->second;
+}
+
+Result<IsolationLevel> FromPgTxnIsolationLevel(std::string_view pg_isolation_level) {
+  auto it = std::ranges::find_if(
+      kTxnIsoLevelMapping,
+      [pg_isolation_level](const auto& item) {
+        return boost::iequals(pg_isolation_level, item.second);
+      });
+  RSTATUS_DCHECK(
+      it != kTxnIsoLevelMapping.end(),
+      NotFound, "Unknown pg isolation level $0", pg_isolation_level);
+  return it->first;
+}
+
+Result<std::string> SetDefaultTransactionIsolationQuery(IsolationLevel isolation_level) {
+  RSTATUS_DCHECK(
+      isolation_level != NON_TRANSACTIONAL,
+      InvalidArgument, "default transaction_isolation non-transactional is invalid");
+  return Format(
+      "SET default_transaction_isolation = '$0'",
+      VERIFY_RESULT(ToPgTxnIsolationLevel(isolation_level)));
 }
 
 }  // namespace
@@ -790,18 +826,11 @@ Result<std::string> PGConn::FetchAllAsString(
 }
 
 Status PGConn::StartTransaction(IsolationLevel isolation_level) {
-  switch (isolation_level) {
-    case IsolationLevel::NON_TRANSACTIONAL:
-      return Status::OK();
-    case IsolationLevel::READ_COMMITTED:
-      return Execute("START TRANSACTION ISOLATION LEVEL READ COMMITTED");
-    case IsolationLevel::SNAPSHOT_ISOLATION:
-      return Execute("START TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-    case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return Execute("START TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-  }
-
-  FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
+  return isolation_level == IsolationLevel::NON_TRANSACTIONAL
+      ? Status::OK() :
+      ExecuteFormat(
+          "START TRANSACTION ISOLATION LEVEL $0",
+          VERIFY_RESULT(ToPgTxnIsolationLevel(isolation_level)));
 }
 
 Status PGConn::CommitTransaction() {
@@ -1000,35 +1029,19 @@ Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
   return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
 }
 
+Status SetDefaultTransactionIsolation(PGConn& conn, IsolationLevel isolation_level) {
+  return conn.Execute(VERIFY_RESULT(SetDefaultTransactionIsolationQuery(isolation_level)));
+}
+
 Result<PGConn> SetDefaultTransactionIsolation(
     Result<PGConn> connection, IsolationLevel isolation_level) {
-  switch (isolation_level) {
-    case IsolationLevel::NON_TRANSACTIONAL:
-      return STATUS(InvalidArgument, "default transaction_isolation non-transactional is invalid");
-    case IsolationLevel::READ_COMMITTED:
-      return Execute(std::move(connection), "SET default_transaction_isolation = 'read committed'");
-    case IsolationLevel::SNAPSHOT_ISOLATION:
-      return Execute(
-          std::move(connection), "SET default_transaction_isolation = 'repeatable read'");
-    case IsolationLevel::SERIALIZABLE_ISOLATION:
-      return Execute(std::move(connection), "SET default_transaction_isolation = 'serializable'");
-  }
-
-  FATAL_INVALID_ENUM_VALUE(IsolationLevel, isolation_level);
+  return Execute(
+      std::move(connection), VERIFY_RESULT(SetDefaultTransactionIsolationQuery(isolation_level)));
 }
 
 Result<IsolationLevel> EffectiveIsolationLevel(PGConn* conn) {
-  const std::string effective_isolation = CHECK_RESULT(
-      conn->FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
-
-  if (effective_isolation == "read committed")
-      return IsolationLevel::READ_COMMITTED;
-  if (effective_isolation == "repeatable read")
-      return IsolationLevel::SNAPSHOT_ISOLATION;
-  if (effective_isolation == "serializable")
-      return IsolationLevel::SERIALIZABLE_ISOLATION;
-
-  return STATUS_FORMAT(NotFound, "Unknown effective isolation level: $0", effective_isolation);
+  return FromPgTxnIsolationLevel(VERIFY_RESULT(conn->FetchRow<std::string>(
+      "SELECT yb_get_effective_transaction_isolation_level()")));
 }
 
 Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
