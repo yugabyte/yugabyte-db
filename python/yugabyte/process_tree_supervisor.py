@@ -32,6 +32,9 @@ SIGNAL_TO_NAME = dict(
 )
 
 
+SCAN_INTERVAL_SEC = 1.0
+SIGNAL_CHECK_INTERVAL_SEC = 0.05
+
 g_supervisor = None
 g_stop_requested = False
 g_signal_caught = None
@@ -171,7 +174,11 @@ class ProcessTreeSupervisor():
 
             if ancestor_terminated:
                 break
-            time.sleep(1)
+            # time.sleep is not interrupted by the signal handler (PEP 475), so sleep in short
+            # slices: run-test.sh waits for this script to exit after sending SIGUSR1.
+            scan_deadline_sec = time.time() + SCAN_INTERVAL_SEC
+            while g_signal_caught is None and time.time() < scan_deadline_sec:
+                time.sleep(SIGNAL_CHECK_INTERVAL_SEC)
         self.handle_termination()
 
     def new_process_found(self, process: psutil.Process) -> bool:
