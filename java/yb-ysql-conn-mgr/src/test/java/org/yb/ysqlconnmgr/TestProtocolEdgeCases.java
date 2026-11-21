@@ -15,8 +15,10 @@ package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.fail;
 
+import java.io.ByteArrayOutputStream;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -137,6 +139,48 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
                 .query("SELECT 2").row("2")
                 .run();
         }
+    }
+
+    // ConnMgr stops reading a client after its Sync until the backend's ReadyForQuery. Writing
+    // that Sync to the server must not start the client read again: with the readahead full and
+    // more client bytes on the socket, level-triggered epoll would wake the client coroutine in a
+    // busy loop for as long as the statement before the Sync runs.
+    @Test
+    public void testNoBusyLoopWhilePausedAfterSync() throws Exception {
+        restartClusterWithAdditionalFlags(Collections.emptyMap(),
+            Collections.singletonMap("ysql_conn_mgr_readahead_buffer_size", "64"));
+        assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder(), 4096);
+    }
+
+    // While a client is paused after its Sync and the readahead has room, ConnMgr must keep
+    // reading it, so a client that goes away mid-statement is noticed. Its cleanup then cancels
+    // the statement and returns the only backend to the pool, instead of leaving the statement
+    // running with nobody listening until it ends.
+    @Test
+    public void testDisconnectWhilePausedAfterSync() throws Exception {
+        Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+        // How long the client's cleanup waits for the statement before cancelling it.
+        tserverFlags.put("ysql_conn_mgr_wait_timeout_ms", "2000");
+        restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+
+        try (WireConn conn = rawConnBuilder().connect()) {
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            buf.write(PgWireProtocol.buildParse("SELECT pg_sleep(60)"));
+            buf.write(PgWireProtocol.buildBind());
+            buf.write(PgWireProtocol.buildExecute());
+            buf.write(PgWireProtocol.buildSync());
+            conn.sendRaw(buf.toByteArray());
+            Thread.sleep(1000);
+            conn.closeAbruptly();
+        }
+
+        long startMs = System.currentTimeMillis();
+        try (WireConn conn = rawConnBuilder().socketTimeoutMs(30000).connect()) {
+            conn.createPipeline().query("SELECT 1").row("1").run();
+        }
+        long elapsedMs = System.currentTimeMillis() - startMs;
+        assertLessThan("The pg_sleep(60) of the client that went away was not cancelled",
+            elapsedMs, 20000L);
     }
 
     // A client disconnects mid-Query on a backend holding more prepared statements than
