@@ -2851,6 +2851,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_invalidate_caches_after_catalog_delete", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Invalidates all system caches after each catalog row "
+						 "delete, before its index entries are deleted."),
+			gettext_noop("Used for testing a full catalog cache refresh in the "
+						 "middle of a DDL."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_invalidate_caches_after_catalog_delete,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,

@@ -933,6 +933,12 @@ extern bool yb_test_inval_message_portability;
 extern int	yb_test_delay_after_applying_inval_message_ms;
 
 /*
+ * If true, invalidate all system caches after each catalog row delete, before
+ * its index entries are deleted.
+ */
+extern bool yb_test_invalidate_caches_after_catalog_delete;
+
+/*
  * If > 0, add a delay before calling YBCPgSetTserverCatalogMessageList.
  */
 extern int	yb_test_delay_set_local_tserver_inval_message_ms;
