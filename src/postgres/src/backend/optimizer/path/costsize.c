@@ -11581,7 +11581,10 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
  * an expression of the other rels: run-time pruning then keeps the one
  * partition whose bounds hold the value, or none.  As in
  * match_clause_to_partition_key(), the operator must be strict and take the
- * partitioning collation, and the expression must not be volatile.
+ * partitioning collation, and the expression must not be volatile.  Unlike
+ * match_clause_to_partition_key(), this does not look up the support
+ * function of a comparison across types, which only an operator family that
+ * lacks one fails.
  */
 static bool
 yb_params_select_one_partition(RelOptInfo *rel, List *clauses)
@@ -11667,8 +11670,10 @@ yb_params_select_one_partition(RelOptInfo *rel, List *clauses)
  * clauses of its parameterization select one partition of the table and of
  * every partitioned partition above a subpath
  * (yb_params_select_one_partition).  The executor then prunes the other
- * subpaths at each rescan, so summing them charges a nested loop each of its
- * partitions for each outer row.
+ * subpaths at each rescan, with the pruning steps that create_append_plan()
+ * makes from the same clauses when enable_partition_pruning is on, so
+ * summing the subpaths charges a nested loop every partition of its inner
+ * table for each outer row.
  *
  * Which subpath a rescan runs depends on the values of the parameters, so
  * the subpaths are averaged, each weighted by the tuples of its partition:
@@ -11694,9 +11699,12 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 
 	if (!enable_partition_pruning ||
 		param_info == NULL || param_info->ppi_clauses == NIL ||
-		apath->path.parallel_aware ||
 		YB_PATH_NEEDS_BATCHED_RELS(&apath->path) ||
 		rel->reloptkind != RELOPT_BASEREL || !IS_PARTITIONED_REL(rel))
+		return;
+
+	/* cost_append() costs an ordered or parallel-aware Append its own way. */
+	if (apath->path.pathkeys != NIL || apath->path.parallel_aware)
 		return;
 
 	join_clauses = param_info->ppi_clauses;
@@ -11708,10 +11716,6 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 		Path	   *subpath = (Path *) lfirst(lc);
 		RelOptInfo *subrel = subpath->parent;
 		Index		relid;
-
-		/* cost_append() added a Sort over this subpath. */
-		if (!pathkeys_contained_in(apath->path.pathkeys, subpath->pathkeys))
-			return;
 
 		/*
 		 * The subpath must scan a partition, and the clauses must select one
@@ -11744,7 +11748,8 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 			checked_relids = bms_add_member(checked_relids, relid);
 		}
 
-		total_tuples += subrel->tuples;
+		/* A foreign partition that was never analyzed has -1 tuples. */
+		total_tuples += Max(subrel->tuples, 0);
 	}
 
 	foreach(lc, apath->subpaths)
@@ -11753,7 +11758,7 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 		double		weight;
 
 		weight = (total_tuples > 0)
-			? subpath->parent->tuples / total_tuples
+			? Max(subpath->parent->tuples, 0) / total_tuples
 			: 1.0 / list_length(apath->subpaths);
 
 		rows += weight * subpath->rows;

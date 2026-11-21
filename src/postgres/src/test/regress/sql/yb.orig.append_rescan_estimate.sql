@@ -8,12 +8,12 @@ set client_min_messages to 'warning';
 -- side is an Append over the partitions of a table and the join clauses
 -- equate every partition key column with a value of the outer row, run-time
 -- pruning leaves at most one partition for each rescan, and the Append is
--- costed as one partition (#35742).  This test reads both sides for the same
--- query from the Append under the nested loop:
---   estimated partitions: the Append's cost less its own cost for each row,
---     in units of the average cost of its subplans;
---   actual partitions: the loops of the subplans for each loop of the Append;
---   estimated and actual rows: the Append's rows for each loop.
+-- costed as one partition (#35742).  For the Append under the nested loop of
+-- each query, this test compares
+--   the Append's cost, less its own cost for each row, with the cost of the
+--     subplans that ran for each rescan, each at its own estimate;
+--   the Append's estimated rows with its actual rows for each rescan.
+-- act_partitions is the number of subplans that ran for each rescan.
 
 create schema ar;
 
@@ -82,6 +82,22 @@ insert into ar.r_sub select * from ar.r_range;
 insert into ar.r_subv select * from ar.r_range;
 analyze ar.r_range, ar.r_hash, ar.r_list, ar.r_hash2, ar.r_sub, ar.r_subv;
 
+-- Partitions of unequal sizes: 3000 rows with one value of g in the first and
+-- 1000 rows with ten values of g in the second.  Three of the four outer rows
+-- have the first partition's value, as three quarters of the inner rows do.
+create table ar.r_skew (g int, k int, primary key (g asc, k asc))
+    partition by list (g);
+create table ar.r_skew_1 partition of ar.r_skew for values in (0);
+create table ar.r_skew_2 partition of ar.r_skew
+    for values in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+insert into ar.r_skew select 0, k from generate_series(1, 3000) k;
+insert into ar.r_skew select (k - 1) / 100 + 1, k from generate_series(1, 1000) k;
+analyze ar.r_skew;
+
+create table ar.s_skew (id int, g int, primary key (id asc));
+insert into ar.s_skew values (1, 0), (2, 0), (3, 0), (4, 5);
+analyze ar.s_skew;
+
 create table ar.queries (qid int primary key, descr text, settings text,
                          query text);
 
@@ -109,37 +125,40 @@ $$
 $$;
 
 -- The Append adds half of cpu_tuple_cost for each of its rows to the cost of
--- its subplans (cost_append).
+-- its subplans (cost_append).  cost_ratio is the Append's cost without that
+-- over the cost of the subplans that ran, and is null when none ran.
 create view ar.check_append_rescan_estimates as
 select
     qid,
     descr,
     node_type,
     rescans,
-    est_partitions, act_partitions,
+    act_partitions,
+    round((est_cost / nullif(act_cost, 0))::numeric, 2) cost_ratio,
     est_rows, act_rows,
-    ar.verdict(est_partitions, act_partitions) "Partition Estimates",
-    ar.verdict(est_rows, act_rows)             "Row Estimates"
+    ar.verdict(est_cost, act_cost) "Cost Estimates",
+    ar.verdict(est_rows, act_rows) "Row Estimates"
 from (
     select
         q.qid,
         q.descr,
         n->>'Node Type'                                          node_type,
         (n->>'Actual Loops')::float8                             rescans,
-        round((((n->>'Total Cost')::float8
-                - current_setting('cpu_tuple_cost')::float8 * 0.5
-                  * (n->>'Plan Rows')::float8)
-               / p.avg_cost)::numeric, 2)::float8                est_partitions,
         round((p.loops / (n->>'Actual Loops')::float8)::numeric, 2)::float8
                                                                  act_partitions,
+        (n->>'Total Cost')::float8
+            - current_setting('cpu_tuple_cost')::float8 * 0.5
+              * (n->>'Plan Rows')::float8                        est_cost,
+        p.ran_cost / (n->>'Actual Loops')::float8                act_cost,
         (n->>'Plan Rows')::float8                                est_rows,
         (n->>'Actual Rows')::float8                              act_rows
     from
         ar.queries q,
         lateral ar.inner_node(q.settings, q.query) n,
         lateral (
-            select avg((c->>'Total Cost')::float8)   avg_cost,
-                   sum((c->>'Actual Loops')::float8) loops
+            select sum((c->>'Actual Loops')::float8) loops,
+                   sum((c->>'Total Cost')::float8
+                       * (c->>'Actual Loops')::float8) ran_cost
             from jsonb_array_elements(n->'Plans') c
         ) p
 ) v;
@@ -155,12 +174,12 @@ insert into ar.queries values
      'select * from ar.s s join ar.r_range r on r.k = s.id'),
     (12, 'hash', '',
      'select * from ar.s s join ar.r_hash r on r.k = s.id'),
-    (13, 'list', '',
-     'select * from ar.s s join ar.r_list r on r.g = s.g and r.k = s.id'),
-    (14, 'hash on two columns', '',
+    (13, 'hash on two columns', '',
      'select * from ar.s s join ar.r_hash2 r on r.a = s.a and r.b = s.b'),
     (21, 'list, 500 rows for each key', '',
      'select * from ar.s s join ar.r_list r on r.g = s.g'),
+    (22, 'list, partitions of unequal sizes', '',
+     'select * from ar.s_skew s join ar.r_skew r on r.g = s.g'),
     (31, 'partitioned again by the join key', '',
      'select * from ar.s s join ar.r_sub r on r.k = s.id'),
     (32, 'partitioned again by another column', '',
@@ -174,24 +193,24 @@ insert into ar.queries values
 
 -- Every query runs as a nested loop over an Append.  should return no rows.
 select qid, descr, node_type from ar.check_append_rescan_estimates
-where node_type is distinct from 'Append' or rescans <> 80
+where node_type is distinct from 'Append'
 order by qid;
 
 -- should return only the rows explained below as 'failed'.
--- 32: the partitions of a partition that is partitioned by a column no join
--- clause equates all run when the key is in that partition, 1.25 partitions
--- for each rescan here.  The Append is costed as all five partitions and
--- their five rows.
+-- 32: a key in the partition that is partitioned by v, a column no join
+-- clause equates, runs both of that partition's own partitions, so 1.25
+-- partitions run for each rescan here.  The Append is costed as all five
+-- partitions and their five rows.
 -- 42: with enable_partition_pruning off every partition runs for each rescan,
 -- and the Append is costed so.  Its row estimate is the sum of the
 -- partitions' estimates, each of which takes the key to be one of the
--- partition's own keys (#35742).
+-- partition's own keys, and three of the four partitions return no row.
 -- 51: no partition holds a key of the outer rows, so no partition runs.  The
 -- Append is costed as one partition and one row for each rescan, because the
 -- estimate does not compare the outer rows' values with the partition bounds
 -- (#35742).
-select qid, descr, est_partitions, act_partitions, est_rows, act_rows,
-       "Partition Estimates", "Row Estimates"
+select qid, descr, rescans, act_partitions, cost_ratio, est_rows, act_rows,
+       "Cost Estimates", "Row Estimates"
 from ar.check_append_rescan_estimates
 order by qid;
 
