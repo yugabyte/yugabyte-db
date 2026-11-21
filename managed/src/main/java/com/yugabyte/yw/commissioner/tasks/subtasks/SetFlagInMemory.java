@@ -46,7 +46,8 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
 
-  // When a failed setFlag RPC stops being retried.
+  // Whether a failed setFlag RPC is retried, and until when.
+  private boolean retryRpcFailures;
   private long retryDeadlineMs;
 
   @Inject
@@ -126,6 +127,11 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
     try (YBClientApi client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      // A K8s pod can restart at any time, e.g. when the cluster autoscaler moves it, and comes
+      // back on its own; a VM server that is down usually does not. A best-effort push is often
+      // to a server that is down for good. VM callers that push best effort without ignoreErrors
+      // (master failover) rely on the first failure, so they must not wait either.
+      retryRpcFailures = !taskParams().ignoreErrors && Util.isKubernetesBasedUniverse(universe);
 
       if (!taskParams().updateMasterAddrs) {
         String ysqlPgConfCsv =
@@ -251,11 +257,9 @@ public class SetFlagInMemory extends ServerSubTaskBase {
         setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
         break;
       } catch (Exception e) {
-        // A K8s pod can restart at any time, e.g. when the cluster autoscaler moves it, so retry an
-        // RPC failure until the server is back. A best-effort push is often to a server that is
-        // down for good, so it gets one attempt. A server that answers and refuses the flag is not
-        // retried.
-        if (taskParams().ignoreErrors
+        // A server that answers and refuses the flag is not retried. The deadline is checked only
+        // between attempts, so an attempt that hangs can run one admin operation timeout past it.
+        if (!retryRpcFailures
             || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0
             || System.currentTimeMillis() + RETRY_DELAY.toMillis() >= retryDeadlineMs) {
           throw e;
