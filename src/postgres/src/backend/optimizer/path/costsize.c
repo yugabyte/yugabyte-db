@@ -108,6 +108,7 @@
 #include "catalog/pg_type_d.h"
 #include "commands/defrem.h"
 #include "executor/ybExpr.h"
+#include "optimizer/appendinfo.h"
 #include "optimizer/planner.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
@@ -282,6 +283,7 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 											Cost *transfer_cost);
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
+static bool yb_params_select_one_partition(RelOptInfo *rel, List *clauses);
 
 
 /*
@@ -11567,4 +11569,205 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
 	pfree(rows_scale);
 
 	return result;
+}
+
+/*
+ * yb_params_select_one_partition
+ *	  Whether 'clauses', join clauses on the partitioned 'rel', leave at most
+ *	  one partition of 'rel' for each value of the other rels' expressions.
+ *
+ * That is so when every partition key column has a clause that equates the
+ * column, by an operator of the column's partitioning operator family, with
+ * an expression of the other rels: run-time pruning then keeps the one
+ * partition whose bounds hold the value, or none.  As in
+ * match_clause_to_partition_key(), the operator must be strict and take the
+ * partitioning collation, and the expression must not be volatile.  Unlike
+ * match_clause_to_partition_key(), this does not look up the support
+ * function of a comparison across types, which only an operator family that
+ * lacks one fails.
+ */
+static bool
+yb_params_select_one_partition(RelOptInfo *rel, List *clauses)
+{
+	PartitionScheme part_scheme = rel->part_scheme;
+	int			eq_strategy;
+
+	eq_strategy = (part_scheme->strategy == PARTITION_STRATEGY_HASH)
+		? HTEqualStrategyNumber : BTEqualStrategyNumber;
+
+	for (int i = 0; i < part_scheme->partnatts; i++)
+	{
+		bool		found = false;
+		ListCell   *lc;
+
+		foreach(lc, clauses)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
+			OpExpr	   *op = (OpExpr *) rinfo->clause;
+			Node	   *leftop;
+			Node	   *rightop;
+			Node	   *other;
+			Relids		other_relids;
+			Oid			opno;
+
+			if (rinfo->pseudoconstant || !IsA(op, OpExpr) ||
+				list_length(op->args) != 2)
+				continue;
+
+			leftop = linitial(op->args);
+			if (IsA(leftop, RelabelType))
+				leftop = (Node *) ((RelabelType *) leftop)->arg;
+			rightop = lsecond(op->args);
+			if (IsA(rightop, RelabelType))
+				rightop = (Node *) ((RelabelType *) rightop)->arg;
+
+			if (list_member(rel->partexprs[i], leftop))
+			{
+				other = rightop;
+				other_relids = rinfo->right_relids;
+				opno = op->opno;
+			}
+			else if (list_member(rel->partexprs[i], rightop))
+			{
+				other = leftop;
+				other_relids = rinfo->left_relids;
+				opno = get_commutator(op->opno);
+			}
+			else
+				continue;
+
+			if (!OidIsValid(opno) || !op_strict(opno) ||
+				bms_overlap(other_relids, rel->relids) ||
+				contain_volatile_functions(other))
+				continue;
+
+			if (OidIsValid(part_scheme->partcollation[i]) &&
+				part_scheme->partcollation[i] != op->inputcollid)
+				continue;
+
+			if (get_op_opfamily_strategy(opno, part_scheme->partopfamily[i]) ==
+				eq_strategy)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+			return false;
+	}
+
+	return true;
+}
+
+/*
+ * yb_cost_append_for_one_partition
+ *	  Redo the costs of cost_append() for an Append of which each rescan runs
+ *	  at most one subpath.
+ *
+ * Unlike cost_append(), which sums the subpaths, the Append is charged one
+ * subpath when it scans the partitions of a partitioned table and the join
+ * clauses of its parameterization select one partition of the table and of
+ * every partitioned partition above a subpath
+ * (yb_params_select_one_partition).  The executor then prunes the other
+ * subpaths at each rescan, with the pruning steps that create_append_plan()
+ * makes from the same clauses when enable_partition_pruning is on, so
+ * summing the subpaths charges a nested loop every partition of its inner
+ * table for each outer row.
+ *
+ * Which subpath a rescan runs depends on the values of the parameters, so
+ * the subpaths are averaged, each weighted by the tuples of its partition:
+ * the rescans are assumed to reach the partitions in proportion to their
+ * sizes.  A partition that no rescan reaches is therefore still charged its
+ * share.
+ *
+ * A batched Append is left as cost_append() costs it, because the keys of one
+ * batch can be in several partitions.
+ */
+void
+yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
+{
+	RelOptInfo *rel = apath->path.parent;
+	ParamPathInfo *param_info = apath->path.param_info;
+	List	   *join_clauses;
+	Relids		checked_relids = NULL;
+	double		total_tuples = 0;
+	double		rows = 0;
+	Cost		startup_cost = 0;
+	Cost		total_cost = 0;
+	ListCell   *lc;
+
+	if (!enable_partition_pruning ||
+		param_info == NULL || param_info->ppi_clauses == NIL ||
+		YB_PATH_NEEDS_BATCHED_RELS(&apath->path) ||
+		rel->reloptkind != RELOPT_BASEREL || !IS_PARTITIONED_REL(rel))
+		return;
+
+	/* cost_append() costs an ordered or parallel-aware Append its own way. */
+	if (apath->path.pathkeys != NIL || apath->path.parallel_aware)
+		return;
+
+	join_clauses = param_info->ppi_clauses;
+	if (!yb_params_select_one_partition(rel, join_clauses))
+		return;
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+		RelOptInfo *subrel = subpath->parent;
+		Index		relid;
+
+		/*
+		 * The subpath must scan a partition, and the clauses must select one
+		 * partition of every partitioned table between it and rel.
+		 */
+		if (!IS_SIMPLE_REL(subrel) || subrel->part_scheme != NULL)
+			return;
+		for (relid = subrel->relid;;)
+		{
+			AppendRelInfo *appinfo = root->append_rel_array[relid];
+			RelOptInfo *parent;
+			List	   *clauses;
+
+			if (appinfo == NULL)
+				return;
+			relid = appinfo->parent_relid;
+			if (relid == rel->relid)
+				break;
+			if (bms_is_member(relid, checked_relids))
+				continue;
+
+			parent = find_base_rel(root, relid);
+			if (!IS_PARTITIONED_REL(parent))
+				return;
+			clauses = (List *)
+				adjust_appendrel_attrs_multilevel(root, (Node *) join_clauses,
+												  parent->relids, rel->relids);
+			if (!yb_params_select_one_partition(parent, clauses))
+				return;
+			checked_relids = bms_add_member(checked_relids, relid);
+		}
+
+		/* A foreign partition that was never analyzed has -1 tuples. */
+		total_tuples += Max(subrel->tuples, 0);
+	}
+
+	foreach(lc, apath->subpaths)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+		double		weight;
+
+		weight = (total_tuples > 0)
+			? Max(subpath->parent->tuples, 0) / total_tuples
+			: 1.0 / list_length(apath->subpaths);
+
+		rows += weight * subpath->rows;
+		startup_cost += weight * subpath->startup_cost;
+		total_cost += weight * subpath->total_cost;
+	}
+
+	apath->path.rows = clamp_row_est(rows);
+	apath->path.startup_cost = startup_cost;
+	apath->path.total_cost = total_cost +
+		cpu_tuple_cost * APPEND_CPU_COST_MULTIPLIER * apath->path.rows;
 }

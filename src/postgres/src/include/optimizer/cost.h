@@ -322,5 +322,7 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 extern List *yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel,
 								List *clauses, Relids batchedrelids,
 								List *groups);
+extern void yb_cost_append_for_one_partition(PlannerInfo *root,
+											 AppendPath *apath);
 
 #endif							/* COST_H */

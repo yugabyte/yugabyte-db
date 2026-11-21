@@ -2028,6 +2028,15 @@ create_append_path(PlannerInfo *root,
 	else
 		cost_append(pathnode);
 
+	/*
+	 * YB: cost_append() charges every subpath for each rescan.  Where the
+	 * parameters of the path select one partition, one subpath runs, and each
+	 * of the others would be charged a storage request that is never made.
+	 */
+	if (yb_enable_base_scans_cost_model && root &&
+		list_length(pathnode->subpaths) > 1)
+		yb_cost_append_for_one_partition(root, pathnode);
+
 	/* If the caller provided a row estimate, override the computed value. */
 	if (rows >= 0)
 		pathnode->path.rows = rows;
