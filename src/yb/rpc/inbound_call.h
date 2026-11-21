@@ -174,6 +174,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     return 0;
   }
 
+  // See RpcController::set_allow_local_calls_in_any_thread.
+  bool handle_in_any_thread() const { return handle_in_any_thread_; }
+  void set_handle_in_any_thread(bool value) { handle_in_any_thread_ = value; }
+
   virtual Slice serialized_remote_method() const = 0;
   virtual Slice method_name() const = 0;
 
@@ -297,6 +301,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   RpcMetrics* rpc_metrics_;
   CallProcessedListener* call_processed_listener_;
   std::unique_ptr<CallStateListener> call_state_listener_;
+  bool handle_in_any_thread_ = false;
 
   class InboundCallTask : public ThreadPoolTask {
    public:

@@ -207,7 +207,9 @@ void Proxy::AsyncLocalCall(
       static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall(
           send_metadata ? context_->call_state_listener_factory() : nullptr,
           std::move(buffers_holder));
-  Queue queue(!controller->allow_local_calls_in_curr_thread());
+  const bool in_any_thread = controller->allow_local_calls_in_any_thread();
+  local_call->set_handle_in_any_thread(in_any_thread);
+  Queue queue(!controller->allow_local_calls_in_curr_thread() && !in_any_thread);
   context_->HandleLocal(local_call, queue);
 }
 
