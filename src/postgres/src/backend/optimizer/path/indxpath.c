@@ -5150,6 +5150,18 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		AttrNumber	attnum = index->indexkeys[i];
 		List	   *rinfos = NIL;
 
+		/*
+		 * If there is an existing equality condition on the key, we won't
+		 * derive another condition for it.
+		 */
+		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
+		{
+			/* expr_lc must stay in step with the expression keys */
+			if (attnum == InvalidAttrNumber)
+				expr_lc = lnext(index->indexprs, expr_lc);
+			continue;
+		}
+
 		if (attnum == InvalidAttrNumber)
 		{
 			/* expression index */

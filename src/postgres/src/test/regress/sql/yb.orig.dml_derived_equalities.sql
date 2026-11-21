@@ -56,7 +56,32 @@ PREPARE order_query AS SELECT * FROM orders WHERE user_id = $1 AND order_id = $2
 \set query ':P EXECUTE order_query(100, 2);'
 \i :run_query
 
-DROP TABLE orders;
+-- An equality the query already has on the bucket key is not derived again
+SELECT $$
+:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+$$ AS query \gset
+\i :run_query
+
+SELECT $$
+:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+$$ AS query \gset
+\i :run_query
+
+-- A yb_hash_code condition on a hash key is not an equality on the key, so the
+-- equality on the key is still derived
+CREATE TABLE orders_hash (
+    order_id int,
+    user_id int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(user_id) % 5) STORED,
+    PRIMARY KEY (bucket_id HASH, user_id ASC, order_id ASC)
+);
+INSERT INTO orders_hash SELECT i, 100 + i % 10 FROM generate_series(1, 20) i;
+ANALYZE orders_hash;
+
+\set query ':P SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;'
+\i :run_query
+
+DROP TABLE orders, orders_hash;
 
 -- Tests for joins
 CREATE TABLE users (
@@ -114,6 +139,13 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 -- Condition in ON clause
 \set query ':explain :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND :R;'
 \i :run_query
+
+-- A join equality on the bucket key.  The equality that the join clause on
+-- user_id would derive is not added to the batch.
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND o.bucket_id = yb_hash_code(u.id) % 5;
+
+-- The join equality does not suppress the equality derived from a constant
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.bucket_id = yb_hash_code(u.id) % 5 WHERE o.user_id = 50;
 
 -- Equality conditions in outer joins
 
@@ -363,6 +395,14 @@ INSERT INTO t_mixed_expr VALUES (1, 9), (2, 4);
 ANALYZE t_mixed_expr;
 \set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */'
 \set query ':P :hint SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;'
+\i :run_query
+
+-- An equality the query already has on the first expression column does not
+-- stop the derivation for the second one.
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
+    ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
+\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
 \i :run_query
 
 DROP TABLE t_const_expr;
