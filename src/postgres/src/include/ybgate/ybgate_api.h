@@ -187,6 +187,12 @@ extern YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint
 extern YbgStatus YbgSplitArrayDatum(uint64_t datum, int type, uint64_t **result_datum_array,
 									int *nelems);
 
+/*
+ * Parse 'json' and return the jsonb value in the form DocDB stores it: the varlena payload
+ * without its header. 'data' is allocated in the current memory context.
+ */
+extern YbgStatus YbgJsonbFromCString(const char *json, char **data, size_t *len);
+
 /*-----------------------------------------------------------------------------
  * Relation sampling
  *-----------------------------------------------------------------------------

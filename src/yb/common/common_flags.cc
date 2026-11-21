@@ -145,6 +145,11 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
 DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
     "When set, logical replication with transactional DDL support is enabled.");
 
+DEFINE_test_flag(bool, cdcsdk_enable_cdc_table, false,
+    "POC. When set, creating a replication slot creates the pg_yb_cdc_changes table in the slot's "
+    "database, and pollers on the tservers populate it with the changes of the published tables. "
+    "The walsender cannot consume slots while this is set.");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");
