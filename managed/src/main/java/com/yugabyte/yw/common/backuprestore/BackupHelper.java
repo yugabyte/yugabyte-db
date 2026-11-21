@@ -656,6 +656,7 @@ public class BackupHelper {
       @Nullable UUID customerUUID,
       @Nullable Universe universe,
       ConfigIdentity configIdentity) {
+    federateGcpIamOnAws(configData, configIdentity);
     CloudType bucketCloud = federatedBucketCloud(configData);
     if (bucketCloud == null) {
       return true;
@@ -676,14 +677,8 @@ public class BackupHelper {
       return true;
     }
     if (target == null) {
-      // One deletion works it out while the others sharing it wait, up to the time the check takes,
-      // then reuse it instead of repeating the check.
       synchronized (configIdentity) {
-        if (configIdentity.ownCredentials == null) {
-          // Asked only here, as it can take calls to the bucket's cloud.
-          configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
-        }
-        if (configIdentity.ownCredentials) {
+        if (hasCredentialsOfItsOwn(configData, configIdentity)) {
           return true;
         }
         if (configData instanceof CustomerConfigStorageGCSData
@@ -854,6 +849,46 @@ public class BackupHelper {
   }
 
   /**
+   * {@link #hasCredentialsOfItsOwn(CustomerConfigData)}, asked once per {@code configIdentity}: one
+   * deletion works it out while the others sharing it wait, up to the time the check takes, then
+   * reuse it instead of repeating the check, which can take calls to the bucket's cloud.
+   */
+  private boolean hasCredentialsOfItsOwn(
+      CustomerConfigData configData, ConfigIdentity configIdentity) {
+    synchronized (configIdentity) {
+      if (configIdentity.ownCredentials == null) {
+        configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+      }
+      return configIdentity.ownCredentials;
+    }
+  }
+
+  /**
+   * Has YBA reach the bucket of a GCS config with GCP IAM, but without the federation flag, as it
+   * reaches that of a federated one, when it runs on AWS with no Google credentials of its own:
+   * turns the flag on, in memory only. Such a config is made on a YBA on GCP, which needs no flag
+   * there. Without this, its HA standby on AWS, once promoted, calls GCS with no identity, so
+   * backup deletion and cleanup fail with "Anonymous caller". Only YBA reads the flag, never the DB
+   * nodes. A config that also has a service account key is left as it is, as the flag cannot be
+   * turned on for it either (see CustomerConfigStorageGCSValidator).
+   */
+  private void federateGcpIamOnAws(CustomerConfigData configData, ConfigIdentity configIdentity) {
+    if (!(configData instanceof CustomerConfigStorageGCSData)) {
+      return;
+    }
+    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+    if (!gcs.useGcpIam
+        || gcs.useCrossCloudFederation
+        || StringUtils.isNotBlank(gcs.gcsCredentialsJson)
+        || !canPresentFederatedIdentity(CloudType.gcp)
+        || hasCredentialsOfItsOwn(configData, configIdentity)) {
+      return;
+    }
+    log.debug("YBA runs on AWS with no Google credentials: federating for a GCP IAM GCS config");
+    gcs.useCrossCloudFederation = true;
+  }
+
+  /**
    * Whether the config's IAM credential source has something on this host, which is not on AWS, to
    * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
    * by resolving each source once through the SDK. A source that fails on an error the S3 client's
@@ -956,7 +991,8 @@ public class BackupHelper {
    * before the snapshot existed, then to the customer's providers (see {@link
    * #applyYbaFederatedIdentity}). With YBA on the bucket's cloud the snapshot is ignored and
    * nothing is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS
-   * that means switching it to YBA's IAM role. No-op for a config that is not federated.
+   * that means switching it to YBA's IAM role. No-op for a config that is not federated, except a
+   * GCP IAM GCS config on AWS (see {@link #federateGcpIamOnAws}).
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
@@ -971,6 +1007,7 @@ public class BackupHelper {
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup, ConfigIdentity configIdentity) {
+    federateGcpIamOnAws(configData, configIdentity);
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData

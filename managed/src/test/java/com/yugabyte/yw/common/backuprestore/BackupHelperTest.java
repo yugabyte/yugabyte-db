@@ -1913,10 +1913,14 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals("aud", gcsData.crossCloudFederationAudience);
   }
 
-  /** Use GCP IAM alone is native GCP access: a federation snapshot does not apply to it. */
+  /**
+   * Use GCP IAM alone is native GCP access: a federation snapshot does not apply to it while YBA's
+   * host has Google credentials of its own, even on AWS.
+   */
   @Test
   public void testGcsSnapshotIsNotStampedWithoutFederation() {
     hostCloud(CloudType.aws);
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
     CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
     gcsData.useGcpIam = true;
     gcsData.useCrossCloudFederation = false;
@@ -2002,6 +2006,82 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
 
     assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  private static CustomerConfigStorageGCSData gcpIamGcs() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    return gcsData;
+  }
+
+  /**
+   * A GCP IAM GCS config made on a YBA on GCP, which needs no federation flag there, is used by its
+   * HA standby on AWS once promoted: YBA federates with its providers' entry for GCP instead of
+   * calling GCS with no identity.
+   */
+  @Test
+  public void testGcpIamGcsConfigFederatesForYbaOnAws() {
+    hostCloud(CloudType.aws);
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+    CustomerConfigStorageGCSData gcsData = gcpIamGcs();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
+
+    assertTrue(gcsData.useCrossCloudFederation);
+    assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  /** Deleting such a config's backup takes the entry the backup was made with. */
+  @Test
+  public void testGcpIamGcsBackupDeletionUsesSnapshotOnAws() {
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = gcpIamGcs();
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        gcsData, backupWithSnapshot(GCS_AUDIENCE, null));
+
+    assertTrue(gcsData.useCrossCloudFederation);
+    assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  /**
+   * Left as it is on GCP, where YBA reaches GCS natively; on an AWS host with Google credentials,
+   * which it keeps using; and with a service account key.
+   */
+  @Test
+  public void testGcpIamGcsConfigKeepsItsWayWhereItHasOne() {
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageGCSData onGcp = gcpIamGcs();
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        onGcp, backupWithSnapshot(GCS_AUDIENCE, null));
+    assertFalse(onGcp.useCrossCloudFederation);
+    assertNull(onGcp.crossCloudFederationAudience);
+
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData withKey = gcpIamGcs();
+    withKey.gcsCredentialsJson = "{}";
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(withKey, testCustomer.getUuid(), null));
+    assertFalse(withKey.useCrossCloudFederation);
+    assertNull(withKey.crossCloudFederationAudience);
+
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
+    CustomerConfigStorageGCSData withHostCredentials = gcpIamGcs();
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(
+            withHostCredentials, testCustomer.getUuid(), null));
+    assertFalse(withHostCredentials.useCrossCloudFederation);
+    assertNull(withHostCredentials.crossCloudFederationAudience);
+  }
+
+  /** With no entry anywhere, YBA reports that it has no way to the bucket. */
+  @Test
+  public void testGcpIamGcsConfigWithoutEntryOnAwsIsUnreachable() {
+    hostCloud(CloudType.aws);
+
+    assertFalse(
+        spyBackupHelper.applyYbaFederatedIdentity(gcpIamGcs(), testCustomer.getUuid(), null));
   }
 
   /**

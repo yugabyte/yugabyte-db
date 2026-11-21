@@ -143,6 +143,7 @@ public class AWSUtil implements CloudUtil {
   @Inject WSClient wsClient;
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
+  @Inject HostCloudDetector hostCloudDetector;
 
   public static final String AWS_S3_LOCATION_PREFIX = "s3://";
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
@@ -1030,7 +1031,8 @@ public class AWSUtil implements CloudUtil {
                     .getTemporaryCredentials(s3Data)));
       } catch (Exception e) {
         log.error("Fetching IAM credentials failed: {}", e.getMessage());
-        throw new PlatformServiceException(PRECONDITION_FAILED, e.getMessage());
+        throw new PlatformServiceException(
+            PRECONDITION_FAILED, withIamRoleAdviceOnGcp(e.getMessage()));
       }
     } else {
       String key = s3Data.awsAccessKeyId;
@@ -1759,8 +1761,26 @@ public class AWSUtil implements CloudUtil {
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
-          String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage()));
+          withIamRoleAdviceOnGcp(
+              String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage())));
     }
+  }
+
+  /**
+   * The error of an IAM role config that found no AWS credentials, with the way out on a YBA that
+   * runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on AWS
+   * hands that YBA's own credentials to the DB nodes, and a YBA on GCP has none to hand.
+   */
+  @VisibleForTesting
+  String withIamRoleAdviceOnGcp(String error) {
+    if (hostCloudDetector == null
+        || !hostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp)) {
+      return error;
+    }
+    return error
+        + ". YBA runs on GCP, where an IAM role storage config has no AWS credentials to use."
+        + " Turn on Federated IAM on the storage config, so YBA and the DB nodes reach S3 through"
+        + " the provider's federated IAM entry for aws.";
   }
 
   @Override

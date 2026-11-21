@@ -66,13 +66,7 @@ class AwsStorageConfiguration extends Component {
     } = this.props;
     // Either kind of role-based access means no access keys are entered or stored.
     const credentialsDisabled = iamRoleEnabled || federatedIamEnabled;
-    const hostOptions = getS3IamOptions(
-      ybaHost,
-      isEdited,
-      iamRoleEnabled,
-      federatedIamEnabled,
-      showFederatedIam
-    );
+    const hostOptions = getS3IamOptions(ybaHost, isEdited, iamRoleEnabled, showFederatedIam);
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -127,7 +121,7 @@ class AwsStorageConfiguration extends Component {
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
                 title="Federated IAM"
-                content="For GCP database nodes backing up to S3. Each node exchanges its GCP identity for temporary AWS credentials, so no access keys are stored."
+                content="No access keys are stored. A GCP database node, or a YBA on GCP, exchanges its GCP identity for temporary AWS credentials; an AWS node, or a YBA on AWS, uses its own IAM role, which needs access to the bucket. Works from a YBA on either cloud, as an HA standby on the other cloud needs."
               />
             </Col>
           </Row>

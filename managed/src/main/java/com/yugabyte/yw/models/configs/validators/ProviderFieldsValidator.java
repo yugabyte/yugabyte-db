@@ -22,8 +22,10 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -108,6 +110,18 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
                 target.targetCloud),
             null);
       }
+      // An existing provider keeps a gcp audience it was saved with, so that edits of its other
+      // fields, which an in-use provider still takes, are not refused for it.
+      if (target.targetCloud == CloudType.gcp
+          && !CrossCloudFederationTarget.isValidGcpAudience(target.audience)
+          && !target.audience.equals(savedAudience(provider, CloudType.gcp))) {
+        throwBeanProviderValidatorError(
+            "FEDERATED_IAM_AUDIENCE",
+            "Federated IAM audience for target gcp must name the workload identity pool provider:"
+                + " //iam.googleapis.com/projects/<project-number>/locations/global/"
+                + "workloadIdentityPools/<pool>/providers/<provider>.",
+            null);
+      }
       // Reaching S3 is only possible with a role to assume, so a half-configured entry is an
       // error rather than something to quietly ignore.
       if (target.targetCloud == CloudType.aws
@@ -119,6 +133,27 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
             null);
       }
     }
+  }
+
+  /** The audience the saved provider has for {@code targetCloud}; null for a new provider. */
+  @Nullable
+  private static String savedAudience(Provider provider, CloudType targetCloud) {
+    if (provider.getUuid() == null) {
+      return null;
+    }
+    Optional<Provider> saved = Provider.maybeGet(provider.getUuid());
+    if (saved.isEmpty()) {
+      return null;
+    }
+    CloudInfoInterface info = CloudInfoInterface.get(saved.get());
+    if (info == null) {
+      return null;
+    }
+    return info.getEffectiveFederationTargets().stream()
+        .filter(t -> t != null && t.targetCloud == targetCloud)
+        .map(t -> t.audience)
+        .findFirst()
+        .orElse(null);
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {
