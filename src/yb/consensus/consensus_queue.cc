@@ -589,7 +589,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     } else {
       queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
     }
-    peer->last_sent_committed_idx = request->committed_op_id().index();
+    // Nothing is sent to a peer that needs remote bootstrap.
+    if (!peer->needs_remote_bootstrap) {
+      peer->last_sent_committed_idx = request->committed_op_id().index();
+    }
 
     request->set_caller_term(queue_state_.current_term);
     if (FLAGS_enable_quiescent_tablets) {

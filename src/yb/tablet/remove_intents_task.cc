@@ -46,9 +46,6 @@ void RemoveIntentsTask::Run() {
   RemoveIntentsData data;
   auto status = participant_context_.GetLastReplicatedDataLockFree(&data);
   if (status.ok()) {
-    // The committed op id could precede the APPLY that is still being applied, while the regular DB
-    // writes of that APPLY must be flushed before the removal of its intents.
-    data.op_id.MakeAtLeast(transaction_->GetApplyOpId());
     status = applier_.RemoveIntents(data, reason_, id_);
   }
   LOG_IF_WITH_PREFIX(WARNING, !status.ok())

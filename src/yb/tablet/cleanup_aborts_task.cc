@@ -67,9 +67,7 @@ void CleanupAbortsTask::Run() {
       return;
     }
 
-    // Update now to reflect time on the coordinator
-    // The calls to RequestStatusAt would have updated the local clock of the participant.
-    // Wait for the propagated time to reach the current hybrid time.
+    // RequestStatusAt updated the local clock, so wait for safe time to reach it.
     wait_safe_time_ = participant_context_.Now();
     wait_safe_time_deadline_ = CoarseMonoClock::now() + kMaxTotalSleep;
     VLOG_WITH_PREFIX(1) << "CleanupAbortsTask waiting for applier safe time to reach "

@@ -260,7 +260,7 @@ ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) 
 
 bool MustWaitForPendingApply(
     const RunningTransaction& txn, HybridTime resolve_at, WaitForApply wait_for_apply) {
-  return wait_for_apply && txn.ProcessingApply() && txn.local_commit_time() <= resolve_at;
+  return wait_for_apply && IsApplyingAtOrBefore(txn, resolve_at);
 }
 
 } // namespace

@@ -879,8 +879,17 @@ Status TabletPeer::DoGetLastReplicatedData(RemoveIntentsData* data, LockFreeRead
     return STATUS(IllegalState, "Tablet destroyed");
   }
   // TODO(yyan) : we should use the last replicated op id instead of last committed op id.
-  data->op_id = lock_free_read ? consensus->GetLastCommittedOpIdLockFree()
-                               : consensus->GetLastCommittedOpId();
+  if (lock_free_read) {
+    data->op_id = consensus->GetLastCommittedOpIdLockFree();
+    // The lock-free copy is published after a batch of applied operations, while an APPLY earlier
+    // in the batch could have removed its transaction already. Intents removed after that must not
+    // be stamped below it, otherwise they could be flushed before its rows in regular DB.
+    if (auto* participant = tablet->transaction_participant()) {
+      data->op_id.MakeAtLeast(participant->GetHistoricalMaxOpId());
+    }
+  } else {
+    data->op_id = consensus->GetLastCommittedOpId();
+  }
   data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
   return Status::OK();
 }
