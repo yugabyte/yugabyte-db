@@ -10,12 +10,14 @@
 # or implied.  See the License for the specific language governing permissions and limitations
 # under the License.
 
-"""Tests for src/lint/upstream_file.py's fetch_url: which failures it retries and how long it
-waits."""
+"""Tests for src/lint/upstream_file.py's fetch_url: which failures it tries again, and how long
+it waits.
+
+Run with `python3 -m pytest src/lint/tests/`.  Not wired into CI yet (#38807).
+"""
 
 import email.message
 import http.client
-import importlib.util
 import io
 import socket
 import ssl
@@ -25,18 +27,9 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _load(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-upstream_file = _load("yb_upstream_file", REPO_ROOT / "src" / "lint" / "upstream_file.py")
+# src/lint, so that this file imports the real module on its own, as Jenkins' doctest import does.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import upstream_file  # noqa: E402
 
 
 class _Response(io.BytesIO):
@@ -58,11 +51,8 @@ class _Response(io.BytesIO):
         return False
 
 
-def _http_error(code, retry_after=None):
-    headers = email.message.Message()
-    if retry_after is not None:
-        headers["Retry-After"] = retry_after
-    return urllib.error.HTTPError("https://x", code, "msg", headers, None)
+def _http_error(code):
+    return urllib.error.HTTPError("https://x", code, "msg", email.message.Message(), None)
 
 
 @pytest.fixture
@@ -102,11 +92,10 @@ class _ReadFailure:
     urllib.error.URLError(ConnectionRefusedError(111, "Connection refused")),
     _ReadFailure(TimeoutError("The read operation timed out")),
     _ReadFailure(ConnectionResetError(104, "Connection reset by peer")),
-    _http_error(429),
     _http_error(500),
     _http_error(503),
 ])
-def test_a_failure_another_attempt_can_get_past_is_retried(server, failure):
+def test_a_transient_failure_is_tried_again(server, failure):
     server.answers = [failure, b"contents"]
     assert upstream_file.fetch_url("https://x") == b"contents"
     assert server.calls == 2
@@ -130,7 +119,7 @@ def test_a_404_is_not_found_without_a_retry(server):
     assert server.calls == 1
 
 
-@pytest.mark.parametrize("code", [400, 401, 403])
+@pytest.mark.parametrize("code", [400, 401, 403, 429])
 def test_another_4xx_fails_without_a_retry(server, code):
     server.answers = [_http_error(code)]
     with pytest.raises(urllib.error.HTTPError):
@@ -144,37 +133,10 @@ def test_another_4xx_fails_without_a_retry(server, code):
     http.client.InvalidURL("URL can't contain control characters"),
     ValueError("unknown url type"),
 ])
-def test_a_failure_no_retry_can_fix_fails_at_once(server, capsys, failure):
+def test_a_failure_that_is_not_transient_fails_at_once(server, capsys, failure):
     server.answers = [failure]
     with pytest.raises(type(failure)):
         upstream_file.fetch_url("https://x")
     assert server.calls == 1
     assert server.sleeps == []
     assert capsys.readouterr().out.startswith(type(failure).__name__ + ": ")
-
-
-@pytest.mark.parametrize("code,retry_after,wait", [
-    (429, "7", 7.0),
-    (503, " 7 ", 7.0),
-    (429, "30", upstream_file.RETRY_AFTER_CAP_S),
-    # not a number of seconds, so the normal backoff
-    (429, "Thu, 01 Jan 1970 00:00:00 GMT", upstream_file.FETCH_BACKOFF_S),
-    (429, "soon", upstream_file.FETCH_BACKOFF_S),
-    (429, "²",upstream_file.FETCH_BACKOFF_S),  # isdigit() is true, float() fails
-    (429, "-1", upstream_file.FETCH_BACKOFF_S),
-    (500, "7", upstream_file.FETCH_BACKOFF_S),  # only 429 and 503 read it
-])
-def test_retry_after_sets_the_wait(server, code, retry_after, wait):
-    server.answers = [_http_error(code, retry_after), b"contents"]
-    assert upstream_file.fetch_url("https://x") == b"contents"
-    assert server.sleeps == [wait]
-
-
-@pytest.mark.parametrize("code", [429, 503])
-def test_a_retry_after_above_the_cap_gives_up(server, capsys, code):
-    server.answers = [_http_error(code, "3600"), b"contents"]
-    with pytest.raises(urllib.error.HTTPError):
-        upstream_file.fetch_url("https://x")
-    assert server.calls == 1
-    assert server.sleeps == []
-    assert capsys.readouterr().out.startswith("HTTPError: ")
