@@ -38,7 +38,7 @@ extern "C" {
 #include "utils/fmgrprotos.h" // pg_sequence_last_value
 #include "utils/lsyscache.h"  // get_relname_relid
 /* YB includes */
-#include "fmgr.h"
+#include "storage/lmgr.h" // LockRelationOid
 }
 
 namespace pgduckdb {
@@ -239,16 +239,6 @@ DuckDBManager::Reset() {
  * Upstream reads it via DirectFunctionCall1Coll(), which raises an error when the callee returns
  * SQL NULL.  To read the value without erroring on that NULL, we invoke pg_sequence_last_value()
  * directly through a manually-initialized FunctionCallInfo and then check fcinfo->isnull ourselves.
- *
- * Effect on YB: since pg_sequence_last_value() always returns NULL, this returns 0, so the
- * extensions-table sequence gate (IsExtensionsSeqLessThan) in RefreshConnectionState never trips.
- * That disables the mid-session refresh -- an already-running backend won't pick up extensions-table
- * changes made by another session. It does NOT gate extension loading in general.
- * Initialize() runs LoadExtensions() unconditionally (and InstallExtensions() when
- * autoinstall_known_extensions is on -- the default), and query-time autoloading is independent of
- * this sequence.
- *
- * TODO(#31823): Enforce supporting only the bundled duckdb extensions (json/icu/httpfs) in YB.
  */
 static int64
 YbGetSeqLastValueImpl(Oid table_seq_oid) {
@@ -265,9 +255,27 @@ YbGetSeqLastValueImpl(Oid table_seq_oid) {
 
 int64
 GetSeqLastValue(const char *seq_name) {
+	/* YB: lake_io mode never reads the extensions sequence, see RefreshConnectionState. */
+	Assert(!YbIsLakeIoMode());
 	Oid duckdb_namespace = get_namespace_oid("duckdb", false);
 	Oid table_seq_oid = get_relname_relid(seq_name, duckdb_namespace);
 	return PostgresFunctionGuard(YbGetSeqLastValueImpl, table_seq_oid);
+}
+
+/*
+ * YB: lock duckdb.extensions_table_seq without reading it, as reading it used to. Locking processes
+ * pending catalog invalidations, and a concurrent DROP EXTENSION pg_duckdb waits for this
+ * transaction, so the extension stays in place while secrets are loaded. The sequence is missing
+ * during an --include-yb-metadata restore, which creates the secret SERVERs first; then there is
+ * nothing to lock.
+ */
+static void
+YbLockExtensionsTableSeqImpl() {
+	Oid duckdb_namespace = get_namespace_oid("duckdb", false);
+	Oid table_seq_oid = get_relname_relid("extensions_table_seq", duckdb_namespace);
+	if (OidIsValid(table_seq_oid)) {
+		LockRelationOid(table_seq_oid, AccessShareLock);
+	}
 }
 
 void
@@ -371,11 +379,21 @@ DuckDBManager::RefreshConnectionState(duckdb::ClientContext &context) {
 		                                 duckdb::KeywordHelper::WriteQuoted(duckdb_azure_transport_option_type));
 	}
 
-	const auto extensions_table_last_seq = GetSeqLastValue("extensions_table_seq");
-	if (IsExtensionsSeqLessThan(extensions_table_last_seq)) {
-		LoadExtensions(context);
-		UpdateExtensionsSeq(extensions_table_last_seq);
-	}
+	/*
+	 * YB: lake_io mode loads no extensions from the extensions table, so the sequence is not read.
+	 * This also keeps restores working: an --include-yb-metadata restore creates the secret
+	 * SERVERs, whose validator connects to DuckDB and gets here, before duckdb.extensions_table_seq
+	 * is restored.
+	 */
+	if (YbIsLakeIoMode()) {
+		PostgresFunctionGuard(YbLockExtensionsTableSeqImpl);
+	} else {
+		const auto extensions_table_last_seq = GetSeqLastValue("extensions_table_seq");
+		if (IsExtensionsSeqLessThan(extensions_table_last_seq)) {
+			LoadExtensions(context);
+			UpdateExtensionsSeq(extensions_table_last_seq);
+		}
+	} /* YB: end of the lake_io else */
 
 	if (!secrets_valid) {
 		DropSecrets(context);

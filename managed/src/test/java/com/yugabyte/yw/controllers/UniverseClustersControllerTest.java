@@ -14,7 +14,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -46,6 +49,7 @@ import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -173,6 +177,64 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertBadRequest(
         result,
         "Ysql auth setting should be the same for primary and readonly replica true vs false");
+  }
+
+  @Test
+  @Parameters({"true, true", "true, false", "false, true", "false, false"})
+  public void updateReadOnlyClusterKeepsTheExpectedUniverseVersion(
+      boolean redaction, boolean sendVersion) {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(redaction);
+    Universe universe =
+        ModelFactory.createFromConfig(ModelFactory.awsProvider(customer), "ahaha", "r1-az1-1-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              TestUtils.existingProviderInitializer(
+                      u.getUniverseDetails().getPrimaryCluster().userIntent)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
+            });
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent,
+                universe.getUniverseDetails().getPrimaryCluster().placementInfo));
+    int staleVersion = universe.getVersion();
+    // Another change, such as a gflags upgrade, lands after the edit form loaded the universe.
+    Universe current = Universe.saveDetails(universe.getUniverseUUID(), u -> {});
+    assertNotEquals(staleVersion, current.getVersion());
+
+    UniverseDefinitionTaskParams.Cluster readReplica =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    readReplica.userIntent.numNodes++;
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", Json.newArray().add(Json.toJson(readReplica)));
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.set("nodeDetailsSet", Json.toJson(universe.getUniverseDetails().nodeDetailsSet));
+    if (sendVersion) {
+      bodyJson.put("expectedUniverseVersion", staleVersion);
+    }
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/universes/"
+                + universe.getUniverseUUID()
+                + "/clusters/read_only",
+            authToken,
+            bodyJson);
+    assertOk(result);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> taskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(any(TaskType.class), taskParams.capture());
+    // As with redaction off: the task rejects a stale version, and -1 skips the check.
+    assertEquals(
+        sendVersion ? staleVersion : -1, (int) taskParams.getValue().expectedUniverseVersion);
   }
 
   @Test

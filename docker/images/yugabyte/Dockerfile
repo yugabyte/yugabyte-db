@@ -117,12 +117,15 @@ RUN set -x; \
          alternatives --set python3 /usr/bin/python3.11; \
          alternatives --set python /usr/bin/python3.11; \
     fi \
+    && python3 -m pip install --upgrade pip \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
     && python3 -m pip install --upgrade watchdog \
     && if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
          yum remove --disableplugin=subscription-manager -y python3-pip; \
+       else \
+         rpm -e python3.11-pip; \
        fi \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \

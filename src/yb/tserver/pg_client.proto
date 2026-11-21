@@ -889,9 +889,9 @@ message PgPerformOptionsPB {
     // advertise a saving that does not exist.
     bool completes_connection_prefetch = 6;
 
-    // If a fill is already under way -- another session's anywhere in this key group, or any
-    // session's on this very entry -- answer Incomplete rather than queueing this caller behind
-    // it. The caller then reads the older version this node holds and catches up from there.
+    // If a fill is already under way anywhere in this key group, answer Incomplete rather than
+    // queueing this caller behind it. The caller then reads the older version this node holds
+    // and catches up from there.
     // The wait it replaces is unbounded in the only case that matters: a fill reaching a loaded
     // leader takes as long as the leader needs, and every connection that arrives meanwhile
     // waits with it.
