@@ -98,7 +98,28 @@ handler stored on the indexes, or no local backfill at all when every index's st
 target-applied filter (the source's backfill writes are replicated); otherwise the namespace's
 safe time for a consumer table, or the tablets' safe time. `backfill_completed` then clears the
 indexes' `xcluster_table_info` and, on a source, moves their streams to the end of the WAL, except
-target-applied-filter streams and WAL anchors. Bidirectional index auto-add is not served.
+target-applied-filter streams, WAL anchors and bidirectionally replicated indexes.
+
+### Indexes under bidirectional replication
+
+With `ysql_auto_add_new_index_to_bidirectional_xcluster` (and its `_infra` AutoFlag), an index on
+a YSQL table that is both a source and a target (its colocation parent, if colocated) is created
+on each universe on its own, and the two are synchronized only at the backfill, the one stage that
+reads and writes the whole key range (`bidirectional.rs`):
+
+- As a source, a non-colocated index gets a non-transactional INITIATED stream outside any
+  outbound group, checkpointed at op 0, before it runs (`CreateXClusterStreamForBiDirectionalIndexTask`,
+  from `add_new_table`). A table that also has DB-scoped outbound groups fails the index.
+- As a target, `backfill_decision` comes first
+  (`PrepareAndGetBackfillTimeForBiDirectionalIndex`): with the indexed table's single inbound
+  stream and group, for each index it polls the other universe every 200 ms until its index (same
+  name and schema) is RUNNING and backfilling or done, then, for a non-colocated index, adds that
+  index's one stream to the group and waits for the alter with health checks
+  (`AddBiDirectionalIndexToXClusterTargetTask`). The read time is then now, once the other
+  universe's `WaitForReplicationDrain` says the indexed table's stream has passed now plus three
+  `max_clock_skew_usec`. Everything runs within
+  `add_new_index_to_bidirectional_xcluster_timeout_secs`; a failure ("Failed while preparing index
+  for xCluster") fails the backfill.
 
 ## Failover
 

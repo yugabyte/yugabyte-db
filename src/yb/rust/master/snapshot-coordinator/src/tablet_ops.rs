@@ -183,6 +183,9 @@ impl SnapshotCoordinator {
         let rpc = self.rpc().map_err(OpError::plain)?;
         let lane = self.leader_of(&op.tablet_id).unwrap_or_default();
         let rpc_timeout = (self.options.rpc_timeout)();
+        while (self.options.pause_issuing_tserver_snapshot_requests)() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
         let final_error = std::sync::Mutex::new(None::<OpError>);
         let result = self
             .executor

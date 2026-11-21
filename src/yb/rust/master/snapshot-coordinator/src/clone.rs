@@ -84,6 +84,8 @@ pub struct CloneOptions {
     pub fail_pg_schema: fn() -> bool,
     /// `TEST_fail_clone_tablets`.
     pub fail_tablets: fn() -> bool,
+    /// `TEST_pause_before_enabling_db_connections`.
+    pub pause_before_enabling_db_connections: fn() -> bool,
 }
 
 impl Default for CloneOptions {
@@ -93,6 +95,7 @@ impl Default for CloneOptions {
             pg_schema_rpc_timeout: || Duration::from_secs(600),
             fail_pg_schema: || false,
             fail_tablets: || false,
+            pause_before_enabling_db_connections: || false,
         }
     }
 }
@@ -158,6 +161,8 @@ struct CloneSnapshotInfo {
     /// Tablets running at the clone time that the snapshot does not hold: hidden or split before
     /// it was taken, so they are cloned from their active RocksDB.
     not_snapshotted: HashSet<Vec<u8>>,
+    /// Each cloned table with its tablet count, for the tablet replica limits.
+    tablets_per_table: Vec<(Vec<u8>, usize)>,
 }
 
 impl SnapshotCoordinator {
@@ -359,6 +364,7 @@ impl SnapshotCoordinator {
         let info = self
             .clone_snapshot_info(token, schedule_id, restore_time, deadline)
             .await?;
+        self.check_tablet_limits(&tables, &info.tablets_per_table)?;
         let target = req.target_namespace_name().to_string();
         if req.source_namespace.database_type() != YQLDatabase::YQL_DATABASE_PGSQL {
             return self
@@ -556,9 +562,10 @@ impl SnapshotCoordinator {
         let entry = info.entry.mut_or_insert_default();
         entry.clear_schedule_id();
         entry.clear_previous_snapshot_hybrid_time();
-        info.backup_entries = self
+        let (backup_entries, tablets_per_table) = self
             .backup_entries_as_of(&snapshot_id, &source_id, read_time)
             .await?;
+        info.backup_entries = backup_entries;
         let not_snapshotted = info
             .backup_entries
             .iter()
@@ -569,7 +576,61 @@ impl SnapshotCoordinator {
         Ok(CloneSnapshotInfo {
             info,
             not_snapshotted,
+            tablets_per_table,
         })
+    }
+
+    /// `CheckTabletLimits`: the clone's tablet replicas, each table placed as it is now
+    /// (`GetTableReplicationInfoWithDefault`), within the tablet replica limits of the first
+    /// table's placement, with no registration grace.
+    fn check_tablet_limits(
+        &self,
+        tables: &TableLifecycle,
+        tablets_per_table: &[(Vec<u8>, usize)],
+    ) -> Result<(), MasterErrorPB> {
+        let snapshot = self.catalog.snapshot();
+        let config: yb_proto::pb::catalog_entity_info::SysClusterConfigEntryPB = snapshot
+            .cluster_config()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or_default();
+        let tablespaces = tables.tablespaces();
+        let mut replicas = 0i64;
+        let mut placement_uuid = None;
+        for (table_id, num_tablets) in tablets_per_table {
+            let pb: SysTablesEntryPB = snapshot
+                .get(SysRowEntryType::TABLE, table_id)
+                .and_then(|t| t.parse().ok())
+                .ok_or_else(|| {
+                    failed(
+                        StatusCode::NotFound,
+                        format!(
+                            "Failed to get table info for table {}",
+                            String::from_utf8_lossy(table_id)
+                        ),
+                    )
+                })?;
+            let live = tablespaces
+                .table_replication_info_or_cluster(table_id, &pb, &config)
+                .live_replicas
+                .unwrap_or_default();
+            let per_tablet = if live.num_replicas() > 0 {
+                live.num_replicas()
+            } else {
+                tables.replication_factor()
+            };
+            replicas += *num_tablets as i64 * i64::from(per_tablet);
+            placement_uuid.get_or_insert_with(|| live.placement_uuid().to_vec());
+        }
+        let Some(placement_uuid) = placement_uuid else {
+            return Ok(());
+        };
+        self.ts_manager
+            .can_create_tablet_replicas(
+                replicas,
+                &placement_uuid,
+                &master_ts_manager::placement::blacklist_addresses(&config),
+            )
+            .map_err(|m| failed(StatusCode::InvalidArgument, m))
     }
 
     /// `GetBackupEntriesAsOfTime`: from the sys catalog as of `read_time` in the snapshot's files,
@@ -580,7 +641,7 @@ impl SnapshotCoordinator {
         snapshot_id: &[u8],
         source_id: &[u8],
         read_time: u64,
-    ) -> Result<Vec<BackupRowEntryPB>, MasterErrorPB> {
+    ) -> Result<(Vec<BackupRowEntryPB>, Vec<(Vec<u8>, usize)>), MasterErrorPB> {
         let mut req = ScanSnapshotSysCatalogRequestPB::new();
         req.set_snapshot_id(snapshot_id.to_vec());
         req.set_read_time(read_time);
@@ -676,6 +737,11 @@ impl SnapshotCoordinator {
                 }
             }
         }
+        // Every table found, a colocation parent without children included, as C++ counts them.
+        let tablets_per_table = tables
+            .iter()
+            .map(|(id, (_, tablets))| (id.clone(), tablets.len()))
+            .collect();
         let mut add = |id: &[u8], (pb, mut tablets): (SysTablesEntryPB, Vec<_>)| {
             tablets.sort_by(|a: &(Vec<u8>, SysTabletsEntryPB), b| {
                 a.1.partition
@@ -710,7 +776,7 @@ impl SnapshotCoordinator {
         for (id, t) in tables {
             add(&id, t);
         }
-        Ok(out)
+        Ok((out, tablets_per_table))
     }
 
     /// `ImportSnapshotAndStartTabletsCloning`.
@@ -1139,6 +1205,9 @@ impl SnapshotCoordinator {
             if let Some(e) = r.error.as_ref() {
                 return Err(ts_status(e));
             }
+        }
+        while (self.options.clone.pause_before_enabling_db_connections)() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
         let ts = self
             .closest_live_tserver()

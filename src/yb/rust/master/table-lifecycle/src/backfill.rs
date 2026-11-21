@@ -490,6 +490,14 @@ pub(crate) async fn run(
             time
         }
     };
+    // `DoBackfill` logs it under `--vmodule=backfill_index=1`, which a Rust callsite cannot
+    // read; tests wait for the line.
+    tracing::info!(
+        "Backfill {}: starting backfill with timestamp: {{ physical: {} logical: {} }}",
+        String::from_utf8_lossy(table_id),
+        read_time >> 12,
+        read_time & 0xfff
+    );
     let snapshot = ctx.lifecycle.catalog.snapshot();
     let mut tablets = JoinSet::new();
     for tablet in snapshot.hosting_tablets_of(table_id) {
@@ -1054,6 +1062,13 @@ async fn fail(
     finish(ctx, token, table_id, index_ids, Some(status)).await
 }
 
+/// A test flag's wait; none when it is zero.
+pub(crate) async fn test_sleep(duration: std::time::Duration) {
+    if !duration.is_zero() {
+        tokio::time::sleep(duration).await;
+    }
+}
+
 /// Records the outcome on the index infos, moves their permissions, clears the job and the
 /// tablets' progress.
 async fn finish(
@@ -1068,6 +1083,8 @@ async fn finish(
     } else {
         IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE
     };
+    let slowdown = (ctx.lifecycle.options.slowdown_index_permission_change)();
+    test_sleep(slowdown).await;
     ctx.lifecycle
         .writer
         .mutate(token, |snapshot: &CatalogSnapshot| {
@@ -1148,6 +1165,7 @@ async fn finish(
             Ok((mutation, ()))
         })
         .await?;
+    test_sleep(slowdown).await;
     tracing::info!(
         "Done backfill on table {}: indexes at {perm:?}",
         String::from_utf8_lossy(table_id)
@@ -1163,6 +1181,13 @@ async fn allow_gc_of_delete_markers(
     index_id: &[u8],
     read_time: u64,
 ) -> Result<(), Status> {
+    if (ctx.lifecycle.options.simulate_cannot_enable_compactions)() {
+        tracing::warn!(
+            "Index {}: cannot enable compactions on it (test)",
+            String::from_utf8_lossy(index_id)
+        );
+        return Ok(());
+    }
     loop {
         let snapshot = ctx.lifecycle.catalog.snapshot();
         let Some(state) = snapshot

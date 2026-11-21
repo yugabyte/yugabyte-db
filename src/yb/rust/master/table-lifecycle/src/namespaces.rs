@@ -213,6 +213,20 @@ impl TableLifecycle {
                 resp.set_done(table_resp.done());
                 result?;
             }
+            Some(State::DELETING) | Some(State::DELETED)
+                if namespace
+                    .namespace()
+                    .is_some_and(|n| n.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32) =>
+            {
+                // A create that completed and then failed, so the database is being removed.
+                resp.set_done(true);
+                return Err(error(
+                    Code::INTERNAL_ERROR,
+                    StatusCode::InternalError,
+                    "Namespace Create Failed: The namespace is in process of deletion due to \
+                     internal error.",
+                ));
+            }
             Some(State::RUNNING) | Some(State::DELETING) | Some(State::DELETED) => {
                 resp.set_done(true)
             }
@@ -260,6 +274,18 @@ impl TableLifecycle {
         req: &DeleteNamespaceRequestPB,
     ) -> Result<(), MasterErrorPB> {
         let _names = self.names.lock().await;
+        let mut drop_streams = !(self.options.disable_stream_drop_during_db_drop)();
+        // `DropXReplStreams`' test failure: the database is marked DELETING and its streams are
+        // left as they are, as when C++ fails between the two writes.
+        if drop_streams
+            && crate::ysql::has_live_cdcsdk_streams(&self.catalog.snapshot(), &req.namespace)
+            && self
+                .sync_point_fails("DropXReplStreams::FailBeforeStreamsStateChangesPersisted")
+                .await
+        {
+            tracing::info!("Failing the CDCSDK streams drop of the database for testing");
+            drop_streams = false;
+        }
         self.write(token, deadline, |snapshot| {
             let namespace = find_namespace(snapshot, &req.namespace)?;
             let ns = namespace.namespace().expect("namespace row");
@@ -297,8 +323,13 @@ impl TableLifecycle {
                 .filter(|t| *t != YQLDatabase::YQL_DATABASE_CQL)
             {
                 if db_type == YQLDatabase::YQL_DATABASE_PGSQL {
-                    return crate::ysql::start_database_drop(snapshot, &namespace, req)
-                        .map(|m| (m, ()));
+                    return crate::ysql::start_database_drop(
+                        snapshot,
+                        &namespace,
+                        req,
+                        drop_streams,
+                    )
+                    .map(|m| (m, ()));
                 }
                 return Err(unsupported_database(db_type));
             }

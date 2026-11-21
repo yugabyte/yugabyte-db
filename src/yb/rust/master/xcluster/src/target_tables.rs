@@ -184,6 +184,12 @@ impl XCluster {
             let pb = table_pb(&snapshot, table_id)
                 .ok_or_else(|| status(StatusCode::NotFound, "Table not found"))?;
             let ns = String::from_utf8_lossy(pb.namespace_id()).into_owned();
+            if (self.options.fail_table_create_during_bootstrap)() {
+                return Err(status(
+                    StatusCode::IllegalState,
+                    "FLAGS_TEST_xcluster_fail_table_create_during_bootstrap",
+                ));
+            }
             // A test makes the task hang here (`abandon_task`).
             if self
                 .xrepl

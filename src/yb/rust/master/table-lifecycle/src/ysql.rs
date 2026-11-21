@@ -159,6 +159,13 @@ impl TableLifecycle {
             return reused;
         }
         if req.is_pg_catalog_table() {
+            // `CreateGlobalTransactionStatusTableIfNeededForNewTable`: initdb's transactional
+            // catalog tables need system.transactions, unless it writes the initial snapshot.
+            if req.schema.table_properties.is_transactional()
+                && !(self.options.create_initial_sys_catalog_snapshot)()
+            {
+                self.ensure_transaction_table(token, deadline).await?;
+            }
             return self.create_ysql_sys_table(token, deadline, req, resp).await;
         }
         // `CDCSDKValidateCreateTableRequest`: a rewrite of a table in a CDCSDK stream.
@@ -306,6 +313,9 @@ impl TableLifecycle {
                 ),
             ));
         }
+        if !joining {
+            self.check_tablet_replica_limits(num_tablets, rf, &placement, &config)?;
+        }
         if let Some(e) = prepared.partitions_error.clone().into_option() {
             return Err(e);
         }
@@ -393,6 +403,12 @@ impl TableLifecycle {
                 .mut_or_insert_default()
                 .set_retain_delete_markers(true);
         }
+        if (self.options.create_table_with_empty_pgschema_name)() {
+            table
+                .schema
+                .mut_or_insert_default()
+                .set_DEPRECATED_pgschema_name(String::new());
+        }
         // A DDL transaction's table is rolled back unless the transaction commits.
         if req.transaction.is_some() {
             table.transaction = req.transaction.clone();
@@ -406,6 +422,14 @@ impl TableLifecycle {
             }
         }
 
+        let abort_prefix = req.name().starts_with("test_create_abort_");
+        if abort_prefix && (self.options.abort_create_table)() == 1 {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "TEST: Aborting due to FLAGS_TEST_abort_create_table (case1)",
+            ));
+        }
         let use_parent_table_id = (self.options.use_parent_table_id_field)();
         let table_id = req.table_id().to_vec();
         let created = self
@@ -542,6 +566,18 @@ impl TableLifecycle {
             })
             .await?;
         resp.set_table_id(table_id);
+        if created.is_ok()
+            && abort_prefix
+            && indexed_table_id.is_some()
+            && (self.options.abort_create_table)() == 2
+        {
+            // The index and its indexed table are written; the DDL transaction rolls them back.
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "TEST: Aborting due to FLAGS_TEST_abort_create_table (case2)",
+            ));
+        }
         if created.is_ok() && (self.options.fail_table_creation_at_preparing_state)() {
             return Err(error(
                 Code::UNKNOWN_ERROR,
@@ -1555,6 +1591,11 @@ impl TableLifecycle {
         use yb_proto::pb::master_rust_peer::{
             CopyPgsqlSysTablesRequestPB, CopyPgsqlSysTablesResponsePB, TableRowPB,
         };
+        if (self.options.hang_on_namespace_transition)() {
+            self.sync_point("CatalogManager::ProcessPendingNamespace:Fail")
+                .await;
+            self.hang_on_namespace_transition().await;
+        }
         if sources.is_empty() {
             return self.set_namespace_state(token, id, true).await;
         }
@@ -1638,7 +1679,7 @@ impl TableLifecycle {
     /// interrupted (PREPARING) or that failed: DELETING, so the drop pass removes what was made of
     /// it. PG never committed it, so no client can see or drop it. A live database whose next
     /// major version catalog was being made (`NEXT_VER_PREPARING`) is kept, with that copy
-    /// `NEXT_VER_FAILED`.
+    /// `NEXT_VER_FAILED`. The tombstones of dropped databases are removed.
     pub(crate) async fn fail_interrupted_ysql_databases(
         &self,
         token: &LeaderToken,
@@ -1659,6 +1700,14 @@ impl TableLifecycle {
                     continue;
                 };
                 if hot.database_type != YQLDatabase::YQL_DATABASE_PGSQL as i32 {
+                    continue;
+                }
+                // A DELETED database's row is a tombstone that keeps its id from being reused
+                // until the next leader term, which removes it (`DeleteYsqlDatabaseAsync`).
+                if hot.state == sys_namespace_entry_pb::State::DELETED as i32 {
+                    mutation = mutation
+                        .read(namespace)
+                        .delete(SysRowEntryType::NAMESPACE, &namespace.key.id);
                     continue;
                 }
                 let interrupted = hot.state == sys_namespace_entry_pb::State::FAILED as i32
@@ -1746,6 +1795,27 @@ pub(crate) struct SubTxnRollback {
 /// `kSysCatalogTabletId`.
 const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";
 
+/// Whether the database has a CDCSDK stream that is not being deleted.
+pub(crate) fn has_live_cdcsdk_streams(
+    snapshot: &CatalogSnapshot,
+    ident: &yb_proto::pb::master_types::NamespaceIdentifierPB,
+) -> bool {
+    use yb_proto::pb::catalog_entity_info::{sys_cdcstream_entry_pb, SysCDCStreamEntryPB};
+    let Ok(namespace) = find_namespace(snapshot, ident) else {
+        return false;
+    };
+    snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.namespace_id().as_bytes() == &*namespace.key.id
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+    })
+}
+
 /// `DeleteYsqlDatabase`'s checks and its first write: the namespace DELETING, and its CDCSDK
 /// streams with it. Refused while a snapshot schedule covers the database or one of its tables is
 /// replicated by xCluster.
@@ -1753,6 +1823,7 @@ pub(crate) fn start_database_drop(
     snapshot: &CatalogSnapshot,
     namespace: &std::sync::Arc<master_catalog_entity::Entity>,
     req: &yb_proto::pb::master_ddl::DeleteNamespaceRequestPB,
+    drop_streams: bool,
 ) -> Result<Mutation, MasterErrorPB> {
     use yb_proto::pb::catalog_entity_info::{sys_cdcstream_entry_pb, SysCDCStreamEntryPB};
     let id = &namespace.key.id;
@@ -1796,7 +1867,10 @@ pub(crate) fn start_database_drop(
         .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
     // `DropAllCDCSDKStreams`: the database's streams become DELETING, in the same write; the CDC
     // streams' controller deletes them.
-    for stream in snapshot.iter(SysRowEntryType::CDC_STREAM) {
+    for stream in snapshot
+        .iter(SysRowEntryType::CDC_STREAM)
+        .filter(|_| drop_streams)
+    {
         let Ok(mut pb) = stream.parse::<SysCDCStreamEntryPB>() else {
             continue;
         };
@@ -1904,6 +1978,10 @@ impl TableLifecycle {
         token: &LeaderToken,
         id: &[u8],
     ) -> Result<(), MasterErrorPB> {
+        if (self.options.hang_on_namespace_transition)() {
+            // The next pass drops it.
+            return Ok(());
+        }
         let snapshot = self.catalog.snapshot();
         let Some(namespace) = snapshot.get(SysRowEntryType::NAMESPACE, id) else {
             return Ok(());

@@ -242,6 +242,15 @@ pub struct HandlerOptions {
     pub master_rpc_timeout: fn() -> Duration,
     /// `master_list_raft_peers_check_is_leader`.
     pub list_raft_peers_check_is_leader: fn() -> bool,
+    /// `TEST_timeout_non_leader_master_rpcs_ms`: a leader method on a master that is not a ready
+    /// leader waits this long, at most until its deadline, before it answers.
+    pub timeout_non_leader_master_rpcs: fn() -> Duration,
+    /// `master_inject_latency_on_tablet_lookups_ms`: `GetTabletLocations` and
+    /// `GetTableLocations` wait this long before they answer.
+    pub inject_latency_on_tablet_lookups: fn() -> Duration,
+    /// `emergency_repair_mode`: no leader term ever becomes ready, and the sys-catalog leader
+    /// still reports LEADER so that yb-admin finds it for the host's sys-catalog RPCs.
+    pub emergency_repair_mode: fn() -> bool,
 }
 
 /// Handles every method of one master service.
@@ -480,7 +489,9 @@ impl Shared {
         // A leader that is not ready reports FOLLOWER so clients do not lock onto it.
         let ready = self.leader.as_ref().is_some_and(|l| l.ready().is_ok());
         let role = match self.info.raft_role() {
-            PeerRole::LEADER if !ready => PeerRole::FOLLOWER,
+            PeerRole::LEADER if !ready && !(self.options.emergency_repair_mode)() => {
+                PeerRole::FOLLOWER
+            }
             role => role,
         };
         resp.set_role(role);
@@ -647,6 +658,13 @@ impl Shared {
             }
             drop(ticket);
         });
+    }
+
+    async fn inject_lookup_latency(&self) {
+        let latency = (self.options.inject_latency_on_tablet_lookups)();
+        if !latency.is_zero() {
+            tokio::time::sleep(latency).await;
+        }
     }
 
     /// The readiness gate on a master with leader services: `ScopedLeaderSharedLock`.
@@ -855,6 +873,10 @@ impl Shared {
         let (token, snapshot) = match self.leader_ready(&leader) {
             Ok(ready) => ready,
             Err(error) => {
+                let delay = (self.options.timeout_non_leader_master_rpcs)();
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay.min(call.time_to_deadline())).await;
+                }
                 if method.name == "ListTabletServers" {
                     // C++ sets master_uuid before the leader check.
                     let mut resp = ListTabletServersResponsePB::new();
@@ -1097,6 +1119,7 @@ impl Shared {
                 GetTabletLocationsRequestPB,
                 GetTabletLocationsResponsePB,
                 |req, resp| {
+                    self.inject_lookup_latency().await;
                     let masters = self.info.committed_consensus_state().ok();
                     leader.get_tablet_locations(&snapshot, masters.as_ref(), &req, &mut resp);
                     Ok(())
@@ -1119,6 +1142,7 @@ impl Shared {
                 GetTableLocationsRequestPB,
                 GetTableLocationsResponsePB,
                 |req, resp| {
+                    self.inject_lookup_latency().await;
                     let masters = self.info.committed_consensus_state().ok();
                     leader.get_table_locations(&snapshot, masters.as_ref(), &req, &mut resp)
                 }
@@ -2161,7 +2185,10 @@ impl Shared {
             "IsYsqlDdlVerificationDone" => serve_ddl!(
                 IsYsqlDdlVerificationDoneRequestPB,
                 IsYsqlDdlVerificationDoneResponsePB,
-                |req, resp| tables.is_ysql_ddl_verification_done(&snapshot, &req, &mut resp)
+                |req, resp| {
+                    tables.before_is_ysql_ddl_verification_done().await;
+                    tables.is_ysql_ddl_verification_done(&snapshot, &req, &mut resp)
+                }
             ),
             "ReservePgsqlOids" => serve_ddl!(
                 ReservePgsqlOidsRequestPB,

@@ -65,8 +65,9 @@ table-lifecycle and the split manager call:
 
 Each controller pass also runs `CleanupHiddenObjects`: a hidden tablet is deleted once no live
 schedule that retained it can restore to before it was hidden and no snapshot holds it; a hidden
-table whose own tablets are all deleted becomes DELETED; a hidden colocated table is removed from
-its hosting tablets (`RemoveTableFromTablet`) and then DELETED.
+table whose own tablets are all deleted becomes DELETED; a hidden colocated table or vector index
+is removed (`RemoveTableFromTablet`) from each hosting tablet nothing retains, hidden split parents
+included, and becomes DELETED once no tablet retains it.
 
 ## PITR on the Rust leader
 
@@ -101,8 +102,10 @@ tserver's metacache for the new database and enables connections to it (RESTORED
 and YCQL is COMPLETE. A failure after the row is written marks the clone ABORTED.
 
 The tablets and snapshots a clone needs between steps are kept for the term only; a clone not
-done when its term ends is marked ABORTED by the next leader, as C++ aborts it on load. Not
-ported: `CheckTabletLimits` (the tablet replica limits are not enforced on Rust masters).
+done when its term ends is marked ABORTED by the next leader, as C++ aborts it on load. Before
+anything is cloned, `CheckTabletLimits` holds the clone's tablets (each table's active tablets as
+of the clone time, placed as the table is now) to the tablet replica limits, without the
+registration grace table creation has.
 
 ## Host calls
 

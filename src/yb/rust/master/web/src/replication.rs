@@ -12,8 +12,8 @@
 
 //! `/api/v1/tablet-replication` and `/api/v1/tablet-under-replication`.
 
+use master_catalog_state::is_inactive_state;
 use master_tablet_locations::LeaderlessCheck;
-use yb_proto::pb::catalog_entity_info::sys_tablets_entry_pb;
 use yb_proto::pb::common_net::{CloudInfoPB, PlacementInfoPB, ReplicationInfoPB};
 use yb_proto::pb::master_types::SysRowEntryType;
 use yb_proto::pb::tablet_types::RaftGroupStatePB;
@@ -50,10 +50,8 @@ pub(crate) fn leaderless_tablets(view: &View) -> Vec<(Vec<u8>, Vec<u8>, String)>
         let tablets: Vec<_> = table
             .tablets(snapshot)
             .into_iter()
-            .filter(|t| {
-                t.tablet()
-                    .is_some_and(|h| h.state != sys_tablets_entry_pb::State::DELETED as i32)
-            })
+            // `TabletInfo::is_deleted`: replaced tablets too.
+            .filter(|t| t.tablet().is_some_and(|h| !is_inactive_state(h.state)))
             .collect();
         let ids = tablets.iter().map(|t| &*t.key.id);
         for (tablet_id, gone) in view.locations.leaderless(ids, &check) {

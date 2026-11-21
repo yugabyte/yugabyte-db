@@ -137,7 +137,15 @@ impl XCluster {
             .map(|t| t.key.id.to_vec())
             .collect();
         let mut result = Ok(());
+        let skipped_tablet = (self.options.skip_insert_packed_schema_for_tablet)();
         for tablet in tablets {
+            if !skipped_tablet.is_empty() && tablet == skipped_tablet.as_bytes() {
+                tracing::info!(
+                    "Skipping InsertPackedSchemaForXClusterTarget for tablet {skipped_tablet} due \
+                     to FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id"
+                );
+                continue;
+            }
             let mut req = ChangeMetadataRequestPB::new();
             req.set_schema_version(pb.version());
             req.set_tablet_id(tablet.clone());
@@ -783,8 +791,8 @@ impl XCluster {
     /// `ClearXClusterFieldsAfterYsqlDDL`: the table's `xcluster_table_info` goes (an index keeps
     /// its backfill time until its backfill succeeds), and for a colocated table so do its
     /// historical packings in the inbound group (`CleanupColocatedTableHistoricalSchemaPackings`).
-    /// C++ also marks the table's WAL anchor stream for deletion here; WAL anchors on a target
-    /// are not handled yet.
+    /// The table is marked for its source's WAL anchor stream to be deleted, in the same write
+    /// that commits its DDL; a colocated table shares its parent's stream and has no anchor.
     pub(crate) fn clear_after_ddl(
         &self,
         snapshot: &CatalogSnapshot,
@@ -828,6 +836,10 @@ impl XCluster {
                 break;
             }
         }
+        let source_table_id = table
+            .xcluster_table_info
+            .xcluster_source_table_id()
+            .to_vec();
         let info = table.xcluster_table_info.mut_or_insert_default();
         if !table.index_info.indexed_table_id().is_empty()
             && info.has_xcluster_backfill_hybrid_time()
@@ -836,6 +848,9 @@ impl XCluster {
             info.xcluster_colocated_old_schema_packings.clear();
         } else {
             table.xcluster_table_info = protobuf::MessageField::none();
+        }
+        if !source_table_id.is_empty() && (self.options.wal_anchor_streams)() && !secondary {
+            table.set_xcluster_pending_wal_anchor_deletion_source_table_id(source_table_id);
         }
         Ok(mutation)
     }

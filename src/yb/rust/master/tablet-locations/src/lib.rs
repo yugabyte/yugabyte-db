@@ -176,6 +176,8 @@ pub struct TabletLocations {
     /// When the leader last heard about each tablet, for the location stream's pacing.
     updated_at: Mutex<Option<Instant>>,
     leases: leaderless::LeaderLeases,
+    /// Tablets whose latest report named no leader. Leader-side only: not in the location stream.
+    reported_leaderless: Mutex<HashSet<EntityId>>,
 }
 
 impl Default for TabletLocations {
@@ -187,6 +189,7 @@ impl Default for TabletLocations {
             changed: watch::channel(0).0,
             updated_at: Mutex::new(None),
             leases: leaderless::LeaderLeases::new(SHARDS),
+            reported_leaderless: Mutex::default(),
         }
     }
 }
@@ -361,6 +364,7 @@ impl TabletLocations {
             old.is_some()
         };
         self.leases.forget(Self::shard_index(tablet_id), tablet_id);
+        self.reported_leaderless.lock().unwrap().remove(tablet_id);
         if removed {
             self.mark_dirty(tablet_id);
         }
@@ -375,7 +379,41 @@ impl TabletLocations {
         self.loads.lock().unwrap().clear();
         drop(shards);
         self.leases.clear();
+        self.reported_leaderless.lock().unwrap().clear();
         self.changed.send_modify(|v| *v += 1);
+    }
+
+    /// Records whether the tablet's latest report named a leader. A report without one is what
+    /// starts a hinted election (C++ `StartElectionIfReady`), even while these locations still
+    /// name an older leader: a split child's first reports carry its parent's leader.
+    pub fn record_reported_leader(&self, tablet_id: &[u8], has_leader: bool) {
+        let became_leaderless = {
+            let mut leaderless = self.reported_leaderless.lock().unwrap();
+            if has_leader {
+                leaderless.remove(tablet_id);
+                false
+            } else {
+                leaderless.insert(tablet_id.into())
+            }
+        };
+        if became_leaderless {
+            self.changed.send_modify(|v| *v += 1);
+        }
+    }
+
+    /// Whether the tablet's latest report named no leader.
+    pub fn reported_leaderless(&self, tablet_id: &[u8]) -> bool {
+        self.reported_leaderless.lock().unwrap().contains(tablet_id)
+    }
+
+    /// The tablets whose latest report named no leader.
+    pub fn reported_leaderless_tablets(&self) -> Vec<EntityId> {
+        self.reported_leaderless
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect()
     }
 
     /// A new leader: everything is warm but unconfirmed until reported in this term.
@@ -775,5 +813,22 @@ mod tests {
         // A removed tablet forgets its lease.
         locations.remove(b"t1");
         assert_eq!(gone_at(later(60)), Some(Duration::from_secs(60)));
+    }
+
+    /// The tablets the assigner hints an election for: those whose latest report named no leader.
+    #[test]
+    fn leaderless_reports_are_listed_until_a_leader_is_reported() {
+        let locations = TabletLocations::default();
+        locations.record_reported_leader(b"t1", false);
+        locations.record_reported_leader(b"t2", false);
+        locations.record_reported_leader(b"t2", true);
+        let ids: Vec<Vec<u8>> = locations
+            .reported_leaderless_tablets()
+            .iter()
+            .map(|id| id.to_vec())
+            .collect();
+        assert_eq!(ids, vec![b"t1".to_vec()]);
+        locations.remove(b"t1");
+        assert!(locations.reported_leaderless_tablets().is_empty());
     }
 }

@@ -15,7 +15,7 @@
 //! replicated. On a source, an index's streams move past its backfill once it is done
 //! (`MarkIndexBackfillCompleted`), so the target's own backfill is not applied twice.
 //!
-//! The bidirectional path (`ysql_auto_add_new_index_to_bi_directional_xcluster`) is not served.
+//! An index on a bidirectionally replicated table takes its time from `bidirectional`.
 
 use master_catalog_state::Mutation;
 use master_table_lifecycle::BackfillDecision;
@@ -28,7 +28,7 @@ use crate::{status, XCluster};
 
 impl XCluster {
     /// `TryGetXClusterInfoForIndexBackfill`.
-    pub(crate) fn backfill_decision(
+    pub(crate) async fn backfill_decision(
         &self,
         index_ids: &[Vec<u8>],
         indexed_table_id: &[u8],
@@ -36,6 +36,27 @@ impl XCluster {
         let snapshot = self.catalog.snapshot();
         let indexed = table_pb(&snapshot, indexed_table_id)
             .ok_or_else(|| status(StatusCode::NotFound, "Indexed table not found"))?;
+        if self.should_auto_add_index_to_bidirectional(&snapshot, indexed_table_id, &indexed) {
+            let replicated = if indexed.colocated() {
+                indexed.parent_table_id()
+            } else {
+                indexed_table_id
+            };
+            let ht = self
+                .prepare_bidirectional_index_backfill(
+                    index_ids,
+                    &String::from_utf8_lossy(replicated),
+                )
+                .await
+                .map_err(|s| {
+                    status(
+                        s.code,
+                        format!("Failed while preparing index for xCluster: {}", s.message),
+                    )
+                })?;
+            tracing::info!("Using {ht} as the backfill read time");
+            return Ok(BackfillDecision::RunLocalAt(ht));
+        }
         let ns = String::from_utf8_lossy(indexed.namespace_id()).into_owned();
         let indexed_id = String::from_utf8_lossy(indexed_table_id).into_owned();
         // The target's automatic mode (`XClusterTargetManager::IsNamespaceInAutomaticDDLMode`): a
@@ -251,7 +272,7 @@ impl XCluster {
     }
 
     /// `IsTableBiDirectionallyReplicated`: the table is both a source and a target.
-    fn is_table_bidirectionally_replicated(
+    pub(crate) fn is_table_bidirectionally_replicated(
         &self,
         snapshot: &master_catalog_state::CatalogSnapshot,
         table_id: &[u8],

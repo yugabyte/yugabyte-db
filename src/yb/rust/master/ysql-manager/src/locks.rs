@@ -84,17 +84,30 @@ fn ddl_verification_in_progress(snapshot: &CatalogSnapshot, txn_id: &[u8]) -> bo
     })
 }
 
+/// An optional lease epoch as C++ formats a `std::optional` in the mismatch error.
+fn format_epoch(epoch: Option<u64>) -> String {
+    epoch.map_or_else(|| "<null>".to_string(), |e| e.to_string())
+}
+
 /// Flags, read when used.
 #[derive(Clone, Copy, Debug)]
 pub struct LockOptions {
     /// `master_ts_rpc_timeout_ms`: one RPC to a tserver.
     pub rpc_timeout: fn() -> Duration,
+    /// `TEST_skip_launch_release_request`: a release is persisted as in progress and not sent,
+    /// so only a new leader's relaunch finishes it.
+    pub skip_launch_release_request: fn() -> bool,
+    /// `TEST_allow_unknown_txn_release_request`: a release by transaction id alone proceeds
+    /// without a host when the transaction is not in the host session map.
+    pub allow_unknown_txn_release_request: fn() -> bool,
 }
 
 impl Default for LockOptions {
     fn default() -> LockOptions {
         LockOptions {
             rpc_timeout: || Duration::from_secs(30),
+            skip_launch_release_request: || false,
+            allow_unknown_txn_release_request: || false,
         }
     }
 }
@@ -406,8 +419,9 @@ impl ObjectLocks {
                 StatusCode::InvalidArgument,
                 format!(
                     "Requestor has a lease epoch of {} but the latest valid lease epoch for this \
-                     tserver is {latest:?}",
-                    req.lease_epoch()
+                     tserver is {}",
+                    req.lease_epoch(),
+                    format_epoch(latest)
                 ),
             ));
         }
@@ -534,15 +548,25 @@ impl ObjectLocks {
     ) -> Result<tokio::task::JoinHandle<Result<(), Status>>, Status> {
         if req.session_host_uuid().is_empty() {
             // Released through yb-admin by transaction id alone (`PopulateHostInfo`).
-            let hosts = self.txn_hosts.lock().unwrap();
-            let (host, epoch) = hosts.get(req.txn_id()).ok_or_else(|| {
-                Status::new(
-                    StatusCode::NotFound,
-                    "Transaction not found in host session map",
-                )
-            })?;
-            req.set_session_host_uuid(host.clone());
-            req.set_lease_epoch(*epoch);
+            let host = self.txn_hosts.lock().unwrap().get(req.txn_id()).cloned();
+            match host {
+                Some((host, epoch)) => {
+                    req.set_session_host_uuid(host);
+                    req.set_lease_epoch(epoch);
+                }
+                None if (self.options.allow_unknown_txn_release_request)() => {
+                    tracing::info!(
+                        "Release is request for an unknown txn {}. But, we will still proceed",
+                        txn_id_string(req.txn_id())?
+                    );
+                }
+                None => {
+                    return Err(Status::new(
+                        StatusCode::NotFound,
+                        "Transaction not found in host session map",
+                    ))
+                }
+            }
         }
         txn_id_string(req.txn_id())?;
         self.check_leader(token)?;
@@ -564,6 +588,9 @@ impl ObjectLocks {
                 Ok((upsert_entry(snapshot, &host, &entry)?, ()))
             })
             .await?;
+        if (self.options.skip_launch_release_request)() {
+            return Ok(tokio::spawn(async { Ok(()) }));
+        }
         let locks = self.clone();
         let token = *token;
         Ok(tokio::spawn(async move {
@@ -656,8 +683,9 @@ impl ObjectLocks {
                 StatusCode::InvalidArgument,
                 format!(
                     "Requestor has a lease epoch of {} but the latest valid lease epoch for this \
-                     tserver is {latest:?}",
-                    master_req.lease_epoch()
+                     tserver is {}",
+                    master_req.lease_epoch(),
+                    format_epoch(latest)
                 ),
             ));
         }

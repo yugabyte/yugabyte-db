@@ -549,6 +549,10 @@ mod locks {
     }
 
     async fn harness(rows: Vec<RowChange>) -> Harness {
+        harness_with(rows, LockOptions::default()).await
+    }
+
+    async fn harness_with(rows: Vec<RowChange>, options: LockOptions) -> Harness {
         let mut all = vec![tserver("ts1"), tserver("ts2")];
         all.extend(rows);
         let (fake, events) = FakeSysCatalog::new();
@@ -579,7 +583,7 @@ mod locks {
             ts_manager,
             local.clone(),
             TsRpcExecutor::new(|_| 100),
-            LockOptions::default(),
+            options,
         );
         let sent: Sent = Arc::default();
         let recorded = sent.clone();
@@ -726,6 +730,40 @@ mod locks {
             .await
             .unwrap();
         assert!(entry_of(&h, "ts1").lease_epochs.is_empty());
+    }
+
+    /// A release by the id of a transaction the master does not know fails, unless
+    /// `TEST_allow_unknown_txn_release_request` lets it go out with no host.
+    #[tokio::test]
+    async fn an_unknown_transactions_release_needs_the_test_flag() {
+        let mut req = ReleaseObjectLocksGlobalRequestPB::new();
+        req.set_txn_id(tests_txn_bytes(TXN));
+        req.set_wait_for_completion(true);
+        let h = harness(vec![lock_row("ts1", true, 3, &[])]).await;
+        let e = h
+            .locks
+            .release_global(&h.token, &req, deadline())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, StatusCode::NotFound);
+        assert!(h.sent.lock().unwrap().is_empty());
+
+        let h = harness_with(
+            vec![lock_row("ts1", true, 3, &[])],
+            LockOptions {
+                allow_unknown_txn_release_request: || true,
+                ..LockOptions::default()
+            },
+        )
+        .await;
+        h.locks
+            .release_global(&h.token, &req, deadline())
+            .await
+            .unwrap();
+        let sent = h.sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1);
+        let released = ReleaseObjectLockRequestPB::parse_from_bytes(&sent[0].2).unwrap();
+        assert!(released.session_host_uuid().is_empty());
     }
 
     /// The locks of a lease that ended are released by the master, and floors keep the old

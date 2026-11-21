@@ -35,6 +35,8 @@
 #include "yb/master/master_options.h"
 #include "yb/master/master_rust_peer.pb.h"
 #include "yb/master/master_tserver.h"
+#include "yb/master/master_call_home.h"
+#include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/rust_bridge/rpc_bridge.h"
 
@@ -55,6 +57,7 @@ class CDCStateTable;
 
 namespace yb::client {
 class TableHandle;
+class UniverseKeyClient;
 class XClusterRemoteClientHolder;
 }  // namespace yb::client
 
@@ -269,6 +272,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Status DoInit();
   Status DoStart();
   Status OpenSysCatalog();
+  // CatalogManager::GetUniverseKeyRegistryFromOtherMastersAsync: the universe keys live only in
+  // the masters' memory, so a master that starts (or leaves shell mode) asks the others.
+  Status GetUniverseKeyRegistryFromOtherMastersAsync();
   Status ElectedAsLeader();
   Status ResetMemoryState(const consensus::RaftConfigPB& config);
   Status GetMasterRegistration(ServerRegistrationPB* reg) const;
@@ -291,6 +297,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   // ObjectLockInfoManager::PopulateDbCatalogVersionCache.
   void PopulateReleaseCatalogInfo(tserver::ReleaseObjectLockRequestPB* req);
   void ResetPgCatalogVersionCache();
+  // Adds a sys catalog tablet metadata change to the initial snapshot being written, if any.
+  void RecordInitialSnapshotChange(const tablet::ChangeMetadataRequestPB& change);
   // The cached version of one database (GetYsqlDBCatalogVersion with use_cache); false when the
   // cache is off, empty or lacks it.
   bool CachedDBCatalogVersion(
@@ -342,6 +350,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<master::MasterAutoFlagsManager> auto_flags_manager_;
   // Holds the universe keys AddUniverseKeys sends to every master.
   std::unique_ptr<master::EncryptionManager> encryption_manager_;
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
 
@@ -398,6 +407,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_live_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_dead_metric_;
   scoped_refptr<AtomicGauge<uint64_t>> max_follower_heartbeat_delay_metric_;
+  // On the server entity, as CatalogManagerBgTasks keeps it; reset when leadership is lost.
+  scoped_refptr<EventStats> load_balancer_duration_metric_;
   // The YCQL virtual tables: their input from Rust, and their tablets by id, created on the
   // first read of each.
   std::optional<rust::Box<VirtualTables>> virtual_tables_;
@@ -411,6 +422,12 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::mutex system_tablets_mutex_;
   std::unordered_map<TabletId, std::shared_ptr<tablet::AbstractTablet>> system_tablets_
       GUARDED_BY(system_tablets_mutex_);
+  // Set while initdb runs with --create_initial_sys_catalog_snapshot: it collects the sys catalog
+  // tablet's metadata changes, which the snapshot replays after restoring its rows.
+  std::unique_ptr<master::MasterCallHome> call_home_;
+  std::mutex initial_snapshot_writer_mutex_;
+  std::unique_ptr<master::InitialSysCatalogSnapshotWriter> initial_snapshot_writer_
+      GUARDED_BY(initial_snapshot_writer_mutex_);
 };
 
 class MasterInfoHandle {

@@ -22,6 +22,7 @@ mod alter;
 mod autoflags;
 mod automatic;
 mod backfill;
+mod bidirectional;
 mod checkpoint;
 mod config;
 mod consumer;
@@ -38,6 +39,7 @@ mod splits;
 mod target_tables;
 #[cfg(test)]
 mod tests;
+mod wal_anchors;
 
 pub use controller::XClusterController;
 pub use failover::FailoverSnapshots;
@@ -169,6 +171,26 @@ pub struct XClusterOptions {
     pub max_clock_skew: fn() -> Duration,
     /// `wait_replication_drain_retry_timeout_ms`.
     pub drain_retry_timeout: fn() -> Duration,
+    /// `TEST_hang_wait_replication_drain`: `WaitForReplicationDrain` waits before each round of
+    /// calls to the tservers while it is set.
+    pub hang_wait_replication_drain: fn() -> bool,
+    /// `TEST_xcluster_fail_table_create_during_bootstrap`: adding a new table to an inbound group
+    /// fails before its source stream is bootstrapped.
+    pub fail_table_create_during_bootstrap: fn() -> bool,
+    /// `TEST_skip_async_insert_packed_schema_for_tablet_id`: the tablet not sent
+    /// `InsertPackedSchemaForXClusterTarget`'s schema.
+    pub skip_insert_packed_schema_for_tablet: fn() -> String,
+    /// `TEST_xcluster_pause_wal_anchor_deletion`: the target asks no source to delete WAL anchor
+    /// streams while set.
+    pub pause_wal_anchor_deletion: fn() -> bool,
+    /// `TEST_xcluster_wal_anchor_deletion_skip_marker_clear`: the target keeps a table's pending
+    /// WAL anchor deletion marker after the source deleted the anchor.
+    pub wal_anchor_deletion_skip_marker_clear: fn() -> bool,
+    /// The `ysql_auto_add_new_index_to_bidirectional_xcluster_infra` AutoFlag and
+    /// `ysql_auto_add_new_index_to_bidirectional_xcluster`, both on.
+    pub auto_add_index_to_bidirectional: fn() -> bool,
+    /// `add_new_index_to_bidirectional_xcluster_timeout_secs`.
+    pub bidirectional_index_timeout: fn() -> Duration,
 }
 
 impl Default for XClusterOptions {
@@ -221,6 +243,13 @@ impl Default for XClusterOptions {
             persist_tserver_registry: || true,
             max_clock_skew: || Duration::from_millis(500),
             drain_retry_timeout: || Duration::from_millis(2000),
+            hang_wait_replication_drain: || false,
+            fail_table_create_during_bootstrap: || false,
+            skip_insert_packed_schema_for_tablet: String::new,
+            pause_wal_anchor_deletion: || false,
+            wal_anchor_deletion_skip_marker_clear: || false,
+            auto_add_index_to_bidirectional: || true,
+            bidirectional_index_timeout: || Duration::from_secs(600),
         }
     }
 }
@@ -285,6 +314,8 @@ pub struct XCluster {
     pub(crate) universes_to_clear: Mutex<(i64, std::collections::VecDeque<String>)>,
     /// Serializes `XClusterStopPersisting` and `XClusterStartPersisting`.
     pub(crate) persisting: tokio::sync::Mutex<()>,
+    /// A WAL anchor deletion pass is running (`wal_anchor_deletion_task_`).
+    pub(crate) wal_anchor_deletion_running: std::sync::atomic::AtomicBool,
 }
 
 impl XCluster {
@@ -323,6 +354,7 @@ impl XCluster {
             failovers: Mutex::default(),
             universes_to_clear: Mutex::new((-1, Default::default())),
             failover_snapshots: OnceLock::new(),
+            wal_anchor_deletion_running: Default::default(),
         })
     }
 

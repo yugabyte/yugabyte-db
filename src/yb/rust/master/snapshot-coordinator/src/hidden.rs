@@ -45,6 +45,34 @@ use crate::{corrupt, internal, SnapshotCoordinator};
 /// Tablets of hidden tables retired per write.
 const TABLETS_PER_WRITE: usize = 1000;
 
+/// The tablets a colocated table or vector index is registered with, as C++'s
+/// `GetTabletsIncludeInactive`: its own or its parent table's, hidden ones (a retained split
+/// parent) included, deleted ones not.
+fn hosting_tablets_with_hidden<'a>(
+    snapshot: &'a CatalogSnapshot,
+    table_id: &[u8],
+) -> Vec<&'a Arc<Entity>> {
+    let live = |table_id: &[u8]| -> Vec<&'a Arc<Entity>> {
+        snapshot
+            .tablets_of(table_id)
+            .into_iter()
+            .filter(|t| t.tablet().is_some_and(|h| !is_inactive_state(h.state)))
+            .collect()
+    };
+    let own = live(table_id);
+    if !own.is_empty() {
+        return own;
+    }
+    match snapshot
+        .get(SysRowEntryType::TABLE, table_id)
+        .and_then(|t| t.table())
+        .filter(|t| !t.parent_table_id.is_empty() && t.parent_table_id != table_id)
+    {
+        Some(table) => live(&table.parent_table_id),
+        None => own,
+    }
+}
+
 /// `ShouldBlockObjectCleanup` and `ShouldAddToCoveringMap`: a complete snapshot with a TTL, not of
 /// a schedule and not imported, keeps its tablets.
 fn covering_tablets(snapshot: &CatalogSnapshot) -> HashSet<Vec<u8>> {
@@ -225,27 +253,51 @@ impl SnapshotCoordinator {
             let colocated = !hot.parent_table_id.is_empty() && hot.parent_table_id != *table.key.id;
             let id = table.key.id.to_vec();
             if colocated {
-                // Out of its hosting tablets' metadata first, unless they are retained.
-                let hosting: Vec<Vec<u8>> = snapshot
-                    .hosting_tablets_of(&id)
-                    .into_iter()
-                    .filter(|t| {
-                        t.parse::<SysTabletsEntryPB>().is_ok_and(|tpb| {
-                            !self.should_retain(
-                                snapshot,
-                                t,
-                                &tpb,
-                                pb.hide_hybrid_time(),
-                                &min_times,
-                                &covered,
-                            )
-                        })
-                    })
-                    .map(|t| t.key.id.to_vec())
-                    .collect();
-                if hosting.len() != snapshot.hosting_tablets_of(&id).len() {
+                // `RemoveHiddenColocatedTableFromTablet`: the table leaves each hosting tablet
+                // nothing retains, hidden split parents included, and is DELETED once no tablet
+                // keeps it.
+                let (retained, removable): (Vec<_>, Vec<_>) =
+                    hosting_tablets_with_hidden(snapshot, &id)
+                        .into_iter()
+                        .partition(|t| {
+                            t.parse::<SysTabletsEntryPB>().is_ok_and(|tpb| {
+                                self.should_retain(
+                                    snapshot,
+                                    t,
+                                    &tpb,
+                                    pb.hide_hybrid_time(),
+                                    &min_times,
+                                    &covered,
+                                )
+                            })
+                        });
+                let removable: Vec<Vec<u8>> =
+                    removable.into_iter().map(|t| t.key.id.to_vec()).collect();
+                if !retained.is_empty() {
+                    for tablet in removable {
+                        // Once per term and tablet; a new leader sends it again, as C++ does
+                        // after loading the catalog.
+                        let key = [b"remove/".as_slice(), &id, b"/", &tablet].concat();
+                        if !self.state(token.term()).writing.insert(key.clone()) {
+                            continue;
+                        }
+                        let (this, id) = (self.clone(), id.clone());
+                        scope.entity().spawn("remove-hidden-table", async move {
+                            if let Err(status) =
+                                this.remove_table_from_tablet(token, &tablet, &id).await
+                            {
+                                tracing::warn!(
+                                    "Failed to remove hidden table {} from tablet {}: {status}",
+                                    String::from_utf8_lossy(&id),
+                                    String::from_utf8_lossy(&tablet)
+                                );
+                                this.state(token.term()).writing.remove(&key);
+                            }
+                        });
+                    }
                     continue;
                 }
+                let hosting = removable;
                 if !self.state(token.term()).writing.insert(id.clone()) {
                     continue;
                 }
@@ -458,5 +510,93 @@ impl SnapshotCoordinator {
             .locations
             .get(tablet_id)
             .and_then(|r| r.leader().map(|l| l.ts_uuid.to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod hosting_tests {
+    use master_catalog_state::{run_materializer, Catalog};
+    use master_sys_catalog::{FakeSysCatalog, RowChange};
+
+    use super::*;
+
+    fn upsert(entry_type: SysRowEntryType, id: &str, message: &impl Message) -> RowChange {
+        RowChange::Upsert {
+            entry_type,
+            id: id.as_bytes().to_vec(),
+            data: message.write_to_bytes().unwrap(),
+        }
+    }
+
+    /// A vector index mapped by its indexed table's id is still hosted by the hidden split parent
+    /// a schedule retains, which `hosting_tablets_of` (serving tablets only) leaves out.
+    #[tokio::test]
+    async fn a_hidden_split_parent_still_hosts_a_vector_index() {
+        let table = |name: &str| {
+            let mut pb = SysTablesEntryPB::new();
+            pb.set_name(name.as_bytes().to_vec());
+            pb.set_namespace_id(b"ns".to_vec());
+            pb.set_version(0);
+            pb.schema = Some(Default::default()).into();
+            pb.set_state(sys_tables_entry_pb::State::RUNNING);
+            pb
+        };
+        let indexed = table("t");
+        let mut index = table("vi");
+        index.set_parent_table_id(b"t".to_vec());
+        index.set_hide_state(sys_tables_entry_pb::HideState::HIDDEN);
+        let mut changes = vec![
+            upsert(SysRowEntryType::TABLE, "t", &indexed),
+            upsert(SysRowEntryType::TABLE, "vi", &index),
+        ];
+        for (id, start, depth, hidden, state) in [
+            ("parent", "", 0, true, sys_tablets_entry_pb::State::RUNNING),
+            ("child1", "", 1, false, sys_tablets_entry_pb::State::RUNNING),
+            (
+                "child2",
+                "m",
+                1,
+                false,
+                sys_tablets_entry_pb::State::RUNNING,
+            ),
+            ("gone", "x", 0, true, sys_tablets_entry_pb::State::DELETED),
+        ] {
+            let mut tablet = SysTabletsEntryPB::new();
+            tablet.set_table_id(b"t".to_vec());
+            tablet.set_hosted_tables_mapped_by_parent_id(true);
+            tablet.set_state(state);
+            tablet.set_split_depth(depth);
+            if hidden {
+                tablet.set_hide_hybrid_time(1);
+            }
+            tablet
+                .partition
+                .mut_or_insert_default()
+                .set_partition_key_start(start.as_bytes().to_vec());
+            changes.push(upsert(SysRowEntryType::TABLET, id, &tablet));
+        }
+        let (fake, events) = FakeSysCatalog::new();
+        fake.apply(changes);
+        let catalog = Catalog::new(fake.sender().clone());
+        tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
+        catalog.barrier().await;
+        let snapshot = catalog.snapshot();
+
+        let ids = |tablets: Vec<&Arc<Entity>>| {
+            let mut ids: Vec<String> = tablets
+                .iter()
+                .map(|t| String::from_utf8_lossy(&t.key.id).into_owned())
+                .collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(
+            ids(hosting_tablets_with_hidden(&snapshot, b"vi")),
+            ["child1", "child2", "parent"]
+        );
+        assert_eq!(
+            ids(snapshot.hosting_tablets_of(b"vi")),
+            ["child1", "child2"]
+        );
     }
 }

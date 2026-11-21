@@ -461,6 +461,12 @@ async fn split_candidates_follow_cpp() {
         e.status.message().contains("transaction status tables"),
         "{e:?}"
     );
+    // `TEST_validate_all_tablet_candidates` lets any tablet through.
+    let all = AutoSplitOptions {
+        validate_all_candidates: || true,
+        ..AutoSplitOptions::default()
+    };
+    validate_split_candidate(&snapshot, tablet, true, &all).unwrap();
 
     // Each child must be a nonempty range.
     let mut parent = PartitionPB::new();
@@ -624,6 +630,21 @@ mod automatic {
         let sizes = HashMap::from([(b"parent".to_vec(), r)]);
         let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
         assert!(p.schedule.is_empty());
+        // A fourth voter: over replicated.
+        let mut r = replicas(5000);
+        let mut extra = r.replicas[2].clone();
+        extra.ts_uuid = Arc::from(b"ts3".as_slice());
+        r.replicas.push(extra.clone());
+        let sizes = HashMap::from([(b"parent".to_vec(), r)]);
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert!(p.schedule.is_empty());
+        // A read replica does not count.
+        let mut r = replicas(5000);
+        extra.member_type = PeerMemberType::OBSERVER;
+        r.replicas.push(extra);
+        let sizes = HashMap::from([(b"parent".to_vec(), r)]);
+        let p = run(&h, &sizes, &cluster(), &mut Disabled::default(), &options());
+        assert_eq!(scheduled(&p), vec!["parent"]);
     }
 
     #[tokio::test]

@@ -41,9 +41,9 @@ diffs every C++ JSON page between a C++ leader and the Rust leader that follows 
 `/api/v1/table` lists the table's tserver RPC tasks in flight (create, delete, alter and truncate
 of its tablets, and the balancer's), from the `TableTasks` registry in `master-task-runtime`.
 `/api/v1/load-distribution` asks every live tserver for its remote bootstraps (`GetActiveRbsInfo`,
-5 s), and its tasks summary shows the latest balancer run's tasks with their live states. Unlike
-C++, the table page does not show split parents already deleted: the Rust catalog drops a deleted
-tablet's row, while C++ keeps the deleted TabletInfo in memory until a restart.
+5 s), and its tasks summary shows the latest balancer run's tasks with their live states. The table
+page lists split parents already deleted, with state Deleted: the Rust catalog keeps DELETED tablet
+rows in memory, as C++ keeps the deleted TabletInfo until a restart.
 
 `/api/v1/tablet-replication` follows the leaderless check of `master-tablet-locations` (K7): while a
 leader's tserver is live, a tablet's leaderless time ends at that tserver's last heartbeat, so a

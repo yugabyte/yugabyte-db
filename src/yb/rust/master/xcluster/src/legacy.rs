@@ -291,6 +291,10 @@ impl XCluster {
                     }
                 }
             }
+            // Lets a test change tablet leadership while the call is in progress.
+            while (self.options.hang_wait_replication_drain)() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             for (leader, mut ts_req) in by_leader {
                 if deadline.saturating_duration_since(Instant::now()) <= interval {
                     break;

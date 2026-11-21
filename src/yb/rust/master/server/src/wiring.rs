@@ -143,6 +143,10 @@ static SKIP_SENDING_RESTORE_FINISHED: FlagRef<bool> =
     FlagRef::new("TEST_skip_sending_restore_finished");
 static SKIP_SYS_CATALOG_TABLET_RESTORE: FlagRef<bool> =
     FlagRef::new("TEST_skip_sys_catalog_tablet_restore");
+static PAUSE_ISSUING_TSERVER_SNAPSHOT_REQUESTS: FlagRef<bool> =
+    FlagRef::new("TEST_pause_issuing_tserver_snapshot_requests");
+static PAUSE_BEFORE_ENABLING_DB_CONNECTIONS: FlagRef<bool> =
+    FlagRef::new("TEST_pause_before_enabling_db_connections");
 static SIMULATE_CRASH_AFTER_TABLE_MARKED_DELETING: FlagRef<bool> =
     FlagRef::new("TEST_simulate_crash_after_table_marked_deleting");
 static IMPORT_MAX_CONCURRENT_CREATE_TABLES: FlagRef<u64> =
@@ -224,8 +228,18 @@ static PAUSE_AT_START_OF_SETUP_MS: FlagRef<i32> =
 static EXIT_UNFINISHED_DELETING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_deleting");
 static DISABLE_UNIVERSE_GC: FlagRef<bool> = FlagRef::new("disable_universe_gc");
 static DISABLE_TABLET_DELETION: FlagRef<bool> = FlagRef::new("TEST_disable_tablet_deletion");
+static SLOWDOWN_TS_RPC_TASKS_MS: FlagRef<i32> =
+    FlagRef::new("TEST_slowdown_master_async_rpc_tasks_by_ms");
+static INJECT_REPORT_LATENCY_MS: FlagRef<u64> =
+    FlagRef::new("TEST_inject_latency_during_tablet_report_ms");
+static DELETION_CHECK_FOR_ORPHANED_TABLETS: FlagRef<bool> =
+    FlagRef::new("master_enable_deletion_check_for_orphaned_tablets");
+static SIMULATE_SYS_CATALOG_DATA_LOSS: FlagRef<bool> =
+    FlagRef::new("TEST_simulate_sys_catalog_data_loss");
 static DELAY_CLEARING_FULLY_APPLIED_MS: FlagRef<i32> =
     FlagRef::new("TEST_delay_clearing_fully_applied_ms");
+static SLOWDOWN_BACKFILL_ALTER_TABLE_MS: FlagRef<i32> =
+    FlagRef::new("TEST_slowdown_backfill_alter_table_rpcs_ms");
 static EXIT_UNFINISHED_MERGING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_merging");
 static FAIL_UNIVERSE_REPLICATION_MERGE: FlagRef<bool> =
     FlagRef::new("TEST_fail_universe_replication_merge");
@@ -251,6 +265,14 @@ static FAILOVER_FAIL_DELETE_REPLICATION: FlagRef<bool> =
     FlagRef::new("TEST_xcluster_failover_fail_delete_replication");
 static CRASH_AFTER_SPLIT_REGISTRATION: FlagRef<f64> =
     FlagRef::new("TEST_fault_crash_after_registering_split_children");
+static SKIP_PARTITIONING_VERSION_VALIDATION: FlagRef<bool> =
+    FlagRef::new("TEST_skip_partitioning_version_validation");
+static VALIDATE_ALL_TABLET_CANDIDATES: FlagRef<bool> =
+    FlagRef::new("TEST_validate_all_tablet_candidates");
+static REJECT_DELETE_NOT_SERVING_TABLET: FlagRef<bool> =
+    FlagRef::new("TEST_reject_delete_not_serving_tablet_rpc");
+static PAUSE_BEFORE_SEND_HINTED_ELECTION: FlagRef<bool> =
+    FlagRef::new("TEST_pause_before_send_hinted_election");
 static PITR_SPLIT_DISABLE_CHECK_FREQ_MS: FlagRef<i32> =
     FlagRef::new("pitr_split_disable_check_freq_ms");
 static CLEANUP_TABLES_FREQUENCY_SECS: FlagRef<i32> =
@@ -268,6 +290,26 @@ static ENFORCE_XCLUSTER_GUARDED_LEASE: FlagRef<bool> =
     FlagRef::new("enforce_xcluster_guarded_lease");
 static DRAIN_RETRY_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("wait_replication_drain_retry_timeout_ms");
+static HANG_WAIT_REPLICATION_DRAIN: FlagRef<bool> =
+    FlagRef::new("TEST_hang_wait_replication_drain");
+static XCLUSTER_FAIL_TABLE_CREATE_DURING_BOOTSTRAP: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_fail_table_create_during_bootstrap");
+static SKIP_INSERT_PACKED_SCHEMA_FOR_TABLET: FlagRef<String> =
+    FlagRef::new("TEST_skip_async_insert_packed_schema_for_tablet_id");
+static CREATE_TABLE_WITH_EMPTY_PGSCHEMA_NAME: FlagRef<bool> =
+    FlagRef::new("TEST_create_table_with_empty_pgschema_name");
+static SKIP_OID_ADVANCE_ON_RESTORE: FlagRef<bool> =
+    FlagRef::new("TEST_skip_oid_advance_on_restore");
+static PAUSE_WAL_ANCHOR_DELETION: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_pause_wal_anchor_deletion");
+static WAL_ANCHOR_DELETION_SKIP_MARKER_CLEAR: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_wal_anchor_deletion_skip_marker_clear");
+static AUTO_ADD_INDEX_TO_BIDIRECTIONAL_INFRA: FlagRef<bool> =
+    FlagRef::new("ysql_auto_add_new_index_to_bidirectional_xcluster_infra");
+static AUTO_ADD_INDEX_TO_BIDIRECTIONAL: FlagRef<bool> =
+    FlagRef::new("ysql_auto_add_new_index_to_bidirectional_xcluster");
+static BIDIRECTIONAL_INDEX_TIMEOUT_SECS: FlagRef<u32> =
+    FlagRef::new("add_new_index_to_bidirectional_xcluster_timeout_secs");
 static MAX_OLD_SCHEMA_VERSIONS: FlagRef<u32> = FlagRef::new("xcluster_max_old_schema_versions");
 static ALTER_SETUP_TIMEOUT_MS: FlagRef<u32> =
     FlagRef::new("xcluster_alter_universe_replication_setup_timeout_ms");
@@ -292,6 +334,8 @@ static CDCSDK_SKIP_STATE_ON_REMOVAL: FlagRef<bool> =
     FlagRef::new("TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal");
 static CDCSDK_SKIP_UNQUALIFIED: FlagRef<bool> =
     FlagRef::new("TEST_cdcsdk_skip_processing_unqualified_tables");
+static CDCSDK_SKIP_DYNAMIC_TABLE_ADDITION: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_skip_processing_dynamic_table_addition");
 static CDCSDK_SKIP_QUALIFIED_REMOVAL: FlagRef<bool> =
     FlagRef::new("TEST_cdcsdk_skip_table_removal_from_qualified_list");
 static CLONE_PG_SCHEMA_RPC_TIMEOUT_MS: FlagRef<i32> =
@@ -323,6 +367,7 @@ static COLOCATED_TABLES_WITH_TABLESPACES: FlagRef<bool> =
     FlagRef::new("ysql_enable_colocated_tables_with_tablespaces");
 static VECTOR_INDEX_STORE_PAYLOAD: FlagRef<bool> = FlagRef::new("vector_index_store_payload");
 static VECTOR_INDEX_BACKEND: FlagRef<String> = FlagRef::new("vector_index_backend");
+static TEST_MASTER_UNIVERSE_UUID: FlagRef<String> = FlagRef::new("TEST_master_universe_uuid");
 static SPLIT_UNCOMMITTED_YSQL_TABLES: FlagRef<bool> =
     FlagRef::new("enable_tablet_split_of_uncommitted_ysql_tables");
 static SPLIT_TABLES_WITH_VECTOR_INDEX: FlagRef<bool> =
@@ -366,6 +411,11 @@ static LB_MIN_INBOUND_RBS: FlagRef<i32> =
 static RBS_RATE_LIMIT: FlagRef<i64> = FlagRef::new("remote_bootstrap_rate_limit_bytes_per_sec");
 static AUTO_SPLIT: FlagRef<bool> = FlagRef::new("enable_automatic_tablet_splitting");
 static ENABLE_YSQL: FlagRef<bool> = FlagRef::new("enable_ysql");
+static MASTER_AUTO_RUN_INITDB: FlagRef<bool> = FlagRef::new("master_auto_run_initdb");
+static CREATE_INITIAL_SYS_CATALOG_SNAPSHOT: FlagRef<bool> =
+    FlagRef::new("create_initial_sys_catalog_snapshot");
+static MIN_LIVE_TSERVERS_BEFORE_INITDB: FlagRef<i32> =
+    FlagRef::new("TEST_master_min_live_tservers_before_initdb");
 static ENABLE_HEARTBEAT_PG_CATALOG_VERSIONS_CACHE: FlagRef<bool> =
     FlagRef::new("enable_heartbeat_pg_catalog_versions_cache");
 static ENABLE_YSQL_TABLESPACES_FOR_PLACEMENT: FlagRef<bool> =
@@ -376,6 +426,8 @@ static AUTO_CREATE_LOCAL_TRANSACTION_TABLES: FlagRef<bool> =
     FlagRef::new("auto_create_local_transaction_tables");
 static ENABLE_TABLESPACE_BASED_TRANSACTION_PLACEMENT: FlagRef<bool> =
     FlagRef::new("enable_tablespace_based_transaction_placement");
+static CONSIDER_ALL_LOCAL_TRANSACTION_TABLES_LOCAL: FlagRef<bool> =
+    FlagRef::new("TEST_consider_all_local_transaction_tables_local");
 static NAME_TRANSACTION_TABLES_WITH_TABLESPACE_ID: FlagRef<bool> =
     FlagRef::new("TEST_name_transaction_tables_with_tablespace_id");
 static YSQL_TRANSACTION_BG_TASK_WAIT_MS: FlagRef<i32> =
@@ -385,6 +437,20 @@ static DISABLE_YSQL_DDL_TXN_VERIFICATION: FlagRef<bool> =
 static DDL_VERIFICATION_FAILURE_PROBABILITY: FlagRef<f64> =
     FlagRef::new("TEST_ysql_ddl_transaction_verification_failure_probability");
 static PAUSE_DDL_ROLLBACK: FlagRef<bool> = FlagRef::new("TEST_pause_ddl_rollback");
+static EMERGENCY_REPAIR_MODE: FlagRef<bool> = FlagRef::new("emergency_repair_mode");
+static SKIP_LAUNCH_RELEASE_REQUEST: FlagRef<bool> =
+    FlagRef::new("TEST_skip_launch_release_request");
+static ALLOW_UNKNOWN_TXN_RELEASE_REQUEST: FlagRef<bool> =
+    FlagRef::new("TEST_allow_unknown_txn_release_request");
+static HANG_ON_DDL_VERIFICATION_PROGRESS: FlagRef<bool> =
+    FlagRef::new("TEST_hang_on_ddl_verification_progress");
+static FAIL_ALTER_TABLE_AFTER_COMMIT: FlagRef<bool> =
+    FlagRef::new("TEST_fail_alter_table_after_commit");
+static BLOCK_ALTER_TABLE: FlagRef<String> = FlagRef::new("TEST_block_alter_table");
+static SLOWDOWN_ALTER_TABLE_RPCS_MS: FlagRef<i32> =
+    FlagRef::new("TEST_slowdown_alter_table_rpcs_ms");
+static HANG_ON_NAMESPACE_TRANSITION: FlagRef<bool> =
+    FlagRef::new("TEST_hang_on_namespace_transition");
 static FAIL_UPGRADE_TRANSITION_FROM: FlagRef<String> =
     FlagRef::new("TEST_fail_ysql_catalog_upgrade_state_transition_from");
 static SKIP_TSERVER_VERSION_CHECKS: FlagRef<bool> = FlagRef::new("skip_tserver_version_checks");
@@ -394,6 +460,17 @@ static FAIL_TABLE_CREATION_AT_PREPARING: FlagRef<bool> =
     FlagRef::new("TEST_fail_table_creation_at_preparing_state");
 static PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE: FlagRef<bool> =
     FlagRef::new("TEST_pause_before_upsert_ysql_sys_table");
+static SIMULATE_SLOW_TABLE_CREATE_SECS: FlagRef<i32> =
+    FlagRef::new("TEST_simulate_slow_table_create_secs");
+static ABORT_CREATE_TABLE: FlagRef<u32> = FlagRef::new("TEST_abort_create_table");
+static SIMULATE_CANNOT_ENABLE_COMPACTIONS: FlagRef<bool> =
+    FlagRef::new("TEST_simulate_cannot_enable_compactions");
+static ENABLE_METRICS_SNAPSHOTTER: FlagRef<bool> =
+    FlagRef::new("master_enable_metrics_snapshotter");
+static METRICS_SNAPSHOTS_TABLE_NUM_TABLETS: FlagRef<i32> =
+    FlagRef::new("metrics_snapshots_table_num_tablets");
+static DISABLE_STREAM_DROP_DURING_DB_DROP: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_disable_stream_drop_during_db_drop");
 static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_locks_tablets");
 static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
     FlagRef::new("ysql_enable_auto_analyze_infra");
@@ -407,6 +484,7 @@ static PG_CATALOG_VERSIONS_CACHE_RETRY_MS: FlagRef<i32> =
 static PAUSE_BG_LOOP_START: FlagRef<bool> =
     FlagRef::new("TEST_pause_catalog_manager_bg_loop_start");
 static PAUSE_BG_LOOP_END: FlagRef<bool> = FlagRef::new("TEST_pause_catalog_manager_bg_loop_end");
+static LB_WAIT_IN_RUN_MS: FlagRef<i32> = FlagRef::new("TEST_load_balancer_wait_ms");
 static TXN_TABLE_WAIT_MIN_TS_COUNT: FlagRef<i32> = FlagRef::new("txn_table_wait_min_ts_count");
 static BACKENDS_TS_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms");
@@ -491,6 +569,8 @@ static TOMBSTONE_EVICTED_REPLICAS: FlagRef<bool> =
 static USE_PENDING_CONFIG_OP_ID: FlagRef<bool> =
     FlagRef::new("use_tablet_report_pending_config_op_id");
 static REGISTER_TS_FROM_RAFT: FlagRef<bool> = FlagRef::new("enable_register_ts_from_raft");
+static WAIT_FOR_NEW_TABLETS_TO_ELECT_LEADER: FlagRef<bool> =
+    FlagRef::new("catalog_manager_wait_for_new_tablets_to_elect_leader");
 static MAX_CONCURRENT_DELETE_REPLICA_RPCS_PER_TS: FlagRef<i32> =
     FlagRef::new("max_concurrent_delete_replica_rpcs_per_ts");
 static MAX_LEADER_LEASE_EXPIRED_SECS: FlagRef<u32> =
@@ -504,6 +584,7 @@ const DEFAULTS_OPTIONS: DefaultsOptions = DefaultsOptions {
     cluster_uuid: || CLUSTER_UUID.get(),
     universe_uuid_check: || UNIVERSE_UUID_CHECK.get(),
     allow_ycql_role_drop: || ALLOW_YCQL_ROLE_DROP.get(),
+    auto_run_initdb: || ENABLE_YSQL.get() && MASTER_AUTO_RUN_INITDB.get(),
 };
 
 fn millis(value: i32) -> Duration {
@@ -525,6 +606,7 @@ fn ts_manager_options() -> TsManagerOptions {
         },
         persist_registry: || PERSIST_TSERVER_REGISTRY.get(),
         universe_uuid_check: || UNIVERSE_UUID_CHECK.get(),
+        test_universe_uuid: || TEST_MASTER_UNIVERSE_UUID.get(),
         guarded_lease_expiry: || {
             Duration::from_millis(GUARDED_LEASE_MS.get().into())
                 + Duration::from_micros(MAX_CLOCK_SKEW_USEC.get().saturating_mul(2))
@@ -533,6 +615,7 @@ fn ts_manager_options() -> TsManagerOptions {
         tombstone_evicted_replicas: || TOMBSTONE_EVICTED_REPLICAS.get(),
         use_pending_config_op_id: || USE_PENDING_CONFIG_OP_ID.get(),
         register_from_raft: || REGISTER_TS_FROM_RAFT.get(),
+        wait_for_new_tablets_to_elect_leader: || WAIT_FOR_NEW_TABLETS_TO_ELECT_LEADER.get(),
         metadata_min_time_left: || millis(HEARTBEAT_RPC_TIMEOUT_MS.get()) / 2,
         max_leader_lease_expired: || {
             Duration::from_secs(MAX_LEADER_LEASE_EXPIRED_SECS.get().into())
@@ -543,6 +626,12 @@ fn ts_manager_options() -> TsManagerOptions {
         initial_registration_duration: || {
             Duration::from_secs(INITIAL_TSERVER_REGISTRATION_DURATION_SECS.get().into())
         },
+        report_latency: || Duration::from_millis(INJECT_REPORT_LATENCY_MS.get()),
+        deletion_check_for_orphaned_tablets: || DELETION_CHECK_FOR_ORPHANED_TABLETS.get(),
+        simulate_sys_catalog_data_loss: || SIMULATE_SYS_CATALOG_DATA_LOSS.get(),
+        enforce_tablet_replica_limits: || ENFORCE_TABLET_REPLICA_LIMITS.get(),
+        tablet_replicas_per_core_limit: || TABLET_REPLICAS_PER_CORE_LIMIT.get(),
+        tablet_replicas_per_gib_limit: || TABLET_REPLICAS_PER_GIB_LIMIT.get(),
     }
 }
 
@@ -593,6 +682,7 @@ fn report_cluster_metrics(
         req.set_blacklisted_leaders(m.blacklisted_leaders);
         req.set_total_table_load_difference(m.total_table_load_difference);
         req.set_estimated_data_to_balance_bytes(m.estimated_data_to_balance_bytes);
+        req.set_balancer_run_duration_ms(m.run_duration.as_millis() as u64);
     }
     let result = req
         .write_to_bytes()
@@ -1085,7 +1175,15 @@ impl Core {
             snapshots,
         } = host;
         let _guard = runtime.enter();
-        runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
+        // `ElectedAsLeaderCb` in emergency repair mode: the catalog is not loaded (it may be what
+        // needs repair) and no term starts, so no leader duty runs. Only the host's
+        // DumpSysCatalogEntries and WriteSysCatalogEntry are served.
+        let emergency_repair_mode = EMERGENCY_REPAIR_MODE.get();
+        if emergency_repair_mode {
+            tracing::warn!("In emergency repair mode: the catalog is not loaded");
+        } else {
+            runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
+        }
         let writer = CatalogWriter::start(
             catalog.clone(),
             store.clone(),
@@ -1094,11 +1192,13 @@ impl Core {
                 max_batch_rows: || CATALOG_WRITER_MAX_BATCH_ROWS.get().max(1) as usize,
                 max_batch_bytes: || CATALOG_WRITER_MAX_BATCH_BYTES.get().max(1) as usize,
                 max_inflight: || CATALOG_WRITER_MAX_INFLIGHT.get().max(1) as usize,
-                metrics,
+                metrics: metrics.clone(),
             },
         );
         let ts_manager = TsManager::new(Arc::default(), ts_manager_options());
-        let ts_rpc = TsRpcExecutor::new(ts_rpc_limit);
+        let ts_rpc = TsRpcExecutor::with_attempt_delay(ts_rpc_limit, || {
+            millis(SLOWDOWN_TS_RPC_TASKS_MS.get())
+        });
         let splits = TabletSplitManager::new(
             catalog.clone(),
             writer.clone(),
@@ -1114,6 +1214,9 @@ impl Core {
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
                 crash_after_registering_split_children: || CRASH_AFTER_SPLIT_REGISTRATION.get(),
+                reject_delete_not_serving_tablet: || REJECT_DELETE_NOT_SERVING_TABLET.get(),
+                sync_points: || RUNNING_TEST.get(),
+                split_respects_tablet_replica_limits: || SPLIT_RESPECTS_TABLET_REPLICA_LIMITS.get(),
                 auto: AutoSplitOptions {
                     split_uncommitted_ysql_tables: || SPLIT_UNCOMMITTED_YSQL_TABLES.get(),
                     split_tables_with_vector_index: || SPLIT_TABLES_WITH_VECTOR_INDEX.get(),
@@ -1145,6 +1248,10 @@ impl Core {
                     prevent_split_for_small_key_range_tablets: || {
                         Duration::from_secs(PREVENT_SMALL_RANGE_SPLIT_SECS.get())
                     },
+                    validate_all_candidates: || VALIDATE_ALL_TABLET_CANDIDATES.get(),
+                    skip_partitioning_version_validation: || {
+                        SKIP_PARTITIONING_VERSION_VALIDATION.get()
+                    },
                 },
             },
         );
@@ -1161,12 +1268,30 @@ impl Core {
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
                 pause_ddl_rollback: || PAUSE_DDL_ROLLBACK.get(),
+                hang_on_ddl_verification_progress: || HANG_ON_DDL_VERIFICATION_PROGRESS.get(),
+                fail_alter_table_after_commit: || FAIL_ALTER_TABLE_AFTER_COMMIT.get(),
+                block_alter_table: || BLOCK_ALTER_TABLE.get(),
+                slowdown_alter_table_rpcs: || millis(SLOWDOWN_ALTER_TABLE_RPCS_MS.get()),
+                hang_on_namespace_transition: || HANG_ON_NAMESPACE_TRANSITION.get(),
+                pause_before_send_hinted_election: || PAUSE_BEFORE_SEND_HINTED_ELECTION.get(),
                 simulate_crash_after_table_marked_deleting: || {
                     SIMULATE_CRASH_AFTER_TABLE_MARKED_DELETING.get()
                 },
                 delay_clearing_fully_applied: || millis(DELAY_CLEARING_FULLY_APPLIED_MS.get()),
+                slowdown_index_permission_change: || millis(SLOWDOWN_BACKFILL_ALTER_TABLE_MS.get()),
                 fail_table_creation_at_preparing_state: || FAIL_TABLE_CREATION_AT_PREPARING.get(),
                 pause_before_upsert_ysql_sys_table: || PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE.get(),
+                simulate_slow_table_create: || {
+                    Duration::from_secs(SIMULATE_SLOW_TABLE_CREATE_SECS.get().max(0) as u64)
+                },
+                abort_create_table: || ABORT_CREATE_TABLE.get(),
+                simulate_cannot_enable_compactions: || SIMULATE_CANNOT_ENABLE_COMPACTIONS.get(),
+                enable_metrics_snapshotter: || ENABLE_METRICS_SNAPSHOTTER.get(),
+                metrics_snapshots_table_num_tablets: || METRICS_SNAPSHOTS_TABLE_NUM_TABLETS.get(),
+                disable_stream_drop_during_db_drop: || DISABLE_STREAM_DROP_DURING_DB_DROP.get(),
+                create_table_with_empty_pgschema_name: || {
+                    CREATE_TABLE_WITH_EMPTY_PGSCHEMA_NAME.get()
+                },
                 ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
                 tablespaces: TablespaceOptions {
                     enabled: || ENABLE_YSQL_TABLESPACES_FOR_PLACEMENT.get(),
@@ -1224,6 +1349,7 @@ impl Core {
                 },
                 enable_truncate_cdcsdk_table: || ENABLE_TRUNCATE_CDCSDK_TABLE.get(),
                 sync_points: || RUNNING_TEST.get(),
+                create_initial_sys_catalog_snapshot: || CREATE_INITIAL_SYS_CATALOG_SNAPSHOT.get(),
                 enable_table_rewrite_for_cdcsdk_table: || {
                     ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get()
                 },
@@ -1231,6 +1357,7 @@ impl Core {
             },
         );
         splits.set_tablespaces(tables.tablespaces());
+        splits.set_metrics(&*metrics);
         let leases = YsqlLeases::new(
             writer.clone(),
             leadership.clone(),
@@ -1252,6 +1379,8 @@ impl Core {
             ts_rpc.clone(),
             LockOptions {
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                skip_launch_release_request: || SKIP_LAUNCH_RELEASE_REQUEST.get(),
+                allow_unknown_txn_release_request: || ALLOW_UNKNOWN_TXN_RELEASE_REQUEST.get(),
             },
         );
         let backends = YsqlBackends::new(
@@ -1296,6 +1425,8 @@ impl Core {
                 fail_transition_from: || FAIL_UPGRADE_TRANSITION_FROM.get(),
                 fail_cleanup: || FAIL_PREVIOUS_CATALOG_CLEANUP.get(),
                 skip_tserver_version_checks: || SKIP_TSERVER_VERSION_CHECKS.get(),
+                auto_run_initdb: || MASTER_AUTO_RUN_INITDB.get(),
+                min_live_tservers_before_initdb: || MIN_LIVE_TSERVERS_BEFORE_INITDB.get(),
             },
         );
         let snapshots = SnapshotCoordinator::new(
@@ -1324,18 +1455,26 @@ impl Core {
                 mark_snapshot_as_failed: || MARK_SNAPSHOT_AS_FAILED.get(),
                 skip_sending_restore_finished: || SKIP_SENDING_RESTORE_FINISHED.get(),
                 skip_sys_catalog_tablet_restore: || SKIP_SYS_CATALOG_TABLET_RESTORE.get(),
+                pause_issuing_tserver_snapshot_requests: || {
+                    PAUSE_ISSUING_TSERVER_SNAPSHOT_REQUESTS.get()
+                },
+                sync_points: || RUNNING_TEST.get(),
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 import: ImportOptions {
                     max_concurrent_create_table_requests: || {
                         IMPORT_MAX_CONCURRENT_CREATE_TABLES.get()
                     },
                     using_table_name: || IMPORT_USING_TABLE_NAME.get(),
+                    skip_oid_advance: || SKIP_OID_ADVANCE_ON_RESTORE.get(),
                 },
                 clone: CloneOptions {
                     enabled: || ENABLE_DB_CLONE.get(),
                     pg_schema_rpc_timeout: || millis(CLONE_PG_SCHEMA_RPC_TIMEOUT_MS.get()),
                     fail_pg_schema: || FAIL_CLONE_PG_SCHEMA.get(),
                     fail_tablets: || FAIL_CLONE_TABLETS.get(),
+                    pause_before_enabling_db_connections: || {
+                        PAUSE_BEFORE_ENABLING_DB_CONNECTIONS.get()
+                    },
                 },
             },
         );
@@ -1384,6 +1523,7 @@ impl Core {
                 skip_state_entries_on_table_removal: || CDCSDK_SKIP_STATE_ON_REMOVAL.get(),
                 skip_table_removal_from_qualified_list: || CDCSDK_SKIP_QUALIFIED_REMOVAL.get(),
                 skip_processing_unqualified_tables: || CDCSDK_SKIP_UNQUALIFIED.get(),
+                skip_dynamic_table_addition: || CDCSDK_SKIP_DYNAMIC_TABLE_ADDITION.get(),
             },
         );
         let xcluster = master_xcluster::XCluster::new(
@@ -1462,6 +1602,22 @@ impl Core {
                 persist_tserver_registry: || PERSIST_TSERVER_REGISTRY.get(),
                 max_clock_skew: || Duration::from_micros(MAX_CLOCK_SKEW_USEC.get()),
                 drain_retry_timeout: || millis(DRAIN_RETRY_TIMEOUT_MS.get().max(1)),
+                hang_wait_replication_drain: || HANG_WAIT_REPLICATION_DRAIN.get(),
+                fail_table_create_during_bootstrap: || {
+                    XCLUSTER_FAIL_TABLE_CREATE_DURING_BOOTSTRAP.get()
+                },
+                skip_insert_packed_schema_for_tablet: || SKIP_INSERT_PACKED_SCHEMA_FOR_TABLET.get(),
+                pause_wal_anchor_deletion: || PAUSE_WAL_ANCHOR_DELETION.get(),
+                wal_anchor_deletion_skip_marker_clear: || {
+                    WAL_ANCHOR_DELETION_SKIP_MARKER_CLEAR.get()
+                },
+                auto_add_index_to_bidirectional: || {
+                    AUTO_ADD_INDEX_TO_BIDIRECTIONAL_INFRA.get()
+                        && AUTO_ADD_INDEX_TO_BIDIRECTIONAL.get()
+                },
+                bidirectional_index_timeout: || {
+                    Duration::from_secs(BIDIRECTIONAL_INDEX_TIMEOUT_SECS.get().into())
+                },
             },
         );
         xcluster.set_hooks(Arc::new(XClusterOidHooks {
@@ -1515,6 +1671,9 @@ impl Core {
             tablespace_based_transaction_placement: || {
                 ENABLE_TABLESPACE_BASED_TRANSACTION_PLACEMENT.get()
             },
+            consider_all_local_transaction_tables_local: || {
+                CONSIDER_ALL_LOCAL_TRANSACTION_TABLES_LOCAL.get()
+            },
             major_upgrade: major_upgrade.clone(),
         });
 
@@ -1549,19 +1708,28 @@ impl Core {
                 let token = leadership.catch_up_token(term)?;
                 // A new YSQL universe's catalog starts as the initial sys catalog snapshot.
                 let restored =
-                    initdb::restore_initial_snapshot_if_needed(&catalog, schema, term).await?;
+                    initdb::restore_initial_snapshot_if_needed(&catalog, schema.clone(), term)
+                        .await?;
                 write_default_rows(&writer, &token, &*defaults, &DEFAULTS_OPTIONS, restored)
                     .await?;
                 // The DDL locks persisted by earlier terms, before any lock request is served.
                 locks.on_term_start(&catalog.snapshot())?;
                 // Before any YSQL catalog read or write the upgrade gates.
                 major_upgrade.on_term_start(&token).await?;
+                if !restored && major_upgrade.new_cluster_initdb_needed() {
+                    major_upgrade.start_new_cluster_initdb_if_needed(token);
+                } else {
+                    initdb::make_catalog_transactional(&catalog, &writer, schema.clone(), &token)
+                        .await?;
+                }
                 ts_manager.on_leader_ready(&catalog.snapshot());
                 Ok(())
             })
         }));
-        runtime.spawn(leadership.clone().run());
-        runtime.spawn(report_ready_term(leadership.clone(), schema.clone()));
+        if !emergency_repair_mode {
+            runtime.spawn(leadership.clone().run());
+            runtime.spawn(report_ready_term(leadership.clone(), schema.clone()));
+        }
         Core {
             catalog,
             leadership,
@@ -1585,6 +1753,9 @@ impl Core {
                 .ts_manager
                 .set_local_cloud_info(registration.cloud_info.clone().unwrap_or_default()),
             Err(status) => tracing::warn!("This master's registration is unknown: {status}"),
+        }
+        if EMERGENCY_REPAIR_MODE.get() {
+            return;
         }
         let blocking = BlockingPool::new("catalog-check", 1, 2);
         let catalog = self.catalog.clone();
@@ -1833,6 +2004,7 @@ fn start_term(
                 options: balancer_options,
                 pause_before_run: || PAUSE_BG_LOOP_START.get(),
                 pause_after_run: || PAUSE_BG_LOOP_END.get(),
+                wait_in_run: || millis(LB_WAIT_IN_RUN_MS.get()),
                 report: {
                     let host = host.clone();
                     let ts_manager = leader.ts_manager.clone();
@@ -2157,6 +2329,8 @@ static WEBSERVER_CERTIFICATE_FILE: FlagRef<String> = FlagRef::new("webserver_cer
 static MASTER_WEBSERVER_REQUIRE_HTTPS: FlagRef<bool> =
     FlagRef::new("master_webserver_require_https");
 
+static SPLIT_RESPECTS_TABLET_REPLICA_LIMITS: FlagRef<bool> =
+    FlagRef::new("split_respects_tablet_replica_limits");
 static TABLET_REPLICAS_PER_CORE_LIMIT: FlagRef<u32> =
     FlagRef::new("tablet_replicas_per_core_limit");
 static TABLET_REPLICAS_PER_GIB_LIMIT: FlagRef<u32> = FlagRef::new("tablet_replicas_per_gib_limit");

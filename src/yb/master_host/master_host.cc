@@ -21,6 +21,7 @@
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/universe_key_client.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/schema.h"
@@ -73,6 +74,7 @@
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/master_call_home.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog_context.h"
 #include "yb/master/sys_catalog_restore.h"
@@ -166,6 +168,7 @@ METRIC_DECLARE_gauge_uint64(estimated_data_to_balance_bytes);
 METRIC_DECLARE_gauge_uint32(num_tablet_servers_live);
 METRIC_DECLARE_gauge_uint32(num_tablet_servers_dead);
 METRIC_DECLARE_gauge_uint64(max_follower_heartbeat_delay);
+METRIC_DECLARE_event_stats(load_balancer_duration);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(master_rpc_timeout_ms);
@@ -754,9 +757,6 @@ MasterHost::~MasterHost() {
 }
 
 std::unique_ptr<MasterHost> CreateMasterHost() {
-  if (FLAGS_emergency_repair_mode) {
-    throw std::runtime_error("emergency_repair_mode needs a master leader; use the C++ master");
-  }
   InitCommonFlags();
   auto opts = master::MasterOptions::CreateMasterOptions();
   if (!opts.ok()) {
@@ -785,6 +785,12 @@ void MasterHost::InitHost() {
 }
 
 Status MasterHost::DoInit() {
+  // As master_main.cc, before the server is initialized: a SIGTERM while the master starts (a
+  // test restarting it) shuts it down rather than killing it with a stack trace. Only one
+  // termination monitor may exist in a process, and an embedded master is stopped by its test.
+  if (!embedded_) {
+    termination_monitor_ = TerminationMonitor::Create();
+  }
   RETURN_NOT_OK(DbServerBase::Init());
   // As Master's constructor and ClusterLoadBalancer::InitMetrics.
   metric_entity_cluster_ =
@@ -804,6 +810,7 @@ Status MasterHost::DoInit() {
       METRIC_num_tablet_servers_dead.Instantiate(metric_entity_cluster_, 0);
   max_follower_heartbeat_delay_metric_ =
       METRIC_max_follower_heartbeat_delay.Instantiate(metric_entity_cluster_, 0);
+  load_balancer_duration_metric_ = METRIC_load_balancer_duration.Instantiate(metric_entity());
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   WARN_NOT_OK(
@@ -1132,10 +1139,18 @@ Status MasterHost::DoStart() {
           }
           sys_catalog_initialized_ = true;
           tap_->PostReload("sys catalog opened", clock()->Now());
+          if (!opts_.IsShellMode()) {
+            WARN_NOT_OK(
+                GetUniverseKeyRegistryFromOtherMastersAsync(),
+                "Failed to get the universe keys from other masters");
+          }
         },
         &open_sys_catalog_thread_));
   } else {
     RETURN_NOT_OK(OpenSysCatalog());
+    if (!opts_.IsShellMode()) {
+      RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
+    }
     sys_catalog_initialized_ = true;
     tap_->PostReload("sys catalog opened", clock()->Now());
   }
@@ -1143,10 +1158,8 @@ Status MasterHost::DoStart() {
   RETURN_NOT_OK(Thread::Create(
       "master_host", "pin_refresh", &MasterHost::RefreshHistoryRetentionPinLoop, this,
       &pin_refresh_thread_));
-  // Terminates the process past its memory limit, as in master_main.cc. Only one termination
-  // monitor may exist in a process, and an embedded master is stopped by its test instead.
+  // Terminates the process past its memory limit, as in master_main.cc.
   if (!embedded_) {
-    termination_monitor_ = TerminationMonitor::Create();
     total_mem_watcher_ = server::TotalMemWatcher::Create();
     RETURN_NOT_OK(Thread::Create(
         "total_mem_watcher", "loop",
@@ -1154,6 +1167,9 @@ Status MasterHost::DoStart() {
           total_mem_watcher_->MemoryMonitoringLoop([this] { termination_monitor_->Terminate(); });
         },
         &total_mem_watcher_thread_));
+    // As master_main.cc; an embedded master leaves call-home to its test.
+    call_home_ = std::make_unique<master::MasterCallHome>(this);
+    call_home_->ScheduleCallHome();
   }
   google::FlushLogFiles(google::INFO);
   return Status::OK();
@@ -1464,6 +1480,38 @@ Status MasterHost::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req
   }
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
   tap_->PostReload("remote bootstrap", clock()->Now());
+  return GetUniverseKeyRegistryFromOtherMastersAsync();
+}
+
+Status MasterHost::GetUniverseKeyRegistryFromOtherMastersAsync() {
+  // SysCatalogTable::WaitUntilRunning, which is private to CatalogManager.
+  auto peer = sys_catalog_->tablet_peer();
+  SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+  for (;;) {
+    auto status = peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(1));
+    if (status.ok()) {
+      break;
+    }
+    if (!status.IsTimedOut()) {
+      return status.CloneAndPrepend("Failed waiting for the catalog tablet to run");
+    }
+  }
+  auto consensus = VERIFY_RESULT(peer->GetConsensus());
+  const auto cstate = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
+  std::vector<HostPort> hps;
+  for (const auto& peer : cstate.config().peers()) {
+    if (peer.permanent_uuid() == fs_manager()->uuid()) {
+      continue;
+    }
+    hps.push_back(HostPortFromPB(DesiredHostPort(peer, opts_.MakeCloudInfoPB())));
+  }
+  if (!universe_key_client_) {
+    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
+        hps, &proxy_cache(), [this](const encryption::UniverseKeysPB& universe_keys) {
+          encryption_manager_->PopulateUniverseKeys(universe_keys);
+        });
+  }
+  universe_key_client_->GetUniverseKeyRegistryAsync();
   return Status::OK();
 }
 
@@ -1481,6 +1529,9 @@ void MasterHost::ShutdownHost() {
   }
   LOG(INFO) << "Rust master host shutting down...";
   stop_latch_.CountDown();
+  if (call_home_) {
+    call_home_->Shutdown();
+  }
   if (open_sys_catalog_thread_) {
     CHECK_OK(ThreadJoiner(open_sys_catalog_thread_.get()).Join());
   }
@@ -1828,6 +1879,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
           RETURN_NOT_OK(
               tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
+          RecordInitialSnapshotChange(change);
           return sys_catalog_->CopyPgsqlTables(source_ids, target_ids, req.term());
         });
   }
@@ -1872,6 +1924,7 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
                 partition_schema, change.mutable_add_table());
             RETURN_NOT_OK(
                 tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
+            RecordInitialSnapshotChange(change);
           }
           auto* row = resp->mutable_table();
           row->set_id(table_id);
@@ -1882,6 +1935,28 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           table->set_state(master::SysTablesEntryPB::RUNNING);
           if (create.has_transaction()) {
             *table->mutable_transaction() = create.transaction();
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "MakeSysCatalogTablesTransactional") {
+    // The tablet metadata half of MakeYsqlSysCatalogTablesTransactional. The metadata changes
+    // first, so a leader that fails before writing the rows redoes both.
+    return HandleRequest<master::MakeSysCatalogTablesTransactionalRequestPB,
+                         master::MakeSysCatalogTablesTransactionalResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          for (const auto& table_id : req.table_ids()) {
+            tablet::ChangeMetadataRequestPB change;
+            change.set_tablet_id(master::kSysCatalogTabletId);
+            auto& add_table = *change.mutable_add_table();
+            VERIFY_RESULT(peer->tablet_metadata()->GetTableInfo(table_id))->ToPB(&add_table);
+            auto& properties = *add_table.mutable_schema()->mutable_table_properties();
+            properties.set_is_ysql_catalog_table(true);
+            properties.set_is_transactional(true);
+            RETURN_NOT_OK(
+                tablet::SyncReplicateChangeMetadataOperation(&change, peer.get(), req.term()));
           }
           return Status::OK();
         });
@@ -1900,16 +1975,34 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
         });
   }
   if (name == "RunYsqlInitDb") {
-    // YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog without the snapshot.
+    // YsqlInitDBAndMajorUpgradeHandler::InitDBAndSnapshotSysCatalog.
     return HandleRequest<master::RunYsqlInitDbRequestPB, master::RunYsqlInitDbResponsePB>(
         request, [this](const auto& req, auto*) -> Status {
           std::vector<std::pair<std::string, YbcPgOid>> database_oids;
           for (const auto& entry : req.database_oids()) {
             database_oids.emplace_back(entry.name(), entry.oid());
           }
-          return pgwrapper::PgWrapper::InitDbForYSQL(
+          const bool write_snapshot = FLAGS_create_initial_sys_catalog_snapshot;
+          if (write_snapshot) {
+            std::lock_guard lock(initial_snapshot_writer_mutex_);
+            initial_snapshot_writer_ = std::make_unique<master::InitialSysCatalogSnapshotWriter>();
+          }
+          auto status = pgwrapper::PgWrapper::InitDbForYSQL(
               this, opts_, *fs_manager_, FLAGS_tmp_dir, std::move(database_oids),
               req.is_major_upgrade());
+          if (!write_snapshot) {
+            return status;
+          }
+          std::unique_ptr<master::InitialSysCatalogSnapshotWriter> writer;
+          {
+            std::lock_guard lock(initial_snapshot_writer_mutex_);
+            writer = std::move(initial_snapshot_writer_);
+          }
+          RETURN_NOT_OK(status);
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          return writer->WriteSnapshot(tablet.get(), FLAGS_initial_sys_catalog_snapshot_path);
         });
   }
   if (name == "ForwardUpgradeYsql") {
@@ -2170,6 +2263,9 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           if (req.has_num_tablet_servers_dead()) {
             num_tablet_servers_dead_metric_->set_value(req.num_tablet_servers_dead());
           }
+          if (req.has_balancer_run_duration_ms()) {
+            load_balancer_duration_metric_->Increment(req.balancer_run_duration_ms());
+          }
           // CatalogManager::ReportMetrics: how long ago the leader last heard from its least
           // recently heard follower master.
           auto consensus = sys_catalog_->tablet_peer()->GetConsensus();
@@ -2193,6 +2289,10 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           if (leader_ready_term_.exchange(req.term()) != req.term()) {
             // CatalogManager resets it when the catalog versions task stops on a lost leadership.
             ResetPgCatalogVersionCache();
+            if (req.term() < 0) {
+              // CatalogManagerBgTasks' cleanup on losing leadership.
+              load_balancer_duration_metric_->Reset();
+            }
           }
           return Status::OK();
         });
@@ -3128,15 +3228,45 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
         });
   }
   if (name == "WriteSysCatalogEntry") {
-    // CatalogManager::WriteSysCatalogEntry, which needs emergency_repair_mode; CreateMasterHost
-    // refuses to start in it.
+    // CatalogManager::WriteSysCatalogEntry and WriteToSysCatalog.
     return HandleRequest<master::WriteSysCatalogEntryRequestPB,
                          master::WriteSysCatalogEntryResponsePB>(
-        request, [](const auto& req, auto*) -> Status {
+        request, [this](const auto& req, auto*) -> Status {
           SCHECK_PB_FIELDS_NOT_EMPTY(req, entry_type);
           SCHECK_PB_FIELDS_SET(req, op_type);
-          return STATUS(
-              IllegalState, "Updating sys_catalog is only allowed in emergency repair mode");
+          SCHECK(
+              FLAGS_emergency_repair_mode, IllegalState,
+              "Updating sys_catalog is only allowed in emergency repair mode");
+          QLWriteRequestPB::QLStmtType op_type;
+          switch (req.op_type()) {
+            case master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_INSERT:
+              op_type = QLWriteRequestPB::QL_STMT_INSERT;
+              break;
+            case master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_UPDATE:
+              op_type = QLWriteRequestPB::QL_STMT_UPDATE;
+              break;
+            case master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE:
+              op_type = QLWriteRequestPB::QL_STMT_DELETE;
+              break;
+            default:
+              return STATUS_FORMAT(
+                  InvalidArgument, "Unsupported type $0",
+                  master::WriteSysCatalogEntryRequestPB::WriteOp_Name(req.op_type()));
+          }
+          const auto type = req.entry_type();
+          auto pb = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(type, req.pb_debug_string()));
+          LOG_WITH_FUNC(WARNING) << "Updating Sys Catalog. OpType: "
+                                 << QLWriteRequestPB::QLStmtType_Name(op_type)
+                                 << ", EntryType: " << master::SysRowEntryType_Name(type)
+                                 << ", EntryId: " << req.entity_id()
+                                 << ", EntryData: " << pb->DebugString();
+          // The current term: in emergency repair mode no leader term is ever ready.
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          auto consensus = VERIFY_RESULT(peer->GetConsensus());
+          const auto term =
+              consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED).current_term();
+          return sys_catalog_->ForceWrite(type, req.entity_id(), *pb, op_type, term);
         });
   }
   throw std::runtime_error("The host does not serve " + name);
@@ -3478,6 +3608,8 @@ rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
     *resp.mutable_auto_flags_config() = auto_flags_manager_->GetConfig();
   }
   FillYsqlCatalogVersions(has_catalog_versions_fingerprint, catalog_versions_fingerprint, &resp);
+  // The host's MasterTabletServiceImpl admits the catalog prefetches the load is about.
+  resp.set_ysql_catalog_prefetch_load(master::GetYsqlCatalogPrefetchLoad());
   return ToRustBytes(resp.SerializeAsString());
 }
 
@@ -3553,6 +3685,13 @@ void MasterHost::FillYsqlCatalogVersions(
     if (message_list.has_value()) {
       inval_messages->set_message_list(std::move(*message_list));
     }
+  }
+}
+
+void MasterHost::RecordInitialSnapshotChange(const tablet::ChangeMetadataRequestPB& change) {
+  std::lock_guard lock(initial_snapshot_writer_mutex_);
+  if (initial_snapshot_writer_) {
+    initial_snapshot_writer_->AddMetadataChange(change);
   }
 }
 

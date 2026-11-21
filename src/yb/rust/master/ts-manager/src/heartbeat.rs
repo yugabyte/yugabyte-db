@@ -334,7 +334,12 @@ impl TsManager {
         if !(self.options.universe_uuid_check)() {
             return Ok(true);
         }
-        let master_uuid = cluster_config.universe_uuid();
+        let test_uuid = (self.options.test_universe_uuid)();
+        let master_uuid = if test_uuid.is_empty() {
+            cluster_config.universe_uuid()
+        } else {
+            test_uuid.as_str()
+        };
         let ts_uuid = req.universe_uuid();
         if master_uuid.is_empty() {
             resp.error = Some(master_error(
@@ -494,6 +499,7 @@ impl TsManager {
             )
         };
         let mut became_live = false;
+        let persist_registry = (self.options.persist_registry)();
         let changed = self
             .update_descriptor(instance.permanent_uuid(), |d| {
                 if d.state() == TsState::REPLACED
@@ -543,7 +549,10 @@ impl TsManager {
                 d.pb.xcluster_guarded_lease_state = Some(EnumOrUnknown::new(
                     XClusterGuardedLeaseState::MAYBE_HAS_LEASE,
                 ));
-                Ok(before != d.pb)
+                // A tserver registered while the registry was not persisted gets its row once
+                // `persist_tserver_registry` is on, as C++ upserts the descriptor whose persisted
+                // bit changes.
+                Ok(before != d.pb || (persist_registry && d.persisted_row.is_none()))
             })
             .ok_or_else(not_found)??;
         if became_live {

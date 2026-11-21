@@ -45,6 +45,11 @@ yb_flag!(
 static MASTER_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_rpc_timeout_ms");
 static LIST_RAFT_PEERS_CHECK_IS_LEADER: FlagRef<bool> =
     FlagRef::new("master_list_raft_peers_check_is_leader");
+static TIMEOUT_NON_LEADER_MASTER_RPCS_MS: FlagRef<i32> =
+    FlagRef::new("TEST_timeout_non_leader_master_rpcs_ms");
+static INJECT_LATENCY_ON_TABLET_LOOKUPS_MS: FlagRef<i32> =
+    FlagRef::new("master_inject_latency_on_tablet_lookups_ms");
+static EMERGENCY_REPAIR_MODE: FlagRef<bool> = FlagRef::new("emergency_repair_mode");
 
 /// Registers the Rust-declared flags with gflags. The binary calls it before flag parsing; an
 /// embedded master (MiniCluster) calls it on its first start, after parsing, where the flags then
@@ -91,9 +96,12 @@ struct RunningMaster {
 impl RunningMaster {
     fn stop(mut self) {
         tracing::info!("Rust master shutting down");
-        self.host.pin_mut().shutdown();
+        // The runtimes stop before the host: the host's messenger waits for every inbound call
+        // to be answered, and dropping the tasks that still hold calls (waiting for a leader, or
+        // for a tserver behind a cut connection) answers them.
         self.runtime.shutdown_timeout(Duration::from_secs(10));
         self.lease_runtime.shutdown_timeout(Duration::from_secs(10));
+        self.host.pin_mut().shutdown();
         self.gate.close();
         self.leadership.shutdown();
     }
@@ -197,6 +205,13 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
     let options = HandlerOptions {
         master_rpc_timeout: || Duration::from_millis(MASTER_RPC_TIMEOUT_MS.get().max(0) as u64),
         list_raft_peers_check_is_leader: || LIST_RAFT_PEERS_CHECK_IS_LEADER.get(),
+        timeout_non_leader_master_rpcs: || {
+            Duration::from_millis(TIMEOUT_NON_LEADER_MASTER_RPCS_MS.get().max(0) as u64)
+        },
+        inject_latency_on_tablet_lookups: || {
+            Duration::from_millis(INJECT_LATENCY_ON_TABLET_LOOKUPS_MS.get().max(0) as u64)
+        },
+        emergency_repair_mode: || EMERGENCY_REPAIR_MODE.get(),
     };
     for service in yb_proto::SERVICES
         .iter()

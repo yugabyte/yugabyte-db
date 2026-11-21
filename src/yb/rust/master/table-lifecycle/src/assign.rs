@@ -274,7 +274,7 @@ impl TabletAssigner {
         let Some(observed) = ts_manager.locations.get(&tablet_id) else {
             return;
         };
-        if observed.leader().is_some() {
+        if observed.leader().is_some() && !ts_manager.locations.reported_leaderless(&tablet_id) {
             return;
         }
         let Ok(pb) = tablet.parse::<SysTabletsEntryPB>() else {
@@ -349,6 +349,9 @@ impl TabletAssigner {
         };
         let rpc_timeout = (self.rpc_timeout)();
         scope.entity().spawn("start-election", async move {
+            while (lifecycle.options.pause_before_send_hinted_election)() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             let result = executor
                 .run(&protege, "RunLeaderElection", &policy, |_| {
                     let current = lifecycle.leadership.check(&token);
@@ -733,6 +736,22 @@ impl Controller for InitialElections {
             });
             for id in fresh.keys() {
                 if let Some(tablet) = snapshot.get(SysRowEntryType::TABLET, id) {
+                    assigner.start_election_if_ready(scope, &token, &snapshot, tablet);
+                }
+            }
+            // Any other tablet whose last report named no leader, once per term, as C++ hints an
+            // election on such a report once per loaded tablet: after a restart a tserver's
+            // existing tablets then get a leader without waiting for Raft's election timeout.
+            for id in assigner
+                .lifecycle
+                .ts_manager
+                .locations
+                .reported_leaderless_tablets()
+            {
+                if fresh.contains_key(&*id) {
+                    continue;
+                }
+                if let Some(tablet) = snapshot.get(SysRowEntryType::TABLET, &id) {
                     assigner.start_election_if_ready(scope, &token, &snapshot, tablet);
                 }
             }

@@ -110,11 +110,15 @@ impl SnapshotCoordinator {
                 .done_at
                 .entry((row.id.clone(), initial as i32))
                 .or_insert_with(Instant::now);
-            // The namespace anchor of a namespace snapshot ends with it.
+            // The namespace anchor of a namespace snapshot ends with it, once the row says so:
+            // hidden tablets are kept by a complete snapshot only as its row lists it, so an
+            // anchor released before the write lets them be deleted in between.
             let aggregated = aggregated_state(initial, &tablets, mark_failed);
             if aggregated.is_ok_and(|s| s != State::CREATING) {
                 drop(state);
-                self.release_namespace_for(&row.id);
+                if !pending {
+                    self.release_namespace_for(&row.id);
+                }
                 if !row.schedule_id().is_empty() {
                     self.schedule_snapshot_finished(token.term(), row.schedule_id(), &row.id);
                 }

@@ -152,6 +152,7 @@ struct Harness {
     info: Arc<FakeInfo>,
     rpc: Arc<FakeRpcClient>,
     leader: Option<Arc<LeaderServices>>,
+    emergency_repair_mode: bool,
 }
 
 impl Harness {
@@ -171,6 +172,7 @@ impl Harness {
             info: FakeInfo::new(),
             rpc: Arc::new(rpc),
             leader: None,
+            emergency_repair_mode: false,
         }
     }
 
@@ -193,6 +195,13 @@ impl Harness {
             HandlerOptions {
                 master_rpc_timeout: || Duration::from_secs(1),
                 list_raft_peers_check_is_leader: || false,
+                timeout_non_leader_master_rpcs: || Duration::ZERO,
+                inject_latency_on_tablet_lookups: || Duration::ZERO,
+                emergency_repair_mode: if self.emergency_repair_mode {
+                    || true
+                } else {
+                    || false
+                },
             },
             self.leader.clone(),
         );
@@ -226,6 +235,20 @@ fn registration_reports_follower_even_when_leader() {
     assert_eq!(resp.role(), PeerRole::FOLLOWER);
     assert_eq!(resp.instance_id.instance_seqno(), 42);
     assert!(resp.error.is_none());
+}
+
+/// In emergency repair mode no term becomes ready, and the Raft leader reports LEADER, as
+/// `GetMasterRegistration` does in C++, so yb-admin finds it.
+#[test]
+fn registration_reports_the_raft_leader_in_emergency_repair_mode() {
+    let mut h = Harness::new();
+    h.emergency_repair_mode = true;
+    h.info.role.store(PeerRole::LEADER as i32, Ordering::SeqCst);
+    let resp = GetMasterRegistrationResponsePB::parse_from_bytes(&success(
+        h.call("GetMasterRegistration", vec![]),
+    ))
+    .unwrap();
+    assert_eq!(resp.role(), PeerRole::LEADER);
 }
 
 #[test]
@@ -658,6 +681,8 @@ mod leader_tests {
                     fail_transition_from: String::new,
                     fail_cleanup: || false,
                     skip_tserver_version_checks: || false,
+                    auto_run_initdb: || false,
+                    min_live_tservers_before_initdb: || 0,
                 },
             );
             let snapshots = master_snapshot_coordinator::SnapshotCoordinator::new(
@@ -716,6 +741,7 @@ mod leader_tests {
                 delay_leader_blacklist_completion: || false,
                 ysql_major_version: Some(15),
                 tablespace_based_transaction_placement: || true,
+                consider_all_local_transaction_tables_local: || false,
                 major_upgrade,
             })
         });
@@ -754,6 +780,92 @@ mod leader_tests {
             .ycql_virtual_table_input(b"ycql-tablet", None)
             .unwrap()
             .is_none());
+    }
+
+    /// As C++'s `transaction_table_ids_set_`, a local transaction status table is listed from its
+    /// creation, before the table is RUNNING, with only its RUNNING tablets; a hidden one is not.
+    #[test]
+    fn local_status_tables_count_from_creation() {
+        let (harness, _source) = with_leader(true);
+        let leader = harness.leader.as_ref().unwrap();
+        let token = leader.leadership.token().unwrap();
+        let mut mutation = master_catalog_state::Mutation::new();
+        let mut placement = yb_proto::pb::common_net::PlacementInfoPB::new();
+        placement.set_num_replicas(1);
+        let mut block = yb_proto::pb::common_net::PlacementBlockPB::new();
+        let cloud_info = block.cloud_info.mut_or_insert_default();
+        cloud_info.set_placement_cloud("c".into());
+        cloud_info.set_placement_region("r".into());
+        block.set_min_num_replicas(1);
+        placement.placement_blocks.push(block);
+        for (table_id, table_state, hidden, tablets) in [
+            (
+                "local-txn",
+                sys_tables_entry_pb::State::PREPARING,
+                false,
+                [
+                    ("local-running", sys_tablets_entry_pb::State::RUNNING),
+                    ("local-creating", sys_tablets_entry_pb::State::CREATING),
+                ],
+            ),
+            (
+                "hidden-txn",
+                sys_tables_entry_pb::State::RUNNING,
+                true,
+                [
+                    ("hidden-a", sys_tablets_entry_pb::State::RUNNING),
+                    ("hidden-b", sys_tablets_entry_pb::State::RUNNING),
+                ],
+            ),
+        ] {
+            let mut table = SysTablesEntryPB::new();
+            table.set_name(table_id.as_bytes().to_vec());
+            table.set_namespace_id(b"ns1".to_vec());
+            table.set_table_type(TableType::TRANSACTION_STATUS_TABLE_TYPE);
+            table.set_version(0);
+            table.schema = Some(Default::default()).into();
+            table.set_state(table_state);
+            if hidden {
+                table.set_hide_state(sys_tables_entry_pb::HideState::HIDDEN);
+            }
+            table.replication_info.mut_or_insert_default().live_replicas =
+                Some(placement.clone()).into();
+            mutation = mutation.upsert(
+                SysRowEntryType::TABLE,
+                table_id.as_bytes(),
+                table.write_to_bytes().unwrap(),
+            );
+            for (start, (tablet_id, tablet_state)) in ["", "m"].into_iter().zip(tablets) {
+                let mut tablet = SysTabletsEntryPB::new();
+                tablet.set_table_id(table_id.as_bytes().to_vec());
+                tablet.set_state(tablet_state);
+                tablet
+                    .partition
+                    .mut_or_insert_default()
+                    .set_partition_key_start(start.as_bytes().to_vec());
+                mutation = mutation.upsert(
+                    SysRowEntryType::TABLET,
+                    tablet_id.as_bytes(),
+                    tablet.write_to_bytes().unwrap(),
+                );
+            }
+        }
+        harness
+            .runtime
+            .block_on(leader.writer.submit(&token, mutation))
+            .unwrap();
+        let mut req = yb_proto::pb::master_client::GetTransactionStatusTabletsRequestPB::new();
+        let cloud = req.placement.mut_or_insert_default();
+        cloud.set_placement_cloud("c".into());
+        cloud.set_placement_region("r".into());
+        cloud.set_placement_zone("z".into());
+        let mut resp = yb_proto::pb::master_client::GetTransactionStatusTabletsResponsePB::new();
+        leader.placement_local_transaction_tablets(
+            &leader.catalog.snapshot(),
+            req.placement.as_ref().unwrap(),
+            &mut resp,
+        );
+        assert_eq!(resp.region_local_tablet_id, vec![b"local-running".to_vec()]);
     }
 
     #[test]

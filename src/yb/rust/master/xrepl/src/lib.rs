@@ -128,6 +128,8 @@ pub struct XreplOptions {
     pub skip_table_removal_from_qualified_list: fn() -> bool,
     /// `TEST_cdcsdk_skip_processing_unqualified_tables`.
     pub skip_processing_unqualified_tables: fn() -> bool,
+    /// `TEST_cdcsdk_skip_processing_dynamic_table_addition`.
+    pub skip_dynamic_table_addition: fn() -> bool,
     /// `cdc_intent_retention_ms`: how long a tablet's barriers outlive its last activity.
     pub intent_retention: fn() -> Duration,
     /// `enable_table_rewrite_for_cdcsdk_table`: dropped tables of logical replication streams are
@@ -171,6 +173,7 @@ impl Default for XreplOptions {
             skip_state_entries_on_table_removal: || false,
             skip_table_removal_from_qualified_list: || false,
             skip_processing_unqualified_tables: || false,
+            skip_dynamic_table_addition: || false,
             intent_retention: || Duration::from_secs(8 * 3600),
             table_rewrite_retention: || true,
             add_dynamic_index_to_state_table: || false,

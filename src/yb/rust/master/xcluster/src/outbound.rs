@@ -868,7 +868,7 @@ impl XCluster {
                 }
                 Err(status(
                     StatusCode::NotFound,
-                    format!("Table {table_id} not found in {id}"),
+                    format!("Table {table_id} not found in xClusterOutboundReplicationGroup {id}"),
                 ))
             })
             .await

@@ -105,6 +105,9 @@ pub struct LeaderServices {
     pub delay_leader_blacklist_completion: fn() -> bool,
     /// `enable_tablespace_based_transaction_placement`.
     pub tablespace_based_transaction_placement: fn() -> bool,
+    /// `TEST_consider_all_local_transaction_tables_local`: every status table with a placement
+    /// counts as local to every requestor.
+    pub consider_all_local_transaction_tables_local: fn() -> bool,
     /// This build's YSQL major version; None with YSQL off.
     pub ysql_major_version: Option<u32>,
     /// The YSQL major catalog upgrade.
@@ -229,6 +232,20 @@ impl LeaderServices {
             entry.set_alive(descriptor.is_live());
             if let Some(metrics) = descriptor.metrics.clone() {
                 entry.metrics = Some(metrics).into();
+            }
+            // The YSQL lease of this tserver process, as its OBJECT_LOCK_ENTRY row has it.
+            let lease = snapshot
+                .get(SysRowEntryType::OBJECT_LOCK_ENTRY, &descriptor.uuid)
+                .and_then(|row| {
+                    row.parse::<yb_proto::pb::catalog_entity_info::SysObjectLockEntryPB>()
+                        .ok()
+                })
+                .and_then(|e| e.lease_info.into_option())
+                .filter(|l| l.instance_seqno() == descriptor.pb.instance_seqno());
+            if let Some(lease) = lease {
+                let info = entry.lease_info.mut_or_insert_default();
+                info.set_is_live(lease.live_lease());
+                info.set_lease_epoch(lease.lease_epoch());
             }
             resp.servers.push(entry);
         }
@@ -832,8 +849,10 @@ impl LeaderServices {
 
     /// `GetPlacementLocalTransactionStatusTables` and `...Tablets`: the transaction status tables
     /// whose placement (their own, or their tablespace's) contains the requestor's, by tablespace,
-    /// and those within one region. A table still being created is left out until it is done.
-    fn placement_local_transaction_tablets(
+    /// and those within one region. As C++'s `transaction_table_ids_set_`, a table counts from its
+    /// creation until it starts being deleted or hidden; only its RUNNING tablets are listed, and
+    /// each one turning RUNNING bumps the transaction tables version so tservers fetch it.
+    pub(crate) fn placement_local_transaction_tablets(
         &self,
         snapshot: &CatalogSnapshot,
         placement: &CloudInfoPB,
@@ -849,9 +868,14 @@ impl LeaderServices {
             let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
                 continue;
             };
+            let deleting = matches!(
+                pb.state(),
+                sys_tables_entry_pb::State::DELETING | sys_tables_entry_pb::State::DELETED
+            );
             if pb.table_type()
                 != yb_proto::pb::common_types::TableType::TRANSACTION_STATUS_TABLE_TYPE
-                || pb.state() != sys_tables_entry_pb::State::RUNNING
+                || deleting
+                || pb.hide_state() != sys_tables_entry_pb::HideState::VISIBLE
             {
                 continue;
             }
@@ -884,7 +908,11 @@ impl LeaderServices {
             } else {
                 continue;
             };
-            if !master_ts_manager::placement::placement_contains(&txn_placement, placement) {
+            let all_local = (self.consider_all_local_transaction_tables_local)()
+                && !txn_placement.placement_blocks.is_empty();
+            if !all_local
+                && !master_ts_manager::placement::placement_contains(&txn_placement, placement)
+            {
                 continue;
             }
             let region_local = !spans_regions(&txn_placement);

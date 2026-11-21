@@ -61,6 +61,9 @@ pub struct ImportOptions {
     pub max_concurrent_create_table_requests: fn() -> u64,
     /// `import_snapshot_using_table_name`.
     pub using_table_name: fn() -> bool,
+    /// `TEST_skip_oid_advance_on_restore`: the restored databases keep their OID counters, as
+    /// restores did before the counters were advanced.
+    pub skip_oid_advance: fn() -> bool,
 }
 
 impl Default for ImportOptions {
@@ -68,6 +71,7 @@ impl Default for ImportOptions {
         ImportOptions {
             max_concurrent_create_table_requests: || 20,
             using_table_name: || false,
+            skip_oid_advance: || false,
         }
     }
 }
@@ -320,7 +324,12 @@ impl Import<'_> {
             .filter(|n| n.db_type == YQLDatabase::YQL_DATABASE_PGSQL)
             .map(|n| n.new_id.clone())
             .collect();
-        if let Some(hooks) = self.coordinator.hooks.get() {
+        if let Some(hooks) = self
+            .coordinator
+            .hooks
+            .get()
+            .filter(|_| !(self.coordinator.options.import.skip_oid_advance)())
+        {
             for namespace_id in ysql {
                 hooks
                     .advance_oid_counters(namespace_id)

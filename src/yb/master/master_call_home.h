@@ -17,24 +17,16 @@
 namespace yb {
 
 namespace master {
-class Master;
-class MasterTest_TestCallHome_Test;
 
+// Call-home for a master. The collectors read the cluster through the master's own public RPCs,
+// so they need nothing from how the master is implemented.
 class MasterCallHome : public CallHome {
  public:
-  explicit MasterCallHome(Master* server);
+  explicit MasterCallHome(server::RpcAndWebServerBase* server);
   ~MasterCallHome() {}
 
  private:
   bool SkipCallHome() override;
-};
-
-class MasterCollector : public Collector {
- public:
-  using Collector::Collector;
-
- protected:
-  inline Master* master() { return down_cast<Master*>(server_); }
 };
 
 }  // namespace master

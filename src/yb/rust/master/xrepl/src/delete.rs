@@ -22,8 +22,8 @@ use protobuf::{EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
-    sys_cdcstream_entry_pb::State as StreamState, SysCDCStreamEntryPB, SysXClusterConfigEntryPB,
-    SysXClusterOutboundReplicationGroupEntryPB,
+    sys_cdcstream_entry_pb::State as StreamState, sys_namespace_entry_pb, SysCDCStreamEntryPB,
+    SysNamespaceEntryPB, SysXClusterConfigEntryPB, SysXClusterOutboundReplicationGroupEntryPB,
 };
 use yb_proto::pb::master_replication::{DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB};
 use yb_proto::pb::master_rust_peer::{
@@ -241,6 +241,59 @@ impl Xrepl {
             .await?;
         tracing::info!("Successfully deleted XRepl streams: {:?}", ids);
         Ok(())
+    }
+
+    /// `CDCStreamLoader`'s marking: a CDCSDK stream whose database is gone or being dropped was
+    /// left by a master that did not drop a database's streams with it (or that failed before it
+    /// did); it becomes DELETING, for [`Self::clean_up_deleted_streams`]. Run once per term, as C++
+    /// marks such streams when it loads the catalog.
+    pub async fn mark_streams_of_dropped_databases_deleting(
+        &self,
+        token: &LeaderToken,
+    ) -> Result<(), Status> {
+        self.writer
+            .mutate_with(token, WriteOptions::default(), |snapshot| {
+                let mut mutation = Mutation::new();
+                for row in stream_rows(snapshot) {
+                    if row.pb.namespace_id().is_empty()
+                        || row.pb.state() == StreamState::DELETING
+                        || row.pb.state() == StreamState::DELETED
+                    {
+                        continue;
+                    }
+                    let dropped = match snapshot
+                        .get(SysRowEntryType::NAMESPACE, row.pb.namespace_id().as_bytes())
+                    {
+                        None => true,
+                        Some(ns) => matches!(
+                            ns.parse::<SysNamespaceEntryPB>().map(|pb| pb.state()),
+                            Ok(sys_namespace_entry_pb::State::DELETING
+                                | sys_namespace_entry_pb::State::DELETED)
+                        ),
+                    };
+                    if !dropped {
+                        continue;
+                    }
+                    tracing::info!(
+                        "Marking CDCSDK stream {} of dropped namespace {} as DELETING",
+                        row.id,
+                        row.pb.namespace_id()
+                    );
+                    let entity = snapshot
+                        .get(SysRowEntryType::CDC_STREAM, row.id.as_bytes())
+                        .expect("listed");
+                    let mut pb = row.pb.clone();
+                    pb.state = Some(EnumOrUnknown::new(StreamState::DELETING));
+                    mutation = mutation.read(entity).upsert_message(
+                        SysRowEntryType::CDC_STREAM,
+                        row.id.as_bytes(),
+                        &pb,
+                    )?;
+                }
+                Ok((mutation, ()))
+            })
+            .await
+            .map(|_| ())
     }
 
     /// One of the host's C++ steps, off the async threads.

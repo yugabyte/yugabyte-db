@@ -68,14 +68,19 @@ impl TableLifecycle {
             tracing::info!("Ignoring alter table request during a major YSQL upgrade");
             return Ok(());
         }
+        self.block_alter_table("alter_schema").await;
         // A rename takes a name; hold the name lock across the check and the write.
-        let _names = self.names.lock().await;
+        let names = self.names.lock().await;
+        // The alter's DDL transaction, recorded before the write lands: the alterer may send
+        // `AlterSchema` as soon as it sees the new row, and C++ sends it with the transaction.
+        let recorded: Mutex<Option<Vec<u8>>> = Mutex::default();
         let version = self
             .write(token, deadline, |snapshot| {
                 let table = find_table(snapshot, &req.table, false)?;
                 let pb: SysTablesEntryPB = table.parse().map_err(corrupt_error)?;
                 let is_pg = pb.table_type() == TableType::PGSQL_TABLE_TYPE;
-                if pb.table_type() != TableType::YQL_TABLE_TYPE && !is_pg {
+                let status_table = pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE;
+                if pb.table_type() != TableType::YQL_TABLE_TYPE && !is_pg && !status_table {
                     return Err(error(
                         Code::INVALID_REQUEST,
                         StatusCode::NotSupported,
@@ -219,22 +224,55 @@ impl TableLifecycle {
                 for row in &ddl_log {
                     mutation = crate::ddl_log::add(mutation, row)?;
                 }
-                let txn = (is_pg && !req.transaction.transaction_id().is_empty()).then(|| {
-                    (
+                if status_table {
+                    // `IncrementTransactionTablesVersion`: tservers re-read the status tables'
+                    // placement on the version change.
+                    mutation = crate::create::bump_transaction_tables_version(snapshot, mutation)?;
+                }
+                if is_pg && !req.transaction.transaction_id().is_empty() {
+                    self.alter_txns.lock().unwrap().insert(
                         table.key.id.to_vec(),
-                        req.transaction.transaction_id().to_vec(),
-                    )
-                });
-                Ok((mutation, (new.version(), txn)))
+                        (new.version(), req.transaction.transaction_id().to_vec()),
+                    );
+                    *recorded.lock().unwrap() = Some(table.key.id.to_vec());
+                }
+                Ok((mutation, (new.version(), Some(table.key.id.to_vec()))))
             })
-            .await?;
-        let (version, txn) = version;
-        if let Some((table_id, txn)) = txn {
-            self.alter_txns
-                .lock()
-                .unwrap()
-                .insert(table_id, (version, txn));
+            .await;
+        drop(names);
+        let forget_txn = || {
+            if let Some(table_id) = recorded.lock().unwrap().take() {
+                self.alter_txns.lock().unwrap().remove(&table_id);
+            }
+        };
+        let (version, altered) = match version {
+            Ok(version) => version,
+            Err(e) => {
+                forget_txn();
+                return Err(e);
+            }
+        };
+        self.sync_point("YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted")
+            .await;
+        self.sync_point("YBBackupTestWithColocationParam::ContinueAlterTable")
+            .await;
+        if (self.options.fail_alter_table_after_commit)() {
+            // C++ fails here before it schedules the DDL verification of the transaction.
+            forget_txn();
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::IllegalState,
+                "Injected failure after in-memory commit",
+            ));
         }
+        // `SendAlterTableRequest` sleeps before it schedules each tablet's `AlterSchema`, one
+        // tablet after another, before `AlterTable` answers.
+        let slowdown = (self.options.slowdown_alter_table_rpcs)();
+        if let Some(table_id) = altered.filter(|_| !slowdown.is_zero()) {
+            let tablets = self.catalog.snapshot().hosting_tablets_of(&table_id).len();
+            crate::backfill::test_sleep(slowdown * tablets as u32).await;
+        }
+        self.block_alter_table("completion").await;
         resp.set_schema_version(version);
         Ok(())
     }
@@ -350,6 +388,8 @@ struct Alterer {
     tablets: Mutex<HashMap<TableTablet, (u64, bool)>>,
     /// Indexed tables whose backfill runs in this term.
     backfills: Mutex<std::collections::HashSet<Vec<u8>>>,
+    /// Whether this term ran `clear_retained_delete_markers`.
+    retained_markers_cleared: std::sync::atomic::AtomicBool,
 }
 
 impl TableAlterer {
@@ -371,6 +411,7 @@ impl TableAlterer {
             interval,
             tablets: Mutex::default(),
             backfills: Mutex::default(),
+            retained_markers_cleared: Default::default(),
         })))
     }
 }
@@ -380,6 +421,16 @@ impl Alterer {
         let Ok(token) = self.lifecycle.leadership.token() else {
             return;
         };
+        use std::sync::atomic::Ordering;
+        if !self.retained_markers_cleared.load(Ordering::Acquire) {
+            match clear_retained_delete_markers(&self.lifecycle, &token).await {
+                Ok(()) => self.retained_markers_cleared.store(true, Ordering::Release),
+                Err(status) => tracing::warn!(
+                    "Clearing retain_delete_markers of backfilled indexes failed, will retry: \
+                     {status}"
+                ),
+            }
+        }
         let snapshot = self.lifecycle.catalog.snapshot();
         let altering: Vec<_> = snapshot
             .iter(SysRowEntryType::TABLE)
@@ -396,7 +447,7 @@ impl Alterer {
             let row_version = table.version;
             let tablets = snapshot.hosting_tablets_of(&table.key.id);
             let mut all_done = !tablets.is_empty();
-            for tablet in tablets {
+            for (position, tablet) in tablets.into_iter().enumerate() {
                 let key = (table.key.id.to_vec(), tablet.key.id.to_vec());
                 let state = self.tablets.lock().unwrap().get(&key).copied();
                 match state {
@@ -411,6 +462,7 @@ impl Alterer {
                             row_version,
                             &pb,
                             &tablet.key.id,
+                            position as u32 + 1,
                         );
                     }
                 }
@@ -499,32 +551,40 @@ impl Alterer {
         );
         match plan {
             YcqlStep::Done => self.finish(token, table_id, row_version).await,
-            YcqlStep::Permissions(perms) => self
-                .lifecycle
-                .writer
-                .mutate(token, |snapshot| {
-                    let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
-                        return Ok((Mutation::new(), ()));
-                    };
-                    if table.version != row_version {
-                        return Ok((Mutation::new(), ()));
-                    }
-                    let mut pb: SysTablesEntryPB = table
-                        .parse()
-                        .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
-                    crate::backfill::set_index_permissions(&mut pb, &perms);
-                    let bytes = pb
-                        .write_to_bytes()
-                        .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
-                    Ok((
-                        Mutation::new()
-                            .read(table)
-                            .upsert(SysRowEntryType::TABLE, table_id, bytes),
-                        (),
-                    ))
-                })
-                .await
-                .map(|_| ()),
+            YcqlStep::Permissions(perms) => {
+                let slowdown = (self.lifecycle.options.slowdown_index_permission_change)();
+                crate::backfill::test_sleep(slowdown).await;
+                let result = self
+                    .lifecycle
+                    .writer
+                    .mutate(token, |snapshot| {
+                        let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+                            return Ok((Mutation::new(), ()));
+                        };
+                        if table.version != row_version {
+                            return Ok((Mutation::new(), ()));
+                        }
+                        let mut pb: SysTablesEntryPB = table
+                            .parse()
+                            .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+                        crate::backfill::set_index_permissions(&mut pb, &perms);
+                        let bytes = pb
+                            .write_to_bytes()
+                            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+                        Ok((
+                            Mutation::new().read(table).upsert(
+                                SysRowEntryType::TABLE,
+                                table_id,
+                                bytes,
+                            ),
+                            (),
+                        ))
+                    })
+                    .await
+                    .map(|_| ());
+                crate::backfill::test_sleep(slowdown).await;
+                result
+            }
             // `DeleteTableInternal`: the index goes, and leaves its table's `indexes`.
             YcqlStep::Delete(index_id) => self
                 .lifecycle
@@ -538,6 +598,9 @@ impl Alterer {
         }
     }
 
+    /// Sends `AlterSchema` to the tablet's leader. With `TEST_slowdown_alter_table_rpcs_ms` it
+    /// goes out after `position` slowdowns, as C++ schedules a table's tablets one sleep apart.
+    #[allow(clippy::too_many_arguments)]
     fn send(
         self: &Arc<Self>,
         scope: &TermScope,
@@ -546,6 +609,7 @@ impl Alterer {
         row_version: u64,
         table: &SysTablesEntryPB,
         tablet_id: &[u8],
+        position: u32,
     ) {
         let version = table.version();
         let mut req = ChangeMetadataRequestPB::new();
@@ -611,6 +675,8 @@ impl Alterer {
                 )
             });
             let rpc_timeout = (this.rpc_timeout)();
+            let slowdown = (lifecycle.options.slowdown_alter_table_rpcs)();
+            crate::backfill::test_sleep(slowdown * position).await;
             let result = this
                 .executor
                 .run(&leader, "AlterSchema", &this.retry, |_| {
@@ -625,7 +691,10 @@ impl Alterer {
                                 "tserver is not registered",
                             ))
                         })?;
-                        send_alter(&*rpc, &host, port, &req, rpc_timeout).await
+                        let result = send_alter(&*rpc, &host, port, &req, rpc_timeout).await;
+                        // `AsyncAlterTable::HandleResponse`.
+                        crate::backfill::test_sleep(slowdown).await;
+                        result
                     }
                 })
                 .await;
@@ -753,8 +822,67 @@ impl Controller for TableAlterer {
     }
 }
 
-/// An alter this controller completes: of a YSQL table, or of a YCQL table with no index
-/// permission change in flight. The multi-stage index permission alters of a YCQL backfill
+/// `ValidateIndexTablesPostLoad`, run once a term: an index whose backfill succeeded (its indexed
+/// table lists it at READ_WRITE_AND_DELETE) but that still retains delete markers, as when
+/// the leader failed between the two writes, stops retaining them.
+pub(crate) async fn clear_retained_delete_markers(
+    lifecycle: &TableLifecycle,
+    token: &LeaderToken,
+) -> Result<(), Status> {
+    fn corrupt(e: impl std::fmt::Display) -> Status {
+        Status::new(StatusCode::Corruption, e.to_string())
+    }
+    lifecycle
+        .writer
+        .mutate(token, |snapshot| {
+            let mut mutation = Mutation::new();
+            for index in snapshot.iter(SysRowEntryType::TABLE) {
+                let mut pb: SysTablesEntryPB = index.parse().map_err(corrupt)?;
+                if !pb.schema.table_properties.retain_delete_markers()
+                    || matches!(pb.state(), TableState::DELETING | TableState::DELETED)
+                {
+                    continue;
+                }
+                let indexed_id = if pb.index_info.is_some() {
+                    pb.index_info.indexed_table_id()
+                } else {
+                    pb.indexed_table_id()
+                };
+                let Some(indexed) = snapshot.get(SysRowEntryType::TABLE, indexed_id) else {
+                    continue;
+                };
+                let indexed: SysTablesEntryPB = indexed.parse().map_err(corrupt)?;
+                let backfilled = indexed.indexes.iter().any(|i| {
+                    i.table_id() == index.key.id.as_ref()
+                        && i.index_permissions()
+                            == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE
+                });
+                if !backfilled {
+                    continue;
+                }
+                tracing::info!(
+                    "Index {} no longer retains delete markers",
+                    String::from_utf8_lossy(&index.key.id)
+                );
+                pb.schema
+                    .mut_or_insert_default()
+                    .table_properties
+                    .mut_or_insert_default()
+                    .set_retain_delete_markers(false);
+                mutation = mutation.read(index).upsert(
+                    SysRowEntryType::TABLE,
+                    &index.key.id,
+                    pb.write_to_bytes().map_err(corrupt)?,
+                );
+            }
+            Ok((mutation, ()))
+        })
+        .await
+        .map(|_| ())
+}
+
+/// An alter this controller completes: of a YSQL or transaction status table, or of a YCQL table
+/// with no index permission change in flight. The multi-stage index permission alters of a YCQL backfill
 /// (`MultiStageAlterTable`), which a C++ leader may have started, are not served yet and stay
 /// ALTERING.
 fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
@@ -762,6 +890,7 @@ fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
     // A YSQL index's permissions move only on PG's request or at the end of its backfill, so
     // every YSQL alter completes here (`ClassifyIndexes` for a YSQL table).
     pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        || pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE
         || pb.table_type() == TableType::YQL_TABLE_TYPE
             && pb.indexes.iter().all(|i| settled(i.index_permissions()))
             && pb

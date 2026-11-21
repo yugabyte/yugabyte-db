@@ -100,6 +100,8 @@ pub struct DefaultsOptions {
     /// `ycql_allow_cassandra_drop`: the default role is recorded as created, so dropping it
     /// does not bring it back.
     pub allow_ycql_role_drop: fn() -> bool,
+    /// `master_auto_run_initdb` with YSQL on: the leader runs initdb when it is not done.
+    pub auto_run_initdb: fn() -> bool,
 }
 
 /// A random UUID in its string form, as `Uuid::Generate().ToString()` gives.
@@ -207,10 +209,14 @@ pub fn default_rows(
                 .is_some_and(|t| t.table_type == TableType::PGSQL_TABLE_TYPE.value())
         })
     };
+    // initdb creates the catalog tables non-transactional, as C++ leaves them when it runs
+    // initdb (StartRunningInitDbIfNeeded), so the initial snapshot it writes has them so.
+    let initdb_will_run = (options.auto_run_initdb)() && !ysql.ysql_catalog_config().initdb_done();
     if !ysql
         .ysql_catalog_config()
         .transactional_sys_catalog_enabled()
         && !has_pgsql_tables()
+        && !initdb_will_run
     {
         ysql.mut_ysql_catalog_config()
             .set_transactional_sys_catalog_enabled(true);

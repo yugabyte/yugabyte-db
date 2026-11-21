@@ -243,8 +243,12 @@ fn tserver(uuid: &str) -> (TSInformationPB, bool) {
 }
 
 async fn view() -> View {
+    view_of(rows()).await
+}
+
+async fn view_of(rows: Vec<RowChange>) -> View {
     let (fake, events) = FakeSysCatalog::new();
-    fake.apply(rows());
+    fake.apply(rows);
     let catalog = Catalog::new(fake.sender().clone());
     tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
     catalog.barrier().await;
@@ -380,6 +384,41 @@ async fn replication_json() {
         render(crate::replication::tablet_under_replication, &view, None),
         r#"{"underreplicated_tablets":[]}"#
     );
+}
+
+/// `GetLeaderlessTablets` skips the tablets `TabletInfo::is_deleted` calls deleted: replaced ones
+/// too.
+#[tokio::test]
+async fn leaderless_tablets_skip_deleted_and_replaced() {
+    let mut changes = rows();
+    for (id, state) in [
+        (
+            "0000000000000000000000000000000d",
+            sys_tablets_entry_pb::State::DELETED,
+        ),
+        (
+            "0000000000000000000000000000000e",
+            sys_tablets_entry_pb::State::REPLACED,
+        ),
+    ] {
+        let mut tablet = SysTabletsEntryPB::new();
+        tablet.set_table_id(TABLE.into());
+        tablet.partition = Some(Default::default()).into();
+        tablet.state = Some(EnumOrUnknown::new(state));
+        changes.push(RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLET,
+            id: id.as_bytes().to_vec(),
+            data: tablet.write_to_bytes().unwrap(),
+        });
+    }
+    let mut view = view_of(changes).await;
+    // No tablet has reported a valid leader for longer than the alert delay.
+    view.now += std::time::Duration::from_secs(60);
+    let leaderless: Vec<_> = crate::replication::leaderless_tablets(&view)
+        .into_iter()
+        .map(|(_, tablet_id, _)| tablet_id)
+        .collect();
+    assert_eq!(leaderless, vec![TABLET.as_bytes().to_vec()]);
 }
 
 #[tokio::test]

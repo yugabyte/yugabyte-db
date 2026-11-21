@@ -204,6 +204,9 @@ pub struct BalancerFlags {
     pub pause_before_run: fn() -> bool,
     /// See `pause_before_run`.
     pub pause_after_run: fn() -> bool,
+    /// `TEST_load_balancer_wait_ms`: a wait at the start of each run, which the run's duration
+    /// includes.
+    pub wait_in_run: fn() -> Duration,
     /// Publishes the "cluster" metrics after each pass: whether balancing is enabled, and the
     /// run's metrics when it ran (`ReportMetrics`, `UpdatePerRunMetrics`).
     pub report: MetricsReporter,
@@ -327,13 +330,19 @@ impl Inner {
             (self.flags.report)(enabled, None);
             return None;
         }
+        let start = Instant::now();
+        let wait = (self.flags.wait_in_run)();
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
         let snapshot = self.catalog.snapshot();
         let view = self.view(&snapshot);
-        let result = self
+        let mut result = self
             .planner
             .lock()
             .unwrap()
             .run(&view, &(self.flags.options)());
+        result.metrics.run_duration = start.elapsed();
         self.status.record(&result, (self.flags.num_idle_runs)());
         (self.flags.report)(true, Some(&result.metrics));
         Some((token, result))

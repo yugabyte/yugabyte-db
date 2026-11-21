@@ -108,6 +108,9 @@ impl TableLifecycle {
         if req.schema.table_properties.is_transactional() {
             self.ensure_transaction_table(token, deadline).await?;
         }
+        if (self.options.enable_metrics_snapshotter)() && !is_metrics_table(&snapshot, req) {
+            self.ensure_metrics_snapshots_table(token, deadline).await?;
+        }
         // An index: its indexed table must be there and visible.
         // A client before 2.0 sends `indexed_table_id` without `index_info`.
         let indexed_table_id = if req.index_info.is_some() {
@@ -209,6 +212,7 @@ impl TableLifecycle {
                 ),
             ));
         }
+        self.check_tablet_replica_limits(num_tablets, rf, &placement, &config)?;
         if let Some(e) = prepared.partitions_error.clone().into_option() {
             return Err(e);
         }
@@ -219,8 +223,27 @@ impl TableLifecycle {
             (self.options.check_ts_count_for_create_table)(),
         )?;
 
+        let abort_prefix = req.name().starts_with("test_create_abort_");
+        if abort_prefix && (self.options.abort_create_table)() == 1 {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "TEST: Aborting due to FLAGS_TEST_abort_create_table (case1)",
+            ));
+        }
+
         let use_parent_table_id = (self.options.use_parent_table_id_field)();
         let _names = self.names.lock().await;
+        let slow_create = (self.options.simulate_slow_table_create)();
+        if !slow_create.is_zero() && req.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE {
+            let snapshot = self.catalog.snapshot();
+            let exists = find_namespace(&snapshot, &req.namespace)
+                .is_ok_and(|ns| snapshot.table_by_name(&ns.key.id, req.name()).is_some());
+            if !exists {
+                tracing::info!("Simulating slow table creation");
+                tokio::time::sleep(slow_create).await;
+            }
+        }
         let created = self
             .write(token, deadline, |snapshot| {
                 let namespace = find_namespace(snapshot, &req.namespace)?;
@@ -346,6 +369,13 @@ impl TableLifecycle {
         };
         resp.set_table_id(id);
         drop(_names);
+        if abort_prefix && indexed_table_id.is_some() && (self.options.abort_create_table)() == 2 {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "TEST: Aborting due to FLAGS_TEST_abort_create_table (case2)",
+            ));
+        }
         if req.has_creator_role_name() {
             let canonical = crate::roles::canonical_table(req.namespace.name(), req.name());
             let resource = crate::roles::Resource {
@@ -405,8 +435,10 @@ impl TableLifecycle {
                     });
             }
         }
-        // A transactional table also waits for the transaction status table.
+        // A transactional table also waits for the transaction status table, except while initdb
+        // writes the initial snapshot, which creates none.
         if done
+            && !(self.options.create_initial_sys_catalog_snapshot)()
             && table
                 .parse::<SysTablesEntryPB>()
                 .is_ok_and(|pb| pb.schema.table_properties.is_transactional())
@@ -416,8 +448,81 @@ impl TableLifecycle {
                 .and_then(|t| t.table())
                 .is_some_and(|t| t.state != sys_tables_entry_pb::State::PREPARING as i32);
         }
+        // So does every table for `system.metrics` while the metrics snapshotter is on.
+        if done
+            && (self.options.enable_metrics_snapshotter)()
+            && !(table.table().is_some_and(|t| t.name == METRICS_TABLE)
+                && table
+                    .parse::<SysTablesEntryPB>()
+                    .is_ok_and(|pb| pb.namespace_id() == SYSTEM_NAMESPACE_ID))
+        {
+            done = snapshot
+                .table_by_name(SYSTEM_NAMESPACE_ID, METRICS_TABLE)
+                .and_then(|t| t.table())
+                .is_some_and(|t| t.state != sys_tables_entry_pb::State::PREPARING as i32);
+        }
         resp.set_done(done);
         Ok(())
+    }
+
+    /// `CreateMetricsSnapshotsTableIfNeeded`: `system.metrics`, where tservers write their
+    /// metrics snapshots.
+    async fn ensure_metrics_snapshots_table(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+    ) -> Result<(), MasterErrorPB> {
+        if self
+            .catalog
+            .snapshot()
+            .table_by_name(SYSTEM_NAMESPACE_ID, METRICS_TABLE)
+            .is_some()
+        {
+            return Ok(());
+        }
+        let mut req = CreateTableRequestPB::new();
+        req.set_name(METRICS_TABLE.into());
+        req.namespace
+            .mut_or_insert_default()
+            .set_name("system".into());
+        req.table_type = Some(EnumOrUnknown::new(TableType::YQL_TABLE_TYPE));
+        let schema = req.schema.mut_or_insert_default();
+        let num_tablets = (self.options.metrics_snapshots_table_num_tablets)();
+        if num_tablets > 0 {
+            schema
+                .table_properties
+                .mut_or_insert_default()
+                .set_num_tablets(num_tablets);
+        }
+        // "node" is a tserver uuid, "entity_type" is "tserver" or "table", "entity_id" the
+        // tserver's or table's uuid, "ts" the snapshot time, newest first.
+        use PersistentDataType::{INT64, JSONB, STRING, TIMESTAMP};
+        const DESCENDING: u32 = 2;
+        for (name, data_type, hash, range, sorting) in [
+            ("node", STRING, true, false, 0),
+            ("entity_type", STRING, false, true, 0),
+            ("entity_id", STRING, false, true, 0),
+            ("metric", STRING, false, true, 0),
+            ("ts", TIMESTAMP, false, true, DESCENDING),
+            ("value", INT64, false, false, 0),
+            ("details", JSONB, false, false, 0),
+        ] {
+            let mut column = ColumnSchemaPB::new();
+            column.set_name(name.into());
+            column.type_.mut_or_insert_default().set_main(data_type);
+            column.set_is_key(hash || range);
+            column.set_is_hash_key(hash);
+            column.set_is_nullable(!(hash || range));
+            if sorting != 0 {
+                column.set_sorting_type(sorting);
+            }
+            schema.columns.push(column);
+        }
+        let mut resp = CreateTableResponsePB::new();
+        match Box::pin(self.create_table(token, deadline, &req, &mut resp)).await {
+            Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => Ok(()),
+            result => result,
+        }
     }
 
     /// `CreateGlobalTransactionStatusTableIfNotPresent`: `system.transactions`, which every
@@ -587,6 +692,24 @@ impl TableLifecycle {
 
     /// The host's schema steps of `CreateTable`, also building the table's row in `namespace` (id,
     /// name) when given.
+    /// `CanSupportAdditionalTabletsForTableCreation`: TOO_MANY_TABLETS when the table's tablet
+    /// replicas would pass the tablet replica limit.
+    pub(crate) fn check_tablet_replica_limits(
+        &self,
+        num_tablets: i32,
+        replicas_per_tablet: usize,
+        placement: &yb_proto::pb::common_net::PlacementInfoPB,
+        config: &yb_proto::pb::catalog_entity_info::SysClusterConfigEntryPB,
+    ) -> Result<(), MasterErrorPB> {
+        self.ts_manager
+            .check_tablet_replica_limits(
+                i64::from(num_tablets) * replicas_per_tablet as i64,
+                placement.placement_uuid(),
+                &master_ts_manager::placement::blacklist_addresses(config),
+            )
+            .map_err(|m| error(Code::TOO_MANY_TABLETS, StatusCode::InvalidArgument, m))
+    }
+
     pub(crate) fn prepare_schema_in(
         &self,
         req: &CreateTableRequestPB,
@@ -622,6 +745,15 @@ impl TableLifecycle {
 
 /// The PREPARING tablet rows of a new table, one per partition, with ids sorted as C++ sorts them.
 /// A clone's tablets start CREATING: the source tablets' replicas create them (`CloneTablet`).
+/// `system.metrics`, of the metrics snapshotter.
+const METRICS_TABLE: &str = "metrics";
+
+fn is_metrics_table(snapshot: &CatalogSnapshot, req: &CreateTableRequestPB) -> bool {
+    req.name() == METRICS_TABLE
+        && find_namespace(snapshot, &req.namespace)
+            .is_ok_and(|ns| ns.key.id.as_ref() == SYSTEM_NAMESPACE_ID)
+}
+
 pub(crate) fn add_new_tablets(
     snapshot: &CatalogSnapshot,
     mut mutation: Mutation,

@@ -391,6 +391,8 @@ pub struct RunMetrics {
     pub total_table_load_difference: u32,
     /// Those replicas times their table's average tablet size.
     pub estimated_data_to_balance_bytes: u64,
+    /// How long the run took (`load_balancer_duration`); the controller times it.
+    pub run_duration: std::time::Duration,
 }
 
 /// What one run (all placements) decided.

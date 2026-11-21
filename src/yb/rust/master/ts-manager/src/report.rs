@@ -77,10 +77,17 @@ impl TsManager {
             uuid,
             incremental: report.is_incremental(),
         };
+        let latency = (self.options.report_latency)();
+        let require_leader = (self.options.wait_for_new_tablets_to_elect_leader)();
         for (i, tablet) in reported.iter().enumerate() {
-            if i > 0 && Instant::now() > safe_deadline {
-                truncated = true;
-                break;
+            if i > 0 {
+                if !latency.is_zero() {
+                    tokio::time::sleep(latency).await;
+                }
+                if Instant::now() > safe_deadline {
+                    truncated = true;
+                    break;
+                }
             }
             let mut update = ReportedTabletUpdatesPB::new();
             update.set_tablet_id(tablet.tablet_id().to_vec());
@@ -88,7 +95,7 @@ impl TsManager {
                 update.set_state_msg(state_msg);
             }
             updates.tablets.push(update);
-            if next_tablet_pb(&ctx.snapshot, uuid, tablet).is_some() {
+            if next_tablet_pb(&ctx.snapshot, uuid, tablet, require_leader).is_some() {
                 catalog_updates.push(*tablet);
             }
         }
@@ -110,7 +117,9 @@ impl TsManager {
                         // count on it.
                         let mut status_tablets_running = 0u64;
                         for tablet in &catalog_updates {
-                            let Some((entity, pb)) = next_tablet_pb(snapshot, uuid, tablet) else {
+                            let Some((entity, pb)) =
+                                next_tablet_pb(snapshot, uuid, tablet, require_leader)
+                            else {
                                 continue;
                             };
                             if becomes_running_status_tablet(snapshot, &entity, &pb) {
@@ -159,13 +168,30 @@ impl TsManager {
     ) -> Option<String> {
         let uuid = ctx.uuid;
         let tablet_id = reported.tablet_id();
-        let Some(tablet) = ctx.snapshot.get(SysRowEntryType::TABLET, tablet_id) else {
-            // master_enable_deletion_check_for_orphaned_tablets: a replica of a tablet the
-            // catalog never had is left alone.
-            tracing::warn!(
-                "Tablet server {} reported unknown tablet {}",
-                String::from_utf8_lossy(uuid),
-                String::from_utf8_lossy(tablet_id)
+        let row = ctx.snapshot.get(SysRowEntryType::TABLET, tablet_id);
+        let Some(tablet) = row.filter(|_| !(self.options.simulate_sys_catalog_data_loss)()) else {
+            // `DeleteOrphanedTabletReplica`: with `master_enable_deletion_check_for_orphaned_tablets`
+            // only a replica of a tablet the catalog has as DELETED goes; one of a tablet the
+            // catalog never had may be data the catalog lost.
+            let deleted = row
+                .and_then(|t| t.tablet())
+                .is_some_and(|t| t.state == sys_tablets_entry_pb::State::DELETED.value());
+            if (self.options.deletion_check_for_orphaned_tablets)() && !deleted {
+                tracing::warn!(
+                    "Tablet server {} reported unknown tablet {}; not deleting it",
+                    String::from_utf8_lossy(uuid),
+                    String::from_utf8_lossy(tablet_id)
+                );
+                return None;
+            }
+            self.delete_replica(
+                ctx,
+                uuid,
+                tablet_id,
+                TabletDataState::TABLET_DATA_DELETED,
+                None,
+                false,
+                "Report from an orphaned tablet".to_string(),
             );
             return None;
         };
@@ -303,11 +329,23 @@ impl TsManager {
     ) {
         let uuid = ctx.uuid;
         let tablet_id = &tablet.key.id;
+        let reported_has_leader = !cstate.leader_uuid().is_empty();
         let Some(cstate) = effective_cstate(tablet_pb, uuid, cstate) else {
             return;
         };
         let previous = &*tablet_pb.committed_consensus_state;
-        if config_or_leader_changed(previous, &cstate) {
+        let changed = config_or_leader_changed(previous, &cstate);
+        // As in C++: a report that changes the committed state keeps the leader known for its
+        // term; any other report is judged as sent.
+        self.locations.record_reported_leader(
+            tablet_id,
+            if changed {
+                !cstate.leader_uuid().is_empty()
+            } else {
+                reported_has_leader
+            },
+        );
+        if changed {
             if (self.options.tombstone_evicted_replicas)() {
                 for peer in &previous.config.peers {
                     if !is_member(&cstate, peer.permanent_uuid())
@@ -541,6 +579,7 @@ fn next_tablet_pb(
     snapshot: &CatalogSnapshot,
     uuid: &[u8],
     reported: &ReportedTabletPB,
+    require_leader: bool,
 ) -> Option<(std::sync::Arc<Entity>, SysTabletsEntryPB)> {
     let entity = snapshot
         .get(SysRowEntryType::TABLET, reported.tablet_id())?
@@ -565,7 +604,7 @@ fn next_tablet_pb(
     let mut pb = original.clone();
     if pb.state() != sys_tablets_entry_pb::State::RUNNING
         && reported.state() == RaftGroupStatePB::RUNNING
-        && !cstate.leader_uuid().is_empty()
+        && (!cstate.leader_uuid().is_empty() || !require_leader)
     {
         pb.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::RUNNING));
         pb.set_state_msg(b"Tablet reported with an active leader".to_vec());

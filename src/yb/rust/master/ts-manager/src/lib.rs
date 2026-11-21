@@ -19,6 +19,7 @@
 
 mod deletes;
 mod heartbeat;
+pub mod limits;
 mod order;
 mod peer;
 pub mod pins;
@@ -70,6 +71,9 @@ pub struct TsManagerOptions {
     pub persist_registry: fn() -> bool,
     /// The `master_enable_universe_uuid_heartbeat_check` AutoFlag.
     pub universe_uuid_check: fn() -> bool,
+    /// `TEST_master_universe_uuid`: when set, heartbeats are checked against it instead of the
+    /// cluster config's universe uuid, as from another universe's master.
+    pub test_universe_uuid: fn() -> String,
     /// `xcluster_guarded_lease_duration_ms` plus twice `max_clock_skew_usec`.
     pub guarded_lease_expiry: fn() -> Duration,
     /// `xcluster_guarded_lease_duration_ms`, granted in every heartbeat response.
@@ -95,6 +99,23 @@ pub struct TsManagerOptions {
     pub ysql_db_pins: fn() -> bool,
     /// `initial_tserver_registration_duration_secs`.
     pub initial_registration_duration: fn() -> Duration,
+    /// `TEST_inject_latency_during_tablet_report_ms`: a sleep before each reported tablet after
+    /// the first, where C++ sleeps before each batch of `catalog_manager_report_batch_size`.
+    pub report_latency: fn() -> Duration,
+    /// `master_enable_deletion_check_for_orphaned_tablets`: a reported replica of a tablet the
+    /// catalog does not have is deleted only if the catalog has the tablet as DELETED.
+    pub deletion_check_for_orphaned_tablets: fn() -> bool,
+    /// `TEST_simulate_sys_catalog_data_loss`: every reported tablet is treated as unknown.
+    pub simulate_sys_catalog_data_loss: fn() -> bool,
+    /// `catalog_manager_wait_for_new_tablets_to_elect_leader`: a new tablet turns RUNNING only
+    /// once a report names its leader. Off in tests that manage elections themselves.
+    pub wait_for_new_tablets_to_elect_leader: fn() -> bool,
+    /// `enforce_tablet_replica_limits`.
+    pub enforce_tablet_replica_limits: fn() -> bool,
+    /// `tablet_replicas_per_core_limit`; 0 for none.
+    pub tablet_replicas_per_core_limit: fn() -> u32,
+    /// `tablet_replicas_per_gib_limit`; 0 for none.
+    pub tablet_replicas_per_gib_limit: fn() -> u32,
 }
 
 impl Default for TsManagerOptions {
@@ -105,6 +126,7 @@ impl Default for TsManagerOptions {
             report_safety_margin: || Duration::from_millis(3000),
             persist_registry: || false,
             universe_uuid_check: || false,
+            test_universe_uuid: String::new,
             guarded_lease_expiry: || Duration::from_secs(121),
             guarded_lease_duration: || Duration::from_secs(120),
             tombstone_evicted_replicas: || true,
@@ -116,6 +138,13 @@ impl Default for TsManagerOptions {
             send_leader_blacklisted_tservers: || true,
             ysql_db_pins: || true,
             initial_registration_duration: || Duration::from_secs(60),
+            report_latency: || Duration::ZERO,
+            deletion_check_for_orphaned_tablets: || true,
+            simulate_sys_catalog_data_loss: || false,
+            wait_for_new_tablets_to_elect_leader: || true,
+            enforce_tablet_replica_limits: || false,
+            tablet_replicas_per_core_limit: || 0,
+            tablet_replicas_per_gib_limit: || 1462,
         }
     }
 }

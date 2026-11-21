@@ -162,7 +162,7 @@ impl XCluster {
     }
 
     /// `CreateCdcStateTableIfNotFound`, which every stream creation does first.
-    async fn ensure_cdc_state_table(&self, token: &LeaderToken) -> Result<(), Status> {
+    pub(crate) async fn ensure_cdc_state_table(&self, token: &LeaderToken) -> Result<(), Status> {
         self.xrepl
             .create_cdc_state_table_if_not_found(
                 &*self.tables,
@@ -698,11 +698,14 @@ impl XCluster {
             return Ok(());
         };
         let pb = table_pb(&snapshot, table_id).ok_or_else(|| corrupt("table row"))?;
+        let raw_table_id = table_id;
         let table_id = String::from_utf8_lossy(table_id).into_owned();
+        let mut in_groups = false;
         for (id, group_pb) in XCluster::groups_with_namespace(&snapshot, &hot.namespace_id) {
             if !is_eligible(&snapshot, table, &pb, group_pb.automatic_ddl_mode()) {
                 continue;
             }
+            in_groups = true;
             let ns = String::from_utf8_lossy(&hot.namespace_id).into_owned();
             // Internal DDL tables are connected at setup, so they need no WAL anchor.
             let anchor = !is_ddl_queue_table(&pb) && !is_replicated_ddls_table(&pb);
@@ -711,7 +714,8 @@ impl XCluster {
             self.checkpoint_new_table(&token, &id, &ns, &table_id)
                 .await?;
         }
-        Ok(())
+        self.add_new_bidirectional_index(raw_table_id, in_groups)
+            .await
     }
 
     /// `CreateStreamForNewTable`.

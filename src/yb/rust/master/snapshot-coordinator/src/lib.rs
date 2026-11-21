@@ -120,6 +120,10 @@ pub struct SnapshotOptions {
     pub skip_sending_restore_finished: fn() -> bool,
     /// `TEST_skip_sys_catalog_tablet_restore`.
     pub skip_sys_catalog_tablet_restore: fn() -> bool,
+    /// `TEST_pause_issuing_tserver_snapshot_requests`: tablet snapshot operations wait while set.
+    pub pause_issuing_tserver_snapshot_requests: fn() -> bool,
+    /// Whether test sync points reach the host (`TEST_running_test`).
+    pub sync_points: fn() -> bool,
     /// `master_ts_rpc_timeout_ms`.
     pub rpc_timeout: fn() -> Duration,
     /// `ImportSnapshotMeta`'s flags.
@@ -146,6 +150,8 @@ impl Default for SnapshotOptions {
             mark_snapshot_as_failed: || false,
             skip_sending_restore_finished: || false,
             skip_sys_catalog_tablet_restore: || false,
+            pause_issuing_tserver_snapshot_requests: || false,
+            sync_points: || false,
             rpc_timeout: || Duration::from_secs(15),
             import: ImportOptions::default(),
             clone: CloneOptions::default(),
@@ -293,6 +299,26 @@ impl SnapshotCoordinator {
             };
         }
         state
+    }
+
+    /// A C++ test sync point (`TEST_SYNC_POINT`), which itests order themselves against with
+    /// `LoadDependency`.
+    pub(crate) async fn sync_point(&self, name: &'static str) {
+        use protobuf::Message;
+        if !(self.options.sync_points)() {
+            return;
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(name.to_string());
+        let Ok(bytes) = req.write_to_bytes() else {
+            return;
+        };
+        let host = self.host.clone();
+        if let Ok(Err(s)) =
+            tokio::task::spawn_blocking(move || host.call("TestSyncPointCallback", &bytes)).await
+        {
+            tracing::warn!("Sync point {name}: {s}");
+        }
     }
 
     /// Runs the controller soon.

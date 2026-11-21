@@ -736,6 +736,77 @@ async fn dropped_tables_leave_cdcsdk_streams() {
     assert_eq!(row.table_id, vec!["t1".to_string()]);
 }
 
+/// Replaces the CDCSDK stream's row with one in `state`, still naming the dropped t2.
+async fn set_cdcsdk_stream_state(h: &Harness, state: StreamState) {
+    use master_catalog_state::{Mutation, WriteOptions};
+    let mut row = stream_row(h, CDCSDK);
+    row.state = Some(EnumOrUnknown::new(state));
+    h.xrepl
+        .writer
+        .mutate_with(&h.token, WriteOptions::default(), move |snapshot| {
+            let entity = snapshot
+                .get(SysRowEntryType::CDC_STREAM, CDCSDK.as_bytes())
+                .unwrap();
+            Ok((
+                Mutation::new().read(entity).upsert_message(
+                    SysRowEntryType::CDC_STREAM,
+                    CDCSDK.as_bytes(),
+                    &row,
+                )?,
+                (),
+            ))
+        })
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+}
+
+// A master older than the dropped_table_id list marked a stream DELETING_METADATA when one of its
+// tables was dropped (cdcsdk_use_dropped_table_list_for_cleanup off); after the upgrade the
+// cleanup removes the table and makes the stream ACTIVE again, but never revives a stream that was
+// dropped meanwhile.
+#[tokio::test]
+async fn a_stream_left_deleting_metadata_by_an_older_master_becomes_active_without_the_table() {
+    let h = Harness::new().await;
+    set_cdcsdk_stream_state(&h, StreamState::DELETING_METADATA).await;
+    h.xrepl
+        .clean_up_cdcsdk_streams_metadata(&h.token)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let row = stream_row(&h, CDCSDK);
+    assert_eq!(row.state(), StreamState::ACTIVE);
+    assert_eq!(row.table_id, vec!["t1".to_string()]);
+    assert!(row.dropped_table_id.is_empty());
+
+    let h = Harness::new().await;
+    set_cdcsdk_stream_state(&h, StreamState::DELETING).await;
+    h.xrepl
+        .clean_up_cdcsdk_streams_metadata(&h.token)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let row = stream_row(&h, CDCSDK);
+    assert_eq!(row.state(), StreamState::DELETING);
+    assert_eq!(row.table_id, vec!["t1".to_string(), "t2".to_string()]);
+}
+
+// A stream left by a master that did not drop a database's streams with it is deleted on the next
+// leader; a stream of a live database is kept.
+#[tokio::test]
+async fn a_stream_of_a_dropped_database_is_marked_deleting() {
+    let h = Harness::new().await;
+    let live = ysql_stream(&h).await;
+    // The CDCSDK stream's namespace, ns1, has no row.
+    h.xrepl
+        .mark_streams_of_dropped_databases_deleting(&h.token)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    assert_eq!(stream_row(&h, CDCSDK).state(), StreamState::DELETING);
+    assert_eq!(stream_row(&h, &live).state(), StreamState::ACTIVE);
+}
+
 fn with_sync_points() -> XreplOptions {
     XreplOptions {
         sync_points: || true,

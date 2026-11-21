@@ -69,6 +69,15 @@ fn cstate(term: i64, index: i64, leader: &str, peers: &[&str]) -> ConsensusState
 }
 
 async fn setup(persist: bool) -> Setup {
+    setup_with(TsManagerOptions {
+        persist_registry: if persist { || true } else { || false },
+        unresponsive_timeout: || Duration::from_millis(50),
+        ..Default::default()
+    })
+    .await
+}
+
+async fn setup_with(options: TsManagerOptions) -> Setup {
     let (fake, events) = FakeSysCatalog::new();
     let mut config = SysClusterConfigEntryPB::new();
     config.set_version(3);
@@ -122,11 +131,6 @@ async fn setup(persist: bool) -> Setup {
         WriterOptions::default(),
     );
     catalog.barrier().await;
-    let options = TsManagerOptions {
-        persist_registry: if persist { || true } else { || false },
-        unresponsive_timeout: || Duration::from_millis(50),
-        ..Default::default()
-    };
     let ts = TsManager::new(Arc::new(TabletLocations::default()), options);
     ts.on_leader_ready(&catalog.snapshot());
     Setup {
@@ -461,6 +465,75 @@ fn reported(cstate: Option<ConsensusStatePB>) -> ReportedTabletPB {
 }
 
 #[tokio::test]
+async fn injected_report_latency_truncates_the_report_at_the_deadline() {
+    let s = setup_with(TsManagerOptions {
+        unresponsive_timeout: || Duration::from_millis(50),
+        report_safety_margin: || Duration::ZERO,
+        report_latency: || Duration::from_millis(100),
+        ..Default::default()
+    })
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    let mut req = request("ts1", 1, 0);
+    let mut report = TabletReportPB::new();
+    report.set_is_incremental(false);
+    report.set_sequence_number(0);
+    report.set_full_report_seq_no(0);
+    report.set_remaining_tablet_count(0);
+    for i in 0..5 {
+        let mut tablet = reported(None);
+        tablet.set_tablet_id(format!("tablet{i}").into_bytes());
+        report.updated_tablets.push(tablet);
+    }
+    req.tablet_report = Some(report).into();
+    let resp = s
+        .heartbeat_with_time_left(&req, Duration::from_millis(250))
+        .await
+        .unwrap();
+    assert!(resp.tablet_report.processing_truncated());
+    assert!(!resp.tablet_report.tablets.is_empty());
+    assert!(resp.tablet_report.tablets.len() < 5);
+}
+
+#[tokio::test]
+async fn an_orphaned_replica_is_deleted_only_without_the_deletion_check() {
+    let mut orphan = reported(Some(cstate(1, 5, "ts1", &["ts1"])));
+    orphan.set_tablet_id(b"unknown".to_vec());
+    let s = setup(false).await;
+    s.register("ts1", 1, &[9100]).await;
+    s.report("ts1", vec![orphan.clone()]).await;
+    assert!(s.ts.deletes.drain().is_empty());
+
+    let s = setup_with(TsManagerOptions {
+        unresponsive_timeout: || Duration::from_millis(50),
+        deletion_check_for_orphaned_tablets: || false,
+        ..Default::default()
+    })
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    s.report("ts1", vec![orphan]).await;
+    let deletes = s.ts.deletes.drain();
+    assert_eq!(deletes.len(), 1);
+    assert_eq!(deletes[0].tablet_id, b"unknown");
+}
+
+#[tokio::test]
+async fn simulated_data_loss_keeps_replicas_of_live_tablets() {
+    let s = setup_with(TsManagerOptions {
+        unresponsive_timeout: || Duration::from_millis(50),
+        simulate_sys_catalog_data_loss: || true,
+        ..Default::default()
+    })
+    .await;
+    s.set_tablet(sys_tablets_entry_pb::State::RUNNING, None)
+        .await;
+    s.register("ts1", 1, &[9100]).await;
+    s.report("ts1", vec![reported(Some(cstate(1, 5, "ts1", &["ts1"])))])
+        .await;
+    assert!(s.ts.deletes.drain().is_empty());
+}
+
+#[tokio::test]
 async fn a_replaced_tablet_is_deleted_and_not_revived() {
     let s = setup(false).await;
     s.set_tablet(sys_tablets_entry_pb::State::REPLACED, None)
@@ -741,4 +814,125 @@ async fn heartbeats_carry_the_cluster_ysql_pins_once_every_live_tserver_reported
     s.ts.on_leader_ready(&s.catalog.snapshot());
     let resp = s.heartbeat(&ts1).await.unwrap();
     assert!(!resp.cluster_ysql_db_pins_ready());
+}
+
+/// The drive-aware balancer places replicas by the data directory each tserver reports.
+#[tokio::test]
+async fn a_report_records_the_replicas_data_dir() {
+    let s = setup(false).await;
+    s.set_tablet(
+        sys_tablets_entry_pb::State::RUNNING,
+        Some(cstate(1, 5, "ts1", &["ts1"])),
+    )
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    let mut tablet = reported(Some(cstate(1, 5, "ts1", &["ts1"])));
+    tablet.set_fs_data_dir(b"/mnt/d1".to_vec());
+    s.report("ts1", vec![tablet]).await;
+    let replicas = s.ts.locations.get(b"tablet").unwrap().replicas;
+    assert_eq!(replicas.len(), 1);
+    assert_eq!(&*replicas[0].fs_data_dir, "/mnt/d1");
+}
+
+/// `TEST_master_universe_uuid` stands in for the cluster config's universe uuid, as for a master
+/// of another universe.
+#[tokio::test]
+async fn heartbeats_are_checked_against_the_test_universe_uuid() {
+    let s = setup_with(TsManagerOptions {
+        universe_uuid_check: || true,
+        test_universe_uuid: || "11111111-1111-1111-1111-111111111111".to_string(),
+        ..Default::default()
+    })
+    .await;
+    let mut req = request("ts1", 1, 1);
+    req.registration = Some(registration(9100)).into();
+    req.set_universe_uuid("22222222-2222-2222-2222-222222222222".into());
+    assert!(s.heartbeat(&req).await.is_err());
+    req.set_universe_uuid("11111111-1111-1111-1111-111111111111".into());
+    let resp = s.heartbeat(&req).await.unwrap();
+    assert!(resp.error.is_none(), "{resp:?}");
+}
+
+/// Turning `persist_tserver_registry` on writes the rows of tservers registered before, at their
+/// next heartbeat.
+#[tokio::test]
+async fn a_registered_tserver_is_persisted_once_the_registry_is() {
+    static PERSIST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let s = setup_with(TsManagerOptions {
+        persist_registry: || PERSIST.load(std::sync::atomic::Ordering::Relaxed),
+        ..Default::default()
+    })
+    .await;
+    let mut req = request("ts1", 1, 1);
+    req.registration = Some(registration(9100)).into();
+    s.heartbeat(&req).await.unwrap();
+    let row = || {
+        s.catalog
+            .snapshot()
+            .get(SysRowEntryType::TSERVER_REGISTRATION, b"ts1")
+            .cloned()
+    };
+    assert!(row().is_none());
+    PERSIST.store(true, std::sync::atomic::Ordering::Relaxed);
+    s.heartbeat(&request("ts1", 1, 1)).await.unwrap();
+    let pb: SysTabletServerEntryPB = row().unwrap().parse().unwrap();
+    assert!(pb.persisted());
+}
+
+#[tokio::test]
+async fn a_report_without_a_leader_asks_for_a_hinted_election() {
+    let s = setup(false).await;
+    // A split child starts with its parent's committed config and leader.
+    let peers = ["ts1", "ts2"];
+    s.set_tablet(
+        sys_tablets_entry_pb::State::CREATING,
+        Some(cstate(2, 5, "ts1", &peers)),
+    )
+    .await;
+    s.register("ts1", 1, &[9100]).await;
+    s.register("ts2", 1, &[9101]).await;
+    let leaderless = || s.ts.locations.reported_leaderless(b"tablet");
+
+    s.report("ts2", vec![reported(Some(cstate(2, 5, "ts1", &peers)))])
+        .await;
+    assert!(!leaderless());
+
+    // Bootstrapped, the follower knows no leader in the same term. The master still knows the
+    // term's leader, but as in C++ the report as sent is what asks for an election.
+    s.report("ts2", vec![reported(Some(cstate(2, 5, "", &peers)))])
+        .await;
+    assert!(leaderless());
+
+    s.report("ts1", vec![reported(Some(cstate(2, 5, "ts1", &peers)))])
+        .await;
+    assert!(!leaderless());
+}
+
+#[tokio::test]
+async fn without_waiting_for_a_leader_a_running_replica_makes_a_new_tablet_running() {
+    for wait in [true, false] {
+        let s = setup_with(TsManagerOptions {
+            unresponsive_timeout: || Duration::from_millis(50),
+            wait_for_new_tablets_to_elect_leader: if wait { || true } else { || false },
+            ..Default::default()
+        })
+        .await;
+        s.register("ts1", 1, &[9100]).await;
+        s.report("ts1", vec![reported(Some(cstate(1, 5, "", &["ts1"])))])
+            .await;
+        s.catalog.barrier().await;
+        let state = s
+            .catalog
+            .snapshot()
+            .get(SysRowEntryType::TABLET, b"tablet")
+            .and_then(|t| t.tablet())
+            .unwrap()
+            .state;
+        let expected = if wait {
+            sys_tablets_entry_pb::State::CREATING
+        } else {
+            sys_tablets_entry_pb::State::RUNNING
+        };
+        assert_eq!(state, expected as i32, "wait {wait}");
+    }
 }

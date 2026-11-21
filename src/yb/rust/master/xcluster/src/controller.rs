@@ -124,7 +124,7 @@ impl XreplExtension for XCluster {
         index_ids: Vec<Vec<u8>>,
         indexed_table_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>> {
-        Box::pin(async move { self.backfill_decision(&index_ids, &indexed_table_id) })
+        Box::pin(async move { self.backfill_decision(&index_ids, &indexed_table_id).await })
     }
 
     fn backfill_completed(
@@ -237,6 +237,7 @@ impl Controller for XClusterController {
                     "Failed to remove dropped tables from consumer replication groups: {status}"
                 );
             }
+            x.start_wal_anchor_deletion(&token);
             if let Err(status) = x.drop_streams_of_old_hidden_tables().await {
                 tracing::warn!("Failed to process xCluster hidden tables: {status}");
             }

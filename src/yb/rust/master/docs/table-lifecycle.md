@@ -110,7 +110,11 @@ The schema steps that read or write engine formats run in the host's C++ (`Prepa
 shared with `CatalogManager` through `src/yb/master/table_ddl_util.cc`): `SchemaFromPB`, the key
 column checks, column ids, the default partition schema, the tablet count (`RequestedNumTablets`,
 from the live tservers of the table's placement) and the partitions. Rust does the rest in C++'s
-order: namespace type, user-defined types, `max_create_tablets_per_ts`, the partitioning error,
+order: namespace type, user-defined types, `max_create_tablets_per_ts`, the tablet replica limits
+(`enforce_tablet_replica_limits` with `tablet_replicas_per_core_limit` and
+`tablet_replicas_per_gib_limit` over the placement's live tservers, skipped for a table joining a
+colocation group and for `initial_tserver_registration_duration_secs` after becoming leader;
+`master-ts-manager` `limits.rs`), the partitioning error,
 the placement checks of `CheckValidPlacementInfo` (quorum of live tservers, block minimums and
 maximums, and whether a quorum fits within each block's tservers and effective maximum), then, under the name lock, the duplicate name and the namespace state. The table and
 all its tablets are written PREPARING in one mutation, with tablet ids sorted as C++ sorts them.
@@ -170,7 +174,11 @@ One mutation: the schema from the host's `ApplyAlterSteps` (`AlterTableSchema`),
 the new name, replication info or `wal_retention_secs`, and ALTERING, after C++'s checks in its
 order (namespace running, name free, table visible and not PREPARING, `wal_retention_secs` alone).
 The first change of an alter in flight copies the schema to the `fully_applied_*` fields. YCQL
-clients get the latest schema from `GetTableSchema` anyway.
+clients get the latest schema from `GetTableSchema` anyway. A transaction status table's alter (a
+placement change) also bumps the transaction tables version, as `IncrementTransactionTablesVersion`
+does. With `TEST_slowdown_alter_table_rpcs_ms`, `AlterTable` waits it once per tablet before it
+answers and a table's tablets get `AlterSchema` that far apart, as C++'s `SendAlterTableRequest`
+sleeps per tablet in the RPC.
 
 The `table-alters` controller sends `AlterSchema` (`ChangeMetadataRequestPB`) to each active
 tablet's leader once per (tablet, table row version) in a term; the row version rather than the
@@ -187,7 +195,8 @@ As `AsyncAlterTable` does, the `AlterSchema` of the schema version a YSQL `Alter
 in a DDL transaction made asks the tablet to abort the other transactions on it
 (`should_abort_active_txns`, excluding the DDL's own), only those not using table locks when the
 DDL uses them. The request's transaction is kept in memory with that version
-(`SendAlterTableRequest` gets the request): alters an index's creation, the DDL verifier or a new
+(`SendAlterTableRequest` gets the request), recorded before the write lands, since the controller
+may send as soon as it sees the row: alters an index's creation, the DDL verifier or a new
 leader sends abort nothing, so a `CREATE TABLE t (a INT UNIQUE)` in a transaction block does not
 abort its own transaction. Every alter gives the first DDL state's previous next column id as
 `first_provisional_column_id`, which a rollback returns to.
@@ -321,7 +330,10 @@ checks the per-block maximums, enough live tservers for a quorum, and leader pre
 the placement. `CreateTransactionStatusTable` creates a named status table.
 `GetTransactionStatusTablets` with a placement also returns the status tablets whose placement
 contains it: grouped by tablespace with `enable_tablespace_based_transaction_placement`, and as
-region-local ones when that placement stays in one region.
+region-local ones when that placement stays in one region. As C++'s `transaction_table_ids_set_`,
+a status table counts from its creation until it is deleted or hidden, and only its RUNNING
+tablets are listed: each one turning RUNNING bumps the transaction tables version, so tservers
+fetch the list again.
 
 `AddTransactionStatusTablet` halves the first serving tablet whose hash range can be split and adds
 a PREPARING tablet for the right half, writing both tablets in one mutation (C++ lost the shrunk

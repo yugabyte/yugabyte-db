@@ -60,6 +60,10 @@ pub struct MajorUpgradeOptions {
     pub fail_cleanup: fn() -> bool,
     /// `skip_tserver_version_checks`.
     pub skip_tserver_version_checks: fn() -> bool,
+    /// `master_auto_run_initdb`.
+    pub auto_run_initdb: fn() -> bool,
+    /// `TEST_master_min_live_tservers_before_initdb`.
+    pub min_live_tservers_before_initdb: fn() -> i32,
 }
 
 /// The leader's YSQL major upgrade handler.
@@ -330,6 +334,97 @@ impl MajorUpgrade {
         if done {
             self.schedule_cleanup(*token);
         }
+        Ok(())
+    }
+
+    /// `YsqlManager::StartRunningInitDbIfNeeded` with `master_auto_run_initdb`: a new universe
+    /// that did not start from the initial sys catalog snapshot runs initdb in the background,
+    /// then records its outcome in the YSQL catalog config (`YsqlCatalogConfig::SetInitDbDone`).
+    /// Clients poll IsInitDbDone. With `create_initial_sys_catalog_snapshot` the host also writes
+    /// the snapshot the build ships.
+    pub fn start_new_cluster_initdb_if_needed(self: &Arc<Self>, token: LeaderToken) {
+        if !self.new_cluster_initdb_needed() {
+            return;
+        }
+        if let Err(e) = self.try_start() {
+            tracing::warn!("Not running initdb: {e}");
+            return;
+        }
+        tracing::info!("initdb has never been run on this cluster, running it");
+        let this = self.clone();
+        tokio::spawn(async move {
+            let outcome = this.run_new_cluster_initdb(&token).await;
+            if let Err(e) = &outcome {
+                tracing::error!("Global initdb failed: {e}");
+            } else {
+                tracing::info!("Global initdb completed successfully");
+            }
+            if let Err(e) = this.set_initdb_done(&token, outcome.err()).await {
+                tracing::warn!("Failed to set global initdb as finished in sys catalog: {e}");
+            }
+            this.running.store(false, Ordering::Release);
+        });
+    }
+
+    /// Whether this leader is to run initdb for a new universe (`StartRunningInitDbIfNeeded`).
+    pub fn new_cluster_initdb_needed(&self) -> bool {
+        (self.options.enable_ysql)()
+            && (self.options.auto_run_initdb)()
+            && crate::initdb::initdb_status(&self.catalog.snapshot()).is_none()
+    }
+
+    async fn run_new_cluster_initdb(&self, token: &LeaderToken) -> Result<(), Status> {
+        // `WaitForTServersBeforeInitDb`: initdb creates the transaction status table, which needs
+        // replication-factor live tservers. Past the wait, initdb runs anyway and fails as C++'s
+        // does.
+        let required = (self.options.min_live_tservers_before_initdb)();
+        if required > 0 {
+            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
+            while self.ts_manager.live().len() < required as usize
+                && tokio::time::Instant::now() < deadline
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            tracing::info!(
+                "{} live tablet servers registered, proceeding with initdb",
+                self.ts_manager.live().len()
+            );
+        }
+        self.leadership.check(token)?;
+        let mut initdb = RunYsqlInitDbRequestPB::new();
+        initdb.set_is_major_upgrade(false);
+        self.call_host("RunYsqlInitDb", &initdb, |r: &RunYsqlInitDbResponsePB| {
+            r.error.as_ref()
+        })
+        .await?;
+        Ok(())
+    }
+
+    async fn set_initdb_done(
+        &self,
+        token: &LeaderToken,
+        failed: Option<Status>,
+    ) -> Result<(), Status> {
+        self.writer
+            .mutate_with(token, WriteOptions::default(), |snapshot| {
+                let row = snapshot
+                    .get(SysRowEntryType::SYS_CONFIG, YSQL_CATALOG_CONFIG_ID)
+                    .ok_or_else(|| status(StatusCode::NotFound, "No YSQL catalog config"))?;
+                let mut config: SysConfigEntryPB = row.parse().map_err(corrupt)?;
+                let ysql = config.mut_ysql_catalog_config();
+                ysql.set_initdb_done(true);
+                match &failed {
+                    Some(e) => ysql.set_initdb_error(e.to_string()),
+                    None => ysql.clear_initdb_error(),
+                }
+                let mutation = Mutation::new().read(row).upsert_message(
+                    SysRowEntryType::SYS_CONFIG,
+                    YSQL_CATALOG_CONFIG_ID,
+                    &config,
+                )?;
+                Ok((mutation, ()))
+            })
+            .await?;
         Ok(())
     }
 

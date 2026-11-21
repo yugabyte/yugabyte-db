@@ -203,13 +203,18 @@ impl CreatesTables for NoTables {
     }
 }
 
+/// The answer a test gives a remote call, or None for the default one.
+type RemoteHandler = Box<dyn Fn(&str, &[u8]) -> Option<Vec<u8>> + Send + Sync>;
+
 /// The target's masters: SetupUniverseReplication answers a universe uuid, and
-/// IsSetupUniverseReplicationDone answers done once `done` is set.
+/// IsSetupUniverseReplicationDone answers done once `done` is set. `handler`, when set, answers
+/// first (another universe's masters in other roles).
 #[derive(Default)]
 struct FakeTarget {
     calls: Mutex<Vec<(String, Vec<u8>)>>,
     done: Mutex<bool>,
     setup_error: Mutex<Option<Status>>,
+    handler: Mutex<Option<RemoteHandler>>,
 }
 
 impl RemoteMasters for FakeTarget {
@@ -225,6 +230,19 @@ impl RemoteMasters for FakeTarget {
         _refresh: bool,
     ) -> BoxFuture<'static, Result<Vec<u8>, Status>> {
         assert!(!masters.is_empty());
+        if let Some(out) = self
+            .handler
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|h| h(method, &request))
+        {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((method.to_string(), request));
+            return Box::pin(async move { Ok(out) });
+        }
         self.calls
             .lock()
             .unwrap()
@@ -1179,4 +1197,368 @@ async fn a_table_level_transactional_group_takes_in_its_tables_indexes() {
         .xcluster
         .should_add_to_group(&group, INDEX.as_bytes())
         .unwrap());
+}
+
+#[tokio::test]
+async fn a_committed_target_table_has_its_source_wal_anchor_deleted() {
+    use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
+    const SOURCE_TABLE: &str = "source-table";
+    let h = Harness::with_options(XClusterOptions {
+        wal_anchor_streams: || true,
+        ..XClusterOptions::default()
+    })
+    .await;
+    let RowChange::Upsert { data, .. } = inbound_group(GROUP) else {
+        unreachable!()
+    };
+    let mut group = SysUniverseReplicationEntryPB::parse_from_bytes(&data).unwrap();
+    group
+        .db_scoped_info
+        .mut_or_insert_default()
+        .set_automatic_ddl_mode(true);
+    let mut source = HostPortPB::new();
+    source.set_host("source".into());
+    source.set_port(7100);
+    group.producer_master_addresses.push(source);
+
+    // The write that commits the target table's DDL marks it.
+    let mut table = ysql_table("orders");
+    table
+        .xcluster_table_info
+        .mut_or_insert_default()
+        .set_xcluster_source_table_id(SOURCE_TABLE.into());
+    let snapshot = h.catalog.snapshot();
+    let _ = h
+        .xcluster
+        .clear_after_ddl(
+            &snapshot,
+            NEW_TABLE.as_bytes(),
+            &mut table,
+            master_catalog_state::Mutation::new(),
+        )
+        .unwrap();
+    assert!(table.xcluster_table_info.is_none());
+    assert_eq!(
+        table.xcluster_pending_wal_anchor_deletion_source_table_id(),
+        SOURCE_TABLE.as_bytes()
+    );
+    h.fake.apply(vec![
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::UNIVERSE_REPLICATION,
+            id: GROUP.as_bytes().to_vec(),
+            data: group.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLE,
+            id: NEW_TABLE.as_bytes().to_vec(),
+            data: table.write_to_bytes().unwrap(),
+        },
+    ]);
+    h.catalog.barrier().await;
+
+    h.xcluster
+        .delete_pending_wal_anchor_streams(&h.token)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let calls: Vec<_> = h
+        .target
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(m, _)| m == "DeleteXClusterWalAnchorStreams")
+        .map(|(_, r)| DeleteXClusterWalAnchorStreamsRequestPB::parse_from_bytes(r).unwrap())
+        .collect();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].replication_group_id(), GROUP);
+    assert_eq!(
+        calls[0].source_table_ids,
+        vec![SOURCE_TABLE.as_bytes().to_vec()]
+    );
+    let stored: SysTablesEntryPB = h
+        .catalog
+        .snapshot()
+        .get(SysRowEntryType::TABLE, NEW_TABLE.as_bytes())
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(!stored.has_xcluster_pending_wal_anchor_deletion_source_table_id());
+
+    // Nothing is left to delete.
+    h.xcluster
+        .delete_pending_wal_anchor_streams(&h.token)
+        .await
+        .unwrap();
+    assert_eq!(
+        h.target
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, _)| m == "DeleteXClusterWalAnchorStreams")
+            .count(),
+        1
+    );
+}
+
+/// Rows that make `TABLE` bidirectionally replicated: an outbound stream of it, and an inbound
+/// group `rev` (from the other universe's masters) replicating into it with stream `in-stream`.
+fn bidirectional_rows() -> Vec<RowChange> {
+    use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
+    use yb_proto::pb::cdc_consumer::{ProducerEntryPB, StreamEntryPB};
+    let mut out = SysCDCStreamEntryPB::new();
+    out.table_id.push(TABLE.into());
+    out.state = Some(EnumOrUnknown::new(StreamState::ACTIVE));
+    let mut stream = StreamEntryPB::new();
+    stream.consumer_table_id = TABLE.into();
+    let mut entry = ProducerEntryPB::new();
+    entry.stream_map.insert("in-stream".into(), stream);
+    let mut config = SysClusterConfigEntryPB::new();
+    config
+        .consumer_registry
+        .mut_or_insert_default()
+        .producer_map
+        .insert("rev".into(), entry);
+    let mut universe = SysUniverseReplicationEntryPB::new();
+    universe.set_replication_group_id("rev".into());
+    let mut hp = HostPortPB::new();
+    hp.set_host("other".into());
+    hp.set_port(7100);
+    universe.producer_master_addresses.push(hp);
+    vec![
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::CDC_STREAM,
+            id: b"out-stream".to_vec(),
+            data: out.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::CLUSTER_CONFIG,
+            id: Vec::new(),
+            data: config.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::UNIVERSE_REPLICATION,
+            id: b"rev".to_vec(),
+            data: universe.write_to_bytes().unwrap(),
+        },
+    ]
+}
+
+/// An index on `TABLE`, with its tablet `NEW_TABLET`.
+fn index_rows(colocated: bool) -> Vec<RowChange> {
+    let mut index = ysql_table("users_idx");
+    index.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::PREPARING));
+    index
+        .index_info
+        .mut_or_insert_default()
+        .set_indexed_table_id(TABLE.as_bytes().to_vec());
+    index.set_colocated(colocated);
+    vec![
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLE,
+            id: NEW_TABLE.as_bytes().to_vec(),
+            data: index.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLET,
+            id: NEW_TABLET.as_bytes().to_vec(),
+            data: tablet(NEW_TABLE).write_to_bytes().unwrap(),
+        },
+    ]
+}
+
+/// `CreateXClusterStreamForBiDirectionalIndexTask`: a new index of a bidirectionally replicated
+/// table gets a non-transactional INITIATED stream outside any group, checkpointed at op 0; with
+/// the feature off it gets none.
+#[tokio::test]
+async fn a_bidirectional_index_gets_its_own_stream_before_it_runs() {
+    for enabled in [false, true] {
+        let h = Harness::with_options(XClusterOptions {
+            auto_add_index_to_bidirectional: if enabled { || true } else { || false },
+            ..XClusterOptions::default()
+        })
+        .await;
+        h.fake.apply(bidirectional_rows());
+        h.fake.apply(index_rows(false));
+        h.catalog.barrier().await;
+        h.post_create(NEW_TABLE).await;
+        let streams =
+            crate::controller::outbound_streams(&h.catalog.snapshot(), NEW_TABLE.as_bytes());
+        if !enabled {
+            assert!(streams.is_empty());
+            continue;
+        }
+        assert_eq!(streams.len(), 1);
+        assert!(!streams[0].pb.transactional());
+        assert_eq!(streams[0].pb.state(), StreamState::INITIATED);
+        let checkpointed: Vec<_> = h
+            .host
+            .cdc_state
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| (e.tablet_id().to_vec(), e.checkpoint.index()))
+            .collect();
+        assert_eq!(checkpointed, vec![(NEW_TABLET.as_bytes().to_vec(), 0)]);
+    }
+}
+
+/// `PrepareAndGetBackfillTimeForBiDirectionalIndex` for a colocated index: it waits for the other
+/// universe's index to run and to start its backfill, then for the indexed table's stream to
+/// drain past now plus three clock skews, and reads at now.
+#[tokio::test]
+async fn a_bidirectional_colocated_index_backfills_once_the_other_universe_does() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use yb_proto::pb::common::IndexInfoPB;
+    use yb_proto::pb::common_types::IndexPermissions;
+    use yb_proto::pb::master_ddl::{
+        list_tables_response_pb::TableInfo, GetTableSchemaResponsePB, ListTablesResponsePB,
+    };
+    let h = Harness::new().await;
+    h.fake.apply(bidirectional_rows());
+    h.fake.apply(index_rows(true));
+    h.catalog.barrier().await;
+    let polls = Arc::new(AtomicUsize::new(0));
+    let drained_to = Arc::new(Mutex::new(None));
+    let (p, d) = (polls.clone(), drained_to.clone());
+    *h.target.handler.lock().unwrap() = Some(Box::new(move |method, req| {
+        let n = p.fetch_add(1, Ordering::SeqCst);
+        match method {
+            "ListTables" => {
+                let mut resp = ListTablesResponsePB::new();
+                let mut t = TableInfo::new();
+                t.set_id(b"src-index".to_vec());
+                t.set_name("users_idx".into());
+                t.set_pgschema_name("public".into());
+                t.set_indexed_table_id("src-table".into());
+                // Still being created on the first poll.
+                t.state = Some(EnumOrUnknown::new(if n == 0 {
+                    sys_tables_entry_pb::State::PREPARING
+                } else {
+                    sys_tables_entry_pb::State::RUNNING
+                }));
+                resp.tables.push(t);
+                Some(resp.write_to_bytes().unwrap())
+            }
+            "GetTableSchema" => {
+                let mut resp = GetTableSchemaResponsePB::new();
+                let mut index = IndexInfoPB::new();
+                index.set_table_id(b"src-index".to_vec());
+                index.index_permissions = Some(EnumOrUnknown::new(
+                    IndexPermissions::INDEX_PERM_WRITE_AND_DELETE,
+                ));
+                resp.indexes.push(index);
+                resp.set_is_backfilling(n > 3);
+                Some(resp.write_to_bytes().unwrap())
+            }
+            "WaitForReplicationDrain" => {
+                let req = WaitForReplicationDrainRequestPB::parse_from_bytes(req).unwrap();
+                assert_eq!(req.stream_ids, vec![b"in-stream".to_vec()]);
+                *d.lock().unwrap() = Some(req.target_time());
+                Some(
+                    WaitForReplicationDrainResponsePB::new()
+                        .write_to_bytes()
+                        .unwrap(),
+                )
+            }
+            _ => None,
+        }
+    }));
+    let decision = h
+        .xcluster
+        .backfill_decision(&[NEW_TABLE.as_bytes().to_vec()], TABLE.as_bytes())
+        .await
+        .unwrap();
+    let now = 100_000_000_000u64 << 12;
+    assert_eq!(
+        decision,
+        master_table_lifecycle::BackfillDecision::RunLocalAt(now)
+    );
+    // max_clock_skew defaults to 500 ms.
+    assert_eq!(
+        *drained_to.lock().unwrap(),
+        Some(100_000_000_000 + 3 * 500_000)
+    );
+    let methods: Vec<String> = h
+        .target
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|c| c.0.clone())
+        .collect();
+    assert!(
+        !methods.contains(&"ListCDCStreams".to_string()),
+        "{methods:?}"
+    );
+}
+
+/// A non-colocated index needs exactly one stream of the other universe's index, and the
+/// preparation fails, as the index creation then does, when there is none or past its timeout.
+#[tokio::test]
+async fn a_bidirectional_index_fails_without_a_source_stream_or_past_its_timeout() {
+    use yb_proto::pb::common::IndexInfoPB;
+    use yb_proto::pb::common_types::IndexPermissions;
+    use yb_proto::pb::master_ddl::{
+        list_tables_response_pb::TableInfo, GetTableSchemaResponsePB, ListTablesResponsePB,
+    };
+    let h = Harness::with_options(XClusterOptions {
+        bidirectional_index_timeout: || Duration::from_millis(500),
+        ..XClusterOptions::default()
+    })
+    .await;
+    h.fake.apply(bidirectional_rows());
+    h.fake.apply(index_rows(false));
+    h.catalog.barrier().await;
+    let running = Arc::new(Mutex::new(true));
+    let r = running.clone();
+    *h.target.handler.lock().unwrap() = Some(Box::new(move |method, _| match method {
+        "ListTables" => {
+            let mut resp = ListTablesResponsePB::new();
+            if *r.lock().unwrap() {
+                let mut t = TableInfo::new();
+                t.set_id(b"src-index".to_vec());
+                t.set_name("users_idx".into());
+                t.set_pgschema_name("public".into());
+                t.set_indexed_table_id("src-table".into());
+                t.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::RUNNING));
+                resp.tables.push(t);
+            }
+            Some(resp.write_to_bytes().unwrap())
+        }
+        "GetTableSchema" => {
+            let mut resp = GetTableSchemaResponsePB::new();
+            let mut index = IndexInfoPB::new();
+            index.set_table_id(b"src-index".to_vec());
+            index.index_permissions = Some(EnumOrUnknown::new(
+                IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE,
+            ));
+            resp.indexes.push(index);
+            Some(resp.write_to_bytes().unwrap())
+        }
+        "ListCDCStreams" => Some(ListCDCStreamsResponsePB::new().write_to_bytes().unwrap()),
+        _ => None,
+    }));
+    let index = [NEW_TABLE.as_bytes().to_vec()];
+    let e = h
+        .xcluster
+        .backfill_decision(&index, TABLE.as_bytes())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, StatusCode::IllegalState);
+    assert!(
+        e.message
+            .starts_with("Failed while preparing index for xCluster: Expected exactly one stream"),
+        "{}",
+        e.message
+    );
+    // The other universe never creates its index.
+    *running.lock().unwrap() = false;
+    let e = h
+        .xcluster
+        .backfill_decision(&index, TABLE.as_bytes())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, StatusCode::TimedOut);
 }

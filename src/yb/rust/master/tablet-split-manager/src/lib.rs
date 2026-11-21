@@ -44,6 +44,7 @@ use master_ts_manager::placement::{blacklist_addresses, is_blacklisted};
 use master_ts_manager::{master_error, master_error_tagged, DeleteReplica, TsManager};
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
+use yb_host_api::metrics::{Gauge, MetricDef, MetricRegistry, MetricUnit};
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
@@ -79,6 +80,13 @@ pub struct SplitOptions {
     /// `TEST_fault_crash_after_registering_split_children`: the chance the process aborts once a
     /// split's children are written.
     pub crash_after_registering_split_children: fn() -> f64,
+    /// `TEST_reject_delete_not_serving_tablet_rpc`: split parents are not retired.
+    pub reject_delete_not_serving_tablet: fn() -> bool,
+    /// `TEST_running_test`: test sync points are passed on the host.
+    pub sync_points: fn() -> bool,
+    /// `split_respects_tablet_replica_limits`: a split is refused when its new tablet replicas
+    /// would pass the tablet replica limit (with `enforce_tablet_replica_limits`).
+    pub split_respects_tablet_replica_limits: fn() -> bool,
     /// Automatic splitting.
     pub auto: AutoSplitOptions,
 }
@@ -91,6 +99,9 @@ impl Default for SplitOptions {
             rpc_timeout: || Duration::from_secs(15),
             interval: || Duration::from_secs(1),
             crash_after_registering_split_children: || 0.0,
+            reject_delete_not_serving_tablet: || false,
+            sync_points: || false,
+            split_respects_tablet_replica_limits: || false,
             auto: AutoSplitOptions::default(),
         }
     }
@@ -131,7 +142,31 @@ pub struct TabletSplitManager {
     /// Splits being started (`AsyncGetTabletSplitKey`, then the registration): by parent.
     starting: Arc<Mutex<HashSet<Vec<u8>>>>,
     auto: Mutex<AutoState>,
+    /// The automatic splitting pass's gauges, set once the server's metrics exist.
+    gauges: OnceLock<SplitGauges>,
 }
+
+/// `tablet_split_candidates` and `outstanding_tablet_splits`, which C++ keeps in the cluster
+/// metric entity; here they are in the server's.
+struct SplitGauges {
+    candidates: Arc<dyn Gauge>,
+    outstanding: Arc<dyn Gauge>,
+}
+
+const SPLIT_CANDIDATES: MetricDef = MetricDef {
+    name: "tablet_split_candidates",
+    label: "Tablet split candidates",
+    description: "Number of tablets eligible for splitting in the last automatic splitting pass.",
+    unit: MetricUnit::Units,
+};
+
+const OUTSTANDING_SPLITS: MetricDef = MetricDef {
+    name: "outstanding_tablet_splits",
+    label: "Outstanding tablet splits",
+    description: "Number of tablet splits in progress, counted against the outstanding split \
+                  limits.",
+    unit: MetricUnit::Units,
+};
 
 /// Automatic splitting's state, kept across terms.
 #[derive(Default)]
@@ -225,6 +260,7 @@ impl TabletSplitManager {
             options,
             starting: Arc::default(),
             auto: Mutex::default(),
+            gauges: OnceLock::new(),
         })
     }
 
@@ -251,6 +287,12 @@ impl TabletSplitManager {
                     format!("Tablet {} not found", String::from_utf8_lossy(&tablet_id)),
                 )
             })?;
+        // `ValidateSplitCandidateTable`, the limits included, before the tablet's checks.
+        let table_id = tablet.tablet().expect("tablet row").table_id.clone();
+        if let Some(table) = snapshot.get(SysRowEntryType::TABLE, &table_id) {
+            validate_table(&snapshot, table, &self.options.auto, true)?;
+            self.check_limits(&snapshot, &table_id)?;
+        }
         validate_split_candidate(&snapshot, tablet, true, &self.options.auto)?;
         // `ValidateSplitCandidateTablet` needs the leader; the split key is asked of it.
         if self.leader_of(&tablet_id).is_none() {
@@ -263,7 +305,6 @@ impl TabletSplitManager {
                 ),
             ));
         }
-        self.check_limits(&snapshot, &tablet.tablet().expect("tablet row").table_id)?;
         let split_factor = if req.has_split_factor() {
             req.split_factor()
         } else {
@@ -356,7 +397,61 @@ impl TabletSplitManager {
             } else {
                 error(Code::UNKNOWN_ERROR, StatusCode::InvalidArgument, m)
             }
-        })
+        })?;
+        self.check_replica_limits(snapshot, table, &table_pb)
+            .map_err(|m| error(Code::UNKNOWN_ERROR, StatusCode::InvalidArgument, m))
+    }
+
+    /// `CanSupportAdditionalTablet` in `ValidateSplitCandidateTable`, with
+    /// `split_respects_tablet_replica_limits`: the split's one more tablet in the table's
+    /// placement.
+    fn check_replica_limits(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table: &Entity,
+        table_pb: &SysTablesEntryPB,
+    ) -> Result<(), String> {
+        if !(self.options.split_respects_tablet_replica_limits)() {
+            return Ok(());
+        }
+        let cluster = self.cluster(snapshot);
+        let info = cluster.replication_info(&table.key.id, table_pb)?;
+        let live = info.live_replicas.clone().unwrap_or_default();
+        let replicas = if live.num_replicas() > 0 {
+            live.num_replicas()
+        } else {
+            (self.options.auto.replication_factor)()
+        };
+        self.ts_manager
+            .check_tablet_replica_limits(
+                i64::from(replicas),
+                live.placement_uuid(),
+                &blacklist_addresses(&cluster.config),
+            )
+            .map_err(|m| {
+                format!(
+                    "Cannot create more tablets, table: {}: {m}",
+                    String::from_utf8_lossy(&table.key.id)
+                )
+            })
+    }
+
+    /// `TEST_SYNC_POINT`: passes the named sync point on the host, where a test may wait on it.
+    async fn sync_point(&self, name: &'static str) {
+        if !(self.options.sync_points)() {
+            return;
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(name.to_string());
+        let Ok(bytes) = req.write_to_bytes() else {
+            return;
+        };
+        let host = self.host.clone();
+        if let Ok(Err(s)) =
+            tokio::task::spawn_blocking(move || host.call("TestSyncPointCallback", &bytes)).await
+        {
+            tracing::warn!("Sync point {name}: {s}");
+        }
     }
 
     /// The tservers automatic splitting looks at, now.
@@ -430,6 +525,10 @@ impl TabletSplitManager {
                 now,
             );
             state.last_run = Some(Instant::now());
+            if let Some(gauges) = self.gauges.get() {
+                gauges.candidates.set(plan.candidates as i64);
+                gauges.outstanding.set(plan.outstanding as i64);
+            }
             if plan.candidates + plan.outstanding > 0 {
                 tracing::debug!(
                     "Automatic splitting: {} candidate(s), {} outstanding split(s), {} new",
@@ -562,6 +661,14 @@ impl TabletSplitManager {
                 .map_err(corrupt)?
                 .hybrid_time(),
         )
+    }
+
+    /// Exports the automatic splitting gauges in `registry`.
+    pub fn set_metrics(&self, registry: &dyn MetricRegistry) {
+        let _ = self.gauges.set(SplitGauges {
+            candidates: registry.gauge(&SPLIT_CANDIDATES),
+            outstanding: registry.gauge(&OUTSTANDING_SPLITS),
+        });
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.
@@ -766,6 +873,8 @@ impl TabletSplitManager {
                     &self.options.auto,
                 )
                 .map_err(|m| Status::new(StatusCode::IllegalState, m))?;
+                self.check_replica_limits(snapshot, table, &table_pb)
+                    .map_err(|m| Status::new(StatusCode::InvalidArgument, m))?;
                 // The cluster may have moved on since the split was picked: another phase, or a
                 // replica being added (`ShouldSplitValidCandidate` again).
                 if let Some(cluster) = &cluster {
@@ -923,6 +1032,15 @@ impl TabletSplitManager {
             "Servicing DeleteNotServingTablet request for tablet {}",
             String::from_utf8_lossy(&tablet_id)
         );
+        if (self.options.reject_delete_not_serving_tablet)() {
+            self.sync_point("CatalogManager::DeleteNotServingTablet:Reject")
+                .await;
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InvalidArgument,
+                "Rejecting due to FLAGS_TEST_reject_delete_not_serving_tablet_rpc",
+            ));
+        }
         let reason = format!(
             "Not serving tablet deleted upon request at {}",
             local_time_string()
@@ -1104,6 +1222,9 @@ pub fn validate_split_candidate(
             )
         })?;
     validate_table(snapshot, table, options, manual)?;
+    if (options.validate_all_candidates)() {
+        return Ok(());
+    }
     validate_tablet(snapshot, tablet, manual)
 }
 
@@ -1114,6 +1235,9 @@ pub(crate) fn validate_table(
     options: &AutoSplitOptions,
     manual: bool,
 ) -> Result<(), MasterErrorPB> {
+    if (options.validate_all_candidates)() {
+        return Ok(());
+    }
     let not_supported = |m: String| error(Code::UNKNOWN_ERROR, StatusCode::NotSupported, m);
     let table_hot = table.table().expect("table row");
     let table_pb: SysTablesEntryPB = table
@@ -1270,7 +1394,8 @@ pub(crate) fn validate_table(
     }
     // `ValidatePartitioningVersion`: a range-partitioned index built before partitioning version
     // 1 has keys a split cannot cut.
-    if (!table_pb.indexed_table_id().is_empty() || table_pb.index_info.is_some())
+    if !(options.skip_partitioning_version_validation)()
+        && (!table_pb.indexed_table_id().is_empty() || table_pb.index_info.is_some())
         && table_pb.schema.table_properties.is_some()
         && table_pb.partition_schema.is_some()
         && table_pb.partition_schema.hash_schema.is_none()
@@ -1545,6 +1670,13 @@ impl SplitController {
             let tablet = tablet.clone();
             let snapshot = snapshot.clone();
             scope.entity().spawn("split-tablet", async move {
+                // C++ crashes before it sends the split. Here the registration wakes this
+                // controller at once, so without a check here the split could reach the tserver
+                // while `do_split`'s abort is still dumping its stack.
+                maybe_fault(
+                    "TEST_fault_crash_after_registering_split_children",
+                    (manager.options.crash_after_registering_split_children)(),
+                );
                 let mut result = send_split(&manager, token, &snapshot, &tablet).await;
                 if result.is_ok() {
                     let children = tablet

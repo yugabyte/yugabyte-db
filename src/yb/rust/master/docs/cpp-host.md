@@ -57,8 +57,12 @@ is not restored yet (W9).
 The master RPCs every C++ master serves from state the host has go to `MasterHost::HandleOnHost`
 (`HOST_METHODS` in `master-rpc-handlers`): `RemovedMasterUpdate` (shell mode, as
 `CatalogManager::GoIntoShellMode`), `CheckMasterTabletHealth`, the universe key RPCs (an
-`EncryptionManager` of its own), `DumpSysCatalogEntries`, and `WriteSysCatalogEntry`, which fails as
-on a C++ master outside emergency repair mode.
+`EncryptionManager` of its own), `DumpSysCatalogEntries`, and `WriteSysCatalogEntry`
+(`SysCatalogTable::ForceWrite` at the current term, only in emergency repair mode). In emergency
+repair mode the Rust master loads no catalog and starts no leader term; the Raft leader reports
+LEADER so yb-admin finds it for those two RPCs. As `CatalogManager` does once the sys catalog is
+open (or after a remote bootstrap out of shell mode), the host asks the other masters for the
+universe keys they hold in memory (`UniverseKeyClient`).
 
 For the Rust catalog the host offers scans at a read time, the tablet's safe time, asynchronous
 Raft writes in a term (`WriteSysCatalogRows`, the `SysCatalogTable::SyncWrite` request without

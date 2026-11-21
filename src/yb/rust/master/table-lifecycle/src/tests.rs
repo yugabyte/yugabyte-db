@@ -157,6 +157,10 @@ struct Harness {
 
 impl Harness {
     async fn new(tservers: usize) -> Harness {
+        Harness::with_options(tservers, LifecycleOptions::default()).await
+    }
+
+    async fn with_options(tservers: usize, options: LifecycleOptions) -> Harness {
         let (fake, events) = FakeSysCatalog::new();
         let mut config = SysClusterConfigEntryPB::new();
         config.set_version(1);
@@ -195,7 +199,7 @@ impl Harness {
             leadership,
             ts_manager.clone(),
             Arc::new(FakeSchemaHost),
-            LifecycleOptions::default(),
+            options,
         );
         Harness {
             lifecycle,
@@ -717,6 +721,109 @@ async fn alter_writes_the_new_schema_and_altering_once_running() {
     assert_eq!(e.code(), Code::OBJECT_ALREADY_PRESENT);
 }
 
+/// A YSQL alter in a DDL transaction is recorded for the alterer by the time its row lands, so
+/// the first `AlterSchema` carries the transaction (`should_abort_active_txns`); an alter that
+/// fails after its write leaves no record.
+#[tokio::test]
+async fn a_ysql_alter_records_its_transaction_with_the_write() {
+    for fail in [false, true] {
+        let h = Harness::with_options(
+            3,
+            LifecycleOptions {
+                fail_alter_table_after_commit: if fail { || true } else { || false },
+                ..LifecycleOptions::default()
+            },
+        )
+        .await;
+        h.create_namespace("ks").await.unwrap();
+        let (result, created) = h.create_table("ks", "t", Some(1)).await;
+        result.unwrap();
+        let table_id = created.table_id().to_vec();
+        h.lifecycle
+            .writer
+            .mutate(&h.token, |snapshot| {
+                let table = snapshot.get(SysRowEntryType::TABLE, &table_id).unwrap();
+                let mut pb: SysTablesEntryPB = table.parse().unwrap();
+                pb.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::RUNNING));
+                pb.table_type = Some(EnumOrUnknown::new(TableType::PGSQL_TABLE_TYPE));
+                let mutation = master_catalog_state::Mutation::new().read(table).upsert(
+                    SysRowEntryType::TABLE,
+                    &table_id,
+                    pb.write_to_bytes().unwrap(),
+                );
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        let mut req = AlterTableRequestPB::new();
+        req.table
+            .mut_or_insert_default()
+            .set_table_id(table_id.clone());
+        req.set_new_table_name("u".into());
+        req.transaction
+            .mut_or_insert_default()
+            .set_transaction_id(vec![7; 16]);
+        let result = h
+            .lifecycle
+            .alter_table(
+                &h.token,
+                Harness::deadline(),
+                &req,
+                &mut AlterTableResponsePB::new(),
+            )
+            .await;
+        assert_eq!(result.is_err(), fail);
+        let recorded = h
+            .lifecycle
+            .alter_txns
+            .lock()
+            .unwrap()
+            .get(&table_id)
+            .cloned();
+        if fail {
+            assert_eq!(recorded, None);
+        } else {
+            assert_eq!(recorded, Some((1, vec![7; 16])));
+        }
+    }
+}
+
+/// `TEST_slowdown_alter_table_rpcs_ms`: `AlterTable` answers only after one wait per tablet, as
+/// C++'s `SendAlterTableRequest` sleeps before scheduling each tablet in the RPC.
+#[tokio::test(start_paused = true)]
+async fn alter_waits_the_slowdown_per_tablet() {
+    let h = Harness::with_options(
+        3,
+        LifecycleOptions {
+            slowdown_alter_table_rpcs: || Duration::from_secs(5),
+            ..LifecycleOptions::default()
+        },
+    )
+    .await;
+    h.create_namespace("ks").await.unwrap();
+    let (result, created) = h.create_table("ks", "t", Some(3)).await;
+    result.unwrap();
+    let table_id = created.table_id().to_vec();
+    h.set_table_state(&table_id, sys_tables_entry_pb::State::RUNNING)
+        .await;
+    let mut req = AlterTableRequestPB::new();
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(table_id.clone());
+    req.set_new_table_name("u".into());
+    let start = tokio::time::Instant::now();
+    h.lifecycle
+        .alter_table(
+            &h.token,
+            Harness::deadline(),
+            &req,
+            &mut AlterTableResponsePB::new(),
+        )
+        .await
+        .unwrap();
+    assert!(start.elapsed() >= Duration::from_secs(15));
+}
+
 #[tokio::test]
 async fn drop_marks_the_table_deleting_and_the_deleter_finishes_it() {
     let h = Harness::new(3).await;
@@ -797,6 +904,65 @@ async fn drop_marks_the_table_deleting_and_the_deleter_finishes_it() {
         .delete_namespace(&h.token, Harness::deadline(), &drop_req)
         .await
         .unwrap();
+}
+
+/// `CreateMetricsSnapshotsTableIfNeeded`: with the metrics snapshotter on, a YCQL table creates
+/// `system.metrics` first.
+#[tokio::test]
+async fn a_table_creates_the_metrics_table_first_while_the_snapshotter_is_on() {
+    let options = LifecycleOptions {
+        enable_metrics_snapshotter: || true,
+        ..LifecycleOptions::default()
+    };
+    let h = Harness::with_options(3, options).await;
+    let mut req = CreateNamespaceRequestPB::new();
+    req.set_name("system".into());
+    req.set_namespace_id(b"00000000000000000000000000000001".to_vec());
+    h.lifecycle
+        .create_namespace(
+            &h.token,
+            Harness::deadline(),
+            &req,
+            &mut CreateNamespaceResponsePB::new(),
+        )
+        .await
+        .unwrap();
+    h.create_namespace("ks").await.unwrap();
+    h.create_table("ks", "t", Some(1)).await.0.unwrap();
+
+    let metrics: SysTablesEntryPB = h
+        .snapshot()
+        .table_by_name(b"00000000000000000000000000000001", "metrics")
+        .expect("system.metrics")
+        .parse()
+        .unwrap();
+    let columns: Vec<_> = metrics
+        .schema
+        .columns
+        .iter()
+        .map(|c| (c.name(), c.is_hash_key(), c.is_key(), c.sorting_type()))
+        .collect();
+    assert_eq!(
+        columns,
+        [
+            ("node", true, true, 0),
+            ("entity_type", false, true, 0),
+            ("entity_id", false, true, 0),
+            ("metric", false, true, 0),
+            ("ts", false, true, 2),
+            ("value", false, false, 0),
+            ("details", false, false, 0),
+        ]
+    );
+    // Only one, however many tables follow.
+    h.create_table("ks", "t2", Some(1)).await.0.unwrap();
+    assert_eq!(
+        h.snapshot()
+            .iter(SysRowEntryType::TABLE)
+            .filter(|t| t.table().is_some_and(|t| t.name == "metrics"))
+            .count(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -886,6 +1052,42 @@ async fn a_transactional_table_creates_the_transaction_table_first() {
         .is_create_table_done(&h.snapshot(), &done_req, &mut done)
         .unwrap();
     assert!(done.done());
+
+    // A placement change of the status table (`modify_table_placement_info`) is served and bumps
+    // the transaction tables version.
+    let mut alter = AlterTableRequestPB::new();
+    alter
+        .table
+        .mut_or_insert_default()
+        .set_table_id(txn.key.id.to_vec());
+    alter
+        .replication_info
+        .mut_or_insert_default()
+        .live_replicas
+        .mut_or_insert_default()
+        .set_num_replicas(1);
+    h.lifecycle
+        .alter_table(
+            &h.token,
+            Harness::deadline(),
+            &alter,
+            &mut AlterTableResponsePB::new(),
+        )
+        .await
+        .unwrap();
+    let txn_pb = h.table(&txn.key.id);
+    assert_eq!(txn_pb.state(), sys_tables_entry_pb::State::ALTERING);
+    assert_eq!(txn_pb.replication_info.live_replicas.num_replicas(), 1);
+    let config: yb_proto::pb::catalog_entity_info::SysConfigEntryPB = h
+        .snapshot()
+        .get(
+            SysRowEntryType::SYS_CONFIG,
+            master_catalog_state::defaults::TRANSACTION_TABLES_CONFIG_ID,
+        )
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(config.transaction_tables_config().version(), 2);
 }
 
 #[tokio::test]
@@ -1518,14 +1720,20 @@ mod ysql {
         let creating: &[u8] = b"000033e9000030008000000000000000";
         let interrupted: &[u8] = b"000033ea000030008000000000000000";
         let upgrading: &[u8] = b"000033eb000030008000000000000000";
+        // Dropped in an earlier term: its tombstone goes.
+        let dropped: &[u8] = b"000033ec000030008000000000000000";
         h.lifecycle
             .write(&h.token, Harness::deadline(), |_| {
                 let mut mutation = master_catalog_state::Mutation::new();
-                for id in [creating, interrupted, upgrading] {
+                for id in [creating, interrupted, upgrading, dropped] {
                     let mut ns = SysNamespaceEntryPB::new();
                     ns.set_name(id.to_vec());
                     ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-                    ns.set_state(sys_namespace_entry_pb::State::PREPARING);
+                    ns.set_state(if id == dropped {
+                        sys_namespace_entry_pb::State::DELETED
+                    } else {
+                        sys_namespace_entry_pb::State::PREPARING
+                    });
                     if id == upgrading {
                         ns.set_ysql_next_major_version_state(
                             sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_PREPARING,
@@ -1560,6 +1768,44 @@ mod ysql {
             sys_namespace_entry_pb::State::PREPARING
         );
         assert_eq!(state(&h, DB_ID), sys_namespace_entry_pb::State::RUNNING);
+        assert!(h
+            .snapshot()
+            .get(SysRowEntryType::NAMESPACE, dropped)
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn a_create_of_a_database_being_deleted_fails() {
+        use yb_proto::pb::master_ddl::{
+            IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB,
+        };
+        let h = ysql_harness().await;
+        let id: &[u8] = b"000033ec000030008000000000000000";
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |_| {
+                let mut ns = SysNamespaceEntryPB::new();
+                ns.set_name(id.to_vec());
+                ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+                ns.set_state(sys_namespace_entry_pb::State::DELETING);
+                let mutation = master_catalog_state::Mutation::new()
+                    .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                    .unwrap();
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        let mut req = IsCreateNamespaceDoneRequestPB::new();
+        req.namespace.mut_or_insert_default().set_id(id.to_vec());
+        let mut resp = IsCreateNamespaceDoneResponsePB::new();
+        let error = h
+            .lifecycle
+            .is_create_namespace_done(&h.snapshot(), &req, &mut resp)
+            .unwrap_err();
+        assert!(resp.done());
+        assert!(error
+            .status
+            .message()
+            .contains("The namespace is in process of deletion"));
     }
 
     #[tokio::test]
@@ -1772,6 +2018,64 @@ mod ysql {
             .unwrap();
         assert_eq!(drop_resp.indexed_table.table_id(), TABLE_ID);
         assert!(h.table_row().indexes.is_empty());
+    }
+
+    /// `ValidateIndexTablesPostLoad`: an index its table lists at READ_WRITE_AND_DELETE that still
+    /// retains delete markers stops retaining them; one still backfilling keeps them.
+    #[tokio::test]
+    async fn a_backfilled_index_stops_retaining_delete_markers() {
+        use yb_proto::pb::common_types::IndexPermissions;
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let mut req = CreateTableRequestPB::new();
+        req.set_name("t_idx".into());
+        req.set_table_type(TableType::PGSQL_TABLE_TYPE);
+        req.set_table_id(INDEX_ID.to_vec());
+        req.schema = Some(Default::default()).into();
+        req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
+        req.set_num_tablets(1);
+        req.index_info
+            .mut_or_insert_default()
+            .set_indexed_table_id(TABLE_ID.to_vec());
+        let mut resp = CreateTableResponsePB::new();
+        h.lifecycle
+            .create_table(&h.token, Harness::deadline(), &req, &mut resp)
+            .await
+            .unwrap();
+        let retains = |h: &Harness| {
+            h.table(INDEX_ID)
+                .schema
+                .table_properties
+                .retain_delete_markers()
+        };
+        assert!(retains(&h));
+        crate::alter::clear_retained_delete_markers(&h.lifecycle, &h.token)
+            .await
+            .unwrap();
+        assert!(retains(&h));
+
+        h.lifecycle
+            .writer
+            .mutate(&h.token, |snapshot| {
+                let table = snapshot.get(SysRowEntryType::TABLE, TABLE_ID).unwrap();
+                let mut pb: SysTablesEntryPB = table.parse().unwrap();
+                pb.indexes[0]
+                    .set_index_permissions(IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+                let mutation = master_catalog_state::Mutation::new().read(table).upsert(
+                    SysRowEntryType::TABLE,
+                    TABLE_ID,
+                    pb.write_to_bytes().unwrap(),
+                );
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        crate::alter::clear_retained_delete_markers(&h.lifecycle, &h.token)
+            .await
+            .unwrap();
+        assert!(!retains(&h));
     }
 
     /// A drop in a DDL transaction waits for the commit, and an abort undoes it.

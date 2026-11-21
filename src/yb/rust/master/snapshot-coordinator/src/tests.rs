@@ -11,7 +11,7 @@
 // under the License.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use yb_proto::pb::catalog_entity_info::{sys_clone_state_pb::State as CloneState, SysCloneStatePB};
@@ -245,6 +245,14 @@ fn ok_response(_: &TabletSnapshotOpRequestPB) -> TabletSnapshotOpResponsePB {
 
 impl Harness {
     async fn new() -> Harness {
+        Self::with_options(SnapshotOptions {
+            cleanup_delay: || Duration::ZERO,
+            ..Default::default()
+        })
+        .await
+    }
+
+    async fn with_options(options: SnapshotOptions) -> Harness {
         let (fake, events) = FakeSysCatalog::new();
         let mut namespace = SysNamespaceEntryPB::new();
         namespace.set_name("ks".into());
@@ -324,10 +332,7 @@ impl Harness {
                 max_attempts: 3,
                 ..Default::default()
             },
-            SnapshotOptions {
-                cleanup_delay: || Duration::ZERO,
-                ..Default::default()
-            },
+            options,
         );
         let calls = Arc::new(Mutex::new(Vec::new()));
         let handler: Arc<Mutex<Arc<TabletHandler>>> = Arc::new(Mutex::new(Arc::new(ok_response)));
@@ -471,6 +476,68 @@ async fn a_snapshot_is_created_on_every_tablet_and_written_once() {
     assert_eq!(row.state(), State::CREATING);
     assert_eq!(row.version(), 3);
     assert_eq!(h.list(&id).snapshots[0].entry.state(), State::COMPLETE);
+}
+
+#[tokio::test]
+async fn a_namespace_snapshot_releases_its_namespace_once_its_row_is_complete() {
+    let h = Harness::new().await;
+    let id = h.create_keyspace_snapshot().await;
+    h.coordinator.retain_namespace_for(b"ns1", &id);
+    for _ in 0..200 {
+        // Checked right after the pass, before its row write can run.
+        h.coordinator.poll(&h.scope);
+        let complete = h.snapshot_row(&id).is_some_and(|pb| {
+            pb.tablet_snapshots
+                .iter()
+                .all(|t| t.state() == State::COMPLETE)
+        });
+        let retained = h.coordinator.is_namespace_retained(b"ns1");
+        // Hidden tablets are kept by the row's complete tablets, or else by the anchor.
+        assert!(complete || retained);
+        if !retained {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        h.catalog.barrier().await;
+    }
+    panic!("the namespace stayed retained");
+}
+
+#[tokio::test]
+async fn creating_a_snapshot_wakes_the_controller() {
+    let h = Harness::new().await;
+    let mut wakes = h.coordinator.subscribe();
+    wakes.borrow_and_update();
+    h.create_keyspace_snapshot().await;
+    assert!(wakes.has_changed().unwrap());
+}
+
+static TABLET_OPS_PAUSED: AtomicBool = AtomicBool::new(true);
+
+#[tokio::test]
+async fn paused_tablet_operations_are_sent_once_resumed() {
+    let h = Harness::with_options(SnapshotOptions {
+        cleanup_delay: || Duration::ZERO,
+        pause_issuing_tserver_snapshot_requests: || TABLET_OPS_PAUSED.load(Ordering::SeqCst),
+        ..Default::default()
+    })
+    .await;
+    let id = h.create_keyspace_snapshot().await;
+    for _ in 0..20 {
+        h.coordinator.poll(&h.scope);
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(h.ops(Operation::CREATE_ON_TABLET).is_empty());
+    TABLET_OPS_PAUSED.store(false, Ordering::SeqCst);
+    h.settle(|h| {
+        h.snapshot_row(&id).is_some_and(|pb| {
+            pb.tablet_snapshots
+                .iter()
+                .all(|t| t.state() == State::COMPLETE)
+        })
+    })
+    .await;
+    assert_eq!(h.ops(Operation::CREATE_ON_TABLET).len(), 2);
 }
 
 #[tokio::test]

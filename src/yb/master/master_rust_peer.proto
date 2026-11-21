@@ -320,6 +320,8 @@ message SetClusterMetricsRequestPB {
   // catalog consensus.
   optional uint32 num_tablet_servers_live = 6;
   optional uint32 num_tablet_servers_dead = 7;
+  // The run's duration, for the server's load_balancer_duration.
+  optional uint64 balancer_run_duration_ms = 8;
 }
 
 message SetClusterMetricsResponsePB {
@@ -404,6 +406,18 @@ message CreateYsqlSysTableRequestPB {
 message CreateYsqlSysTableResponsePB {
   optional MasterErrorPB error = 1;
   optional TableRowPB table = 2;
+}
+
+// MakeYsqlSysCatalogTablesTransactional's tablet half: the host marks these PG catalog tables, all
+// hosted on the sys catalog tablet, as transactional YSQL catalog tables in the tablet's metadata.
+// The leader then writes their rows and transactional_sys_catalog_enabled.
+message MakeSysCatalogTablesTransactionalRequestPB {
+  repeated bytes table_ids = 1;
+  optional int64 term = 2;
+}
+
+message MakeSysCatalogTablesTransactionalResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 // What the host's YSQL catalog reads and writes need to know of a YSQL major upgrade

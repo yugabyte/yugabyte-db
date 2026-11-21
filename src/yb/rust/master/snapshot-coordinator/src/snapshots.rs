@@ -218,6 +218,8 @@ impl SnapshotCoordinator {
         } else {
             (self.options.default_retention_hours)()
         };
+        self.sync_point("YBBackupTestWithColocationParam::CreateSnapshotReceived")
+            .await;
         let snapshot = self.catalog.snapshot();
         let namespace_workflow = (self.options.namespace_snapshot_workflow)()
             && req.tables.len() == 1
@@ -237,6 +239,8 @@ impl SnapshotCoordinator {
                 coordinator: self,
                 snapshot_id: id.clone(),
             });
+            self.sync_point("YBBackupTestWithColocationParam::ContinueSnapshotCreation")
+                .await;
             let time = self.host.max_global_now().map_err(|s| unknown(&s))?;
             let timeout = deadline.saturating_duration_since(Instant::now());
             let host = self.host.clone();
@@ -258,6 +262,10 @@ impl SnapshotCoordinator {
                 "Successfully collected entries as of time {time}, num entries: {}",
                 entries.entries.len()
             );
+            self.sync_point("YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected")
+                .await;
+            self.sync_point("YBBackupTestWithColocationParam::StartSnapshotSubmitCreate")
+                .await;
             (entries, time)
         } else {
             let entries = collect_entries(&snapshot, &req.tables, flags)?;
@@ -284,7 +292,7 @@ impl SnapshotCoordinator {
         Ok(())
     }
 
-    fn retain_namespace_for(&self, namespace_id: &[u8], snapshot_id: &[u8]) {
+    pub(crate) fn retain_namespace_for(&self, namespace_id: &[u8], snapshot_id: &[u8]) {
         self.retained_namespaces
             .lock()
             .unwrap()
@@ -356,6 +364,9 @@ impl SnapshotCoordinator {
                 result.map_err(|s| unknown(&s))?;
                 // The operation's rows are in the catalog before the caller reads them.
                 self.catalog.barrier().await;
+                // `schedule_snapshot_rpcs_out_of_band`: the tablet operations of a new or deleted
+                // snapshot go now, not at the next interval, which can outlast a short retention.
+                self.wake();
                 Ok(())
             }
             Err(_) => Err(error(

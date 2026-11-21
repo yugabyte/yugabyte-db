@@ -12,6 +12,7 @@
 
 //! `RunXReplBgTasks` on a Rust leader.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,12 +23,17 @@ use crate::Xrepl;
 /// Runs [`Xrepl`]'s background steps each term.
 pub struct XreplController {
     xrepl: Arc<Xrepl>,
+    /// Whether this term's first pass has run its load-time steps.
+    loaded: AtomicBool,
 }
 
 impl XreplController {
     /// A controller for the term that just began.
     pub fn new(xrepl: Arc<Xrepl>) -> Arc<XreplController> {
-        Arc::new(XreplController { xrepl })
+        Arc::new(XreplController {
+            xrepl,
+            loaded: AtomicBool::new(false),
+        })
     }
 }
 
@@ -47,6 +53,17 @@ impl Controller for XreplController {
                 return;
             };
             xrepl.sync_point("RunXReplBgTasks::Start").await;
+            if !self.loaded.load(Ordering::Acquire) {
+                match xrepl
+                    .mark_streams_of_dropped_databases_deleting(&token)
+                    .await
+                {
+                    Ok(()) => self.loaded.store(true, Ordering::Release),
+                    Err(status) => tracing::warn!(
+                        "Failed to mark the streams of dropped databases DELETING: {status}"
+                    ),
+                }
+            }
             let snapshot = xrepl.catalog.snapshot();
             if crate::streams::stream_rows(&snapshot)
                 .iter()
@@ -59,7 +76,12 @@ impl Controller for XreplController {
                     tracing::warn!("Failed Cleaning Deleted XRepl Streams: {status}");
                 }
             }
-            if let Err(status) = xrepl.process_new_tables(&token).await {
+            if (xrepl.options.skip_dynamic_table_addition)() {
+                tracing::info!(
+                    "Skipping processing of dynamic table addition due to \
+                     cdcsdk_skip_processing_dynamic_table_addition being true"
+                );
+            } else if let Err(status) = xrepl.process_new_tables(&token).await {
                 tracing::warn!("Failed to add new tables to CDCSDK streams: {status}");
             }
             xrepl.prune_released(&xrepl.catalog.snapshot());

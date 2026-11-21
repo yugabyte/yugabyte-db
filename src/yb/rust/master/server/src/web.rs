@@ -39,25 +39,38 @@ pub(crate) struct WebMasterList {
 
 impl WebMasterList {
     pub(crate) fn list_masters(&self) -> Vec<u8> {
-        let resp = self.runtime.block_on(list_masters_response(
-            self.info.as_ref(),
+        // Spawned rather than `block_on`: the runtime stops before the host's web server does,
+        // and a task spawned then is dropped, where `block_on` would panic on its timers.
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let (info, rpc, timeout) = (
+            self.info.clone(),
             self.rpc.clone(),
             (self.master_rpc_timeout)(),
-        ));
-        resp.write_to_bytes().unwrap_or_else(|e| {
-            let mut status = AppStatusPB::new();
-            status.set_errors(vec![0]);
-            status.set_code(app_status_pb::ErrorCode::INTERNAL_ERROR);
-            status.set_message(format!("Serializing the master list: {e}"));
-            let mut error = MasterErrorPB::new();
-            error.set_code(master_error_pb::Code::UNKNOWN_ERROR);
-            error.status = Some(status).into();
-            let mut resp = ListMastersResponsePB::new();
-            resp.error = Some(error).into();
-            resp.write_to_bytes()
-                .expect("the error response is complete")
-        })
+        );
+        self.runtime.spawn(async move {
+            let _ = sender.send(list_masters_response(info.as_ref(), rpc, timeout).await);
+        });
+        let resp = match receiver.recv() {
+            Ok(resp) => resp,
+            Err(_) => return error_response("The master is shutting down"),
+        };
+        resp.write_to_bytes()
+            .unwrap_or_else(|e| error_response(&format!("Serializing the master list: {e}")))
     }
+}
+
+fn error_response(message: &str) -> Vec<u8> {
+    let mut status = AppStatusPB::new();
+    status.set_errors(vec![0]);
+    status.set_code(app_status_pb::ErrorCode::INTERNAL_ERROR);
+    status.set_message(message.to_string());
+    let mut error = MasterErrorPB::new();
+    error.set_code(master_error_pb::Code::UNKNOWN_ERROR);
+    error.status = Some(status).into();
+    let mut resp = ListMastersResponsePB::new();
+    resp.error = Some(error).into();
+    resp.write_to_bytes()
+        .expect("the error response is complete")
 }
 
 /// Binds the web port configured by the webserver flags.

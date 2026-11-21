@@ -376,6 +376,54 @@ mod tests {
         assert!(validate_placement(&placement(3, &[(gap, 1)])).is_err());
     }
 
+    /// `CatalogManagerUtil::IsPlacementInfoValid` and `ValidateMaxNumReplicasFields` on
+    /// `max_num_replicas`.
+    #[test]
+    fn max_num_replicas_validation() {
+        let capped = |num_replicas: i32, maxes: [Option<i32>; 2]| {
+            let mut p = placement(
+                num_replicas,
+                &[
+                    (ci(Some("c"), Some("r"), Some("z1")), 1),
+                    (ci(Some("c"), Some("r"), Some("z2")), 1),
+                ],
+            );
+            for (block, max) in p.placement_blocks.iter_mut().zip(maxes) {
+                if let Some(max) = max {
+                    block.set_max_num_replicas(max);
+                }
+            }
+            p
+        };
+        let error = |r: Result<(), Status>| r.unwrap_err().message;
+        assert!(error(validate_placement(&capped(2, [Some(0), Some(2)])))
+            .contains("max_num_replicas (0) must be greater than or equal to 1"));
+        assert!(error(validate_placement(&capped(3, [Some(1), Some(1)])))
+            .contains("total maximum replica count (2)"));
+        validate_placement(&capped(3, [Some(1), None])).unwrap();
+        validate_placement(&capped(2, [Some(3), Some(3)])).unwrap();
+
+        // Any explicit maximum rules out wildcard blocks, capped or not, and duplicate blocks: a
+        // tserver could be counted against an uncapped block instead of the capped one.
+        let wildcard = "max_num_replicas is not supported in combination with wildcard";
+        let mut p = capped(2, [Some(2), None]);
+        p.placement_blocks[0].cloud_info = Some(ci(Some("c"), Some("r2"), None)).into();
+        assert!(error(validate_placement(&p)).contains(wildcard));
+        assert!(error(validate_max_num_replicas(&p)).contains(wildcard));
+        let mut p = capped(2, [Some(2), None]);
+        p.placement_blocks[1].cloud_info = Some(ci(Some("c"), Some("r"), None)).into();
+        assert!(error(validate_max_num_replicas(&p)).contains(wildcard));
+        let mut p = capped(2, [Some(2), None]);
+        p.placement_blocks[1].cloud_info = Some(ci(Some("c"), Some("r"), Some("z1"))).into();
+        assert!(error(validate_max_num_replicas(&p))
+            .contains("max_num_replicas is not supported in combination with duplicate"));
+
+        // Without a maximum, wildcard blocks are accepted.
+        let mut p = capped(2, [None, None]);
+        p.placement_blocks[0].cloud_info = Some(ci(Some("c"), Some("r"), None)).into();
+        validate_max_num_replicas(&p).unwrap();
+    }
+
     #[test]
     fn unset_fields_are_wildcards() {
         let block = placement(3, &[(ci(Some("aws"), Some("r1"), None), 1)]);

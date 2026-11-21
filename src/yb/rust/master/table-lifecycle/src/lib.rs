@@ -105,6 +105,9 @@ pub struct LifecycleOptions {
     pub enable_truncate_cdcsdk_table: fn() -> bool,
     /// `TEST_running_test`: test sync points are passed on the host.
     pub sync_points: fn() -> bool,
+    /// `create_initial_sys_catalog_snapshot`: this master runs initdb to write the initial sys
+    /// catalog snapshot, with no tservers, so it creates no `system.transactions`.
+    pub create_initial_sys_catalog_snapshot: fn() -> bool,
     /// `enable_table_rewrite_for_cdcsdk_table`.
     pub enable_table_rewrite_for_cdcsdk_table: fn() -> bool,
     /// The `cdc_enable_dynamic_schema_changes` AutoFlag.
@@ -158,20 +161,60 @@ pub struct LifecycleOptions {
     pub ysql_index_backfill_rpc_timeout: fn() -> std::time::Duration,
     /// Tablespace placement.
     pub tablespaces: TablespaceOptions,
+    /// `TEST_pause_before_send_hinted_election`: a new tablet's hinted election waits while set.
+    pub pause_before_send_hinted_election: fn() -> bool,
     /// `TEST_pause_ddl_rollback`: a DDL transaction's tables keep their DDL state while it is
     /// set, and `IsYsqlDdlVerificationDone` fails.
     pub pause_ddl_rollback: fn() -> bool,
+    /// `TEST_hang_on_ddl_verification_progress`: `IsYsqlDdlVerificationDone` passes the sync
+    /// point `YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail` first.
+    pub hang_on_ddl_verification_progress: fn() -> bool,
+    /// `TEST_fail_alter_table_after_commit`: `AlterTable` fails after its write.
+    pub fail_alter_table_after_commit: fn() -> bool,
+    /// `TEST_block_alter_table`: `AlterTable` waits while it is `alter_schema` (before its write)
+    /// or `completion` (after it).
+    pub block_alter_table: fn() -> String,
+    /// `TEST_slowdown_alter_table_rpcs_ms`: `AlterTable` waits this long per tablet before it
+    /// answers, a table's `AlterSchema` calls go out this far apart, and each response waits it.
+    pub slowdown_alter_table_rpcs: fn() -> std::time::Duration,
+    /// `TEST_hang_on_namespace_transition`: a new YSQL database's catalog copy, and the deletion of
+    /// a failed one, wait while set.
+    pub hang_on_namespace_transition: fn() -> bool,
     /// `TEST_simulate_crash_after_table_marked_deleting`: DeleteTable fails after its write.
     pub simulate_crash_after_table_marked_deleting: fn() -> bool,
     /// `TEST_delay_clearing_fully_applied_ms`: the wait before an alter or a backfill start clears
     /// the fully applied schema, which keeps the table ALTERING that much longer.
     pub delay_clearing_fully_applied: fn() -> std::time::Duration,
+    /// `TEST_slowdown_backfill_alter_table_rpcs_ms`: the wait before and after each index
+    /// permission change, which stretches an index build so tests can fail over in each stage.
+    pub slowdown_index_permission_change: fn() -> std::time::Duration,
     /// `TEST_fail_table_creation_at_preparing_state`: a YSQL `CreateTable` fails after
     /// persisting the table, so the DDL transaction has to roll it back.
     pub fail_table_creation_at_preparing_state: fn() -> bool,
     /// `TEST_pause_before_upsert_ysql_sys_table`: a new YSQL system table's row, or a new
     /// database's copied catalog rows, wait to be written while set.
     pub pause_before_upsert_ysql_sys_table: fn() -> bool,
+    /// `TEST_simulate_slow_table_create_secs`: a YCQL `CreateTable` of a new name holds the
+    /// table-name lock this long before its write, so a concurrent create of the same name
+    /// finds the table only once it is written and not yet running.
+    pub simulate_slow_table_create: fn() -> std::time::Duration,
+    /// `TEST_abort_create_table`: 1 fails a `CreateTable` of a `test_create_abort_` name before
+    /// its write; 2 fails an index create after its write, which keeps the index.
+    pub abort_create_table: fn() -> u32,
+    /// `TEST_simulate_cannot_enable_compactions`: a finished backfill leaves its indexes
+    /// retaining delete markers.
+    pub simulate_cannot_enable_compactions: fn() -> bool,
+    /// `master_enable_metrics_snapshotter`: a YCQL `CreateTable` first creates
+    /// `system.metrics`, where tservers write their metrics snapshots.
+    pub enable_metrics_snapshotter: fn() -> bool,
+    /// `metrics_snapshots_table_num_tablets`; 0 for the usual default.
+    pub metrics_snapshots_table_num_tablets: fn() -> i32,
+    /// `TEST_cdcsdk_disable_stream_drop_during_db_drop`: a database drop leaves its CDCSDK
+    /// streams as they are, as masters before streams were dropped with their database did.
+    pub disable_stream_drop_during_db_drop: fn() -> bool,
+    /// `TEST_create_table_with_empty_pgschema_name`: a new YSQL table's schema has an empty
+    /// pgschema name, as tables created before the name was stored do.
+    pub create_table_with_empty_pgschema_name: fn() -> bool,
     /// This build's YSQL major version; None when YSQL is off. A catalog on another version is
     /// mid major upgrade.
     pub ysql_major_version: Option<u32>,
@@ -190,6 +233,7 @@ impl Default for LifecycleOptions {
             enable_delete_truncate_xcluster_replicated_table: || false,
             enable_truncate_cdcsdk_table: || false,
             sync_points: || false,
+            create_initial_sys_catalog_snapshot: || false,
             enable_table_rewrite_for_cdcsdk_table: || true,
             cdc_enable_dynamic_schema_changes: || true,
             enable_ysql: || false,
@@ -219,11 +263,25 @@ impl Default for LifecycleOptions {
                 auto_create_local_transaction_tables: || true,
                 name_transaction_tables_with_tablespace_id: || false,
             },
+            pause_before_send_hinted_election: || false,
             pause_ddl_rollback: || false,
+            hang_on_ddl_verification_progress: || false,
+            fail_alter_table_after_commit: || false,
+            block_alter_table: String::new,
+            slowdown_alter_table_rpcs: || std::time::Duration::ZERO,
+            hang_on_namespace_transition: || false,
             simulate_crash_after_table_marked_deleting: || false,
             delay_clearing_fully_applied: || std::time::Duration::ZERO,
+            slowdown_index_permission_change: || std::time::Duration::ZERO,
             fail_table_creation_at_preparing_state: || false,
             pause_before_upsert_ysql_sys_table: || false,
+            simulate_slow_table_create: || std::time::Duration::ZERO,
+            abort_create_table: || 0,
+            simulate_cannot_enable_compactions: || false,
+            enable_metrics_snapshotter: || false,
+            metrics_snapshots_table_num_tablets: || 0,
+            disable_stream_drop_during_db_drop: || false,
+            create_table_with_empty_pgschema_name: || false,
             ysql_major_version: None,
         }
     }
@@ -416,6 +474,29 @@ impl TableLifecycle {
             .unwrap_or_else(|| Arc::new(schedules::SchedulesOnly))
     }
 
+    /// `IsYsqlDdlVerificationDone`'s test hook, before the request is served.
+    pub async fn before_is_ysql_ddl_verification_done(&self) {
+        if (self.options.hang_on_ddl_verification_progress)() {
+            self.sync_point("YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail")
+                .await;
+        }
+    }
+
+    /// Waits while `TEST_block_alter_table` is `step`.
+    pub(crate) async fn block_alter_table(&self, step: &str) {
+        while (self.options.block_alter_table)() == step {
+            tracing::info!("Blocking AlterTable at {step}");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+
+    /// Waits while `TEST_hang_on_namespace_transition` is set.
+    pub(crate) async fn hang_on_namespace_transition(&self) {
+        while (self.options.hang_on_namespace_transition)() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
+
     /// A C++ test sync point (`TEST_SYNC_POINT`), which itests order themselves against with
     /// `LoadDependency`.
     pub(crate) async fn sync_point(&self, name: &'static str) {
@@ -433,6 +514,34 @@ impl TableLifecycle {
             tokio::task::spawn_blocking(move || host.call("TestSyncPointCallback", &bytes)).await
         {
             tracing::warn!("Sync point {name}: {s}");
+        }
+    }
+
+    /// A test sync point whose callback may ask the caller to fail, as C++ passes a `bool*`.
+    pub(crate) async fn sync_point_fails(&self, name: &'static str) -> bool {
+        use protobuf::Message;
+        if !(self.options.sync_points)() {
+            return false;
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(name.to_string());
+        let Ok(bytes) = req.write_to_bytes() else {
+            return false;
+        };
+        let host = self.host.clone();
+        match tokio::task::spawn_blocking(move || host.call("TestSyncPointCallback", &bytes)).await
+        {
+            Ok(Ok(out)) => {
+                yb_proto::pb::master_rust_peer::TestSyncPointCallbackResponsePB::parse_from_bytes(
+                    &out,
+                )
+                .is_ok_and(|resp| resp.fail())
+            }
+            Ok(Err(s)) => {
+                tracing::warn!("Sync point {name}: {s}");
+                false
+            }
+            Err(_) => false,
         }
     }
 
@@ -518,6 +627,11 @@ impl TableLifecycle {
             })??;
         }
         Ok(())
+    }
+
+    /// `replication_factor`, for placements that name no replica count.
+    pub fn replication_factor(&self) -> i32 {
+        (self.options.replication_factor)()
     }
 
     /// The tablespace placement the leader knows, for everything else that places tablets.

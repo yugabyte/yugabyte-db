@@ -82,6 +82,11 @@ pub struct AutoSplitOptions {
     pub prevent_split_for_ttl_tables: fn() -> Duration,
     /// `prevent_split_for_small_key_range_tablets_for_seconds`; zero for no recheck delay.
     pub prevent_split_for_small_key_range_tablets: fn() -> Duration,
+    /// `TEST_validate_all_tablet_candidates`: every table and tablet passes the candidate checks.
+    pub validate_all_candidates: fn() -> bool,
+    /// `TEST_skip_partitioning_version_validation`: an index built before partitioning version 1
+    /// can be split.
+    pub skip_partitioning_version_validation: fn() -> bool,
 }
 
 impl Default for AutoSplitOptions {
@@ -109,6 +114,8 @@ impl Default for AutoSplitOptions {
             max_create_tablets_per_ts: || 50,
             prevent_split_for_ttl_tables: || Duration::from_secs(86400),
             prevent_split_for_small_key_range_tablets: || Duration::from_secs(300),
+            validate_all_candidates: || false,
+            skip_partitioning_version_validation: || false,
         }
     }
 }

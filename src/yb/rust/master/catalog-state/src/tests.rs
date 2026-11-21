@@ -850,6 +850,7 @@ mod default_rows {
         cluster_uuid: String::new,
         universe_uuid_check: || true,
         allow_ycql_role_drop: || true,
+        auto_run_initdb: || false,
     };
 
     #[tokio::test]

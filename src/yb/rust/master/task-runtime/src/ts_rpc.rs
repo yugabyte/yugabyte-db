@@ -21,6 +21,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::sync::oneshot;
 use yb_host_api::Status;
@@ -34,6 +35,9 @@ type LaneKey = (Vec<u8>, &'static str);
 pub struct TsRpcExecutor {
     lanes: Mutex<HashMap<LaneKey, Arc<Lane>>>,
     limit: fn(&str) -> usize,
+    /// `TEST_slowdown_master_async_rpc_tasks_by_ms`: a wait before each attempt, outside the lane,
+    /// as C++ sleeps before each send.
+    attempt_delay: fn() -> Duration,
 }
 
 struct Lane {
@@ -125,9 +129,18 @@ impl TsRpcExecutor {
     /// An executor whose per-tserver cap for an RPC kind is `limit(kind)`, read on every send so
     /// runtime flag changes apply. Kinds are the RPC method names, e.g. `"DeleteTablet"`.
     pub fn new(limit: fn(&str) -> usize) -> Arc<TsRpcExecutor> {
+        TsRpcExecutor::with_attempt_delay(limit, || Duration::ZERO)
+    }
+
+    /// [`TsRpcExecutor::new`] that waits `attempt_delay()` before each attempt.
+    pub fn with_attempt_delay(
+        limit: fn(&str) -> usize,
+        attempt_delay: fn() -> Duration,
+    ) -> Arc<TsRpcExecutor> {
         Arc::new(TsRpcExecutor {
             lanes: Mutex::default(),
             limit,
+            attempt_delay,
         })
     }
 
@@ -162,7 +175,22 @@ impl TsRpcExecutor {
         Fut: Future<Output = Result<T, Attempt>>,
     {
         let lane = self.lane(ts_uuid, kind);
-        policy.run_gated(|| lane.acquire(), send).await
+        let attempt_delay = self.attempt_delay;
+        policy
+            .run_gated(
+                || {
+                    let lane = lane.clone();
+                    async move {
+                        let delay = attempt_delay();
+                        if !delay.is_zero() {
+                            tokio::time::sleep(delay).await;
+                        }
+                        lane.acquire().await
+                    }
+                },
+                send,
+            )
+            .await
     }
 
     /// Calls in flight and waiting in the tserver's lane for `kind`.
@@ -399,5 +427,30 @@ mod tests {
         assert_eq!(result.unwrap_err().code, StatusCode::NetworkError);
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
         holder.unwrap().await.unwrap().unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn each_attempt_waits_the_attempt_delay() {
+        fn slow() -> Duration {
+            Duration::from_millis(100)
+        }
+        let executor = TsRpcExecutor::with_attempt_delay(two, slow);
+        let policy = RetryPolicy {
+            base_delay: Duration::ZERO,
+            ..Default::default()
+        };
+        let start = tokio::time::Instant::now();
+        let result = executor
+            .run(b"ts", "DeleteTablet", &policy, |n| async move {
+                if n < 2 {
+                    Err(Attempt::Retry(Status::new(StatusCode::TryAgain, "busy")))
+                } else {
+                    Ok(())
+                }
+            })
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(start.elapsed(), Duration::from_millis(300));
+        assert_eq!(executor.load(b"ts", "DeleteTablet"), (0, 0));
     }
 }

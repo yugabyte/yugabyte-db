@@ -14,7 +14,9 @@ The leader side of tablet splitting: `CatalogManager::SplitTablet`, `DoSplitTabl
    before partitioning version 1, not one hosting stateful services, covered by a snapshot
    schedule, in an xCluster stream or backfilling an index, not colocated, RUNNING, and a
    split child only once its parent is gone), then the table limits
-   (`max_create_tablets_per_ts` per live tserver, `tablet_split_limit_per_table`), and answers.
+   (`max_create_tablets_per_ts` per live tserver, the tablet replica limits with
+   `split_respects_tablet_replica_limits`, `tablet_split_limit_per_table`), checked before the
+   tablet's own checks as C++ does, and answers.
    As C++ schedules `AsyncGetTabletSplitKey`, the leader then asks the tablet's leader for the
    split key (`TabletServerService.GetSplitKey`) in the background.
 2. `DoSplitTablet` is one catalog mutation (K1): the children as CREATING tablets (ids sorted,
@@ -83,5 +85,5 @@ than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects))
   controller and counts them only against the limits.
 - Backfill is read from the indexes' permissions (`INDEX_PERM_DO_BACKFILL`), since a Rust leader
   keeps no in-memory backfill flag.
-- The `tablet_split_candidates` and `outstanding_tablet_splits` gauges are logged at debug
-  level rather than exported.
+- The `tablet_split_candidates` and `outstanding_tablet_splits` gauges are in the server's metric
+  entity, not the cluster entity.

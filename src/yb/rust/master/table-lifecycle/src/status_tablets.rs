@@ -140,6 +140,9 @@ impl TableLifecycle {
             .clone();
         let config = cluster_config(&snapshot);
         let mut targets = vec![(global.clone(), num_live_tservers)];
+        // A table whose placement is not known yet fails the check, so the next one retries even
+        // if the live tservers are the same (C++ fails it at the first such table).
+        let mut placement_error = None;
         for table in snapshot.iter(SysRowEntryType::TABLE) {
             if table.key.id == global {
                 continue;
@@ -164,6 +167,7 @@ impl TableLifecycle {
                             String::from_utf8_lossy(&table.key.id),
                             e.message
                         );
+                        placement_error = Some(e);
                         continue;
                     }
                 };
@@ -202,7 +206,10 @@ impl TableLifecycle {
                     .await?;
             }
         }
-        Ok(())
+        match placement_error {
+            Some(e) => Err(error(Code::UNKNOWN_ERROR, e.code, e.message)),
+            None => Ok(()),
+        }
     }
 }
 

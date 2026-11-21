@@ -12,6 +12,7 @@
 
 #include "yb/rust_bridge/rpc_bridge.h"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -26,6 +27,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
@@ -45,12 +47,14 @@ class RustServiceIf : public rpc::ServiceIf {
  public:
   RustServiceIf(
       std::string wire_name, std::string metric_name, const rust::Vec<rust::String>& methods,
-      rust::Box<RustRpcService> service)
+      const scoped_refptr<MetricEntity>& entity, rust::Box<RustRpcService> service)
       : wire_name_(std::move(wire_name)), metric_name_(std::move(metric_name)),
         service_(std::move(service)) {
     methods_.reserve(methods.size());
+    method_metrics_.reserve(methods.size());
     for (const auto& method : methods) {
       methods_.emplace_back(wire_name_, std::string(method));
+      method_metrics_.push_back(MethodMetrics(entity, std::string(method)));
     }
   }
 
@@ -62,6 +66,7 @@ class RustServiceIf : public rpc::ServiceIf {
 
   void Handle(rpc::InboundCallPtr call) override {
     const auto index = call->method_index();
+    call->SetRpcMethodMetrics(method_metrics_[index]);
     handle_call(*service_, std::make_unique<InboundCallHandle>(std::move(call), index));
   }
 
@@ -69,9 +74,38 @@ class RustServiceIf : public rpc::ServiceIf {
   std::string metric_name() const override { return metric_name_; }
 
  private:
+  // The metrics a generated C++ service registers for each method, with the same names
+  // (handler_latency_yb_master_MasterClient_GetTabletLocations, ...), so dashboards and tests
+  // read a Rust master the way they read a C++ one.
+  rpc::RpcMethodMetrics MethodMetrics(
+      const scoped_refptr<MetricEntity>& entity, const std::string& method) const {
+    if (!entity) {
+      return {};
+    }
+    auto service = metric_name_;
+    std::replace(service.begin(), service.end(), '.', '_');
+    const auto suffix = Format("$0_$1", service, method);
+    const auto rpc = Format("$0.$1()", metric_name_, method);
+    auto counter = [&](const std::string& prefix, const std::string& what) {
+      auto description = Format("Bytes $0 $1 RPC requests", what, rpc);
+      return entity->FindOrCreateMetric<Counter>(std::make_unique<OwningCounterPrototype>(
+          "server", prefix + suffix, description, MetricUnit::kBytes, description,
+          MetricLevel::kInfo));
+    };
+    auto latency_description = Format("Microseconds spent handling $0 RPC requests", rpc);
+    return rpc::RpcMethodMetrics(
+        counter("service_request_bytes_", "received by"),
+        counter("service_response_bytes_", "sent in response to"),
+        entity->FindOrCreateMetric<Histogram>(std::make_unique<OwningHistogramPrototype>(
+            "server", "handler_latency_" + suffix, latency_description,
+            MetricUnit::kMicroseconds, latency_description, MetricLevel::kInfo, 0,
+            60000000LU, 2)));
+  }
+
   const std::string wire_name_;
   const std::string metric_name_;
   std::vector<rpc::RemoteMethod> methods_;
+  std::vector<rpc::RpcMethodMetrics> method_metrics_;
   rust::Box<RustRpcService> service_;
 };
 
@@ -102,7 +136,8 @@ void RegisterRustService(
     const rust::Vec<rust::String>& methods, size_t queue_limit, bool high_priority,
     rust::Box<RustRpcService> service) {
   auto service_if = std::make_shared<RustServiceIf>(
-      std::string(wire_name), std::string(metric_name), methods, std::move(service));
+      std::string(wire_name), std::string(metric_name), methods, server.GetMetricEntity(),
+      std::move(service));
   auto status = server.RegisterRustService(
       queue_limit, std::move(service_if),
       high_priority ? rpc::ServicePriority::kHigh : rpc::ServicePriority::kNormal);

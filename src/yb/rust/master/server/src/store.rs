@@ -432,6 +432,9 @@ impl HeartbeatContributor for HostHeartbeatParts {
         if parts.db_catalog_inval_messages_data.is_some() {
             resp.db_catalog_inval_messages_data = parts.db_catalog_inval_messages_data;
         }
+        if parts.ysql_catalog_prefetch_load.is_some() {
+            resp.ysql_catalog_prefetch_load = parts.ysql_catalog_prefetch_load;
+        }
         Ok(())
     }
 }

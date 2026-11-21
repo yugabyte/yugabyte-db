@@ -12,19 +12,21 @@
 
 #include "yb/master/master_call_home.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/ysql_call_home_stats.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
 
 DEFINE_RUNTIME_int32(callhome_ysql_cluster_stats_rpc_timeout_ms, 90000,
     "Timeout in milliseconds for the CollectYsqlCallHomeStats RPC from the master leader "
@@ -33,12 +35,45 @@ DEFINE_RUNTIME_int32(callhome_ysql_cluster_stats_rpc_timeout_ms, 90000,
 DECLARE_bool(enable_ysql);
 
 using std::string;
-using std::vector;
-
 
 namespace yb {
 
 namespace master {
+
+namespace {
+
+const auto kLocalRpcTimeout = MonoDelta::FromSeconds(10);
+
+class MasterCollector : public Collector {
+ public:
+  using Collector::Collector;
+
+ protected:
+  // A proxy to this master's own services.
+  template <class Proxy>
+  Proxy LocalProxy() {
+    return Proxy(&server_->proxy_cache(), HostPort(server_->first_rpc_address()));
+  }
+
+  template <class Resp>
+  static Status ResponseStatus(const Status& rpc_status, const Resp& resp) {
+    RETURN_NOT_OK(rpc_status);
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
+  Result<ListTabletServersResponsePB> ListTabletServers() {
+    ListTabletServersRequestPB req;
+    ListTabletServersResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kLocalRpcTimeout);
+    auto proxy = LocalProxy<MasterClusterProxy>();
+    RETURN_NOT_OK(ResponseStatus(proxy.ListTabletServers(req, &resp, &controller), resp));
+    return resp;
+  }
+};
 
 class BasicCollector : public MasterCollector {
  public:
@@ -47,9 +82,13 @@ class BasicCollector : public MasterCollector {
   void Collect(CollectionLevel collection_level) override {
     AppendPairToJson("server_type", "master", &json_);
 
-    auto config = master()->catalog_manager()->GetClusterConfig();
-    if (config.ok()) {
-      AppendPairToJson("cluster_uuid", config->cluster_uuid(), &json_);
+    GetMasterClusterConfigRequestPB req;
+    GetMasterClusterConfigResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kLocalRpcTimeout);
+    auto proxy = LocalProxy<MasterClusterProxy>();
+    if (ResponseStatus(proxy.GetMasterClusterConfig(req, &resp, &controller), resp).ok()) {
+      AppendPairToJson("cluster_uuid", resp.cluster_config().cluster_uuid(), &json_);
     }
   }
 
@@ -66,17 +105,14 @@ class TablesCollector : public MasterCollector {
     ListTablesRequestPB req;
     req.set_exclude_system_tables(true);
     ListTablesResponsePB resp;
-    auto status = master()->catalog_manager()->ListTables(&req, &resp);
-    if (!status.ok()) {
+    rpc::RpcController controller;
+    controller.set_timeout(kLocalRpcTimeout);
+    auto proxy = LocalProxy<MasterDdlProxy>();
+    if (!ResponseStatus(proxy.ListTables(req, &resp, &controller), resp).ok()) {
       LOG(INFO) << "Error getting number of tables";
       return;
     }
-    if (collection_level == CollectionLevel::LOW) {
-      json_ = Format("\"tables\":$0", resp.tables_size());
-    } else {
-      // TODO: Add more table details.
-      json_ = Format("\"tables\":$0", resp.tables_size());
-    }
+    json_ = Format("\"tables\":$0", resp.tables_size());
   }
 
   string collector_name() override { return "TablesCollector"; }
@@ -89,15 +125,13 @@ class MasterInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    vector<ServerEntryPB> masters;
-    Status s = master()->ListMasters(&masters);
-    if (s.ok()) {
-      if (collection_level == CollectionLevel::LOW) {
-        json_ = Format("\"masters\":$0", masters.size());
-      } else {
-        // TODO(hector): Add more details.
-        json_ = Format("\"masters\":$0", masters.size());
-      }
+    ListMastersRequestPB req;
+    ListMastersResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kLocalRpcTimeout);
+    auto proxy = LocalProxy<MasterClusterProxy>();
+    if (ResponseStatus(proxy.ListMasters(req, &resp, &controller), resp).ok()) {
+      json_ = Format("\"masters\":$0", resp.masters_size());
     }
   }
 
@@ -111,7 +145,10 @@ class TServersInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    json_ = Format("\"tservers\":$0", master()->ts_manager()->NumDescriptors());
+    auto tservers = ListTabletServers();
+    if (tservers.ok()) {
+      json_ = Format("\"tservers\":$0", tservers->servers_size());
+    }
   }
 
   string collector_name() override { return "TServersInfoCollector"; }
@@ -133,7 +170,6 @@ class TabletsCollector : public MasterCollector {
   CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };
 
-// Collects YSQL cluster-wide statistics via RPC to the closest TServer.
 class YsqlClusterStatsCollector : public MasterCollector {
  public:
   using MasterCollector::MasterCollector;
@@ -156,12 +192,39 @@ class YsqlClusterStatsCollector : public MasterCollector {
   CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 
  private:
-  tserver::YsqlCollectionThrottle throttle_;
-  Result<string> CollectViaRpc() {
-    auto closest_ts = VERIFY_RESULT(master()->catalog_manager()->GetClosestLiveTserver());
+  // A live tserver, preferring one in this master's zone, as
+  // CatalogManager::GetClosestLiveTserver does.
+  Result<HostPort> ClosestLiveTserver() {
+    auto tservers = VERIFY_RESULT(ListTabletServers());
+    const auto& options = server_->options();
+    std::optional<HostPort> any_live;
+    for (const auto& server : tservers.servers()) {
+      if (!server.alive()) {
+        continue;
+      }
+      const auto& common = server.registration().common();
+      if (common.private_rpc_addresses().empty()) {
+        continue;
+      }
+      auto address = HostPortFromPB(common.private_rpc_addresses(0));
+      if (common.cloud_info().placement_cloud() == options.placement_cloud() &&
+          common.cloud_info().placement_region() == options.placement_region() &&
+          common.cloud_info().placement_zone() == options.placement_zone()) {
+        return address;
+      }
+      if (!any_live) {
+        any_live = address;
+      }
+    }
+    if (any_live) {
+      return *any_live;
+    }
+    return STATUS(NotFound, "No live tserver");
+  }
 
-    std::shared_ptr<tserver::TabletServerServiceProxy> proxy;
-    RETURN_NOT_OK(closest_ts->GetProxy(&proxy));
+  Result<string> CollectViaRpc() {
+    tserver::TabletServerServiceProxy proxy(&server_->proxy_cache(), VERIFY_RESULT(
+        ClosestLiveTserver()));
 
     tserver::CollectYsqlCallHomeStatsRequestPB req;
     tserver::CollectYsqlCallHomeStatsResponsePB resp;
@@ -169,16 +232,20 @@ class YsqlClusterStatsCollector : public MasterCollector {
     controller.set_timeout(
         MonoDelta::FromMilliseconds(FLAGS_callhome_ysql_cluster_stats_rpc_timeout_ms));
 
-    RETURN_NOT_OK(proxy->CollectYsqlCallHomeStats(req, &resp, &controller));
+    RETURN_NOT_OK(proxy.CollectYsqlCallHomeStats(req, &resp, &controller));
 
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
     return resp.json_stats();
   }
+
+  tserver::YsqlCollectionThrottle throttle_;
 };
 
-MasterCallHome::MasterCallHome(Master* server) : CallHome(server) {
+}  // namespace
+
+MasterCallHome::MasterCallHome(server::RpcAndWebServerBase* server) : CallHome(server) {
   AddCollector<BasicCollector>();
   AddCollector<MasterInfoCollector>();
   AddCollector<TServersInfoCollector>();
@@ -190,8 +257,13 @@ MasterCallHome::MasterCallHome(Master* server) : CallHome(server) {
 }
 
 bool MasterCallHome::SkipCallHome() {
-  auto* master = down_cast<Master*>(server_);
-  if (!master->catalog_manager()->CheckIsLeaderAndReady().ok()) {
+  IsMasterLeaderReadyRequestPB req;
+  IsMasterLeaderReadyResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(kLocalRpcTimeout);
+  MasterClusterProxy proxy(&server_->proxy_cache(), HostPort(server_->first_rpc_address()));
+  auto status = proxy.IsMasterLeaderServiceReady(req, &resp, &controller);
+  if (!status.ok() || resp.has_error()) {
     VLOG(3) << "This master instance is not a leader. Skipping call home";
     return true;
   }
