@@ -15,6 +15,7 @@
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/client/client.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/util/backoff_waiter.h"
@@ -545,6 +546,124 @@ TEST_F(CdcUpgradeFrom2026_1Test, ImplicitSlotDecodesTxnDdlAfterUpgrade) {
 
 TEST_F(CdcUpgradeFrom2026_1Test, PausedPubRefreshSlotConvertedToImplicit) {
   TestPausedPubRefreshSlotConvertedToImplicit();
+}
+
+class CdcUpgradeFrom2025_2Test : public CdcUpgradeTest {
+ public:
+  CdcUpgradeFrom2025_2Test() : CdcUpgradeTest(kBuild_2025_2_8_1) {}
+
+ protected:
+  static constexpr auto kChannel = "test_channel";
+
+  // A restarted tserver doesn't wait for its postgres.
+  Result<pgwrapper::PGConn> Listen(size_t ts_index) {
+    std::optional<pgwrapper::PGConn> conn;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto result = cluster_->ConnectToDB(kDbName, ts_index);
+          if (!result.ok()) {
+            return false;
+          }
+          conn.emplace(std::move(*result));
+          return true;
+        },
+        60s, Format("Waiting for postgres on tserver $0", ts_index)));
+    RETURN_NOT_OK(conn->ExecuteFormat("LISTEN $0", kChannel));
+    return std::move(*conn);
+  }
+
+  Status NotifyAndWait(pgwrapper::PGConn& listener, const std::string& payload) {
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName, 0 /* tserver_index */));
+    RETURN_NOT_OK(conn.ExecuteFormat("NOTIFY $0, '$1'", kChannel, payload));
+    return WaitForNotification(listener, payload);
+  }
+
+  Status WaitForNotification(pgwrapper::PGConn& listener, const std::string& payload) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(listener.Fetch("SELECT 1"));
+          return std::ranges::any_of(listener.TakeNotifications(), [&](const auto& notification) {
+            return notification.channel == kChannel && notification.payload == payload;
+          });
+        },
+        60s * kTimeMultiplier, Format("Waiting for notification $0", payload));
+  }
+
+  Result<client::CDCSDKStreamInfo> GetNotificationsStream(size_t ts_index) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    return client->GetCDCStream(
+        ReplicationSlotName(
+            Format("$0$1", kYbNotificationsSlotPrefix, cluster_->tablet_server(ts_index)->uuid())),
+        nullptr /* replica_identities */);
+  }
+};
+
+// A listener on a tserver that is still in 2025.2 keeps receiving notifications through the
+// notifications stream created in 2025.2, while the masters and the other tservers are upgraded.
+// LISTEN/NOTIFY then continues to work once upgrade is finalized and transactional DDL replication
+// is enabled.
+TEST_F(CdcUpgradeFrom2025_2Test, ListenNotifyAcrossUpgrade) {
+  constexpr size_t kListenerTs = 2;
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = 3;
+  opts.num_tablet_servers = 3;
+  for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+    flags->push_back("--ysql_yb_enable_listen_notify=true");
+  }
+  ASSERT_OK(StartClusterInOldVersion(opts));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+    // NOTIFY fails until the master creates the LISTEN/NOTIFY objects.
+    ASSERT_OK(WaitFor(
+        [&conn]() { return conn.ExecuteFormat("NOTIFY $0", kChannel).ok(); }, 90s,
+        "Waiting for LISTEN/NOTIFY"));
+  }
+
+  auto listener = ASSERT_RESULT(Listen(kListenerTs));
+  ASSERT_OK(NotifyAndWait(listener, "old_version"));
+  const auto old_stream = ASSERT_RESULT(GetNotificationsStream(kListenerTs));
+  ASSERT_TRUE(old_stream.cdcsdk_ysql_replication_slot_plugin_name.empty())
+      << old_stream.cdcsdk_ysql_replication_slot_plugin_name;
+
+  EnableTxnDdlInCurrentVersion();
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_OK(NotifyAndWait(listener, "masters_upgraded"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream = VERIFY_RESULT(GetNotificationsStream(kListenerTs));
+        SCHECK_EQ(stream.stream_id, old_stream.stream_id, IllegalState, "Stream replaced");
+        return stream.cdcsdk_ysql_replication_slot_plugin_name == kYbOutputPluginName;
+      },
+      60s, "Waiting for the plugin name of the notifications stream to be backfilled"));
+
+  for (size_t ts_index : {0, 1}) {
+    ASSERT_OK(RestartTServerInCurrentVersion(*cluster_->tablet_server(ts_index)));
+  }
+  ASSERT_OK(NotifyAndWait(listener, "other_tservers_upgraded"));
+  ASSERT_EQ(ASSERT_RESULT(GetNotificationsStream(kListenerTs)).stream_id, old_stream.stream_id);
+
+  // The restart ends the tserver's listeners, and the next LISTEN on it replaces its stream.
+  ASSERT_OK(RestartTServerInCurrentVersion(*cluster_->tablet_server(kListenerTs)));
+  listener = ASSERT_RESULT(Listen(kListenerTs));
+  ASSERT_OK(NotifyAndWait(listener, "all_tservers_upgraded"));
+  ASSERT_NE(ASSERT_RESULT(GetNotificationsStream(kListenerTs)).stream_id, old_stream.stream_id);
+
+  ASSERT_OK(PromoteAutoFlags(AutoFlagClass::kLocalVolatile));
+  ASSERT_OK(FinalizeUpgrade());
+  ASSERT_OK(NotifyAndWait(listener, "finalized"));
+
+  ASSERT_OK(EnableTxnDdlReplication());
+  listener = ASSERT_RESULT(Listen(kListenerTs));
+  ASSERT_OK(NotifyAndWait(listener, "txn_ddl_replication_enabled"));
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("NOTIFY $0, 'txn_ddl'", kChannel));
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
+  ASSERT_OK(WaitForNotification(listener, "txn_ddl"));
 }
 
 }  // namespace yb

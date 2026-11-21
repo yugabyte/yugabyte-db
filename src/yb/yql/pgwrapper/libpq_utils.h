@@ -431,6 +431,13 @@ class PGConn {
 
   [[nodiscard]] int BackendPID() const;
 
+  struct Notification {
+    std::string channel;
+    std::string payload;
+  };
+
+  std::vector<Notification> TakeNotifications();
+
  private:
   using ControllerReceiver = LWFunction<void(CopyController&)>;
 
