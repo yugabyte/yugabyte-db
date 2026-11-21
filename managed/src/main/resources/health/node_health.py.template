@@ -2734,7 +2734,8 @@ class NodeChecker():
               1 = last run succeeded
               0 = last run failed or never executed
           - yb_node_maintenance_service_last_run_seconds{service=...}
-              Unix timestamp (seconds) of the last completed run, 0 if never.
+              Unix timestamp (seconds) of the last completed run, 0 if never. While a run
+              is in progress, the time it started.
         """
         logging.info("Checking YB node maintenance services on node {}".format(self.node))
         e = self._new_metric_entry("YB node maintenance services")
@@ -2762,7 +2763,8 @@ class NodeChecker():
             # parser drops that token, so it is only belt and braces.
             cmd = ("TZ=UTC LC_ALL=C systemctl {scope}show {unit} --no-pager "
                    "--property=LoadState,Result,ExecMainExitTimestamp,"
-                   "ActiveState,SubState 2>&1").format(scope=scope_flag, unit=unit)
+                   "InactiveExitTimestamp,ActiveState,SubState 2>&1").format(
+                       scope=scope_flag, unit=unit)
             output = self._check_output(cmd)
             props = {}
             for line in output.splitlines():
@@ -2781,10 +2783,21 @@ class NodeChecker():
 
             exit_ts_raw = props.get("ExecMainExitTimestamp", "")
             last_run_epoch = parse_systemctl_timestamp(exit_ts_raw)
+            # A run in progress has no ExecMainExitTimestamp yet; report when it started, not 0.
+            active_state = props.get("ActiveState", "")
+            running = active_state in ("activating", "active", "deactivating", "reloading")
+            if last_run_epoch == 0 and running:
+                start_ts_raw = props.get("InactiveExitTimestamp", "")
+                last_run_epoch = parse_systemctl_timestamp(start_ts_raw) or int(time.time())
             last_run_metric.add_value(last_run_epoch, [service_label])
 
+            # While a run is in progress, Result still holds the previous run's outcome.
             result = props.get("Result", "")
-            if last_run_epoch == 0:
+            if running:
+                status_metric.add_value(1 if result == "success" else 0, [service_label])
+                msgs.append("{}: running in {} scope (ActiveState={}, Result={})".format(
+                    unit, scope_label, active_state, result))
+            elif last_run_epoch == 0:
                 # Service is defined but has never been executed yet.
                 status_metric.add_value(0, [service_label])
                 msgs.append("{}: never executed in {} scope (Result={})".format(
