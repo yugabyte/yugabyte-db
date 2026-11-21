@@ -31,41 +31,29 @@
 //
 #pragma once
 
+#include <absl/synchronization/mutex.h>
 #include <boost/smart_ptr/detail/yield_k.hpp>
-#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/logging.h"
 
 namespace yb {
 
-// Read-Write semaphore. 32bit uint that contains the number of readers.
-// When someone wants to write, tries to set the 32bit, and waits until
-// the readers have finished. Readers are spinning while the write flag is set.
-//
-// This rw-semaphore makes no attempt at fairness, though it does avoid write
-// starvation (no new readers may obtain the lock if a write is waiting).
-//
-// Given that this is currently based only on spinning (and not futex),
-// it should only be used in cases where the lock is held for very short
-// time intervals.
-//
-// If the semaphore is expected to always be released from the same thread
-// that acquired it, use rw_spinlock instead.
-//
-// In order to support easier debugging of leaked locks, this class can track
-// the stack trace of the last thread to lock it in write mode. To do so,
-// uncomment the following define:
-//   #define RW_SEMAPHORE_TRACK_HOLDER 1
-// ... and then in gdb, print the contents of the semaphore, and you should
-// see the collected stack trace.
-class rw_semaphore {
+// Value of --use_absl_rw_spinlock. Each lock reads it once, when it is constructed.
+bool UseAbslRwSpinlock();
+
+// The original rw_semaphore: waiters retry a compare-and-swap and sleep in nanosleep(1us) (about
+// 55us with default timer slack) between attempts, and unlock wakes nobody.
+class PollingRwSemaphore {
 #ifndef NDEBUG
   static constexpr int64_t kInvalidThreadId = -1;
 #endif
  public:
-  rw_semaphore() : state_(0) {}
-  ~rw_semaphore() {}
+  PollingRwSemaphore() : state_(0) {}
+  ~PollingRwSemaphore() {}
 
   void lock_shared() {
     int loop_count = 0;
@@ -203,6 +191,80 @@ class rw_semaphore {
 
   int64_t writer_tid_ = kInvalidThreadId;
 #endif // NDEBUG
+};
+
+// Reader/writer lock with lowercase methods, so it works with std::lock_guard, std::unique_lock,
+// std::shared_lock and yb::SharedLock.
+//
+// --use_absl_rw_spinlock picks the implementation when the lock is constructed:
+// - false (default): PollingRwSemaphore.
+// - true: absl::Mutex. Waiters block, and absl wakes one designated waiter at a time. try_lock()
+//   fails while readers hold the lock, and the lock must be released by the thread that acquired
+//   it.
+// Either way, once a writer is waiting new readers block behind it, so a thread must not acquire
+// the lock in shared mode again while it already holds it.
+class CAPABILITY("mutex") rw_semaphore {
+ public:
+  rw_semaphore() : use_absl_(UseAbslRwSpinlock()) {}
+
+  void lock_shared() NO_THREAD_SAFETY_ANALYSIS {
+    if (use_absl_) {
+      mutex_.ReaderLock();
+    } else {
+      polling_.lock_shared();
+    }
+  }
+
+  void unlock_shared() NO_THREAD_SAFETY_ANALYSIS {
+    if (use_absl_) {
+      mutex_.ReaderUnlock();
+    } else {
+      polling_.unlock_shared();
+    }
+  }
+
+  bool try_lock() NO_THREAD_SAFETY_ANALYSIS {
+    return use_absl_ ? mutex_.TryLock() : polling_.try_lock();
+  }
+
+  void lock() NO_THREAD_SAFETY_ANALYSIS {
+    if (use_absl_) {
+      mutex_.Lock();
+    } else {
+      polling_.lock();
+    }
+  }
+
+  void unlock() NO_THREAD_SAFETY_ANALYSIS {
+    if (use_absl_) {
+      mutex_.Unlock();
+    } else {
+      polling_.unlock();
+    }
+  }
+
+  // Checks that some thread holds the lock in the given mode. Neither implementation records which
+  // thread holds it in shared mode.
+  void AssertHeld() const ASSERT_CAPABILITY(this) {
+    if (use_absl_) {
+      mutex_.AssertHeld();
+    } else {
+      CHECK(polling_.is_write_locked());
+    }
+  }
+
+  void AssertReaderHeld() const ASSERT_SHARED_CAPABILITY(this) {
+    if (use_absl_) {
+      mutex_.AssertReaderHeld();
+    } else {
+      CHECK(polling_.is_locked());
+    }
+  }
+
+ private:
+  const bool use_absl_;
+  PollingRwSemaphore polling_;
+  mutable absl::Mutex mutex_;
 };
 
 } // namespace yb

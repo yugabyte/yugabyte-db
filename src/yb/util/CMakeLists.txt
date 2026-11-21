@@ -123,7 +123,6 @@ set(UTIL_SRCS
   crc.cc
   crc32c/crc32c_abseil.cc
   crc32c/cpu_detect.cc
-  cross_thread_mutex.cc
   crypt.cc
   csv_util.cc
   curl_util.cc
@@ -555,4 +554,4 @@ YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
 #######################################
 
 ADD_YB_BENCHMARK(crc-benchmark)
-ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)
+ADD_YB_BENCHMARK(mutex-benchmark DEPS absl yb_util)

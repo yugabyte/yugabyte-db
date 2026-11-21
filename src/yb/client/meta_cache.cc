@@ -749,7 +749,9 @@ std::string RemoteTablet::ReplicasAsString() const {
 }
 
 std::string RemoteTablet::ReplicasAsStringUnlocked() const {
-  DCHECK(mutex_.is_locked());
+#ifndef NDEBUG
+  mutex_.AssertReaderHeld();
+#endif
   string replicas_str;
   for (const auto& rep : replicas_) {
     if (!replicas_str.empty()) replicas_str += ", ";
