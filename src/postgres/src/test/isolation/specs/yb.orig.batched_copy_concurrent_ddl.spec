@@ -1,6 +1,6 @@
-# A DDL must not commit in the middle of a batched COPY (ROWS_PER_TRANSACTION
-# > 0): each batch writes with the indexes, constraints, triggers and
-# partitions that COPY set up for its first batch (GH #34963).
+# A DDL that conflicts with a batched COPY's locks (ROWS_PER_TRANSACTION > 0)
+# must wait for the whole COPY, as it does for an unbatched COPY and in
+# PostgreSQL: the COPY carries its locks across each batch commit (GH #34963).
 #
 # Each permutation:
 # - s3 holds advisory lock 1. copy_gate(), a CHECK constraint on each table,

@@ -5215,7 +5215,7 @@ YbTxnObjectLockTags(void)
 }
 
 void
-YbReleaseAllSessionObjectLocks(void)
+YbReleaseAllSessionObjectLocks(int elevel)
 {
 	HASH_SEQ_STATUS status;
 	LOCALLOCK  *locallock;
@@ -5245,7 +5245,8 @@ YbReleaseAllSessionObjectLocks(void)
 	}
 
 	if (released)
-		HandleYBStatus(YBCReleaseSessionObjectLock((YbcObjectLockId) {}, true));
+		HandleYBStatusAtErrorLevel(YBCReleaseSessionObjectLock((YbcObjectLockId) {}, true),
+								   elevel);
 }
 
 void
@@ -5286,7 +5287,7 @@ YbReacquireTxnObjectLocks(void)
 	}
 	list_free_deep(tags);
 
-	YbReleaseAllSessionObjectLocks();
+	YbReleaseAllSessionObjectLocks(ERROR);
 }
 
 #ifdef USE_ASSERT_CHECKING

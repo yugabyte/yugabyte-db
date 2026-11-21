@@ -65,7 +65,10 @@ typedef enum CopyInsertMethod
  * next pass; yb_loaded_a_batch is set from the second pass on, so that work
  * done once per COPY (skipping the initial rows, the non-transactional COPY
  * warning) is not repeated; yb_processed and yb_excluded hold the row counts
- * of the passes before.
+ * of the passes before; yb_requested_on_conflict_action holds the upsert
+ * choice before the first pass changed it; yb_batch_cxt holds the current
+ * pass's setup from the second pass on, and yb_caller_cxt the context to
+ * return to.
  */
 typedef struct CopyFromStateData
 {
@@ -184,6 +187,9 @@ typedef struct CopyFromStateData
 	bool		yb_loaded_a_batch;
 	int64		yb_processed;
 	int64		yb_excluded;
+	OnConflictAction yb_requested_on_conflict_action;
+	MemoryContext yb_caller_cxt;
+	MemoryContext yb_batch_cxt;
 } CopyFromStateData;
 
 extern void ReceiveCopyBegin(CopyFromState cstate);

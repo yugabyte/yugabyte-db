@@ -839,6 +839,14 @@ CONTEXT:  COPY upsert_guard_part8, line 2: "1,11"
 -- yb_enable_upsert_mode: one warning for the partition with the index, whose
 -- rows are inserted normally; the other partition still upserts.
 set yb_enable_upsert_mode = true;
+-- The same in several batches: each batch decides again from what the COPY
+-- asked for, so the partition with the index keeps falling back to a normal
+-- insert, with a warning in each batch that reaches it.
+copy upsert_guard_part8 from stdin with (format csv, rows_per_transaction 2);
+WARNING:  upsert mode disabled for table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
+WARNING:  upsert mode disabled for table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
 copy upsert_guard_part8 from stdin with (format csv);
 WARNING:  upsert mode disabled for table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
 HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
@@ -853,12 +861,16 @@ select * from upsert_guard_part8 order by h;
   h  |  v1  
 -----+------
    1 |   10
+   5 |   50
+   6 |   60
    2 |   20
    3 |   30
    4 |   40
  101 | 1012
  102 | 1020
-(6 rows)
+ 103 | 1030
+ 104 | 1040
+(10 rows)
 
 -- Index should be consistent with the partition.
 /*+IndexOnlyScan(upsert_guard_part8_a upsert_guard_part8_a_v1)*/
@@ -869,7 +881,9 @@ select v1 from upsert_guard_part8_a where v1 > 0 order by v1;
  20
  30
  40
-(4 rows)
+ 50
+ 60
+(6 rows)
 
 -- Test I: COPY REPLACE into a partitioned table whose trigger exists only on
 -- one partition.

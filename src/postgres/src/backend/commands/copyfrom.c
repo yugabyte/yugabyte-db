@@ -968,6 +968,16 @@ yb_process_more_batches:
 		 * Was upsert requested, by WITH (REPLACE) or by
 		 * yb_enable_upsert_mode?
 		 */
+		/*
+		 * Each batch decides again, since a DDL between two batches can make
+		 * the target unsafe for upsert.  Decide from what the user asked for,
+		 * not from what the previous batch set below.
+		 */
+		if (!cstate->yb_loaded_a_batch)
+			cstate->yb_requested_on_conflict_action = cstate->opts.on_conflict_action;
+		else
+			cstate->opts.on_conflict_action = cstate->yb_requested_on_conflict_action;
+
 		if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE)
 			yb_is_copy_replace = true;
 		else if (yb_enable_upsert_mode &&
@@ -1405,28 +1415,23 @@ yb_process_more_batches:
 		}
 	}
 
+	/*
+	 * YB: A batch ends like a COPY: the code below fires the AFTER triggers
+	 * and closes what the batch opened.  If input is left, the batch is then
+	 * committed and the next one starts from the top.
+	 */
 	if (cstate->opts.batch_size > 0)
-	{
-		/*
-		 * YB: The batch ends like a COPY: the code below flushes the rows,
-		 * fires the AFTER triggers and closes what the batch opened.  If
-		 * input is left, the batch is then committed and the next one starts
-		 * from the top.
-		 */
 		cstate->yb_more_batches = has_more_tuples;
-	}
-	else
-	{
-		/*
-		 * We need to flush buffered operations so that error callback is
-		 * executed
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextCopyBatch(processed, RelationGetRelationName(cstate->rel)));
 
-		/* Update progress of the COPY command as well */
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-	}
+	/*
+	 * We need to flush buffered operations so that error callback is
+	 * executed
+	 */
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextCopyBatch(processed, RelationGetRelationName(cstate->rel)));
+
+	/* Update progress of the COPY command as well */
+	pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 
 yb_no_more_tuples:
 	/* Flush any remaining buffered tuples */
@@ -1481,6 +1486,8 @@ yb_no_more_tuples:
 	 * online CREATE INDEX, can commit between two batches; the next batch
 	 * sees it because it processes invalidations, as every new transaction
 	 * does (see AtStart_Cache), and then builds its state from the top.
+	 * Another backend's DDL reaches this backend's caches only through
+	 * YbMaybeRefreshCache, so this holds when invalidation messages are on.
 	 */
 	if (cstate->yb_more_batches)
 	{
@@ -1492,9 +1499,16 @@ yb_no_more_tuples:
 		if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
 		{
 			/*
-			 * A session lock outlives the transaction: if the commit fails,
-			 * nothing else would release the ones taken for it.
+			 * A session lock outlives the transaction, and a subtransaction
+			 * abort does not release it: an error caught by a subtransaction
+			 * would leave the session locks taken here held.
+			 *
+			 * Interrupts are held so that a cancel cannot land between the
+			 * tserver granting a session lock and the local lock table
+			 * recording it, which would leave a session lock that no release
+			 * names.
 			 */
+			HOLD_INTERRUPTS();
 			PG_TRY();
 			{
 				YbHoldTxnObjectLocksForSession();
@@ -1503,21 +1517,40 @@ yb_no_more_tuples:
 			}
 			PG_CATCH();
 			{
-				YbReleaseAllSessionObjectLocks();
+				/* Do not let a failed release replace the original error. */
+				YbReleaseAllSessionObjectLocks(WARNING);
+				RESUME_INTERRUPTS();
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
+			RESUME_INTERRUPTS();
 		}
 		else
 			YBCommitTransactionIntermediate();
 
 		AcceptInvalidationMessages();
 
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
+		/*
+		 * The setup of each batch is allocated in the context current at the
+		 * top of CopyFrom.  Give each batch after the first its own context,
+		 * and delete the previous one, so that memory does not grow with the
+		 * number of batches.
+		 */
+		if (cstate->yb_batch_cxt == NULL)
+			cstate->yb_caller_cxt = CurrentMemoryContext;
+		MemoryContextSwitchTo(cstate->yb_caller_cxt);
+		if (cstate->yb_batch_cxt != NULL)
+			MemoryContextDelete(cstate->yb_batch_cxt);
+		cstate->yb_batch_cxt = AllocSetContextCreate(cstate->yb_caller_cxt,
+													 "YB COPY batch",
+													 ALLOCSET_DEFAULT_SIZES);
+		MemoryContextSwitchTo(cstate->yb_batch_cxt);
 
 		goto yb_process_more_batches;
 	}
+
+	if (cstate->yb_batch_cxt != NULL)
+		MemoryContextSwitchTo(cstate->yb_caller_cxt);
 
 	return processed;
 }
