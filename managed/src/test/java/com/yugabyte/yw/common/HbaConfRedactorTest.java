@@ -223,6 +223,14 @@ public class HbaConfRedactorTest {
                 + LDAP
                 + "ldapbindpasswd=secret ldaptls=1,local all all trust\r\n"
                 + "--max_log_size=256"));
+    // gflags reads a dash in a flag name as an underscore.
+    for (String name : List.of("ysql-hba-conf-csv", "ysql_hba-conf_csv")) {
+      assertEquals(
+          name,
+          "--" + name + "=" + LDAP + "ldapbindpasswd=REDACTED ldaptls=1,local all all trust",
+          HbaConfRedactor.redactFreeText(
+              "--" + name + "=" + LDAP + "ldapbindpasswd=secret ldaptls=1,local all all trust"));
+    }
   }
 
   @Test
