@@ -133,7 +133,7 @@ class UsearchIndex :
   UsearchIndex(
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker, vector_index::StoreVectorPayload store_vector_payload)
-      : Base(store_vector_payload),
+      : Base(store_vector_payload, mem_tracker),
         block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
