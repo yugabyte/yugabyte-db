@@ -1501,7 +1501,19 @@ TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
         "test_tbl_" + std::to_string(static_cast<int>(scale_factor * 10));
     const std::string table_creation_stmt =
         "CREATE TABLE $0 AS SELECT s AS h1, s AS v1 FROM generate_series(1, 1000) AS s";
-    ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+    // A concurrent auto-analyze from the previous iteration bumps the catalog version, which can
+    // make CREATE TABLE AS fail with a non-retried read restart error.
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      auto s = conn.ExecuteFormat(table_creation_stmt, table_name);
+      if (s.ok()) {
+        return true;
+      }
+      if (!IsRetryable(s)) {
+        return s;
+      }
+      LOG(WARNING) << "Retrying CREATE TABLE AS: " << s;
+      return false;
+    }, 30s, "Create table"));
     auto start_time = std::chrono::system_clock::now();
 
     while (std::chrono::system_clock::now() - start_time < test_duration) {
