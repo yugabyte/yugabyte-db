@@ -19,6 +19,7 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
@@ -42,6 +43,7 @@ namespace {
 YB_DEFINE_ENUM(RollbackFrom, (kOneRustMaster)(kTwoRustMasters)(kAllRustMasters));
 
 constexpr auto kTable = "upgrade_rollback";
+constexpr auto kKeyspace = "upgrade_rollback_ks";
 
 }  // namespace
 
@@ -56,10 +58,38 @@ class RustMasterUpgradeRollbackTest : public UpgradeTestBase {
   }
 
  protected:
-  // Rows written by DDL and DML go through whichever master leads; reads check that none is lost.
+  // YSQL and YCQL rows written while whichever master leads; reads check that none is lost.
   Status StartWorkload() {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB());
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+    std::vector<std::string> hosts;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+    cql_driver_ = std::make_unique<CppCassandraDriver>(
+        hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kTrue);
+    auto cql = VERIFY_RESULT(cql_driver_->CreateSession());
+    RETURN_NOT_OK(cql.ExecuteQueryFormat("CREATE KEYSPACE $0", kKeyspace));
+    RETURN_NOT_OK(
+        cql.ExecuteQueryFormat("CREATE TABLE $0.$1 (k INT PRIMARY KEY, v INT)", kKeyspace, kTable));
+    test_thread_holder_.AddThreadFunctor([this] {
+      int k = 0;
+      while (keep_running_) {
+        auto cql = cql_driver_->CreateSession();
+        if (!cql.ok()) {
+          SleepFor(100ms);
+          continue;
+        }
+        while (keep_running_) {
+          if (!cql->ExecuteQueryFormat(
+                      "INSERT INTO $0.$1 (k, v) VALUES ($2, $2)", kKeyspace, kTable, k).ok()) {
+            break;
+          }
+          cql_inserted_.store(++k);
+          SleepFor(20ms);
+        }
+      }
+    });
     test_thread_holder_.AddThreadFunctor([this] {
       int k = 0;
       while (keep_running_) {
@@ -92,8 +122,18 @@ class RustMasterUpgradeRollbackTest : public UpgradeTestBase {
     RETURN_NOT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (k)", table));
     RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", table));
-    LOG(INFO) << step << ": " << inserted << " rows and a DDL round on leader "
-              << cluster_->GetLeaderMaster()->uuid();
+
+    // The YCQL writer keeps going, so the table holds at least the rows written before the read.
+    const auto cql_inserted = cql_inserted_.load();
+    auto cql = VERIFY_RESULT(cql_driver_->CreateSession());
+    auto cql_count = VERIFY_RESULT(
+        cql.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0.$1", kKeyspace, kTable)));
+    SCHECK_GE(cql_count, cql_inserted, IllegalState, Format("YCQL rows lost at $0", step));
+    RETURN_NOT_OK(
+        cql.ExecuteQueryFormat("CREATE TABLE $0.$1 (k INT PRIMARY KEY)", kKeyspace, table));
+    RETURN_NOT_OK(cql.ExecuteQueryFormat("ALTER TABLE $0.$1 ADD c INT", kKeyspace, table));
+    LOG(INFO) << step << ": " << inserted << " YSQL and " << cql_inserted
+              << " YCQL rows, and a DDL round on leader " << cluster_->GetLeaderMaster()->uuid();
     return Status::OK();
   }
 
@@ -182,6 +222,8 @@ class RustMasterUpgradeRollbackTest : public UpgradeTestBase {
 
   std::atomic<bool> keep_running_{true};
   std::atomic<int> inserted_{0};
+  std::atomic<int> cql_inserted_{0};
+  std::unique_ptr<CppCassandraDriver> cql_driver_;
   int ddl_count_ = 0;
 };
 
