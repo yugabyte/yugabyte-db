@@ -4182,6 +4182,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	if (path->returningLists)
 	{
 		bool		retrieve = false;
+		bool		whole_row = false;
 		List	   *references = NIL;
 
 		/*
@@ -4195,6 +4196,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			Var		   *var_expr = lfirst_node(Var, lc);
 			AttrNumber	attno = var_expr->varattno;
 			YbExprColrefDesc *reference;
+
+			/* The Result tuple has placeholders, so a whole row is fetched. */
+			if (attno == InvalidAttrNumber)
+			{
+				whole_row = true;
+				continue;
+			}
 
 			/* DocDB does not store system attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
@@ -4227,6 +4235,26 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 		/* Cleanup */
 		list_free(vars);
+		if (whole_row)
+		{
+			retrieve = true;
+			list_free_deep(references);
+			references = NIL;
+			for (attr_num = 1; attr_num <= tupDesc->natts; attr_num++)
+			{
+				Form_pg_attribute attr = TupleDescAttr(tupDesc, attr_num - 1);
+				YbExprColrefDesc *reference;
+
+				if (!IsRealYBColumn(relation, attr_num))
+					continue;
+				reference = makeNode(YbExprColrefDesc);
+				reference->attno = attr_num;
+				reference->typid = attr->atttypid;
+				reference->typmod = attr->atttypmod;
+				reference->collid = attr->attcollation;
+				references = lappend(references, reference);
+			}
+		}
 		if (retrieve)
 		{
 			/*
