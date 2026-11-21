@@ -63,6 +63,7 @@ bool YBCIsOtelScopeStackEmpty();
 void YBCInitDistTrace(const char* node_uuid);
 void YBCShutdownDistTrace();
 bool YBCIsDistTraceEnabled();
+void YBCSetOtelLogThrottleIntervalSecs(int secs);
 bool YBCIsDistTraceActive();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);
 YbcOtelSpanContext YBCGetValidSpanContext(const char* traceparent);
