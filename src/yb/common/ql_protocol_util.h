@@ -221,4 +221,8 @@ inline uint8_t Load8(const void* p) {
   return *static_cast<const uint8_t*>(p);
 }
 
+// Returns the read time for the next page of a YCQL scan, in the form that
+// ycql_consistent_transactional_paging selects.
+ReadHybridTime PagingReadTime(const ReadHybridTime& read_time);
+
 } // namespace yb

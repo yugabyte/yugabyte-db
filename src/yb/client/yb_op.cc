@@ -580,6 +580,11 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
   return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
 }
 
+void YBqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet) {
+  used_read_time_ = used_time;
+  used_tablet_ = tablet;
+}
+
 Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
   Schema schema(MakeColumnSchemasFromRequest());
   qlexpr::QLRowBlock result(schema);
