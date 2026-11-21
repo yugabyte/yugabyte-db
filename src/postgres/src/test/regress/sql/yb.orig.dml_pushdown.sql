@@ -1075,3 +1075,19 @@ EXPLAIN (ANALYZE, COSTS OFF) SELECT k FROM tz_expr_pushdown
 SELECT k FROM tz_expr_pushdown
   WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'America/New_York') >= 1;
 DROP TABLE tz_expr_pushdown;
+
+-- age() of two timestamptz values depends on the session time zone, so the
+-- filter must not be pushed down. Across the DST change below the result
+-- differs between UTC and America/New_York.
+CREATE TABLE age_tz_pushdown(k int primary key, ts timestamptz);
+INSERT INTO age_tz_pushdown VALUES (1, '2024-03-11 00:00:00+00');
+EXPLAIN (COSTS OFF) SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+SET TIME ZONE 'UTC';
+SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+SET TIME ZONE 'America/New_York';
+SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+RESET TIME ZONE;
+DROP TABLE age_tz_pushdown;
