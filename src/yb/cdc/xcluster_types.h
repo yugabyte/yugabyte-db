@@ -30,6 +30,10 @@ static const char* const kDDLQueueYbDataColumn = "yb_data";
 
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
+// The CDC table pollers are kept with the xCluster pollers, which are keyed by replication group,
+// and publish their safe times to the xCluster safe time table under this group.
+inline const ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
+
 struct TabletReplicationError {
   int64_t consumer_term = 0;
   ReplicationErrorPb error;

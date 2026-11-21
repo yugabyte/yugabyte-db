@@ -78,6 +78,7 @@ class TserverXClusterContextIf;
     (SetTserverCatalogMessageList) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
+    (GetXClusterSafeTime) \
     (Heartbeat) \
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \

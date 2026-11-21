@@ -132,9 +132,6 @@ Result<SchemaVersion> ProcessSchemaVersionsAndGetMinSchemaVersion(
   return min_schema_version;
 }
 
-// The CDC table pollers are kept with the xCluster pollers, which are keyed by replication group.
-const xcluster::ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
-
 // The poller of the sys catalog tablet does not run on the leader of that tablet. It polls for as
 // long as the master names this tserver, which is when its tablet is in the registry.
 constexpr int64_t kCdcTableSysCatalogLeaderTerm = 1;
@@ -435,7 +432,7 @@ void XClusterConsumer::AddCdcTableTablets() {
                           REQUIRES(master_data_mutex_) {
       producer_consumer_tablet_map_from_master_.emplace(xcluster::XClusterTabletInfo{
           .producer_tablet_info =
-              {kCdcTableReplicationGroupId, *stream_id, tablet_id, /* table_id= */ ""},
+              {xcluster::kCdcTableReplicationGroupId, *stream_id, tablet_id, /* table_id= */ ""},
           .consumer_tablet_info = {tablet_id, stream.cdc_table_id()},
           .disable_stream = false,
           .automatic_ddl_mode = false,
@@ -928,7 +925,13 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
   {
     SharedLock read_lock(pollers_map_mutex_);
     for (auto& [producer_info, poller] : pollers_map_) {
-      if (xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
+      // The master keeps the minimum safe time of a CDC table stream under the stream id, which is
+      // not a namespace id, so that reads and compactions in the database are not held to it.
+      const auto& safe_time_key =
+          producer_info.replication_group_id == xcluster::kCdcTableReplicationGroupId
+              ? producer_info.stream_id.ToString()
+              : poller->GetConsumerNamespaceId();
+      if (xcluster_context_.SafeTimeComputationRequired(safe_time_key)) {
         auto safe_time = poller->GetSafeTime();
         VLOG_IF_WITH_FUNC(2, safe_time.is_special()) << Format(
             "Found special safe time for producer tablet $0: $1", producer_info, safe_time);
