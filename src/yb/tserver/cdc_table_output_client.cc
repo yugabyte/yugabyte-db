@@ -15,10 +15,7 @@
 
 #include <array>
 
-#include <google/protobuf/util/json_util.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.pb.h"
 
 #include "yb/client/client.h"
@@ -32,8 +29,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/docdb/docdb_pgapi.h"
-
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rocksdb/rate_limiter.h"
@@ -44,7 +40,6 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
 
@@ -64,57 +59,36 @@ constexpr std::array<const char*, 7> kKeyColumns = {
 
 constexpr size_t kUuidSize = 16;
 
-// The columns of the tuple in the form described in the header. nullopt if the tuple has no
-// columns, which is how the CDC service sends an image it does not have.
-Result<std::optional<std::string>> TupleToJson(
+// The columns of the tuple as a serialized image, in the form described in the header. nullopt if
+// the tuple has no columns, which is how the CDC service sends an image it does not have.
+Result<std::optional<std::string>> TupleToImage(
     const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple) {
-  static const auto kPrintOptions = [] {
-    google::protobuf::util::JsonPrintOptions options;
-    options.preserve_proto_field_names = true;
-    return options;
-  }();
-
-  rapidjson::StringBuffer buffer;
-  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-  bool has_columns = false;
-  std::string ql_value_json;
-  writer.StartObject();
+  cdc::CdcTableImagePB image;
   for (const auto& datum : tuple) {
     // An entry without a name only keeps the old and the new tuple the same length.
     if (!datum.has_column_name()) {
       continue;
     }
-    const auto& name = datum.column_name();
     // A request that is not from a walsender gets decoded values, without attribute numbers.
     SCHECK(
         datum.has_col_attr_num() && datum.has_column_type() &&
             (datum.has_pg_ql_value() || datum.has_pg_catalog_value()),
-        IllegalState, "Column $0 lacks its attribute number, type or undecoded value", name);
-    has_columns = true;
+        IllegalState, "Column $0 lacks its attribute number, type or undecoded value",
+        datum.column_name());
 
-    writer.Key(std::to_string(datum.col_attr_num()).c_str());
-    writer.StartArray();
-    writer.Int64(datum.column_type());
+    auto* column = image.add_columns();
+    column->set_attnum(datum.col_attr_num());
+    column->set_type_oid(narrow_cast<uint32_t>(datum.column_type()));
     const auto& ql_value =
         datum.has_pg_catalog_value() ? datum.pg_catalog_value() : datum.pg_ql_value();
-    if (IsNull(ql_value)) {
-      writer.Null();
-    } else {
-      ql_value_json.clear();
-      auto status =
-          google::protobuf::util::MessageToJsonString(ql_value, &ql_value_json, kPrintOptions);
-      SCHECK(
-          status.ok(), InternalError, "Value of column $0 cannot be written as JSON: $1", name,
-          status.ToString());
-      writer.RawValue(ql_value_json.data(), ql_value_json.size(), rapidjson::kObjectType);
+    if (!IsNull(ql_value)) {
+      *column->mutable_value() = ql_value;
     }
-    writer.EndArray();
   }
-  writer.EndObject();
-  if (!has_columns) {
+  if (image.columns().empty()) {
     return std::nullopt;
   }
-  return std::string(buffer.GetString(), buffer.GetSize());
+  return image.SerializeAsString();
 }
 
 // The 16 bytes that YSQL stores for a uuid, from its hex form with or without dashes.
@@ -199,9 +173,6 @@ Status CdcTableOutputClient::AddWrites(Batch& batch) {
   if (!table_) {
     RETURN_NOT_OK(OpenTable());
   }
-  // The jsonb conversion allocates in a postgres memory context of this thread.
-  auto se = ScopeExit([] { docdb::DeleteMemoryContextIfSet(); });
-
   auto arena = SharedThreadSafeArena();
   for (const auto& record : batch.get_changes_response->cdc_sdk_proto_records()) {
     const auto& row = record.row_message();
@@ -262,13 +233,11 @@ Status CdcTableOutputClient::AddWrites(Batch& batch) {
       add_column(origin_id_column_id_)->set_int32_value(row.xrepl_origin_id());
     }
     add_column(op_column_id_)->dup_string_value(op);
-    if (auto before = VERIFY_RESULT(TupleToJson(row.old_tuple()))) {
-      add_column(before_column_id_)->dup_binary_value(
-          VERIFY_RESULT(docdb::JsonTextToPgJsonb(*before)));
+    if (auto before = VERIFY_RESULT(TupleToImage(row.old_tuple()))) {
+      add_column(before_column_id_)->dup_binary_value(*before);
     }
-    if (auto after = VERIFY_RESULT(TupleToJson(row.new_tuple()))) {
-      add_column(after_column_id_)->dup_binary_value(
-          VERIFY_RESULT(docdb::JsonTextToPgJsonb(*after)));
+    if (auto after = VERIFY_RESULT(TupleToImage(row.new_tuple()))) {
+      add_column(after_column_id_)->dup_binary_value(*after);
     }
 
     batch.session->Apply(write);

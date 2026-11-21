@@ -35,12 +35,10 @@ namespace yb::tserver {
 // had been applied once. The poller relies on that to retry a failed batch and to re-read changes
 // after a leader change.
 //
-// The before and after columns hold the row images undecoded, for the reader of the table to
-// convert to datums the way a walsender does with a GetChanges response:
-//   {"<attnum>": [<type oid>, <value>], ...}
-// The value is the protobuf JSON form of the column's QLValuePB with the field names of the
-// proto, as in {"int32_value": 1}, so bytes are base64 and 64-bit integers are strings. It is
-// null for NULL. A column that the image does not have is absent.
+// The before and after columns hold the row images undecoded, a serialized CdcTableImagePB each,
+// for the reader of the table to convert to datums the way a walsender does with a GetChanges
+// response. An image has the attribute number, the type OID and the QLValuePB of every column of
+// the change, and no value for NULL. The column is NULL when the change has no such image.
 class CdcTableOutputClient : public XClusterOutputClientIf,
                              public std::enable_shared_from_this<CdcTableOutputClient> {
  public:
