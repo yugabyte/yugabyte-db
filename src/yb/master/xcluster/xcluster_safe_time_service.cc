@@ -24,15 +24,18 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"
@@ -591,7 +594,53 @@ XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeF
   return max_safe_time_map;
 }
 
+Status XClusterSafeTimeService::RefreshCdcTableTabletToNamespaceMap() {
+  const auto registry =
+      VERIFY_RESULT(catalog_manager_->GetCdcsdkManagerImpl().GetCdcTableRegistry());
+  const bool include_stream_id = FLAGS_xcluster_safe_time_table_include_stream_id;
+  if (cdc_table_registry_version_ == registry.version() &&
+      include_stream_id == producer_tablet_keys_have_stream_id_) {
+    return Status::OK();
+  }
+
+  producer_tablet_namespace_map_.clear();
+  ddl_queue_tablet_ids_.clear();
+  for (const auto& stream : registry.streams()) {
+    const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id()));
+    auto tablet_ids = stream.tablet_ids();
+    // Catalog changes are written to the CDC table as well, by the one tserver that polls the
+    // sys catalog tablet for them.
+    if (stream.poll_sys_catalog()) {
+      *tablet_ids.Add() = kSysCatalogTabletId;
+    }
+    for (const auto& tablet_id : tablet_ids) {
+      const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+          xcluster::kCdcTableReplicationGroupId, tablet_id, /* producer_table_id= */ "",
+          stream_id));
+      producer_tablet_namespace_map_[key] = stream.namespace_id();
+    }
+  }
+
+  cdc_table_registry_version_ = registry.version();
+  producer_tablet_keys_have_stream_id_ = include_stream_id;
+  // For the map to be rebuilt from the consumer registry should the flag be turned off.
+  cluster_config_version_ = kInvalidClusterConfigVersion;
+
+  return Status::OK();
+}
+
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
+  // With the CDC table, the service computes the CDC safe time of the databases of this universe
+  // that have one, in place of xCluster safe times: xCluster is not expected to be in use then.
+  // Everything downstream of this map is shared.
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+    return RefreshCdcTableTabletToNamespaceMap();
+  }
+  if (cdc_table_registry_version_) {
+    cdc_table_registry_version_.reset();
+    cluster_config_version_ = kInvalidClusterConfigVersion;
+  }
+
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
   const bool include_stream_id = FLAGS_xcluster_safe_time_table_include_stream_id;
 

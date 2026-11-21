@@ -30,6 +30,10 @@ static const char* const kDDLQueueYbDataColumn = "yb_data";
 
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
+// Not an xCluster replication group: what the CDC table pollers of this universe use in its place,
+// in ProducerTabletInfo and in the keys of the xCluster safe time table.
+inline const ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
+
 struct TabletReplicationError {
   int64_t consumer_term = 0;
   ReplicationErrorPb error;

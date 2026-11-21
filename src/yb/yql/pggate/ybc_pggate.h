@@ -1119,6 +1119,13 @@ YbcStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YbcPgXLogRecPtr restart_lsn_hint, YbcPgXLogRecPtr confirmed_flush,
     YbcPgXLogRecPtr* restart_lsn);
 
+// The CDC safe time of a database, as a hybrid time comparable to pg_yb_cdc_changes.commit_time.
+// Every change that commits at or before it is in pg_yb_cdc_changes. 0 while the database has
+// none: no replication slot, or the tablets have not all been polled yet. Otherwise it only moves
+// forward. It is the value this node last got from the master, so it lags by a few seconds and
+// can be behind the value on another node.
+YbcStatus YBCPgGetCdcSafeTime(YbcPgOid db_oid, uint64_t *safe_time);
+
 // Get a new OID from the OID allocator of database db_oid.
 YbcStatus YBCGetNewObjectId(YbcPgOid db_oid, YbcPgOid* new_oid);
 

@@ -1000,6 +1000,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // This never returns nullptr.
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
+  CdcsdkManager& GetCdcsdkManagerImpl() { return *cdcsdk_manager_; }
+
   // The leader term the in-memory catalog was last fully loaded for, or OpId::kUnknownTerm while a
   // load is in progress (including a reload within the same term, e.g., after a sys catalog
   // restore) or before the first load.  Unlike leader_ready_term(), it is reset when a load

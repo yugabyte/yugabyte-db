@@ -132,9 +132,14 @@ void CdcTablePoller::ChangesApplied(const XClusterOutputClientResponse& response
   next.max_index_in_sort_window = resp.max_index_in_sort_window();
   next_request_ = std::move(next);
 
-  // TODO: safe time. Every change of this tablet that commits up to the safe hybrid time of the
-  // response is in the CDC table now. Publishing that time, and the minimum across the tablets of
-  // a database, is what will let the walsender read the table in commit order.
+  // The CDC service has returned every change of this tablet that commits up to this time, since
+  // it skips the changes that commit up to the safe time of the next request. All of them are in
+  // the CDC table now. A transaction that is returned in parts does not move the time past its
+  // commit time before its last part. The consumer publishes the time, see
+  // XClusterConsumer::PublishXClusterSafeTime.
+  if (next_request_->safe_hybrid_time > 0) {
+    UpdateSafeTime(HybridTime(static_cast<uint64_t>(next_request_->safe_hybrid_time)));
+  }
 }
 
 }  // namespace yb::tserver

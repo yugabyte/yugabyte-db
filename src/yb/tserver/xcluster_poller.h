@@ -168,7 +168,6 @@ class XClusterPoller : public XClusterAsyncExecutor {
       EXCLUDES(data_mutex_);
   void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
   void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
-  void UpdateSafeTime(HybridTime new_time);
   void InvalidateSafeTime();
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
@@ -193,6 +192,9 @@ class XClusterPoller : public XClusterAsyncExecutor {
   // Called once the changes of a GetChanges response have been applied, to record where the next
   // GetChanges request continues from.
   virtual void ChangesApplied(const XClusterOutputClientResponse& response) REQUIRES(data_mutex_);
+
+  // Never lowers the safe time.
+  void UpdateSafeTime(HybridTime new_time);
 
   // The data members are protected only for the subclasses that implement the hooks above.
   const xcluster::ProducerTabletInfo producer_tablet_info_;

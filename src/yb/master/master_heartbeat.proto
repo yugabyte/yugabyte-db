@@ -400,6 +400,10 @@ message TSHeartbeatResponsePB {
 
   // Sent when the version in the request differs from the master's.
   optional cdc.CdcTablePollerRegistryPB cdc_table_registry = 38;
+
+  // Map[NamespaceId]: CDC safe HybridTime. Every change that committed at or before it, in any
+  // tablet polled into the CDC table of the database, is in that table.
+  map<string, fixed64> cdc_namespace_to_safe_time = 39;
 }
 
 service MasterHeartbeat {

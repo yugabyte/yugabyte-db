@@ -383,6 +383,8 @@ class PgClient {
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
+  Result<uint64_t> GetCdcSafeTime(PgOid db_oid);
+
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<std::string> GetTabletForKey(

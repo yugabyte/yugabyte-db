@@ -2727,6 +2727,7 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
+  xcluster_context_->UpdateCdcSafeTimeMap(resp.cdc_namespace_to_safe_time());
   // A master with auto flag skip_fields_moved_to_xcluster_guarded_info off sends both the
   // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
   if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {

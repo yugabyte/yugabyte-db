@@ -30,6 +30,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -60,12 +61,26 @@ void CdcsdkManager::FillHeartbeatResponse(
   if (!FLAGS_TEST_cdcsdk_enable_cdc_table) {
     return;
   }
+  const auto leader_term = catalog_manager_.GetLeaderEpochInternal().leader_term;
   std::lock_guard l(cdc_table_registry_mutex_);
+  // Until this leader has computed the registry, the tservers keep polling what they have.
+  if (cdc_table_registry_leader_term_ != leader_term) {
+    return;
+  }
   // Inequality rather than "older than": the versions of a new master leader are unrelated to
   // those of the previous one.
   if (req.cdc_table_registry_version() != cdc_table_registry_.version()) {
     *resp->mutable_cdc_table_registry() = cdc_table_registry_;
   }
+}
+
+Result<cdc::CdcTablePollerRegistryPB> CdcsdkManager::GetCdcTableRegistry() const {
+  const auto leader_term = catalog_manager_.GetLeaderEpochInternal().leader_term;
+  std::lock_guard l(cdc_table_registry_mutex_);
+  SCHECK(
+      cdc_table_registry_leader_term_ && *cdc_table_registry_leader_term_ == leader_term, TryAgain,
+      "The CDC table poller registry has not been computed in leader term $0 yet", leader_term);
+  return cdc_table_registry_;
 }
 
 Result<std::optional<cdc::CdcTableStreamEntryPB>> CdcsdkManager::ComputeCdcTableStreamEntry(
@@ -126,7 +141,7 @@ Result<std::optional<cdc::CdcTableStreamEntryPB>> CdcsdkManager::ComputeCdcTable
   return entry;
 }
 
-Status CdcsdkManager::RefreshCdcTableRegistry() {
+Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
   cdc::CdcTablePollerRegistryPB registry;
 
   // Sorted, so that the same stream is picked on every pass.
@@ -189,21 +204,36 @@ Status CdcsdkManager::RefreshCdcTableRegistry() {
     registry.set_sys_catalog_poller_ts_uuid(sys_catalog_poller);
   }
 
-  std::lock_guard l(cdc_table_registry_mutex_);
-  registry.set_version(cdc_table_registry_.version());
-  if (registry.SerializeAsString() == cdc_table_registry_.SerializeAsString()) {
-    return Status::OK();
+  bool start_safe_time_service;
+  {
+    std::lock_guard l(cdc_table_registry_mutex_);
+    const bool first_in_leader_term = cdc_table_registry_leader_term_ != epoch.leader_term;
+    cdc_table_registry_leader_term_ = epoch.leader_term;
+
+    registry.set_version(cdc_table_registry_.version());
+    const bool changed = registry.SerializeAsString() != cdc_table_registry_.SerializeAsString();
+    if (changed) {
+      // An empty registry keeps version 0, which is what a tserver without pollers reports.
+      registry.set_version(registry.streams_size() > 0 ? GetCurrentTimeMicros() : 0);
+      LOG(INFO) << "New CDC table poller registry: " << registry.ShortDebugString();
+      cdc_table_registry_ = std::move(registry);
+    }
+    start_safe_time_service =
+        (changed || first_in_leader_term) && cdc_table_registry_.streams_size() > 0;
   }
-  // An empty registry keeps version 0, which is what a tserver without pollers reports.
-  registry.set_version(registry.streams_size() > 0 ? GetCurrentTimeMicros() : 0);
-  LOG(INFO) << "New CDC table poller registry: " << registry.ShortDebugString();
-  cdc_table_registry_ = std::move(registry);
+
+  if (start_safe_time_service) {
+    // The service computes the CDC safe time of the database from the safe times that the pollers
+    // write to its table. It idles while no tablets are polled, and when the leader changes.
+    catalog_manager_.GetXClusterManagerImpl()->CreateXClusterSafeTimeTableAndStartService();
+  }
   return Status::OK();
 }
 
 void CdcsdkManager::RunBgTasks(const LeaderEpoch& epoch) {
   if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
-    WARN_NOT_OK(RefreshCdcTableRegistry(), "Failed to refresh the CDC table poller registry");
+    WARN_NOT_OK(
+        RefreshCdcTableRegistry(epoch), "Failed to refresh the CDC table poller registry");
   }
 
   if (!FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) {

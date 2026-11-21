@@ -104,6 +104,9 @@ class XClusterSafeTimeService {
   // Returns true if an update was made, else false.
   virtual Status RefreshProducerTabletToNamespaceMap() REQUIRES(mutex_);
 
+  // Fills producer_tablet_namespace_map_ with the tablets that the CDC table pollers poll.
+  Status RefreshCdcTableTabletToNamespaceMap() REQUIRES(mutex_);
+
   virtual Result<bool> CreateTableRequired() REQUIRES(mutex_);
 
   virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const;
@@ -142,6 +145,9 @@ class XClusterSafeTimeService {
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
   int32_t cluster_config_version_ GUARDED_BY(mutex_) = kInvalidClusterConfigVersion;
+  // Version of the CDC table poller registry that producer_tablet_namespace_map_ was built from,
+  // if it was built from one.
+  std::optional<uint64_t> cdc_table_registry_version_ GUARDED_BY(mutex_);
   bool producer_tablet_keys_have_stream_id_ GUARDED_BY(mutex_) = false;
   std::map<xcluster::SafeTimeTablePK, NamespaceId> producer_tablet_namespace_map_
       GUARDED_BY(mutex_);

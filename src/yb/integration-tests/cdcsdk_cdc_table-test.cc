@@ -12,16 +12,23 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/master/master_defaults.h"
 
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
 
+#include "yb/util/test_thread_holder.h"
+
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_uint64(TEST_pg_auth_key);
+DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 
@@ -103,6 +110,52 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
         },
         kTimeout,
         Format("Wait for $0 changes matching [$1] in the CDC table", expected, filter));
+  }
+
+  Result<PgOid> DatabaseOid(pgwrapper::PGConn& conn) {
+    return conn.FetchRow<pgwrapper::PGOid>(
+        "SELECT oid FROM pg_database WHERE datname = current_database()");
+  }
+
+  // The CDC safe time of the database that a walsender on the given tserver gets. Invalid if the
+  // database has none.
+  Result<HybridTime> CdcSafeTime(size_t tserver_index, PgOid database_oid) {
+    tserver::PgClientServiceProxy proxy(
+        &test_client()->proxy_cache(),
+        HostPort::FromBoundEndpoint(
+            test_cluster()->mini_tablet_server(tserver_index)->bound_rpc_addr()));
+    tserver::PgGetCdcSafeTimeRequestPB req;
+    req.set_db_oid(database_oid);
+    tserver::PgGetCdcSafeTimeResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kTimeout);
+    RETURN_NOT_OK(proxy.GetCdcSafeTime(req, &resp, &controller));
+    if (resp.has_status()) {
+      RETURN_NOT_OK(StatusFromPB(resp.status()));
+    }
+    return resp.safe_time() ? HybridTime(resp.safe_time()) : HybridTime::kInvalid;
+  }
+
+  // Waits for the CDC safe time on the tserver to reach min_safe_time, and returns it.
+  Result<HybridTime> WaitForCdcSafeTime(
+      size_t tserver_index, PgOid database_oid, HybridTime min_safe_time) {
+    HybridTime safe_time;
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          safe_time = VERIFY_RESULT(CdcSafeTime(tserver_index, database_oid));
+          return safe_time.is_valid() && safe_time >= min_safe_time;
+        },
+        kTimeout,
+        Format("Wait for the CDC safe time on tserver $0 to reach $1", tserver_index,
+               min_safe_time)));
+    return safe_time;
+  }
+
+  // A hybrid time that no change committed so far is later than.
+  HybridTime Now() { return test_cluster()->mini_tablet_server(0)->server()->Clock()->Now(); }
+
+  Result<int64_t> CountChangesUpTo(pgwrapper::PGConn& conn, HybridTime commit_time) {
+    return CountChanges(conn, Format("commit_time <= $0", commit_time.ToUint64()));
   }
 };
 
@@ -276,8 +329,7 @@ TEST_F(CDCSDKCdcTableTest, SysCatalogChanges) {
   // Creating a table changes pg_class, which is one of the catalog tables of the stream.
   ASSERT_OK(conn.Execute("CREATE TABLE t3 (id INT PRIMARY KEY)"));
 
-  const auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
-      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
   const auto relname_attnum = ASSERT_RESULT(conn.FetchRow<int32_t>(
       "SELECT attnum::int FROM pg_attribute "
       "WHERE attrelid = 'pg_class'::regclass AND attname = 'relname'"));
@@ -289,6 +341,197 @@ TEST_F(CDCSDKCdcTableTest, SysCatalogChanges) {
           "(after->'$2'->>0)::oid = 'name'::regtype",
           GetPgsqlTableId(database_oid, kPgClassTableOid), StringValue("after", relname_attnum),
           relname_attnum)));
+}
+
+// A reader that gets the CDC safe time and then reads the changes that committed up to it must
+// have all of them: none may show up in the CDC table later.
+TEST_F(CDCSDKCdcTableTest, SafeTime) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(CreateTestTable(conn, "t2"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto num_tservers = test_cluster()->num_tablet_servers();
+
+  // Without a replication slot nothing is polled.
+  ASSERT_FALSE(ASSERT_RESULT(CdcSafeTime(0, database_oid)).is_valid());
+
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  for (size_t i = 0; i < num_tservers; ++i) {
+    ASSERT_RESULT(WaitForCdcSafeTime(i, database_oid, HybridTime::kMin));
+  }
+
+  // Transactions that span the tablets of both tables.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto writer = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    for (int i = 0; !stop.load(std::memory_order_acquire); ++i) {
+      // A leader change below can fail a transaction. What matters is what got committed.
+      auto status = writer.Execute("BEGIN");
+      if (status.ok()) {
+        status = writer.ExecuteFormat(
+            "INSERT INTO t1 SELECT i, 'a' FROM generate_series($0, $1) i", 3 * i + 1, 3 * i + 3);
+      }
+      if (status.ok()) {
+        status = writer.ExecuteFormat("INSERT INTO t2 VALUES ($0, 'x')", i);
+      }
+      if (status.ok()) {
+        status = writer.Execute("COMMIT");
+      }
+      if (!status.ok()) {
+        LOG(INFO) << "Transaction " << i << " failed: " << status;
+        ASSERT_OK(writer.Execute("ROLLBACK"));
+      }
+    }
+  });
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  StartYbAdminClient();
+
+  // The number of changes found up to each safe time, when a reader first got that safe time.
+  std::map<HybridTime, int64_t> changes_up_to;
+  std::vector<HybridTime> last_safe_time(num_tservers, HybridTime::kMin);
+  constexpr int kNumSamples = 60;
+  for (int i = 0; i < kNumSamples; ++i) {
+    const auto tserver_index = i % num_tservers;
+    const auto safe_time = ASSERT_RESULT(CdcSafeTime(tserver_index, database_oid));
+    ASSERT_TRUE(safe_time.is_valid());
+    ASSERT_GE(safe_time, last_safe_time[tserver_index]);
+    last_safe_time[tserver_index] = safe_time;
+
+    const auto changes = ASSERT_RESULT(CountChangesUpTo(conn, safe_time));
+    auto [it, inserted] = changes_up_to.emplace(safe_time, changes);
+    ASSERT_EQ(it->second, changes) << "Changes up to safe time " << safe_time << " arrived late";
+
+    if (i == kNumSamples / 2) {
+      // The new leader's poller starts from an older checkpoint, with an older safe time.
+      size_t leader_index = 0;
+      size_t follower_index = 0;
+      GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+      ASSERT_OK(StepDownLeader(follower_index, tablets[0].tablet_id()));
+    }
+    SleepFor(250ms * kTimeMultiplier);
+  }
+  thread_holder.Stop();
+
+  // Every row of the tables was inserted once.
+  const auto total_changes =
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")) +
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2"));
+  ASSERT_GT(total_changes, 0);
+
+  // The safe time moves on without further changes, and once it is past the last commit all the
+  // changes are there, with no need to wait for them.
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time)), total_changes);
+
+  // The master keeps it with the xCluster safe times, so yb-admin get_xcluster_safe_time shows it.
+  const auto master_safe_times = ASSERT_RESULT(yb_admin_client_->GetXClusterSafeTime());
+  ASSERT_EQ(master_safe_times.Size(), 1);
+  ASSERT_EQ(master_safe_times[0]["namespace_name"].GetString(), test_namespace_name);
+
+  // The safe time was read while changes were arriving.
+  ASSERT_GT(changes_up_to.size(), 2);
+  ASSERT_LT(changes_up_to.begin()->second, total_changes);
+  for (const auto& [sampled_safe_time, changes] : changes_up_to) {
+    ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, sampled_safe_time)), changes)
+        << "Changes up to safe time " << sampled_safe_time << " arrived late";
+  }
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), total_changes);
+}
+
+// The CDC safe time is the minimum over the polled tablets. While one of them is not polled, a
+// transaction that also wrote to it is only partly in the CDC table, and the safe time must stay
+// below its commit time.
+TEST_F(CDCSDKCdcTableTest, SafeTimeHeldByLaggingTablet) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto num_tservers = test_cluster()->num_tablet_servers();
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  for (size_t i = 0; i < num_tservers; ++i) {
+    ASSERT_RESULT(WaitForCdcSafeTime(i, database_oid, HybridTime::kMin));
+  }
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  // The poller of the tablet stops sending GetChanges.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+      tablets[0].tablet_id();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  // For a GetChanges that was already under way.
+  SleepFor(1s * kTimeMultiplier);
+
+  // One transaction, with rows in every tablet.
+  constexpr int kNumRows = 30;
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, $0) i", kNumRows));
+  ASSERT_OK(WaitForChanges(conn, 1));
+  const HybridTime commit_time(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT max(commit_time) FROM $0", master::kPgYbCdcChangesTableName))));
+
+  // Long enough for a safe time that ignored the tablet to get past the commit time.
+  const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() < deadline) {
+    for (size_t i = 0; i < num_tservers; ++i) {
+      const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+      ASSERT_TRUE(safe_time.is_valid());
+      ASSERT_LT(safe_time, commit_time);
+    }
+    SleepFor(200ms);
+  }
+  const auto changes = ASSERT_RESULT(CountChanges(conn));
+  ASSERT_GT(changes, 0);
+  ASSERT_LT(changes, kNumRows);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, commit_time));
+  ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time)), kNumRows);
+}
+
+// The master persists the CDC safe time, and a new master leader must not compute it before it
+// knows which tablets are polled: it would find none, and drop the safe time.
+TEST_F(CDCSDKCdcTableTest, SafeTimeAcrossMasterRestart) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 10) i"));
+  const auto safe_time_before = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time_before)), 10);
+
+  // The new leader first computes the tablets that are polled well after the safe time service
+  // has started.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 10000;
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+  const auto deadline = CoarseMonoClock::Now() + 15s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() < deadline) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+      ASSERT_TRUE(safe_time.is_valid());
+      if (i == 0) {
+        ASSERT_GE(safe_time, safe_time_before);
+      }
+    }
+    SleepFor(100ms);
+  }
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'b' FROM generate_series(11, 20) i"));
+  const auto safe_time_after = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time_after)), 20);
 }
 
 TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {

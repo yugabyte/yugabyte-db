@@ -36,6 +36,8 @@ class MockTserverXClusterContext : public TserverXClusterContextIf {
       (Result<std::optional<HybridTime>>), GetSafeTime, (NamespaceIdView namespace_id),
       (const, override));
 
+  MOCK_METHOD(HybridTime, GetCdcSafeTime, (NamespaceIdView namespace_id), (const, override));
+
   MOCK_METHOD(
       XClusterNamespaceInfoPB_XClusterRole, GetXClusterRole, (NamespaceIdView namespace_id),
       (const, override));

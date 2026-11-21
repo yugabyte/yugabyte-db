@@ -43,9 +43,15 @@ class CdcsdkManager : public CdcsdkManagerIf {
   void FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp)
       EXCLUDES(cdc_table_registry_mutex_);
 
+  // The registry, for the xCluster safe time service, which computes the CDC safe time of a
+  // database over the tablets in it. Fails until the registry has been computed in the current
+  // leader term: an older one, or none, must not pass for the tablets that are polled now.
+  Result<cdc::CdcTablePollerRegistryPB> GetCdcTableRegistry() const
+      EXCLUDES(cdc_table_registry_mutex_);
+
  private:
   // Recomputes the registry of tablets that the CDC table pollers on the tservers poll.
-  Status RefreshCdcTableRegistry() EXCLUDES(cdc_table_registry_mutex_);
+  Status RefreshCdcTableRegistry(const LeaderEpoch& epoch) EXCLUDES(cdc_table_registry_mutex_);
 
   // The parts of a stream's registry entry that are computed once: everything but the tablets.
   // Returns nullopt for a stream whose changes are not written to a CDC table.
@@ -60,11 +66,13 @@ class CdcsdkManager : public CdcsdkManagerIf {
   // TODO: refresh the published tables of a stream when its publications change.
   std::unordered_map<xrepl::StreamId, cdc::CdcTableStreamEntryPB> cdc_table_stream_entries_;
 
-  std::mutex cdc_table_registry_mutex_;
+  mutable std::mutex cdc_table_registry_mutex_;
   // Not persisted: a new master leader recomputes it. Its version is derived from the wall clock
   // so that it differs from the versions an earlier leader handed out.
   // TODO: send each tserver only the entries relevant to it instead of the full registry.
   cdc::CdcTablePollerRegistryPB cdc_table_registry_ GUARDED_BY(cdc_table_registry_mutex_);
+  // The leader term in which cdc_table_registry_ was last computed.
+  std::optional<int64_t> cdc_table_registry_leader_term_ GUARDED_BY(cdc_table_registry_mutex_);
 };
 
 }  // namespace yb::master

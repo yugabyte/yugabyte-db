@@ -132,9 +132,6 @@ Result<SchemaVersion> ProcessSchemaVersionsAndGetMinSchemaVersion(
   return min_schema_version;
 }
 
-// The CDC table pollers are kept with the xCluster pollers, which are keyed by replication group.
-const xcluster::ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
-
 // The poller of the sys catalog tablet does not run on the leader of that tablet. It polls for as
 // long as the master names this tserver, which is when its tablet is in the registry.
 constexpr int64_t kCdcTableSysCatalogLeaderTerm = 1;
@@ -435,7 +432,7 @@ void XClusterConsumer::AddCdcTableTablets() {
                           REQUIRES(master_data_mutex_) {
       producer_consumer_tablet_map_from_master_.emplace(xcluster::XClusterTabletInfo{
           .producer_tablet_info =
-              {kCdcTableReplicationGroupId, *stream_id, tablet_id, /* table_id= */ ""},
+              {xcluster::kCdcTableReplicationGroupId, *stream_id, tablet_id, /* table_id= */ ""},
           .consumer_tablet_info = {tablet_id, stream.cdc_table_id()},
           .disable_stream = false,
           .automatic_ddl_mode = false,
@@ -913,7 +910,11 @@ void XClusterConsumer::PublishXClusterSafeTime() {
 }
 
 Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
-  if (is_shutdown_ || !xcluster_context_.SafeTimeComputationRequired()) {
+  // The safe times of the CDC table pollers go to the same table, from which the master computes
+  // the CDC safe time of their database. A non-empty registry has a non-zero version.
+  const bool has_cdc_table_pollers = cdc_table_registry_version() != 0;
+  if (is_shutdown_ ||
+      (!has_cdc_table_pollers && !xcluster_context_.SafeTimeComputationRequired())) {
     return Status::OK();
   }
 
@@ -928,7 +929,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
   {
     SharedLock read_lock(pollers_map_mutex_);
     for (auto& [producer_info, poller] : pollers_map_) {
-      if (xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
+      if (producer_info.replication_group_id == xcluster::kCdcTableReplicationGroupId ||
+          xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
         auto safe_time = poller->GetSafeTime();
         VLOG_IF_WITH_FUNC(2, safe_time.is_special()) << Format(
             "Found special safe time for producer tablet $0: $1", producer_info, safe_time);

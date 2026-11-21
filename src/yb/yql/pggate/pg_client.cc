@@ -1971,6 +1971,16 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<uint64_t> GetCdcSafeTime(PgOid db_oid) {
+    tserver::PgGetCdcSafeTimeRequestPB req;
+    tserver::PgGetCdcSafeTimeResponsePB resp;
+
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(proxy_.GetCdcSafeTime(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.safe_time();
+  }
+
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only) {
     tserver::PgTabletsMetadataRequestPB req;
     req.set_local_only(local_only);
@@ -2600,6 +2610,10 @@ Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC
 Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
     const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
+}
+
+Result<uint64_t> PgClient::GetCdcSafeTime(PgOid db_oid) {
+  return impl_->GetCdcSafeTime(db_oid);
 }
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool local_only) {

@@ -57,6 +57,7 @@ service PgClientService {
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
+  rpc GetCdcSafeTime(PgGetCdcSafeTimeRequestPB) returns (PgGetCdcSafeTimeResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc IsDatabaseColocated(PgIsDatabaseColocatedRequestPB)
       returns (PgIsDatabaseColocatedResponsePB);
@@ -622,6 +623,16 @@ message PgGetCatalogMasterVersionResponsePB {
 message PgGetXClusterRoleResponsePB {
   AppStatusPB status = 1;
   uint32 xcluster_role = 2;  // Really XClusterNamespaceInfoPB.XClusterRole.
+}
+
+message PgGetCdcSafeTimeRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetCdcSafeTimeResponsePB {
+  AppStatusPB status = 1;
+  // The CDC safe HybridTime of the database. 0 while it has none.
+  fixed64 safe_time = 2;
 }
 
 message PgGetDatabaseInfoRequestPB {
