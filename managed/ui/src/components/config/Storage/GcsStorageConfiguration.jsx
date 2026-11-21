@@ -127,7 +127,7 @@ class GcsStorageConfiguration extends Component {
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
                 title="Federated IAM"
-                content="Lets YBA reach this GCS bucket from AWS using its own instance identity, for the operations it performs directly such as validating and deleting backups. Leave off when YBA runs on GCP - it already reaches GCS natively. This setting is about YBA only; DB nodes are configured from their provider."
+                content="Lets YBA reach this GCS bucket from AWS using its own instance identity, for the operations it performs directly such as validating and deleting backups. A YBA on GCP still reaches GCS natively; keep it on there too, so an HA standby on AWS can reach the bucket once promoted. This setting is about YBA only; DB nodes are configured from their provider."
               />
             </Col>
           </Row>

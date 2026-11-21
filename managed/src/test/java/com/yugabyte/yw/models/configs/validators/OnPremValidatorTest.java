@@ -23,7 +23,12 @@ import org.junit.Test;
 public class OnPremValidatorTest extends FakeDBApplication {
 
   private static final String AUDIENCE =
-      "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/prov";
+      "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/"
+          + "providers/prov";
+  // What a GCS bucket's grant names: the principals of a pool, not the provider STS takes.
+  private static final String PRINCIPAL_SET =
+      "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/"
+          + "attribute.aws_role/yb-node-role";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/yb-s3-fed-role";
 
   private Provider provider;
@@ -156,6 +161,42 @@ public class OnPremValidatorTest extends FakeDBApplication {
     info.crossCloudFederationTargets =
         List.of(target(CloudType.gcp, "has spaces and $pecials", null));
     assertTrue(validateAndGetMessage().contains("audience"));
+  }
+
+  /** A gcp audience that is not the pool provider is refused by STS, only once a backup runs. */
+  @Test
+  public void testGcpTargetWithPrincipalSetAudienceIsRejected() {
+    OnPremCloudInfo info = onPrem();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = List.of(target(CloudType.gcp, PRINCIPAL_SET, null));
+    assertTrue(validateAndGetMessage().contains("workload identity pool provider"));
+  }
+
+  /** An aws audience is whatever the role's trust policy expects, so its form is not checked. */
+  @Test
+  public void testAwsTargetAudienceFormIsNotChecked() {
+    OnPremCloudInfo info = onPrem();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets =
+        List.of(target(CloudType.aws, "https://example.com/yb-s3-federation", ROLE_ARN));
+    validator.validate(provider);
+  }
+
+  /**
+   * A provider saved before the check keeps its gcp audience through an edit of its other fields,
+   * as one that universes use cannot change it; a changed audience is checked.
+   */
+  @Test
+  public void testSavedGcpAudienceIsKeptOnEdit() {
+    OnPremCloudInfo info = onPrem();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = List.of(target(CloudType.gcp, PRINCIPAL_SET, null));
+    provider.save();
+    validator.validate(provider);
+
+    info.crossCloudFederationTargets =
+        List.of(target(CloudType.gcp, PRINCIPAL_SET + "-other", null));
+    assertTrue(validateAndGetMessage().contains("workload identity pool provider"));
   }
 
   /** The node picks its entry by target cloud alone, so two entries for one cloud are ambiguous. */

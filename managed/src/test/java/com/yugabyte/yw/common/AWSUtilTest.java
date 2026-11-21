@@ -1039,4 +1039,20 @@ public class AWSUtilTest extends FakeDBApplication {
             YbcBackupUtil.DEFAULT_REGION_STRING, "commonDir", null, s3Data, null);
     assertEquals(expectedRegion, spec.getCredsMap().get(AWSUtil.YBC_AWS_DEFAULT_REGION_FIELDNAME));
   }
+
+  /**
+   * An IAM role config made on a YBA on AWS has no credentials on its HA standby on GCP: the error
+   * says to turn on Federated IAM there, and only there.
+   */
+  @Test
+  public void testIamRoleErrorAdvisesFederatedIamOnGcp() {
+    String error = "Unable to load AWS credentials";
+    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(error));
+
+    when(mockHostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp))
+        .thenReturn(true);
+    String advised = mockAWSUtil.withIamRoleAdviceOnGcp(error);
+    assertTrue(advised, advised.startsWith(error + ". YBA runs on GCP"));
+    assertTrue(advised, advised.contains("Turn on Federated IAM"));
+  }
 }
