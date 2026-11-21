@@ -1109,6 +1109,53 @@ COMMIT;
 SELECT * FROM t_simple ORDER BY k;
 SELECT * FROM t_temp ORDER BY k;
 
+--
+-- Test that a failing AFTER STATEMENT trigger rolls back a single-row UPDATE
+-- (GH#35828).  Such an UPDATE gets no single-row plan, so it doesn't take the
+-- fast path.
+--
+CREATE TABLE sr_stmt_trig (k int PRIMARY KEY, v int);
+INSERT INTO sr_stmt_trig VALUES (1, 1), (2, 2);
+CREATE FUNCTION sr_stmt_trig_fail() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RAISE EXCEPTION 'statement trigger failed'; END $$;
+CREATE TRIGGER sr_stmt_trig_after AFTER UPDATE ON sr_stmt_trig
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_fail();
+EXPLAIN (COSTS OFF) UPDATE sr_stmt_trig SET v = 100 WHERE k = 1;
+UPDATE sr_stmt_trig SET v = 100 WHERE k = 1;
+SELECT * FROM sr_stmt_trig ORDER BY k;
+DROP TRIGGER sr_stmt_trig_after ON sr_stmt_trig;
+-- Statement triggers of a partitioned table are on the root, not on the
+-- partition that the update goes to.
+CREATE TABLE sr_stmt_trig_part (k int PRIMARY KEY, v int) PARTITION BY RANGE (k);
+CREATE TABLE sr_stmt_trig_part1 PARTITION OF sr_stmt_trig_part
+  FOR VALUES FROM (0) TO (100);
+INSERT INTO sr_stmt_trig_part VALUES (1, 1);
+CREATE TRIGGER sr_stmt_trig_part_after AFTER UPDATE ON sr_stmt_trig_part
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_fail();
+EXPLAIN (COSTS OFF) UPDATE sr_stmt_trig_part SET v = 100 WHERE k = 1;
+UPDATE sr_stmt_trig_part SET v = 100 WHERE k = 1;
+SELECT * FROM sr_stmt_trig_part;
+-- An AFTER STATEMENT UPDATE trigger that succeeds keeps the UPDATE off the fast
+-- path too, also for a statement planned before the trigger was created.
+CREATE FUNCTION sr_stmt_trig_noop() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RETURN NULL; END $$;
+PREPARE sr_stmt_trig_upd AS UPDATE sr_stmt_trig SET v = 3 WHERE k = 1;
+EXECUTE sr_stmt_trig_upd;
+CREATE TRIGGER sr_stmt_trig_after_noop AFTER UPDATE ON sr_stmt_trig
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_noop();
+CALL check_fast_path_txn('EXECUTE sr_stmt_trig_upd', false);
+DEALLOCATE sr_stmt_trig_upd;
+DROP TRIGGER sr_stmt_trig_after_noop ON sr_stmt_trig;
+-- Other statement triggers, such as BEFORE UPDATE or AFTER INSERT, keep the
+-- fast path.
+CREATE TRIGGER sr_stmt_trig_before BEFORE UPDATE ON sr_stmt_trig
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_noop();
+CREATE TRIGGER sr_stmt_trig_insert AFTER INSERT ON sr_stmt_trig
+  FOR EACH STATEMENT EXECUTE FUNCTION sr_stmt_trig_noop();
+CALL check_fast_path_txn('UPDATE sr_stmt_trig SET v = 4 WHERE k = 1', true);
+DROP TABLE sr_stmt_trig, sr_stmt_trig_part;
+DROP FUNCTION sr_stmt_trig_fail, sr_stmt_trig_noop;
+
 -- Test to validate that NOT NULL constraints are enforced for partitioned tables.
 CREATE TABLE single_row_not_null_constraints_partitioned (k int PRIMARY KEY, v1 int NOT NULL, v2 int NOT NULL) PARTITION BY RANGE (k);
 CREATE TABLE not_null_constraints_partitioned_1 PARTITION OF single_row_not_null_constraints_partitioned FOR VALUES FROM (1) TO (10);

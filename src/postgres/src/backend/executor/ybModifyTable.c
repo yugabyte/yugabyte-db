@@ -120,6 +120,12 @@ YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	if (ActivePortal->stmts->length != 1 || !YBCIsSingleRowModify(pstmt))
 		return false;
+
+	/*
+	 * For UPDATE, the planner refuses the single-row plan when a trigger or an
+	 * updated secondary index needs the statement's transaction
+	 * (yb_single_row_update_or_delete_path), so the checks below don't apply.
+	 */
 	if (pstmt->commandType == CMD_UPDATE)
 		return true;
 
