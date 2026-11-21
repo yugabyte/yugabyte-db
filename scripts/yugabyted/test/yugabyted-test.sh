@@ -22,6 +22,9 @@ readonly TEST_YSQL_USER="test"
 readonly TEST_YSQL_PASSWORD="testpassword"
 readonly TEST_YSQL_DB="testdb"
 readonly TEST_YSQL_PORT="40001"
+readonly TEST_QUOTED_YSQL_USER='o"brien'
+readonly TEST_QUOTED_YSQL_PASSWORD="it's"
+readonly EXISTING_YSQL_USER="postgres"
 readonly DEFAULT_YSQL_ENABLE_AUTH=false
 
 # YCQL
@@ -33,6 +36,8 @@ readonly TEST_YCQL_USER="test"
 readonly TEST_YCQL_PASSWORD="testpassword"
 readonly TEST_YCQL_KEYSPACE="testks"
 readonly TEST_YCQL_PORT="40002"
+readonly TEST_QUOTED_YCQL_USER='o"brien'
+readonly TEST_QUOTED_YCQL_PASSWORD="it's"
 readonly DEFAULT_USE_CASSANDRA_AUTHENTICATION=false
 
 readonly YUGABYTED_BINARY="bin/yugabyted"
@@ -347,7 +352,7 @@ parse_test_case(){
     case_number=1
 
     read -r -a testcases <<< "${testcases[@]#*env_vars}"
-    while (( case_number < 8 )); do
+    while (( case_number < 11 )); do
 
       env_vars "$case_number"
 
@@ -503,6 +508,31 @@ env_vars() {
         YCQL_USER="$TEST_YCQL_USER"
         YCQL_PASSWORD="$TEST_YCQL_PASSWORD"
         YCQL_KEYSPACE="$TEST_YCQL_KEYSPACE"
+      );;
+    8)
+      log_heading "Eighth case: YSQL_PASSWORD, YCQL_PASSWORD holding a quote"
+      ysql_args=(--auth true --password "$TEST_QUOTED_YSQL_PASSWORD")
+      ycql_args=(--auth true --password "$TEST_QUOTED_YCQL_PASSWORD")
+      ENV_VARS=(
+        YSQL_PASSWORD="$TEST_QUOTED_YSQL_PASSWORD"
+        YCQL_PASSWORD="$TEST_QUOTED_YCQL_PASSWORD"
+      );;
+    9)
+      log_heading "Ninth case: YSQL_USER, YCQL_USER holding a quote, YSQL_PASSWORD, YCQL_PASSWORD"
+      ysql_args=(--auth true --user "$TEST_QUOTED_YSQL_USER" --password "$TEST_YSQL_PASSWORD")
+      ycql_args=(--auth true --user "$TEST_QUOTED_YCQL_USER" --password "$TEST_YCQL_PASSWORD")
+      ENV_VARS=(
+        YSQL_USER="$TEST_QUOTED_YSQL_USER"
+        YSQL_PASSWORD="$TEST_YSQL_PASSWORD"
+        YCQL_USER="$TEST_QUOTED_YCQL_USER"
+        YCQL_PASSWORD="$TEST_YCQL_PASSWORD"
+      );;
+    10)
+      log_heading "Tenth case: YSQL_USER naming an existing role, YSQL_PASSWORD"
+      ysql_args=(--auth true --user "$EXISTING_YSQL_USER" --password "$TEST_YSQL_PASSWORD")
+      ENV_VARS=(
+        YSQL_USER="$EXISTING_YSQL_USER"
+        YSQL_PASSWORD="$TEST_YSQL_PASSWORD"
       );;
   esac
 }
