@@ -667,8 +667,9 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 }
 
-void RunningTransaction::SetApplyOpId(const OpId& op_id) {
+void RunningTransaction::SetApplyInfo(const OpId& op_id, HybridTime log_ht) {
   apply_record_op_id_ = op_id;
+  apply_record_log_ht_ = log_ht;
 }
 
 bool RunningTransaction::ProcessingApply() const {

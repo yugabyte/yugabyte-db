@@ -1089,7 +1089,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (lock_and_iterator.found()) {
-      lock_and_iterator.transaction().SetApplyOpId(data.op_id);
+      lock_and_iterator.transaction().SetApplyInfo(data.op_id, data.log_ht);
       if (!apply_state.active()) {
         lock_and_iterator.transaction().SetProcessingApply(false);
         RemoveUnlocked(
@@ -1187,7 +1187,7 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
       }
       CHECK(transactions_.modify(it, [&data](auto& txn) {
-        txn->SetApplyOpId(data.op_id);
+        txn->SetApplyInfo(data.op_id, data.log_ht);
       }));
 
       if ((**it).ProcessingApply()) {
@@ -1954,6 +1954,7 @@ class TransactionParticipant::Impl
             .transaction_id = txn_id,
             .op_id = pending_apply.apply_op_id,
             .commit_ht = pending_apply.commit_ht,
+            .log_ht = pending_apply.log_ht,
           };
           (**it).SetApplyData(pending_apply.state, &apply_data, &operations[idx]);
           ++idx;
@@ -2129,7 +2130,7 @@ class TransactionParticipant::Impl
       post_apply_metadata_entry = PostApplyTransactionMetadata{
           .transaction_id = txn_id,
           .apply_op_id = op_id,
-          .commit_ht = (**it).GetCommitHybridTime(),
+          .commit_ht = (**it).local_commit_time(),
           .log_ht = (**it).GetApplyHybridTime(),
       };
     }
