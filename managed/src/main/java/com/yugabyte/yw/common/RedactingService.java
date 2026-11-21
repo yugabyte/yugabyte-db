@@ -179,6 +179,14 @@ public class RedactingService {
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
+  // Kubernetes overrides YAML text: the v1 userIntent and KubernetesOverridesUpgradeParams, node
+  // details (the node's live helm values or its stored overrides), and the v2 ClusterProviderSpec.
+  private static final Set<String> K8S_OVERRIDES_FIELDS =
+      Set.of("universeOverrides", "helm_overrides", "kubernetesOverrides");
+  // The same, per AZ. userIntentOverrides.azOverrides shares the name but holds objects.
+  private static final Set<String> K8S_AZ_OVERRIDES_FIELDS =
+      Set.of("azOverrides", "az_helm_overrides");
+
   /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
   private static final List<String> GFLAG_CHANGE_FIELDS = List.of("old", "new", "default");
 
@@ -287,6 +295,8 @@ public class RedactingService {
         } catch (Exception e) {
           log.warn("Gflags sensitive data API redaction failed; skipping it.", e);
         }
+        // Outside the try, which skips the rest of the redaction on any exception.
+        redactKubernetesOverrides(afterJsonPath);
       }
     }
 
@@ -1303,6 +1313,45 @@ public class RedactingService {
   /** Redacts every ldapbindpasswd value in a ysql_hba_conf_csv value, keeping everything else. */
   public static String redactAllLdapBindPasswdHbaFormattedValues(String input) {
     return HbaConfRedactor.redact(input);
+  }
+
+  /**
+   * Redacts the LDAP secrets in Kubernetes overrides in API response JSON. The redactor hides
+   * overrides it can't redact whole instead of throwing, and nothing else here throws, so no
+   * exception leaves overrides unredacted.
+   */
+  private static void redactKubernetesOverrides(JsonNode node) {
+    if (node == null) {
+      return;
+    }
+    if (node.isObject()) {
+      ObjectNode objNode = (ObjectNode) node;
+      objNode
+          .fieldNames()
+          .forEachRemaining(
+              fieldName -> {
+                JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue.isTextual() && K8S_OVERRIDES_FIELDS.contains(fieldName)) {
+                  objNode.put(fieldName, KubernetesOverridesRedactor.redact(fieldValue.asText()));
+                } else if (fieldValue.isObject() && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
+                  ObjectNode azs = (ObjectNode) fieldValue;
+                  azs.fieldNames()
+                      .forEachRemaining(
+                          az -> {
+                            JsonNode azValue = azs.get(az);
+                            if (azValue.isTextual()) {
+                              azs.put(az, KubernetesOverridesRedactor.redact(azValue.asText()));
+                            } else {
+                              redactKubernetesOverrides(azValue);
+                            }
+                          });
+                } else {
+                  redactKubernetesOverrides(fieldValue);
+                }
+              });
+    } else if (node.isArray()) {
+      node.forEach(RedactingService::redactKubernetesOverrides);
+    }
   }
 
   /** Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON. */
