@@ -31,8 +31,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
@@ -80,10 +83,57 @@ public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
       Http.Request request, Class<T> paramType, RuntimeConfGetter confGetter) {
-    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
+    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType, null);
     // V1 clients send the legacy flat schema; persist/operate on ProviderSpecification.
     Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
     return taskParams;
+  }
+
+  /**
+   * Like bindFormDataToTaskParams, but when the body's universeUUID names a universe of this
+   * customer, a communicationPorts key that the request leaves out keeps the universe's port.
+   */
+  static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
+      Http.Request request, Class<T> paramType, Customer customer, RuntimeConfGetter confGetter) {
+    Universe universe = findCustomerUniverse(request.body().asJson(), customer);
+    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType, universe);
+    Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+    return taskParams;
+  }
+
+  /** The customer's universe named by the body's universeUUID, or null. */
+  @Nullable
+  private static Universe findCustomerUniverse(@Nullable JsonNode body, Customer customer) {
+    JsonNode universeUUID = body == null ? null : body.get("universeUUID");
+    if (universeUUID == null || !universeUUID.isTextual()) {
+      return null;
+    }
+    try {
+      return Universe.maybeGet(UUID.fromString(universeUUID.asText()))
+          .filter(u -> u.getCustomerId().equals(customer.getId()))
+          .orElse(null);
+    } catch (IllegalArgumentException e) {
+      // Binding rejects the bad UUID with a 400.
+      return null;
+    }
+  }
+
+  /**
+   * Returns current's ports (V1 or V2 model) as JSON with the requested ports on top. A key that
+   * the request leaves out or sends as null keeps current's port.
+   */
+  public static ObjectNode mergePorts(Object current, @Nullable JsonNode requested) {
+    ObjectNode merged = Json.mapper().valueToTree(current);
+    if (requested != null && requested.isObject()) {
+      CommonUtils.deepMerge(merged, requested, true /* skipWritingNulls */);
+    }
+    return merged;
+  }
+
+  /** mergePorts for the body's communicationPorts, as a CommunicationPorts. */
+  public static CommunicationPorts mergeBodyPorts(CommunicationPorts current, JsonNode body) {
+    return Json.fromJson(
+        mergePorts(current, body.get("communicationPorts")), CommunicationPorts.class);
   }
 
   /**
@@ -93,10 +143,10 @@ public class UniverseControllerRequestBinder {
    */
   private static <T extends UniverseDefinitionTaskParams>
       T bindFormDataToTaskParamsWithoutProviderConversion(
-          Http.Request request, Class<T> paramType) {
+          Http.Request request, Class<T> paramType, @Nullable Universe universe) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
-    // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
+    // 1 expectedUniverseVersion - See UniverseDefinitionTaskParams.BaseConverter
     //    We also changed the expectedUniverseVersion to non-primitive so that this logic can be
     //    pushed to post deserialization.
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
@@ -111,7 +161,18 @@ public class UniverseControllerRequestBinder {
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
-      T taskParams = Json.mapper().treeToValue(formData, paramType);
+      ObjectNode bindData = formData;
+      if (universe != null) {
+        // Binding fills a left-out port with its default, so merge before binding. Merge on a
+        // copy, so the audit entry keeps the request body as sent.
+        bindData = formData.deepCopy();
+        bindData.set(
+            "communicationPorts",
+            mergePorts(
+                universe.getUniverseDetails().communicationPorts,
+                formData.get("communicationPorts")));
+      }
+      T taskParams = Json.mapper().treeToValue(bindData, paramType);
 
       taskParams.clusters = clusters;
       taskParams.creatingUser = CommonUtils.getUserFromContext();
@@ -153,7 +214,7 @@ public class UniverseControllerRequestBinder {
    */
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
       Http.Request request, Class<T> paramType, Universe universe, RuntimeConfGetter confGetter) {
-    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
+    T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType, universe);
     if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
       if (Util.isMulticloud(universe)) {
         Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);

@@ -7,9 +7,12 @@ import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(config = CentralConfig.class)
 public interface CommunicationPortsMapper {
+  CommunicationPortsMapper INSTANCE = Mappers.getMapper(CommunicationPortsMapper.class);
+
   @Mapping(source = "ybControllerRpcPort", target = "ybControllerrRpcPort")
   CommunicationPorts toV1CommunicationPorts(CommunicationPortsSpec v2Ports);
 

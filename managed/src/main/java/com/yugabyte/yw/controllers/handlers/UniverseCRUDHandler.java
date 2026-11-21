@@ -922,6 +922,9 @@ public class UniverseCRUDHandler {
     }
     boolean isK8s = false;
     Util.TaskParamsUpdater updater = new Util.TaskParamsUpdater(taskParams);
+    // A sent otel port wins. The default port means unset, so the provider config fills it.
+    int sentOtelPort = taskParams.communicationPorts.otelCollectorMetricsPort;
+    boolean otelPortSent = sentOtelPort != NodeDetails.DEFAULT_OTEL_COLLECTOR_METRICS_PORT;
 
     for (Cluster c : taskParams.clusters) {
       if (!c.userIntent.isMulticloudSupport()) {
@@ -997,9 +1000,10 @@ public class UniverseCRUDHandler {
           updater.setOtelCollectorEnabled(
               provider,
               confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled));
-          // update otel port
           int otelPort =
-              confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorMetricsPort);
+              otelPortSent
+                  ? sentOtelPort
+                  : confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorMetricsPort);
           updater.setOtelPort(provider, otelPort);
         }
       }

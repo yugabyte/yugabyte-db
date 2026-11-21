@@ -290,6 +290,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     ConfigureDBApiParams requestParams = getGeneralizedConfigureDBApiParams(request, universe);
     ConfigureYSQLFormData formData = parseJsonAndValidate(request, ConfigureYSQLFormData.class);
+    // A port that the request leaves out keeps the universe's value, not the default.
+    formData.communicationPorts =
+        UniverseControllerRequestBinder.mergeBodyPorts(
+            universe.getUniverseDetails().communicationPorts, request.body().asJson());
     formData.mergeWithConfigureDBApiParams(requestParams);
     UUID taskUUID =
         universeYbDbAdminHandler.configureYSQL(
@@ -340,6 +344,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     ConfigureDBApiParams requestParams = getGeneralizedConfigureDBApiParams(request, universe);
     ConfigureYCQLFormData formData = parseJsonAndValidate(request, ConfigureYCQLFormData.class);
+    // A port that the request leaves out keeps the universe's value, not the default.
+    formData.communicationPorts =
+        UniverseControllerRequestBinder.mergeBodyPorts(
+            universe.getUniverseDetails().communicationPorts, request.body().asJson());
     formData.mergeWithConfigureDBApiParams(requestParams);
     UUID taskUUID = universeYbDbAdminHandler.configureYCQL(requestParams, customer, universe);
     auditService()

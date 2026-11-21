@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.api.v2;
 
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
@@ -10,6 +11,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,10 +19,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contentAsString;
 
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBAValidationResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
@@ -67,6 +72,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PartitionInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
@@ -95,6 +101,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import play.libs.Json;
+import play.mvc.Result;
 
 /** Tests for Edit Universe using v2.UniverseApiControllerImp. */
 @Slf4j
@@ -590,6 +597,86 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                     .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
                     .communicationPorts(communicationPortsSpec));
     runEditUniverseV2(universeEditSpec);
+  }
+
+  // The V2 model defaults every networking field, so this sends raw JSON with one port only.
+  @Test
+  public void testEditUniverseV2KeepsPortsTheRequestLeavesOut() throws ApiException {
+    runEditKeepsPortsTheRequestLeavesOut(false);
+  }
+
+  // A placement edit on a universe with partitions maps the request onto the universe first.
+  @Test
+  public void testEditUniverseV2PlacementEditKeepsPortsTheRequestLeavesOut() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    runEditKeepsPortsTheRequestLeavesOut(true);
+  }
+
+  private void runEditKeepsPortsTheRequestLeavesOut(boolean sendPlacement) throws ApiException {
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.communicationPorts.otelCollectorMetricsPort = 8899;
+          details.clusters.forEach(c -> c.userIntent.assignPublicIP = false);
+          if (sendPlacement) {
+            PartitionInfo partition = new PartitionInfo();
+            partition.setDefaultPartition(true);
+            partition.setUuid(UUID.randomUUID());
+            partition.setName("Default");
+            partition.setPlacement(details.getPrimaryCluster().getOverallPlacement());
+            partition.setReplicationFactor(
+                details.getPrimaryCluster().userIntent.replicationFactor);
+            details.getPrimaryCluster().setPartitions(List.of(partition));
+          }
+          univ.setUniverseDetails(details);
+        });
+    UniverseSpec universeSpec =
+        new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec();
+    UUID primaryUuid =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow()
+            .getUuid();
+    ObjectNode body = Json.newObject().put("expected_universe_version", -1);
+    ObjectNode cluster = body.putArray("clusters").addObject().put("uuid", primaryUuid.toString());
+    if (sendPlacement) {
+      JsonNode current =
+          Json.parse(
+              contentAsString(
+                  doRequestWithAuthToken(
+                      "GET",
+                      "/api/v2/customers/" + customer.getUuid() + "/universes/" + universeUuid,
+                      authToken)));
+      for (JsonNode c : current.path("spec").path("clusters")) {
+        if (primaryUuid.toString().equals(c.path("uuid").asText())) {
+          cluster.set("placement_spec", c.get("placement_spec"));
+        }
+      }
+      assertNotNull(cluster.get("placement_spec"));
+    }
+    body.putObject("networking_spec")
+        .putObject("communication_ports")
+        .put("master_http_port", 1234);
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/v2/customers/" + customer.getUuid() + "/universes/" + universeUuid,
+            authToken,
+            body);
+    assertOk(result);
+    ArgumentCaptor<UniverseConfigureTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), captor.capture());
+    assertEquals(1234, captor.getValue().communicationPorts.masterHttpPort);
+    assertEquals(8899, captor.getValue().communicationPorts.otelCollectorMetricsPort);
+    assertFalse(captor.getValue().getPrimaryCluster().userIntent.assignPublicIP);
   }
 
   @Test
