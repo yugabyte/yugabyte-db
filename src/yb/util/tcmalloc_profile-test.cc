@@ -61,7 +61,7 @@ void SamplingProfilerTest::SetProfileSamplingRate(int64_t sample_period_bytes) {
     old_rate = 16_MB;
   }
 #else
-  old_rate = tcmalloc::MallocExtension::GetProfileSamplingRate();
+  old_rate = tcmalloc::MallocExtension::GetProfileSamplingInterval();
 #endif
   SetTCMallocSamplingPeriod(sample_period_bytes);
 
@@ -167,39 +167,38 @@ TEST_F(SamplingProfilerTest, HeapProfile) {
   const int64_t kAllocSizeAllocated = 2_MB;
   const int64_t kAllocSizeDeallocated = 5_MB;
 
-  tcmalloc::MallocExtension::AllocationProfilingToken token;
-
-  // We do not expect to find this allocation in the profile since we have not started profiling.
+  // We do not expect to find this allocation in the profile since we have not started profiling,
+  // even though it is still in use when profiling stops.
   std::unique_ptr<char[]> big_alloc1 = TestAllocArrayOfSize(kAllocSizeExcluded);
 
-  token = tcmalloc::MallocExtension::StartLifetimeProfiling(/* seed_with_live_allocs= */ false);
+  std::unique_ptr<char[]> big_alloc2;
+  auto profile = ASSERT_RESULT(CollectHeapProfile(/* sample_freq_bytes= */ 1, [&] {
+    // We expect to find this allocation in the profile since it is not deallocated before we stop
+    // profiling.
+    big_alloc2 = TestAllocArrayOfSize(kAllocSizeAllocated);
 
-  // We expect to find this allocation in the profile since it is not deallocated before we stop
-  // profiling.
-  std::unique_ptr<char[]> big_alloc2 = TestAllocArrayOfSize(kAllocSizeAllocated);
-
-  // We expect to always find this allocation in the profile if and only if only_growth is false,
-  // since it is deallocated before we stop profiling.
-  std::unique_ptr<char[]> big_alloc3 = TestAllocArrayOfSize(kAllocSizeDeallocated);
-  big_alloc3.reset();
-
-  auto profile = std::move(token).Stop();
+    // We expect to always find this allocation in the profile if and only if only_growth is false,
+    // since it is deallocated before we stop profiling.
+    std::unique_ptr<char[]> big_alloc3 = TestAllocArrayOfSize(kAllocSizeDeallocated);
+    big_alloc3.reset();
+  }));
 
   // The stack for the allocations is the same so they are aggregated into one.
-  auto samples = AggregateAndSortProfile(
+  auto samples = AggregateAndSortHeapProfile(
       profile, SampleFilter::kAllSamples, SampleOrder::kSampledBytes);
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   ASSERT_EQ(samples[0].second.sampled_allocated_bytes, kAllocSizeAllocated + kAllocSizeDeallocated);
 
   // We only expect to find the non-deallocated allocation here.
-  samples = AggregateAndSortProfile(profile, SampleFilter::kGrowthOnly, SampleOrder::kSampledBytes);
+  samples = AggregateAndSortHeapProfile(
+      profile, SampleFilter::kGrowthOnly, SampleOrder::kSampledBytes);
   ASSERT_EQ(GetTestAllocs(samples).size(), 1);
   ASSERT_EQ(samples[0].second.sampled_allocated_bytes, kAllocSizeAllocated);
 }
 
 TEST_F(SamplingProfilerTest, OnlyOneHeapProfile) {
   auto StartHeapProfileWithFrequency = [](int64_t sample_freq_bytes, Status* status) {
-    Result<tcmalloc::Profile> profile = GetHeapProfile(3 /* seconds */, sample_freq_bytes);
+    Result<HeapProfile> profile = GetHeapProfile(3 /* seconds */, sample_freq_bytes);
     *status = profile.ok() ? Status::OK() : profile.status();
   };
 

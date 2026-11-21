@@ -1,107 +1,116 @@
-sha: 2e9e2b4d550a01aeb0233b8e8a7044f8da5f1da1
+# This file was generated from a thirdparty PR, not a release. DO NOT LAND.
+
+sha: fb36e63651e21ecae66472807f0de003c65f4386
 archives:
 
+  - os_type: almalinux8
+    architecture: aarch64
+    compiler_type: clang19
+    release_artifact_id: 13727437084
+    checksum_artifact_id: 13726883656
+    lto_type: full
 
   - os_type: almalinux8
     architecture: aarch64
     compiler_type: clang19
-    tag: v20261102085028-2e9e2b4d55-almalinux8-aarch64-clang19
-
-  - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang19
-    lto_type: full
-    tag: v20261102085003-2e9e2b4d55-almalinux8-aarch64-clang19-full-lto
+    release_artifact_id: 13725979106
+    checksum_artifact_id: 13725939262
 
   - os_type: almalinux8
     architecture: aarch64
     compiler_type: clang21
-    tag: v20261102084948-2e9e2b4d55-almalinux8-aarch64-clang21
+    release_artifact_id: 13726754332
+    checksum_artifact_id: 13726729408
+    lto_type: full
 
   - os_type: almalinux8
     architecture: aarch64
     compiler_type: clang21
-    lto_type: full
-    tag: v20261102084955-2e9e2b4d55-almalinux8-aarch64-clang21-full-lto
+    release_artifact_id: 13726871431
+    checksum_artifact_id: 13725689589
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang19
-    tag: v20261102085017-2e9e2b4d55-almalinux8-x86_64-clang19
+    release_artifact_id: 13734460592
+    checksum_artifact_id: 13733577893
+    lto_type: full
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang19
-    lto_type: full
-    tag: v20261102084955-2e9e2b4d55-almalinux8-x86_64-clang19-full-lto
+    release_artifact_id: 13731421047
+    checksum_artifact_id: 13730467823
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang21
-    tag: v20261102085013-2e9e2b4d55-almalinux8-x86_64-clang21
+    release_artifact_id: 13736555081
+    checksum_artifact_id: 13736270819
+    lto_type: full
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang21
-    lto_type: full
-    tag: v20261102084952-2e9e2b4d55-almalinux8-x86_64-clang21-full-lto
+    release_artifact_id: 13731266326
+    checksum_artifact_id: 13731550316
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc15
-    tag: v20261102084946-2e9e2b4d55-almalinux8-x86_64-gcc15
+    release_artifact_id: 13728142335
+    checksum_artifact_id: 13727643626
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang19
-    tag: v20261102084932-2e9e2b4d55-almalinux9-x86_64-clang19
+    release_artifact_id: 13733240298
+    checksum_artifact_id: 13733345025
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang21
-    tag: v20261102085011-2e9e2b4d55-almalinux9-x86_64-clang21
+    release_artifact_id: 13732320286
+    checksum_artifact_id: 13731631194
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc15
-    tag: v20261102085017-2e9e2b4d55-almalinux9-x86_64-gcc15
-
-  - os_type: macos
-    architecture: arm64
-    compiler_type: clang21
-    tag: v20261102084739-2e9e2b4d55-macos-arm64-clang21
-
-  - os_type: macos
-    architecture: x86_64
-    compiler_type: clang21
-    tag: v20261102084843-2e9e2b4d55-macos-x86_64-clang21
+    release_artifact_id: 13726288577
+    checksum_artifact_id: 13725929325
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang19
-    tag: v20261102084936-2e9e2b4d55-ubuntu2204-x86_64-clang19
+    release_artifact_id: 13731466030
+    checksum_artifact_id: 13730313612
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang21
-    tag: v20261102084902-2e9e2b4d55-ubuntu2204-x86_64-clang21
+    release_artifact_id: 13732151720
+    checksum_artifact_id: 13731597764
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc15
-    tag: v20261102084948-2e9e2b4d55-ubuntu2204-x86_64-gcc15
+    release_artifact_id: 13726518513
+    checksum_artifact_id: 13726722932
 
   - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: clang19
-    tag: v20261102084957-2e9e2b4d55-ubuntu2404-x86_64-clang19
+    release_artifact_id: 13731131928
+    checksum_artifact_id: 13730113890
 
   - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: clang21
-    tag: v20261102084904-2e9e2b4d55-ubuntu2404-x86_64-clang21
+    release_artifact_id: 13729572078
+    checksum_artifact_id: 13729242680
 
   - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: gcc15
-    tag: v20261102085037-2e9e2b4d55-ubuntu2404-x86_64-gcc15
+    release_artifact_id: 13727887638
+    checksum_artifact_id: 13727732861
