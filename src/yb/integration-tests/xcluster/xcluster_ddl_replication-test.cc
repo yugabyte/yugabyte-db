@@ -7116,6 +7116,9 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
         "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
   }
   ASSERT_OK(producer_conn_->CommitTransaction());
+  // The producer writes the APPLY op after the commit returns. Resuming before that lets the
+  // consumer poll the intents without their apply and write them to its intents DB.
+  ASSERT_OK(WaitForAllIntentsApplied(producer_cluster(), kTimeout));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
