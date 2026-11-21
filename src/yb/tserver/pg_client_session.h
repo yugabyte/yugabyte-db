@@ -179,15 +179,19 @@ class PgClientSession final {
 
   void ProcessSharedRequest(
       size_t size, SharedExchange* exchange,
-      const RequestProcessingPreconditionWaiter& precondition_waiter);
+      const RequestProcessingPreconditionWaiter& precondition_waiter,
+      const Status& precheck_status);
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void StartShutdown(bool pg_service_shutting_down);
-  bool ReadyToShutdown() const;
-  void CompleteShutdown();
+  void Shutdown(bool pg_service_shutting_down);
+  // TODO (dmitry): Remove shared memory infrastructure away from PgClientSession to simplify
+  //                shutdown process.
+  void SharedMemInfraStartShutdown();
+  bool SharedMemInfraReadyToShutdown() const;
+  void SharedMemInfraCompleteShutdown();
 
   // Returns the read-time pin this session currently contributes to its database's history
   // retention pin.

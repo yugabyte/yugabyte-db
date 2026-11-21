@@ -42,7 +42,7 @@ class ClientSession {
   virtual void SetExpiration(CoarseTimePoint value) = 0;
 
   virtual void StartShutdown(bool service_shutting_down) = 0;
-  virtual bool ReadyToShutdown() const = 0;
+  virtual bool ReadyToShutdown() = 0;
   virtual void CompleteShutdown() = 0;
 };
 

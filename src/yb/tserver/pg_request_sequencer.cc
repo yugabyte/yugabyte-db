@@ -210,6 +210,10 @@ class PgRequestSequencer::Impl {
 
   void ProcessPending(PgClientSession& session) {
     VLOG_WITH_PREFIX_AND_FUNC(3) << "pending request count=" << pending_.size();
+    if (!IsActive()) [[unlikely]] {
+      ProcessPendingOnShutdown();
+      return;
+    }
     const auto now = CoarseMonoClock::Now();
     for (auto it = pending_.begin(); it != pending_.end();) {
       if (it->second.TryProcess(session, now, it->first)) {
@@ -238,9 +242,24 @@ class PgRequestSequencer::Impl {
     FATAL_INVALID_ENUM_VALUE(PendingRequestsState, value);
   }
 
-  void Shutdown() {
+  void StartShutdown() {
     VLOG_WITH_PREFIX_AND_FUNC(3);
-    is_active_ = false;
+    is_active_.store(false, std::memory_order_release);
+    // Try to notify sync request waiter as soon as possible, but without holding the lock sync
+    // request may miss this wakeup. That is expected. Under the lock the waiter will be notified
+    // later (in ProcessPendingOnShutdown).
+    sync_request_cond_.notify_all();
+  }
+
+  void CompleteShutdown() {
+    VLOG_WITH_PREFIX_AND_FUNC(3);
+    ProcessPendingOnShutdown();
+  }
+
+ private:
+  void ProcessPendingOnShutdown() {
+    VLOG_WITH_PREFIX_AND_FUNC(3);
+    DCHECK(!IsActive());
     pending_requests_state_changed_ = true;
     for (auto it = pending_.begin(); it != pending_.end();) {
       if (it->second.TryCompleteOnShutdown()) {
@@ -252,7 +271,6 @@ class PgRequestSequencer::Impl {
     UpdatePendingRequestsState();
   }
 
- private:
   const PgRequestSequencer::LogPrefix& LogPrefix() const { return log_prefix_; }
 
   void UpdatePendingRequestsState() {
@@ -272,7 +290,7 @@ class PgRequestSequencer::Impl {
           break;
         }
       }
-      if (!is_active_) {
+      if (!IsActive()) {
         new_state = PendingRequestsState::kEmpty;
       }
     }
@@ -355,7 +373,7 @@ class PgRequestSequencer::Impl {
     auto pred = [this, serial_no, &req] {
       DCHECK(pending_.contains(serial_no))
           << "serial_no " << serial_no << " unexpectedly gone";
-      return req.IsRequestReadyToProcess();
+      return req.IsRequestReadyToProcess() || !IsActive();
     };
     UpdatePendingRequestsState();
     auto [result, lost_ownership] = guard.WaitUntil(sync_request_cond_, deadline, pred);
@@ -363,8 +381,7 @@ class PgRequestSequencer::Impl {
       ownership.emplace(std::move(*lost_ownership));
     }
     DCHECK(pending_.contains(serial_no));
-    if (!result) {
-      DCHECK(!req.IsRequestReadyToProcess());
+    if (!(result && req.IsRequestReadyToProcess())) {
       // The predecessor is not yet completed, current request should not be completed. Because this
       // will allow further (dependent) requests to be processed, and this will break execution
       // sequence.
@@ -373,7 +390,7 @@ class PgRequestSequencer::Impl {
     } else {
       DropCompleted(it);
     }
-    if (!is_active_) {
+    if (!IsActive()) {
       return kShutdownStatus;
     }
     if (!result) {
@@ -407,7 +424,7 @@ class PgRequestSequencer::Impl {
   template<class Member, class... Args>
   std::invoke_result_t<Member, Impl&, SequenceNum, Args...> HandleNewRequest(
       Member member, SequenceNum sequence_num, Args&&... args) {
-    if (!is_active_) {
+    if (!IsActive()) {
       return kShutdownStatus;
     }
     auto state_updater = ScopeExit([this] { UpdatePendingRequestsState(); });
@@ -431,10 +448,14 @@ class PgRequestSequencer::Impl {
     return (*this.*member)(sequence_num, std::forward<Args>(args)...);
   }
 
+  [[nodiscard]] bool IsActive() const {
+    return is_active_.load(std::memory_order_acquire);
+  }
+
   const PgRequestSequencer::LogPrefix log_prefix_;
   const CoarseDuration wait_duration_;
   std::condition_variable sync_request_cond_;
-  bool is_active_{true};
+  std::atomic<bool> is_active_{true};
   std::optional<SerialNo> last_seen_;
   PendingRequests pending_;
   bool pending_requests_state_changed_{false};
@@ -468,8 +489,12 @@ Status PgRequestSequencer::Enqueue(SequenceNum req, Executor&& executor, CoarseT
   return impl_->Enqueue(req, std::move(executor), deadline);
 }
 
-void PgRequestSequencer::Shutdown() {
-  impl_->Shutdown();
+void PgRequestSequencer::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void PgRequestSequencer::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 } // namespace yb::tserver

@@ -62,7 +62,8 @@ class PgRequestSequencer {
 
   void ProcessPending(PgClientSession& session);
 
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
   [[nodiscard]] bool IsProcessingRequiredRegularCheck() const {
     return DoIsProcessingRequired(true);
