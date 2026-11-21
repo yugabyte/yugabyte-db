@@ -14,8 +14,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
+#include <deque>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -25,6 +28,8 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
+
+#include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table_info.h"
@@ -522,6 +527,17 @@ std::pair<int32_t, std::string> GetCDCColumnKey(const DatumMessagePB& datum, boo
 //--------------------------------------------------------------------------------------------------
 // C API.
 //--------------------------------------------------------------------------------------------------
+
+namespace {
+
+// Owns the images that a table reader hands to the decoder, whose columns point into them as
+// opaque QLValuePB pointers. Deques keep the pointers valid as images are added.
+struct CdcTableValues {
+  std::deque<cdc::CdcTableImagePB> images;
+  std::deque<std::vector<YbcCdcImageColumn>> columns;
+};
+
+}  // namespace
 
 extern "C" {
 
@@ -3289,11 +3305,46 @@ YbcStatus YBCQLValueToDatum(
       datum, is_null));
 }
 
+void* YBCPgNewCdcTableValues() {
+  return new CdcTableValues;
+}
+
+void YBCPgFreeCdcTableValues(void* values) {
+  delete static_cast<CdcTableValues*>(values);
+}
+
+YbcStatus YBCPgParseCdcTableImage(
+    void* values, const char* bytes, size_t length, const YbcCdcImageColumn** columns,
+    int* column_count) {
+  auto* holder = static_cast<CdcTableValues*>(values);
+  auto& image = holder->images.emplace_back();
+  if (!image.ParseFromArray(bytes, narrow_cast<int>(length))) {
+    holder->images.pop_back();
+    return ToYBCStatus(STATUS(Corruption, "Cannot parse an image of the CDC table"));
+  }
+  auto& image_columns = holder->columns.emplace_back();
+  image_columns.reserve(image.columns_size());
+  for (const auto& column : image.columns()) {
+    // A column without a value is NULL, and so is one with the value of a NULL.
+    const bool is_null = !column.has_value() || IsNull(column.value());
+    image_columns.push_back(YbcCdcImageColumn{
+        .attr_num = column.attnum(),
+        .type_entity = column.type_oid() == kPgInvalidOid
+                           ? nullptr
+                           : pgapi->pg_types().Find(column.type_oid()),
+        .ql_value = is_null ? nullptr : &column.value(),
+        .is_null = is_null});
+  }
+  *columns = image_columns.data();
+  *column_count = narrow_cast<int>(image_columns.size());
+  return YBCStatusOK();
+}
+
 YbcStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YbcPgXLogRecPtr restart_lsn_hint, YbcPgXLogRecPtr confirmed_flush,
-    YbcPgXLogRecPtr* restart_lsn) {
-  const auto result =
-      pgapi->UpdateAndPersistLSN(std::string(stream_id), restart_lsn_hint, confirmed_flush);
+    bool table_based, YbcPgXLogRecPtr* restart_lsn) {
+  const auto result = pgapi->UpdateAndPersistLSN(
+      std::string(stream_id), restart_lsn_hint, confirmed_flush, table_based);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }

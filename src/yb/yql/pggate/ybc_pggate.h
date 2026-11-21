@@ -1120,9 +1120,32 @@ void YBCPgFreeCDCConsistentChangesResponse(void *response);
 YbcStatus YBCQLValueToDatum(const YbcPgTypeEntity *type_entity, const void *ql_value,
                             uint64_t *datum, bool *is_null);
 
+// A table reader of the CDC table gets the values it hands to the decoder from the images of the
+// table, as opaque pointers like those of YBCPgGetCDCConsistentChanges. The images and the values
+// in them are held by an object that the caller frees once the batch is consumed.
+void* YBCPgNewCdcTableValues();
+
+void YBCPgFreeCdcTableValues(void* values);
+
+// A column of an image: its attribute number, the type entity of its type OID (NULL when it has
+// none), its value for YBCQLValueToDatum (NULL for NULL).
+typedef struct {
+  int attr_num;
+  const YbcPgTypeEntity* type_entity;
+  const void* ql_value;
+  bool is_null;
+} YbcCdcImageColumn;
+
+// Parses a serialized CdcTableImagePB, a before or after image. The columns are held by `values`.
+YbcStatus YBCPgParseCdcTableImage(
+    void* values, const char* bytes, size_t length, const YbcCdcImageColumn** columns,
+    int* column_count);
+
+// With table_based, the slot is streamed from the CDC table and restart_lsn_hint is persisted as
+// given.
 YbcStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YbcPgXLogRecPtr restart_lsn_hint, YbcPgXLogRecPtr confirmed_flush,
-    YbcPgXLogRecPtr* restart_lsn);
+    bool table_based, YbcPgXLogRecPtr* restart_lsn);
 
 // Get a new OID from the OID allocator of database db_oid.
 YbcStatus YBCGetNewObjectId(YbcPgOid db_oid, YbcPgOid* new_oid);

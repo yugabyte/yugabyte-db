@@ -5875,6 +5875,31 @@ void CDCServiceImpl::UpdateAndPersistLSN(
       STATUS(InvalidArgument, "Confirmed Flush LSN is required for UpdateAndPersistLSN RPC"),
       resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
 
+  if (req->table_based()) {
+    // A walsender that streams the slot from the CDC table has no virtual WAL. Its LSNs are commit
+    // times, and restart_lsn is one past the commit time of the last transaction that the client
+    // flushed, so the slot restarts there and its history is retained from that commit time.
+    RPC_CHECK_AND_RETURN_ERROR(
+        req->restart_lsn() > 0,
+        STATUS(InvalidArgument, "A table based slot needs a restart LSN"),
+        resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+    auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
+    CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
+    entry.confirmed_flush_lsn = req->confirmed_flush_lsn();
+    entry.restart_lsn = req->restart_lsn();
+    entry.record_id_commit_time = req->restart_lsn() - 1;
+    entry.cdc_sdk_safe_time = entry.record_id_commit_time;
+    auto status = cdc_state_table_->UpdateEntries({entry});
+    if (!status.ok()) {
+      RPC_STATUS_RETURN_ERROR(
+          status.CloneAndPrepend(Format("UpdateAndPersistLSN failed for stream_id: $0", stream_id)),
+          resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    }
+    resp->set_restart_lsn(req->restart_lsn());
+    context.RespondSuccess();
+    return;
+  }
+
   auto session_id = req->session_id();
   std::shared_ptr<CDCSDKVirtualWAL> virtual_wal;
   {

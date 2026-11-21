@@ -2873,6 +2873,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_use_table_based_cdc", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Read the changes of a HYBRID_TIME replication slot from "
+						 "the table public.pg_yb_cdc_changes instead of the CDC "
+						 "service."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_table_based_cdc,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_slot_exclusive_lock", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Acquire a cluster-wide exclusive advisory lock while a "
 						 "replication slot is in use so that only one consumer can "
@@ -4668,6 +4681,20 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_walsender_poll_sleep_duration_nonempty_ms,
 		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_walsender_records_per_flush", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Number of records a walsender sends between flushes"
+						 " of its output and checks for replies from the"
+						 " client."),
+			gettext_noop("1 flushes after every record. A larger value sends"
+						 " the records of a batch in fewer, larger writes."),
+			0
+		},
+		&yb_walsender_records_per_flush,
+		1, 1, 100000,
 		NULL, NULL, NULL
 	},
 

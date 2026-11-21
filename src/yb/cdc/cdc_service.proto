@@ -256,6 +256,9 @@ message UpdateAndPersistLSNRequestPB {
   // and is returned in the response of this RPC.
   optional uint64 restart_lsn = 4;
   reserved 5; // ASH metadata is now passed in RequestHeader PB
+  // The walsender streams the slot from the CDC table (yb_use_table_based_cdc) and has no virtual
+  // WAL. Its LSNs are commit times, so restart_lsn is persisted as given.
+  optional bool table_based = 6;
 }
 
 message UpdateAndPersistLSNResponsePB {

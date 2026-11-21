@@ -418,11 +418,25 @@ static bool yb_is_historical_catalog_read = false;
 void
 YbSetObjectLockingForCurrTxn()
 {
+	bool		skip_object_locks;
+
 	yb_is_historical_catalog_read = (yb_read_time != 0 &&
 									 !yb_read_time_skip_catalog);
+
+	/*
+	 * A walsender that reads the changes from a table decodes them in a
+	 * transaction of its own per commit group. It only reads, and what it takes
+	 * object locks for is to hold back concurrent DDLs, which it has no need
+	 * to. The locks cost a synchronous RPC to release at the end of every
+	 * replay subtransaction, a fifth of the walsender's time at 50K
+	 * changes/s. Without a pinned yb_read_time it would otherwise take them.
+	 */
+	skip_object_locks = yb_is_historical_catalog_read ||
+		(yb_use_table_based_cdc && am_walsender);
+
 	YBCSetGlobalObjectLockingForCurrTxn(yb_enable_global_object_locking_infra &&
-										!yb_is_historical_catalog_read);
-	YBCSetHistoricalCatalogReadForCurrTxn(yb_is_historical_catalog_read);
+										!skip_object_locks);
+	YBCSetHistoricalCatalogReadForCurrTxn(skip_object_locks);
 }
 
 bool

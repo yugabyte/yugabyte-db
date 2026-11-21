@@ -181,6 +181,12 @@ extern char* yb_default_replica_identity;
 extern bool yb_enable_consistent_replication_from_hash_range;
 
 /*
+ * GUC variable that makes a walsender read the changes of a HYBRID_TIME replication slot from the
+ * table public.yb_cdc_stream instead of the CDC service.
+ */
+extern bool yb_use_table_based_cdc;
+
+/*
  * GUC variable that enables acquiring a cluster-wide exclusive advisory lock while a replication
  * slot is in use, so that only one consumer can use it at a time across the universe.
  */
@@ -262,6 +268,13 @@ extern int yb_locks_txn_locks_per_tablet;
  * changes from the CDC service in case the last received response was non-empty.
  */
 extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * How many virtual WAL records a walsender sends to the client between one
+ * flush of its output and reply check and the next. 1 flushes after every
+ * record.
+ */
+extern int yb_walsender_records_per_flush;
 
 /*
  * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of

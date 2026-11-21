@@ -32,6 +32,7 @@
 #include "replication/slot.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "replication/yb_virtual_wal_table_reader.h"
 #include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
@@ -39,6 +40,13 @@
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+
+/*
+ * Whether this session reads the changes from public.pg_yb_cdc_changes instead of
+ * the CDC service. Fixed by YBCInitVirtualWal from yb_use_table_based_cdc, so
+ * that changing the GUC afterwards cannot mix the two sources.
+ */
+static bool use_table_reader = false;
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
@@ -193,6 +201,23 @@ YBCInitVirtualWal(List *yb_publication_names)
 
 	elog(DEBUG1, "YBCInitVirtualWal");
 
+	use_table_reader = yb_use_table_based_cdc;
+	if (use_table_reader)
+	{
+		if (!am_walsender)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("yb_use_table_based_cdc is only supported on a walsender connection")));
+		if (MyReplicationSlot->yb_lsn_type != CRS_HYBRID_TIME)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("yb_use_table_based_cdc requires a replication slot with LSN type HYBRID_TIME")));
+		if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("yb_use_table_based_cdc does not support transactional DDL replication")));
+	}
+
 	virtual_wal_context = AllocSetContextCreate(CurrentMemoryContext,
 												"YB virtual WAL context",
 												ALLOCSET_DEFAULT_SIZES);
@@ -280,7 +305,10 @@ YBCInitVirtualWal(List *yb_publication_names)
 void
 YBCDestroyVirtualWal()
 {
-	YBCDestroyVirtualWalForCDC();
+	if (use_table_reader)
+		YbTableReaderDestroy();
+	else
+		YBCDestroyVirtualWalForCDC();
 
 	/* Allocated in virtual_wal_context, so free it before deleting that. */
 	ResetAbortedSubtxnSet();
@@ -490,7 +518,21 @@ InitVirtualWal(List *publication_names,
 	bool		yb_is_pub_all_tables = false;
 	bool		skip_setting_yb_read_time = false;
 
-	if (MyReplicationSlot->data.yb_detect_publication_changes_implicitly)
+	/*
+	 * The table reader reads current rows of pg_yb_cdc_changes, which a pinned
+	 * yb_read_time would hide, so it does not pin one. The decoder then uses
+	 * the current catalog instead of the one at each record's commit time.
+	 *
+	 * TODO: Pin the catalog as the CDC service path does, at the slot's initial
+	 * record, and let YBHandleRelcacheRefresh move it forward on a DDL record.
+	 * That needs two things first: reads of pg_yb_cdc_changes as of now while
+	 * yb_read_time is pinned (a data counterpart of yb_read_time_skip_catalog
+	 * in pggate), and a DDL record in the table that the reader turns into
+	 * YB_PG_ROW_MESSAGE_ACTION_DDL with the table_oid and commit time.
+	 */
+	if (use_table_reader)
+		elog(DEBUG2, "Not pinning the catalog snapshot for the table reader");
+	else if (MyReplicationSlot->data.yb_detect_publication_changes_implicitly)
 	{
 		elog(DEBUG2,
 			 "Setting catalog snapshot to initial_record_commit_time for %" PRIu64,
@@ -552,12 +594,27 @@ InitVirtualWal(List *publication_names,
 	 */
 	ValidateReplicaIdentities(table_oids, list_length(tables));
 
-	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
-							list_length(tables), slot_hash_range, MyProcPid,
-							yb_publication_oids, list_length(publication_names),
-							yb_is_pub_all_tables);
+	if (use_table_reader)
+	{
+		/*
+		 * A HYBRID_TIME LSN is a commit time, so the slot's flushed position
+		 * says where to resume, and nothing before the slot's initial record
+		 * is streamed. The decoder skips what the client has already
+		 * received, so reading a little too much is harmless.
+		 */
+		YbTableReaderInit(table_oids, list_length(tables),
+						  Max(Max(MyReplicationSlot->data.restart_lsn,
+								  MyReplicationSlot->data.confirmed_flush),
+							  MyReplicationSlot->data.yb_initial_record_commit_time_ht));
+	}
+	else
+		YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
+								list_length(tables), slot_hash_range, MyProcPid,
+								yb_publication_oids, list_length(publication_names),
+								yb_is_pub_all_tables);
 
-	if (!MyReplicationSlot->data.yb_detect_publication_changes_implicitly &&
+	if (!use_table_reader &&
+		!MyReplicationSlot->data.yb_detect_publication_changes_implicitly &&
 		!skip_setting_yb_read_time)
 	{
 		elog(DEBUG2,
@@ -707,8 +764,11 @@ YBCReadRecord(List *publication_names)
 		AckFilteredTransactions();
 
 		Assert(CurrentMemoryContext == cached_records_context);
-		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records);
+		if (use_table_reader)
+			cached_records = YbTableReaderGetChanges();
+		else
+			YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
+									   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;
@@ -981,6 +1041,17 @@ AckFilteredTransactions(void)
 	last_filtered_commit_lsn = InvalidXLogRecPtr;
 }
 
+/*
+ * Whether the next YBCReadRecord returns a record that is already in hand,
+ * without fetching a batch from the source.
+ */
+bool
+YBCHasCachedRecord(void)
+{
+	return cached_records != NULL &&
+		cached_records_last_sent_row_idx < cached_records->row_count;
+}
+
 XLogRecPtr
 YBCGetFlushRecPtr(void)
 {
@@ -1018,8 +1089,14 @@ YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush)
 	elog(DEBUG1, "Updating confirmed_flush to %lu and restart_lsn_hint to %lu",
 		 confirmed_flush, restart_lsn_hint);
 
+	/*
+	 * Without a virtual WAL, the CDC service persists the hint as given: a
+	 * HYBRID_TIME LSN is a commit time, so a restarted walsender reads the
+	 * table from it.
+	 */
 	YBCUpdateAndPersistLSN(MyReplicationSlot->data.yb_stream_id,
-						   restart_lsn_hint, confirmed_flush, &restart_lsn);
+						   restart_lsn_hint, confirmed_flush, use_table_reader,
+						   &restart_lsn);
 
 	elog(DEBUG1, "The restart_lsn calculated by the virtual wal is %" PRIu64,
 		 restart_lsn);

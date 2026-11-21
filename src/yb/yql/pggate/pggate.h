@@ -902,7 +902,8 @@ class PgApiImpl {
       const std::string& stream_id, int64_t *lag_metric);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush,
+      bool table_based);
 
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
