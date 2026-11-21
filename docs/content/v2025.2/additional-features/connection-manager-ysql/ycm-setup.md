@@ -283,6 +283,20 @@ In both the `gradual` and `connection_static` modes, new sessions always observe
 
 Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend_ttl_ms` flag bounds how long backends that don't have the latest ALTER settings ("stale" backends) are allowed to stay alive, so that they are eventually recycled. Only _idle_ stale backends are terminated: a stale backend that is currently running a transaction is never interrupted, and is recycled only after it becomes idle. As a result, the effective lifetime of a stale backend can exceed the configured TTL if it stays busy.
 
+## Audit logging with pgaudit
+
+[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag.
+
+pgaudit behaves differently from PostgreSQL in the following ways:
+
+- **ALTER ROLE SET and ALTER DATABASE SET changes reach existing sessions.** In PostgreSQL, a statement such as `ALTER ROLE app SET pgaudit.log = 'none'` applies only to sessions that connect afterwards. In v2025.2.4.0 and later, with the default `gradual` adoption strategy, an existing session starts using the new value when its next transaction runs on a backend that has it. For example, if you turn off auditing for a role, its existing sessions stop being audited mid-session; if you turn auditing on, they start being audited without reconnecting. To keep existing sessions on the values they connected with, as in PostgreSQL, set `ysql_conn_mgr_alter_guc_adoption_strategy` to `connection_static`. In earlier versions, the flag isn't available, and successive transactions in an existing session can see either the old or the new value, depending on which backend runs them. For details, see [ALTER ROLE SET and ALTER DATABASE SET commands](#alter-role-set-and-alter-database-set-commands).
+
+- **STATEMENT_ID isn't sequential within a session.** pgaudit numbers statements with a counter in the backend process that runs them. Because sessions share backends, a session's STATEMENT_IDs can start above 1, skip numbers, and repeat after the session moves to another backend, and two sessions can log the same ID. As a result, a gap in STATEMENT_IDs doesn't mean that a statement went unlogged.
+
+    STATEMENT_ID still groups the audit lines of a single statement. A statement always runs on one backend, so STATEMENT_ID together with the backend's `%c` (session ID) escape of `log_line_prefix` identifies the statement, and SUBSTATEMENT_ID numbers its substatements as in PostgreSQL.
+
+    Don't use STATEMENT_ID, `%p` (process ID), or `%c` to group audit lines by client session, because they identify the backend, not the client session. Instead, have each client set a distinct `application_name` and add `%a` to `log_line_prefix`, or combine `%u` (user) and `%d` (database) with the statement text and timestamp. The `%h` and `%r` (client host) escapes show the address of YSQL Connection Manager, not of the client.
+
 ## Limitations
 
 - YSQL Connection Manager can route up to 10,000 connection pools. This includes pools corresponding to dropped users and databases.
