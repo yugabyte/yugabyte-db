@@ -1994,6 +1994,12 @@ class PgClientSession::Impl {
       alterer->set_increment_schema_version();
     }
     std::optional<dockv::VectorValueFormat> vector_value_format;
+    if (req.yb_online_schema_change_internal_ddl()) {
+      alterer->set_online_schema_change_internal_ddl();
+    }
+    if (!req.pg_table_id().empty()) {
+      alterer->set_pg_table_id(req.pg_table_id());
+    }
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));

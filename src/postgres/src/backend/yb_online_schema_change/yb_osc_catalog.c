@@ -71,14 +71,58 @@ GenerateJobId(void)
 }
 
 static char *
-JobStatus(HeapTuple tuple, TupleDesc tupdesc)
+JobText(HeapTuple tuple, TupleDesc tupdesc, AttrNumber attnum)
 {
 	bool		isnull;
-	Datum		status = heap_getattr(tuple, Anum_pg_yb_online_schema_change_status,
-									  tupdesc, &isnull);
+	Datum		value = heap_getattr(tuple, attnum, tupdesc, &isnull);
 
-	Assert(!isnull);
-	return TextDatumGetCString(status);
+	return isnull ? NULL : TextDatumGetCString(value);
+}
+
+static char *
+JobStatus(HeapTuple tuple, TupleDesc tupdesc)
+{
+	char	   *status = JobText(tuple, tupdesc, Anum_pg_yb_online_schema_change_status);
+
+	Assert(status != NULL);
+	return status;
+}
+
+const char *
+YbOscCutoverModeName(YbOscCutoverMode mode)
+{
+	return mode == YB_OSC_CUTOVER_SWAP ? YB_OSC_CUTOVER_MODE_SWAP :
+		YB_OSC_CUTOVER_MODE_RENAME;
+}
+
+YbOscCutoverMode
+YbOscParseCutoverMode(const char *name)
+{
+	if (strcmp(name, YB_OSC_CUTOVER_MODE_SWAP) == 0)
+		return YB_OSC_CUTOVER_SWAP;
+	if (strcmp(name, YB_OSC_CUTOVER_MODE_RENAME) == 0)
+		return YB_OSC_CUTOVER_RENAME;
+	elog(ERROR, "unknown online schema change cutover mode \"%s\"", name);
+	return YB_OSC_CUTOVER_RENAME;	/* keep compiler quiet */
+}
+
+static void
+FillJob(HeapTuple tuple, TupleDesc tupdesc, YbOscJob *job)
+{
+	Form_pg_yb_online_schema_change form =
+		(Form_pg_yb_online_schema_change) GETSTRUCT(tuple);
+
+	job->job_id = form->job_id;
+	job->source_table_oid = form->source_table_oid;
+	job->target_table_oid = form->target_table_oid;
+	job->transform_fn_oid = form->transform_fn_oid;
+	job->status = JobStatus(tuple, tupdesc);
+	job->origin = JobText(tuple, tupdesc, Anum_pg_yb_online_schema_change_origin);
+	char	   *cutoverMode = JobText(tuple, tupdesc,
+										  Anum_pg_yb_online_schema_change_cutover_mode);
+
+	job->cutover_mode = YbOscParseCutoverMode(cutoverMode);
+	job->query = JobText(tuple, tupdesc, Anum_pg_yb_online_schema_change_query);
 }
 
 /*
@@ -108,7 +152,8 @@ CurrentStatementText(void)
  * Insert a new "active" job and return its job_id.
  */
 int64
-YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid)
+YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid,
+			   const YbOscBeginOptions *opts)
 {
 	Relation	catalog = table_open(YbOnlineSchemaChangeRelationId, RowExclusiveLock);
 	Datum		values[Natts_pg_yb_online_schema_change];
@@ -126,10 +171,10 @@ YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid)
 	values[Anum_pg_yb_online_schema_change_status - 1] =
 		CStringGetTextDatum(YB_OSC_STATUS_ACTIVE);
 	values[Anum_pg_yb_online_schema_change_origin - 1] =
-		CStringGetTextDatum(YB_OSC_ORIGIN_MANUAL);
+		CStringGetTextDatum(opts->origin);
 	values[Anum_pg_yb_online_schema_change_cutover_mode - 1] =
-		CStringGetTextDatum(YB_OSC_CUTOVER_MODE_RENAME);
-	char	   *query = CurrentStatementText();
+		CStringGetTextDatum(YbOscCutoverModeName(opts->cutover_mode));
+	const char *query = opts->query ? opts->query : CurrentStatementText();
 
 	if (query)
 		values[Anum_pg_yb_online_schema_change_query - 1] = CStringGetTextDatum(query);
@@ -185,7 +230,7 @@ YbOscSetStatus(int64 jobId, const char *status)
 }
 
 /*
- * Fetch job jobId, or return false if there is no such job.  job->status is
+ * Fetch job jobId, or return false if there is no such job.  The strings are
  * allocated in the caller's memory context.
  */
 bool
@@ -205,14 +250,46 @@ YbOscFetchJob(int64 jobId, YbOscJob *job)
 
 	if (HeapTupleIsValid(tuple))
 	{
+		FillJob(tuple, RelationGetDescr(catalog), job);
+		found = true;
+	}
+
+	systable_endscan(scan);
+	table_close(catalog, AccessShareLock);
+	return found;
+}
+
+/*
+ * Fetch the newest job from srcOid into dstOid, or return false if there is
+ * none.  Job ids do not grow with time, so the newest is the one created
+ * last.  A full scan: the catalog holds one row per job.
+ */
+bool
+YbOscFetchLatestJob(Oid srcOid, Oid dstOid, YbOscJob *job)
+{
+	Relation	catalog = table_open(YbOnlineSchemaChangeRelationId, AccessShareLock);
+	SysScanDesc scan = systable_beginscan(catalog, InvalidOid, false /* indexOK */ ,
+										  NULL /* snapshot */ , 0 /* nkeys */ , NULL);
+	HeapTuple	tuple;
+	TimestampTz newest = 0;
+	bool		found = false;
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
 		Form_pg_yb_online_schema_change form =
 			(Form_pg_yb_online_schema_change) GETSTRUCT(tuple);
+		bool		isnull;
+		TimestampTz createdAt =
+			DatumGetTimestampTz(heap_getattr(tuple, Anum_pg_yb_online_schema_change_created_at,
+											 RelationGetDescr(catalog), &isnull));
 
-		job->job_id = form->job_id;
-		job->source_table_oid = form->source_table_oid;
-		job->target_table_oid = form->target_table_oid;
-		job->transform_fn_oid = form->transform_fn_oid;
-		job->status = JobStatus(tuple, RelationGetDescr(catalog));
+		if (form->source_table_oid != srcOid || form->target_table_oid != dstOid)
+			continue;
+		if (found && (createdAt < newest ||
+					  (createdAt == newest && form->job_id < job->job_id)))
+			continue;
+		FillJob(tuple, RelationGetDescr(catalog), job);
+		newest = createdAt;
 		found = true;
 	}
 

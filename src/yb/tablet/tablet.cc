@@ -4206,21 +4206,6 @@ Status Tablet::BackfillTableForYsql(
             << "\" for online schema change src_oid=" << src_oid << " dst_oid=" << dst_oid;
   SlowdownBackfillForTests();
 
-  // A job over a partition hierarchy names each tablet's own leaf as the source, and the chunk SQL
-  // scopes its scan to this tablet by partition key; scanning any other table with that key would
-  // copy the wrong rows, so refuse a mismatch outright.
-  if (!metadata_->colocated()) {
-    // The master names the leaf by pg_class OID, which a rewritten table's id no longer carries.
-    const auto& table_info = *metadata_->primary_table_info();
-    const auto tablet_table_oid = VERIFY_RESULT(GetPgsqlTableOid(
-        table_info.pg_table_id.empty() ? metadata_->table_id() : table_info.pg_table_id));
-    SCHECK_EQ(
-        src_oid, tablet_table_oid, InvalidArgument,
-        Format(
-            "Online schema change backfill source table does not match the table of tablet $0",
-            tablet_id()));
-  }
-
   BackfillParams backfill_params(deadline, true /* is_ysql */);
   auto conn = VERIFY_RESULT(CreateBackfillPGConn(
       pgsql_proxy_bind_address, database_name, postgres_auth_key,

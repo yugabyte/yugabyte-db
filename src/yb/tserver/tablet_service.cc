@@ -1242,6 +1242,21 @@ void TabletServiceAdminImpl::TableBackfillChunk(
     return;
   }
 
+  // A job over a partition hierarchy names each tablet's own leaf as the source, and the chunk SQL
+  // scopes its scan to this tablet by partition key; scanning any other table with that key would
+  // copy the wrong rows, so refuse a mismatch outright.
+  if (req->has_source_table_id() && !tablet.tablet->metadata()->colocated() &&
+      req->source_table_id() != tablet.tablet->metadata()->table_id()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(
+            InvalidArgument,
+            "Online schema change backfill source table $0 does not match the table of tablet $1",
+            req->source_table_id(), req->tablet_id()),
+        &context);
+    return;
+  }
+
   std::string backfilled_until;
   uint64_t num_rows_processed = 0;
 

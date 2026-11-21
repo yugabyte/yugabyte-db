@@ -1190,6 +1190,14 @@ Status PgApiImpl::AlterTableSetTableId(PgStatement* handle, const PgObjectId& ta
   return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetTableId(table_id);
 }
 
+Status PgApiImpl::AlterTableSetOnlineSchemaChangeInternalDdl(PgStatement* handle) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetOnlineSchemaChangeInternalDdl();
+}
+
+Status PgApiImpl::AlterTableSetPgTableId(PgStatement* handle, const PgObjectId& pg_table_id) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetPgTableId(pg_table_id);
+}
+
 Status PgApiImpl::AlterTableSetSchema(PgStatement* handle, const char* schema_name) {
   return VERIFY_RESULT_REF(GetStatementAs<PgAlterTable>(handle)).SetSchema(schema_name);
 }

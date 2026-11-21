@@ -1,9 +1,10 @@
 /*--------------------------------------------------------------------------------------------------
  *
  * yb_online_schema_change.c
- *    SQL functions that drive an online schema change job: begin, wait for
- *    the copy, cut over and abort, plus the progress the
- *    yb_online_schema_change view shows.
+ *    The online schema change job lifecycle: begin, wait for the copy, cut
+ *    over and abort, as SQL functions and as the C entry points that ALTER
+ *    TABLE ... CONCURRENTLY drives (utils/yb_online_schema_change.h), plus
+ *    the progress the yb_online_schema_change view shows.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -21,6 +22,8 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "catalog/pg_class.h"
+#include "commands/yb_alter_concurrently.h"
+#include "executor/spi.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -29,6 +32,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/regproc.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_osc_internal.h"
@@ -49,6 +53,12 @@ typedef struct YbOscStepArgs
 	int64		jobId;
 } YbOscStepArgs;
 
+static const YbOscBeginOptions manual_begin_options = {
+	.cutover_mode = YB_OSC_CUTOVER_RENAME,
+	.origin = YB_OSC_ORIGIN_MANUAL,
+	.query = NULL,
+};
+
 /*
  * Online schema change runs only with transactional DDL.  Each step then
  * commits atomically with the transaction that runs it, and the locks it
@@ -56,8 +66,8 @@ typedef struct YbOscStepArgs
  * every transaction, because the object locking infrastructure can be turned
  * off with a configuration reload.
  */
-static void
-CheckTransactionalDdl(void)
+void
+YbOscCheckTransactionalDdl(void)
 {
 	if (!YBIsDdlTransactionBlockEnabled())
 		ereport(ERROR,
@@ -75,7 +85,7 @@ CheckTransactionalDdl(void)
 static void
 RunAsDdlTransaction(void (*step) (YbOscStepArgs *), YbOscStepArgs *args)
 {
-	CheckTransactionalDdl();
+	YbOscCheckTransactionalDdl();
 	YBAddDdlTxnState(YB_DDL_MODE_NO_ALTERING);
 	step(args);
 	YBMergeDdlTxnState();
@@ -205,6 +215,32 @@ FetchCopyStatus(const YbOscJob *job, YbcPgTableBackfillStatus *bf)
 					(long long) job->job_id)));
 }
 
+bool
+YbOscGetCopyState(const YbOscJob *job, YbcPgTableBackfillState *state,
+				  char **errorMessage)
+{
+	YbcPgTableBackfillStatus bf;
+
+	if (!FetchBackfillStatus(job->source_table_oid, job->job_id, &bf, NULL))
+		return false;
+	*state = bf.state;
+	if (errorMessage)
+		*errorMessage = bf.error_message ? pstrdup(bf.error_message) : NULL;
+	return true;
+}
+
+/*
+ * An ALTER TABLE ... CONCURRENTLY job's own DDL runs with this raised.
+ * YBCExecAlterTable marks each alter it issues, and the master leaves such
+ * alters out of DDL-transaction verification, which at a swap cutover would
+ * look up the dropped shadow.
+ */
+static bool
+IsAlterTableJob(const char *origin)
+{
+	return strcmp(origin, YB_OSC_ORIGIN_ALTER_TABLE) == 0;
+}
+
 /*
  * A copy that the master reports as aborted while the job is still active was
  * aborted by a transaction that then rolled back.  Nothing will move it on,
@@ -241,13 +277,14 @@ CopyStatusName(const YbcPgTableBackfillStatus *bf)
 	return "failed";			/* keep compiler quiet */
 }
 
-static void
-BeginOnlineSchemaChange(YbOscStepArgs *args)
+/*
+ * Validate the pair, record the job, create the capture trigger on the source
+ * and ask the master to start the distributed backfill.  See
+ * utils/yb_online_schema_change.h.
+ */
+static int64
+BeginJob(Oid srcOid, Oid dstOid, Oid transformOid, const YbOscBeginOptions *opts)
 {
-	Oid			srcOid = args->srcOid;
-	Oid			dstOid = args->dstOid;
-	Oid			transformOid = args->transformOid;
-
 	/*
 	 * ExclusiveLock blocks DML on the source until this transaction commits.
 	 * Writes committed before that are read by the backfill and writes after
@@ -266,7 +303,7 @@ BeginOnlineSchemaChange(YbOscStepArgs *args)
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("an active online schema change job already exists for the given tables")));
 
-	YbOscValidate(srcRel, dstRel, transformOid);
+	YbOscValidate(srcRel, dstRel, transformOid, opts);
 
 	/*
 	 * Only a lower bound: the local clock can lag the tablet leaders that
@@ -275,7 +312,7 @@ BeginOnlineSchemaChange(YbOscStepArgs *args)
 	 */
 	uint64_t	backfillTimeHt = YBCGetCurrentHybridTimeLsn();
 
-	int64		jobId = YbOscInsertJob(srcOid, dstOid, transformOid);
+	int64		jobId = YbOscInsertJob(srcOid, dstOid, transformOid, opts);
 
 	char		triggerName[NAMEDATALEN];
 
@@ -306,7 +343,37 @@ BeginOnlineSchemaChange(YbOscStepArgs *args)
 	table_close(dstRel, NoLock);
 	table_close(srcRel, NoLock);
 
-	args->jobId = jobId;
+	return jobId;
+}
+
+int64
+YbOscBegin(Oid srcOid, Oid dstOid, Oid transformOid, const YbOscBeginOptions *opts)
+{
+	int64		jobId;
+
+	if (opts == NULL)
+		opts = &manual_begin_options;
+	if (!IsAlterTableJob(opts->origin))
+		return BeginJob(srcOid, dstOid, transformOid, opts);
+
+	yb_osc_internal_ddl_depth++;
+	PG_TRY();
+	{
+		jobId = BeginJob(srcOid, dstOid, transformOid, opts);
+	}
+	PG_FINALLY();
+	{
+		yb_osc_internal_ddl_depth--;
+	}
+	PG_END_TRY();
+	return jobId;
+}
+
+static void
+BeginOnlineSchemaChange(YbOscStepArgs *args)
+{
+	args->jobId = YbOscBegin(args->srcOid, args->dstOid, args->transformOid,
+							 NULL /* opts */ );
 }
 
 /*
@@ -386,17 +453,33 @@ yb_wait_mirror_table(PG_FUNCTION_ARGS)
 	FetchJobOrError(jobId, &job);
 	ErrorIfEnded(&job);
 
-	YbOscPromoteForeignKeys(job.source_table_oid, job.target_table_oid);
+	/* A swap keeps the source, and with it the source's foreign keys. */
+	if (job.cutover_mode == YB_OSC_CUTOVER_RENAME)
+		YbOscPromoteForeignKeys(job.source_table_oid, job.target_table_oid);
 
 	PG_RETURN_VOID();
 }
 
+/*
+ * Cut over: drop the capture trigger and hand the copied rows over, as the
+ * job's cutover_mode says.  rename: rename the source to yb_osc_old_<job_id>
+ * and give the target the source's name.  Only the roots are renamed;
+ * partitions follow them by OID.  The old source is left for the operator to
+ * inspect and drop.  swap: keep the source's OID while YbOscCutover replays
+ * the job's ALTER TABLE statement on it, exchanges the DocDB storage of the
+ * two tables and drops the target.
+ *
+ * AccessExclusiveLock on every node of both hierarchies (DML addressed to a
+ * leaf locks only that leaf) keeps a write from landing on the source between
+ * the trigger drop and the rename or swap, where it would be lost.  The
+ * cutover is part of the caller's transaction: if it fails, the job stays
+ * active and finish can be run again.
+ */
 static void
-FinishOnlineSchemaChange(YbOscStepArgs *args)
+FinishJob(int64 jobId, const YbOscJob *fetched)
 {
-	Oid			srcOid = args->srcOid;
-	Oid			dstOid = args->dstOid;
-	int64		jobId = args->jobId;
+	Oid			srcOid = fetched->source_table_oid;
+	Oid			dstOid = fetched->target_table_oid;
 
 	Relation	srcRel = table_open(srcOid, AccessExclusiveLock);
 	Relation	dstRel = table_open(dstOid, AccessExclusiveLock);
@@ -428,9 +511,36 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
 	 */
 	YbOscGetKeyWitnessAttnums(srcRel, dstRel);
 
-	YbOscCheckForeignKeysPromoted(srcOid, dstOid);
+	bool		swap = job.cutover_mode == YB_OSC_CUTOVER_SWAP;
+
+	/* A swap keeps the source, and with it the source's foreign keys. */
+	if (!swap)
+		YbOscCheckForeignKeysPromoted(srcOid, dstOid);
 
 	YbOscDropTrigger(srcRel);
+
+	if (swap)
+	{
+		/*
+		 * Recorded first, so that the transform the cutover drops is no
+		 * longer the transform of an active job.
+		 */
+		YbOscSetStatus(jobId, YB_OSC_STATUS_FINISHED);
+		CommandCounterIncrement();
+
+		/* Closed, keeping the locks; see CheckTableNotInUse. */
+		table_close(dstRel, NoLock);
+		table_close(srcRel, NoLock);
+
+		/*
+		 * The replayed ALTER TABLE runs below ProcessUtility, so the catalog
+		 * version bump it needs is recorded here: a yb_finish_mirror_table
+		 * call opens its DDL transaction without one.
+		 */
+		YBAddModificationAspects(YB_DDL_MODE_VERSION_INCREMENT);
+		YbOscCutover(srcOid, dstOid, jobId, job.query);
+		return;
+	}
 
 	char		oldName[NAMEDATALEN];
 
@@ -460,17 +570,44 @@ FinishOnlineSchemaChange(YbOscStepArgs *args)
 	table_close(srcRel, AccessExclusiveLock);
 }
 
+void
+YbOscFinish(int64 jobId)
+{
+	YbOscJob	job;
+
+	FetchJobOrError(jobId, &job);
+	if (!IsAlterTableJob(job.origin))
+	{
+		FinishJob(jobId, &job);
+		return;
+	}
+
+	yb_osc_internal_ddl_depth++;
+	PG_TRY();
+	{
+		FinishJob(jobId, &job);
+	}
+	PG_FINALLY();
+	{
+		yb_osc_internal_ddl_depth--;
+	}
+	PG_END_TRY();
+}
+
+static void
+FinishOnlineSchemaChange(YbOscStepArgs *args)
+{
+	YbOscFinish(args->jobId);
+}
+
 /*
  * yb_finish_mirror_table(job_id)
  *
- * Cut over: drop the capture trigger, rename the source to
- * yb_osc_old_<job_id> and give the target the source's name.  Only the roots
- * are renamed; partitions follow them by OID.  The old source is left for the
- * operator to inspect and drop.  AccessExclusiveLock on every node of both
- * hierarchies (DML addressed to a leaf locks only that leaf) keeps a write
- * from landing on the source between the trigger drop and the renames, where
- * it would be lost.  If the commit fails, the job stays active and finish can
- * be run again.
+ * YbOscFinish as one DDL transaction: the manual lifecycle's cutover, and the
+ * recovery for an ALTER TABLE ... CONCURRENTLY job whose statement died before
+ * cutting over.  A live statement holds a session ShareUpdateExclusiveLock on
+ * the source, so a finish from another session waits for its cutover and
+ * then finds the job finished.
  */
 Datum
 yb_finish_mirror_table(PG_FUNCTION_ARGS)
@@ -478,7 +615,7 @@ yb_finish_mirror_table(PG_FUNCTION_ARGS)
 	YbOscStepArgs args = {.jobId = PG_GETARG_INT64(0)};
 	YbOscJob	job;
 
-	CheckTransactionalDdl();
+	YbOscCheckTransactionalDdl();
 	FetchJobForCaller(args.jobId, &job);
 	args.srcOid = job.source_table_oid;
 	args.dstOid = job.target_table_oid;
@@ -489,10 +626,50 @@ yb_finish_mirror_table(PG_FUNCTION_ARGS)
 }
 
 static void
-AbortOnlineSchemaChange(YbOscStepArgs *args)
+ExecUtility(const char *sql)
 {
-	Oid			srcOid = args->srcOid;
-	int64		jobId = args->jobId;
+	if (SPI_connect() != SPI_OK_CONNECT)
+		ereport(ERROR, (errmsg("SPI_connect failed")));
+
+	if (SPI_execute(sql, false, 0) != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("online schema change cleanup DDL failed: %s", sql)));
+
+	SPI_finish();
+}
+
+/*
+ * Drop what an ALTER TABLE ... CONCURRENTLY job created for itself: the
+ * transform function and the shadow target, each unless already gone.
+ */
+static void
+DropAlterTableJobObjects(const YbOscJob *job)
+{
+	if (SearchSysCacheExists1(PROCOID, ObjectIdGetDatum(job->transform_fn_oid)))
+		ExecUtility(psprintf("DROP FUNCTION %s",
+							 format_procedure_qualified(job->transform_fn_oid)));
+
+	char	   *dstName = get_rel_name(job->target_table_oid);
+
+	if (dstName != NULL)
+	{
+		char	   *nspName = get_namespace_name(get_rel_namespace(job->target_table_oid));
+
+		ExecUtility(psprintf("DROP TABLE %s CASCADE",
+							 quote_qualified_identifier(nspName, dstName)));
+	}
+}
+
+/*
+ * Stop an active job, whatever its copy is doing: stop the copy, drop the
+ * capture trigger and mark the job "aborted".  The source is left as it was.
+ * A manual job's target is left for the operator to drop; an ALTER TABLE ...
+ * CONCURRENTLY job's target is a shadow it created, and is dropped along with
+ * its transform.
+ */
+static void
+AbortJob(int64 jobId, const YbOscJob *fetched)
+{
+	Oid			srcOid = fetched->source_table_oid;
 
 	/*
 	 * A source dropped while the job ran took the capture triggers and the
@@ -524,14 +701,49 @@ AbortOnlineSchemaChange(YbOscStepArgs *args)
 	}
 
 	YbOscSetStatus(jobId, YB_OSC_STATUS_ABORTED);
+
+	if (IsAlterTableJob(job.origin))
+	{
+		/* The transform is no longer that of an active job once this is seen. */
+		CommandCounterIncrement();
+		DropAlterTableJobObjects(&job);
+	}
+}
+
+void
+YbOscAbort(int64 jobId)
+{
+	YbOscJob	job;
+
+	FetchJobOrError(jobId, &job);
+	if (!IsAlterTableJob(job.origin))
+	{
+		AbortJob(jobId, &job);
+		return;
+	}
+
+	yb_osc_internal_ddl_depth++;
+	PG_TRY();
+	{
+		AbortJob(jobId, &job);
+	}
+	PG_FINALLY();
+	{
+		yb_osc_internal_ddl_depth--;
+	}
+	PG_END_TRY();
+}
+
+static void
+AbortOnlineSchemaChange(YbOscStepArgs *args)
+{
+	YbOscAbort(args->jobId);
 }
 
 /*
  * yb_abort_mirror_table(job_id)
  *
- * Stop an active job, whatever its copy is doing: stop the copy, drop the
- * capture trigger and mark the job "aborted".  The source is left as it was,
- * and the target is left for the operator to drop.
+ * YbOscAbort as one DDL transaction.
  */
 Datum
 yb_abort_mirror_table(PG_FUNCTION_ARGS)
@@ -539,7 +751,7 @@ yb_abort_mirror_table(PG_FUNCTION_ARGS)
 	YbOscStepArgs args = {.jobId = PG_GETARG_INT64(0)};
 	YbOscJob	job;
 
-	CheckTransactionalDdl();
+	YbOscCheckTransactionalDdl();
 	FetchJobForCaller(args.jobId, &job);
 	args.srcOid = job.source_table_oid;
 	args.dstOid = job.target_table_oid;

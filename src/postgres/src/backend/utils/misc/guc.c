@@ -121,6 +121,8 @@
 #include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
+#include "commands/tablecmds.h"
+#include "commands/yb_alter_concurrently.h"
 #include "commands/yb_analyze.h"
 #include "common/ip.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
@@ -3109,6 +3111,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_osc_cutover", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set, the cutover of an ALTER TABLE ... "
+						 "CONCURRENTLY job fails after its swap."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_osc_cutover,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_collation", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set, inject code to make psql output stable across "
 						 "linux and mac."),
@@ -3610,6 +3624,31 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_alter_table_rewrite,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_alter_table_concurrently", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable ALTER TABLE ... CONCURRENTLY, which performs "
+						 "table rewrites online through an online schema change job."),
+			NULL
+		},
+		&yb_enable_alter_table_concurrently,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_osc_keep_old_table", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Keep the pre-ALTER table of an ALTER TABLE ... "
+						 "CONCURRENTLY as yb_osc_old_<oid> instead of "
+						 "dropping it at cutover."),
+			gettext_noop("Debugging aid; the kept table must be dropped "
+						 "manually."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_osc_keep_old_table,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -6736,6 +6775,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_catcache_list_from_preloaded_limit,
 		100000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_alter_table_concurrently_poll_interval_ms", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Interval at which ALTER TABLE ... CONCURRENTLY polls "
+						 "the progress of its online schema change job."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_alter_table_concurrently_poll_interval_ms,
+		100, 10, 60000,
 		NULL, NULL, NULL
 	},
 
