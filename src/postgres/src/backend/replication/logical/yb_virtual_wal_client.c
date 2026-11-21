@@ -38,7 +38,7 @@
 #include "utils/snapmgr.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
@@ -436,7 +436,7 @@ static void
 YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 							   const char *docdb_txn_id)
 {
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (yb_enable_replication_slot_transactional_ddl)
 	{
 		uint64_t	read_time = read_time_ht;
 		const uint32_t *aborted_subtxn_set;
@@ -477,7 +477,7 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 static void
 YbResetVirtualWalCatalogSnapshot(void)
 {
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (yb_enable_replication_slot_transactional_ddl)
 		YBCResetHistoricalReadContextAndInvalidateRelcache();
 	else
 		YBCResetYbReadTimeAndInvalidateRelcache();
@@ -638,7 +638,7 @@ YBCReadRecord(List *publication_names)
 		 * set: a table list refresh below invalidates the caches directly,
 		 * otherwise the record follows the next records returned.
 		 */
-		if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+		if (yb_enable_replication_slot_transactional_ddl &&
 			explicit_alter_publication_detected &&
 			TransactionIdIsValid(publication_refresh_record.xid))
 		{
@@ -661,7 +661,7 @@ YBCReadRecord(List *publication_names)
 			uint64_t	in_txn_limit = PG_UINT64_MAX;
 			const char *docdb_txn_id = "";
 
-			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+			if (yb_enable_replication_slot_transactional_ddl &&
 				publication_refresh_record_time != 0)
 			{
 				in_txn_limit = publication_refresh_record_time;
@@ -671,7 +671,7 @@ YBCReadRecord(List *publication_names)
 			if (!is_in_txn)
 				StartTransactionCommand();
 
-			if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			if (!yb_enable_replication_slot_transactional_ddl)
 				Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
