@@ -74,7 +74,7 @@ void machinarium_test_producer_consumer1(void)
 		printf("%d", consumers_stat[i]);
 		fflush(NULL);
 	}
-	printf("] ");
+	printf("]\n"); /* YB: end the line before the runner prints the result */
 
 	machine_channel_free(channel);
 
