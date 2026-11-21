@@ -1954,13 +1954,11 @@ YbAllowNegativeCacheEntries(int cache_id,
 							bool implicit_prefetch_entries)
 {
 	/*
-	 * If yb_test_make_all_ddl_statements_incrementing or
-	 * yb_enable_negative_catcache_entries is true, negative cache entries
-	 * are always okay, because if a negative entry needs to be invalidated, the
-	 * catalog version will be incremented.
+	 * If negative cache entries are enabled, they are always okay, because if
+	 * a negative entry needs to be invalidated, the catalog version will be
+	 * incremented.
 	 */
-	if (yb_test_make_all_ddl_statements_incrementing ||
-		yb_enable_negative_catcache_entries)
+	if (YbNegativeCatcacheEntriesEnabled())
 		return true;
 
 	switch (cache_id)
