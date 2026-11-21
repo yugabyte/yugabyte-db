@@ -5,6 +5,7 @@ package mountephemeraldrives
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -542,5 +543,227 @@ func TestAzureLUNMismatchMessageIncludesLUN(t *testing.T) {
 			output,
 			stderr,
 		)
+	}
+}
+
+// ociDisk is a disk and its lsblk -nr -o NAME,MOUNTPOINT output.
+type ociDisk struct {
+	name string
+	tree string
+}
+
+func ociDataDisk(name string) ociDisk {
+	return ociDisk{name: name, tree: name + " \n"}
+}
+
+func ociBootDisk(name string) ociDisk {
+	return ociDisk{
+		name: name,
+		tree: fmt.Sprintf("%[1]s \n%[1]s1 \n%[1]s2 /boot/efi\n%[1]s3 /boot\n%[1]s4 /\n", name),
+	}
+}
+
+// runOCIDiskResolver runs get_oci_drives with a fake lsblk that lists the given disks in order.
+// It returns the resolved drives, the full stdout and stderr.
+func runOCIDiskResolver(
+	t *testing.T,
+	disks []ociDisk,
+	requested string,
+	mountPaths string,
+) (string, string, string, error) {
+	t.Helper()
+	helperPath := filepath.Join(
+		mountEphemeralDrivesModulePath(t),
+		"templates",
+		"oci_disk_utils.sh.j2",
+	)
+	root := t.TempDir()
+	fixtures := filepath.Join(root, "lsblk")
+	diskList := "sr0 rom\n"
+	for _, disk := range disks {
+		diskList += disk.name + " disk\n"
+		writeTestFile(t, filepath.Join(fixtures, "tree", disk.name), disk.tree)
+	}
+	writeTestFile(t, filepath.Join(fixtures, "disks"), diskList)
+	fakeLsblk := filepath.Join(root, "bin", "lsblk")
+	writeTestFile(
+		t,
+		fakeLsblk,
+		"#!/bin/bash\n"+
+			"if [[ $1 == -dnr ]]; then cat \"$LSBLK_FIXTURES/disks\"; exit; fi\n"+
+			"device=${!#}\n"+
+			"cat \"$LSBLK_FIXTURES/tree/${device##*/}\" 2>/dev/null || exit 32\n",
+	)
+	if err := os.Chmod(fakeLsblk, 0o755); err != nil {
+		t.Fatalf("make fake lsblk executable: %v", err)
+	}
+	script := `
+set -euo pipefail
+DEV_ROOT=/dev
+DEFAULT_SSD_DRIVES=$2
+read -r -a mounts <<< "$3"
+source "$1"
+get_oci_drives
+printf '%s\n' "$get_oci_drives_rv"
+`
+	cmd := exec.Command("bash", "-c", script, "oci-disk-test", helperPath, requested, mountPaths)
+	cmd.Env = append(
+		os.Environ(),
+		"PATH="+filepath.Dir(fakeLsblk)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"LSBLK_FIXTURES="+fixtures,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	return lines[len(lines)-1], stdout.String(), strings.TrimSpace(stderr.String()), err
+}
+
+func TestResolveOCIDrives(t *testing.T) {
+	tests := []struct {
+		name       string
+		disks      []ociDisk
+		requested  string
+		mountPaths string
+		want       string
+	}{
+		{
+			name:       "boot volume is sda",
+			disks:      []ociDisk{ociBootDisk("sda"), ociDataDisk("sdb")},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name:       "boot volume is sdb",
+			disks:      []ociDisk{ociDataDisk("sda"), ociBootDisk("sdb")},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sda",
+		},
+		{
+			name:       "boot volume between data volumes",
+			disks:      []ociDisk{ociDataDisk("sda"), ociBootDisk("sdb"), ociDataDisk("sdc")},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			want:       "sda sdc",
+		},
+		{
+			name:       "boot volume is the last requested name",
+			disks:      []ociDisk{ociDataDisk("sda"), ociDataDisk("sdb"), ociBootDisk("sdc")},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			want:       "sdb sda",
+		},
+		{
+			name: "LVM boot volume is sdb",
+			disks: []ociDisk{
+				ociDataDisk("sda"),
+				{name: "sdb", tree: "sdb \nsdb1 /boot/efi\nsdb2 /boot\nsdb3 \nocivolume-root /\n"},
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sda",
+		},
+		{
+			name:       "data volume already mounted at a YBA mount path",
+			disks:      []ociDisk{{name: "sda", tree: "sda /mnt/d0\n"}, ociBootDisk("sdb")},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sda",
+		},
+		{
+			// The probe loop then rejects the boot volume.
+			name:       "disk mounted outside YBA is not used",
+			disks:      []ociDisk{{name: "sda", tree: "sda /backup\n"}, ociBootDisk("sdb")},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name: "unrequested disk does not replace requested data volumes",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				ociDataDisk("sdb"),
+				ociDataDisk("sdc"),
+				ociDataDisk("sdd"),
+			},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			want:       "sdb sdc",
+		},
+		{
+			name:       "local NVMe drives",
+			disks:      []ociDisk{ociBootDisk("sda"), ociDataDisk("sdb"), ociDataDisk("nvme0n1")},
+			requested:  "nvme0n1",
+			mountPaths: "/mnt/d0",
+			want:       "nvme0n1",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, stdout, stderr, err := runOCIDiskResolver(
+				t,
+				test.disks,
+				test.requested,
+				test.mountPaths,
+			)
+			if err != nil {
+				t.Fatalf("resolve OCI drives: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if got != test.want {
+				t.Fatalf("resolved drives = %q, want %q\nstdout: %s", got, test.want, stdout)
+			}
+		})
+	}
+}
+
+func TestRenderedScriptResolvesOCIDrives(t *testing.T) {
+	modulePath := mountEphemeralDrivesModulePath(t)
+	module := NewMountEphemeralDrive(filepath.Dir(modulePath))
+	values := map[string]any{
+		"cloud_type":     "oci",
+		"device_paths":   "sdb",
+		"mount_paths":    "/mnt/d0",
+		"imdsv2required": "False",
+	}
+
+	rendered, err := module.RenderTemplates(context.Background(), values)
+	if err != nil {
+		t.Fatalf("render mount script: %v", err)
+	}
+	script := rendered.RenderedContent("run")
+	for _, expected := range []string{
+		`oci_disk_is_free_data_disk() {`,
+		`elif [[ $CLOUD_TYPE == "oci" ]]; then`,
+		`get_ephemeral_drives_rv=$get_oci_drives_rv`,
+	} {
+		if !strings.Contains(script, expected) {
+			t.Fatalf("rendered script does not contain %q", expected)
+		}
+	}
+
+	// Skipping a device mounted outside YBA must extend the probe loop only where the next
+	// iteration probes another device, or the loop probes the same device forever.
+	extension := "max_iterations=$((max_iterations+1))"
+	guard := `if [[ $CLOUD_TYPE == "aws" && "$DRIVE_SCHEME" == "nvme" ]]; then`
+	if count := strings.Count(script, extension); count != 1 {
+		t.Fatalf("rendered script extends the probe loop %d times, want 1", count)
+	}
+	extensionOffset := strings.Index(script, extension)
+	guardOffset := strings.LastIndex(script[:extensionOffset], guard)
+	if guardOffset < 0 ||
+		strings.TrimSpace(script[guardOffset+len(guard):extensionOffset]) != "" {
+		t.Fatal("rendered script extends the probe loop outside the AWS NVMe path")
+	}
+
+	scriptPath := filepath.Join(t.TempDir(), "mount_ephemeral_drives.sh")
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		t.Fatalf("write rendered script: %v", err)
+	}
+	if output, err := exec.Command("bash", "-n", scriptPath).CombinedOutput(); err != nil {
+		t.Fatalf("rendered script has invalid shell syntax: %v\n%s", err, output)
 	}
 }
