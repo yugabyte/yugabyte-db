@@ -3355,9 +3355,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const CreateCDCStreamRequestPB& req,
       CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
+  // detect_publication_changes_implicitly must match whether table_ids include the catalog tables
+  // polled by logical replication, so the caller computes it once for both.
   Status CreateNewCdcsdkStream(
       const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const std::optional<const NamespaceId>& namespace_id,
+      bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(
