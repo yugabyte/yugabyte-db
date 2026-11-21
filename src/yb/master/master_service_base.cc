@@ -74,7 +74,7 @@ YsqlManager* MasterServiceBase::handler(YsqlManager*) { return &server_->ysql_ma
 Status HandleLockAndCallFunction(
     const std::function<Status()>& f,
     HoldCatalogLock hold_catalog_lock,
-    ScopedLeaderSharedLock* l) {
+    ScopedLeaderSharedLock* l) NO_THREAD_SAFETY_ANALYSIS {
   if (!hold_catalog_lock) {
     l->Unlock();
   }
@@ -84,7 +84,7 @@ Status HandleLockAndCallFunction(
 Status HandleLockAndCallFunction(
     const std::function<Status(const LeaderEpoch&)>& f,
     HoldCatalogLock hold_catalog_lock,
-    ScopedLeaderSharedLock* l) {
+    ScopedLeaderSharedLock* l) NO_THREAD_SAFETY_ANALYSIS {
   auto epoch = l->epoch();
   if (!hold_catalog_lock) {
     l->Unlock();
