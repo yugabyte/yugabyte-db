@@ -48,6 +48,8 @@
 
 #include "yb/common/common_types.pb.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
+
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
 
@@ -57,6 +59,7 @@
 
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/test_util.h"
@@ -239,9 +242,27 @@ class MasterTestBase : public YBTest {
       const ListTablesResponsePB& tables);
 
   Status UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config);
+
+  // The sys catalog's rows of one type as the master dumps them (DumpSysCatalogEntries), by
+  // entity id.
+  Result<std::map<std::string, std::unique_ptr<google::protobuf::Message>>> SysCatalogRows(
+      SysRowEntryType type);
+
+  template <class Pb>
+  Result<std::map<std::string, Pb>> SysCatalogRowsOf(SysRowEntryType type) {
+    std::map<std::string, Pb> result;
+    for (auto& [id, message] : VERIFY_RESULT(SysCatalogRows(type))) {
+      auto* pb = dynamic_cast<Pb*>(message.get());
+      SCHECK_NOTNULL(pb);
+      result.emplace(id, std::move(*pb));
+    }
+    return result;
+  }
+
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<MiniMaster> mini_master_;
   std::unique_ptr<MasterClientProxy> proxy_client_;
+  std::unique_ptr<MasterAdminProxy> proxy_admin_;
   std::unique_ptr<MasterDdlProxy> proxy_ddl_;
   std::unique_ptr<MasterYsqlLeaseProxy> proxy_ysql_lease_;
   std::unique_ptr<MasterHeartbeatProxy> proxy_heartbeat_;
@@ -249,6 +270,10 @@ class MasterTestBase : public YBTest {
   std::shared_ptr<RpcController> controller_;
 
   std::unique_ptr<MasterClusterClient> cluster_client_;
+
+ private:
+  // OIDs for the tables CreatePgsqlTable creates without a table id.
+  uint32_t next_pg_table_oid_ = 16384;
 };
 
 } // namespace master

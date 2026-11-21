@@ -28,9 +28,6 @@
 namespace yb {
 namespace master {
 
-class CatalogManager;
-class Master;
-
 YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 
 // There are four ways in which a new config is loaded on the yb-masters.
@@ -51,10 +48,10 @@ YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 // ProcessAutoFlagsConfigOperation on all master (including leader).
 class MasterAutoFlagsManager : public AutoFlagsManagerBase {
  public:
-  // `master` is null in the Rust master's host (src/yb/master_host). Config changes there are
-  // written through `SetSysCatalogSubmitter`, and the host makes the checks PromoteAutoFlags
-  // makes against Master (tserver versions, YSQL major upgrade) before calling it.
-  MasterAutoFlagsManager(server::Clock* clock, FsManager* fs_manager, Master* master);
+  // Config changes are written through `SetSysCatalogSubmitter`. The caller (the Rust master's
+  // host, src/yb/master_host) checks tserver versions and the YSQL major upgrade before
+  // PromoteAutoFlags.
+  MasterAutoFlagsManager(server::Clock* clock, FsManager* fs_manager);
 
   using SysCatalogSubmitter = std::function<Status(std::unique_ptr<tablet::Operation>)>;
   void SetSysCatalogSubmitter(SysCatalogSubmitter submitter) {
@@ -123,8 +120,6 @@ class MasterAutoFlagsManager : public AutoFlagsManagerBase {
   Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
       const ProcessName& process_name, const std::string& flag_name);
 
-  Master* const master_;
-  CatalogManager* catalog_manager_;
   SysCatalogSubmitter sys_catalog_submitter_;
   UniqueLock<std::shared_mutex> update_lock_;
 };

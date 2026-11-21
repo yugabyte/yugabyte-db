@@ -560,7 +560,7 @@ class DependencyGraphTest(unittest.TestCase):
 
         self.assert_all_unaffected_by(['yb-admin'], 'tablet_server.cc')
         self.assert_all_unaffected_by(['yb-admin'], 'pggate.cc')
-        self.assert_all_unaffected_by(['yb-admin'], 'catalog_manager.cc')
+        self.assert_all_unaffected_by(['yb-admin'], 'sys_catalog.cc')
 
     def test_call_home(self) -> None:
         yb_master = self.get_yb_master_target()
@@ -573,11 +573,11 @@ class DependencyGraphTest(unittest.TestCase):
             # executable.
             self.assert_all_unaffected_by([yb_master], 'tserver_call_home.cc')
 
-    def test_catalog_manager(self) -> None:
+    def test_sys_catalog(self) -> None:
         yb_master = self.get_yb_master_target()
         yb_tserver = self.get_yb_tserver_target()
-        self.assert_all_affected_by([yb_master], 'catalog_manager.cc')
-        self.assert_all_unaffected_by([yb_tserver], 'catalog_manager.cc')
+        self.assert_all_affected_by([yb_master], 'sys_catalog.cc')
+        self.assert_all_unaffected_by([yb_tserver], 'sys_catalog.cc')
 
     def test_bulk_load_tool(self) -> None:
         exact_affected_set = [

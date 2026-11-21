@@ -427,13 +427,10 @@ Status MiniCluster::StartMasters() {
     }
   }};
 
-  if (options_.rust_masters != master::RustMasters::kNone) {
-    master_host::RegisterEmbeddedRustMaster();
-  }
+  master_host::RegisterEmbeddedRustMaster();
   for (size_t i = 0; i < options_.num_masters; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(
         options_.master_env, GetMasterFsRoot(i), master_rpc_ports_[i], master_web_ports_[i], i);
-    mini_masters_[i]->set_rust(master::IsRustMaster(options_.rust_masters, i));
     auto status = mini_masters_[i]->StartDistributedMaster(master_rpc_ports_);
     LOG_IF(INFO, !status.ok()) << "Failed to start master: " << status;
     RETURN_NOT_OK_PREPEND(status, Format("Couldn't start follower $0", i));

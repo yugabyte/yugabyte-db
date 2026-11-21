@@ -37,11 +37,11 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+
+#include "yb/master_host/embedded_master.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -61,7 +61,7 @@ class SysCatalogTest : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
 
-    // Start master with the create flag on.
+    master_host::RegisterEmbeddedRustMaster();
     mini_master_.reset(
         new MiniMaster(Env::Default(), GetTestPath("Master"), AllocateFreePort(),
                        AllocateFreePort(), 0));
@@ -71,7 +71,6 @@ class SysCatalogTest : public YBTest {
     builder.set_num_reactors(1);
     messenger_ = ASSERT_RESULT(builder.Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   }
 
   Status RestartMaster() {
@@ -94,7 +93,7 @@ class SysCatalogTest : public YBTest {
                            SysTablesEntryPB_State state = SysTablesEntryPB::PREPARING,
                            Schema schema = Schema(),
                            bool colocated = false) {
-    auto table = master_->catalog_manager()->NewTableInfo(table_id, colocated);
+    auto table = make_scoped_refptr<TableInfo>(table_id, colocated);
     table->mutable_metadata()->StartMutation();
     auto* metadata = &table->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_name("testtb");
@@ -133,8 +132,22 @@ class SysCatalogTest : public YBTest {
     return resp;
   }
 
+  Result<SysClusterConfigEntryPB> GetClusterConfig() { return GetClusterConfig(*mini_master_); }
+
+  Result<SysClusterConfigEntryPB> GetClusterConfig(const MiniMaster& mini_master) {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(10));
+    GetMasterClusterConfigRequestPB req;
+    GetMasterClusterConfigResponsePB resp;
+    auto proxy = master::MasterClusterProxy(proxy_cache_.get(), mini_master.bound_rpc_addr());
+    RETURN_NOT_OK(proxy.GetMasterClusterConfig(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp.cluster_config();
+  }
+
   std::unique_ptr<MiniMaster> mini_master_;
-  Master* master_;
   SysCatalogTable* sys_catalog_;
 
  private:
@@ -142,9 +155,8 @@ class SysCatalogTest : public YBTest {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   void SetLocalVars() {
-    master_ = mini_master_->master();
-    ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-    sys_catalog_ = master_->catalog_manager()->sys_catalog();
+    ASSERT_OK(mini_master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+    sys_catalog_ = &mini_master_->sys_catalog();
   }
 };
 
@@ -300,32 +312,6 @@ class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
   }
 
   std::vector<UDTypeInfo*> udtypes;
-};
-
-class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
- public:
-  TestRedisConfigLoader() {}
-  ~TestRedisConfigLoader() { Reset(); }
-
-  void Reset() {
-    for (RedisConfigInfo* rci : config_entries) {
-      rci->Release();
-    }
-    config_entries.clear();
-  }
-
-  Status Visit(const std::string& key, const SysRedisConfigEntryPB& metadata) override {
-    // Setup the redis config info
-    RedisConfigInfo* const rci = new RedisConfigInfo(key);
-    auto l = rci->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(metadata);
-    l.Commit();
-    rci->AddRef();
-    config_entries.push_back(rci);
-    return Status::OK();
-  }
-
-  std::vector<RedisConfigInfo*> config_entries;
 };
 
 class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {

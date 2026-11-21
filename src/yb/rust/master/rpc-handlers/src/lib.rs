@@ -501,8 +501,15 @@ impl Shared {
     fn list_master_raft_peers(&self) -> ListMasterRaftPeersResponsePB {
         let mut resp = ListMasterRaftPeersResponsePB::new();
         if (self.options.list_raft_peers_check_is_leader)() {
-            resp.error = Some(self.not_the_leader_error()).into();
-            return resp;
+            // ScopedLeaderSharedLock: only an initialized, ready leader answers.
+            let ready = match self.leader.as_ref() {
+                Some(leader) => self.leader_ready(leader).map(|_| ()),
+                None => Err(self.not_the_leader_error()),
+            };
+            if let Err(error) = ready {
+                resp.error = Some(error).into();
+                return resp;
+            }
         }
         match self.info.committed_consensus_state() {
             Ok(state) if state.config.is_some() => {

@@ -36,10 +36,12 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_parser.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -47,7 +49,8 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_ysql_lease.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
+
+#include "yb/master_host/embedded_master.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -62,7 +65,6 @@ using std::make_shared;
 
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
-DECLARE_bool(TEST_create_table_in_running_state);
 DECLARE_uint32(tablet_replicas_per_gib_limit);
 
 namespace yb {
@@ -85,19 +87,20 @@ void MasterTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_gib_limit) = 0;
   // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_cdc_state_insert_on_setup) = true;
-  // Since this is a master-only test, don't wait for tablet creation of tables.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_create_table_in_running_state) = true;
 
+  master_host::RegisterEmbeddedRustMaster();
   // Start master with the create flag on.
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"),
                                     AllocateFreePort(), AllocateFreePort(), 0));
   ASSERT_OK(mini_master_->Start());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Create a client proxy to it.
   client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
   rpc::ProxyCache proxy_cache(client_messenger_.get());
   proxy_client_ = std::make_unique<MasterClientProxy>(
+      &proxy_cache, mini_master_->bound_rpc_addr());
+  proxy_admin_ = std::make_unique<MasterAdminProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
   proxy_ddl_ = std::make_unique<MasterDdlProxy>(
       &proxy_cache, mini_master_->bound_rpc_addr());
@@ -163,6 +166,13 @@ Status MasterTestBase::CreatePgsqlTable(
 
   if (!namespace_id.empty()) {
     request->mutable_namespace_()->set_id(namespace_id);
+    // PG always names its tables by OID, and the master requires it. A namespace the master
+    // named itself (not by OID) gets tables of an arbitrary database OID.
+    if (!request->has_table_id()) {
+      auto database_oid = GetPgsqlDatabaseOid(namespace_id);
+      request->set_table_id(GetPgsqlTableId(
+          database_oid.ok() ? *database_oid : kPgFirstNormalObjectId, next_pg_table_oid_++));
+    }
   }
   request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
   request->mutable_schema()->mutable_table_properties()->set_num_tablets(8);
@@ -557,6 +567,24 @@ Status MasterTestBase::UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluste
   cluster_config->set_version(cluster_config->version() + 1);
   LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
   return Status::OK();
+}
+
+Result<std::map<std::string, std::unique_ptr<google::protobuf::Message>>>
+MasterTestBase::SysCatalogRows(SysRowEntryType type) {
+  DumpSysCatalogEntriesRequestPB req;
+  req.set_entry_type(type);
+  DumpSysCatalogEntriesResponsePB resp;
+  RETURN_NOT_OK(proxy_admin_->DumpSysCatalogEntries(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  std::map<std::string, std::unique_ptr<google::protobuf::Message>> rows;
+  for (const auto& entry : resp.entries()) {
+    rows.emplace(
+        entry.entity_id(),
+        VERIFY_RESULT(DebugStringToCatalogEntityPB(type, entry.pb_debug_string())));
+  }
+  return rows;
 }
 
 } // namespace master

@@ -19,8 +19,6 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/dockv/key_entry_value.h"
 
-#include "yb/master/master.h"
-#include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
 
 #include "yb/util/metrics.h"
@@ -50,21 +48,10 @@ scoped_refptr<Histogram> QueryHistogram(
 }  // namespace
 
 YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
-                                 const NamespaceName &namespace_name,
-                                 const Master* const master,
-                                 const Schema& schema)
-    : master_(master),
-      table_name_(table_name),
-      schema_(std::make_unique<Schema>(schema)),
-      histogram_(QueryHistogram(table_name, namespace_name, master->metric_entity())) {
-}
-
-YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                                  const NamespaceName& namespace_name,
                                  const scoped_refptr<MetricEntity>& metric_entity,
                                  const Schema& schema)
-    : master_(nullptr),
-      table_name_(table_name),
+    : table_name_(table_name),
       schema_(std::make_unique<Schema>(schema)),
       histogram_(QueryHistogram(table_name, namespace_name, metric_entity)) {
 }
@@ -106,20 +93,6 @@ Status YQLVirtualTable::BuildYQLScanSpec(
       rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
   return Status::OK();
-}
-
-void YQLVirtualTable::GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs)
-    const {
-  master_->ts_manager()->GetAllLiveDescriptors(descs);
-  std::sort(
-      descs->begin(), descs->end(),
-      [](const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) -> bool {
-        return a->permanent_uuid() < b->permanent_uuid();
-      });
-}
-
-CatalogManagerIf& YQLVirtualTable::catalog_manager() const {
-  return *master_->catalog_manager();
 }
 
 Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(

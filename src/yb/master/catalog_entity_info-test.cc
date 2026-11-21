@@ -13,6 +13,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_client.pb.h"
+
+#include "yb/util/format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 
@@ -251,6 +254,51 @@ TEST_F(CatalogEntityInfoTest, TestTasks) {
   ASSERT_EQ(task6->state(), server::MonitoredTaskState::kAborted);
   entity.WaitTasksCompletion();
   ASSERT_EQ(tasks_tracker->GetTasks().size(), 5);
+}
+
+// Tablets created at table creation time own a closed interval on their start key and an open one
+// on their end key.
+TEST_F(CatalogEntityInfoTest, TestAssignmentRanges) {
+  const std::string table_id = CURRENT_TEST_NAME();
+  scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
+  std::vector<TabletInfoPtr> tablets;
+
+  const std::vector<std::string> split_keys = {"a", "b", "c"};
+  const size_t kNumSplits = split_keys.size();
+  for (size_t i = 0; i <= kNumSplits; i++) {
+    const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
+    const std::string& end_key = (i == kNumSplits) ? "" : split_keys[i];
+    auto tablet = std::make_shared<TabletInfo>(table, Format("tablet-$0-$1", start_key, end_key));
+    auto l = tablet->LockForWrite();
+    auto* partition = l.mutable_data()->pb.mutable_partition();
+    partition->set_partition_key_start(start_key);
+    partition->set_partition_key_end(end_key);
+    l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+    ASSERT_OK(table->AddTablet(tablet));
+    l.Commit();
+    tablets.push_back(tablet);
+  }
+
+  for (size_t i = 0; i <= kNumSplits; i++) {
+    const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
+    const std::string& end_key = (i == kNumSplits) ? "" : split_keys[i];
+    const auto tablet_id = Format("tablet-$0-$1", start_key, end_key);
+
+    GetTableLocationsRequestPB req;
+    req.set_max_returned_locations(1);
+    req.mutable_table()->mutable_table_name()->assign(table_id);
+    req.mutable_partition_key_start()->assign(start_key);
+    auto tablets_in_range = ASSERT_RESULT(table->GetTabletsInRange(&req));
+
+    // Only the tablet whose range starts at the key owns it.
+    ASSERT_EQ(1, tablets_in_range.size());
+    ASSERT_EQ(tablet_id, (*tablets_in_range.begin())->tablet_id());
+  }
+
+  for (const auto& tablet : tablets) {
+    auto lock = tablet->LockForWrite();
+    ASSERT_TRUE(ASSERT_RESULT(table->RemoveTablet(tablet->id())));
+  }
 }
 
 } // namespace master

@@ -40,7 +40,7 @@ static int MasterHostMain(int argc, char** argv) {
   master_rs::register_flags();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       master::MasterOptions::kServerType, /*is_master=*/true, &argc, &argv));
-  // As master_main.cc: the shipped initial sys catalog snapshot, unless the flags say otherwise.
+  // The shipped initial sys catalog snapshot, unless the flags say otherwise.
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   return master_rs::run_master();
 }
@@ -48,7 +48,7 @@ static int MasterHostMain(int argc, char** argv) {
 }  // namespace yb::master_host
 
 int main(int argc, char** argv) {
-  // Same dispatch as master_main.cc: in LTO builds one executable serves as both servers.
+  // In LTO builds one executable serves as both servers.
   const auto executable_basename = yb::BaseName(argv[0]);
   if (boost::starts_with(executable_basename, "yb-tserver") ||
       boost::starts_with(executable_basename, "tserver")) {

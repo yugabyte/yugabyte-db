@@ -97,6 +97,15 @@ Status MasterClusterClient::ChangeMasterClusterConfig(
   return ResponseStatus(resp);
 }
 
+Result<GetLoadMovePercentResponsePB> MasterClusterClient::GetLoadMoveCompletion() const {
+  GetLoadMovePercentRequestPB req;
+  GetLoadMovePercentResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(proxy_.GetLoadMoveCompletion(req, &resp, &rpc));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return resp;
+}
+
 Status MasterClusterClient::RemoveTabletServer(std::string&& uuid) const {
   RemoveTabletServerRequestPB req;
   RemoveTabletServerResponsePB resp;

@@ -41,6 +41,9 @@ class MasterClusterClient {
 
   Status RemoveTabletServer(std::string&& uuid) const;
 
+  // GetLoadMoveCompletion: `remaining` counts the replicas still on blacklisted tservers.
+  Result<GetLoadMovePercentResponsePB> GetLoadMoveCompletion() const;
+
  private:
   MasterClusterProxy proxy_;
 };

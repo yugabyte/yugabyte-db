@@ -674,6 +674,13 @@ class MasterHost::SnapshotContextImpl : public master::SnapshotCoordinatorContex
   }
   void AddPendingBackFill(const TableId& id) override {}
   Status AdvanceOidCounters(const NamespaceId& namespace_id) override { return NotLeader(); }
+  void ReenableTabletSplittingAfterPitr() override {
+    LOG(DFATAL) << "Only the master leader finishes a restore";
+  }
+  bool IsNamespaceInAutomaticModeXClusterTarget(const NamespaceId& namespace_id) override {
+    LOG(DFATAL) << "Only the master leader starts a restore";
+    return false;
+  }
   master::PitrCount pitr_count() const override { return host_.sys_catalog_->pitr_count(); }
   Result<master::SysRowEntries> CollectEntriesAsOfTime(
       const NamespaceId& namespace_id, master::CollectFlags flags, HybridTime read_time,
@@ -738,12 +745,12 @@ MasterHost::MasterHost(const master::MasterOptions& opts, WebserverOptions publi
       tablet_peer_lookup_(std::make_unique<TabletPeerLookupImpl>(this)),
       sys_catalog_(std::make_unique<master::SysCatalogTable>(
           sys_catalog_context_.get(), metric_registry_.get())),
-      snapshot_coordinator_(std::make_unique<master::MasterSnapshotCoordinator>(
-          snapshot_context_.get(), /* cm= */ nullptr, /* tablet_split_manager= */ nullptr)),
+      snapshot_coordinator_(
+          std::make_unique<master::MasterSnapshotCoordinator>(snapshot_context_.get())),
       tap_(std::make_unique<SysCatalogTap>(
           snapshot_coordinator_.get(), MetadataColumnId(sys_catalog_->schema()))),
-      auto_flags_manager_(std::make_unique<master::MasterAutoFlagsManager>(
-          clock(), fs_manager(), /* master= */ nullptr)),
+      auto_flags_manager_(
+          std::make_unique<master::MasterAutoFlagsManager>(clock(), fs_manager())),
       encryption_manager_(std::make_unique<master::EncryptionManager>()),
       maintenance_manager_(
           std::make_shared<MaintenanceManager>(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -785,7 +792,7 @@ void MasterHost::InitHost() {
 }
 
 Status MasterHost::DoInit() {
-  // As master_main.cc, before the server is initialized: a SIGTERM while the master starts (a
+  // Before the server is initialized: a SIGTERM while the master starts (a
   // test restarting it) shuts it down rather than killing it with a stack trace. Only one
   // termination monitor may exist in a process, and an embedded master is stopped by its test.
   if (!embedded_) {
@@ -814,7 +821,7 @@ Status MasterHost::DoInit() {
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   WARN_NOT_OK(
-      master::YsqlInitDBAndMajorUpgradeHandler::CleanupStalePgUpgradeSocketDir(),
+      master::CleanupStalePgUpgradeSocketDir(),
       "Failed to clean up stale pg_upgrade socket directory");
 
   RegisterWebPages();
@@ -1082,7 +1089,6 @@ void MasterHost::StartHost() {
 }
 
 Status MasterHost::DoStart() {
-  // As master_main.cc does around Master::Start.
   if (!embedded_) {
     UlimitUtil::InitUlimits();
     LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
@@ -1158,7 +1164,7 @@ Status MasterHost::DoStart() {
   RETURN_NOT_OK(Thread::Create(
       "master_host", "pin_refresh", &MasterHost::RefreshHistoryRetentionPinLoop, this,
       &pin_refresh_thread_));
-  // Terminates the process past its memory limit, as in master_main.cc.
+  // Terminates the process past its memory limit.
   if (!embedded_) {
     total_mem_watcher_ = server::TotalMemWatcher::Create();
     RETURN_NOT_OK(Thread::Create(
@@ -1167,7 +1173,7 @@ Status MasterHost::DoStart() {
           total_mem_watcher_->MemoryMonitoringLoop([this] { termination_monitor_->Terminate(); });
         },
         &total_mem_watcher_thread_));
-    // As master_main.cc; an embedded master leaves call-home to its test.
+    // An embedded master leaves call-home to its test.
     call_home_ = std::make_unique<master::MasterCallHome>(this);
     call_home_->ScheduleCallHome();
   }

@@ -53,6 +53,11 @@ add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
     "--output_file_path" "${MASTER_FLAGS_METADATA_FILE}"
     "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
   BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
+# yb-master must keep every gflag of the C++ master it replaced (build-support/check_master_flags.py).
+add_custom_command(TARGET "${YB_MASTER_DYNAMIC_EXE_NAME}" POST_BUILD
+  COMMAND "${BUILD_SUPPORT_DIR}/check_master_flags.py"
+    "--baseline" "${YB_SRC_ROOT}/src/yb/master/master_flags_baseline.txt"
+    "--binary" "$<TARGET_FILE:${YB_MASTER_DYNAMIC_EXE_NAME}>")
 
 # Generate auto_flags.json
 set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)

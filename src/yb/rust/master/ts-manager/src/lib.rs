@@ -93,6 +93,10 @@ pub struct TsManagerOptions {
     /// `use_private_ip`: which of a tserver's addresses the leader calls, given this master's
     /// placement ([`TsManager::set_local_cloud_info`]).
     pub use_private_ip: fn() -> String,
+    /// `master_register_ts_check_desired_host_port`: a registering tserver collides with another
+    /// only on the address each would be called at, from this master's, the other tserver's or
+    /// its own placement; when false, on any shared private or broadcast address.
+    pub check_desired_host_port: fn() -> bool,
     /// `send_leader_blacklisted_tservers_on_heartbeat`.
     pub send_leader_blacklisted_tservers: fn() -> bool,
     /// `enable_db_history_retention_pins`.
@@ -135,6 +139,7 @@ impl Default for TsManagerOptions {
             metadata_min_time_left: || Duration::from_millis(7500),
             max_leader_lease_expired: || Duration::from_secs(120),
             use_private_ip: || "never".to_string(),
+            check_desired_host_port: || true,
             send_leader_blacklisted_tservers: || true,
             ysql_db_pins: || true,
             initial_registration_duration: || Duration::from_secs(60),

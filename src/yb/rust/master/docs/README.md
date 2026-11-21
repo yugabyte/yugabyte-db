@@ -2,8 +2,7 @@
 
 The Rust master replaces the C++ master in `src/yb/master` one layer at a time on the
 `feature-stack/hari-yb-master-rust` branch, and lands on main in one merge that also deletes the
-C++ master. `yb-master` is the Rust master; until the C++ master is deleted, the branch also builds
-it as `yb-master-cpp`, only for tests that ask for C++ masters (`YB_RUST_MASTER=0`).
+C++ master. `yb-master` is the Rust master.
 
 The sys-catalog tablet (Raft, WAL, DocDB) stays the shared C++ engine, hosted by
 `src/yb/master_host/`. Rust owns the master logic above it.

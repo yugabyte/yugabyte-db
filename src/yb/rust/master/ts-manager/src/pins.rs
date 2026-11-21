@@ -62,13 +62,36 @@ impl TsManager {
         req.ts_ysql_db_oldest_pinned_read_times
             .iter()
             .map(|(db, pin)| (*db, pin.db_level_oldest_read_time()))
-            .filter(|(_, pin)| *pin != INVALID_HYBRID_TIME)
+            // `HybridTime::ToPB` encodes an invalid time as 0.
+            .filter(|(_, pin)| *pin != INVALID_HYBRID_TIME && *pin != 0)
             .collect()
     }
 
     /// `TSManager::GetClusterYsqlDbPinsForPublishing`, at most [`CACHE_FOR`] old. A tserver that
     /// registers or becomes live invalidates it, so a map is never ready without its pins.
     pub fn cluster_ysql_pins(&self) -> Arc<ClusterYsqlPins> {
+        let aggregate = self.aggregate_ysql_pins();
+        // Without persisted registrations, a tserver that has not heartbeated this leader yet is
+        // unknown, so wait out the registration window after becoming leader. Checked on each call,
+        // as C++ does, so the flag and the clock take effect at once.
+        let since_ready = self
+            .leader_ready_at
+            .lock()
+            .unwrap()
+            .map_or(Duration::ZERO, |t| t.elapsed());
+        let window_passed = (self.options.persist_registry)()
+            || since_ready >= (self.options.initial_registration_duration)();
+        if aggregate.ready && !window_passed {
+            return Arc::new(ClusterYsqlPins {
+                pins: aggregate.pins.clone(),
+                ready: false,
+            });
+        }
+        aggregate
+    }
+
+    /// The pins of the live tservers, `ready` when each has reported its pins.
+    fn aggregate_ysql_pins(&self) -> Arc<ClusterYsqlPins> {
         let membership = self.membership.load(std::sync::atomic::Ordering::Acquire);
         let mut cache = self.pins_cache.lock().unwrap();
         if let Some((at, version, pins)) = cache.as_ref() {
@@ -95,16 +118,6 @@ impl TsManager {
                     .or_insert(*pin);
             }
         }
-        // Without persisted registrations, a tserver that has not heartbeated this leader yet is
-        // unknown, so wait out the registration window after becoming leader.
-        let since_ready = self
-            .leader_ready_at
-            .lock()
-            .unwrap()
-            .map_or(Duration::ZERO, |t| t.elapsed());
-        pins.ready = pins.ready
-            && ((self.options.persist_registry)()
-                || since_ready >= (self.options.initial_registration_duration)());
         let pins = Arc::new(pins);
         *cache = Some((Instant::now(), membership, pins.clone()));
         pins

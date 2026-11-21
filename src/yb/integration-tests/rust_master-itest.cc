@@ -10,16 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-// The Rust master (yb-master) in a quorum of C++ masters (yb-master-cpp). As a follower it joins, keeps the same
-// sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
-// restore, and answers the follower-servable RPCs. As the leader it serves the cluster, client and
-// heartbeat RPCs (src/yb/rust/master/docs/testing.md).
+// Quorums of Rust masters (yb-master) in external processes: a follower answers the
+// follower-servable RPCs and keeps its in-memory catalog equal to the sys catalog through DDL,
+// snapshots and a PITR restore; the leader serves the cluster, client and heartbeat RPCs and the web
+// pages (src/yb/rust/master/docs/testing.md). Mixed quorums of C++ and Rust masters are covered by
+// upgrade-tests/rust_master_upgrade_rollback-itest.cc, against the R-1 release's C++ masters.
 
 #include <algorithm>
 #include <map>
 #include <random>
-#include <regex>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -82,11 +81,8 @@ class RustMasterTest : public YBTest {
     opts.num_tablet_servers = 3;
     opts.replication_factor = 3;
     opts.enable_ysql = false;
-    // These tests start from a C++ quorum, whatever YB_RUST_MASTER says.
-    opts.rust_masters = RustMasters::kNone;
     cluster_ = std::make_unique<ExternalMiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
-    rust_master_exe_ = BinaryPath("yb-master");
     ASSERT_OK(cluster_->WaitForLeaderCommitTermAdvance());
     client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
@@ -99,19 +95,18 @@ class RustMasterTest : public YBTest {
     YBTest::TearDown();
   }
 
-  // Restarts a follower master as the Rust master, on its own data. Returns its index.
   // Executables next to yb-master in the build.
   std::string BinaryPath(const std::string& name) const {
     return JoinPathSegments(DirName(cluster_->master(0)->exe()), name);
   }
 
-  Result<size_t> RestartFollowerAsRust(
+  // Restarts a follower master on its own data with the extra flags. Returns its index.
+  Result<size_t> RestartFollower(
       const std::vector<std::pair<std::string, std::string>>& extra_flags = {}) {
     const auto leader = VERIFY_RESULT(cluster_->GetLeaderMasterIndex());
     const size_t index = (leader + 1) % cluster_->num_masters();
     auto* master = cluster_->master(index);
     master->Shutdown();
-    master->SetExe(rust_master_exe_);
     for (const auto& [flag, value] : extra_flags) {
       master->AddExtraFlag(flag, value);
     }
@@ -167,7 +162,7 @@ class RustMasterTest : public YBTest {
   }
 
   // Creates YCQL keyspaces, tables, an index, a snapshot schedule, schema changes and a PITR
-  // restore through the C++ leader.
+  // restore through the leader.
   void RunWorkload() {
     client::TableHandle table;
     client::kv_table_test::CreateTable(
@@ -400,11 +395,11 @@ class RustMasterTest : public YBTest {
 
   std::unique_ptr<ExternalMiniCluster> cluster_;
   std::unique_ptr<client::YBClient> client_;
-  std::string rust_master_exe_;
 };
 
-TEST_F(RustMasterTest, FollowerKeepsSameCatalog) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
+// A follower answers the follower-servable RPCs and sends leader-only ones to the leader.
+TEST_F(RustMasterTest, FollowerServesRpcs) {
+  const auto rust_index = ASSERT_RESULT(RestartFollower());
   auto* rust_master = cluster_->master(rust_index);
 
   ASSERT_NO_FATALS(RunWorkload());
@@ -437,7 +432,7 @@ TEST_F(RustMasterTest, FollowerKeepsSameCatalog) {
     ASSERT_OK(proxy.ListTables(req, &resp, &controller));
     ASSERT_EQ(resp.error().code(), master::MasterErrorPB::NOT_THE_LEADER);
   }
-  // The C++ leader sees it as a healthy peer.
+  // The leader sees it as a healthy peer.
   {
     auto proxy = cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>();
     master::ListMastersRequestPB req;
@@ -455,30 +450,10 @@ TEST_F(RustMasterTest, FollowerKeepsSameCatalog) {
     }
     ASSERT_TRUE(found);
   }
-
-  // Same sys catalog, row for row, as a C++ follower.
-  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
-  size_t cpp_follower_index = 0;
-  while (cpp_follower_index == leader_index || cpp_follower_index == rust_index) {
-    ++cpp_follower_index;
-  }
-  auto* cpp_follower = cluster_->master(cpp_follower_index);
-  cluster_->Shutdown();
-  const auto rust_rows = ASSERT_RESULT(DumpRows(rust_master));
-  const auto cpp_rows = ASSERT_RESULT(DumpRows(cpp_follower));
-  ASSERT_EQ(rust_rows, cpp_rows);
-
-  faststring rust_flags, cpp_flags;
-  const auto auto_flags_path = [](ExternalMaster* master) {
-    return JoinPathSegments(master->GetDataDirs()[0], "auto_flags_config");
-  };
-  ASSERT_OK(ReadFileToString(Env::Default(), auto_flags_path(rust_master), &rust_flags));
-  ASSERT_OK(ReadFileToString(Env::Default(), auto_flags_path(cpp_follower), &cpp_flags));
-  ASSERT_EQ(rust_flags.ToString(), cpp_flags.ToString());
 }
 
 TEST_F(RustMasterTest, AddedThroughRemoteBootstrap) {
-  auto new_master = ASSERT_RESULT(cluster_->StartShellMaster(rust_master_exe_));
+  auto new_master = ASSERT_RESULT(cluster_->StartShellMaster());
   ASSERT_OK(WaitForRole(new_master.get(), PeerRole::NON_PARTICIPANT));
 
   ASSERT_OK(cluster_->ChangeConfig(new_master, consensus::ADD_SERVER));
@@ -503,70 +478,8 @@ TEST_F(RustMasterTest, AddedThroughRemoteBootstrap) {
   ASSERT_OK(WaitForRole(new_master.get(), PeerRole::NON_PARTICIPANT));
 }
 
-namespace {
-
-// A page without what differs between two fetches: uptimes and the footer, which has each
-// binary's build time.
-std::string ComparablePage(const std::string& page) {
-  static const std::regex kUptime("<td> [^<]*[0-9]+:[0-9]{2}:[0-9]{2}</td>");
-  return std::regex_replace(page.substr(0, page.find("<footer")), kUptime, "<td>uptime</td>");
-}
-
-// A JSON page as comparable text: object keys sorted, arrays sorted (most C++ pages list unordered
-// maps), and the values that change between fetches masked. A page that is not one JSON document
-// (an error page the handler left unterminated) stays as it is.
-std::string CanonicalJson(const rapidjson::Value& value) {
-  static const std::set<std::string> kVolatile = {
-      "time_since_hb", "time_since_hb_sec", "uptime_seconds", "ram_used", "ram_used_bytes",
-      "num_sst_files", "total_sst_file_size", "total_sst_file_size_bytes",
-      "uncompressed_sst_file_size", "uncompressed_sst_file_size_bytes", "path_metrics",
-      "read_ops_per_sec", "write_ops_per_sec", "most_recent_uptime", "on_disk_size",
-      "lease_info", "Tasks", "reason"};
-  if (value.IsObject()) {
-    std::map<std::string, std::string> members;
-    for (const auto& member : value.GetObject()) {
-      std::string key(member.name.GetString(), member.name.GetStringLength());
-      members[key] = kVolatile.contains(key) ? "*" : CanonicalJson(member.value);
-    }
-    std::string result = "{";
-    for (const auto& [key, member] : members) {
-      result += Format("\"$0\":$1,", key, member);
-    }
-    return result + "}";
-  }
-  if (value.IsArray()) {
-    std::vector<std::string> elements;
-    for (const auto& element : value.GetArray()) {
-      elements.push_back(CanonicalJson(element));
-    }
-    std::sort(elements.begin(), elements.end());
-    return "[" + JoinStrings(elements, ",") + "]";
-  }
-  if (value.IsString()) {
-    return Format("\"$0\"", std::string(value.GetString(), value.GetStringLength()));
-  }
-  if (value.IsBool()) {
-    return value.GetBool() ? "true" : "false";
-  }
-  if (value.IsNull()) {
-    return "null";
-  }
-  if (value.IsDouble()) {
-    return Format("$0", value.GetDouble());
-  }
-  return Format("$0", value.IsInt64() ? value.GetInt64() : static_cast<int64_t>(value.GetUint64()));
-}
-
-std::string CanonicalPage(const std::string& page) {
-  rapidjson::Document doc;
-  doc.Parse(page.c_str(), page.size());
-  return doc.HasParseError() ? page : CanonicalJson(doc);
-}
-
-}  // namespace
-
-// A Rust leader serves the leader JSON pages as the C++ leader does.
-TEST_F(RustMasterTest, RustLeaderServesWebJson) {
+// The leader serves its JSON pages, and the UI at the old page URLs.
+TEST_F(RustMasterTest, LeaderServesWebJson) {
   client::TableHandle table;
   client::kv_table_test::CreateTable(
       client::Transactional::kTrue, /* num_tablets= */ 3, client_.get(), &table);
@@ -574,59 +487,15 @@ TEST_F(RustMasterTest, RustLeaderServesWebJson) {
   client::kv_table_test::CreateIndex(
       client::Transactional::kTrue, /* indexed_column_index= */ 1,
       /* use_mangled_names= */ false, table, client_.get(), &index);
-  const std::vector<std::string> paths = {
-      "/api/v1/tablet-servers", "/api/v1/health-check",
-      "/api/v1/health-check?tserver_death_interval_msecs=1000", "/api/v1/tablet-replication",
-      "/api/v1/tablet-under-replication", "/dump-entities", "/api/v1/namespaces",
-      "/api/v1/tables", "/api/v1/tables?only_user_tables=true", "/api/v1/cluster-config",
-      "/api/v1/xcluster", "/api/v1/stateful-services", "/api/v1/table",
-      "/api/v1/table?id=" + table->id(), "/api/v1/table?id=" + index->id(),
-      "/api/v1/table?id=no-such-table",
-      Format("/api/v1/table?keyspace_name=$0&table_name=$1", table.name().namespace_name(),
-             table.name().table_name()),
-      Format("/api/v1/table?keyspace_name=$0&table_name=$1&keyspace_type=foo",
-             table.name().namespace_name(), table.name().table_name())};
-
-  auto* cpp_leader = cluster_->master(ASSERT_RESULT(cluster_->GetLeaderMasterIndex()));
-  ASSERT_OK(WaitForLeaders(cpp_leader, table.name(), 3));
-  // The backfill alters the indexed table at each step; the pages list it again once it is
-  // RUNNING.
+  auto* rust_master = cluster_->master(ASSERT_RESULT(cluster_->GetLeaderMasterIndex()));
+  ASSERT_OK(WaitForLeaders(rust_master, table.name(), 3));
   ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
       table.name(), index.name(), IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return VERIFY_RESULT(FetchPage(cpp_leader, "/api/v1/table?id=" + table->id()))
-            .contains("\"table_state\":\"Running\"");
-      },
-      kTimeout, "the indexed table to be running"));
-  std::map<std::string, std::string> cpp_pages;
-  for (const auto& path : paths) {
-    cpp_pages[path] = CanonicalPage(ASSERT_RESULT(FetchPage(cpp_leader, path)));
-  }
-
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
-  auto* rust_master = cluster_->master(rust_index);
-  ASSERT_OK(WaitForMastersToCatchUp());
-  ASSERT_OK(TransferLeadershipTo(rust_master));
-  ASSERT_OK(WaitForLeaders(rust_master, table.name(), 3));
-
-  // The Rust leader hears from every tserver within a few heartbeats.
-  for (const auto& path : paths) {
-    SCOPED_TRACE(path);
-    std::string rust_page;
-    // On a timeout, the assertion below shows the difference.
-    WARN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          rust_page = CanonicalPage(VERIFY_RESULT(FetchPage(rust_master, path)));
-          return rust_page == cpp_pages[path];
-        },
-        kTimeout, "the Rust leader's page to match the C++ leader's"), "Pages differ");
-    ASSERT_EQ(rust_page, cpp_pages[path]);
-  }
-
-  // Pages only a Rust leader serves.
   for (const auto* path :
-       {"/api/v1/overview", "/api/v1/load-distribution", "/api/v1/tasks",
+       {"/api/v1/tablet-servers", "/api/v1/health-check", "/api/v1/tablet-replication",
+        "/api/v1/tablet-under-replication", "/api/v1/namespaces", "/api/v1/tables",
+        "/api/v1/cluster-config", "/api/v1/xcluster", "/api/v1/stateful-services",
+        "/api/v1/overview", "/api/v1/load-distribution", "/api/v1/tasks",
         "/api/v1/tablet-server-clocks"}) {
     SCOPED_TRACE(path);
     const auto page = ASSERT_RESULT(FetchPage(rust_master, path));
@@ -645,49 +514,26 @@ TEST_F(RustMasterTest, RustLeaderServesWebJson) {
   ASSERT_OK(FetchPage(rust_master, "/ObjectLockManager"));
 }
 
-// The Rust master serves the web port; the pages are those a C++ follower serves.
+// A follower serves the web port: its own pages, and the leader's pages fetched from the leader.
 TEST_F(RustMasterTest, WebPages) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
-  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  const auto rust_index = ASSERT_RESULT(RestartFollower());
   auto* rust_master = cluster_->master(rust_index);
-  auto* cpp_follower = cluster_->master(3 - rust_index - leader_index);
   client::TableHandle table;
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, /* num_tablets= */ 1, client_.get(), &table);
 
-  // Served by both followers from the master list, or fetched from the leader.
+  // Served from the master list, or fetched from the leader.
   for (const auto& path : {
            "/api/v1/masters"s, "/api/v1/version"s, "/api/v1/tables"s, "/api/v1/namespaces"s,
            "/dump-entities"s, "/"s, "/tables"s}) {
     SCOPED_TRACE(path);
-    auto rust_page = FetchPage(rust_master, path);
-    auto cpp_page = FetchPage(cpp_follower, path);
-    ASSERT_OK(rust_page);
-    ASSERT_OK(cpp_page);
-    // With the web UI built in (yb_build.sh --build-master-ui), every master serves it at the
-    // page URLs; without it a follower fetches the leader's page.
-    if (!path.starts_with("/api") && !path.starts_with("/dump") &&
-        rust_page->contains("/ui/assets/")) {
-      continue;
-    }
-    ASSERT_EQ(ComparablePage(*rust_page), ComparablePage(*cpp_page));
+    ASSERT_OK(FetchPage(rust_master, path));
   }
 
   // Each master shows itself in bold.
-  auto unbold = [](std::string page) {
-    for (const auto& tag : {"<b>"s, "</b>"s}) {
-      for (auto pos = page.find(tag); pos != std::string::npos; pos = page.find(tag, pos)) {
-        page.erase(pos, tag.size());
-      }
-    }
-    return page;
-  };
-  const auto rust_masters = ASSERT_RESULT(FetchPage(rust_master, "/masters"));
   ASSERT_STR_CONTAINS(
-      rust_masters, Format("<b><a href=\"http://localhost:$0/\">", rust_master->http_port()));
-  ASSERT_EQ(
-      ComparablePage(unbold(rust_masters)),
-      ComparablePage(unbold(ASSERT_RESULT(FetchPage(cpp_follower, "/masters")))));
+      ASSERT_RESULT(FetchPage(rust_master, "/masters")),
+      Format("<b><a href=\"http://localhost:$0/\">", rust_master->http_port()));
 
   // Heartbeat times differ between fetches.
   ASSERT_STR_CONTAINS(
@@ -720,7 +566,7 @@ TEST_F(RustMasterTest, WebServerAuthAndRedirect) {
       {"/bin/sh", "-c", "printf %s 'admin:yb-realm:secret' | md5sum | cut -d' ' -f1"}, &ha1));
   StripTrailingWhitespace(&ha1);
   ASSERT_OK(WriteStringToFile(Env::Default(), "admin:yb-realm:" + ha1 + "\n", password_file));
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+  const auto rust_index = ASSERT_RESULT(RestartFollower({
       {"webserver_interface", "127.0.0.2"},
       {"webserver_certificate_file", JoinPathSegments(certs_dir, "node.127.0.0.2.crt")},
       {"webserver_private_key_file", JoinPathSegments(certs_dir, "node.127.0.0.2.key")},
@@ -758,7 +604,7 @@ TEST_F(RustMasterTest, WebServerAuthAndRedirect) {
 // The Rust master serves HTTPS with the C++ web server's TLS flags.
 TEST_F(RustMasterTest, WebServerHttps) {
   const auto certs_dir = GetCertsDir();
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+  const auto rust_index = ASSERT_RESULT(RestartFollower({
       {"webserver_interface", "127.0.0.2"},
       {"webserver_certificate_file", JoinPathSegments(certs_dir, "node.127.0.0.2.crt")},
       {"webserver_private_key_file", JoinPathSegments(certs_dir, "node.127.0.0.2.key")},
@@ -773,7 +619,7 @@ TEST_F(RustMasterTest, WebServerHttps) {
   faststring buf;
   ASSERT_OK(curl.FetchURL(url + "/api/v1/version", &buf));
   ASSERT_STR_CONTAINS(ToLowerCase(buf.ToString()), "strict-transport-security: max-age=31536000");
-  // Fetched from the C++ leader, which serves HTTP.
+  // Fetched from the leader, which serves HTTP.
   ASSERT_OK(curl.FetchURL(url + "/api/v1/tables", &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "\"tables\"");
 
@@ -786,11 +632,10 @@ TEST_F(RustMasterTest, WebServerHttps) {
   ASSERT_EQ(registration.registration().http_addresses(0).host(), "127.0.0.2");
 }
 
-// master-tserver-sim registers fake tservers with the leader of a quorum that has a Rust
-// follower. Only registration and heartbeats: fake replicas cannot share Raft groups with the
-// cluster's real tservers, so the run creates no tables.
+// master-tserver-sim registers fake tservers with the leader. Only registration and heartbeats:
+// fake replicas cannot share Raft groups with the cluster's real tservers, so the run creates no
+// tables.
 TEST_F(RustMasterTest, TserverSimulator) {
-  ASSERT_RESULT(RestartFollowerAsRust());
   constexpr int kFakeTservers = 10;
   std::string output;
   ASSERT_OK(Subprocess::Call(
@@ -807,11 +652,10 @@ TEST_F(RustMasterTest, TserverSimulator) {
   ASSERT_EQ(tservers.size(), cluster_->num_tablet_servers() + kFakeTservers);
 }
 
-// The Rust follower's in-memory catalog, built from the apply stream, equals the C++ leader's sys
-// catalog row for row after randomized DDL, a snapshot schedule and a PITR restore (which reloads
-// the catalog).
+// A follower's in-memory catalog, built from the apply stream, equals the leader's sys catalog row
+// for row after randomized DDL, a snapshot schedule and a PITR restore (which reloads the catalog).
 TEST_F(RustMasterTest, FollowerCatalogMatchesRandomWorkload) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
+  const auto rust_index = ASSERT_RESULT(RestartFollower(
       {{"rust_master_catalog_self_check_interval_ms", "1000"}}));
   auto* rust_master = cluster_->master(rust_index);
 
@@ -842,13 +686,13 @@ TEST_F(RustMasterTest, FollowerCatalogMatchesRandomWorkload) {
   ASSERT_EQ(ASSERT_RESULT(DumpRows(rust_master)), leader_rows);
 }
 
-// With leadership allowed, the Rust master leads and serves the core cluster, client and heartbeat
-// RPCs to real tservers; its writes read back the same on C++ masters after a failback.
+// A master that takes over leadership serves the core cluster, client and heartbeat RPCs to real
+// tservers.
 TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
   client::TableHandle table;
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, /* num_tablets= */ 3, client_.get(), &table);
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
+  const auto rust_index = ASSERT_RESULT(RestartFollower());
   auto* rust_master = cluster_->master(rust_index);
   ASSERT_OK(WaitForMastersToCatchUp());
   ASSERT_OK(TransferLeadershipTo(rust_master));
@@ -893,7 +737,6 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
   }
 
   // A cluster config change through the Rust leader.
-  int32_t new_version;
   {
     auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(rust_master);
     master::GetMasterClusterConfigRequestPB get_req;
@@ -911,7 +754,6 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
     controller.Reset();
     ASSERT_OK(proxy.ChangeMasterClusterConfig(req, &resp, &controller));
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
-    new_version = get_resp.cluster_config().version() + 1;
   }
 
   // The catalog writer's metrics, registered from Rust, are in the server's metric entity.
@@ -940,31 +782,10 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_SUPPORTED)
         << resp.ShortDebugString();
   }
-
-  // The tservers keep serving through the Rust leader; then fail back to C++.
-  const auto leader_index = (rust_index + 1) % cluster_->num_masters();
-  auto* cpp_master = cluster_->master(leader_index);
-  ASSERT_OK(TransferLeadershipTo(cpp_master));
-  ASSERT_OK(WaitForLeaders(cpp_master, table.name(), 3));
-  {
-    auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(cpp_master);
-    master::GetMasterClusterConfigRequestPB req;
-    master::GetMasterClusterConfigResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(10s);
-    ASSERT_OK(proxy.GetMasterClusterConfig(req, &resp, &controller));
-    ASSERT_EQ(resp.cluster_config().version(), new_version);
-    ASSERT_EQ(resp.cluster_config().server_blacklist().hosts_size(), 1);
-  }
-
-  ASSERT_OK(WaitForMastersToCatchUp());
-  cluster_->Shutdown();
-  const auto cpp_rows = ASSERT_RESULT(DumpRows(cpp_master));
-  ASSERT_EQ(ASSERT_RESULT(DumpRows(rust_master)), cpp_rows);
 }
 
-// Two Rust masters: the leader pushes locations and tservers to the other, which serves them
-// right after a failover, before any tserver reports to it.
+// The leader pushes locations and tservers to the followers, which serve them right after a
+// failover, before any tserver reports to them.
 TEST_F(RustMasterTest, WarmFailover) {
   client::TableHandle table;
   client::kv_table_test::CreateTable(
@@ -972,15 +793,9 @@ TEST_F(RustMasterTest, WarmFailover) {
   const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
   std::vector<ExternalMaster*> rust_masters;
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    if (i == leader_index) {
-      continue;
+    if (i != leader_index) {
+      rust_masters.push_back(cluster_->master(i));
     }
-    auto* master = cluster_->master(i);
-    master->Shutdown();
-    master->SetExe(rust_master_exe_);
-    ASSERT_OK(master->Restart());
-    ASSERT_OK(WaitForRole(master, PeerRole::FOLLOWER));
-    rust_masters.push_back(master);
   }
   ASSERT_OK(WaitForMastersToCatchUp());
   ASSERT_OK(TransferLeadershipTo(rust_masters[0]));
@@ -1014,7 +829,7 @@ TEST_F(RustMasterTest, WarmFailover) {
 // Tservers echo the version of the live tserver list they hold, and the Rust leader answers
 // "unchanged" instead of the list until membership changes.
 TEST_F(RustMasterTest, LiveTserverListVersion) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+  const auto rust_index = ASSERT_RESULT(RestartFollower({
       {"tserver_unresponsive_timeout_ms", "5000"},
   }));
   auto* rust_master = cluster_->master(rust_index);
@@ -1045,16 +860,12 @@ TEST_F(RustMasterTest, LiveTserverListVersion) {
       kTimeout, "the remaining tservers to hold the new list"));
 }
 
-// A master removed while a Rust master leads is told to go back to shell mode
-// (SysCatalogTable's InformRemovedMaster, through the host).
+// A removed master is told to go back to shell mode (SysCatalogTable's InformRemovedMaster,
+// through the host).
 TEST_F(RustMasterTest, RustLeaderInformsRemovedMaster) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
-  auto* rust_master = cluster_->master(rust_index);
-  ASSERT_OK(WaitForMastersToCatchUp());
-  ASSERT_OK(TransferLeadershipTo(rust_master));
   ASSERT_OK(WaitForLeaderReady());
-
-  ExternalMasterPtr removed = cluster_->master((rust_index + 1) % cluster_->num_masters());
+  const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  ExternalMasterPtr removed = cluster_->master((leader_index + 1) % cluster_->num_masters());
   ASSERT_OK(cluster_->ChangeConfig(removed, consensus::REMOVE_SERVER));
   ASSERT_OK(WaitForRole(removed.get(), PeerRole::NON_PARTICIPANT));
 }
@@ -1143,42 +954,17 @@ Result<std::map<std::string, std::string>> DefaultRows(
 
 }  // namespace
 
-// A quorum of Rust masters creates a universe with the same default rows as C++ masters: the
-// system namespaces and tables with their tablets, the default role and the configs.
-TEST_F(RustMasterTest, CreatesUniverseLikeCpp) {
-  client_.reset();
-  cluster_->Shutdown();
-  auto new_cluster = [this](RustMasters rust_masters) -> Status {
-    ExternalMiniClusterOptions opts;
-    opts.num_masters = 3;
-    opts.num_tablet_servers = 0;
-    opts.replication_factor = 3;
-    opts.enable_ysql = false;
-    opts.rust_masters = rust_masters;
-    opts.cluster_id = Format("cluster-$0", ToString(rust_masters));
-    cluster_ = std::make_unique<ExternalMiniCluster>(opts);
-    return cluster_->Start();
-  };
-
-  // The C++ masters' rows, as a Rust follower holds them.
-  ASSERT_OK(new_cluster(RustMasters::kNone));
-  ASSERT_OK(WaitForLeaderReady());
-  const auto follower = ASSERT_RESULT(RestartFollowerAsRust());
-  ASSERT_OK(DumpLoadedCatalog(cluster_->master(follower)));
-  const auto cpp_rows = ASSERT_RESULT(DefaultRows(
-      ASSERT_RESULT(DumpQuietCatalog(cluster_->master(follower)))));
-  cluster_->Shutdown();
-
-  ASSERT_OK(new_cluster(RustMasters::kAll));
+// A quorum of Rust masters creates a universe with the default rows: the system namespaces and
+// tables with their tablets, the default role and the configs, written once through Raft.
+TEST_F(RustMasterTest, CreatesUniverse) {
   ASSERT_OK(WaitForLeaderReady());
   const auto leader = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
   ASSERT_OK(WaitForMastersToCatchUp());
   const auto leader_catalog = ASSERT_RESULT(DumpLoadedCatalog(cluster_->master(leader)));
   const auto rust_rows = ASSERT_RESULT(DefaultRows(leader_catalog));
   ASSERT_EQ(rust_rows.size(), 3 + 3 + 2 * 17 + 4);
-  ASSERT_EQ(rust_rows, cpp_rows);
 
-  // Written once, through Raft: every master holds the same rows.
+  // Every master holds the same rows.
   for (size_t i = 0; i < cluster_->num_masters(); ++i) {
     ASSERT_OK(DumpLoadedCatalog(cluster_->master(i)));
     const auto catalog = ASSERT_RESULT(DumpQuietCatalog(cluster_->master(i)));

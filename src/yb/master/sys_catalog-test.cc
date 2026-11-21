@@ -41,10 +41,10 @@
 #include "yb/gutil/stl_util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/sys_catalog-test_base.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -98,11 +98,9 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
-  auto master = mini_master->master();
-  ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  SysClusterConfigEntryPB config =
-      ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
+  SysClusterConfigEntryPB config = ASSERT_RESULT(GetClusterConfig(*mini_master));
 
   // Verify that the cluster uuid was set in the config.
   ASSERT_EQ(FLAGS_cluster_uuid, config.cluster_uuid());
@@ -116,10 +114,9 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
       std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort(), 0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = "";
   ASSERT_OK(mini_master->Start());
-  master = mini_master->master();
-  ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(mini_master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  config = ASSERT_RESULT(master->catalog_manager()->GetClusterConfig());
+  config = ASSERT_RESULT(GetClusterConfig(*mini_master));
 
   // Check that the cluster_uuid was set.
   ASSERT_FALSE(config.cluster_uuid().empty());
@@ -180,7 +177,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 // Test the sys-catalog tablets basic operations (add, update, delete, visit)
 TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   scoped_refptr<TableInfo> table(
-      master_->catalog_manager()->NewTableInfo("abc", /* colocated */ false));
+      make_scoped_refptr<TableInfo>("abc", /* colocated */ false));
   // This leaves all three in StartMutation.
   TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
   TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
@@ -333,14 +330,15 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   ASSERT_TRUE(loader->config_info);
   ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
-  // Test data through the CatalogManager API.
-
-  // Get the config from the CatalogManager and test it is the default, as we didn't use the
-  // CatalogManager to update it.
+  // Test data through the master API. The leader's catalog follows the sys catalog tablet, so it
+  // returns the config written directly above.
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
+      ASSERT_RESULT(GetClusterConfig());
   ASSERT_EQ(config.version(), 0);
-  ASSERT_EQ(config.replication_info().live_replicas().placement_blocks_size(), 0);
+  ASSERT_EQ(config.replication_info().live_replicas().placement_blocks_size(), 1);
+  ASSERT_EQ(
+      config.replication_info().live_replicas().placement_blocks(0).cloud_info().placement_cloud(),
+      "cloud2");
 
   // Update a field in the previously used in memory state and set through proper API.
   {
@@ -374,7 +372,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   // Confirm the in memory state does not match the config we get from the CatalogManager API, due
   // to version mismatch.
-  config = ASSERT_RESULT(master_->catalog_manager()->GetClusterConfig());
+  config = ASSERT_RESULT(GetClusterConfig());
   {
     auto l = config_info->LockForRead();
     ASSERT_FALSE(PbEquals(l->pb, config));
@@ -452,102 +450,6 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemNamespaces, loader->namespaces.size());
-}
-
-// Test the sys-catalog redis config basic operations (add, visit, drop)
-TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
-  unique_ptr<TestRedisConfigLoader> loader(new TestRedisConfigLoader());
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-
-  // Set redis config information
-  SysRedisConfigEntryPB config_entry;
-  config_entry.set_key("key1");
-  config_entry.add_args("value1.1");
-  config_entry.add_args("value1.2");
-
-  // 1. CHECK Add entry
-  scoped_refptr<RedisConfigInfo> rci = new RedisConfigInfo("key1");
-  {
-    auto l = rci->LockForWrite();
-    l.mutable_data()->pb = std::move(config_entry);
-    // Add the redis config
-    ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, rci));
-    l.Commit();
-  }
-
-  // Verify it showed up.
-  loader->Reset();
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-  // The default config is empty
-  ASSERT_EQ(1, loader->config_entries.size());
-  ASSERT_METADATA_EQ(rci.get(), loader->config_entries[0]);
-
-  // Update the same config.
-  SysRedisConfigEntryPB* metadata;
-  rci->mutable_metadata()->StartMutation();
-  metadata = &rci->mutable_metadata()->mutable_dirty()->pb;
-
-  metadata->clear_args();
-  metadata->add_args("value1b");
-
-  ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, rci));
-  rci->mutable_metadata()->CommitMutation();
-
-  // Verify config entries.
-  loader->Reset();
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-  //  The default config is empty.
-  ASSERT_EQ(1, loader->config_entries.size());
-  ASSERT_METADATA_EQ(rci.get(), loader->config_entries[0]);
-
-  // Add another key
-  {
-    // Set redis config information
-    SysRedisConfigEntryPB config_entry;
-    config_entry.set_key("key2");
-    config_entry.add_args("value2.1");
-    config_entry.add_args("value2.2");
-
-    // 1. CHECK Add entry
-    scoped_refptr<RedisConfigInfo> rci2 = new RedisConfigInfo("key2");
-    {
-      auto l = rci2->LockForWrite();
-      l.mutable_data()->pb = std::move(config_entry);
-      // Add the redis config
-      ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, rci2));
-      l.Commit();
-    }
-
-    // Verify it showed up.
-    loader->Reset();
-    ASSERT_OK(sys_catalog_->Visit(loader.get()));
-    // The default config is empty
-    ASSERT_EQ(2, loader->config_entries.size());
-    ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
-
-    // 2. CHECK DELETE RedisConfig
-    {
-      auto l = rci2->LockForWrite();
-      ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
-      l.Commit();
-    }
-
-    // Verify the result.
-    loader->Reset();
-    ASSERT_OK(sys_catalog_->Visit(loader.get()));
-    ASSERT_EQ(1, loader->config_entries.size());
-  }
-  // 2. CHECK DELETE RedisConfig
-  {
-    auto l = rci->LockForWrite();
-    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
-    l.Commit();
-  }
-
-  // Verify the result.
-  loader->Reset();
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-  ASSERT_EQ(0, loader->config_entries.size());
 }
 
 // Test the sys-catalog sys-config basic operations (add, visit, drop).
@@ -752,161 +654,20 @@ TEST_F(SysCatalogTest, TestOrphanedTabletsDeleted) {
   auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
   ASSERT_OK(sys_catalog_->Upsert(epoch, table, tablets));
 
-  // Restart the cluster and wait for the background task to set the tablet's in-memory and
-  // persisted states to DELETED.
+  // Restart the cluster and wait for the background task to set the tablets' persisted states to
+  // DELETED.
   ASSERT_OK(RestartMaster());
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     TestTabletLoader loader;
     RETURN_NOT_OK(sys_catalog_->Visit(&loader));
     for (auto& p : state_to_id) {
-      auto in_mem_tablet =
-          VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(p.second /* tablet_id */));
       const auto& persisted_tablet = loader.tablets[p.second /* tablet_id */];
-
-      if ((in_mem_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED) ||
-          (persisted_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED)) {
+      if (persisted_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED) {
         return false;
       }
     }
     return true;
-  }, 10s * kTimeMultiplier, "Wait for tablet to be deleted in memory and on disk."));
-}
-
-// If a tablet's table_ids does not contain the primary table, it should be migrated.
-TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
-  TestTabletLoader loader;
-  const string table_id = "123";
-  const string tablet_id = "456";
-
-  auto table = CreateUncommittedTable(table_id, SysTablesEntryPB::RUNNING);
-  auto tablet = CreateUncommittedTablet(table.get(), tablet_id);
-  tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
-  tablet->mutable_metadata()->mutable_dirty()->pb.clear_table_ids();
-  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
-  ASSERT_OK(sys_catalog_->Upsert(epoch, table, tablet));
-
-  // Restart the cluster and wait for the background task to update the tablet's in-memory and
-  // persisted table_ids field to be non-empty.
-  ASSERT_OK(RestartMaster());
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    TestTabletLoader loader;
-    RETURN_NOT_OK(sys_catalog_->Visit(&loader));
-    auto in_mem_tablet = VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(tablet_id));
-    const auto& persisted_tablet = loader.tablets[tablet_id];
-
-    if ((in_mem_tablet->LockForRead()->pb.table_ids_size() != 1) ||
-        (in_mem_tablet->LockForRead()->pb.table_ids(0) != table_id) ||
-        (persisted_tablet->LockForRead()->pb.table_ids_size() != 1) ||
-        (persisted_tablet->LockForRead()->pb.table_ids(0) != table_id)) {
-      return false;
-    }
-    return true;
-  }, 10s * kTimeMultiplier, "Wait for table_ids field to be updated in memory and on disk."));
-}
-
-// Test the tasks tracker in catalog manager.
-TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
-  // Configure number of tasks flag and keep time flag.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 100;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_keep_time_multiplier) = 100;
-
-  unique_ptr<TestTableLoader> loader(new TestTableLoader());
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-  ASSERT_EQ(kNumSystemTables, loader->tables.size());
-
-  // Create new table.
-  const std::string table_id = "abc";
-  scoped_refptr<TableInfo> table = CreateUncommittedTable(table_id);
-  // Add the table.
-  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
-  ASSERT_OK(sys_catalog_->Upsert(epoch, table));
-  table->mutable_metadata()->CommitMutation();
-
-  // Verify it showed up.
-  loader->Reset();
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-
-  ASSERT_EQ(1 + kNumSystemTables, loader->tables.size());
-  ASSERT_METADATA_EQ(table.get(), loader->tables[table_id]);
-
-  // Add tasks to the table (more than can fit in the cbuf).
-  for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
-    auto tablet = std::make_shared<TabletInfo>(table, kSysCatalogTableId);
-    auto task = std::make_shared<AsyncTruncate>(
-        master_, master_->catalog_manager()->AsyncTaskPool(), tablet, epoch);
-    table->AddTask(task);
-  }
-
-  // Verify initial cbuf size is correct.
-  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), FLAGS_tasks_tracker_num_tasks);
-
-  // Wait for background task to run (length of two wait intervals).
-  usleep(2 * (1000 * FLAGS_catalog_manager_bg_task_wait_ms));
-
-  // Verify that tasks were not cleaned up.
-  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), FLAGS_tasks_tracker_num_tasks);
-
-  // Set keep time flag to small multiple of the wait interval.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_keep_time_multiplier) = 1;
-
-  // Wait for background task to run (length of two wait intervals).
-  usleep(2 * (1000 * FLAGS_catalog_manager_bg_task_wait_ms));
-
-  // Verify that tasks were cleaned up.
-  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), 0);
-
-  // Cleanup tasks.
-  table->AbortTasksAndClose(/* call_task_finisher */ true);
-}
-
-// Test migration of the TableInfo namespace_name field.
-TEST_F(SysCatalogTest, TestNamespaceNameMigration) {
-  // First create a new namespace to add our table to.
-  unique_ptr<TestNamespaceLoader> ns_loader(new TestNamespaceLoader());
-  ASSERT_OK(sys_catalog_->Visit(ns_loader.get()));
-  ASSERT_EQ(kNumSystemNamespaces, ns_loader->namespaces.size());
-
-  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
-  scoped_refptr<NamespaceInfo> ns(
-      new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf", /*tasks_tracker=*/nullptr));
-  {
-    auto l = ns->LockForWrite();
-    l.mutable_data()->pb.set_name("test_ns");
-    ASSERT_OK(sys_catalog_->Upsert(epoch, ns));
-    l.Commit();
-  }
-
-  // Now create a new table and add it to that namespace.
-  unique_ptr<TestTableLoader> loader(new TestTableLoader());
-  ASSERT_OK(sys_catalog_->Visit(loader.get()));
-  ASSERT_EQ(kNumSystemTables, loader->tables.size());
-  const std::string table_id = "testtableid";
-  scoped_refptr<TableInfo> table = CreateUncommittedTable(table_id);
-
-  // Only set the namespace id and clear the namespace name for this table.
-  {
-    auto* metadata = &table->mutable_metadata()->mutable_dirty()->pb;
-    metadata->clear_namespace_name();
-    metadata->set_namespace_id(ns->id());
-  }
-
-  // Add the table.
-  ASSERT_OK(sys_catalog_->Upsert(epoch, table));
-  table->mutable_metadata()->CommitMutation();
-
-  // Restart the cluster and wait for the background task to update the persistent state of the
-  // table's namespace_name.
-  ASSERT_OK(RestartMaster());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        loader->Reset();
-        RETURN_NOT_OK(sys_catalog_->Visit(loader.get()));
-        auto in_mem_ns_name = master_->catalog_manager()->GetTableInfo(table_id)->namespace_name();
-        auto persisted_ns_name = loader->tables[table_id]->LockForRead()->namespace_name();
-        return !in_mem_ns_name.empty() && in_mem_ns_name == ns->name() &&
-               !persisted_ns_name.empty() && persisted_ns_name == ns->name();
-      },
-      10s * kTimeMultiplier, "Wait for table's namespace_name to be set in memory and on disk."));
+  }, 10s * kTimeMultiplier, "Wait for tablet to be deleted on disk."));
 }
 
 TEST_F(SysCatalogTest, TestTabletMemTracker) {

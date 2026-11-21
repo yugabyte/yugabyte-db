@@ -280,6 +280,42 @@ async fn host_port_collision_and_restart() {
         .needs_reregister());
 }
 
+/// MasterTest.TestRegisterDistBroadcastDupPrivate*: tservers sharing a private address but with
+/// distinct broadcast addresses collide only when the master compares every address.
+#[tokio::test]
+async fn shared_private_addresses_collide_only_without_the_desired_host_port_check() {
+    async fn register(s: &Setup, uuid: &str, broadcast: &str) -> bool {
+        let mut req = request(uuid, 1, 1);
+        let mut reg = registration(9100);
+        let mut hp = HostPortPB::new();
+        hp.set_host(broadcast.into());
+        hp.set_port(9100);
+        reg.common
+            .mut_or_insert_default()
+            .broadcast_addresses
+            .push(hp);
+        req.registration = Some(reg).into();
+        s.heartbeat(&req).await.unwrap().needs_reregister()
+    }
+    // use_private_ip=never: each tserver is called at its broadcast address.
+    let s = setup_with(TsManagerOptions {
+        check_desired_host_port: || true,
+        ..Default::default()
+    })
+    .await;
+    assert!(!register(&s, "ts1", "10.0.0.1").await);
+    assert!(!register(&s, "ts2", "10.0.0.2").await);
+    assert!(register(&s, "ts3", "10.0.0.1").await);
+
+    let s = setup_with(TsManagerOptions {
+        check_desired_host_port: || false,
+        ..Default::default()
+    })
+    .await;
+    assert!(!register(&s, "ts1", "10.0.0.1").await);
+    assert!(register(&s, "ts2", "10.0.0.2").await);
+}
+
 #[tokio::test]
 async fn unresponsive_tserver_needs_a_full_report_and_is_persisted() {
     let s = setup(true).await;

@@ -77,7 +77,7 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
 
 // Test the sys-catalog CDC stream basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
-  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
+  SysCatalogTable* const sys_catalog = sys_catalog_;
 
   auto loader = std::make_unique<TestCDCStreamLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
@@ -113,7 +113,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
 
 // Test the sys-catalog universe replication basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
-  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
+  SysCatalogTable* const sys_catalog = sys_catalog_;
 
   auto loader = std::make_unique<TestUniverseReplicationLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));

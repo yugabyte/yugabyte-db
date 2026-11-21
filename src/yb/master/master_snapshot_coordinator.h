@@ -108,9 +108,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // restorations, RPC handlers). The Rust master's host passes null for both and a context whose
   // LeaderTerm() is always -1, so it runs only what every master runs: Load, ApplyWritePair and
   // the *Replicated apply hooks.
-  MasterSnapshotCoordinator(
-      SnapshotCoordinatorContext* context, CatalogManager* cm,
-      TabletSplitManager* tablet_split_manager);
+  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context);
   ~MasterSnapshotCoordinator();
 
   // Creates a snapshot starting from a predefined set of entries. Used in the old workflow of

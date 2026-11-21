@@ -38,10 +38,8 @@
 
 #include "yb/gutil/dynamic_annotations.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
-#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/master_options.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
@@ -120,21 +118,16 @@ void MiniMaster::Shutdown() {
     tunnel_->Shutdown();
   }
   if (running_) {
-    if (embedded_) {
-      embedded_->Shutdown();
-    } else {
-      master_->Shutdown();
-    }
+    embedded_->Shutdown();
   }
   tunnel_.reset();
   running_ = false;
-  master_.reset();
   embedded_.reset();
 }
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
   CHECK(!running_);
-  CHECK(!master_);
+  CHECK(!embedded_);
 
   auto master_addresses = std::make_shared<server::MasterAddresses>();
   if (use_custom_addresses_) {
@@ -192,19 +185,8 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
         Format("region$0", index_), "zone");
   }
 
-  if (rust_) {
-    embedded_ = VERIFY_RESULT(StartEmbeddedMaster(*opts));
-    server::TEST_SetupConnectivity(embedded_->server().messenger(), index_);
-  } else {
-    std::unique_ptr<Master> server(new Master(*opts));
-    RETURN_NOT_OK(server->Init());
-
-    server::TEST_SetupConnectivity(server->messenger(), index_);
-
-    RETURN_NOT_OK(server->StartAsync());
-
-    master_.swap(server);
-  }
+  embedded_ = VERIFY_RESULT(StartEmbeddedMaster(*opts));
+  server::TEST_SetupConnectivity(embedded_->server().messenger(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&messenger().io_service());
   std::vector<Endpoint> local;
@@ -220,7 +202,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
 Status MiniMaster::StartDistributedMasterOnPorts(uint16_t rpc_port, uint16_t web_port,
                                                  const vector<uint16_t>& peer_ports) {
   CHECK(!running_);
-  CHECK(!master_);
+  CHECK(!embedded_);
 
   auto peer_addresses = std::make_shared<server::MasterAddresses>();
   if (pass_master_addresses_) {
@@ -260,29 +242,18 @@ Status MiniMaster::Restart(bool wait_until_catalog_manager_is_leader) {
 }
 
 Status MiniMaster::WaitForCatalogManagerInit() {
-  if (embedded_) {
-    return LoggedWaitFor(
-        [this] { return embedded_->IsSysCatalogInitialized(); }, kRustMasterWaitTimeout,
-        "the Rust master to open its sys catalog");
-  }
-  RETURN_NOT_OK(master_->catalog_manager()->WaitForWorkerPoolTests());
-  return master_->WaitForCatalogManagerInit();
+  return LoggedWaitFor(
+      [this] { return embedded_->IsSysCatalogInitialized(); }, kRustMasterWaitTimeout,
+      "the Rust master to open its sys catalog");
 }
 
 Status MiniMaster::WaitUntilCatalogManagerIsLeaderAndReadyForTests() {
-  if (embedded_) {
-    return LoggedWaitFor(
-        [this]() -> Result<bool> { return IsLeaderAndReady(); }, kRustMasterWaitTimeout,
-        "the Rust master to lead and be ready");
-  }
-  return master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
+  return LoggedWaitFor(
+      [this]() -> Result<bool> { return IsLeaderAndReady(); }, kRustMasterWaitTimeout,
+      "the Rust master to lead and be ready");
 }
 
 Result<bool> MiniMaster::IsLeaderAndReady() const {
-  if (!embedded_) {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
-    return l.IsInitializedAndIsLeader();
-  }
   // The Rust master's leadership is only visible through its RPCs.
   rpc::ProxyCache proxy_cache(&messenger());
   MasterClusterProxy proxy(&proxy_cache, bound_rpc_addr());
@@ -295,19 +266,11 @@ Result<bool> MiniMaster::IsLeaderAndReady() const {
 }
 
 const MasterOptions& MiniMaster::opts() const {
-  return embedded_ ? embedded_->opts() : master_->opts();
+  return embedded_->opts();
 }
 
 server::RpcAndWebServerBase& MiniMaster::server() const {
-  if (embedded_) {
-    return embedded_->server();
-  }
-  return *CHECK_NOTNULL(master_.get());
-}
-
-void MiniMaster::CheckCppMaster(const char* accessor) const {
-  LOG_IF(FATAL, rust_) << "MiniMaster::" << accessor << "() needs the C++ master's internals; "
-                       << "run this test with YB_RUST_MASTER=0 until it is ported";
+  return CHECK_NOTNULL(embedded_.get())->server();
 }
 
 void MiniMaster::SetCustomAddresses(const std::vector<std::string> &master_addresses,
@@ -330,35 +293,22 @@ HostPort MiniMaster::bound_rpc_addr() const {
 
 Endpoint MiniMaster::bound_http_addr() const {
   CHECK(running_);
-  if (rust_) {
-    // The Rust master serves the web port; the host's own web server is on loopback.
-    // MasterHost::GetStatusPB lists the Rust server's addresses, IPv4 first.
-    server::ServerStatusPB status;
-    server().GetStatusPB(&status);
-    CHECK_GT(status.bound_http_addresses_size(), 0);
-    const auto& hp = status.bound_http_addresses(0);
-    return Endpoint(boost::asio::ip::make_address(hp.host()), hp.port());
-  }
-  return CHECK_RESULT(server().first_http_address());
+  // The Rust master serves the web port; the host's own web server is on loopback.
+  // MasterHost::GetStatusPB lists the Rust server's addresses, IPv4 first.
+  server::ServerStatusPB status;
+  server().GetStatusPB(&status);
+  CHECK_GT(status.bound_http_addresses_size(), 0);
+  const auto& hp = status.bound_http_addresses(0);
+  return Endpoint(boost::asio::ip::make_address(hp.host()), hp.port());
 }
 
 std::string MiniMaster::permanent_uuid() const {
-  CHECK(master_ || embedded_);
+  CHECK(embedded_);
   return DCHECK_NOTNULL(server().fs_manager())->uuid();
 }
 
 std::string MiniMaster::bound_rpc_addr_str() const {
   return bound_rpc_addr().ToString();
-}
-
-CatalogManagerIf& MiniMaster::catalog_manager() const {
-  CheckCppMaster(__func__);
-  return *master_->catalog_manager();
-}
-
-CatalogManager& MiniMaster::catalog_manager_impl() const {
-  CheckCppMaster(__func__);
-  return *master_->catalog_manager_impl();
 }
 
 tablet::TabletPeerPtr MiniMaster::tablet_peer() const {
@@ -370,20 +320,7 @@ rpc::Messenger& MiniMaster::messenger() const {
 }
 
 master::SysCatalogTable& MiniMaster::sys_catalog() const {
-  if (embedded_) {
-    return embedded_->sys_catalog();
-  }
-  return *catalog_manager().sys_catalog();
-}
-
-master::TSManager& MiniMaster::ts_manager() const {
-  CheckCppMaster(__func__);
-  return *master_->ts_manager();
-}
-
-master::FlushManager& MiniMaster::flush_manager() const {
-  CheckCppMaster(__func__);
-  return *master_->flush_manager();
+  return embedded_->sys_catalog();
 }
 
 FsManager& MiniMaster::fs_manager() const {

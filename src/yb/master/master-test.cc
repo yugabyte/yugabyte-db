@@ -51,21 +51,22 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
-#include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ysql_lease_client.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/ts_manager.h"
+
+#include "yb/master_host/embedded_master.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
@@ -77,7 +78,9 @@
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -98,22 +101,23 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
+using namespace std::literals;
+
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_int32(TEST_simulate_slow_table_create_secs);
-DECLARE_bool(TEST_return_error_if_namespace_not_found);
 DECLARE_bool(TEST_hang_on_namespace_transition);
-DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
 DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_bool(persist_tserver_registry);
+DECLARE_bool(use_parent_table_id_field);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(enable_ysql);
-DECLARE_bool(enable_qos);
 DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
-DECLARE_int32(qos_max_db_count);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(initial_tserver_registration_duration_secs);
@@ -139,8 +143,40 @@ class MasterTest : public MasterTestBase {
       TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration = std::nullopt,
       std::optional<TabletReportPB> report = std::nullopt);
 
-  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
-      YQLDatabase db_type, const std::string& name);
+  // The id of the namespace that GetNamespaceInfo finds by this name.
+  Result<NamespaceId> FindNamespaceByName(YQLDatabase db_type, const std::string& name);
+
+  // The namespace's sys catalog row, or nullopt if it has none.
+  Result<std::optional<SysNamespaceEntryPB>> NamespaceRow(const NamespaceId& id) {
+    auto rows = VERIFY_RESULT(SysCatalogRowsOf<SysNamespaceEntryPB>(SysRowEntryType::NAMESPACE));
+    auto it = rows.find(id);
+    if (it == rows.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  Result<bool> NamespaceInState(const NamespaceId& id, SysNamespaceEntryPB::State state) {
+    auto row = VERIFY_RESULT(NamespaceRow(id));
+    return row && row->state() == state;
+  }
+
+  // The tablet servers the master lists: registered, and not replaced by a newer instance.
+  Result<std::vector<ListTabletServersResponsePB::Entry>> TabletServers() {
+    auto resp = VERIFY_RESULT(cluster_client_->ListTabletServers());
+    return std::vector<ListTabletServersResponsePB::Entry>(
+        resp.servers().begin(), resp.servers().end());
+  }
+
+  Result<std::optional<ListTabletServersResponsePB::Entry>> FindTabletServer(
+      const std::string& uuid) {
+    for (auto& ts : VERIFY_RESULT(TabletServers())) {
+      if (ts.instance_id().permanent_uuid() == uuid) {
+        return ts;
+      }
+    }
+    return std::nullopt;
+  }
 
   Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(
       const std::string& uuid, int64_t instance_seqno);
@@ -153,9 +189,24 @@ class MasterTest : public MasterTestBase {
   // The history cutoff this master allows for its own sys catalog tablet.
   docdb::HistoryCutoff SysCatalogAllowedHistoryCutoff();
 
-  // Runs the leader's publish step now, skipping the wait for tserver heartbeats it observes after
-  // an election.
-  Status PublishYsqlHistoryRetentionPin();
+  // SysCatalogAllowedHistoryCutoff once `done` holds for it. The leader hands the host the live
+  // cluster pin once per catalog_manager_bg_task_wait_ms, not on each heartbeat.
+  docdb::HistoryCutoff WaitForSysCatalogHistoryCutoff(
+      const std::function<bool(const docdb::HistoryCutoff&)>& done) {
+    docdb::HistoryCutoff cutoff;
+    auto status = WaitFor(
+        [&] {
+          cutoff = SysCatalogAllowedHistoryCutoff();
+          return done(cutoff);
+        },
+        10s, "the sys catalog history cutoff");
+    LOG_IF(WARNING, !status.ok()) << status << ", cutoff: " << cutoff;
+    return cutoff;
+  }
+
+  // Waits for the leader to publish `pin` (invalid for none) to the sys catalog, skipping the wait
+  // for tserver heartbeats it observes after an election.
+  Status PublishYsqlHistoryRetentionPin(HybridTime pin);
 
  private:
   // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
@@ -207,8 +258,8 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
 TEST_F(MasterTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
-  TestCallHome<Master, MasterCallHome>(
-      webserver_dir, {"masters", "tservers", "tables"}, mini_master_->master());
+  TestCallHome<server::RpcAndWebServerBase, MasterCallHome>(
+      webserver_dir, {"masters", "tservers", "tables"}, &mini_master_->server());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically
@@ -216,12 +267,13 @@ TEST_F(MasterTest, TestCallHome) {
 TEST_F(MasterTest, TestCallHomeFlag) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
-  TestCallHomeFlag<Master, MasterCallHome>(webserver_dir, mini_master_->master());
+  TestCallHomeFlag<server::RpcAndWebServerBase, MasterCallHome>(
+      webserver_dir, &mini_master_->server());
 }
 
 TEST_F(MasterTest, TestGFlagsCallHome) {
   CHECK_OK(env_->CreateDir(GetWebserverDir()));
-  TestGFlagsCallHome<Master, MasterCallHome>(mini_master_->master());
+  TestGFlagsCallHome<server::RpcAndWebServerBase, MasterCallHome>(&mini_master_->server());
 }
 
 TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
@@ -246,7 +298,7 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
   // restart master, and set this flag to true (to simulate autoflag behavior). Ensure that after
   // setting the flag to true, universe_uuid is eventually set.
   master::SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   ASSERT_EQ(config.universe_uuid(), "");
 
   ASSERT_OK(mini_master_->Restart(true));
@@ -255,7 +307,7 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
 
   config.Clear();
   ASSERT_OK(WaitFor([this]() {
-    auto config_result = mini_master_->catalog_manager().GetClusterConfig();
+    auto config_result = cluster_client_->GetMasterClusterConfig();
     if (!config_result.ok()) {
       return false;
     }
@@ -313,7 +365,7 @@ TEST_F(MasterTest, TestNoUniverseUuid) {
   common.mutable_ts_instance()->set_instance_seqno(1);
 
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -337,7 +389,7 @@ TEST_F(MasterTest, TestEmptyStringUniverseUuid) {
   common.mutable_ts_instance()->set_instance_seqno(1);
 
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -362,7 +414,7 @@ TEST_F(MasterTest, TestMatchingUniverseUuid) {
   common.mutable_ts_instance()->set_instance_seqno(1);
 
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -384,7 +436,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_instance_seqno(1);
 
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
@@ -399,12 +451,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  auto descs = ASSERT_RESULT(TabletServers());
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
-
-  auto ts_desc_result = mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID);
-  ASSERT_NOK(ts_desc_result);
-  ASSERT_TRUE(ts_desc_result.status().IsNotFound()) << "status is: " << ts_desc_result.status();
+  ASSERT_EQ(ASSERT_RESULT(FindTabletServer(kTsUUID)), std::nullopt);
 
   // Register the fake TS, without sending any tablet report.
   TSRegistrationPB fake_reg;
@@ -425,14 +474,11 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
-  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  descs = ASSERT_RESULT(TabletServers());
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  auto reg = descs[0]->GetTSRegistrationPB();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
+  ASSERT_EQ(fake_reg.DebugString(), descs[0].registration().DebugString())
       << "Master got different registration";
-
-  auto ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
-  ASSERT_EQ(ts_desc, descs[0]);
+  ASSERT_EQ(descs[0].instance_id().permanent_uuid(), kTsUUID);
 
   // If the tablet server somehow lost the response to its registration RPC, it would
   // attempt to register again. In that case, we shouldn't reject it -- we should
@@ -482,11 +528,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
 
-  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  descs = ASSERT_RESULT(TabletServers());
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
-
-  ts_desc = ASSERT_RESULT(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID));
-  ASSERT_EQ(ts_desc, descs[0]);
+  ASSERT_EQ(descs[0].instance_id().permanent_uuid(), kTsUUID);
 
   // Ensure that the ListTabletServers shows the faked server.
   {
@@ -528,7 +572,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
   *cloud_info_ts4.mutable_placement_zone() = "zone-anything";
 
   SysClusterConfigEntryPB config =
-      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try heartbeat from all the tservers. The master hasn't heard of them, so should ask them to
@@ -547,15 +591,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  ASSERT_EQ(mini_master_->master()->ts_manager()->NumDescriptors(), 0)
-      << "Should not have registered anything";
-
-  shared_ptr<TSDescriptor> ts_desc;
-  for (auto& uuid : tsUUIDs) {
-    auto result = mini_master_->master()->ts_manager()->LookupTSByUUID(uuid);
-    ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsNotFound()) << "status is: " << result.status();
-  }
+  ASSERT_EQ(ASSERT_RESULT(TabletServers()).size(), 0) << "Should not have registered anything";
 
   // Each tserver will have a distinct broadcast address but the same private_rpc_address.
   std::vector<TSRegistrationPB> fake_regs(tsUUIDs.size());
@@ -600,8 +636,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     }
   }
 
-  ASSERT_EQ(
-      mini_master_->master()->ts_manager()->NumDescriptors(), expected_registration_uuids.size())
+  ASSERT_EQ(ASSERT_RESULT(TabletServers()).size(), expected_registration_uuids.size())
       << "Should have registered the expected number of TServers";
 
   // Ensure that the ListTabletServers shows the faked servers.
@@ -661,7 +696,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   const std::string first_uuid = "uuid1";
   const std::string second_uuid = "uuid2";
   int seqno = 1;
-  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  auto descs = ASSERT_RESULT(TabletServers());
   EXPECT_EQ(descs.size(), 0);
   TSToMasterCommonPB original_common;
   TSRegistrationPB registration;
@@ -674,31 +709,28 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  descs = ASSERT_RESULT(TabletServers());
   ASSERT_EQ(descs.size(), 1);
-  auto original_desc = descs[0];
+  EXPECT_EQ(descs[0].instance_id().permanent_uuid(), first_uuid);
 
   auto new_common = original_common;
   new_common.mutable_ts_instance()->set_permanent_uuid(second_uuid);
   new_common.mutable_ts_instance()->set_instance_seqno(seqno++);
   resp = ASSERT_RESULT(SendHeartbeat(new_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
-  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
-  // This function filters out descriptors of removed tservers so we still expect just 1 descriptor.
+  descs = ASSERT_RESULT(TabletServers());
+  // The list leaves out replaced tservers, so the first one is gone.
   ASSERT_EQ(descs.size(), 1);
-  auto new_desc = descs[0];
-  EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
-  EXPECT_TRUE(original_desc->IsReplaced());
+  EXPECT_EQ(descs[0].instance_id().permanent_uuid(), second_uuid);
 
   auto updated_original_common = original_common;
   updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
   resp = ASSERT_RESULT(SendHeartbeat(updated_original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
+  descs = ASSERT_RESULT(TabletServers());
   ASSERT_EQ(descs.size(), 1);
-  EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
-  EXPECT_TRUE(new_desc->IsReplaced());
+  EXPECT_EQ(descs[0].instance_id().permanent_uuid(), first_uuid);
 }
 
 TEST_F(MasterTest, TestRegistrationThroughHeartbeatPersisted) {
@@ -778,68 +810,6 @@ TEST_F(MasterTest, TestHeartbeatFromRegisteredTSPersisted) {
   list_resp = ASSERT_RESULT(cluster_client_->ListLiveTabletServers());
   ASSERT_EQ(list_resp.servers_size(), 1);
   ASSERT_EQ(list_resp.servers(0).instance_id().permanent_uuid(), kUUID);
-}
-
-TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
-
-  const char *kNamespaceName = "testnamespace";
-  CreateNamespaceResponsePB resp;
-  ASSERT_OK(CreateNamespace(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, &resp));
-
-  auto task = [kNamespaceName, this]() {
-    const char *kTableName = "testtable";
-    const Schema kTableSchema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
-    shared_ptr<RpcController> controller;
-    // Set an RPC timeout for the controllers.
-    controller = make_shared<RpcController>();
-    controller->set_timeout(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs * 2));
-
-    CreateTableRequestPB req;
-    CreateTableResponsePB resp;
-
-    req.set_name(kTableName);
-    SchemaToPB(kTableSchema, req.mutable_schema());
-    req.mutable_namespace_()->set_name(kNamespaceName);
-    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-    req.mutable_schema()->mutable_table_properties()->set_num_tablets(8);
-    ASSERT_OK(this->proxy_ddl_->CreateTable(req, &resp, controller.get()));
-    ASSERT_FALSE(resp.has_error());
-    LOG(INFO) << "Done creating table";
-  };
-
-  std::thread t(task);
-
-  // Delete the namespace (by NAME).
-  {
-    // Give the CreateTable request some time to start and find the namespace.
-    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_simulate_slow_table_create_secs / 2));
-    DeleteNamespaceRequestPB req;
-    DeleteNamespaceResponsePB resp;
-    req.mutable_namespace_()->set_name(kNamespaceName);
-    ASSERT_OK(proxy_ddl_->DeleteNamespace(req, &resp, ResetAndGetController()));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
-  t.join();
-
-  {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = true;
-    ListTablesRequestPB req;
-    ListTablesResponsePB resp;
-    ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
-    LOG(INFO) << "Finished first ListTables request";
-    ASSERT_TRUE(resp.has_error());
-    string msg = resp.error().status().message();
-    ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
-
-    // After turning off this flag, ListTables should skip the table with the error.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = false;
-    ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
-    LOG(INFO) << "Finished second ListTables request";
-    ASSERT_FALSE(resp.has_error());
-  }
 }
 
 TEST_F(MasterTest, TestCatalog) {
@@ -1047,43 +1017,37 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = false;
   ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
 
-  auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
-  for (const auto& table : tables) {
-    for (const auto& tablet : ASSERT_RESULT(table->GetTabletsIncludeInactive())) {
-      if (table->is_system() &&
-          tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
-        FAIL() << Format(
-            "System table $0 has tablet $1 using the new schema", table->name(), tablet->id());
+  auto tables = ASSERT_RESULT(SysCatalogRowsOf<SysTablesEntryPB>(SysRowEntryType::TABLE));
+  auto tablets = ASSERT_RESULT(SysCatalogRowsOf<SysTabletsEntryPB>(SysRowEntryType::TABLET));
+  auto find_table_id = [&tables](const std::string& name) -> Result<TableId> {
+    for (const auto& [id, table] : tables) {
+      if (table.name() == name) {
+        return id;
       }
     }
-  }
+    return STATUS_FORMAT(NotFound, "Couldn't find table $0", name);
+  };
+  const auto new_schema_table_id = ASSERT_RESULT(find_table_id(kNewSchemaTableName));
+  const auto old_schema_table_id = ASSERT_RESULT(find_table_id(kOldSchemaTableName));
 
-  auto find_table = [&tables](const std::string& name) -> Result<TableInfoPtr> {
-    auto table_it = std::find_if(
-        tables.begin(), tables.end(),
-        [&name](const TableInfoPtr& table_info) { return table_info->name() == name; });
-    if (table_it != tables.end()) {
-      return *table_it;
+  size_t new_schema_tablets = 0, old_schema_tablets = 0;
+  for (const auto& [tablet_id, tablet] : tablets) {
+    const auto uses_new_schema = tablet.hosted_tables_mapped_by_parent_id();
+    if (tablet.table_id() == new_schema_table_id) {
+      EXPECT_TRUE(uses_new_schema) << tablet_id;
+      ++new_schema_tablets;
+    } else if (tablet.table_id() == old_schema_table_id) {
+      EXPECT_FALSE(uses_new_schema) << tablet_id;
+      ++old_schema_tablets;
     } else {
-      return STATUS_FORMAT(NotFound, "Couldn't find table $0", name);
+      // The other tables are the system tables.
+      EXPECT_FALSE(uses_new_schema)
+          << Format("System table $0 has tablet $1 using the new schema", tablet.table_id(),
+                    tablet_id);
     }
-  };
-
-  auto tablet_uses_new_schema = [](const TabletInfoPtr& tablet_info) {
-    return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
-  };
-
-  const auto new_schema_tablets = ASSERT_RESULT(
-      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTabletsIncludeInactive());
-  EXPECT_TRUE(
-      std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
-  EXPECT_GT(new_schema_tablets.size(), 0);
-
-  auto old_schema_tablets = ASSERT_RESULT(
-      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTabletsIncludeInactive());
-  EXPECT_TRUE(
-      std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
-  EXPECT_GT(old_schema_tablets.size(), 0);
+  }
+  EXPECT_GT(new_schema_tablets, 0);
+  EXPECT_GT(old_schema_tablets, 0);
 }
 
 TEST_F(MasterTest, TestCatalogHasBlockCache) {
@@ -1100,7 +1064,7 @@ TEST_F(MasterTest, TestCatalogHasBlockCache) {
   ASSERT_STR_CONTAINS(buf.ToString(), "block_cache_usage");
 
   // Check block cache usage metric directly and verify usage is greater than 0.
-  const auto metric_map = mini_master_->master()->metric_entity()->TEST_UsageMetricsMap();
+  const auto metric_map = mini_master_->server().metric_entity()->TEST_UsageMetricsMap();
 
   auto cache_usage = down_cast<AtomicGauge<uint64_t>*>(
       FindOrDie(metric_map, &METRIC_block_cache_usage).get());
@@ -1220,99 +1184,6 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
     ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
     ASSERT_EQ("start partition key is greater than the end partition key",
               resp.error().status().message());
-  }
-}
-
-// Test for DB-6087. Previously, GetTabletLocations was not looking at the tablespace overrides for
-// number of replicas. This test follows some change in logic to make sure we are using checking
-// the tablespace first before defaulting to cluster config.
-TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
-  const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  auto replication_info = cluster_config.mutable_replication_info();
-
-  // update replication info
-  int kNumClusterLiveReplicas = 5;
-  auto* live_replicas = replication_info->mutable_live_replicas();
-  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
-  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
-
-  // set tablespace replication info to be different than cluster config
-  int kNumTableLiveReplicas = 2;
-  CreateTableRequestPB req;
-  live_replicas = req.mutable_replication_info()->mutable_live_replicas();
-  live_replicas->set_num_replicas(kNumTableLiveReplicas);
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  TableId table_id;
-  {
-    ListTablesResponsePB tables;
-    ASSERT_NO_FATALS(DoListAllTables(&tables));
-    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-    for (auto& t : *tables.mutable_tables()) {
-      if (t.name().compare(kTableName) == 0) {
-        table_id = t.id();
-      }
-    }
-  }
-
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
-  int num_live_replicas = 0, num_read_replicas = 0;
-  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas));
-  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
-
-  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
-    num_live_replicas = 0, num_read_replicas = 0;
-    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
-        tablet->id(), &num_live_replicas, &num_read_replicas));
-    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
-  }
-}
-
-// Test for DB-6087. This case ensures the tablespace RF defaults to cluster RF when there are no
-// table level overrides.
-TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
-  const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
-  auto cluster_config = ASSERT_RESULT(cluster_client_->GetMasterClusterConfig());
-  auto replication_info = cluster_config.mutable_replication_info();
-
-  // update replication info
-  int kNumClusterLiveReplicas = 5;
-  auto* live_replicas = replication_info->mutable_live_replicas();
-  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
-  ASSERT_OK(UpdateMasterClusterConfig(&cluster_config));
-
-  CreateTableRequestPB req;
-  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
-
-  TableId table_id;
-  {
-    ListTablesResponsePB tables;
-    ASSERT_NO_FATALS(DoListAllTables(&tables));
-    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-    for (auto& t : *tables.mutable_tables()) {
-      if (t.name().compare(kTableName) == 0) {
-        table_id = t.id();
-      }
-    }
-  }
-
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
-  int num_live_replicas = 0, num_read_replicas = 0;
-  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas));
-  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
-
-  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
-    num_live_replicas = 0, num_read_replicas = 0;
-    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
-        tablet->id(), &num_live_replicas, &num_read_replicas));
-    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
   }
 }
 
@@ -1512,24 +1383,22 @@ TEST_F(MasterTest, TestNamespaceSeparation) {
         }, namespaces);
   }
 
-  // Create a new namespace for each of YCQL, YSQL and YEDIS database types.
+  // Create a new namespace for each of YCQL and YSQL. The master refuses YEDIS namespaces.
   CreateNamespaceResponsePB resp;
   ASSERT_OK(CreateNamespace("test_cql", YQLDatabase::YQL_DATABASE_CQL, &resp));
   const NamespaceId cql_ns_id = resp.id();
   ASSERT_OK(CreateNamespace("test_pgsql", YQLDatabase::YQL_DATABASE_PGSQL, &resp));
   const NamespaceId pgsql_ns_id = resp.id();
-  ASSERT_OK(CreateNamespace("test_redis", YQLDatabase::YQL_DATABASE_REDIS, &resp));
-  const NamespaceId redis_ns_id = resp.id();
+  ASSERT_NOK(CreateNamespace("test_redis", YQLDatabase::YQL_DATABASE_REDIS, &resp));
 
   // List all namespaces and by each database type.
   ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
-  ASSERT_EQ(4 + kNumSystemNamespaces, namespaces.namespaces_size());
+  ASSERT_EQ(3 + kNumSystemNamespaces, namespaces.namespaces_size());
   CheckNamespaces(
       {
         EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
         std::make_tuple("test_cql", cql_ns_id),
         std::make_tuple("test_pgsql", pgsql_ns_id),
-        std::make_tuple("test_redis", redis_ns_id),
       }, namespaces);
 
   ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_CQL, &namespaces));
@@ -1549,11 +1418,7 @@ TEST_F(MasterTest, TestNamespaceSeparation) {
       }, namespaces);
 
   ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_REDIS, &namespaces));
-  ASSERT_EQ(1, namespaces.namespaces_size());
-  CheckNamespaces(
-      {
-        std::make_tuple("test_redis", redis_ns_id),
-      }, namespaces);
+  ASSERT_EQ(0, namespaces.namespaces_size());
 }
 
 TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
@@ -2044,15 +1909,8 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespace_pb));
     ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespace_pb));
 
-    // Internal search of CatalogManager should reveal it's state (debug UI uses this function).
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
-                 [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
-                   return ns && ns->id() == nsid;
-                 });
-    ASSERT_NE(pos, namespace_internal.end());
-    ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::PREPARING);
+    // The sys catalog has it PREPARING.
+    ASSERT_TRUE(ASSERT_RESULT(NamespaceInState(nsid, SysNamespaceEntryPB::PREPARING)));
     // Namespace should be in namespace name map to prevent creation races using the same name.
     ASSERT_OK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   }
@@ -2066,309 +1924,24 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
 
-    // Internal search of CatalogManager should reveal it's DELETING to cleanup any partial apply.
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
-        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
-          return ns && ns->id() == nsid;
-        });
-    ASSERT_NE(pos, namespace_internal.end());
-    ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::DELETING);
-    // Namespace should not be in the by name map.
-    ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+    // The new leader marks it DELETING to clean up any partial apply. Unlike C++, the Rust
+    // master keeps its name taken until it is DELETED.
+    ASSERT_TRUE(ASSERT_RESULT(NamespaceInState(nsid, SysNamespaceEntryPB::DELETING)));
   }
 
   // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
-        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
-          return ns && ns->id() == nsid;
-        });
-    return pos != namespace_internal.end() && (*pos)->state() == SysNamespaceEntryPB::DELETED;
+    return NamespaceInState(nsid, SysNamespaceEntryPB::DELETED);
   }, MonoDelta::FromSeconds(10), "Verify Namespace was DELETED"));
 
-  // Restart the master #2, this round should completely remove the Namespace from memory.
+  // Restart the master #2, this round should remove the Namespace's tombstone.
   ASSERT_OK(mini_master_->Restart(true));
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto pos = std::find_if(namespace_internal.begin(), namespace_internal.end(),
-        [&nsid](const scoped_refptr<NamespaceInfo>& ns) {
-          return ns && ns->id() == nsid;
-        });
-    return pos == namespace_internal.end();
+    return !VERIFY_RESULT(NamespaceRow(nsid));
   }, MonoDelta::FromSeconds(10), "Verify Namespace was completely removed"));
-}
-
-TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
-  NamespaceName test_name = "test_pgsql";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
-
-  // Create a new PGSQL namespace.
-  CreateNamespaceResponsePB resp;
-  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-  NamespaceId failure_nsid = resp.id();
-
-  // Restart the master to fail the creation of the first namespace.
-  // The loader should enqueue an async deletion task.
-  ASSERT_OK(mini_master_->Restart(true));
-
-  // Create the namespace again. The async deletion task for the first namespace shouldn't have run
-  // yet due to the test flag.
-  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-  NamespaceId success_nsid = resp.id();
-
-  // There should now be two namespaces with the same name in the system, one in the FAILED state
-  // and one in the PREPARING state. Allow the async work to run. The first namespace should be
-  // cleaned up and the second namespace should be running.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    bool failure_deleted = false;
-    bool success_running = false;
-    for (const auto& ns : namespace_internal) {
-      if (ns->id() == failure_nsid) {
-        failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
-      } else if (ns->id() == success_nsid) {
-        success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
-      }
-    }
-    LOG(INFO) << Format(
-        "First namespace is deleted: $0, second namespace is running: $1", failure_deleted,
-        success_running);
-    return failure_deleted && success_running;
-  }, MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
-
-  // The by-name map should point to the successfully created namespace.
-  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
-  ASSERT_EQ(ns_by_name->id(), success_nsid);
-}
-
-TEST_F(MasterTest, TestCreateNamespaceRetryAfterPgVerificationFailure) {
-  NamespaceName test_name = "test_pgsql";
-  CreateNamespaceResponsePB resp;
-  ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-  NamespaceId failed_nsid = resp.id();
-
-  // Park async cleanup so the retry cannot wait on it. DeleteYsqlDatabaseAsync pauses on this
-  // flag; ProcessPendingNamespace for the retry also defers until we clear it.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
-  ASSERT_OK(mini_master_->catalog_manager_impl().TEST_FailNamespacePgVerification(failed_nsid));
-
-  auto failed_ns = ASSERT_RESULT(mini_master_->catalog_manager().FindNamespaceById(failed_nsid));
-  ASSERT_EQ(failed_ns->state(), SysNamespaceEntryPB::DELETING);
-  ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
-
-  // Same-id retry is still rejected; the by-id tombstone stays until restart so copied catalog
-  // tables are not recreated under the same OID. PG already retries with the next OID.
-  CreateNamespaceRequestPB same_id_req;
-  same_id_req.set_name(test_name);
-  same_id_req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-  same_id_req.set_namespace_id(failed_nsid);
-  auto same_id_result = CreateNamespaceAsync(same_id_req);
-  ASSERT_NOK(same_id_result);
-  ASSERT_TRUE(same_id_result.status().IsAlreadyPresent()) << same_id_result.status();
-
-  // Same-name retry with a new id must succeed immediately, while cleanup is still hung.
-  CreateNamespaceResponsePB retry_resp;
-  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &retry_resp));
-  ASSERT_NE(retry_resp.id(), failed_nsid);
-  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
-  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
-  ASSERT_OK(CreateNamespaceWait(retry_resp.id(), YQLDatabase::YQL_DATABASE_PGSQL));
-
-  ASSERT_OK(LoggedWaitFor(
-      [&]() -> Result<bool> {
-        std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-        mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-        bool failure_deleted = false;
-        bool success_running = false;
-        for (const auto& ns : namespace_internal) {
-          if (ns->id() == failed_nsid) {
-            failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
-          } else if (ns->id() == retry_resp.id()) {
-            success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
-          }
-        }
-        return failure_deleted && success_running;
-      },
-      MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
-
-  ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
-  ASSERT_EQ(ns_by_name->id(), retry_resp.id());
-}
-
-class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
-INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
-
-TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
-  NamespaceName test_name = "test_pgsql"; // Reuse name to find errors with delete cleanup.
-  CreateNamespaceResponsePB resp;
-  DeleteNamespaceRequestPB del_req;
-  del_req.mutable_namespace_()->set_name(test_name);
-  del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-  IsDeleteNamespaceDoneRequestPB is_del_req;
-  is_del_req.mutable_namespace_()->set_name(test_name);
-  is_del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-
-  int failures = 0, created = 0, iter = 0;
-  int loops = GetParam();
-  LOG(INFO) << "Loops = " << loops;
-
-  std::unordered_set<NamespaceId> previously_created_namespaces;
-  // Loop this to cover a spread of random failure situations.
-  while (failures < loops) {
-    // Inject Frequent failures into sys catalog commit.
-    // The below code should eventually succeed but require a lot of restarts.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
-
-    LOG(INFO) << "Iteration " << ++iter;
-
-    // There are 4 possibilities for the CreateNamespace call below.
-
-    // 1. CreateNamespace RPC returns not-OK status.
-    //    We expect no in-memory state to be persisted.
-    // 2. CreateNamespace RPC returns an OK status. Async namespace creation work fails.
-    //    We expect the namespace to be present in memory but not in the by name map.
-    //    Its status should be FAILED.
-    // 3. CreateNamespace RPC returns an OK status. Async namespace creation work succeeds.
-    //    We expect the namespace to be present in the maps with the state RUNNING.
-    // 4. CreateNamespace RPC returns an OK status. Test times out waiting for async work.
-    //    The test doesn't explicitly handle this case and would fail.
-    //    There may be a bug in production code related to this case as well.
-    //    If the async namespace creation does eventually succeed in CM after pgsql
-    //    times out waiting for it, the namespace might not be visible to pgsql
-    //    but it will exist in yb-master, preventing the creation of a database with that
-    //    name. In this case users will need to delete the database with yb-admin.
-    Status s = CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp);
-    if (!s.ok()) {
-      LOG(INFO) << "CreateNamespace with injected failures: " << s;
-      ++failures;
-    }
-
-    // Turn off random failures.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
-
-    // Internal search of CatalogManager should reveal whether it was partially created.
-    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
-    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto new_ns_it = std::find_if(
-        namespace_internal.begin(), namespace_internal.end(),
-        [&test_name, &previously_created_namespaces](const scoped_refptr<NamespaceInfo>& ns) {
-          return ns && ns->name() == test_name && !previously_created_namespaces.contains(ns->id());
-        });
-    scoped_refptr<NamespaceInfo> new_ns;
-    if (new_ns_it != namespace_internal.end()) {
-      // Namespace created. We're in case 2, 3, or 4.
-      new_ns = (*new_ns_it).get();
-      previously_created_namespaces.insert(new_ns->id());
-      ASSERT_TRUE(
-          new_ns->state() == SysNamespaceEntryPB::RUNNING ||
-          new_ns->state() == SysNamespaceEntryPB::PREPARING ||
-          new_ns->state() == SysNamespaceEntryPB::FAILED)
-          << Format(
-                 "Expected RUNNING, PREPARING, or FAILED, got: $0",
-                 SysNamespaceEntryPB::State_Name(new_ns->state()));
-    }
-
-    // A pgsql connection will only commit state for this new namespace to the pg catalog if
-    // CreateNamespace and WaitForCreateNamespaceDone return OK statuses. Therefore if
-    // there is a failure in the complete create namespace flow any subsequent DROP DATABASE
-    // statement will fail because there is no metadata for the database in the pg catalogs.
-
-    // Because we cannot expect clients to issue a DROP DATABASE in this failure case we must
-    // ensure we can handle a subsequent CREATE DATABASE with the same name.
-    if (s.ok()) {
-      // Case 3.
-      ++created;
-      DeleteNamespaceResponsePB del_resp;
-      ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
-      if (del_resp.has_error()) {
-        LOG(INFO) << del_resp.error().DebugString();
-      }
-      ASSERT_FALSE(del_resp.has_error());
-      ASSERT_OK(DeleteNamespaceWait(is_del_req));
-    } else if (s.IsTimedOut()) {
-      // Case 4.
-      // The namespace state should be PREPARING, but the CM is responsible for transitioning it to
-      // another state so asserting state is PREPARING here introduces a race. For now just fail the
-      // test.
-      FAIL() << "Timed out waiting for async namespace creation";
-    } else {
-      // Case 1 or 2.
-      LOG(INFO) << "Namespace should not be in by name map, state: "
-                << (new_ns ? SysNamespaceEntryPB::State_Name(new_ns->state()) : "n/a");
-      ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, "default_namespace"));
-    }
-  }
-  ASSERT_EQ(failures, loops);
-  LOG(INFO) << "created = " << created;
-}
-
-TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
-  NamespaceName test_name = "test_pgsql";
-  CreateNamespaceResponsePB resp;
-  DeleteNamespaceRequestPB del_req;
-  DeleteNamespaceResponsePB del_resp;
-  del_req.mutable_namespace_()->set_name(test_name);
-  del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-  IsDeleteNamespaceDoneRequestPB is_del_req;
-  is_del_req.mutable_namespace_()->set_name(test_name);
-  is_del_req.mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-  int failures = 0, iter = 0;
-  int loops = GetParam();
-  LOG(INFO) << "Loops = " << loops;
-
-  // Loop this to cover a spread of random failure situations.
-  while (failures < loops) {
-    // CreateNamespace to setup test
-    CreateNamespaceResponsePB resp;
-    ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-
-    // The below code should eventually succeed but require a lot of restarts.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
-
-    // DeleteNamespace : Inject IO Errors.
-    LOG(INFO) << "Iteration " << ++iter;
-    bool delete_failed = false;
-
-    ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
-
-    delete_failed = del_resp.has_error();
-    if (del_resp.has_error()) {
-      LOG(INFO) << "Expected failure: " << del_resp.error().DebugString();
-    }
-
-    if (!del_resp.has_error()) {
-      Status s = DeleteNamespaceWait(is_del_req);
-      ASSERT_FALSE(s.IsTimedOut()) << "Unexpected timeout: " << s;
-      WARN_NOT_OK(s, "Expected failure");
-      delete_failed = !s.ok();
-    }
-
-    // Turn off random failures.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
-
-    if (delete_failed) {
-      ++failures;
-      LOG(INFO) << "Next Delete should succeed";
-
-      // If the namespace delete fails, Ensure that we can restart the delete and it succeeds.
-      ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
-      ASSERT_FALSE(del_resp.has_error());
-      ASSERT_OK(DeleteNamespaceWait(is_del_req));
-    }
-  }
-  ASSERT_EQ(failures, loops);
 }
 
 TEST_F(MasterTest, TestFullTableName) {
@@ -2801,17 +2374,41 @@ INSTANTIATE_TEST_CASE_P(
     DatabaseType, NamespaceTest,
     ::testing::Values(YQLDatabase::YQL_DATABASE_CQL, YQLDatabase::YQL_DATABASE_PGSQL));
 
-Result<scoped_refptr<NamespaceInfo>> MasterTest::FindNamespaceByName(
-    YQLDatabase db_type, const std::string& name) {
-  NamespaceIdentifierPB ns_idpb;
-  ns_idpb.set_name(name);
-  ns_idpb.set_database_type(db_type);
-  return mini_master_->catalog_manager().FindNamespace(ns_idpb);
+Result<NamespaceId> MasterTest::FindNamespaceByName(YQLDatabase db_type, const std::string& name) {
+  GetNamespaceInfoRequestPB req;
+  req.mutable_namespace_()->set_name(name);
+  req.mutable_namespace_()->set_database_type(db_type);
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(proxy_ddl_->GetNamespaceInfo(req, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.namespace_().id();
 }
+
+namespace {
+
+// Whether the master is in shell mode: it lists only itself, as a NON_PARTICIPANT.
+Result<bool> IsShellMode(MiniMaster& mini_master) {
+  rpc::ProxyCache proxy_cache(&mini_master.messenger());
+  MasterClusterProxy proxy(&proxy_cache, mini_master.bound_rpc_addr());
+  ListMastersRequestPB req;
+  ListMastersResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(10));
+  RETURN_NOT_OK(proxy.ListMasters(req, &resp, &controller));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.masters_size() == 1 && resp.masters(0).role() == PeerRole::NON_PARTICIPANT;
+}
+
+}  // namespace
 
 class MasterStartUpTest : public YBTest {
  public:
   std::unique_ptr<MiniMaster> CreateMiniMaster(std::string fs_root) {
+    master_host::RegisterEmbeddedRustMaster();
     return std::make_unique<MiniMaster>(
         Env::Default(), std::move(fs_root), AllocateFreePort(), AllocateFreePort(),
         /* index */ 0);
@@ -2828,7 +2425,7 @@ TEST_F(MasterStartUpTest, JoinExistingClusterWithoutMasterAddresses) {
   mini_master->set_pass_master_addresses(false);
   ASSERT_OK(mini_master->Start());
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
-  ASSERT_TRUE(mini_master->master()->IsShellMode());
+  ASSERT_TRUE(ASSERT_RESULT(IsShellMode(*mini_master)));
 }
 
 TEST_F(MasterStartUpTest, JoinExistingClusterWithMasterAddresses) {
@@ -2841,14 +2438,14 @@ TEST_F(MasterStartUpTest, JoinExistingClusterWithMasterAddresses) {
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
   // Confirm the master does not enter shell mode without the flag passed.
   // The MiniMaster class by default sets master_addresses for a new master.
-  ASSERT_FALSE(mini_master->master()->IsShellMode());
+  ASSERT_FALSE(ASSERT_RESULT(IsShellMode(*mini_master)));
   // Delete the system catalog tablet and restart the master so the master runs through the
   // initialization logic again.
   mini_master->Shutdown();
   ASSERT_OK(Env::Default()->DeleteRecursively(fs_root));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = true;
   ASSERT_OK(mini_master->Start());
-  ASSERT_TRUE(mini_master->master()->IsShellMode());
+  ASSERT_TRUE(ASSERT_RESULT(IsShellMode(*mini_master)));
 }
 
 TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
@@ -2861,83 +2458,7 @@ TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
   mini_master->set_pass_master_addresses(false);
   ASSERT_OK(mini_master->Start());
   auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
-  ASSERT_TRUE(mini_master->master()->IsShellMode());
-}
-
-TEST_F(MasterTest, TestGetClosestLiveTserver) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
-
-  bool local_ts = false;
-  auto& catalog_manager = mini_master_->catalog_manager();
-  auto result = catalog_manager.GetClosestLiveTserver(&local_ts);
-  // No valid tservers.
-  ASSERT_NOK(result);
-  ASSERT_FALSE(local_ts);
-
-  uint32 tserver_idx = 1;
-  auto add_tserver = [this, &tserver_idx](
-                         const std::string& uuid, std::string&& cloud, std::string&& region,
-                         std::string&& zone, std::string&& host) -> Status {
-    TSToMasterCommonPB common;
-    TSRegistrationPB registration;
-    common.mutable_ts_instance()->set_permanent_uuid(Format(uuid));
-    common.mutable_ts_instance()->set_instance_seqno(0);
-    const auto address = MakeHostPortPB(std::move(host), 1000 + tserver_idx++);
-    *registration.mutable_common()->add_broadcast_addresses() = address;
-    *registration.mutable_common()->add_private_rpc_addresses() = address;
-    *registration.mutable_common()->mutable_cloud_info() =
-        MakeCloudInfoPB(std::move(cloud), std::move(region), std::move(zone));
-    RETURN_NOT_OK(SendHeartbeat(common, registration));
-    return Status::OK();
-  };
-
-  // Default placement is cloud1, region1, zone.
-  // Add tserver in different cloud.
-  {
-    const auto tserver1_uuid = "uuid-1";
-    ASSERT_OK(add_tserver(tserver1_uuid, "cloud2", "region0", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
-    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver1_uuid);
-    ASSERT_FALSE(local_ts);
-  }
-
-  // Add tserver in same cloud, different region.
-  {
-    const auto tserver2_uuid = "uuid-2";
-    ASSERT_OK(add_tserver(tserver2_uuid, "cloud1", "region2", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
-    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver2_uuid);
-    ASSERT_FALSE(local_ts);
-  }
-
-  // Add tserver in same cloud, same region, different zone.
-  {
-    const auto tserver3_uuid = "uuid-3";
-    ASSERT_OK(add_tserver(tserver3_uuid, "cloud1", "region1", "zone2", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
-    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver3_uuid);
-  }
-
-  // Add tserver in same cloud, same region, same zone, different host.
-  {
-    const auto tserver4_uuid = "uuid-4";
-    ASSERT_OK(add_tserver(tserver4_uuid, "cloud1", "region1", "zone", "host1"));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
-    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver4_uuid);
-    ASSERT_FALSE(local_ts);
-  }
-
-  // Add tserver in same host as master.
-  {
-    ServerRegistrationPB master_registration;
-    ASSERT_OK(mini_master_->master()->GetMasterRegistration(&master_registration));
-    auto master_host = master_registration.private_rpc_addresses().begin()->host();
-    const auto tserver5_uuid = "uuid-5";
-    ASSERT_OK(add_tserver(tserver5_uuid, "cloud1", "region1", "zone", std::move(master_host)));
-    auto closest_tserver = ASSERT_RESULT(catalog_manager.GetClosestLiveTserver(&local_ts));
-    ASSERT_EQ(closest_tserver->permanent_uuid(), tserver5_uuid);
-    ASSERT_TRUE(local_ts);
-  }
+  ASSERT_TRUE(ASSERT_RESULT(IsShellMode(*mini_master)));
 }
 
 namespace {
@@ -3144,7 +2665,7 @@ TEST_F(MasterTestClientUpgradeYsql, NoLiveTservers) {
 TEST_F(MasterTestClientUpgradeYsql, ForwardsToClosestTserver) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
 
-  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->master()->metric_entity()));
+  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->server().metric_entity()));
   ASSERT_OK(RegisterFakeTserverViaHeartbeat("fake-ts-uuid", fake->host_port));
 
   auto resp = CallClientUpgradeYsql(/* use_single_connection= */ true);
@@ -3157,7 +2678,7 @@ TEST_F(MasterTestClientUpgradeYsql, ForwardsToClosestTserver) {
 TEST_F(MasterTestClientUpgradeYsql, PropagatesTserverError) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
 
-  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->master()->metric_entity()));
+  auto fake = ASSERT_RESULT(StartFakeTserver(mini_master_->server().metric_entity()));
   fake->service->set_upgrade_status(STATUS(InvalidArgument, "ysql upgrade failed in test"));
   ASSERT_OK(RegisterFakeTserverViaHeartbeat("fake-ts-uuid", fake->host_port));
 
@@ -3168,6 +2689,74 @@ TEST_F(MasterTestClientUpgradeYsql, PropagatesTserverError) {
   ASSERT_TRUE(status.IsInvalidArgument()) << status;
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "ysql upgrade failed in test");
   ASSERT_EQ(fake->service->upgrade_call_count(), 1);
+}
+
+// ClientUpgradeYsql goes to the live tserver closest to the master: the best placement match, and
+// among those in the master's zone, one on the master's host.
+TEST_F(MasterTestClientUpgradeYsql, TestGetClosestLiveTserver) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
+
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
+  MasterClusterProxy cluster_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
+  GetMasterRegistrationRequestPB reg_req;
+  GetMasterRegistrationResponsePB reg_resp;
+  ASSERT_OK(cluster_proxy.GetMasterRegistration(reg_req, &reg_resp, ResetAndGetController()));
+  const auto master_host = reg_resp.registration().private_rpc_addresses(0).host();
+
+  std::vector<std::unique_ptr<FakeTserver>> fakes;
+  // The tserver's private address names `private_host`; the master reaches it at its broadcast
+  // address, where the fake listens.
+  auto add_tserver = [this, &fakes](
+                         std::string&& cloud, std::string&& region, std::string&& zone,
+                         const std::string& private_host) -> Status {
+    fakes.push_back(VERIFY_RESULT(StartFakeTserver(mini_master_->server().metric_entity())));
+    const auto& host_port = fakes.back()->host_port;
+    TSToMasterCommonPB common;
+    common.mutable_ts_instance()->set_permanent_uuid(Format("uuid-$0", fakes.size()));
+    common.mutable_ts_instance()->set_instance_seqno(0);
+    TSRegistrationPB registration;
+    *registration.mutable_common()->add_broadcast_addresses() =
+        MakeHostPortPB(std::string(host_port.host()), host_port.port());
+    *registration.mutable_common()->add_private_rpc_addresses() =
+        MakeHostPortPB(std::string(private_host), host_port.port());
+    *registration.mutable_common()->mutable_cloud_info() =
+        MakeCloudInfoPB(std::move(cloud), std::move(region), std::move(zone));
+    return ResultToStatus(SendHeartbeat(std::move(common), std::move(registration)));
+  };
+  // Asserts that ClientUpgradeYsql goes to the last tserver added: each earlier one was called
+  // once, when it was the last.
+  auto upgraded_on_last = [this, &fakes]() {
+    auto resp = CallClientUpgradeYsql(/* use_single_connection= */ false);
+    ASSERT_FALSE(resp.has_error()) << StatusFromPB(resp.error().status());
+    for (size_t i = 0; i < fakes.size(); ++i) {
+      ASSERT_EQ(fakes[i]->service->upgrade_call_count(), 1)
+          << "tserver " << i + 1 << " of " << fakes.size();
+    }
+  };
+
+  // No valid tservers.
+  {
+    auto resp = CallClientUpgradeYsql(/* use_single_connection= */ false);
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_TRUE(StatusFromPB(resp.error().status()).IsNotFound()) << resp.ShortDebugString();
+  }
+
+  // Default placement is cloud1, region1, zone. Each tserver added is closer than the ones before.
+  // A different cloud.
+  ASSERT_OK(add_tserver("cloud2", "region0", "zone", "host1"));
+  ASSERT_NO_FATALS(upgraded_on_last());
+  // Same cloud, different region.
+  ASSERT_OK(add_tserver("cloud1", "region2", "zone", "host1"));
+  ASSERT_NO_FATALS(upgraded_on_last());
+  // Same cloud and region, different zone.
+  ASSERT_OK(add_tserver("cloud1", "region1", "zone2", "host1"));
+  ASSERT_NO_FATALS(upgraded_on_last());
+  // Same zone, different host.
+  ASSERT_OK(add_tserver("cloud1", "region1", "zone", "host1"));
+  ASSERT_NO_FATALS(upgraded_on_last());
+  // Same zone, the master's host.
+  ASSERT_OK(add_tserver("cloud1", "region1", "zone", master_host));
+  ASSERT_NO_FATALS(upgraded_on_last());
 }
 
 TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
@@ -3284,7 +2873,7 @@ Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
     TSToMasterCommonPB common, std::optional<TSRegistrationPB> registration,
     std::optional<TabletReportPB> report) {
   SysClusterConfigEntryPB config =
-      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      VERIFY_RESULT(cluster_client_->GetMasterClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   TSHeartbeatRequestPB req;
@@ -3327,7 +2916,7 @@ Result<TSHeartbeatResponsePB> MasterTest::SendYsqlDbOldestPinnedReadTimesHeartbe
     const std::string& uuid, int64_t instance_seqno,
     const std::map<PgOid, HybridTime>& pins) {
   SysClusterConfigEntryPB config =
-      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
+      VERIFY_RESULT(cluster_client_->GetMasterClusterConfig());
   TSHeartbeatRequestPB req;
   TSHeartbeatResponsePB resp;
   req.mutable_common()->mutable_ts_instance()->set_permanent_uuid(uuid);
@@ -3345,16 +2934,30 @@ Result<TSHeartbeatResponsePB> MasterTest::SendYsqlDbOldestPinnedReadTimesHeartbe
 }
 
 docdb::HistoryCutoff MasterTest::SysCatalogAllowedHistoryCutoff() {
-  return mini_master_->catalog_manager_impl().AllowedHistoryCutoffProvider(
-      mini_master_->tablet_peer()->tablet_metadata().get());
+  // The retention policy takes the provider's cutoff, capped by the clock-based retention of every
+  // tablet, which is turned off here.
+  const auto retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto tablet = CHECK_RESULT(mini_master_->tablet_peer()->shared_tablet());
+  auto cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = retention_sec;
+  return cutoff;
 }
 
-Status MasterTest::PublishYsqlHistoryRetentionPin() {
+Status MasterTest::PublishYsqlHistoryRetentionPin(HybridTime pin) {
   const auto initial_delay_secs = FLAGS_initial_tserver_registration_duration_secs;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 0;
-  auto& catalog_manager = mini_master_->catalog_manager_impl();
-  auto status =
-      catalog_manager.PersistYsqlHistoryRetentionPin(catalog_manager.GetLeaderEpochInternal());
+  auto status = LoggedWaitFor(
+      [this, pin]() -> Result<bool> {
+        auto rows = VERIFY_RESULT(SysCatalogRowsOf<SysHistoryRetentionPinEntryPB>(
+            SysRowEntryType::HISTORY_RETENTION_PIN));
+        HybridTime published;
+        if (!rows.empty() && rows.begin()->second.has_ysql_oldest_pinned_read_time()) {
+          published = HybridTime(rows.begin()->second.ysql_oldest_pinned_read_time());
+        }
+        return published == pin;
+      },
+      30s, Format("the leader to publish the ysql history retention pin $0", pin));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) =
       initial_delay_secs;
   return status;
@@ -3484,7 +3087,8 @@ TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPin) {
   const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
   ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
 
-  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  const auto cutoff =
+      WaitForSysCatalogHistoryCutoff([pin](const auto& c) { return c.cotables_cutoff_ht == pin; });
 
   EXPECT_EQ(cutoff.cotables_cutoff_ht, pin);
   EXPECT_GT(cutoff.primary_cutoff_ht, pin);
@@ -3504,7 +3108,8 @@ TEST_F(MasterTest, SysCatalogHistoryCutoffCapsPinAge) {
   const auto pin = mini_master_->Now().AddSeconds(-100 * kHardCapSec);
   ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
 
-  const auto cutoff = SysCatalogAllowedHistoryCutoff();
+  const auto cutoff = WaitForSysCatalogHistoryCutoff(
+      [](const auto& c) { return c.cotables_cutoff_ht < c.primary_cutoff_ht; });
   EXPECT_EQ(
       cutoff.cotables_cutoff_ht,
       cutoff.primary_cutoff_ht.AddSeconds(kRetentionSec - kHardCapSec));
@@ -3516,20 +3121,27 @@ TEST_F(MasterTest, SysCatalogHistoryCutoffRespectsPublishedPin) {
   constexpr int32_t kRetentionSec = 60;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
       kRetentionSec;
+  // The leader publishes only within PublishYsqlHistoryRetentionPin: without a persisted registry
+  // it waits out the registration window first.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_persist_tserver_registry) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_tserver_registration_duration_secs) = 3600;
   const std::string kTsUUID = "ts-pins-1";
   ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, 1));
 
   const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
   ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
-  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+  ASSERT_OK(PublishYsqlHistoryRetentionPin(pin));
 
   // No live ts reports the pin anymore, so only the published row is holding the catalog back.
   ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {}));
+  // Once the leader no longer has a live pin to hand the host.
+  SleepFor(MonoDelta::FromMilliseconds(4 * FLAGS_catalog_manager_bg_task_wait_ms));
   EXPECT_EQ(SysCatalogAllowedHistoryCutoff().cotables_cutoff_ht, pin);
 
   // Publishing the now empty aggregate releases the catalog again.
-  ASSERT_OK(PublishYsqlHistoryRetentionPin());
-  auto cutoff = SysCatalogAllowedHistoryCutoff();
+  ASSERT_OK(PublishYsqlHistoryRetentionPin(HybridTime::kInvalid));
+  auto cutoff = WaitForSysCatalogHistoryCutoff(
+      [](const auto& c) { return c.cotables_cutoff_ht == c.primary_cutoff_ht; });
   EXPECT_EQ(cutoff.cotables_cutoff_ht, cutoff.primary_cutoff_ht);
 }
 
@@ -3544,7 +3156,7 @@ TEST_F(MasterTest, SysCatalogHistoryCutoffLoadsPublishedPinOnStartup) {
 
   const auto pin = mini_master_->Now().AddSeconds(-10 * kRetentionSec);
   ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTsUUID, 1, {{1001, pin}}));
-  ASSERT_OK(PublishYsqlHistoryRetentionPin());
+  ASSERT_OK(PublishYsqlHistoryRetentionPin(pin));
 
   ASSERT_OK(mini_master_->Restart(true));
 
@@ -3578,7 +3190,7 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesExcludesDeadTserver) {
   // Stop heartbeating ts1; keep ts2 alive until the master marks ts1 unresponsive.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     RETURN_NOT_OK(SendYsqlDbOldestPinnedReadTimesHeartbeat(kTs2, 1, {{1001, HybridTime(100)}}));
-    return mini_master_->master()->ts_manager()->NumLiveDescriptors() == 1;
+    return VERIFY_RESULT(cluster_client_->ListLiveTabletServers()).servers_size() == 1;
   }, MonoDelta::FromSeconds(30), "ts1 marked unresponsive"));
 
   auto resp = ASSERT_RESULT(SendYsqlDbOldestPinnedReadTimesHeartbeat(
@@ -3586,55 +3198,6 @@ TEST_F(MasterTest, YsqlDbOldestPinnedReadTimesExcludesDeadTserver) {
   ASSERT_EQ(resp.cluster_ysql_db_oldest_pinned_read_times().at(1001).db_level_oldest_read_time(),
             HybridTime(100).ToPB())
       << "dead ts1's older pin must not affect the cluster min";
-}
-
-TEST_F(MasterTest, TestQosMaxDbCount) {
-  // Set a low limit for testing.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 3;
-
-  CreateNamespaceResponsePB resp;
-
-  // Template databases should not count toward the limit.
-  ASSERT_OK(CreatePgsqlNamespace(
-      "template0", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 100), &resp));
-  // Also create "template1" -- both should be excluded.
-  ASSERT_OK(CreatePgsqlNamespace(
-      "template1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 101), &resp));
-
-  // Create databases up to the limit (limit = 3, current non-template count = 0).
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db1", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 1), &resp));
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db2", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 2), &resp));
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db3", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 3), &resp));
-
-  // The next creation should fail.
-  Status s = CreatePgsqlNamespace(
-      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp);
-  ASSERT_TRUE(s.IsInvalidArgument()) << s;
-  ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Too many databases");
-
-  // Increasing the limit should allow creation again.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 4;
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db4", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 4), &resp));
-
-  // Disabling QoS should remove the limit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = false;
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db5", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 5), &resp));
-
-  // Re-enable QoS; setting limit to 0 should also disable the check.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_qos) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 0;
-  ASSERT_OK(CreatePgsqlNamespace(
-      "db6", GetPgsqlNamespaceId(kPgFirstNormalObjectId + 6), &resp));
-
-  // YCQL keyspaces should not be affected by the YSQL limit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_max_db_count) = 1;
-  ASSERT_OK(CreateNamespace("cql_ks", YQLDatabase::YQL_DATABASE_CQL, &resp));
 }
 
 } // namespace yb::master

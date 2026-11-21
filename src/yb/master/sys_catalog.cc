@@ -72,15 +72,13 @@
 
 #include "yb/gutil/bind.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_options.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/qlexpr/index.h"
 

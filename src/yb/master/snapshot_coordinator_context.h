@@ -40,6 +40,21 @@ using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
+
+// A snapshot or restore RPC to one tablet, sent by the master leader. The coordinator fills in the
+// fields of the operation it creates through SnapshotCoordinatorContext::CreateAsyncTabletSnapshotOp.
+class AsyncTabletSnapshotOp {
+ public:
+  virtual ~AsyncTabletSnapshotOp() = default;
+
+  virtual void SetSnapshotScheduleId(const SnapshotScheduleId& id) = 0;
+  virtual void SetSnapshotHybridTime(HybridTime value) = 0;
+  virtual void SetMetadata(const SysTablesEntryPB& pb) = 0;
+  virtual void SetRestorationId(const TxnSnapshotRestorationId& id) = 0;
+  virtual void SetRestorationTime(HybridTime value) = 0;
+  virtual void SetDbOid(int64_t db_oid) = 0;
+  virtual void SetColocatedTableMetadata(const TableId& table_id, const SysTablesEntryPB& pb) = 0;
+};
 YB_STRONGLY_TYPED_BOOL(IncludeHiddenTables);
 
 // Context class for MasterSnapshotCoordinator.
@@ -98,6 +113,13 @@ class SnapshotCoordinatorContext {
   // PITR restores sys catalog state via Raft; all OIDs in tserver caches were
   // issued by the master allocator and remain consistent.
   virtual Status AdvanceOidCounters(const NamespaceId& namespace_id) = 0;
+
+  // Called on the leader when a PITR restore finishes; splitting was disabled while it ran.
+  virtual void ReenableTabletSplittingAfterPitr() = 0;
+
+  // Whether the namespace is an xCluster target in automatic DDL mode, whose DDLs xCluster rolls
+  // back itself, so a PITR restore leaves its sys catalog alone.
+  virtual bool IsNamespaceInAutomaticModeXClusterTarget(const NamespaceId& namespace_id) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
 

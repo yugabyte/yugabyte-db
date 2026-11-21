@@ -79,7 +79,6 @@ class WriteResponsePB;
 }
 
 namespace master {
-class Master;
 class MasterOptions;
 
 // Forward declaration from internal header file.
@@ -402,9 +401,6 @@ class SysCatalogTable {
   Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
 
  private:
-  friend class CatalogManager;
-  friend class ScopedLeaderSharedLock;
-
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 
   const char *table_name() const { return kSysCatalogTableName; }

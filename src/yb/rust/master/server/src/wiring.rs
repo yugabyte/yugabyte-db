@@ -578,6 +578,8 @@ static MAX_LEADER_LEASE_EXPIRED_SECS: FlagRef<u32> =
 
 static CLUSTER_UUID: FlagRef<String> = FlagRef::new("cluster_uuid");
 static USE_PRIVATE_IP: FlagRef<String> = FlagRef::new("use_private_ip");
+static CHECK_DESIRED_HOST_PORT: FlagRef<bool> =
+    FlagRef::new("master_register_ts_check_desired_host_port");
 static ALLOW_YCQL_ROLE_DROP: FlagRef<bool> = FlagRef::new("ycql_allow_cassandra_drop");
 
 const DEFAULTS_OPTIONS: DefaultsOptions = DefaultsOptions {
@@ -621,6 +623,7 @@ fn ts_manager_options() -> TsManagerOptions {
             Duration::from_secs(MAX_LEADER_LEASE_EXPIRED_SECS.get().into())
         },
         use_private_ip: || USE_PRIVATE_IP.get(),
+        check_desired_host_port: || CHECK_DESIRED_HOST_PORT.get(),
         send_leader_blacklisted_tservers: || SEND_LEADER_BLACKLISTED_TSERVERS.get(),
         ysql_db_pins: || ENABLE_DB_HISTORY_RETENTION_PINS.get(),
         initial_registration_duration: || {

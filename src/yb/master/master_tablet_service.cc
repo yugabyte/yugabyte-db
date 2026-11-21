@@ -25,8 +25,6 @@
 
 #include "yb/dockv/doc_key.h"
 
-#include "yb/master/scoped_leader_shared_lock-internal.h"
-
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/cgroups.h"
@@ -37,6 +35,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/type_traits.h"
 
 DEFINE_RUNTIME_AUTO_bool(enable_ysql_catalog_prefetch_admission, kLocalVolatile, false, true,
     "Whether the master leader bounds how many YSQL catalog prefetches it serves at a time. "
@@ -346,7 +345,21 @@ Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeas
 
 namespace {
 
-// ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer.
+HAS_MEMBER_FUNCTION(mutable_error);
+
+template <class T, class ErrorCode>
+typename std::enable_if<HasMemberFunction_mutable_error<T>::value, void>::type
+FillStatus(const Status& status, ErrorCode code, T* resp) {
+  StatusToPB(status, resp->mutable_error()->mutable_status());
+  resp->mutable_error()->set_code(code);
+}
+
+template <class T, class ErrorCode>
+typename std::enable_if<!HasMemberFunction_mutable_error<T>::value, void>::type
+FillStatus(const Status& status, ErrorCode code, T* resp) {
+  StatusToPB(status, resp->mutable_status());
+}
+
 template <class Resp>
 bool CheckIsInitializedAndIsLeaderOrRespond(
     const MasterTabletServerContext::LeaderGuard& guard, Resp* resp, rpc::RpcContext* context) {

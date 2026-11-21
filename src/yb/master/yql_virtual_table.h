@@ -17,9 +17,9 @@
 
 #include "yb/docdb/ql_storage_interface.h"
 
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
 
+#include "yb/util/format.h"
 #include "yb/util/metrics_fwd.h"
 
 namespace yb {
@@ -30,12 +30,6 @@ using VTableDataPtr = std::shared_ptr<qlexpr::QLRowBlock>;
 // A YQL virtual table which is based on in memory data.
 class YQLVirtualTable : public docdb::YQLStorageIf {
  public:
-  explicit YQLVirtualTable(const TableName& table_name,
-                           const NamespaceName &namespace_name,
-                           const Master* const master,
-                           const Schema& schema);
-  // For a table served without a Master (the Rust master's host), whose subclass reads nothing
-  // through master_.
   YQLVirtualTable(const TableName& table_name,
                   const NamespaceName& namespace_name,
                   const scoped_refptr<MetricEntity>& metric_entity,
@@ -144,14 +138,6 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
 
   Result<std::pair<int, DataType>> ColumnIndexAndType(const std::string& col_name) const;
 
-  // Get all live tserver descriptors sorted by their UUIDs. For cases like system.local and
-  // system.peers tables to return the token map of each tserver node so that each maps to a
-  // consistent token.
-  void GetSortedLiveDescriptors(std::vector<std::shared_ptr<TSDescriptor>>* descs) const;
-
-  CatalogManagerIf& catalog_manager() const;
-
-  const Master* const master_;
   TableName table_name_;
   std::unique_ptr<Schema> schema_;
   scoped_refptr<Histogram> histogram_;

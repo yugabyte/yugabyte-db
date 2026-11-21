@@ -16,8 +16,6 @@
 #include <functional>
 #include <memory>
 
-#include "yb/client/client_fwd.h"
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
@@ -25,21 +23,11 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_tasks.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/multi_step_monitored_task.h"
 
-#include "yb/rpc/rpc.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/status_fwd.h"
-#include "yb/util/threadpool.h"
 
 namespace yb {
-namespace tserver {
-class GetTransactionStatusResponsePB;
-}
-
 namespace master {
 /*
  * Currently the metadata for YSQL Tables is stored in both the PG catalog and DocDB schema.
@@ -52,7 +40,7 @@ namespace master {
  * this table are blocked until verification is complete. A poller is scheduled to monitor whether
  * the transaction is complete. Once the transaction is detected to be complete, it compares the PG
  * catalog and the DocDB schema and finds whether the transaction is a success or a failure.
- * Based on whether the transaction was a success or failure, the CatalogManager will effect
+ * Based on whether the transaction was a success or failure, the master will effect
  * rollback or roll-forward of the DocDB schema.
  *
  * Note that the above protocol introduces eventual consistency between the two types of metadata.
@@ -65,200 +53,18 @@ namespace master {
  * or use DDL entities created by uncommitted transactions.
  */
 
-// Callbacks for DdlRequesterLivenessTask to interact with the background DDL operation
-// (e.g. BackfillTable) that it is monitoring.
-struct BackgroundDdlCallbacks {
-  // Returns true when the operation has completed and no further polling is needed.
-  std::function<bool()> done_;
-  // Cancels the operation. Called when the initiating PG backend is detected as killed.
-  std::function<Status()> abort_;
-};
-
-// Helper class that encapsulates the logic to poll the transaction status.
-// The checks the verification tasks make, for a master without CatalogManager (the Rust master's
-// host): whether the PG catalog has a DDL transaction's change to `table` (true), has it undone
-// (false), or cannot tell (nullopt, the change did not alter the DocDB schema).
+// The checks DDL verification makes, for the Rust master's host: whether the PG catalog has a DDL
+// transaction's change to `table` (true), has it undone (false), or cannot tell (nullopt, the
+// change did not alter the DocDB schema).
 Result<std::optional<bool>> CheckYsqlDdlTableSchema(
     SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table);
 // Whether the PG catalog table `pg_table_id` has a row with oid `entry_oid`.
 Result<bool> YsqlCatalogEntryExists(
     SysCatalogTable& sys_catalog, const TableId& pg_table_id, PgOid entry_oid);
-// TableSchemaVerificationTask::CheckTableExists of the table `table_id` with row `table`: whether
+// Whether the table `table_id` with row `table` exists in the PG catalog:
 // pg_class still has it (with its relfilenode, if rewritten), or pg_yb_tablegroup its tablegroup.
 Result<bool> YsqlTableExists(
     SysCatalogTable& sys_catalog, const TableId& table_id, const SysTablesEntryPB& table);
-
-class PollTransactionStatusBase {
- public:
-  PollTransactionStatusBase(
-      const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
-      const std::string& description);
-
-  virtual ~PollTransactionStatusBase();
-
- protected:
-  Status VerifyTransaction();
-  virtual void TransactionPending() = 0;
-  virtual void FinishPollTransaction(bool aborted) = 0;
-  void Shutdown();
-  std::string LogPrefix() const;
-
-  TransactionMetadata transaction_;
-  std::string description_;
-
- private:
-  void TransactionReceived(Status txn_status,
-                           const tserver::GetTransactionStatusResponsePB& response);
-
-  std::shared_future<client::YBClient*> client_future_;
-  rpc::Rpcs rpcs_;
-  Synchronizer sync_;
-
-  std::mutex rpc_mutex_;
-
-  bool shutdown_ GUARDED_BY(rpc_mutex_) = false;
-};
-
-class NamespaceVerificationTask : public MultiStepNamespaceTaskBase,
-                                  public PollTransactionStatusBase {
- public:
-  static void CreateAndStartTask(
-      CatalogManager& catalog_manager,
-      scoped_refptr<NamespaceInfo> ns,
-      const TransactionMetadata& transaction,
-      std::function<void(Result<bool>)> complete_callback,
-      SysCatalogTable* sys_catalog,
-      std::shared_future<client::YBClient*> client_future,
-      rpc::Messenger& messenger,
-      const LeaderEpoch& epoch);
-
-  server::MonitoredTaskType type() const override {
-    return server::MonitoredTaskType::kNamespaceVerification;
-  }
-
-  std::string type_name() const override { return "Namespace verification"; }
-
-  std::string description() const override {
-    return Format("NamespaceSchemaVerificationTask for $0", namespace_info_.ToString());
-  };
-
-  ~NamespaceVerificationTask() = default;
-
-  NamespaceVerificationTask(
-    CatalogManager& catalog_manager,
-    scoped_refptr<NamespaceInfo> ns,
-    const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
-    SysCatalogTable* sys_catalog,
-    std::shared_future<client::YBClient*> client_future,
-    rpc::Messenger& messenger,
-    const LeaderEpoch& epoch);
-
- private:
-  Status FirstStep() override;
-  void TransactionPending() override;
-  Status ValidateRunnable() override;
-  void FinishPollTransaction(bool aborted) override;
-  Status CheckNsExists();
-  void TaskCompleted(const Status& status) override;
-  void PerformAbort() override;
-
-  SysCatalogTable& sys_catalog_;
-  bool entry_exists_ = false;
-};
-
-class TableSchemaVerificationTask : public MultiStepTableTaskBase,
-                                    public PollTransactionStatusBase {
- public:
-  static void CreateAndStartTask(
-    CatalogManager& catalog_manager,
-    scoped_refptr<TableInfo> table,
-    const TransactionMetadata& transaction,
-    std::function<void(Result<std::optional<bool>>)> complete_callback,
-    SysCatalogTable* sys_catalog,
-    std::shared_future<client::YBClient*> client_future,
-    rpc::Messenger& messenger,
-    const LeaderEpoch& epoch,
-    bool ddl_atomicity_enabled);
-
-  server::MonitoredTaskType type() const override {
-    return server::MonitoredTaskType::TableSchemaVerification;
-  }
-
-  std::string type_name() const override { return "TableSchemaVerificationTask"; }
-
-  std::string description() const override {
-    return Format("TableSchemaVerificationTask for $0", table_info_->ToString());
-  };
-
-  ~TableSchemaVerificationTask() = default;
-
-  TableSchemaVerificationTask(
-    CatalogManager& catalog_manager,
-    scoped_refptr<TableInfo> table,
-    const TransactionMetadata& transaction,
-    std::function<void(Result<std::optional<bool>>)> complete_callback,
-    SysCatalogTable* sys_catalog,
-    std::shared_future<client::YBClient*> client_future,
-    rpc::Messenger& messenger,
-    const LeaderEpoch& epoch,
-    bool ddl_atomicity_enabled);
-
- private:
-  Status FirstStep() override;
-  void TransactionPending() override;
-  Status ValidateRunnable() override;
-  Status CheckTableExists();
-  Status CompareSchema();
-  Status FinishTask(Result<std::optional<bool>> is_committed);
-  void FinishPollTransaction(bool aborted) override;
-  void TaskCompleted(const Status& status) override;
-  void PerformAbort() override;
-
-  SysCatalogTable& sys_catalog_;
-  bool ddl_atomicity_enabled_;
-  std::optional<bool> is_committed_{std::nullopt};
-};
-
-// Periodically polls a DDL backend's transaction and calls BackgroundDdlCallbacks::abort
-// when the transaction is detected as ABORTED (e.g. pg_terminate_backend killed the session).
-// Can be attached to any long-running background DDL operation.
-class DdlRequesterLivenessTask : public MultiStepTableTaskBase,
-                                 public PollTransactionStatusBase {
- public:
-  static std::shared_ptr<DdlRequesterLivenessTask> CreateAndStartTask(
-        CatalogManager& catalog_manager,
-        scoped_refptr<TableInfo> table,
-        const TransactionMetadata& transaction,
-        BackgroundDdlCallbacks callbacks,
-        std::shared_future<client::YBClient*> client_future,
-        rpc::Messenger& messenger,
-        const LeaderEpoch& epoch);
-  DdlRequesterLivenessTask(
-      CatalogManager& catalog_manager,
-      scoped_refptr<TableInfo> table,
-      const TransactionMetadata& transaction,
-      BackgroundDdlCallbacks callbacks,
-      std::shared_future<client::YBClient*> client_future,
-      rpc::Messenger& messenger,
-      const LeaderEpoch& epoch);
-
-  server::MonitoredTaskType type() const override {
-    return server::MonitoredTaskType::kDdlRequesterLiveness;
-  }
-  std::string type_name() const override { return "DdlRequesterLivenessTask"; }
-  std::string description() const override;
-
- private:
-  Status FirstStep() override;
-  void TransactionPending() override;
-  void FinishPollTransaction(bool aborted) override;
-  void TaskCompleted(const Status& status) override;
-  Status ValidateRunnable() override;
-  void PerformAbort() override;
-
-  BackgroundDdlCallbacks callbacks_;
-};
 
 }  // namespace master
 }  // namespace yb

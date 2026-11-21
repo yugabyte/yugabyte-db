@@ -12,9 +12,7 @@
 
 #include "yb/master/embedded_master_if.h"
 
-#include <cstdlib>
 #include <mutex>
-#include <string_view>
 
 #include "yb/util/status_format.h"
 
@@ -29,25 +27,6 @@ EmbeddedMasterFactory& Factory() {
 }
 
 }  // namespace
-
-RustMasters RustMastersFromEnv() {
-  const char* value = getenv("YB_RUST_MASTER");
-  if (value == nullptr) {
-    return RustMasters::kAll;
-  }
-  const std::string_view mode(value);
-  if (mode == "0" || mode == "cpp") {
-    return RustMasters::kNone;
-  }
-  if (mode == "mixed") {
-    return RustMasters::kFirst;
-  }
-  return RustMasters::kAll;
-}
-
-bool IsRustMaster(RustMasters mode, size_t index) {
-  return mode == RustMasters::kAll || (mode == RustMasters::kFirst && index == 0);
-}
 
 void RegisterEmbeddedMasterFactory(EmbeddedMasterFactory factory) {
   std::lock_guard lock(factory_mutex);

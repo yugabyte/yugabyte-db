@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/restore_sys_catalog_state.h"
@@ -103,6 +104,31 @@ TEST(RestoreSysCatalogStateTest, Filter) {
         }
       }
     }
+  }
+}
+
+// A restore refuses vector indexes whose backend is no longer supported.
+TEST(CatalogManagerUtilTest, ValidateVectorIndexBackend) {
+  SysTablesEntryPB table;
+  table.set_name("vi");
+  ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+
+  auto& options = *table.mutable_index_info()->mutable_vector_idx_options();
+  options.set_idx_type(PgVectorIndexType::HNSW);
+  for (auto backend : {HnswBackend::YB_HNSW_USEARCH, HnswBackend::YB_HNSW_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+  }
+
+  // An unset backend reads as DEPRECATED_USEARCH: such indexes predate block-based backends.
+  options.mutable_hnsw()->clear_backend();
+  auto status = ValidateVectorIndexBackend("table_id", table);
+  ASSERT_TRUE(status.IsNotSupported()) << status;
+  for (auto backend : {HnswBackend::DEPRECATED_USEARCH, HnswBackend::DEPRECATED_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    status = ValidateVectorIndexBackend("table_id", table);
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "no longer supported");
   }
 }
 

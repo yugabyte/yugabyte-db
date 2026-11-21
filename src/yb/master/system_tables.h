@@ -37,7 +37,6 @@ class PartitionSchema;
 namespace master {
 
 class CreateTableRequestPB;
-class YQLVirtualTable;
 
 // A YCQL system table, served by a virtual table on the master.
 struct SystemTableDef {
@@ -45,7 +44,6 @@ struct SystemTableDef {
   const char* namespace_name;
   const char* namespace_id;
   Schema (*create_schema)();
-  std::unique_ptr<YQLVirtualTable> (*make_vtable)(const SystemTableDef& def, Master* master);
 };
 
 // Every YCQL system table, in the order a first leader creates them.

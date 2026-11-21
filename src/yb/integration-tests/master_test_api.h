@@ -72,9 +72,8 @@ class CatalogSnapshot {
   std::map<NamespaceId, master::NamespaceInfoPtr> namespaces_;
 };
 
-// What tests ask the master leader, over RPCs, so they run the same against any master and in
-// both MiniCluster and ExternalMiniCluster. It replaces reaching into the C++ master's objects
-// (MiniMaster::catalog_manager(), ts_manager() and the like), which a Rust master does not have.
+// What tests ask the master leader, over RPCs, in both MiniCluster and ExternalMiniCluster: the
+// Rust master's state is only visible through its RPCs.
 class MasterTestApi {
  public:
   // MiniCluster or ExternalMiniCluster.

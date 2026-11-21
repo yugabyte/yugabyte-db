@@ -67,67 +67,35 @@ set(MASTER_PROTO_LIBS
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(MASTER_SRCS
-  async_flush_tablets_task.cc
-  async_rbs_info_task.cc
-  async_rpc_tasks.cc
-  async_rpc_tasks_base.cc
-  async_snapshot_tasks.cc
-  async_snapshot_transfer_task.cc
-  backfill_index.cc
   catalog_entity_base.cc
   catalog_entity_info.cc
-  catalog_entity_tasks.cc
   catalog_loaders.cc
-  catalog_loading_state.cc
-  catalog_manager.cc
-  catalog_manager_bg_tasks.cc
-  catalog_manager_ext.cc
   catalog_manager_util.cc
-  cdcsdk_manager.cc
-  clone/clone_state_entity.cc
-  clone/clone_state_manager.cc
-  clone/clone_tasks.cc
-  cluster_balance.cc
-  cluster_balance_activity_info.cc
-  cluster_balance_util.cc
+  embedded_master_if.cc
   encryption_manager.cc
-  flush_manager.cc
   master-path-handlers.cc
-  master.cc
-  master_admin_service.cc
   master_auto_flags_manager.cc
-  master_backup_service.cc
   master_call_home.cc
   master_flag_defaults.cc
-  master_client_service.cc
-  master_cluster_handler.cc
-  master_cluster_service.cc
-  master_dcl_service.cc
-  master_ddl_service.cc
-  master_encryption_service.cc
-  master_heartbeat_service.cc
+  master_flags_balancer.cc
+  master_flags_catalog.cc
+  master_flags_cdc.cc
+  master_flags_server.cc
+  master_flags_snapshots.cc
+  master_flags_xcluster.cc
+  master_flags_ysql.cc
+  master_metrics.cc
   master_options.cc
-  master_replication_service.cc
-  master_service_base.cc
   master_snapshot_coordinator.cc
   master_tablet_service.cc
-  master_test_service.cc
   master_tserver.cc
   master_types.cc
-  master_ysql_lease_service.cc
-  embedded_master_if.cc
   mini_master.cc
-  multi_step_monitored_task.cc
-  object_lock_info_manager.cc
-  permissions_manager.cc
-  post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
-  scoped_leader_shared_lock.cc
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
-  snapshot_transfer_manager.cc
   state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_restore.cc
@@ -135,69 +103,16 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   system_tables.cc
-  table_index.cc
   table_ddl_util.cc
-  tablet_creation_limits.cc
-  tablet_health_manager.cc
-  tablet_split_manager.cc
   tasks_tracker.cc
-  test_async_rpc_manager.cc
-  ts_descriptor.cc
-  ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
-  xcluster/add_index_to_bidirectional_xcluster_target_task.cc
-  xcluster/add_table_to_xcluster_source_task.cc
-  xcluster/add_table_to_xcluster_target_task.cc
-  xcluster/handle_new_schema_for_automatic_xcluster_target_task.cc
-  xcluster/master_xcluster_util.cc
-  xcluster/persistence_block_map.cc
-  xcluster/xcluster_bootstrap_helper.cc
-  xcluster/xcluster_catalog_entity.cc
-  xcluster/xcluster_config.cc
-  xcluster/xcluster_consumer_metrics.cc
-  xcluster/xcluster_failover_task.cc
-  xcluster/xcluster_inbound_replication_group_setup_task.cc
-  xcluster/xcluster_manager.cc
-  xcluster/xcluster_outbound_replication_group.cc
-  xcluster/xcluster_outbound_replication_group_tasks.cc
-  xcluster/xcluster_replication_group.cc
-  xcluster/xcluster_safe_time_service.cc
-  xcluster/xcluster_source_manager.cc
-  xcluster/xcluster_target_manager.cc
-  xcluster/xcluster_universe_replication_alter_helper.cc
-  xcluster/xcluster_wal_anchor_deletion_task.cc
   xcluster_consumer_registry_service.cc
-  xcluster_rpc_tasks.cc
-  xrepl_catalog_manager.cc
-  yql_aggregates_vtable.cc
-  yql_auth_resource_role_permissions_index.cc
-  yql_auth_role_permissions_vtable.cc
-  yql_auth_roles_vtable.cc
-  yql_columns_vtable.cc
-  yql_empty_vtable.cc
-  yql_functions_vtable.cc
-  yql_indexes_vtable.cc
-  yql_keyspaces_vtable.cc
-  yql_local_vtable.cc
-  yql_partitions_vtable.cc
-  yql_peers_vtable.cc
-  yql_size_estimates_vtable.cc
-  yql_tables_vtable.cc
-  yql_triggers_vtable.cc
-  yql_types_vtable.cc
-  yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
-  ysql/ysql_catalog_config.cc
   ysql/ysql_initdb_major_upgrade_handler.cc
-  ysql/ysql_manager.cc
-  ysql_backends_manager.cc
-  ysql_ddl_handler.cc
   ysql_ddl_verification_task.cc
   ysql_sequence_util.cc
-  ysql_tablegroup_manager.cc
-  ysql_tablespace_manager.cc
 )
 
 set(MASTER_DEPS
@@ -245,17 +160,17 @@ ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
-# A library with common code shared between master tests.
+# A library with common code shared between master tests. MiniMaster starts the embedded Rust
+# master, whose factory yb_master_rs_embedded registers.
 set(MASTER_TEST_COMMON_SRCS
   master-test-util.cc
   master-test_base.cc
   master_cluster_client.cc
   master_ddl_client.cc
-  master_ysql_lease_client.cc
-  ts_descriptor_test_util.cc)
+  master_ysql_lease_client.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
-  master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
+  master ${MASTER_PROTO_LIBS} yb_client yb_master_rs_embedded ${YB_MIN_TEST_LIBS})
 
 # Tests
 set(YB_TEST_LINK_LIBS master
@@ -266,42 +181,14 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
-ADD_YB_TEST(async_rpc_tasks-test)
-ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(catalog_entity_info-test)
-ADD_YB_TEST(catalog_manager-test)
-ADD_YB_TEST(catalog_manager_mini_cluster_test)
-ADD_YB_TEST(clone/clone_state_manager-test)
-ADD_YB_TEST(cluster_balance_activity_info-test)
-ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(flush_manager-test)
-ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(master_cluster_test)
 ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
-ADD_YB_TEST(multi_step_monitored_task-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
-ADD_YB_TEST(table_index_test)
-ADD_YB_TEST(tablet_creation_limits_test)
-ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
-ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
-YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
-# The C++ master, only for tests that ask for C++ masters until it is deleted. yb-master is the Rust
-# master (src/yb/master_host).
-add_executable(yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} master_main.cc)
-set(YB_MASTER_CPP_EXE_DEPS
-    master
-    ${YB_BASE_LIBS})
-if(NOT DEFINED YB_LTO_ENABLED)
-  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
-endif()
-if(YB_LTO_ENABLED)
-  # master_main.cc dispatches to the tablet server in LTO builds.
-  list(APPEND YB_MASTER_CPP_EXE_DEPS tserver_main_impl yb_pgbackend)
-endif()
-target_link_libraries(yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX} ${YB_MASTER_CPP_EXE_DEPS})

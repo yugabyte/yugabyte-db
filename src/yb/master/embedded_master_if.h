@@ -21,7 +21,6 @@
 
 #include "yb/master/master_fwd.h"
 
-#include "yb/util/enums.h"
 #include "yb/util/result.h"
 
 namespace yb::server {
@@ -29,16 +28,6 @@ class RpcAndWebServerBase;
 }  // namespace yb::server
 
 namespace yb::master {
-
-// Which masters a test cluster runs as the Rust master, with leading allowed.
-YB_DEFINE_ENUM(RustMasters, (kNone)(kAll)(kFirst));
-
-// The default from the YB_RUST_MASTER environment variable: "0" or "cpp" for kNone (C++ masters),
-// "mixed" for kFirst (one Rust master among C++ ones), anything else or unset for kAll.
-RustMasters RustMastersFromEnv();
-
-// Whether the master at `index` of a cluster runs as the Rust master under `mode`.
-bool IsRustMaster(RustMasters mode, size_t index);
 
 // A Rust master running in this process.
 class EmbeddedMasterIf {

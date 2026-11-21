@@ -6,25 +6,39 @@ master's own bridge. The shared bridges are in `src/yb/rust_bridge/`
 
 ## main()
 
-`master_host_main.cc` keeps the C++ master's startup order:
+`master_host_main.cc`:
 
 1. `argv[0]` dispatch: a basename starting with `yb-tserver` runs `TabletServerMain` (LTO builds
-   only), as `master_main.cc` does.
-2. `SetMasterFlagDefaults()`, shared with the C++ master, overrides server flag defaults.
+   only).
+2. `SetMasterFlagDefaults()` overrides server flag defaults.
 3. `master_rs::register_flags()` registers the flags declared in Rust.
-4. gflags parsing and glog setup (`MasterTServerParseFlagsAndInit`).
+4. gflags parsing and glog setup (`MasterTServerParseFlagsAndInit`), then
+   `SetDefaultInitialSysCatalogSnapshotFlags`.
 5. `master_rs::run_master()`: creates the host, registers the Rust master services, starts the
-   host (which raises the ulimits and starts the `TotalMemWatcher` thread, as `master_main.cc`
-   does), waits for SIGTERM and shuts down.
+   host (which raises the ulimits, starts the `TotalMemWatcher` thread and `MasterCallHome`),
+   waits for SIGTERM and shuts down.
 
-`master_main.cc` steps not taken: `MasterCallHome`, which needs the C++ `Master`, and
-`SetDefaultInitialSysCatalogSnapshotFlags`, which only matters to a master that creates a universe.
+## The C++ master library
+
+`src/yb/master` (CMake target `master`) holds only the C++ the host, MiniMaster, the tserver and
+the tools need: the sys catalog and its apply-time code, the snapshot coordinator, AutoFlags,
+encryption, the tablet service, the YCQL system table schemas, and helpers. The C++ catalog
+manager is gone, but its gflags are not: a command line or flagfile written for the C++ master
+must keep parsing, and the Rust master reads most of them by name. They are defined unchanged in
+`src/yb/master/master_flags_<area>.cc`, and the metrics the host instantiates in
+`master_metrics.cc`.
+
+`build-support/check_master_flags.py` runs after every link of `yb-master` and fails the build if
+`yb-master --helpxml` lacks a name in `src/yb/master/master_flags_baseline.txt`, the non-test,
+non-deprecated gflags of the last C++ master. To retire one, make it a `DEPRECATE_FLAG` and remove
+it from the baseline. There is no lint against including the C++ master's headers
+(`catalog_manager.h`, `master.h`, ...): they no longer exist, so the compiler rejects it.
 
 ## MasterHost
 
 `MasterHost` is a `DbServerBase` without a `CatalogManager`. It runs the parts of the C++ master
 that live inside the sys-catalog tablet's Raft apply, because they change what is on disk on every
-master and so must be the same code as on a C++ peer:
+master and so must be the same code as on a C++ peer of the previous release during an upgrade:
 
 - `SysCatalogTable`, through `SysCatalogContext` (the interface the C++ `Master` implements too).
 - `MasterSnapshotCoordinator`, with a context whose `LeaderTerm()` is always -1, so only the
@@ -32,14 +46,14 @@ master and so must be the same code as on a C++ peer:
   through `SysCatalogTap`, which forwards every call and hands applied rows to Rust
   ([sys-catalog.md](sys-catalog.md)).
 - PITR restores of the sys catalog through `RestoreSysCatalogOnApply`
-  (`src/yb/master/sys_catalog_restore.cc`), shared with `CatalogManager`.
+  (`src/yb/master/sys_catalog_restore.cc`).
 - `MasterAutoFlagsManager` for `auto_flags_config` and AutoFlags ops.
 - The sys-catalog history cutoff: snapshot retention,
   `timestamp_syscatalog_history_retention_interval_sec`, CDCSDK safe time, and the YSQL history
   retention pin the leader publishes, which the host reloads every
   `catalog_manager_bg_task_wait_ms` (and, on the leader, the live pin; see Leading below).
 
-It also runs the C++ `Webserver`, on loopback behind the Rust web port, with the pages a C++
+It also runs the C++ `Webserver`, on loopback behind the Rust web port, with the pages a
 follower master serves (see [web.md](web.md)).
 
 It serves ConsensusService and RemoteBootstrapService in C++, and the remote-bootstrap steps for a
@@ -50,7 +64,7 @@ tablet (`SysCatalogTable::CreateNew`, after the same `CheckLocalHostInMasterAddr
 `CatalogManager::InitSysCatalogAsync`) and the first Rust leader writes the default rows
 ([catalog-state.md](catalog-state.md)). Only C++ can build the system tables' rows (their schemas
 come from the YCQL virtual table classes), so `SystemTableRows` builds them with
-`src/yb/master/system_tables.{h,cc}`, which `CatalogManager` uses too. The host also gives the
+`src/yb/master/system_tables.{h,cc}`. The host also gives the
 default YCQL superuser's bcrypt hash and the YSQL major version. YSQL's initial sys catalog snapshot
 is not restored yet (W9).
 
@@ -81,12 +95,11 @@ they start (with `allow_encryption_at_rest`, the default).
 For table DDL the host runs the C++ steps that read or write engine formats, also through
 `HandleOnHost`, with request and response messages in `master_rust_peer.proto`:
 `PrepareTableSchema` (CREATE TABLE's schema, tablet count and partitions) and `AlterTableSchema`
-(`ApplyAlterSteps`), which share `src/yb/master/table_ddl_util.cc` with `CatalogManager`.
+(`ApplyAlterSteps`, `src/yb/master/table_ddl_util.cc`).
 For YSQL it serves `GetYsqlCatalogConfig` (the database's version in `pg_yb_catalog_version`; Rust
 resolves the namespace to its id first) and `GetYsqlYbSystemTableInfo` from the sys catalog. The
-schedules that cover a namespace or table are not asked of the host's snapshot coordinator: it
-collects a schedule's entries through `CatalogManager`, which is never leader on a Rust master,
-so the Rust leader derives them from the `SNAPSHOT_SCHEDULE` rows (`schedules.rs`).
+schedules that cover a namespace or table are not asked of the host's snapshot coordinator, which
+never leads: the Rust leader derives them from the `SNAPSHOT_SCHEDULE` rows (`schedules.rs`).
 `EncodedPartitionKeys` gives a split the DocDB-encoded keys of its children's partition keys
 (`PartitionSchema::GetEncodedPartitionKey`).
 
@@ -98,9 +111,8 @@ master's tablet service like any tablet. The host's `GetSystemTablet` serves the
 (`VirtualTables::Input`, a `YcqlVirtualTableInputPB`): the live tservers in uuid order, the
 running YCQL keyspaces, the YCQL tables visible to clients with their tablets' locations, the
 UDTs and the roles. The split is where the formats are: the schemas, CQL type names, index
-targets, partition hashes and DNS lookups are C++'s, and the C++ classes read them through
-`CatalogManager`, which a Rust master's host does not have. `system.partitions` is rebuilt on
-every read rather than cached as C++ caches it.
+targets, partition hashes and DNS lookups are C++'s. `system.partitions` is rebuilt on every
+read.
 
 **Leading.** Failure detection stays on as in C++, and an election only nudges the Rust leadership
 loop ([leadership.md](leadership.md)). The host also does two leader duties for a Rust leader: it tells a master removed from the

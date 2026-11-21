@@ -20,9 +20,7 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/master_test_api.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/tablet_split_manager.h"
 
 #include "yb/rocksdb/db.h"
 

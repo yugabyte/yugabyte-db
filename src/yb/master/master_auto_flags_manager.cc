@@ -14,12 +14,9 @@
 #include "yb/master/master_auto_flags_manager.h"
 
 #include "yb/consensus/consensus.pb.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/ysql/ysql_manager_if.h"
+#include "yb/server/clock.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/enum_parse.h"
 #include "yb/util/scope_exit.h"
 
@@ -238,10 +235,8 @@ Result<bool> AreAutoFlagsCompatible(
 constexpr auto kYbMasterProcessName = "yb-master";
 
 MasterAutoFlagsManager::MasterAutoFlagsManager(
-    server::Clock* clock, FsManager* fs_manager, Master* master)
+    server::Clock* clock, FsManager* fs_manager)
     : AutoFlagsManagerBase(kYbMasterProcessName, clock, fs_manager),
-      master_(master),
-      catalog_manager_(master ? master->catalog_manager_impl() : nullptr),
       update_lock_(mutex_, std::defer_lock) {}
 
 Status MasterAutoFlagsManager::Init(
@@ -315,7 +310,7 @@ Status MasterAutoFlagsManager::CreateConfigForNewCluster() {
 
 Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_config) {
   SCHECK(
-      catalog_manager_ || sys_catalog_submitter_, NotSupported,
+      sys_catalog_submitter_, NotSupported,
       "AutoFlags config changes need a master leader");
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
@@ -326,8 +321,7 @@ Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_
       tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));
 
   RETURN_NOT_OK_PREPEND(
-      catalog_manager_ ? catalog_manager_->SubmitToSysCatalog(std::move(operation))
-                       : sys_catalog_submitter_(std::move(operation)),
+      sys_catalog_submitter_(std::move(operation)),
       "Failed to store AutoFlags config");
 
   latch.Wait();
@@ -337,10 +331,6 @@ Status MasterAutoFlagsManager::PersistConfigInSysCatalog(AutoFlagsConfigPB& new_
     LOG(WARNING) << "Failed to apply new AutoFlags config: " << status.ToString();
     return status;
   }
-  if (catalog_manager_) {
-    catalog_manager_->GetXClusterManager()->NotifyAutoFlagsConfigChanged();
-  }
-
   return Status::OK();
 }
 
@@ -401,20 +391,6 @@ Status MasterAutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsCo
 Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> MasterAutoFlagsManager::PromoteAutoFlags(
     const AutoFlagClass max_flag_class, const bool force_version_change) {
   SCHECK(!FLAGS_disable_auto_flags_management, NotSupported, "AutoFlags management is disabled.");
-  // Without a C++ Master, the caller has made these checks (the Rust master's host).
-  if (master_) {
-    SCHECK(
-        max_flag_class == AutoFlagClass::kLocalVolatile ||
-            !master_->ysql_manager().IsMajorUpgradeInProgress(),
-        InvalidArgument,
-        "Cannot promote non-volatile AutoFlags before YSQL major catalog upgrade is complete");
-
-    RETURN_NOT_OK_PREPEND(
-        master_->ts_manager()->ValidateAllTserverVersions(ValidateVersionInfoOp::kVersionEQ),
-        "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current "
-        "version");
-  }
-
   LOG(INFO) << "Promoting AutoFlags. max_flag_class: " << ToString(max_flag_class)
             << ", force: " << force_version_change;
 

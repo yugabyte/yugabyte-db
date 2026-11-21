@@ -23,7 +23,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
-#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
@@ -272,78 +271,6 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << "FLAGS_enable_ysql="
         << FLAGS_enable_ysql;
   }
-}
-
-Status MakeYsqlSysCatalogTablesTransactional(
-    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog, YsqlManagerIf& ysql_manager,
-    const LeaderEpoch& epoch) {
-  if (ysql_manager.IsTransactionalSysCatalogEnabled()) {
-    LOG(INFO) << "YSQL catalog tables are already transactional";
-    return Status::OK();
-  }
-
-  int num_updated_tables = 0;
-  for (const auto& table : tables) {
-    const auto& table_id = table->id();
-    auto& table_info = *table;
-
-    if (!IsPgsqlId(table_id)) {
-      continue;
-    }
-
-    {
-      TabletInfos tablet_infos = VERIFY_RESULT(table_info.GetTablets());
-      if (tablet_infos.size() != 1 || tablet_infos.front()->tablet_id() != kSysCatalogTabletId) {
-        continue;
-      }
-    }
-
-    auto table_lock = table_info.LockForWrite();
-    auto& schema = *table_lock.mutable_data()->mutable_schema();
-    auto& table_properties = *schema.mutable_table_properties();
-
-    bool should_modify = false;
-    if (!table_properties.is_ysql_catalog_table()) {
-      table_properties.set_is_ysql_catalog_table(true);
-      should_modify = true;
-    }
-    if (!table_properties.is_transactional()) {
-      table_properties.set_is_transactional(true);
-      should_modify = true;
-    }
-    if (!should_modify) {
-      continue;
-    }
-
-    num_updated_tables++;
-    LOG(INFO) << "Making YSQL system catalog table transactional: " << table_info.ToString();
-
-    // Change table properties in tablet metadata.
-    tablet::ChangeMetadataRequestPB change_req;
-    change_req.set_tablet_id(kSysCatalogTabletId);
-    auto& add_table = *change_req.mutable_add_table();
-    VERIFY_RESULT(sys_catalog->tablet_peer()->tablet_metadata()->GetTableInfo(table_id))->ToPB(
-        &add_table);
-    auto& metadata_table_properties = *add_table.mutable_schema()->mutable_table_properties();
-    metadata_table_properties.set_is_ysql_catalog_table(true);
-    metadata_table_properties.set_is_transactional(true);
-
-    RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
-        &change_req, sys_catalog->tablet_peer().get(), epoch.leader_term));
-
-    // Change table properties in the sys catalog. We do this after updating tablet metadata, so
-    // that if a restart happens before this step succeeds, we'll retry updating both next time.
-    RETURN_NOT_OK(sys_catalog->Upsert(epoch, &table_info));
-    table_lock.Commit();
-  }
-
-  if (num_updated_tables > 0) {
-    LOG(INFO) << "Made " << num_updated_tables << " YSQL sys catalog tables transactional";
-  }
-
-  RETURN_NOT_OK(ysql_manager.SetTransactionalSysCatalogEnabled(epoch));
-
-  return Status::OK();
 }
 
 }  // namespace master

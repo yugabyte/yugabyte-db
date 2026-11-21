@@ -54,7 +54,7 @@ def main() -> None:
                     break
 
     includes.reverse()
-    file = os.path.join(root_path, 'src/yb/master/master.cc')
+    file = os.path.join(root_path, 'src/yb/master/sys_catalog.cc')
     original_command: typing.List[str] = []
     for entry in ninja.parse_compdb():
         if entry.file == file:

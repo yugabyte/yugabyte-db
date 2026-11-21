@@ -13,19 +13,20 @@
 
 #pragma once
 
-#include <unordered_map>
-#include <vector>
+#include <string>
 
+#include "yb/common/common.fwd.h"
+#include "yb/common/common_net.fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 
-#include "yb/master/master_error.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/master/catalog_entity_info.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/ts_descriptor.h"
 
-#include "yb/util/status_callback.h"
-#include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 
-// Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
 
 class Schema;
@@ -40,50 +41,8 @@ class TableInfoPB;
 
 namespace master {
 
-using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
-
-class SetPreferredZonesRequestPB;
-class IsTruncateTableDoneResponsePB;
-
-static std::once_flag sequences_data_table_filter_once_flag_;
-static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
-
-const int kUseBackupRowEntryFormatVersion = 2;
-const int kUseRelfilenodeFormatVersion = 3;
-
 class CatalogManagerUtil {
  public:
-  // For the given set of descriptors, checks if the load is considered balanced across AZs in
-  // multi AZ setup, else checks load distribution across tservers (single AZ).
-  static Status IsLoadBalanced(const TSDescriptorVector& ts_descs);
-
-  static Result<ReplicationInfoPB> GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table,
-      const std::shared_ptr<const YsqlTablespaceManager>
-          tablespace_manager,
-      const ReplicationInfoPB& cluster_replication_info);
-
-  // For the given set of descriptors, checks if every tserver does not have an excess tablet leader
-  // load given the preferred zones.
-  static Status AreLeadersOnPreferredOnly(
-      const TSDescriptorVector& ts_descs,
-      const ReplicationInfoPB& cluster_replication_info,
-      const std::shared_ptr<const YsqlTablespaceManager> tablespace_manager,
-      const std::vector<scoped_refptr<TableInfo>>& tables);
-
-  // For the given set of descriptors, returns the map from each placement AZ to list of tservers
-  // running in that zone.
-  static Status GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
-                                         ZoneToDescMap* zone_to_ts);
-
-  // Called when registering a ts from raft, deduce a tservers placement from the peer's role
-  // and cloud info.
-  static Result<std::string> GetPlacementUuidFromRaftPeer(
-      const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
-
-  // Returns error if tablet partition is not covered by running inner tablets partitions.
-  static Status CheckIfCanDeleteSingleTablet(const TabletInfoPtr& tablet);
-
   enum CloudInfoSimilarity {
     NO_MATCH = 0,
     CLOUD_MATCH = 1,
@@ -99,77 +58,6 @@ class CatalogManagerUtil {
   static CloudInfoSimilarity ComputeCloudInfoSimilarity(const CloudInfoPB& ci1,
                                                         const CloudInfoPB& ci2);
 
-  // Checks if one cloudinfo is a prefix of another. This assumes that ci1 and ci2 are
-  // prefixes.
-  static bool IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2);
-
-  // Validate if the specified placement information conforms to the rules.
-  // Currently, the following assumption about placement blocks is made.
-  // Every TS should have a unique placement block to which it can be mapped.
-  // This translates to placement blocks being disjoint i.e. no placement
-  // block string (C.R.Z format) should be proper prefix of another.
-  // Validate placement information if passed.
-  static Status IsPlacementInfoValid(const PlacementInfoPB& placement_info);
-
-  // Validates only the constraints introduced by explicit per-block maximums: each explicit
-  // maximum must be positive and at least the block's minimum, and the sum of effective maximums
-  // must cover num_replicas. Additionally, because enforcing a maximum requires unambiguously
-  // attributing each tserver to one block, a placement with any explicit maximum must consist
-  // solely of fully-specified (non-wildcard), non-duplicate placement blocks. Returns OK when no
-  // block specifies an explicit maximum, so it is safe to call on legacy placements that
-  // intentionally skip the stricter IsPlacementInfoValid checks.
-  static Status ValidateMaxNumReplicasFields(const PlacementInfoPB& placement_info);
-
-  static Status SetPreferredZones(
-      const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
-
-  static void GetAllAffinitizedZones(
-      const ReplicationInfoPB& replication_info,
-      std::vector<AffinitizedZonesSet>* affinitized_zones);
-
-  static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
-
-  // Adds the table's running replicas to the counts of the tservers already in the map.
-  static Status FillTableLoadState(
-      const scoped_refptr<TableInfo>& table_info,
-      std::unordered_map<TabletServerId, uint32_t>* per_ts_replica_load);
-
-  static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
-    std::call_once(sequences_data_table_filter_once_flag_, []() {
-      *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
-    });
-
-    return sequences_data_table_filter_;
-  }
-
-  template <class Lock>
-  static Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock) {
-    // This covers both in progress and fully deleted objects.
-    if (lock->started_deleting()) {
-      return STATUS_EC_FORMAT(
-          NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-          "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
-    }
-    if (!lock->visible_to_client()) {
-      return STATUS_EC_FORMAT(
-          ServiceUnavailable, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-          "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
-    }
-    return Status::OK();
-  }
-
-  template <class Lock, class RespClass>
-  static Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
-    auto status = CheckIfTableDeletedOrNotVisibleToClient(lock);
-    if (!status.ok()) {
-      return SetupError(resp->mutable_error(), status);
-    }
-    return Status::OK();
-  }
-
-  static Result<bool> GetIsTruncateTableDone(
-      const TableInfoPtr& table, IsTruncateTableDoneResponsePB* resp);
-
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
@@ -180,61 +68,10 @@ class CatalogManagerUtil {
       const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
       tablet::TableInfoPB* pb);
 
-  static size_t GetReplicationFactor(const ReplicationInfoPB& replication_info);
-
  private:
   CatalogManagerUtil();
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManagerUtil);
-};
-
-class CMGlobalLoadState {
- public:
-  Result<uint32_t> GetGlobalReplicaLoad(const TabletServerId& id) {
-    SCHECK_EQ(per_ts_replica_load_.count(id), 1, IllegalState,
-              Format("Could not locate tablet server $0", id));
-    return per_ts_replica_load_[id];
-  }
-
-  Result<uint32_t> GetGlobalProtegeLoad(const TabletServerId& id) {
-    SCHECK_EQ(per_ts_replica_load_.count(id), 1, IllegalState,
-              Format("Could not locate tablet server $0", id));
-    return per_ts_protege_load_[id];
-  }
-
-  std::unordered_map<TabletServerId, uint32_t> per_ts_replica_load_;
-  std::unordered_map<TabletServerId, uint32_t> per_ts_protege_load_;
-};
-
-// Per-tserver replica load of one table, indexed like the TSDescriptorVector passed to Init().
-class CMPerTableLoadState {
- public:
-  explicit CMPerTableLoadState(CMGlobalLoadState* global_state)
-    : global_load_state_(global_state) {}
-
-  // 'table_load' is the table's replica count per tserver; sorts by (table load, global load,
-  // uuid).
-  Status Init(
-      const TSDescriptorVector& ts_descs,
-      const std::unordered_map<TabletServerId, uint32_t>& table_load);
-
-  // Adds one replica on tserver 'idx' and keeps the sorted order.
-  void AddReplica(size_t idx);
-
-  // Tserver indexes, least loaded first.
-  const std::vector<size_t>& sorted_by_load() const { return sorted_; }
-
- private:
-  bool LessLoaded(size_t a, size_t b) const;
-
-  CMGlobalLoadState* global_load_state_;
-  std::vector<TabletServerId> uuids_;
-  std::vector<uint32_t> table_load_;
-  // Mirror of global_load_state_->per_ts_replica_load_ for the tservers in uuids_.
-  std::vector<uint32_t> global_load_;
-  std::vector<size_t> sorted_;
-  // Position of each tserver index in sorted_.
-  std::vector<size_t> pos_;
 };
 
 template <class PB>
@@ -246,23 +83,8 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
   return !IsIndex(pb);
 }
 
-// Gets the number of tablet replicas for the placement specified in the PlacementInfoPB.  If the
-// PlacementInfoPB does not set the number of tablet replicas to create for the placement, default
-// to the replication_factor flag.
-int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
-
-const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
-
-// Runs the given statements on the closest live tserver's local postgres via the AdminExecutePgsql
-// RPC. If yb_internal_conn_kind is non-empty, the tserver tags the internal PG connection with that
-// YbInternalConnKind wire name (see YbInternalConnKindWireName in libpq_utils.h); empty leaves it
-// as a generic internal connection.
-Status ExecutePgsqlStatements(
-    const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, CoarseTimePoint deadline, StdStatusCallback callback,
-    std::string_view yb_internal_conn_kind = {});
-
-bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb);
+// The indexed table of an index, from index_info or from the deprecated indexed_table_id.
+const std::string& GetIndexedTableId(const SysTablesEntryPB& pb);
 
 // Tablets cannot open a vector index with a deprecated (non-block-based) or unset backend, see
 // HnswBackend. Returns NotSupported for such an index, so that a restore that would bring one back

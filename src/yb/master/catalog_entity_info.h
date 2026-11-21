@@ -175,7 +175,6 @@ struct FullCompactionStatus {
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
-  std::weak_ptr<TSDescriptor> ts_desc;
   tablet::RaftGroupStatePB state;
   PeerRole role;
   consensus::PeerMemberType member_type;
@@ -327,7 +326,6 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
-  Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
   Result<TabletLeaderLeaseInfo> GetLeaderLeaseInfoIfLeader(const std::string& ts_uuid) const;
 
@@ -399,10 +397,6 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
  private:
   friend class RefCountedThreadSafe<TabletInfo>;
 
-  class LeaderChangeReporter;
-  friend class LeaderChangeReporter;
-
-  Result<TSDescriptorPtr> GetLeaderUnlocked() const REQUIRES_SHARED(lock_);
   Status GetLeaderNotFoundStatus() const REQUIRES_SHARED(lock_);
 
   const TabletId tablet_id_;
@@ -1500,10 +1494,6 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 typedef scoped_refptr<CDCStreamInfo> CDCStreamInfoPtr;
 
 class UniverseReplicationInfoBase {
- public:
-  Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
-      google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
-
  protected:
   explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)
       : replication_group_id_(std::move(replication_group_id)) {}
@@ -1512,10 +1502,7 @@ class UniverseReplicationInfoBase {
 
   const xcluster::ReplicationGroupId replication_group_id_;
 
-  std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
-  std::string master_addrs_;
-
-  // Protects xcluster_rpc_tasks_.
+  // Protects the setup error statuses of the subclasses.
   mutable rw_spinlock lock_;
 };
 

@@ -32,72 +32,13 @@
 
 #pragma once
 
-#include <type_traits>
-
 #include <boost/preprocessor/cat.hpp>
 
-#include "yb/master/catalog_loading_state.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/permissions_manager.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
 namespace yb {
 namespace master {
-
-#define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
-  class BOOST_PP_CAT(name, Loader) : \
-      public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
-  public: \
-    explicit BOOST_PP_CAT(name, Loader)(CatalogManager* catalog_manager, \
-                                        SysCatalogLoadingState* state) \
-      : catalog_manager_(catalog_manager), state_(state) {} \
-    \
-  private: \
-    Status Visit( \
-        const key_type& key, \
-        const entry_pb_name& metadata) REQUIRES(mutex) override; \
-    \
-    CatalogManager* catalog_manager_; \
-    SysCatalogLoadingState* state_ MAYBE_UNUSED_MEMBER; \
-    \
-    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
-  };
-
-// We have two naming schemes for Sys...EntryPB classes (plural vs. singluar), hence we need the
-// "entry_pb_suffix" argument to the macro.
-//
-// SysTablesEntryPB
-// SysTabletsEntryPB
-//
-// vs.
-//
-// SysNamespaceEntryPB
-// SysUDTypeEntryPB
-// SysClusterConfigEntryPB
-// SysRedisConfigEntryPB
-// SysRoleEntryPB
-// SysConfigEntryPB
-
-// These config PBs don't have associated loaders here:
-//
-// SysSecurityConfigEntryPB
-// SysSnapshotEntryPB
-// SysYSQLCatalogConfigEntryPB
-
-DECLARE_LOADER_CLASS(Table,         TableId,     SysTablesEntryPB,        catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(Tablet,        TabletId,    SysTabletsEntryPB,       catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB,     catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB,        catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB, catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB,   catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(ObjectLock,    std::string, SysObjectLockEntryPB,    catalog_manager_->mutex_);
-DECLARE_LOADER_CLASS(Role,          RoleName,    SysRoleEntryPB,
-                     catalog_manager_->permissions_manager()->mutex());
-DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB,
-                     catalog_manager_->permissions_manager()->mutex());
-
-#undef DECLARE_LOADER_CLASS
 
 DECLARE_SINGLETON_LOADER_CLASS(HistoryRetentionPin, std::string, SysHistoryRetentionPinEntryPB);
 

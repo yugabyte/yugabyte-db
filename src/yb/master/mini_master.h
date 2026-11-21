@@ -57,7 +57,7 @@ class HostPort;
 
 namespace master {
 
-// An in-process Master meant for use in test cases.
+// An in-process Rust master (embedded_master_if.h) meant for use in test cases.
 //
 // TODO: Store the distributed cluster configuration in the object, to avoid
 // having multiple Start methods.
@@ -74,12 +74,6 @@ class MiniMaster {
   void set_pass_master_addresses(bool value) {
     pass_master_addresses_ = value;
   }
-
-  // Runs the Rust master in-process instead of the C++ Master (embedded_master_if.h). Must be
-  // called before Start. Accessors of C++ master internals (catalog_manager(), ts_manager(), ...)
-  // then fail, naming themselves; master() returns null.
-  void set_rust(bool value) { rust_ = value; }
-  bool is_rust() const { return rust_; }
 
   bool is_running() const { return running_; }
 
@@ -110,26 +104,14 @@ class MiniMaster {
   // Whether it leads with its leader services ready, as ScopedLeaderSharedLock reports.
   Result<bool> IsLeaderAndReady() const;
 
-  const Master* master() const { return master_.get(); }
-  Master* master() { return master_.get(); }
-
   rpc::Messenger& messenger() const;
 
-  // The C++ Master or the Rust master's host: the server's clock, messenger, metrics and web
-  // server.
+  // The Rust master's host: the server's clock, messenger, metrics and web server.
   server::RpcAndWebServerBase& server() const;
-
-  CatalogManagerIf& catalog_manager() const;
-
-  CatalogManager& catalog_manager_impl() const;
 
   tablet::TabletPeerPtr tablet_peer() const;
 
   master::SysCatalogTable& sys_catalog() const;
-
-  master::TSManager& ts_manager() const;
-
-  master::FlushManager& flush_manager() const;
 
   // Return UUID of this mini master.
   std::string permanent_uuid() const;
@@ -151,17 +133,12 @@ class MiniMaster {
   Status StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                       MasterOptions* options);
 
-  // Fails the test when a Rust master is asked for C++ master internals.
-  void CheckCppMaster(const char* accessor) const;
-
   bool running_;
 
   ATTRIBUTE_MEMBER_UNUSED Env* const env_;
   const std::string fs_root_;
   const uint16_t rpc_port_, web_port_;
 
-  std::unique_ptr<Master> master_;
-  bool rust_ = false;
   std::unique_ptr<EmbeddedMasterIf> embedded_;
   int index_;
   std::unique_ptr<Tunnel> tunnel_;

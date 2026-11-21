@@ -25,7 +25,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/format.h"
 #include "yb/util/result.h"

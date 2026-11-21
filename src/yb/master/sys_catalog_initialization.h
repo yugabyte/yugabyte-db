@@ -19,7 +19,6 @@
 #include "yb/util/flags.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/table_index.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -32,7 +31,6 @@ namespace yb {
 namespace master {
 
 struct LeaderEpoch;
-class YsqlManagerIf;
 
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {
@@ -64,12 +62,6 @@ Status RestoreInitialSysCatalogSnapshot(
     int64_t term);
 
 void SetDefaultInitialSysCatalogSnapshotFlags();
-
-// A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
-// is_transactional flags to true on YSQL system catalog tables.
-Status MakeYsqlSysCatalogTablesTransactional(
-    TableIndex::TablesRange tables, SysCatalogTable* sys_catalog,
-    YsqlManagerIf& ysql_manager, const LeaderEpoch& epoch);
 
 }  // namespace master
 }  // namespace yb

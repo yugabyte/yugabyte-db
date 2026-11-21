@@ -54,9 +54,6 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_ysql_lease.pb.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags/auto_flags.h"
@@ -96,21 +93,17 @@ Result<TabletInfoPtr> PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tabl
 // ================================================================================================
 
 string TabletReplica::ToString() const {
-  auto shared_desc_p = ts_desc.lock();
-  const auto& ts_uuid = shared_desc_p ? shared_desc_p->id() : "<TS_REMOVED>";
   return Format(
-      "{ ts_desc: $0, "
-      "state: $1, "
-      "role: $2, "
-      "member_type: $3, "
-      "should_disable_lb_move: $4, "
-      "fs_data_dir: $5, "
-      "total_space_used (excluding snapshots): $6, "
-      "total_space_used (including snapshots): $7, "
-      "full_compaction_state: $8, "
-      "last_full_compaction_time: $9, "
-      "time since update: $10ms }",
-      ts_uuid,
+      "{ state: $0, "
+      "role: $1, "
+      "member_type: $2, "
+      "should_disable_lb_move: $3, "
+      "fs_data_dir: $4, "
+      "total_space_used (excluding snapshots): $5, "
+      "total_space_used (including snapshots): $6, "
+      "full_compaction_state: $7, "
+      "last_full_compaction_time: $8, "
+      "time since update: $9ms }",
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
@@ -164,36 +157,6 @@ bool TabletReplica::IsStarting() const {
 // TabletInfo
 // ================================================================================================
 
-class TabletInfo::LeaderChangeReporter {
- public:
-  explicit LeaderChangeReporter(TabletInfo* info)
-      : info_(info), old_leader_(info->GetLeaderUnlocked()) {
-  }
-
-  ~LeaderChangeReporter() {
-    auto new_leader = info_->GetLeaderUnlocked();
-    if (new_leader && old_leader_) {
-      if (old_leader_.get()->id() != new_leader.get()->id()) {
-        LOG(INFO) << "T " << info_->tablet_id() << ": Leader changed from "
-                  << yb::ToString(old_leader_) << " to " << yb::ToString(new_leader);
-      }
-    } else {
-      auto old_leader_freed = !old_leader_.ok() && old_leader_.status().IsIllegalState();
-      auto new_leader_freed = !new_leader.ok() && new_leader.status().IsIllegalState();
-      if (old_leader_freed || new_leader_freed) {
-        LOG(WARNING) << Format(
-                            "TSDescriptor object freed but references to this TS remain in tablet "
-                            "$0 ($1 leader of this tablet)",
-                            info_->id(), old_leader_freed ? "old" : "new");
-      }
-    }
-  }
-
- private:
-  TabletInfo* info_;
-  Result<TSDescriptorPtr> old_leader_;
-};
-
 TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
     : tablet_id_(std::move(tablet_id)),
       table_(table),
@@ -209,7 +172,6 @@ TabletInfo::~TabletInfo() = default;
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
   std::lock_guard l(lock_);
-  LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   replica_locations_ = replica_locations;
 }
@@ -261,11 +223,6 @@ Status TabletInfo::GetLeaderNotFoundStatus() const {
       ToString(), replica_locations_->size(), *replica_locations_);
 }
 
-Result<TSDescriptorPtr> TabletInfo::GetLeader() const {
-  std::lock_guard l(lock_);
-  return GetLeaderUnlocked();
-}
-
 Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
   std::lock_guard l(lock_);
 
@@ -288,21 +245,6 @@ Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
   return it->second.leader_lease_info;
 }
 
-Result<TSDescriptorPtr> TabletInfo::GetLeaderUnlocked() const {
-  for (const auto& pair : *replica_locations_) {
-    if (pair.second.role == PeerRole::LEADER) {
-      auto desc = pair.second.ts_desc.lock();
-      if (desc) {
-        return desc;
-      }
-      return STATUS_FORMAT(
-          IllegalState, "TSDescriptor for ts $0, currently leader of tablet $1, has been freed",
-          pair.first, id());
-    }
-  }
-  return GetLeaderNotFoundStatus();
-}
-
 std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const {
   std::lock_guard l(lock_);
   return replica_locations_;
@@ -310,7 +252,6 @@ std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const 
 
 void TabletInfo::UpdateReplicaLocations(const std::string& ts_uuid, const TabletReplica& replica) {
   std::lock_guard l(lock_);
-  LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
@@ -1626,39 +1567,15 @@ std::string CDCStreamInfo::ToString() const {
 }
 
 // ================================================================================================
-// UniverseReplicationInfoBase
-// ================================================================================================
-Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCreateXClusterRpcTasks(
-    google::protobuf::RepeatedPtrField<HostPortPB> producer_masters) {
-  std::vector<HostPort> hp;
-  HostPortsFromPBs(producer_masters, &hp);
-  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
-
-  std::lock_guard l(lock_);
-  if (xcluster_rpc_tasks_ != nullptr) {
-    // Master Addresses changed, update YBClient with new retry logic.
-    if (master_addrs_ != master_addrs) {
-      RETURN_NOT_OK(xcluster_rpc_tasks_->UpdateMasters(master_addrs));
-      master_addrs_ = master_addrs;
-    }
-    return xcluster_rpc_tasks_;
-  }
-
-  auto rpc_task =
-      VERIFY_RESULT(XClusterRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
-  xcluster_rpc_tasks_ = rpc_task;
-  master_addrs_ = master_addrs;
-  return rpc_task;
-}
-
-// ================================================================================================
 // PersistentUniverseReplicationInfo
 // ================================================================================================
 
-bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
+bool PersistentUniverseReplicationInfo::IsDbScoped() const {
+  return pb.has_db_scoped_info() && pb.db_scoped_info().namespace_infos_size() > 0;
+}
 
 bool PersistentUniverseReplicationInfo::IsAutomaticDdlMode() const {
-  return yb::master::IsAutomaticDdlMode(pb);
+  return pb.has_db_scoped_info() && pb.db_scoped_info().automatic_ddl_mode();
 }
 
 // ================================================================================================

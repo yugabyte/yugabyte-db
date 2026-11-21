@@ -248,7 +248,8 @@ impl TableLifecycle {
         resp.set_create_table_done(
             pb.state() != yb_proto::pb::catalog_entity_info::sys_tables_entry_pb::State::PREPARING,
         );
-        resp.table_type = pb.table_type;
+        // C++ sets it from the row even when the row leaves it at its default.
+        resp.set_table_type(pb.table_type());
         let mut ident = TableIdentifierPB::new();
         ident.set_table_name(String::from_utf8_lossy(pb.name()).into_owned());
         ident.set_table_id(entity.key.id.to_vec());

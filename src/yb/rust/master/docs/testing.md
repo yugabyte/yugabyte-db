@@ -32,57 +32,47 @@ re-serialize identically. That check is manual: the release binary is not part o
 
 ## Integration tests
 
-`src/yb/integration-tests/rust_master-itest.cc` runs the Rust master in a quorum of C++ masters
-(`yb-master-cpp`; ExternalMiniCluster, YSQL off):
+`src/yb/integration-tests/rust_master-itest.cc` runs quorums of Rust masters in external processes
+(ExternalMiniCluster, YSQL off):
 
 ```bash
-./yb_build.sh release --cxx-test rust_master-itest --gtest_filter RustMasterTest.FollowerKeepsSameCatalog
+./yb_build.sh release --cxx-test rust_master-itest --gtest_filter RustMasterTest.FollowerServesRpcs
 ```
 
 | Test | Checks |
 |---|---|
-| `FollowerKeepsSameCatalog` | A C++ follower restarted as Rust on its own data stays a follower through YCQL DDL, an index, a snapshot schedule and a PITR restore; serves `GetMasterRegistration` and `ListMasters`; answers `NOT_THE_LEADER` to leader-only methods. With the cluster stopped, its sys-catalog rows and `auto_flags_config` equal a C++ follower's, and all rows pass the conformance check. |
-| `AddedThroughRemoteBootstrap` | A shell-mode Rust master is added with `ChangeConfig`, remote-bootstraps the sys catalog, follows a workload, and is removed. |
-| `WebPages` | On the Rust follower's web port, the master list, version, leader-fetched JSON and HTML pages equal a C++ follower's (uptimes and the build-time footer aside); `/masters` bolds the Rust master; `is-leader` is 503; `/varz` and `/prometheus-metrics` come through the proxy; the registration advertises the Rust port. |
+| `FollowerServesRpcs` | A restarted follower stays a follower through YCQL DDL, an index, a snapshot schedule and a PITR restore; serves `GetMasterRegistration` and `ListMasters`; answers `NOT_THE_LEADER` to leader-only methods; the leader lists it as a healthy follower. |
+| `AddedThroughRemoteBootstrap` | A shell-mode master is added with `ChangeConfig`, remote-bootstraps the sys catalog, follows a workload, serves `CheckMasterTabletHealth`, and is removed. |
+| `LeaderServesWebJson` | The leader's JSON pages parse, `/api/v1/overview` counts the live tservers, the UI (or a page that says it was not built) is served at the old page URLs, and the host's `/ObjectLockManager` page answers. |
+| `WebPages` | A follower serves the master list, version, leader-fetched JSON and HTML pages; `/masters` bolds the follower; `is-leader` is 503; `/varz` and `/prometheus-metrics` come through the proxy; the registration advertises the Rust port. |
+| `WebServerAuthAndRedirect` | HTTP Digest against an htdigest file on Rust routes and proxied host pages, and a 302 to https for plain HTTP on the TLS port. |
 | `WebServerHttps` | With the webserver TLS flags the Rust master serves HTTPS with HSTS, refuses plain HTTP, fetches leader pages from an HTTP leader, and advertises the configured interface. |
-| `TserverSimulator` | `master-tserver-sim` registers ten fake tservers with the leader of a quorum that has a Rust follower, and the leader lists them. |
-| `FollowerCatalogMatchesRandomWorkload` | The Rust follower's in-memory catalog (`MasterRustPeer.DumpCatalog`) equals the C++ leader's sys catalog row for row after seeded random YCQL DDL, a snapshot schedule and a PITR restore; the restore reloaded the catalog and the self-check never disagreed. The seed is logged. |
-| `RustLeaderServesCoreRpcs` | The Rust master takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, and `NotSupported` for a never-served method. After failing back, the C++ leader reads the change, and every master's rows match. |
-| `WarmFailover` | Two Rust masters: the leader's location stream reaches the other, which, after a failover with every tserver stopped, serves non-stale locations and the tserver list. |
-| `RustLeaderInformsRemovedMaster` | A C++ master removed while the Rust master leads goes back to shell mode. |
+| `TserverSimulator` | `master-tserver-sim` registers ten fake tservers with the leader, and the leader lists them. |
+| `FollowerCatalogMatchesRandomWorkload` | A follower's in-memory catalog (`MasterRustPeer.DumpCatalog`) equals the leader's sys catalog row for row after seeded random YCQL DDL, a snapshot schedule and a PITR restore; the restore reloaded the catalog, the self-check never disagreed, and all rows pass the conformance check. The seed is logged. |
+| `RustLeaderServesCoreRpcs` | A follower takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, the catalog writer's metrics, and `NotSupported` for a never-served method. |
+| `WarmFailover` | The leader's location stream reaches a follower, which, after a failover with every tserver stopped, serves non-stale locations and the tserver list. |
+| `RustLeaderInformsRemovedMaster` | A master removed by the leader goes back to shell mode. |
 | `LiveTserverListVersion` | Tservers echo the live-list version and the Rust leader answers "unchanged"; after a tserver stops, the others get the new list and keep heartbeating. |
-| `CreatesUniverseLikeCpp` | A quorum of Rust masters creates a universe whose default rows equal those of a universe C++ masters created (random ids, uuids and the password salt aside), and every master holds them. |
+| `CreatesUniverse` | A new universe gets the default rows (system namespaces and tables with their tablets, the default role, the configs), and every master holds the same rows. |
 
-### Rust and C++ masters in tests
+Quorums that mix C++ and Rust masters exist only during an upgrade from the last C++ release and a
+rollback to it. `src/yb/integration-tests/upgrade-tests/rust_master_upgrade_rollback-itest.cc`
+covers them against the R-1 release's C++ masters (downloaded by `UpgradeTestBase`): it upgrades
+one, two or all masters to the Rust master and rolls back from each step.
 
-Tests run Rust masters by default. `ExternalMiniClusterOptions::rust_masters` says which masters
-run the Rust master (`yb-master`) and which the C++ one (`yb-master-cpp`): `kAll` (the default),
-`kFirst` for one Rust master among C++ ones, `kNone` for C++ masters. Its default comes from
-`YB_RUST_MASTER`: `0` or `cpp` for `kNone`, `mixed` for `kFirst`. To compare with the C++ master:
+### MiniCluster tests
 
-```bash
-YB_RUST_MASTER=0 ./yb_build.sh release --cxx-test master_failover-itest
-```
-
-A test that starts masters with an explicit binary keeps it.
-
-`MiniClusterOptions::rust_masters` does the same for MiniCluster tests, with the same
-`YB_RUST_MASTER` default: MiniMaster runs Rust masters in the test process (see
-[cpp-host.md](cpp-host.md#embedded-in-a-test-process)). A Rust MiniMaster has no C++ `Master`:
-`master()` is null, and accessors of C++ master objects (`catalog_manager()`, `ts_manager()`,
-`flush_manager()`) fail the test at once rather than skipping it, so the tests that still need
-the C++ master show up. MiniCluster's own helpers (leader lookup, `WaitForTabletServerCount`,
-`WaitForReplicaCount`) go through RPCs for Rust masters. `rust_master_mini_cluster-test` checks
-leadership, a step-down and a follower restart with three Rust masters, and YCQL keyspace and table
-DDL served by them: a table's tablets are created on every replica and serve reads and writes
+MiniMaster runs the Rust master in the test process (see
+[cpp-host.md](cpp-host.md#embedded-in-a-test-process)); MiniCluster's helpers (leader lookup,
+`WaitForTabletServerCount`, `WaitForReplicaCount`) go through RPCs. `rust_master_mini_cluster-test`
+checks leadership, a step-down and a follower restart with three masters, and YCQL keyspace and
+table DDL served by them: a table's tablets are created on every replica and serve reads and writes
 before and after a leader change, the new leader alters and drops it, and a transactional table
 gets `system.transactions` created first.
 
-Java tests read the same variable: `MiniYBCluster` starts C++ masters as `yb-master-cpp`.
-
 ### Reading master state in tests
 
-Tests outside `src/yb/master` read the master only through RPCs, so they run on either master.
+Tests read the master only through RPCs.
 `MasterTestApi` (`src/yb/integration-tests/master_test_api.h`, for a MiniCluster or an
 ExternalMiniCluster) wraps the leader's RPCs that tests need: table and tablet locations, tserver
 lists, the cluster config, balancer idleness, splits, sys-catalog flush and compaction, and
@@ -120,7 +110,7 @@ src/yb/rust/master/tools/tserver-sim/run_baseline.sh build/latest [master binary
   --tserver_sim_num_tables=50 --tserver_sim_tablets_per_table=8
 ```
 
-Baseline, C++ `yb-master`, release build, 8-core dev server, RF 3, heartbeat interval 1 s:
+Baseline, C++ master (the release before the switch), release build, 8-core dev server, RF 3, heartbeat interval 1 s:
 
 | Tservers | Tables x tablets | Heartbeat p50 / p99, idle (ms) | Heartbeat p50 / p99, during DDL (ms) | CreateTable p50 / p99 (ms) |
 |---|---|---|---|---|

@@ -30,22 +30,17 @@
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/restoration_state.h"
-#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
 #include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/master/tablet_split_manager.h"
-#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/scheduler.h"
@@ -241,10 +236,8 @@ std::vector<SnapshotScheduleId> GetSchedulesForTable(
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  Impl(
-      SnapshotCoordinatorContext* context, CatalogManager* cm,
-      TabletSplitManager* tablet_split_manager)
-      : context_(*context), cm_(cm), tablet_split_manager_(tablet_split_manager),
+  explicit Impl(SnapshotCoordinatorContext* context)
+      : context_(*context),
         poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
@@ -1514,10 +1507,6 @@ class MasterSnapshotCoordinator::Impl {
     if (leader_term < 0) {
       return;
     }
-    SCOPED_LEADER_SHARED_LOCK(l, cm_);
-    if (!l.IsInitializedAndIsLeader()) {
-      return;
-    }
     LongOperationTracker long_operation_tracker("Poll", 1s);
     VLOG(4) << __func__ << "()";
     std::vector<TxnSnapshotId> cleanup_snapshots;
@@ -1570,7 +1559,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     ScheduleOperations(operations, leader_term);
-    PollSchedulesComplete(schedules_data, l.epoch());
+    PollSchedulesComplete(schedules_data, LeaderEpoch(leader_term, context_.pitr_count()));
     ScheduleOperations(restore_operations, leader_term);
   }
 
@@ -2058,7 +2047,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      tablet_split_manager_->ReenableSplittingFor(kPitrFeatureName);
+      context_.ReenableTabletSplittingAfterPitr();
     }
 
     // After PITR restore, advance per-DB OID counters past any hidden tables'
@@ -2221,7 +2210,7 @@ class MasterSnapshotCoordinator::Impl {
         // See GH27621.
         if (namespace_id_result.ok() &&
             (PREDICT_FALSE(FLAGS_TEST_skip_sys_catalog_tablet_restore) ||
-             cm_->GetXClusterManager()->IsNamespaceInAutomaticModeTarget(*namespace_id_result))) {
+             context_.IsNamespaceInAutomaticModeXClusterTarget(*namespace_id_result))) {
           db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(*namespace_id_result));
           restore_sys_catalog = false;
         }
@@ -2365,8 +2354,6 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   SnapshotCoordinatorContext& context_;
-  CatalogManager* cm_;
-  TabletSplitManager* const tablet_split_manager_;
 
   // Guards the maps below and their members. Members should not be accessed without holding the
   // mutex to avoid data races, though this is currently unenforced.
@@ -2535,10 +2522,8 @@ void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
   context_.ScheduleTabletSnapshotOp(task);
 }
 
-MasterSnapshotCoordinator::MasterSnapshotCoordinator(
-    SnapshotCoordinatorContext* context, CatalogManager* cm,
-    TabletSplitManager* tablet_split_manager)
-    : impl_(new Impl(context, cm, tablet_split_manager)) {}
+MasterSnapshotCoordinator::MasterSnapshotCoordinator(SnapshotCoordinatorContext* context)
+    : impl_(new Impl(context)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 

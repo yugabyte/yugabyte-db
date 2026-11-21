@@ -141,8 +141,6 @@ target_link_libraries(integration-tests yb_master_rs_embedded)
 
 add_dependencies(integration-tests
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
-  # The C++ master, for tests that ask for C++ masters (YB_RUST_MASTER=0).
-  yb-master-cpp${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
   gen_auto_flags_json

@@ -387,7 +387,7 @@ impl TsManager {
             if other.uuid == uuid || other.state() == TsState::REPLACED {
                 continue;
             }
-            if same_host_port(&other.pb.registration, &registration.common) {
+            if self.host_port_collides(&other.pb.registration, &registration.common) {
                 if other.pb.instance_seqno() >= seqno {
                     return Err(Status::new(
                         StatusCode::AlreadyPresent,
@@ -499,6 +499,7 @@ impl TsManager {
             )
         };
         let mut became_live = false;
+        let mut pins_changed = false;
         let persist_registry = (self.options.persist_registry)();
         let changed = self
             .update_descriptor(instance.permanent_uuid(), |d| {
@@ -540,7 +541,9 @@ impl TsManager {
                 if let Some(metrics) = req.metrics.as_ref() {
                     d.metrics = Some(metrics.clone());
                 }
-                d.ysql_db_pins = Some(TsManager::pins_from_heartbeat(req));
+                let pins = Some(TsManager::pins_from_heartbeat(req));
+                pins_changed = d.ysql_db_pins != pins;
+                d.ysql_db_pins = pins;
                 let before = d.pb.clone();
                 if !d.is_live() {
                     became_live = true;
@@ -558,12 +561,47 @@ impl TsManager {
         if became_live {
             self.bump_membership();
         }
+        if pins_changed {
+            // C++ aggregates the pins per heartbeat, so a tserver's response already carries what
+            // it just reported.
+            *self.pins_cache.lock().unwrap() = None;
+        }
         Ok(changed)
     }
 }
 
+impl TsManager {
+    /// `GetHostPortCheckerFunction`: whether a registering tserver collides with `existing`.
+    fn host_port_collides(
+        &self,
+        existing: &yb_proto::pb::wire_protocol::ServerRegistrationPB,
+        registering: &yb_proto::pb::wire_protocol::ServerRegistrationPB,
+    ) -> bool {
+        if !(self.options.check_desired_host_port)() {
+            return same_host_port(existing, registering);
+        }
+        let mode = (self.options.use_private_ip)();
+        let local = self.local_cloud_info.read().unwrap().clone();
+        let desired = |r: &yb_proto::pb::wire_protocol::ServerRegistrationPB,
+                       from: &yb_proto::pb::common_net::CloudInfoPB| {
+            crate::placement::desired_host_port(r, from, &mode)
+                .map(|hp| (hp.host().to_string(), hp.port()))
+        };
+        let perspectives = [
+            local,
+            existing.cloud_info.clone().unwrap_or_default(),
+            registering.cloud_info.clone().unwrap_or_default(),
+        ];
+        // A registration without addresses (a Raft peer never heard from) collides with nothing.
+        perspectives.iter().any(|from| {
+            let picked = desired(existing, from);
+            picked.is_some() && picked == desired(registering, from)
+        })
+    }
+}
+
 /// Whether two registrations share an RPC address (the `master_register_ts_check_desired_host_port`
-/// = false comparison; layer 2 does not compare per cloud).
+/// = false comparison).
 fn same_host_port(
     a: &yb_proto::pb::wire_protocol::ServerRegistrationPB,
     b: &yb_proto::pb::wire_protocol::ServerRegistrationPB,

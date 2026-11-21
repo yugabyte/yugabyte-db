@@ -74,7 +74,6 @@ class RustMasterMiniClusterTest : public YBTest {
     MiniClusterOptions opts;
     opts.num_masters = 3;
     opts.num_tablet_servers = 3;
-    opts.rust_masters = master::RustMasters::kAll;
     cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(cluster_->Start());
   }
@@ -93,7 +92,6 @@ class RustMasterMiniClusterTest : public YBTest {
 // leadership moves on a step-down, and a restarted master rejoins.
 TEST_F(RustMasterMiniClusterTest, LeadsFailsOverAndRestarts) {
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  ASSERT_TRUE(leader->is_rust());
   ASSERT_OK(cluster_->WaitForTabletServerCount(3));
   const auto old_leader_uuid = leader->permanent_uuid();
 
