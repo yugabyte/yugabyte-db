@@ -10710,6 +10710,8 @@ YbNewSample(Relation rel,
 			uint64_t rand_state_s1)
 {
 	YbcPgStatement result = NULL;
+
+	YbCheckRelfilenodeUnchanged(rel);
 	HandleYBStatus(YBCPgNewSample(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 								  YbBuildTableLocalityInfo(rel), YbGetSkipIntentsOptimizationInfoRead(rel),
 								  targrows, rstate_w, rand_state_s0,
@@ -10721,6 +10723,8 @@ YbcPgStatement
 YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
 {
 	YbcPgStatement result = NULL;
+
+	YbCheckRelfilenodeUnchanged(rel);
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
 								  YbBuildTableLocalityInfo(rel),
 								  YbGetSkipIntentsOptimizationInfoRead(rel), &result));

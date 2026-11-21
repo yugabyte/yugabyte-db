@@ -562,7 +562,6 @@ extern void LockReleaseCurrentOwner(LOCALLOCK **locallocks, int nlocks);
 extern void LockReassignCurrentOwner(LOCALLOCK **locallocks, int nlocks);
 extern bool LockHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode);
 extern bool LockOrStrongerHeldByMe(const LOCKTAG *locktag, LOCKMODE lockmode);
-extern bool YbRelationLockClearedByMe(Oid relid);
 #ifdef USE_ASSERT_CHECKING
 extern HTAB *GetLockMethodLocalHash(void);
 #endif
@@ -616,6 +615,7 @@ extern void VirtualXactLockTableCleanup(void);
 extern bool VirtualXactLock(VirtualTransactionId vxid, bool wait);
 
 extern bool YbLockHeldOnObjectBySession(const LOCKTAG *locktag);
+extern bool YbRelationLockClearedByMe(Oid relid);
 #ifdef USE_ASSERT_CHECKING
 extern int	YbGetNumTxnLocks();
 #endif
