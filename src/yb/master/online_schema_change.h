@@ -48,12 +48,31 @@ Status ValidateOnlineSchemaChangeJob(const OnlineSchemaChangeJobPB& job);
 // The key of a job's resume key and row count in SysTabletsEntryPB.
 std::string OnlineSchemaChangeTabletKey(int64_t pg_job_id);
 
-// The pg_job_id of the unfinished job (IsOnlineSchemaChangeJobResumable) on `table`, if any. The
-// split manager refuses to split the table while there is one: each source tablet's scan is bounded
-// by its partition for the life of the copy, so a split would shrink that bound and leave the right
-// child uncopied. Once the job is terminal no chunk reads the source again. Takes the table's read
-// lock.
-std::optional<int64_t> CopyingOnlineSchemaChangeJobReading(const TableInfo& table);
+// The pg_job_id of the unfinished job (IsOnlineSchemaChangeJobResumable) that reads `table`, if
+// any: a job on the table itself, or one on the source root named by its
+// table_backfill_source_root_id that lists it as a source leaf. The split manager refuses to split
+// the table while there is one: each source tablet's scan is bounded by its partition for the life
+// of the copy, so a split would shrink that bound and leave the right child uncopied. Once the job
+// is terminal no chunk reads the source again. Takes the table's and the root's read locks, and
+// calls `find_table` for the root with neither held.
+std::optional<int64_t> CopyingOnlineSchemaChangeJobReading(
+    const TableInfo& table, const std::function<TableInfoPtr(const TableId&)>& find_table);
+
+// The tables a job spans: the source leaves the copy reads, and the target leaves whose delete
+// markers are pinned. In a single-table job each list is the root alone.
+struct OnlineSchemaChangeTableIds {
+  std::vector<TableId> source_leaves;
+  std::vector<TableId> target_leaves;
+
+  // Fills each empty list with its root: a job entry or request without lists is a single-table
+  // job.
+  void FillDefaults(const TableId& source_table_id, const TableId& target_table_id);
+  void ToJob(OnlineSchemaChangeJobPB* job) const;
+};
+
+// The lists of a durable job entry, with FillDefaults applied.
+OnlineSchemaChangeTableIds OnlineSchemaChangeTableIdsFromJob(
+    const OnlineSchemaChangeJobPB& job, const TableId& source_table_id);
 
 // A job's progress as recorded on the tablets of `source_leaves`: how many have drained, and how
 // many rows they have copied. Only current tablets are counted, so a tablet that has since split
@@ -170,7 +189,7 @@ class OnlineSchemaChangeController {
   Status Release(Job& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch);
 
   Status ResolveTables(Job& job, const OnlineSchemaChangeJobPB& entry, bool skip_missing);
-  Status PinTarget(const Job& job, const LeaderEpoch& epoch);
+  Status RecordSourceRootAndPinTarget(const Job& job, const LeaderEpoch& epoch);
   bool SourceSplitsSettled(const Job& job);
 
   // Moves the unfinished entry to `state`, or to CANCELLED if a cancel has been recorded. Returns

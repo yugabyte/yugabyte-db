@@ -153,7 +153,16 @@ class OnlineSchemaChangeTest : public MasterTestBase {
     return catalog_manager().FindTableById(TableIdOf(oid));
   }
 
-  static OnlineSchemaChangeJobPB NewJob(int64_t pg_job_id = kPgJobId) {
+  // The lists PG sends for a two-leaf hierarchy on each side.
+  static OnlineSchemaChangeTableIds HierarchyIds() {
+    return OnlineSchemaChangeTableIds{
+        .source_leaves = {TableIdOf(kSourceLeafAOid), TableIdOf(kSourceLeafBOid)},
+        .target_leaves = {TableIdOf(kTargetLeafAOid), TableIdOf(kTargetLeafBOid)},
+    };
+  }
+
+  static OnlineSchemaChangeJobPB NewJob(
+      int64_t pg_job_id = kPgJobId, const OnlineSchemaChangeTableIds& ids = {}) {
     OnlineSchemaChangeJobPB job;
     job.set_pg_job_id(pg_job_id);
     job.set_state(State::COMPUTING_READ_TIME);
@@ -163,11 +172,12 @@ class OnlineSchemaChangeTest : public MasterTestBase {
     job.set_target_table_id(TableIdOf(kTargetTableOid));
     job.set_transform_fn_oid(kTransformFnOid);
     job.set_database_name("osc_db");
+    ids.ToJob(&job);
     return job;
   }
 
-  Status Start(int64_t pg_job_id = kPgJobId) {
-    return controller().Start(source_table_, NewJob(pg_job_id), epoch_);
+  Status Start(int64_t pg_job_id = kPgJobId, const OnlineSchemaChangeTableIds& ids = {}) {
+    return controller().Start(source_table_, NewJob(pg_job_id, ids), epoch_);
   }
 
   void Visit() { controller().Reconcile(source_table_, epoch_); }
@@ -242,8 +252,8 @@ class OnlineSchemaChangeTest : public MasterTestBase {
   }
 
   // Start, then the safe-time round, so the job copies with every source tablet's first chunk out.
-  void StartCopying() {
-    ASSERT_OK(Start());
+  void StartCopying(const OnlineSchemaChangeTableIds& ids = {}) {
+    ASSERT_OK(Start(kPgJobId, ids));
     std::vector<uint64_t> times(SafeTimesSent(), 0);
     ASSERT_NO_FATALS(AnswerSafeTimes(times));
     ASSERT_EQ(ReadDurableJob().state(), State::IN_PROGRESS);
@@ -317,7 +327,37 @@ class OnlineSchemaChangeTest : public MasterTestBase {
   scoped_refptr<TableInfo> TargetTable() { return CHECK_RESULT(Table(kTargetTableOid)); }
   bool TargetIsPinned() { return HasPin(TargetTable()); }
 
+  // The state Start leaves the hierarchy in: every target leaf pinned, the durable entry carrying
+  // the lists.
+  void PinHierarchy(State::State durable_state) {
+    const auto ids = HierarchyIds();
+    SetDurableJob([&](OnlineSchemaChangeJobPB* job) {
+      job->set_state(durable_state);
+      ids.ToJob(job);
+    });
+    for (const auto& id : ids.target_leaves) {
+      ASSERT_NO_FATALS(SetPin(ASSERT_RESULT(catalog_manager().FindTableById(id))));
+    }
+  }
+
+  Result<int> CountTargetPins() {
+    int pins = 0;
+    for (const auto& id : HierarchyIds().target_leaves) {
+      pins += HasPin(VERIFY_RESULT(catalog_manager().FindTableById(id)));
+    }
+    return pins;
+  }
+
   Result<TabletInfos> SourceTablets() { return source_table_->GetTablets(); }
+
+  Result<TabletInfos> LeafTablets() {
+    TabletInfos tablets;
+    for (const auto oid : {kSourceLeafAOid, kSourceLeafBOid}) {
+      auto leaf_tablets = VERIFY_RESULT(VERIFY_RESULT(Table(oid))->GetTablets());
+      tablets.insert(tablets.end(), leaf_tablets.begin(), leaf_tablets.end());
+    }
+    return tablets;
+  }
 
   // With no tablet server a split that the online schema change check lets through still fails a
   // later check (the table has no replication info), so only the refusal's error code tells them
@@ -379,6 +419,30 @@ TEST_F(OnlineSchemaChangeTest, TheReadTimeIsTheMaxSafeTimeAndTheCopyStartsAtIt) 
   ASSERT_EQ(sent.size(), tablets.size());
   for (const auto& tablet : tablets) {
     ASSERT_EQ(sent.at(tablet->id()), std::vector<std::string>{""}) << tablet->id();
+  }
+}
+
+// The round over a hierarchy covers every tablet of every source leaf, and only those.
+TEST_F(OnlineSchemaChangeTest, TheSafeTimeRoundCoversEveryLeafTablet) {
+  ASSERT_OK(Start(kPgJobId, HierarchyIds()));
+  const auto leaf_tablets = ASSERT_RESULT(LeafTablets());
+  ASSERT_EQ(SafeTimesSent(), leaf_tablets.size());
+  ASSERT_NE(leaf_tablets.size(), ASSERT_RESULT(SourceTablets()).size());
+
+  // A failed answer fails the job, whatever the others say.
+  auto job = Job();
+  OnSafeTime(job, STATUS(TimedOut, "leader gone"), HybridTime());
+  ASSERT_EQ(ReadDurableJob().state(), State::FAILED);
+  ASSERT_STR_CONTAINS(ReadDurableJob().error_message(), "leader gone");
+}
+
+// The split manager finds the job that reads a source leaf through the root that the leaf records.
+TEST_F(OnlineSchemaChangeTest, StartRecordsTheRootOnEverySourceLeaf) {
+  ASSERT_NO_FATALS(StartCopying(HierarchyIds()));
+  const auto find_table = [this](const TableId& id) { return catalog_manager().GetTableInfo(id); };
+  for (const auto oid : {kSourceLeafAOid, kSourceLeafBOid}) {
+    ASSERT_EQ(CopyingOnlineSchemaChangeJobReading(*ASSERT_RESULT(Table(oid)), find_table), kPgJobId)
+        << "source leaf " << oid;
   }
 }
 
@@ -468,16 +532,16 @@ TEST_F(OnlineSchemaChangeTest, ACancelRecordedBeforeTheOutcomeWriteWins) {
   ASSERT_EQ(ReadDurableJob().state(), State::CANCELLED);
 }
 
-TEST_F(OnlineSchemaChangeTest, AChunkFailureFailsTheJobAndReleasesItsPin) {
-  ASSERT_NO_FATALS(StartCopying());
-  ASSERT_TRUE(TargetIsPinned());
+TEST_F(OnlineSchemaChangeTest, AChunkFailureFailsTheJobAndReleasesItsPins) {
+  ASSERT_NO_FATALS(StartCopying(HierarchyIds()));
+  ASSERT_EQ(ASSERT_RESULT(CountTargetPins()), 2);
 
-  const auto tablets = ASSERT_RESULT(SourceTablets());
+  const auto tablets = ASSERT_RESULT(LeafTablets());
   ASSERT_NO_FATALS(AnswerChunk(tablets[0], STATUS(IOError, "disk on fire"), "", 0, epoch_));
   const auto job = ReadDurableJob();
   ASSERT_EQ(job.state(), State::FAILED);
   ASSERT_STR_CONTAINS(job.error_message(), "disk on fire");
-  ASSERT_FALSE(TargetIsPinned());
+  ASSERT_EQ(ASSERT_RESULT(CountTargetPins()), 0);
   ASSERT_FALSE(Job());
 }
 
@@ -634,6 +698,16 @@ TEST_F(OnlineSchemaChangeTest, AMissingTargetFailsTheJob) {
   ASSERT_EQ(ReadDurableJob().state(), State::FAILED);
 }
 
+// Copying, pinning or fencing a subset of the hierarchy would silently lose the rest.
+TEST_F(OnlineSchemaChangeTest, AMissingLeafFailsTheJob) {
+  auto ids = HierarchyIds();
+  ids.source_leaves.push_back(TableIdOf(kSourceLeafBOid + 50));
+  const auto started = Start(kPgJobId, ids);
+  ASSERT_NOK(started);
+  ASSERT_STR_CONTAINS(started.ToString(), "Online schema change table is missing");
+  ASSERT_EQ(ReadDurableJob().state(), State::FAILED);
+}
+
 // The abort's own visit stops the copy and releases the pin, without waiting for the bg tasks.
 TEST_F(OnlineSchemaChangeTest, AbortStopsAJobThisMasterIsNotDrivingYet) {
   SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_state(State::IN_PROGRESS); });
@@ -730,6 +804,26 @@ TEST_F(OnlineSchemaChangeTest, SplitsAreRefusedWhileTheJobCopies) {
   }
 }
 
+TEST_F(OnlineSchemaChangeTest, SplitsOfASourceLeafAreRefusedWhileTheJobCopies) {
+  auto& split_manager = mini_master_->master()->tablet_split_manager();
+  auto leaf = ASSERT_RESULT(Table(kSourceLeafAOid));
+  ASSERT_FALSE(
+      RefusedForOnlineSchemaChangeBackfill(split_manager.ValidateSplitCandidateTable(leaf)));
+
+  ASSERT_OK(Start(kPgJobId, HierarchyIds()));
+  for (const auto oid : {kSourceLeafAOid, kSourceLeafBOid}) {
+    auto status = split_manager.ValidateSplitCandidateTable(ASSERT_RESULT(Table(oid)));
+    ASSERT_TRUE(RefusedForOnlineSchemaChangeBackfill(status)) << status;
+  }
+  const auto leaf_tablets = ASSERT_RESULT(leaf->GetTablets());
+  auto status = catalog_manager().TEST_SplitTablet(leaf_tablets[0]->id(), "k", "k");
+  ASSERT_TRUE(RefusedForOnlineSchemaChangeBackfill(status)) << status;
+
+  SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_state(State::SUCCESS); });
+  ASSERT_FALSE(
+      RefusedForOnlineSchemaChangeBackfill(split_manager.ValidateSplitCandidateTable(leaf)));
+}
+
 TEST_F(OnlineSchemaChangeTest, TheReapReleasesAPinWhoseJobEntryIsGone) {
   SetPin(TargetTable());
   Discover();
@@ -749,6 +843,20 @@ TEST_F(OnlineSchemaChangeTest, TheReapLeavesALiveJobsPinAlone) {
   controller().Reset();
   Discover();
   ASSERT_FALSE(TargetIsPinned()) << "a finished job's pin was left behind";
+}
+
+TEST_F(OnlineSchemaChangeTest, AbortReleasesEveryTargetLeafPin) {
+  ASSERT_NO_FATALS(PinHierarchy(State::IN_PROGRESS));
+  {
+    AbortTableBackfillRequestPB req;
+    AbortTableBackfillResponsePB resp;
+    req.mutable_source_table()->set_table_id(source_table_->id());
+    req.set_pg_job_id(kPgJobId);
+    ASSERT_OK(catalog_manager().AbortTableBackfill(&req, &resp, nullptr, epoch_));
+    ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+  }
+  ASSERT_EQ(ReadDurableJob().state(), State::ABORTED);
+  ASSERT_EQ(ASSERT_RESULT(CountTargetPins()), 0);
 }
 
 TEST_F(OnlineSchemaChangeTest, ValidateRejectsHalfWrittenJobs) {
@@ -778,6 +886,20 @@ TEST_F(OnlineSchemaChangeTest, ValidateRejectsHalfWrittenJobs) {
     mutate(&job);
     ASSERT_NOK(ValidateOnlineSchemaChangeJob(job)) << name;
   }
+}
+
+TEST_F(OnlineSchemaChangeTest, TableListsRoundTripThroughTheDurableEntry) {
+  const auto ids = HierarchyIds();
+  const auto restored =
+      OnlineSchemaChangeTableIdsFromJob(NewJob(kPgJobId, ids), source_table_->id());
+  ASSERT_EQ(restored.source_leaves, ids.source_leaves);
+  ASSERT_EQ(restored.target_leaves, ids.target_leaves);
+
+  const auto defaults = OnlineSchemaChangeTableIdsFromJob(NewJob(), source_table_->id());
+  const std::vector<TableId> source{source_table_->id()};
+  const std::vector<TableId> target{TableIdOf(kTargetTableOid)};
+  ASSERT_EQ(defaults.source_leaves, source);
+  ASSERT_EQ(defaults.target_leaves, target);
 }
 
 }  // namespace master

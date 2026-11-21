@@ -198,6 +198,13 @@ extern struct YbPgExecOutParam *yb_osc_backfill_out_param;
 extern bool yb_osc_backfill_outer_started;
 
 /*
+ * Errors out of a partition-topology change under parent_oid while an online
+ * schema change job on it or on an ancestor is active.  ddl is the verb phrase
+ * for the message, e.g. "add a partition to".  Defined in yb_osc_catalog.c.
+ */
+extern void YbOscCheckTopologyChange(Oid parent_oid, const char *ddl);
+
+/*
  * Errors out of a DDL that changes or drops function fn_oid while it is the
  * transform of an active online schema change job.  ddl is the verb for the
  * message, e.g. "replace".  Defined in yb_osc_catalog.c.

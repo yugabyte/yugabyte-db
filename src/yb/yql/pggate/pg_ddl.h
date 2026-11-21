@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "yb/common/constants.h"
 #include "yb/common/transaction.h"
 

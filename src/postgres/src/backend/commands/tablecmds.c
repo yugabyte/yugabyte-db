@@ -922,6 +922,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	else
 		tablespaceId = InvalidOid;
 
+	/* YB: before YBCCreateTable, so a refused partition costs no DocDB work. */
+	if (stmt->partbound)
+		YbOscCheckTopologyChange(linitial_oid(inheritOids), "add a partition to");
+
 	/* still nothing? use the default */
 	if (!OidIsValid(tablespaceId))
 		tablespaceId = GetDefaultTablespace(stmt->relation->relpersistence,
@@ -5436,12 +5440,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_AttachPartition:
 			ATSimplePermissions(cmd->subtype, rel, ATT_TABLE | ATT_PARTITIONED_INDEX);
-			/* No command-specific prep needed */
+			/* YB: before the DocDB alter. */
+			YbOscCheckTopologyChange(RelationGetRelid(rel), "attach a partition to");
 			pass = AT_PASS_MISC;
 			break;
 		case AT_DetachPartition:
 			ATSimplePermissions(cmd->subtype, rel, ATT_TABLE);
-			/* No command-specific prep needed */
+			YbOscCheckTopologyChange(RelationGetRelid(rel), "detach a partition from");
 			pass = AT_PASS_MISC;
 			break;
 		case AT_DetachPartitionFinalize:
