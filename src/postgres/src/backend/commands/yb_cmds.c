@@ -763,6 +763,18 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		if (tablespaceId == MyDatabaseTableSpace)
 			tablespaceId = InvalidOid;
 
+		/*
+		 * Without per-tablespace implicit tablegroups, every colocated table
+		 * shares the default tablegroup, so a table's tablespace would either
+		 * be ignored or become the placement of the whole database.
+		 */
+		if (!is_colocated_tables_with_tablespace_enabled &&
+			OidIsValid(tablespaceId) && !IsBinaryUpgrade && !yb_binary_restore)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot create colocated table with a tablespace"),
+					 errhint("Create the table with COLOCATION = false, or enable the ysql_enable_colocated_tables_with_tablespaces flag.")));
+
 		if (is_colocated_tables_with_tablespace_enabled &&
 			OidIsValid(tablespaceId))
 		{
