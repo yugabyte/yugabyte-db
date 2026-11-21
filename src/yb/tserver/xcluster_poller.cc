@@ -363,7 +363,15 @@ void XClusterPoller::SchedulePoll() {
         std::max(delay_ms, (int64_t)1 << poll_failures_);  // exponential backoff for failures.
   }
 
+  SchedulePollAfter(delay_ms);
+}
+
+void XClusterPoller::SchedulePollAfter(int64_t delay_ms) {
   ScheduleFuncWithDelay(delay_ms, BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
+}
+
+void XClusterPoller::SchedulePollNow() {
+  ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
 }
 
 void XClusterPoller::DoPoll() {
@@ -412,7 +420,12 @@ void XClusterPoller::DoPoll() {
     poll_stats_history_.RecordBeginPoll();
   }
 
-  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
+  // ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN, with a lock that a subclass's send can release.
+  UniqueLock data_mutex_lock(data_mutex_);
+  RETURN_WHEN_OFFLINE;
+  if (!IsLeaderTermValid()) {
+    return;
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
     idle_polls_ = FLAGS_async_replication_max_idle_wait;
@@ -464,6 +477,22 @@ void XClusterPoller::DoPoll() {
     return SchedulePoll();
   }
 
+  VLOG_WITH_PREFIX(5) << "Sending GetChangesRequest: " << req.ShortDebugString();
+  if (!ShouldSendGetChangesWithoutLock()) {
+    SendGetChangesRequest(get_changes_client, &req);
+    return;
+  }
+  data_mutex_lock.unlock();
+  SendGetChangesRequestWithoutLock(get_changes_client, &req);
+}
+
+void XClusterPoller::SendGetChangesRequestWithoutLock(
+    client::YBClient* client, cdc::GetChangesRequestPB* req) {
+  LOG_WITH_PREFIX(DFATAL) << "This poller sends GetChanges with data_mutex_ held";
+}
+
+void XClusterPoller::SendGetChangesRequest(
+    client::YBClient* client, cdc::GetChangesRequestPB* req) {
   auto handle = rpcs_->Prepare();
   if (handle == rpcs_->InvalidHandle()) {
     DCHECK(IsOffline());
@@ -471,14 +500,12 @@ void XClusterPoller::DoPoll() {
     return;
   }
 
-  VLOG_WITH_PREFIX(5) << "Sending GetChangesRequest: " << req.ShortDebugString();
-
   // It is safe to pass rpcs_ raw pointer as the call is guaranteed to complete before Rpcs
   // shutdown.
   *handle = rpc::xcluster::CreateGetChangesRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       nullptr, /* RemoteTablet: will get this from 'req' */
-      get_changes_client, &req,
+      client, req,
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
           const Status& status, cdc::GetChangesResponsePB&& resp) {
         RpcCallback(
@@ -576,6 +603,7 @@ void XClusterPoller::HandleGetChangesResponse(
     poll_stats_history_.RecordEndGetChanges();
   }
 
+  bool skip_apply = false;
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
@@ -603,10 +631,28 @@ void XClusterPoller::HandleGetChangesResponse(
     // Recover slowly if we're congested.
     poll_failures_ = static_cast<uint32>(
         std::max(static_cast<int64>(poll_failures_) - 2, static_cast<int64>(0)));
+
+    skip_apply = CanSkipApply(*resp);
+    if (skip_apply) {
+      ++idle_polls_;
+      XClusterOutputClientResponse response;
+      response.processed_record_count = 0;
+      response.get_changes_response = resp;
+      ChangesApplied(response);
+    }
   }
 
-  // Success Case.
-  ScheduleApplyChanges(std::move(resp));
+  if (!skip_apply) {
+    ScheduleApplyChanges(std::move(resp));
+    return;
+  }
+
+  if (FLAGS_enable_xcluster_stat_collection) {
+    poll_stats_history_.RecordEndPoll(
+        /* num_records= */ 0, /* received_index= */ 0, /* bytes_received= */ 0);
+  }
+  ClearReplicationError();
+  SchedulePoll();
 }
 
 Status XClusterPoller::ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) {
