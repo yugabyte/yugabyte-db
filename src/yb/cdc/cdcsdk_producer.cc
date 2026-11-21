@@ -123,6 +123,11 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
 
+DEFINE_RUNTIME_bool(cdc_use_txn_scoped_schema_cache, true,
+                    "When this flag is set to true, GetChanges will use a separate schema cache "
+                    "while streaming the records of a transaction, so that schema changes within "
+                    "the transaction do not affect the records streamed after it.");
+
 DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
                  "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
                  "This simulates the scenario when a GetChanges call is being served during tablet "
@@ -2023,9 +2028,14 @@ Status ProcessIntents(
 
   // Need to populate the CDCSDKRecords
   if (!keyValueIntents->empty()) {
+    SchemaDetailsMap txn_schema_details;
+    if (FLAGS_cdc_use_txn_scoped_schema_cache) {
+      txn_schema_details = *cached_schema_details;
+    }
     RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
         op_id, transaction_id, xrepl_origin_id, aborted, *keyValueIntents, metadata, tablet_peer,
-        enum_oid_label_map, composite_atts_map, request_source, cached_schema_details,
+        enum_oid_label_map, composite_atts_map, request_source,
+        FLAGS_cdc_use_txn_scoped_schema_cache ? &txn_schema_details : cached_schema_details,
         schema_packing_storages, resp, consumption, &write_id, &reverse_index_key, commit_time,
         client, end_of_transaction, throughput_metrics));
   }

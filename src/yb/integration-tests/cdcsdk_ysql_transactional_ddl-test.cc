@@ -534,5 +534,157 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRe
   }
 }
 
+class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
+ protected:
+  // A column added and dropped in the same transaction is removed from the schema right away
+  // rather than marked for deletion. Writes after the transaction commits must not carry the
+  // column in either tuple of a REPLICA IDENTITY FULL record.
+  void TestWritesAfterDropOfAddedColumn(bool packed_row);
+};
+
+void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (a int primary key, b int, c int) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 REPLICA IDENTITY FULL"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN d int"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1, 1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 2, 2, 2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP COLUMN d"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 20 WHERE a = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 2"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Writes after the commit: single-shard ones and a distributed transaction.
+  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 30 WHERE a = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 3, 3)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 40 WHERE a = 1"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 33 WHERE a = 3"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 3"));
+
+  // Records of the transaction with the DDLs, then those written after it.
+  constexpr size_t kNumTxnRecords = 4;
+  constexpr size_t kNumRecords = 9;
+
+  using Tuple = google::protobuf::RepeatedPtrField<DatumMessagePB>;
+  auto find_col = [](const Tuple& tuple, const std::string& name) -> const DatumMessagePB* {
+    for (const auto& col : tuple) {
+      if (col.column_name() == name) {
+        return &col;
+      }
+    }
+    return nullptr;
+  };
+
+  std::vector<RowMessage> records;
+  CDCSDKCheckpointPB checkpoint;
+  bool streamed = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = streamed ? GetChangesFromCDCWithoutRetry(stream_id, tablets, &checkpoint)
+                             : GetChangesFromCDC(stream_id, tablets, &checkpoint);
+        if (!resp.ok()) {
+          if (!streamed &&
+              (resp.status().IsLeaderNotReadyToServe() || resp.status().IsNotFound())) {
+            return false;
+          }
+          return resp.status();
+        }
+        streamed = true;
+        for (const auto& record : resp->cdc_sdk_proto_records()) {
+          const auto& row = record.row_message();
+          if (row.table() == "t1" &&
+              (row.op() == RowMessage::INSERT || row.op() == RowMessage::UPDATE ||
+               row.op() == RowMessage::DELETE)) {
+            records.push_back(row);
+          }
+        }
+        checkpoint = resp->cdc_sdk_checkpoint();
+        return records.size() >= kNumRecords;
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Waiting to stream all the writes"));
+
+  ASSERT_EQ(records.size(), kNumRecords);
+  for (size_t i = 0; i < records.size(); ++i) {
+    LOG(INFO) << "Record " << i << ": " << records[i].ShortDebugString();
+  }
+
+  const auto& txn_id = records[0].transaction_id();
+  ASSERT_FALSE(txn_id.empty());
+  for (size_t i = 0; i < kNumTxnRecords; ++i) {
+    ASSERT_EQ(records[i].transaction_id(), txn_id) << i;
+  }
+
+  // The two inserts in the transaction were written while d existed.
+  for (size_t i = 0; i < 2; ++i) {
+    const auto& inserted = records[i];
+    ASSERT_EQ(inserted.op(), RowMessage::INSERT) << i;
+    const auto* a = find_col(inserted.new_tuple(), "a");
+    const auto* d = find_col(inserted.new_tuple(), "d");
+    ASSERT_NE(a, nullptr) << i;
+    ASSERT_NE(d, nullptr) << i;
+    ASSERT_EQ(d->datum_int32(), a->datum_int32()) << i;
+  }
+
+  const auto& updated = records[2];
+  ASSERT_EQ(updated.op(), RowMessage::UPDATE);
+  ASSERT_EQ(find_col(updated.new_tuple(), "a")->datum_int32(), 1);
+  ASSERT_EQ(find_col(updated.new_tuple(), "b")->datum_int32(), 20);
+  ASSERT_EQ(find_col(updated.new_tuple(), "c")->datum_int32(), 1);
+  ASSERT_EQ(find_col(updated.old_tuple(), "a")->datum_int32(), 1);
+  ASSERT_EQ(find_col(updated.old_tuple(), "b")->datum_int32(), 1);
+  ASSERT_EQ(find_col(updated.old_tuple(), "c")->datum_int32(), 1);
+
+  const auto& deleted = records[3];
+  ASSERT_EQ(deleted.op(), RowMessage::DELETE);
+  ASSERT_EQ(find_col(deleted.old_tuple(), "a")->datum_int32(), 2);
+  ASSERT_EQ(find_col(deleted.old_tuple(), "b")->datum_int32(), 2);
+  ASSERT_EQ(find_col(deleted.old_tuple(), "c")->datum_int32(), 2);
+
+  // The UPDATE and DELETE above can still carry d: they are unpacked writes, which hold no schema
+  // version, so they are decoded with the schema cached from the earlier inserts. Everything
+  // written after the commit has exactly the columns a, b and c.
+  for (size_t i = kNumTxnRecords; i < records.size(); ++i) {
+    const auto& row = records[i];
+    ASSERT_NE(row.transaction_id(), txn_id) << i;
+    ASSERT_EQ(find_col(row.new_tuple(), "d"), nullptr) << i << ": " << row.ShortDebugString();
+    ASSERT_EQ(find_col(row.old_tuple(), "d"), nullptr) << i << ": " << row.ShortDebugString();
+    if (row.op() != RowMessage::DELETE) {
+      ASSERT_EQ(row.new_tuple_size(), 3) << i << ": " << row.ShortDebugString();
+    }
+    if (row.op() != RowMessage::INSERT) {
+      ASSERT_EQ(row.old_tuple_size(), 3) << i << ": " << row.ShortDebugString();
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnPacked) {
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnUnpacked) {
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false);
+}
+
 }  // namespace cdc
 }  // namespace yb
