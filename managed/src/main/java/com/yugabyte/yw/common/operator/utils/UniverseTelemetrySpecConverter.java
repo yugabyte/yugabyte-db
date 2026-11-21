@@ -192,9 +192,9 @@ public class UniverseTelemetrySpecConverter {
   /**
    * The targets to scrape, defaulting to {@link OtelCollectorUtil#K8S_SUPPORTED_SCRAPE_TARGETS}
    * rather than to the shared mapper's {@code EnumSet.allOf}, which would add the VM-only
-   * NODE_EXPORT and NODE_AGENT_EXPORT targets that a Kubernetes universe rejects. The CRD enum
-   * already restricts the values that can be written, but it supplies no value when the field is
-   * omitted, so the default is still needed here.
+   * NODE_AGENT_EXPORT target that a Kubernetes universe rejects. The CRD enum already restricts the
+   * values that can be written, but it supplies no value when the field is omitted, so the default
+   * is still needed here.
    */
   private static Set<ScrapeConfigTargetType> scrapeConfigTargets(Metrics crMetrics) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);

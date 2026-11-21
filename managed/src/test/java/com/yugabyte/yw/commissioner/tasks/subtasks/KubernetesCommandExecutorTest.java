@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.Service;
@@ -72,6 +74,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -595,6 +598,111 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(
         ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
         overrides.get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterScrapedWhenSidecarRendered() throws IOException {
+    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+
+    Map<String, Object> job = nodeScrapeJob(runHelmInstallWithNodeMetricsExport());
+    assertEquals("http", job.get("scheme"));
+    assertEquals(
+        ImmutableList.of("127.0.0.1:9300"),
+        ((List<Map<String, Object>>) job.get("static_configs")).get(0).get("targets"));
+  }
+
+  @Test
+  public void testNodeExporterScrapedOverHttpsWhenSidecarTlsRendered() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    defaultUserIntent.enableNodeToNodeEncrypt = true;
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+
+    Map<String, Object> overrides = runHelmInstallWithNodeMetricsExport();
+    assertEquals(
+        ImmutableMap.of("enabled", true),
+        ((Map<String, Object>) overrides.get("nodeExporter")).get("tls"));
+    assertEquals("https", nodeScrapeJob(overrides).get("scheme"));
+  }
+
+  // The image tag falls back to the universe's version, but the sidecar does not.
+  @Test
+  public void testNodeExporterNotScrapedWithoutTaskVersion() throws IOException {
+    ybSoftwareVersion = null;
+    defaultUserIntent.ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+
+    Map<String, Object> overrides = runHelmInstallWithNodeMetricsExport();
+    assertEquals(false, ((Map<String, Object>) overrides.get("nodeExporter")).get("enabled"));
+    assertNull(nodeScrapeJob(overrides));
+  }
+
+  /**
+   * Runs a HELM_INSTALL exporting tserver and node metrics to a Datadog provider, and returns the
+   * rendered overrides.
+   */
+  private Map<String, Object> runHelmInstallWithNodeMetricsExport() throws IOException {
+    com.yugabyte.yw.models.helpers.telemetry.DataDogConfig dataDogConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.DataDogConfig();
+    dataDogConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.DATA_DOG);
+    dataDogConfig.setSite("ddsite");
+    dataDogConfig.setApiKey("apikey");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("dd-tp");
+    tp.setConfig(dataDogConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+    com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig exporter =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig();
+    exporter.setExporterUuid(tp.getUuid());
+    com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig metricsExportConfig =
+        new com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig();
+    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(exporter));
+    metricsExportConfig.setScrapeConfigTargets(
+        EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT));
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .metricsExportConfig(metricsExportConfig)
+                .build())
+        .run();
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), overrideFile.capture());
+    // The secret env entries carry Java type tags that a plain Yaml can't construct.
+    return new Yaml()
+        .loadAs(
+            FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset())
+                .replaceAll("!!\\S+", ""),
+            Map.class);
+  }
+
+  /** The collector's node_exporter scrape job in the rendered overrides, or null. */
+  private static Map<String, Object> nodeScrapeJob(Map<String, Object> overrides) {
+    Map<String, Object> receiver =
+        (Map<String, Object>)
+            ((Map<String, Object>)
+                    new Yaml()
+                        .<Map<String, Object>>load(
+                            (String)
+                                ((Map<String, Object>) overrides.get("otelCollector"))
+                                    .get("config"))
+                        .get("receivers"))
+                .get("prometheus/yugabyte");
+    return ((List<Map<String, Object>>)
+            ((Map<String, Object>) receiver.get("config")).get("scrape_configs"))
+        .stream().filter(j -> "node".equals(j.get("job_name"))).findFirst().orElse(null);
   }
 
   /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */

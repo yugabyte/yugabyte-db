@@ -38,7 +38,9 @@ public class MetricsExportConfig {
   @ApiModelProperty(
       value =
           "Set of target types to include in scrape configuration. If not specified, all supported"
-              + " target types will be included.",
+              + " target types will be included. On Kubernetes universes, NODE_EXPORT scrapes the"
+              + " node_exporter sidecar of the pods that run it, and NODE_AGENT_EXPORT is not"
+              + " supported.",
       accessMode = READ_WRITE,
       example =
           "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\","

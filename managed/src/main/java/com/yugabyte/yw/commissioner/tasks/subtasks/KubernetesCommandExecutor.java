@@ -1537,6 +1537,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           tserverGFlags, TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP);
     }
 
+    // The sidecar the pods run, set in the nodeExporter overrides below. The collector's
+    // node_exporter scrape job is built from the same value.
+    OtelCollectorConfigGenerator.K8sNodeExporterSidecar nodeExporterSidecar =
+        KubernetesUtil.isNodeExporterSidecarEnabled(
+                taskParams().ybSoftwareVersion, universeFromDB, confGetter)
+            ? new OtelCollectorConfigGenerator.K8sNodeExporterSidecar(
+                universeFromDBParams.communicationPorts.nodeExporterPort,
+                KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                    taskParams().ybSoftwareVersion, universeFromDB, confGetter))
+            : null;
+
     // Add overrides for OpenTelemetry. The telemetry state arrives in the subtask params
     // (KubernetesTaskBase.getDesiredTelemetryConfig): the persisted export_telemetry_config row
     // for regular helm flows, or the full desired state while the export-telemetry configure task
@@ -1577,7 +1588,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 telemetryConfig,
                 podPlacement,
                 logLinePrefix,
-                primaryClusterIntent);
+                primaryClusterIntent,
+                nodeExporterSidecar);
         otelOverrides = new HashMap<>();
         otelOverrides.put("enabled", otelConfig.isEnabled());
         otelOverrides.put("config", otelConfig.getConfig());
@@ -1824,15 +1836,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
     Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
-    if (KubernetesUtil.isNodeExporterSidecarEnabled(
-        taskParams().ybSoftwareVersion, universeFromDB, confGetter)) {
+    if (nodeExporterSidecar != null) {
       nodeExporter.put("enabled", true);
-      nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
-      getOrCreateMap(nodeExporter, "tls")
-          .put(
-              "enabled",
-              KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-                  taskParams().ybSoftwareVersion, universeFromDB, confGetter));
+      nodeExporter.put("port", nodeExporterSidecar.getPort());
+      getOrCreateMap(nodeExporter, "tls").put("enabled", nodeExporterSidecar.isHttps());
     } else {
       nodeExporter.put("enabled", false);
       getOrCreateMap(nodeExporter, "tls").put("enabled", false);

@@ -13331,7 +13331,7 @@
           "type" : "string"
         },
         "scrapeConfigTargets" : {
-          "description" : "Set of target types to include in scrape configuration. If not specified, all supported target types will be included.",
+          "description" : "Set of target types to include in scrape configuration. If not specified, all supported target types will be included. On Kubernetes universes, NODE_EXPORT scrapes the node_exporter sidecar of the pods that run it, and NODE_AGENT_EXPORT is not supported.",
           "example" : "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\", \"NODE_EXPORT\", \"NODE_AGENT_EXPORT\", \"OTEL_EXPORT\"]",
           "items" : {
             "enum" : [

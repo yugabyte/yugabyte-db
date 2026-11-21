@@ -12,12 +12,16 @@ export const K8S_AUDIT_LOG_EXPORT_PREVIEW_VERSION = '2.25.1.0-b133';
 export const K8S_PASSTHROUGH_TELEMETRY_EXPORT_STABLE_VERSION = '2026.1.2.0';
 export const K8S_PASSTHROUGH_TELEMETRY_EXPORT_PREVIEW_VERSION = '2.31.0.0';
 
-/** Pod-local scrape targets only; NODE_EXPORT / NODE_AGENT_EXPORT are rejected by the API on K8s. */
+/**
+ * Pod-local scrape targets only. NODE_EXPORT scrapes the pods' node_exporter sidecar;
+ * NODE_AGENT_EXPORT is rejected by the API on K8s.
+ */
 export const K8S_SUPPORTED_SCRAPE_CONFIG_TARGETS: ScrapeConfigTargetType[] = [
   ScrapeConfigTargetType.MASTER_EXPORT,
   ScrapeConfigTargetType.TSERVER_EXPORT,
   ScrapeConfigTargetType.YSQL_EXPORT,
   ScrapeConfigTargetType.CQL_EXPORT,
+  ScrapeConfigTargetType.NODE_EXPORT,
   ScrapeConfigTargetType.OTEL_EXPORT
 ];
 

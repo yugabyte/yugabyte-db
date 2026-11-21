@@ -44,6 +44,7 @@ public class OtelCollectorUtil {
               ScrapeConfigTargetType.TSERVER_EXPORT,
               ScrapeConfigTargetType.YSQL_EXPORT,
               ScrapeConfigTargetType.CQL_EXPORT,
+              ScrapeConfigTargetType.NODE_EXPORT,
               ScrapeConfigTargetType.OTEL_EXPORT));
 
   public static Set<ScrapeConfigTargetType> getUnsupportedK8sScrapeTargets(
