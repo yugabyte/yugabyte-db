@@ -94,4 +94,37 @@ TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   ASSERT_STMT_OK("ALTER TABLE normal_table2 ADD COLUMN b INT");
 }
 
+// yb_force_catalog_update_on_next_ddl is the escape hatch for running a DDL while the master
+// blocks catalog writes, e.g. during a YSQL major upgrade. With transaction-block DDL, a DDL runs
+// in the session's regular transaction rather than a separate DDL transaction. The GUC, set before
+// that transaction starts, must still force the next DDL's catalog writes, whether the DDL runs
+// in autocommit or inside BEGIN/COMMIT, and the DDL must consume it so the DDL after it is
+// rejected again. Inside a block, every DDL of that transaction is forced.
+class YsqlDdlWhitelistTxnBlockDdlTest : public pgwrapper::PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(YsqlDdlWhitelistTxnBlockDdlTest, ForceCatalogUpdateOnNextDdl) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_STMT_OK("CREATE TABLE normal_table (id INT)");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_require_force_catalog_modifications) = true;
+  ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN a INT");
+
+  ASSERT_STMT_OK("SET yb_force_catalog_update_on_next_ddl = true");
+  ASSERT_STMT_OK("ALTER TABLE normal_table ADD COLUMN b INT");
+  ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN c INT");
+
+  ASSERT_STMT_OK("SET yb_force_catalog_update_on_next_ddl = true");
+  ASSERT_STMT_OK("BEGIN");
+  ASSERT_STMT_OK("ALTER TABLE normal_table ADD COLUMN c INT");
+  ASSERT_STMT_OK("ALTER TABLE normal_table ADD COLUMN d INT");
+  ASSERT_STMT_OK("COMMIT");
+  ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN e INT");
+}
+
 }  // namespace yb
