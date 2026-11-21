@@ -232,17 +232,8 @@ Status CheckPeerIsReady(
 
   auto tablet = VERIFY_RESULT(tablet_peer.shared_tablet());
   SCHECK(tablet != nullptr, IllegalState, "Expected tablet peer to have a tablet");
-  const auto tablet_data_state = tablet->metadata()->tablet_data_state();
-  if (!allow_split_tablet &&
-      tablet_data_state == tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
-    auto split_child_tablet_ids = tablet->metadata()->split_child_tablet_ids();
-    return STATUS(
-               IllegalState,
-               Format("The tablet $0 is in $1 state",
-                      tablet->tablet_id(),
-                      TabletDataState_Name(tablet_data_state)),
-               TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
-        .CloneAndAddErrorCode(SplitChildTabletIdsData(split_child_tablet_ids));
+  if (!allow_split_tablet) {
+    RETURN_NOT_OK(CheckTabletNotSplit(*tablet));
     // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
     // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
     // modified their data state, but all had some failures (code bug?).
@@ -251,6 +242,19 @@ Status CheckPeerIsReady(
   return Status::OK();
 }
 
+Status CheckTabletNotSplit(const tablet::Tablet& tablet) {
+  const auto tablet_data_state = tablet.metadata()->tablet_data_state();
+  if (tablet_data_state != tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
+    return Status::OK();
+  }
+  return STATUS(
+             IllegalState,
+             Format("The tablet $0 is in $1 state",
+                    tablet.tablet_id(), TabletDataState_Name(tablet_data_state)),
+             TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
+      .CloneAndAddErrorCode(
+          SplitChildTabletIdsData(tablet.metadata()->split_child_tablet_ids()));
+}
 
 Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));

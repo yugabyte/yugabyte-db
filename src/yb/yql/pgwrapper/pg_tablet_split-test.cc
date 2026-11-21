@@ -96,6 +96,7 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_select_parallelism);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_uint64(rpc_max_message_size);
 
@@ -336,6 +337,63 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   }
 
   ASSERT_OK(conn.CommitTransaction());
+}
+
+// A deferred snapshot is chosen at now + max_clock_skew. Before #36543, a read which had already
+// accepted the parent could wait across a split and return the parent's pre-split rows at that
+// future timestamp. N=100 parent rows + 1 child row committed before the snapshot must produce
+// 101 on both reads, not 100 followed by 101 after metadata refresh.
+TEST_F(PgTabletSplitTest, DeferredReadRetriesIfTabletSplitsWhileWaitingForSafeTime) {
+  constexpr auto kInitialRows = 100;
+  constexpr auto kDeferredSnapshotLead = 5s;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO t SELECT generate_series(1, $0)", kInitialRows));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush());
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) =
+      kDeferredSnapshotLead / 1us;
+
+  CountDownLatch read_waiting_for_safe_time(1);
+  CountDownLatch resume_read(1);
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.SetCallBack("ReadQuery::WaitForSafeTime", [&](void*) {
+    read_waiting_for_safe_time.CountDown();
+    resume_read.Wait();
+  });
+  sync_point.EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([&] {
+    resume_read.CountDown();
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+  });
+
+  auto counts = std::async(std::launch::async, [this]() -> Result<std::pair<int64_t, int64_t>> {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute(
+        "BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE"));
+    const auto first = VERIFY_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    const auto second = VERIFY_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return std::pair(first, second);
+  });
+
+  // The parent was accepted before this read started waiting for its snapshot five seconds ahead.
+  ASSERT_TRUE(read_waiting_for_safe_time.WaitFor(5s * kTimeMultiplier));
+  ASSERT_EQ(counts.wait_for(0ms), std::future_status::timeout);
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+  ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO t VALUES ($0)", kInitialRows + 1));
+
+  resume_read.CountDown();
+  const auto [first, second] = ASSERT_RESULT(counts.get());
+  ASSERT_EQ(first, kInitialRows + 1);
+  ASSERT_EQ(second, first);
 }
 
 // The below test asserts that the intent iterator created during conflict resolution rightly checks
