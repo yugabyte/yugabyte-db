@@ -10,6 +10,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +31,7 @@ import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
@@ -73,6 +75,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoad
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -1367,6 +1370,81 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                                 "partition tsStsIndex must be preserved", az.tsStsIndex, is(1));
                           }));
     }
+  }
+
+  // A v2 edit that sends node_spec without resource specs clears the stored ones. The handler
+  // rebuilds tserver and master specs from their own instance types.
+  @Test
+  public void testEditUniverseV2InitializesK8sResourceSpecsFromInstanceType() throws ApiException {
+    Universe k8sUniverse = setupKubernetesUniverseInDB();
+    UUID k8sUuid = k8sUniverse.getUniverseUUID();
+    UUID k8sProviderUuid =
+        UUID.fromString(k8sUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    InstanceType.upsert(
+        k8sProviderUuid, "tserver.type", 1.0, 2.0, new InstanceType.InstanceTypeDetails());
+    InstanceType.upsert(
+        k8sProviderUuid, "master.type", 3.0, 8.0, new InstanceType.InstanceTypeDetails());
+    Universe.saveDetails(
+        k8sUuid,
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent userIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          TestUtils.existingProviderInitializer(userIntent)
+              .setInstanceType("tserver.type")
+              .setMasterInstanceType("master.type");
+          userIntent.tserverK8SNodeResourceSpec = null;
+          userIntent.masterK8SNodeResourceSpec = null;
+        });
+    // API tests bind RuntimeConfigFactory to the mock, which is what the handler reads.
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.usek8sCustomResources.getKey()))
+        .thenReturn(true);
+    assertK8sResourceSpecsInitializedFromInstanceType(k8sUuid);
+  }
+
+  private void assertK8sResourceSpecsInitializedFromInstanceType(UUID k8sUuid) throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), k8sUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    ClusterNodeSpec nodeSpec = primaryClusterSpec.getNodeSpec();
+    nodeSpec.instanceType("tserver.type");
+    nodeSpec.setK8sTserverResourceSpec(null);
+    nodeSpec.setK8sMasterResourceSpec(null);
+    ClusterStorageSpec masterStorage =
+        nodeSpec.getMaster() == null ? null : nodeSpec.getMaster().getStorageSpec();
+    nodeSpec.master(
+        new ClusterPerProcessNodeSpec().instanceType("master.type").storageSpec(masterStorage));
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(nodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditKubernetesUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), k8sUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(k8sUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditKubernetesUniverse), v1EditParamsCapture.capture());
+    UserIntent edited = v1EditParamsCapture.getValue().getPrimaryCluster().userIntent;
+    assertEquals("tserver.type", edited.instanceType);
+    assertEquals("master.type", edited.masterInstanceType);
+    assertNotNull(edited.tserverK8SNodeResourceSpec);
+    assertEquals(1.0, edited.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(2.0, edited.tserverK8SNodeResourceSpec.memoryGib, 0.001);
+    assertNotNull(edited.masterK8SNodeResourceSpec);
+    assertEquals(3.0, edited.masterK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, edited.masterK8SNodeResourceSpec.memoryGib, 0.001);
   }
 
   @Test

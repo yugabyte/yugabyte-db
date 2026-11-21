@@ -58,6 +58,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FileCollectionDownloader;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
@@ -283,6 +284,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing missing tserver/master resource specs from respective instanceType.
+    // Explicitly requested resource specs are kept as is.
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams, confGetter);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -353,6 +358,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .findAny()
             .orElse(null);
     universeEditSpec = inheritFromPrimaryBeforeMapping(universeEditSpec, primaryV2Cluster);
+
     boolean isRREdited =
         universeEditSpec.getClusters().stream()
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))
@@ -365,11 +371,27 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+
+    Set<UUID> editedNodesClusterUUIDs =
+        universeEditSpec.getClusters().stream()
+            .filter(c -> c.getNodeSpec() != null)
+            .map(c -> c.getUuid())
+            .collect(Collectors.toSet());
+
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
+
+      // Before we completely replace instance type with resourceSpec for k8s,
+      // initializing missing tserver/master resource specs from respective instanceType.
+      // Explicitly requested specs and specs of clusters not changed by the request are kept as is
+      // (the mapper clears them when the node spec is passed without them).
+      if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
+        KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+            cluster.clusterType, cluster.userIntent, false, /* overwrite */ confGetter);
+      }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
@@ -609,6 +631,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing missing resource specs from instanceType.
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+        newReadReplica.clusterType, newReadReplica.userIntent, confGetter);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {

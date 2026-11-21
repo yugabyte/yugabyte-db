@@ -770,6 +770,138 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         "change");
   }
 
+  // KubernetesCommandExecutor treats a null resource spec as an empty one (2 cores, 4 GiB).
+  // Comparing the stored nulls directly NPEs; both null must not look like a resource change.
+  @Test
+  public void testNullResourceSpecsDoNotChangeInstanceType() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.usek8sCustomResources.getKey(), "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    clearResourceSpecs();
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-tserver-3\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-4\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenReturn(TestUtils.deserialize(podsString, PodList.class).getItems());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.numNodes = 5;
+    assertNull(newUserIntent.tserverK8SNodeResourceSpec);
+    assertNull(newUserIntent.masterK8SNodeResourceSpec);
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
+
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(
+        subTasksByPosition, KUBERNETES_ADD_POD_TASKS, getExpectedAddPodTaskResults(), "add");
+  }
+
+  // A null spec compares as the empty default, so an explicit spec with a different cpu is a
+  // tserver resource change. Master stays null on both sides, so masters are not rolled.
+  @Test
+  public void testNullResourceSpecAgainstDifferentSpecChangesInstanceType() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.usek8sCustomResources.getKey(), "true");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+    clearResourceSpecs();
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.0\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.2.0\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.2.1\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.2.2\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenReturn(TestUtils.deserialize(podsString, PodList.class).getItems());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newUserIntent.tserverK8SNodeResourceSpec.cpuCoreCount = 4.0;
+    assertNull(newUserIntent.masterK8SNodeResourceSpec);
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+
+    TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
+    assertEquals(describeFailure(taskInfo), Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(
+        subTasksByPosition,
+        KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS,
+        getExpectedChangeInstaceTypeResults(),
+        "change");
+  }
+
+  private void clearResourceSpecs() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  u.getUniverseDetails().getPrimaryCluster().userIntent;
+              userIntent.tserverK8SNodeResourceSpec = null;
+              userIntent.masterK8SNodeResourceSpec = null;
+            });
+  }
+
   private Object readEnableLoadBalancer(String overrideFilePath) {
     try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
       Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
