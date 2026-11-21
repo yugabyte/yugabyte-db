@@ -25,6 +25,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver_types.proto";
 import "yb/rpc/lightweight_message.proto";
 
 // Info about a single tablet server, returned to the client as part
@@ -53,6 +54,14 @@ message TabletLocationsPB {
     required PeerRole role = 2;
     optional consensus.PeerMemberType member_type = 3;
     optional tablet.RaftGroupStatePB state = 4;
+
+    // Tiered storage, as last reported by the tablet server (ReportedTabletPB): the tier the
+    // replica's SSTs are on (unset while a migration straddles two), its target tier and where it
+    // stands relative to it. All unset when the tablet server runs without
+    // --enable_tiered_storage.
+    optional string current_storage_tier = 5;
+    optional string target_storage_tier = 6;
+    optional tserver.TierMigrationStatusPB.State tier_migration_state = 7;
   }
 
   required bytes tablet_id = 1;

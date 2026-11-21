@@ -98,6 +98,11 @@ class ClusterLoadBalancer {
   // Sets whether to enable or disable the cluster balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
+  // Tiered storage, tests only: make every FAILED replica's re-send due now.
+  void TEST_ExpireTierMigrationRetries();
+  // Tiered storage, tests only: age every awaiting-report entry past the task deadline.
+  void TEST_ExpireTierMigrationsAwaitingReport();
+
   bool IsLoadBalancerEnabled() const;
 
   bool CanBalanceGlobalLoad() const;
@@ -158,7 +163,8 @@ class ClusterLoadBalancer {
   virtual void GetPendingTasks(const TableInfoPtr& table,
                                TabletToTabletServerMap* add_replica_tasks,
                                TabletToTabletServerMap* remove_replica_tasks,
-                               TabletToTabletServerMap* stepdown_leader_tasks);
+                               TabletToTabletServerMap* stepdown_leader_tasks,
+                               TabletToTabletServersMap* tier_migration_tasks);
 
   // Issue the calls to CatalogManager to change the config for this particular tablet.
   virtual Status SendAddReplica(
@@ -170,6 +176,10 @@ class ClusterLoadBalancer {
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
       bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid = "");
+  // Tiered storage: tell the replica of 'tablet' on 'ts_uuid' to move its SSTs to 'target_tier'.
+  virtual Status SendAlterTabletTier(
+      const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+      const std::string& reason);
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
   consensus::PeerMemberType GetDefaultMemberType();
@@ -200,6 +210,15 @@ class ClusterLoadBalancer {
   // Returns true if a move was actually made.
   Result<bool> HandleAddReplicas(
       TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
+
+  // Tiered storage: sends one AlterTabletTier to a replica of this table whose tablespace asks
+  // for another tier than the replica targets, or whose migration the tserver gave up on and
+  // whose re-send is due. Bounded by the in-flight caps. Returns true if one was sent.
+  Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
+
+  // Tiered storage: drops the retry entries and the awaiting-report entries no table's tier step
+  // visited this run.
+  void PruneTierMigrationRetries();
 
   // Processes any required replica removals, as part of having added an extra replica to a
   // tablet's set of peers, which caused its quorum to be larger than the configured number.
@@ -445,6 +464,41 @@ class ClusterLoadBalancer {
   void UpdatePerRunMetrics();
 
   LeaderEpoch epoch_;
+
+  // Tiered storage: re-send schedule for replicas whose migration the tserver gave up on
+  // (FAILED), keyed by tablet id and tserver uuid. An entry is dropped when the replica reports
+  // DONE or targets another tier, and at the end of a run whose tier step did not visit it (the
+  // tablet or replica is gone, the table was skipped, its placement no longer names a tier), so
+  // a replica that comes back starts at the minimum wait. It survives the IN_PROGRESS each
+  // re-send causes, so the backoff grows across repeated failures. Only the balancer's own
+  // thread touches it.
+  struct TierMigrationRetry {
+    MonoTime next_attempt;
+    MonoDelta backoff;
+    uint64_t seen_in_run = 0;
+  };
+  std::unordered_map<std::string, TierMigrationRetry> tier_migration_retries_;
+
+  // Tiered storage: the AlterTabletTier sends whose replica has not reported the new intent yet,
+  // keyed like tier_migration_retries_. The task completes on the tserver's reply and the report
+  // that carries the target arrives a heartbeat later, so without this record a run in between
+  // would see the replica in neither the pending tasks nor its report: not counted against the
+  // caps, and told again. An entry is dropped when the replica reports the target sent with its
+  // migration IN_PROGRESS or DONE, when it is older than the task's own deadline
+  // (unresponsive_ts_rpc_timeout_ms: the task gave up and no report is coming, e.g. the tablet
+  // was gone), and at the end of a run whose tier step did not visit it. Only the balancer's own
+  // thread touches it.
+  struct TierMigrationAwaitingReport {
+    std::string target_tier;
+    TableId table_id;
+    MonoTime sent_at;
+    uint64_t seen_in_run = 0;
+  };
+  std::unordered_map<std::string, TierMigrationAwaitingReport> tier_migrations_awaiting_report_;
+
+  // Counts full runs (live placement plus read replicas), for TierMigrationRetry::seen_in_run
+  // and TierMigrationAwaitingReport::seen_in_run.
+  uint64_t tier_migration_run_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };
