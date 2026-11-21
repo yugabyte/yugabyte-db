@@ -81,6 +81,7 @@ set(ROCKSDB_SRCS
     memtable/skiplistrep.cc
     memtable/vectorrep.cc
     port/stack_trace.cc
+    port/mmap.cc
     port/port_posix.cc
     table/adaptive_table_factory.cc
     table/block_based_filter_block.cc
@@ -115,6 +116,7 @@ set(ROCKSDB_SRCS
     util/arena.cc
     util/bloom.cc
     util/cache.cc
+    util/clock_cache.cc
     util/coding.cc
     util/comparator.cc
     util/compaction_job_stats_impl.cc
@@ -256,6 +258,7 @@ ADD_YB_TEST(util/arena_test)
 ADD_YB_TEST(util/autovector_test)
 ADD_YB_TEST(util/bloom_test)
 ADD_YB_TEST(util/cache_test)
+ADD_YB_TEST(util/clock_cache_test)
 ADD_YB_TEST(util/coding_test)
 ADD_YB_TEST(util/crc32c_test)
 ADD_YB_TEST(util/dynamic_bloom_test)
