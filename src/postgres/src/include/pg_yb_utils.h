@@ -755,6 +755,12 @@ extern bool yb_enable_new_relation_fastpath_write;
  */
 extern bool yb_enable_new_relation_fastpath_write_in_txn_blocks;
 
+/*
+ * Acquire the global object locks on a relation's partitions with one request
+ * (YbLockRelationOids) rather than one each.
+ */
+extern bool yb_batch_object_locks;
+
 /* ------------------------------------------------------------------------------ */
 /* YB Debug utils. */
 

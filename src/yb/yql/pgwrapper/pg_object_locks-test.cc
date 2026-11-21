@@ -30,8 +30,10 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/hdr_histogram.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/metrics.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -83,6 +85,7 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
 DECLARE_bool(TEST_pause_session_lock_after_release);
 
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterDdl_AcquireObjectLocksGlobal);
 METRIC_DECLARE_counter(object_locking_lock_acquires);
 METRIC_DECLARE_counter(object_locking_lock_releases);
 METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
@@ -382,6 +385,155 @@ TEST_F_EX(PgObjectLocksTestRF1, DdlBlockedOnObjectLockReportsLockConflict,
       status.ToString(), "canceling statement due to lock timeout (pgsql error 55P03)");
 
   ASSERT_OK(blocker.CommitTransaction());
+}
+
+class PgObjectLocksTestPartitionTree : public PgObjectLocksTestRF1 {
+ protected:
+  static constexpr int kNumMiddle = 2;
+  static constexpr int kLeavesPerMiddle = 5;
+  static constexpr int kNumNodes = 1 + kNumMiddle + kNumMiddle * kLeavesPerMiddle;
+
+  // p, partitioned into p_<i>, each partitioned into leaves p_<i>_<j>.
+  void CreatePartitionTree() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE p (k INT, v INT) PARTITION BY RANGE (k)"));
+    for (int i = 0; i != kNumMiddle; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE p_$0 PARTITION OF p FOR VALUES FROM ($1) TO ($2) PARTITION BY RANGE (k)",
+          i, i * 100, (i + 1) * 100));
+      for (int j = 0; j != kLeavesPerMiddle; ++j) {
+        ASSERT_OK(conn.ExecuteFormat(
+            "CREATE TABLE p_$0_$1 PARTITION OF p_$0 FOR VALUES FROM ($2) TO ($3)",
+            i, j, i * 100 + j * 10, i * 100 + (j + 1) * 10));
+      }
+    }
+  }
+
+  uint64_t NumGlobalLockRequests() {
+    return cluster_->mini_master()->master()->metric_entity()
+        ->FindOrCreateMetric<Histogram>(
+            &METRIC_handler_latency_yb_master_MasterDdl_AcquireObjectLocksGlobal)
+        ->underlying()->TotalCount();
+  }
+
+  struct GlobalLocks {
+    uint64_t requests;  // Received by the master.
+    size_t granted;     // Held on the master by the transaction.
+  };
+
+  // The global locks of query, run in a transaction on conn.
+  Result<GlobalLocks> GlobalLocksOf(PGConn& conn, const std::string& query) {
+    // The master can release the previous transaction's locks after it ends.
+    RETURN_NOT_OK(WaitFor([this] { return NumGrantedLocksOnMaster() == 0; },
+                          10s * kTimeMultiplier, "Waiting for global locks to be released"));
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    const auto before = NumGlobalLockRequests();
+    RETURN_NOT_OK(conn.Execute(query));
+    GlobalLocks result{
+        .requests = NumGlobalLockRequests() - before, .granted = NumGrantedLocksOnMaster()};
+    RETURN_NOT_OK(conn.RollbackTransaction());
+    LOG(INFO) << query << ": " << result.requests << " requests, " << result.granted << " granted";
+    return result;
+  }
+};
+
+// A partition tree's global locks are sent to the master in a batch per partitioned parent, not
+// one request per partition, and the batch takes the same locks as one request per partition.
+TEST_F(PgObjectLocksTestPartitionTree, GlobalLocksBatchedPerParent) {
+  CreatePartitionTree();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE plain (k INT, v INT)"));
+
+  // LOCK TABLE: the root, then all its descendants at once. NOWAIT still locks them one at a time.
+  const auto lock = ASSERT_RESULT(GlobalLocksOf(conn, "LOCK TABLE p IN ACCESS EXCLUSIVE MODE"));
+  const auto lock_nowait =
+      ASSERT_RESULT(GlobalLocksOf(conn, "LOCK TABLE p IN ACCESS EXCLUSIVE MODE NOWAIT"));
+  ASSERT_EQ(lock.requests, 2);
+  ASSERT_EQ(lock_nowait.requests, kNumNodes);
+  ASSERT_GE(lock.granted, kNumNodes);
+  ASSERT_EQ(lock.granted, lock_nowait.granted);
+
+  // find_all_inheritors: the children of each partitioned table at once. The same ALTER on a plain
+  // table gives the requests that do not depend on the partitions, the root's lock among them.
+  const auto plain =
+      ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE plain ALTER COLUMN v SET STATISTICS 10"));
+  const auto alter =
+      ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE p ALTER COLUMN v SET STATISTICS 10"));
+  ASSERT_EQ(alter.requests, plain.requests + 1 + kNumMiddle);
+
+  // With batching off, every relation is a request of its own.
+  ASSERT_OK(conn.Execute("SET yb_batch_object_locks = off"));
+  const auto lock_off = ASSERT_RESULT(GlobalLocksOf(conn, "LOCK TABLE p IN ACCESS EXCLUSIVE MODE"));
+  const auto alter_off =
+      ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE p ALTER COLUMN v SET STATISTICS 10"));
+  ASSERT_EQ(lock_off.requests, kNumNodes);
+  ASSERT_EQ(lock_off.granted, lock.granted);
+  ASSERT_EQ(alter_off.requests, plain.requests + kNumNodes - 1);
+  ASSERT_EQ(alter_off.granted, alter.granted);
+}
+
+// A batch that conflicts with a lock on one leaf waits for it, then holds the whole tree.
+TEST_F(PgObjectLocksTestPartitionTree, BatchWaitsForConflictingLeafLock) {
+  CreatePartitionTree();
+  auto holder = ASSERT_RESULT(Connect());
+  ASSERT_OK(holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(holder.Execute("LOCK TABLE p_1_3 IN SHARE MODE"));
+
+  auto waiter = ASSERT_RESULT(Connect());
+  std::atomic<bool> locked{false};
+  auto waiter_future = std::async(std::launch::async, [&]() -> Status {
+    RETURN_NOT_OK(waiter.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(waiter.Execute("LOCK TABLE p IN EXCLUSIVE MODE"));
+    locked = true;
+    return Status::OK();
+  });
+
+  ASSERT_OK(WaitFor([&]() {
+    return NumWaitingLocks() >= 1 || NumWaitingLocksOnMaster() >= 1;
+  }, 5s * kTimeMultiplier, "Timed out waiting for the batch to wait"));
+  SleepFor(1s * kTimeMultiplier);
+  ASSERT_FALSE(locked);
+
+  ASSERT_OK(holder.CommitTransaction());
+  ASSERT_OK(waiter_future.get());
+
+  // The waiter now holds every leaf, including ones it was not waiting on.
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(writer.Execute("SET lock_timeout = '1s'"));
+  for (const auto& [leaf, key] : {std::pair{"p_0_0", 0}, {"p_1_3", 130}, {"p_1_4", 140}}) {
+    auto status = writer.ExecuteFormat("INSERT INTO $0 VALUES ($1, 1)", leaf, key);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "canceling statement due to lock timeout");
+  }
+  ASSERT_OK(waiter.CommitTransaction());
+  ASSERT_OK(writer.Execute("INSERT INTO p VALUES (130, 1)"));
+}
+
+// A batch that times out takes nothing: the session stays usable and no lock is left behind.
+TEST_F(PgObjectLocksTestPartitionTree, TimedOutBatchLeavesNoLocks) {
+  CreatePartitionTree();
+  auto holder = ASSERT_RESULT(Connect());
+  ASSERT_OK(holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(holder.Execute("LOCK TABLE p_0_2 IN SHARE MODE"));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET lock_timeout = '1s'"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto status = conn.Execute("LOCK TABLE p IN EXCLUSIVE MODE");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "canceling statement due to lock timeout");
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(holder.CommitTransaction());
+  ASSERT_OK(WaitFor([&]() {
+    return NumGrantedLocks() == 0 && NumWaitingLocks() == 0 &&
+           NumGrantedLocksOnMaster() == 0 && NumWaitingLocksOnMaster() == 0;
+  }, 10s * kTimeMultiplier, "Timed out waiting for all locks to be released"));
+
+  // Nothing of the failed batch blocks a later one.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("LOCK TABLE p IN EXCLUSIVE MODE"));
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {

@@ -4448,6 +4448,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_batch_object_locks", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Acquires the global object locks on a relation's partitions with one request."),
+			gettext_noop("When off, each partition's lock is a separate request to the master."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_batch_object_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_colocated_tables_with_tablespaces", PGC_SIGHUP, CUSTOM_OPTIONS,
 			gettext_noop("Place a colocated table or index that is created with a tablespace "
 						 "in an implicit tablegroup of that tablespace."),

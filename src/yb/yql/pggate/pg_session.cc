@@ -109,6 +109,10 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_new_relation_fastpath_write_in_txn_blocks
 DEFINE_validator(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_batch_object_locks, true,
+                       "Acquires the global object locks on a relation's partitions with one "
+                       "request to the master rather than one request per partition.");
+
 namespace yb::pggate {
 namespace {
 constexpr size_t kTablespaceCacheCapacity = 1024;

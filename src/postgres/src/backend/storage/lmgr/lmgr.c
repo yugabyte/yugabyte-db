@@ -1462,7 +1462,7 @@ GetLockNameFromTagType(uint16 locktag_type)
 void
 YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode)
 {
-	if (n <= 1 || lockmode < ShareUpdateExclusiveLock ||
+	if (n <= 1 || lockmode < ShareUpdateExclusiveLock || !yb_batch_object_locks ||
 		YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
 	{
 		for (int i = 0; i < n; i++)
