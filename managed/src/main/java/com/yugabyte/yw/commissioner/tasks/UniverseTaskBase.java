@@ -3829,12 +3829,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createChangeConfigTasks(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    // Preferred-zone affinity re-elects a live master in a higher-priority zone within a few
+    // seconds, so a step-down during removal never sticks. Leader-blacklist the master (its RPC
+    // port, which is what sys-catalog affinity checks) before removing it, and clear that
+    // blacklist once the removal has committed or when the master is added back.
+    if (isAdd) {
+      modifyMasterLeaderBlacklist(node, false /* addToBlacklist */, subTask);
+    } else {
+      modifyMasterLeaderBlacklist(node, true /* addToBlacklist */, subTask);
+    }
     boolean followerLagCheckEnabled =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
     createChangeConfigTask(node, isAdd, subTask);
+    if (!isAdd) {
+      modifyMasterLeaderBlacklist(node, false /* addToBlacklist */, subTask);
+    }
     if (isAdd && followerLagCheckEnabled) {
       createCheckFollowerLagTask(node, ServerType.MASTER);
     }
+  }
+
+  private void modifyMasterLeaderBlacklist(
+      NodeDetails node, boolean addToBlacklist, UserTaskDetails.SubTaskGroupType subTask) {
+    createModifyBlackListTask(
+            addToBlacklist ? Collections.singletonList(node) : null,
+            addToBlacklist ? null : Collections.singletonList(node),
+            true /* isLeaderBlacklist */,
+            true /* blacklistMaster */)
+        .setSubTaskGroupType(subTask);
   }
 
   private void createChangeConfigTask(
@@ -5767,12 +5789,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Collection<NodeDetails> addNodes,
       Collection<NodeDetails> removeNodes,
       boolean isLeaderBlacklist) {
+    return createModifyBlackListTask(addNodes, removeNodes, isLeaderBlacklist, false);
+  }
+
+  public SubTaskGroup createModifyBlackListTask(
+      Collection<NodeDetails> addNodes,
+      Collection<NodeDetails> removeNodes,
+      boolean isLeaderBlacklist,
+      boolean blacklistMaster) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ModifyBlackList");
     ModifyBlackList.Params params = new ModifyBlackList.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.addNodes = addNodes;
     params.removeNodes = removeNodes;
     params.isLeaderBlacklist = isLeaderBlacklist;
+    params.blacklistMaster = blacklistMaster;
     // Create the task.
     ModifyBlackList modifyBlackList = createTask(ModifyBlackList.class);
     modifyBlackList.initialize(params);

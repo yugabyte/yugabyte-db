@@ -21,8 +21,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +55,10 @@ public class ModifyBlackList extends UniverseTaskBase {
     // When true, the tablet leaders on this node will move to another node, otherwise, move all
     // tablets on this node to other nodes
     public boolean isLeaderBlacklist;
+
+    // Leader-blacklist the master RPC port. Sys-catalog affinity matches master registration
+    // addresses, which are not the tserver port used for tablet leader blacklists.
+    public boolean blacklistMaster;
   }
 
   @Override
@@ -70,6 +76,8 @@ public class ModifyBlackList extends UniverseTaskBase {
         + (CollectionUtils.isEmpty(taskParams().removeNodes) ? 0 : taskParams().removeNodes.size())
         + ", isLeaderBlacklist="
         + taskParams().isLeaderBlacklist
+        + ", blacklistMaster="
+        + taskParams().blacklistMaster
         + ")";
   }
 
@@ -133,10 +141,12 @@ public class ModifyBlackList extends UniverseTaskBase {
               universe.getUniverseUUID());
           continue;
         }
-        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
+        int port = taskParams().blacklistMaster ? node.masterRpcPort : node.tserverRpcPort;
+        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(port).setHost(ip);
         hostPorts.add(hpb.build());
       }
     }
     return hostPorts;
   }
+
 }
