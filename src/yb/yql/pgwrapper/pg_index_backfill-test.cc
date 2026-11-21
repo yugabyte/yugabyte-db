@@ -519,7 +519,6 @@ TEST_P(PgIndexBackfillTest, WaitForSplitsToComplete) {
   // backfill terminally.  Restore the production retention interval so the backfill read time
   // survives the compaction.
   ASSERT_OK(cluster_->SetFlagOnTServers("timestamp_history_retention_interval_sec", "900"));
-  constexpr int kTimeoutSec = 3;
   constexpr int kNumRows = 1000;
   // Use 1 tablet so we guarantee we have a middle key to split by.
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int) SPLIT INTO 1 TABLETS", kTableName));
@@ -530,7 +529,10 @@ TEST_P(PgIndexBackfillTest, WaitForSplitsToComplete) {
   // Flush the data to generate SST files that can be split.
   const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
-  ASSERT_OK(client->FlushTables({table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+  // A replica whose apply lands in the regular DB after the admin flush switched its memtable
+  // defers the intents flush by intents_flush_max_delay_ms (2s), then forces a regular DB flush.
+  // The rest is headroom for host-wide I/O stalls during that flush, seen at ~3s.
+  ASSERT_OK(client->FlushTables({table_id}, 10s * kTimeMultiplier));
 
   // Create a split that will not complete until we set the test flag to true.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));
