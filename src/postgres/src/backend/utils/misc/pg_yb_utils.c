@@ -128,6 +128,7 @@
 #include "rusagestub.h"
 #endif
 #include "storage/ipc.h"
+#include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -2944,6 +2945,19 @@ YbTrackAlteredTableId(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * With ysql_enable_concurrent_ddl off, DDLs with global object locks in one
+ * database run one at a time: each takes this lock in EXCLUSIVE mode. With it
+ * on, they take no lock here and run as concurrently as object locks allow.
+ */
+static void
+YbLockDatabaseForGlobalDdl(void)
+{
+	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl)
+		LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
+						   ExclusiveLock);
+}
+
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
@@ -2984,10 +2998,55 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+static void YbEnterDdlTxnState(YbDdlMode mode, bool lock_database);
+
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
+	YbEnterDdlTxnState(mode, true /* lock_database */ );
+}
+
+/*
+ * For a DDL transaction that waits for lockers or backends right after
+ * entering DDL state: a CREATE INDEX phase after the first, and the second
+ * transaction of DETACH PARTITION CONCURRENTLY. It takes the database lock
+ * with YbLockDatabaseForDdlAfterWait only after the wait. The wait is registered
+ * under the session's transaction, while the lock belongs to the DDL's
+ * transaction, so a writer the wait waits for, running a DDL that queues on a
+ * lock the DDL already held, would block with it until a timeout, with no
+ * deadlock reported.
+ */
+void
+YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
+{
+	YbEnterDdlTxnState(mode, false /* lock_database */ );
+}
+
+/*
+ * Takes the lock that YbAddDdlTxnStateWithoutDatabaseLock or
+ * YbCommitTransactionCommandIntermediate(false) left out, under
+ * the same conditions as YBAddDdlTxnState. Called after the wait.
+ */
+void
+YbLockDatabaseForDdlAfterWait(void)
+{
+	if (YBIsDdlTransactionBlockEnabled() && YBCPgIsDdlMode() &&
+		(YBGetCurrentDdlMode() & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+		YbLockDatabaseForGlobalDdl();
+}
+
+static void
+YbEnterDdlTxnState(YbDdlMode mode, bool lock_database)
+{
 	Assert(YBIsDdlTransactionBlockEnabled());
+
+	/*
+	 * A DDL that does not increment the catalog version, such as CREATE TEMP
+	 * TABLE, cannot conflict with another DDL, so it is not serialized. A
+	 * later DDL of the transaction that does increment it takes the lock then.
+	 */
+	if (lock_database && (mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+		YbLockDatabaseForGlobalDdl();
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then

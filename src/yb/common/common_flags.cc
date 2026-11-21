@@ -291,19 +291,15 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, kEnableDdlTransactionBlocks,
-    "[This is an advanced flag, avoid using it unless recommended by Yugabyte "
-    "support.] Use this flag to toggle support for concurrent DDLs.");
-DEFINE_validator(ysql_enable_concurrent_ddl,
-    FLAG_REQUIRES_FLAG_VALIDATOR(enable_object_locking_for_table_locks),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+    "When true, DDLs with global object locks in the same database run concurrently, as allowed "
+    "by object locks. When false, those that increment the catalog version run one at a time. "
+    "Set the same value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_enable_invalidation_messages),
     FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms),
-    FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_enable_concurrent_ddl),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
     FLAG_DELAYED_COND_VALIDATOR(
         !_value || ::yb::flags_internal::compare_greater_equal(

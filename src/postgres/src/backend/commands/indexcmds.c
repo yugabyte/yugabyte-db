@@ -2406,10 +2406,11 @@ DefineIndex(Oid relationId,
 				if (yb_should_run_in_autonomous_transaction)
 					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 				else
-					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+					YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 				/* YB: Short wait for backends on older catalog versions. */
 				YbWaitForBackendsCatalogVersion(false);
+				YbLockDatabaseForDdlAfterWait();
 
 				/*
 				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
@@ -2506,9 +2507,10 @@ YbDefineIndexHelper(Oid relationId,
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+	YbLockDatabaseForDdlAfterWait();
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2541,9 +2543,10 @@ YbDefineIndexHelper(Oid relationId,
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+	YbLockDatabaseForDdlAfterWait();
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);
@@ -4350,7 +4353,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		 * new one and set the stored ddl state.
 		 */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate();
+			YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 		else
 			StartTransactionCommand();
 
@@ -4466,7 +4469,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 	}
 
 	if (IsYugaByteEnabled())
-		YbCommitTransactionCommandIntermediate();
+		YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 	else
 		StartTransactionCommand();
 }
