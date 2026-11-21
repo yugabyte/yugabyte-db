@@ -1780,6 +1780,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
+  // Returns true if the CDC bg thread would add 'table' to 'stream_info': the stream is live and
+  // accepts new tables, the table is eligible for it, and it is not yet in its table lists.
+  bool WillCDCSDKStreamAcceptTable(
+      const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table) const
+      REQUIRES_SHARED(mutex_);
+
+  // Adds hidden tables that a logical replication stream would still have accepted to the
+  // unprocessed map. Used on load, since the map is not persisted.
+  void ReseedCDCSDKUnprocessedMapForHiddenTables() REQUIRES(mutex_);
+
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
@@ -2655,6 +2665,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  // Returns true if the table is in a CDCSDK stream, or is waiting in the unprocessed map and a
+  // stream would accept it once the CDC bg thread runs.
   bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_logical_replication = false) const
       REQUIRES_SHARED(mutex_);
 
