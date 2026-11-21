@@ -1011,6 +1011,25 @@ GetDebugQueryString()
 }
 
 /*
+ * ereport() auxiliary for the conn mgr LOG lines written while a role DDL
+ * commits.  elog would append the raw statement as STATEMENT:, and for
+ * CREATE/ALTER ROLE ... PASSWORD that is the plaintext password.  Hide it and
+ * log the statement with the password redacted instead.  CMDTAG_UNKNOWN
+ * redacts from any password token on, which also covers a role statement that
+ * isn't first in a multi-statement string.
+ */
+static int
+YbErrRedactedStatement(void)
+{
+	errhidestmt(true);
+	if (debug_query_string)
+		errdetail_internal("Statement: %s",
+						   YbRedactPasswordIfExists(debug_query_string,
+													CMDTAG_UNKNOWN));
+	return 0;
+}
+
+/*
  * Ensure we've defined the correct postgres Oid values. This function only
  * contains compile-time assertions. It would have been made 'static' but it is
  * not called anywhere and making it 'static' caused compiler warning which
@@ -3843,10 +3862,11 @@ YBCommitTransactionContainingDDL()
 				 */
 				int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
 
-				elog(LOG_SERVER_ONLY,
-					 "connection manager: adding sleep of %d microseconds "
-					 "after global impact DDL commit",
-					 sleep);
+				ereport(LOG_SERVER_ONLY,
+						(errmsg_internal("connection manager: adding sleep of %d microseconds "
+										 "after global impact DDL commit",
+										 sleep),
+						 YbErrRedactedStatement()));
 				pg_usleep(sleep);
 			}
 		}
@@ -3854,7 +3874,9 @@ YBCommitTransactionContainingDDL()
 
 	if (increment_logical_client_version)
 	{
-		elog(LOG, "Logical client version incremented");
+		ereport(LOG,
+				(errmsg_internal("Logical client version incremented"),
+				 YbErrRedactedStatement()));
 		YbSendMasterLogicalClientVersionToFrontend();
 	}
 
