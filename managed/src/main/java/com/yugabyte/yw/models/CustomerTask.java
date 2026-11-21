@@ -16,7 +16,6 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.filters.TaskFilter;
 import io.ebean.Expr;
 import io.ebean.ExpressionList;
@@ -1125,44 +1124,23 @@ public class CustomerTask extends Model {
         .orElse("Unknown");
   }
 
-  private boolean isOriginalTaskOf(@Nullable UUID ownerTaskUUID) {
-    return TaskInfo.maybeGet(ownerTaskUUID)
-        .map(TaskInfo::getTaskParams)
-        .map(params -> params.path("originalTaskUUID").asText())
-        .filter(taskUUID.toString()::equals)
-        .isPresent();
-  }
-
+  /**
+   * Target-local deletion rules. Ownership by any universe (updatingTaskUUID,
+   * placementModificationTaskUuid, retry/rollback chain) is checked by
+   * CustomerTaskDeletionValidator, which calls this.
+   */
   @JsonIgnore
   public boolean isDeletable() {
-    if (targetType.isUniverseTarget()) {
-      Optional<Universe> optional = Universe.maybeGet(targetUUID);
-      if (!optional.isPresent()) {
-        return true;
-      }
-      // The UI reads the latest upgrade, finalize and rollback task of a universe, and a successful
-      // upgrade can stay in PreFinalize longer than the task retention period.
-      if (upgradeCustomerTasksSet.contains(type) && isLatestOfTypeForTarget()) {
-        LOG.debug("Universe task {} is not deletable as it is the latest {} task.", taskUUID, type);
-        return false;
-      }
-      UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
-      if (taskUUID.equals(taskParams.updatingTaskUUID)) {
-        LOG.debug("Universe task {} is not deletable", targetUUID);
-        return false;
-      }
-      if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
-        LOG.debug("Universe task {} is not deletable", targetUUID);
-        return false;
-      }
-      // Retries and rollbacks name the first task of their chain as originalTaskUUID, which task
-      // APIs return; keep it resolvable while the chain owns the universe.
-      if (isOriginalTaskOf(taskParams.updatingTaskUUID)
-          || isOriginalTaskOf(taskParams.placementModificationTaskUuid)) {
-        LOG.debug("Universe task {} is not deletable as it starts the owning task chain", taskUUID);
-        return false;
-      }
-    } else if (targetType == TargetType.Provider) {
+    // The UI reads the latest upgrade, finalize and rollback task of a universe, and a successful
+    // upgrade can stay in PreFinalize longer than the task retention period. Once the universe is
+    // gone, nothing reads it.
+    if (upgradeCustomerTasksSet.contains(type)
+        && Universe.maybeGet(targetUUID).isPresent()
+        && isLatestOfTypeForTarget()) {
+      LOG.debug("Universe task {} is not deletable as it is the latest {} task.", taskUUID, type);
+      return false;
+    }
+    if (targetType == TargetType.Provider) {
       Optional<Provider> optional = Provider.maybeGet(targetUUID);
       if (!optional.isPresent()) {
         return true;
