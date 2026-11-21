@@ -1833,6 +1833,10 @@ YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefi
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
 }
 
+YbcStatus YBCPgSetReadCommandId(YbcPgStatement handle, uint32_t command_id) {
+  return ToYBCStatus(pgapi->SetReadCommandId(handle, command_id));
+}
+
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params) {
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
