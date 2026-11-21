@@ -14987,8 +14987,6 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
 
   xcluster_manager_->SysCatalogLoaded(state.epoch);
 
-  WARN_NOT_OK(BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
-
   WARN_NOT_OK(
       BackfillNotificationsStreamsPluginName(state.epoch),
       "Failed to backfill plugin name for notifications CDC streams");
@@ -14996,6 +14994,19 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
   EnqueuePendingBackfillsAfterLoad();
   ClearRestoringSysCatalogIfNotFenced();
+
+  // BackfillLegacyGrpcStreams writes to cdc_state, which needs this master to answer
+  // IsCreateTableDone, and the master rejects it while a restore has restoring_sys_catalog_ set.
+  // If BackfillLegacyGrpcStreams is skipped here, or fails because a restore starts while it runs,
+  // a later sys catalog load calls it again. That is the restore's own load if the restore
+  // succeeds, or else the next master restart or leader change.
+  if (!restoring_sys_catalog_) {
+    WARN_NOT_OK(
+        BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Deferring BackfillLegacyGrpcStreams to a later sys catalog load: "
+                          << "a restore is in progress";
+  }
 
   if (FLAGS_enable_ysql) {
     // Initialize the catalog version cache.
