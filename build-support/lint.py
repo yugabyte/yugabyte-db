@@ -336,6 +336,19 @@ def _parse_perl_regex(raw_regex: str) -> re.Pattern:
     return re.compile(body, re_flags)
 
 
+def _script_failure_reason(proc: subprocess.CompletedProcess, pat: re.Pattern) -> str:
+    """The line most likely to say why a linter script failed, or '' if it printed none.
+
+    That is the last line on stdout that is not a finding (src/lint/postgres.sh prints a failed
+    fetch's error there, then exits), else the first line on stderr (check_ctags in
+    src/lint/common.sh prints "Please install Exuberant Ctags" there).
+    """
+    for ln in reversed((proc.stdout or "").splitlines()):
+        if ln.strip() and not pat.search(ln):
+            return ln.strip()
+    return next((ln.strip() for ln in (proc.stderr or "").splitlines() if ln.strip()), "")
+
+
 def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
     """Run a shell script per file and parse its output with the configured regex."""
     script = linter.config["script-and-regex.script"]
@@ -350,6 +363,23 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
         else:
             m = pat.search(output)
             matches = [m] if m else []
+        # The src/lint scripts and managed/lint/lint-{java,ui}.sh exit 0 whether or not they
+        # print findings.  A non-zero exit means the script stopped partway, for example at
+        # `check_ctags || exit 1` in src/lint/postgres.sh, and the rules after that point did not
+        # run, so the file fails even when the script printed findings before it stopped.
+        # managed/lint/check-client-version.sh exits 1 after printing an ERROR finding, so for
+        # it this adds a second error to a file that already fails.
+        if proc.returncode != 0:
+            reason = _script_failure_reason(proc, pat)
+            msgs.append(Message(
+                path,
+                None,
+                "error",
+                "script-failed",
+                f"linter script exited with status {proc.returncode}"
+                + (f": {reason}" if reason else ""),
+                linter.name,
+            ))
         for m in matches:
             gd = m.groupdict()
             line = gd.get("line")
