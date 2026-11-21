@@ -3559,6 +3559,89 @@ yb_single_row_key_value(Expr *expr, Oid coltype)
 }
 
 /*
+ * yb_single_row_wco_in_slot
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  WITH CHECK
+ * options (RLS policies, view CHECK OPTION) are evaluated on the new-row slot.
+ * On the single-row path that slot is the Result node's output: primary key
+ * values carry the type of the WHERE literal, SET values evaluated by the
+ * Result node carry the column type, and every other column, including
+ * pushed-down SET columns, is an integer NULL placeholder.  A qual that reads a
+ * placeholder can reject a legal row, accept a row the policy forbids, or fail
+ * with a type error.  Return true if every column the quals read is present in
+ * the slot with the column's own type, false to use the scan path instead.
+ */
+static bool
+yb_single_row_wco_in_slot(ModifyTablePath *path,
+						  TargetEntry **indexquals,
+						  TupleDesc tupDesc,
+						  AttrNumber attr_offset,
+						  Bitmapset *primary_key_attrs,
+						  Bitmapset *update_attrs,
+						  Bitmapset *pushdown_update_attrs)
+{
+	ListCell   *lc;
+
+	if (path->operation != CMD_UPDATE || path->withCheckOptionLists == NIL)
+		return true;
+
+	/*
+	 * One WCO list per result relation, and the caller already requires a
+	 * single result relation.  Fail closed anyway: checking only the first
+	 * list would leave the other relations' policies unchecked.
+	 */
+	Assert(list_length(path->withCheckOptionLists) == 1);
+	if (list_length(path->withCheckOptionLists) != 1)
+		return false;
+
+	foreach(lc, (List *) linitial(path->withCheckOptionLists))
+	{
+		WithCheckOption *wco = lfirst_node(WithCheckOption, lc);
+		List	   *vars = pull_var_clause(wco->qual,
+										   PVC_RECURSE_AGGREGATES |
+										   PVC_RECURSE_WINDOWFUNCS |
+										   PVC_RECURSE_PLACEHOLDERS);
+		ListCell   *lcv;
+		bool		slot_has_cols = true;
+
+		foreach(lcv, vars)
+		{
+			Var		   *var = lfirst_node(Var, lcv);
+			AttrNumber	attno = var->varattno;
+
+			/* Whole-row and system columns are never in the slot. */
+			if (!AttrNumberIsForUserDefinedAttr(attno))
+			{
+				slot_has_cols = false;
+				break;
+			}
+
+			if (bms_is_member(attno - attr_offset, primary_key_attrs))
+			{
+				if (exprType((Node *) indexquals[attno - 1]->expr) !=
+					TupleDescAttr(tupDesc, attno - 1)->atttypid)
+				{
+					slot_has_cols = false;
+					break;
+				}
+			}
+			else if (!bms_is_member(attno - attr_offset, update_attrs) ||
+					 bms_is_member(attno - attr_offset, pushdown_update_attrs))
+			{
+				slot_has_cols = false;
+				break;
+			}
+		}
+		list_free(vars);
+
+		if (!slot_has_cols)
+			return false;
+	}
+
+	return true;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -4092,6 +4175,19 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * Verify all YB primary keys are specified in the WHERE clause.
 	 */
 	if (!YBCAllPrimaryKeysProvided(relation, primary_key_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * WITH CHECK options are evaluated on the Result node's output slot, which
+	 * is only a partial row. Use the scan path unless every column they read is
+	 * present there with the column's own type.
+	 */
+	if (!yb_single_row_wco_in_slot(path, indexquals, tupDesc, attr_offset,
+								   primary_key_attrs, update_attrs,
+								   pushdown_update_attrs))
 	{
 		RelationClose(relation);
 		return false;
