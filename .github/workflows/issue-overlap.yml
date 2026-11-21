@@ -1,0 +1,93 @@
+name: "issue-overlap"
+
+# When an issue is filed, comment with open PRs and issues that look like the
+# same work, so two people don't investigate or fix it in parallel.
+#
+# An issue filed in Jira reaches GitHub with an empty body, so Jira-filed
+# issues are checked from Jira instead: a Jira Automation rule sends a
+# repository_dispatch with the issue key, and the comment goes to Jira only,
+# because the description may be internal. GitHub comments never include Jira
+# results.
+on:
+  issues:
+    types: [opened]
+  repository_dispatch:
+    types: [jira-issue-created]
+
+permissions: {}
+
+# Runs share the PR-diff cache; one at a time keeps a cold cache from being
+# filled by several runs at once.
+concurrency:
+  group: issue-overlap
+  cancel-in-progress: false
+
+env:
+  PR_OVERLAP_CACHE: ${{ github.workspace }}/../issue-overlap-cache
+
+jobs:
+  github-issue:
+    if: github.event_name == 'issues' && github.repository == 'yugabyte/yugabyte-db'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/issue_overlap
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.PR_OVERLAP_CACHE }}
+          key: issue-overlap-${{ github.run_id }}
+          restore-keys: issue-overlap-
+      - name: Comment on the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          # The GitHub copy of a Jira-filed issue has only the "Jira Link"
+          # line; the jira-issue job checks that issue from Jira.
+          if [[ -z "$(printf '%s' "$BODY" | grep -v '^Jira Link:' | tr -d '[:space:]')" ]]; then
+            echo "Issue body is empty or only a Jira link; nothing to check."
+            exit 0
+          fi
+          python3 .github/scripts/issue_overlap/issue_check.py \
+            --issue "$ISSUE" --format github > "$RUNNER_TEMP/comment.md"
+          if [[ -s "$RUNNER_TEMP/comment.md" ]]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+              --body-file "$RUNNER_TEMP/comment.md"
+          else
+            echo "No related work found; not commenting."
+          fi
+
+  jira-issue:
+    if: github.event_name == 'repository_dispatch' && github.repository == 'yugabyte/yugabyte-db'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/issue_overlap
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.PR_OVERLAP_CACHE }}
+          key: issue-overlap-${{ github.run_id }}
+          restore-keys: issue-overlap-
+      - name: Comment on the Jira issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEY: ${{ github.event.client_payload.key }}
+          JIRA_AUTH: ${{ secrets.JIRA_ISSUE_OVERLAP_AUTH }}
+        run: |
+          if [[ ! "$KEY" =~ ^DB-[0-9]+$ ]]; then
+            echo "::error ::client_payload.key must be a DB Jira key"
+            exit 1
+          fi
+          python3 .github/scripts/issue_overlap/issue_check.py \
+            --jira "$KEY" --format jira --post
