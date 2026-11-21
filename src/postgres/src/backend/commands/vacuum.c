@@ -524,7 +524,7 @@ vacuum(List *relations, VacuumParams *params,
 					 * state, start a new one and set the stored ddl state.
 					 */
 					if (IsYugaByteEnabled())
-						YbCommitTransactionCommandIntermediate();
+						YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 					else
 						StartTransactionCommand();
 
@@ -565,7 +565,7 @@ vacuum(List *relations, VacuumParams *params,
 	if (use_own_xacts)
 	{
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate();
+			YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 		else
 		{
 			/* here, we are not in a transaction */

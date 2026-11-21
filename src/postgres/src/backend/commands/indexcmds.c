@@ -4353,7 +4353,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		 * new one and set the stored ddl state.
 		 */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate();
+			YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 		else
 			StartTransactionCommand();
 
@@ -4469,7 +4469,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 	}
 
 	if (IsYugaByteEnabled())
-		YbCommitTransactionCommandIntermediate();
+		YbCommitTransactionCommandIntermediate(true /* lock_database */ );
 	else
 		StartTransactionCommand();
 }

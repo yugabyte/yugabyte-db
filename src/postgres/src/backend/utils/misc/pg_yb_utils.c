@@ -2998,12 +2998,12 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
-static void YbAddDdlTxnStateInternal(YbDdlMode mode, bool lock_database);
+static void YbEnterDdlTxnState(YbDdlMode mode, bool lock_database);
 
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	YbAddDdlTxnStateInternal(mode, true /* lock_database */ );
+	YbEnterDdlTxnState(mode, true /* lock_database */ );
 }
 
 /*
@@ -3019,12 +3019,12 @@ YBAddDdlTxnState(YbDdlMode mode)
 void
 YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
 {
-	YbAddDdlTxnStateInternal(mode, false /* lock_database */ );
+	YbEnterDdlTxnState(mode, false /* lock_database */ );
 }
 
 /*
  * Takes the lock that YbAddDdlTxnStateWithoutDatabaseLock or
- * YbCommitTransactionCommandIntermediateWithoutDatabaseLock left out, under
+ * YbCommitTransactionCommandIntermediate(false) left out, under
  * the same conditions as YBAddDdlTxnState. Called after the wait.
  */
 void
@@ -3036,7 +3036,7 @@ YbLockDatabaseForDdlAfterWait(void)
 }
 
 static void
-YbAddDdlTxnStateInternal(YbDdlMode mode, bool lock_database)
+YbEnterDdlTxnState(YbDdlMode mode, bool lock_database)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
 
