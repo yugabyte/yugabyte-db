@@ -1381,6 +1381,35 @@ TEST_F(YSqlAsyncWriteTest, RestartAfterFlushInMiddleOfTransaction) {
   ASSERT_EQ(table_data, "0, v0; 1, v1; 2, v2; 3, v3; 4, v4");
 }
 
+// A transaction keeps the pipelining mode it started writing with, whichever way the flag flips
+// mid-transaction.
+TEST_F(YSqlAsyncWriteTest, PipeliningModeFixedPerTransaction) {
+  google::SetVLOGLevel("write_query*", 2);
+  auto async_write_count = StringWaiterLogSink("Performing Async write");
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  constexpr auto kInsert = "INSERT INTO $0 VALUES ($1, 'v$1')";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = false;
+  auto expected_count = async_write_count.GetEventCount();
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat(kInsert, kTableName, 1));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+  ASSERT_OK(conn_->ExecuteFormat(kInsert, kTableName, 2));
+  ASSERT_OK(conn_->CommitTransaction());
+  ASSERT_EQ(async_write_count.GetEventCount(), expected_count);
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat(kInsert, kTableName, 3));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = false;
+  ASSERT_OK(conn_->ExecuteFormat(kInsert, kTableName, 4));
+  ASSERT_OK(conn_->CommitTransaction());
+  ASSERT_EQ(async_write_count.GetEventCount(), expected_count + 2);
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchAllAsString(kSelectAllStmt)), "1, v1; 2, v2; 3, v3; 4, v4");
+}
+
 class AsyncWritesExternalTest : public pgwrapper::LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
