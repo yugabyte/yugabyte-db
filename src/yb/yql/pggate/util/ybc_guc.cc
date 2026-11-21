@@ -63,6 +63,8 @@ bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
 
+bool yb_use_table_based_cdc = false;
+
 bool yb_enable_replication_slot_exclusive_lock = false;
 
 int yb_replication_slot_wait_max_retries = 0;
@@ -90,6 +92,8 @@ int yb_locks_max_transactions = 16;
 int yb_locks_txn_locks_per_tablet = 200;
 
 int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
+
+int yb_walsender_records_per_flush = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 10;
 

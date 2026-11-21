@@ -17,6 +17,7 @@ override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 OBJS = \
 	yb_decode.o \
 	yb_virtual_wal_client.o \
+	yb_virtual_wal_table_reader.o \
 	\
 	decode.o \
 	launcher.o \

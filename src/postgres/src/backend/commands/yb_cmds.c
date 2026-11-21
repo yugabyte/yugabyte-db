@@ -2553,10 +2553,12 @@ YBCGetCDCConsistentChanges(const char *stream_id,
 
 void
 YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
-					   XLogRecPtr confirmed_flush, YbcPgXLogRecPtr *restart_lsn)
+					   XLogRecPtr confirmed_flush, bool table_based,
+					   YbcPgXLogRecPtr *restart_lsn)
 {
 	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
-											confirmed_flush, restart_lsn));
+											confirmed_flush, table_based,
+											restart_lsn));
 }
 
 void

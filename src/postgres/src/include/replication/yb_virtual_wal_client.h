@@ -44,6 +44,8 @@ extern YbVirtualWalRecord *YBCReadRecord(List *publication_names);
 
 extern XLogRecPtr YBCGetFlushRecPtr(void);
 
+extern bool YBCHasCachedRecord(void);
+
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);
 
 extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);

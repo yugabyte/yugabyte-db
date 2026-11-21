@@ -1970,12 +1970,16 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush,
+    bool table_based) {
     cdc::UpdateAndPersistLSNRequestPB req;
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     req.set_restart_lsn(restart_lsn);
     req.set_confirmed_flush_lsn(confirmed_flush);
+    if (table_based) {
+      req.set_table_based(true);
+    }
 
     cdc::UpdateAndPersistLSNResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(&CDCServiceProxy::UpdateAndPersistLSN,
@@ -2615,8 +2619,9 @@ Result<cdc::GetConsistentChangesResponsePB> PgClient::GetConsistentChangesForCDC
 }
 
 Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
-    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
-  return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush,
+    bool table_based) {
+  return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush, table_based);
 }
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool local_only) {

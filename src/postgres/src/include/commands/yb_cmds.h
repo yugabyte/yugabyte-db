@@ -164,6 +164,7 @@ extern void YBCGetCDCConsistentChanges(const char *stream_id,
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,
 								   XLogRecPtr confirmed_flush,
+								   bool table_based,
 								   YbcPgXLogRecPtr *restart_lsn);
 
 extern void YBCDropColumn(Relation rel, AttrNumber attnum);

@@ -2703,8 +2703,9 @@ Result<cdc::GetConsistentChangesResponsePB> PgApiImpl::GetConsistentChangesForCD
 }
 
 Result<cdc::UpdateAndPersistLSNResponsePB> PgApiImpl::UpdateAndPersistLSN(
-    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush) {
-  return pg_client_.UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
+    const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush,
+    bool table_based) {
+  return pg_client_.UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush, table_based);
 }
 
 Status PgApiImpl::NewDropReplicationSlot(const char* slot_name, PgStatement** handle) {

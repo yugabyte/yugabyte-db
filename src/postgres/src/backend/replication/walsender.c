@@ -232,6 +232,24 @@ uint64_t	YbWalSndTotalTimeInReorderBufferMicros = 0;
  */
 uint64_t	YbWalSndTotalTimeInSendingMicros = 0;
 
+/*
+ * YB: Bytes that WalSndWriteData has put in the output buffer and that no
+ * flush has sent yet, while yb_walsender_records_per_flush holds them back.
+ */
+static int	yb_walsender_unflushed_bytes = 0;
+
+/*
+ * YB: How much output WalSndWriteData holds back at most before it flushes,
+ * and for how long, and how long WalSndLoop reads records between checks for
+ * replies from the client.
+ */
+#define YB_WALSND_MAX_UNFLUSHED_BYTES (64 * 1024)
+#define YB_WALSND_MAX_HOLD_US 5000
+
+/* YB: When the oldest unflushed output was written, and when a batch began. */
+static TimestampTz yb_walsender_hold_start = 0;
+static TimestampTz yb_walsender_batch_start = 0;
+
 /* A sample associating a WAL location with the time it was written. */
 typedef struct
 {
@@ -294,6 +312,9 @@ static bool TransactionIdInRecentPast(TransactionId xid, uint32 epoch);
 
 static void WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 							  TimeLineID *tli_p);
+
+/* YB declarations */
+static bool YbWalSndSendMoreBeforeFlush(int records_sent);
 
 /* Initialize walsender process before entering the main command loop */
 void
@@ -1712,6 +1733,28 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 
 	CHECK_FOR_INTERRUPTS();
 
+	/*
+	 * YB: With yb_walsender_records_per_flush above 1, WalSndLoop flushes after
+	 * a batch of records. Flushing after every message instead was a send()
+	 * per change, which took half of the time of a walsender streaming 50K
+	 * changes/s. Past a limit of buffered output, flush as usual, which also
+	 * waits for a client that does not keep up.
+	 */
+	if (IsYugaByteEnabled() && yb_walsender_records_per_flush > 1)
+	{
+		if (yb_walsender_unflushed_bytes == 0)
+			yb_walsender_hold_start = now;
+		yb_walsender_unflushed_bytes += ctx->out->len;
+		if (yb_walsender_unflushed_bytes < YB_WALSND_MAX_UNFLUSHED_BYTES &&
+			now - yb_walsender_hold_start < YB_WALSND_MAX_HOLD_US)
+		{
+			YbWalSndTotalTimeInSendingMicros +=
+				YbCalculateTimeDifferenceInMicros(yb_start_time);
+			return;
+		}
+		yb_walsender_unflushed_bytes = 0;
+	}
+
 	/* Try to flush pending output to the client */
 	if (pq_flush_if_writable() != 0)
 		WalSndShutdown();
@@ -2844,9 +2887,27 @@ WalSndLoop(WalSndSendDataCallback send_data)
 		else
 			WalSndCaughtUp = false;
 
+		/*
+		 * YB: Send more records before the flush and the next check for
+		 * replies from the client, see yb_walsender_records_per_flush.
+		 */
+		if (IsYugaByteEnabled() && send_data == XLogSendLogical)
+		{
+			int			records_sent = 1;
+
+			while (YbWalSndSendMoreBeforeFlush(records_sent))
+			{
+				send_data();
+				records_sent++;
+			}
+		}
+
 		/* Try to flush pending output to the client */
 		if (pq_flush_if_writable() != 0)
 			WalSndShutdown();
+
+		/* YB: Nothing is held back any more. */
+		yb_walsender_unflushed_bytes = 0;
 
 		/* If nothing remains to be sent right now ... */
 		if (WalSndCaughtUp && !pq_is_send_pending())
@@ -4290,4 +4351,29 @@ LagTrackerRead(int head, XLogRecPtr lsn, TimestampTz now)
 	/* Return the elapsed time since local flush time in microseconds. */
 	Assert(time != 0);
 	return now - time;
+}
+
+/*
+ * YB: Whether WalSndLoop reads one more record before it flushes and checks
+ * for replies, after records_sent in this iteration. Output is held back only
+ * while the records come from a batch already in hand: reading a new batch
+ * takes time, and output must not wait for it.
+ */
+static bool
+YbWalSndSendMoreBeforeFlush(int records_sent)
+{
+	if (records_sent >= yb_walsender_records_per_flush || WalSndCaughtUp)
+		return false;
+
+	/* The client's replies are not read while a batch is sent. */
+	if (records_sent == 1)
+		yb_walsender_batch_start = GetCurrentTimestamp();
+	else if (GetCurrentTimestamp() - yb_walsender_batch_start >= YB_WALSND_MAX_HOLD_US)
+		return false;
+
+	/* A flush that left output pending means the client is behind. */
+	if (yb_walsender_unflushed_bytes == 0 && pq_is_send_pending())
+		return false;
+
+	return YBCHasCachedRecord();
 }

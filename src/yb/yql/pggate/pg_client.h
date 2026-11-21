@@ -382,7 +382,8 @@ class PgClient {
       const std::string& stream_id);
 
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
-      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
+      const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush,
+      bool table_based);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 

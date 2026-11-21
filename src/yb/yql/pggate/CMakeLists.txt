@@ -74,6 +74,7 @@ ADD_YB_LIBRARY(yb_pggate_flags
                DEPS yb_ash yb_util)
 
 set(PGGATE_LIBS
+    cdc_consumer_proto
     cdc_service_proto
     server_common
     yb_ash

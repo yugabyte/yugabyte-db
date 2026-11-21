@@ -654,9 +654,11 @@ YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
 
 	/*
 	 * With transactional DDL, we use attr num to find column in the tuple
-	 * descriptor.
+	 * descriptor. So do the records read from pg_yb_cdc_changes, which has no
+	 * column names.
 	 */
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+		column_name == NULL)
 	{
 		int			attr_num = col->column_attr_num;
 
