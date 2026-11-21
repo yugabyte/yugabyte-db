@@ -2841,6 +2841,13 @@ uint64_t TabletServer::cdc_table_registry_version() const {
   return xcluster_consumer ? xcluster_consumer->cdc_table_registry_version() : 0;
 }
 
+void TabletServer::FillCdcTableSplitReports(master::TSHeartbeatRequestPB* req) const {
+  req->clear_cdc_table_split_reports();
+  if (auto* xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->FillCdcTableSplitReports(req->mutable_cdc_table_split_reports());
+  }
+}
+
 Result<uint32_t> TabletServer::XClusterConfigVersion() const {
   SCHECK(cdc_service_, NotFound, "CDC Service not found");
   return cdc_service_->GetXClusterConfigVersion();

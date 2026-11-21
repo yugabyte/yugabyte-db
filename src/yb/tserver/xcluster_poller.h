@@ -187,7 +187,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   virtual Status PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) REQUIRES(data_mutex_);
 
-  virtual Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
+  virtual Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp)
+      REQUIRES(data_mutex_);
 
   // Called once the changes of a GetChanges response have been applied, to record where the next
   // GetChanges request continues from.

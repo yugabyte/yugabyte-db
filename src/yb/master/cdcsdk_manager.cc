@@ -13,8 +13,10 @@
 
 #include "yb/master/cdcsdk_manager.h"
 
+#include <algorithm>
 #include <list>
 #include <set>
+#include <vector>
 
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
@@ -71,6 +73,18 @@ void CdcsdkManager::FillHeartbeatResponse(
   // those of the previous one.
   if (req.cdc_table_registry_version() != cdc_table_registry_.version()) {
     *resp->mutable_cdc_table_registry() = cdc_table_registry_;
+  }
+
+  for (const auto& report : req.cdc_table_split_reports()) {
+    auto stream_id = xrepl::StreamId::FromString(report.stream_id());
+    if (!stream_id.ok()) {
+      LOG(DFATAL) << "Invalid stream id in CDC table split report: " << report.ShortDebugString();
+      continue;
+    }
+    // The first report of a tablet is used. A later one, from the poller on a new leader of the
+    // tablet, is as good: both positions have been applied.
+    cdc_table_split_reports_.emplace(
+        std::make_pair(*stream_id, report.tablet_id()), report.position());
   }
 }
 
@@ -141,6 +155,82 @@ Result<std::optional<cdc::CdcTableStreamEntryPB>> CdcsdkManager::ComputeCdcTable
   return entry;
 }
 
+Status CdcsdkManager::UpdateCdcTablePolledTablets(
+    const xrepl::StreamId& stream_id, const cdc::CdcTableStreamEntryPB& entry,
+    const CdcTableSplitReports& split_reports, CdcTablePolledTablets* polled) {
+  if (polled->initialized) {
+    // A polled tablet that no longer exists was not handed over to its children, for example
+    // because its table was dropped.
+    for (const auto& [tablet_id, _] : polled->tablets) {
+      auto tablet = catalog_manager_.GetTabletInfo(tablet_id);
+      if (!tablet.ok() || (*tablet)->LockForRead()->is_deleted()) {
+        LOG(WARNING) << "Polled tablet " << tablet_id << " of stream " << stream_id
+                     << " is gone, starting over from the current tablets of its tables";
+        polled->initialized = false;
+        break;
+      }
+    }
+  }
+
+  if (!polled->initialized) {
+    // The current tablets of the tables, each polled from its own row in cdc_state. For a tablet
+    // whose parent was polled, that row is a copy the master made of the parent's row when the
+    // split was registered, so nothing is skipped. The parent may have been polled further since,
+    // and those changes are read again.
+    polled->tablets.clear();
+    for (const auto& table_id : entry.published_table_ids()) {
+      auto table = catalog_manager_.GetTableInfo(table_id);
+      if (!table) {
+        continue;
+      }
+      for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+        polled->tablets.emplace(tablet->id(), std::nullopt);
+      }
+    }
+    polled->initialized = true;
+    return Status::OK();
+  }
+
+  for (const auto& [stream_and_tablet, position] : split_reports) {
+    const auto& tablet_id = stream_and_tablet.second;
+    if (stream_and_tablet.first != stream_id || !polled->tablets.contains(tablet_id)) {
+      continue;
+    }
+
+    std::vector<TabletId> children;
+    {
+      auto parent = VERIFY_RESULT(catalog_manager_.GetTabletInfo(tablet_id));
+      auto parent_lock = parent->LockForRead();
+      const auto& split_tablet_ids = parent_lock->pb.split_tablet_ids();
+      children.assign(split_tablet_ids.begin(), split_tablet_ids.end());
+    }
+    const bool children_known =
+        children.size() == 2 && std::ranges::all_of(children, [this](const auto& child) {
+          return catalog_manager_.GetTabletInfo(child).ok();
+        });
+    if (!children_known) {
+      // The tserver repeats the report.
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << "Tablet " << tablet_id << " of stream " << stream_id
+          << " was reported as split, but its children are not known yet: " << AsString(children);
+      continue;
+    }
+
+    // The parent leaves and both children enter in the same pass, and so in the same registry
+    // version. With only one of them polled, or with neither the parent nor the children, the CDC
+    // safe time would be computed without part of the key range, and could pass changes that are
+    // not in the CDC table.
+    LOG(INFO) << "Tablet " << tablet_id << " of stream " << stream_id
+              << " has been split. Its children " << AsString(children)
+              << " are polled from where its poller stopped: " << position.ShortDebugString();
+    polled->tablets.erase(tablet_id);
+    for (const auto& child : children) {
+      polled->tablets[child] = position;
+    }
+  }
+  return Status::OK();
+}
+
 Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
   cdc::CdcTablePollerRegistryPB registry;
 
@@ -151,6 +241,20 @@ Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
   std::erase_if(cdc_table_stream_entries_, [&stream_ids](const auto& entry) {
     return !stream_ids.contains(entry.first);
   });
+
+  // What an earlier leader term of this master left is out of date.
+  if (cdc_table_polled_tablets_leader_term_ != epoch.leader_term) {
+    cdc_table_polled_tablets_.clear();
+    cdc_table_polled_tablets_leader_term_ = epoch.leader_term;
+  }
+  std::erase_if(cdc_table_polled_tablets_, [&stream_ids](const auto& entry) {
+    return !stream_ids.contains(entry.first);
+  });
+  CdcTableSplitReports split_reports;
+  {
+    std::lock_guard l(cdc_table_registry_mutex_);
+    split_reports.swap(cdc_table_split_reports_);
+  }
 
   for (const auto& stream_id : stream_ids) {
     auto it = cdc_table_stream_entries_.find(stream_id);
@@ -176,19 +280,15 @@ Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
 
     auto* entry = registry.add_streams();
     *entry = it->second;
-    // A colocated tablet hosts several tables.
-    std::set<TabletId> tablet_ids;
-    for (const auto& table_id : entry->published_table_ids()) {
-      auto table = catalog_manager_.GetTableInfo(table_id);
-      if (!table) {
-        continue;
-      }
-      for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
-        tablet_ids.insert(tablet->id());
-      }
-    }
-    for (const auto& tablet_id : tablet_ids) {
+    auto& polled = cdc_table_polled_tablets_[stream_id];
+    RETURN_NOT_OK(UpdateCdcTablePolledTablets(stream_id, *entry, split_reports, &polled));
+    for (const auto& [tablet_id, start_position] : polled.tablets) {
       entry->add_tablet_ids(tablet_id);
+      if (start_position) {
+        auto* tablet_start = entry->add_tablet_starts();
+        tablet_start->set_tablet_id(tablet_id);
+        *tablet_start->mutable_position() = *start_position;
+      }
     }
   }
 

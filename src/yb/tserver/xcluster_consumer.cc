@@ -467,13 +467,21 @@ void XClusterConsumer::StartCdcTablePoller(
       producer_tablet_info, tablet_info.consumer_tablet_info, stream->namespace_id(),
       thread_pool_.get(), rpcs_.get(), local_client_, this, leader_term,
       std::move(get_leader_term), ts_uuid_, *cdc_state_table_);
+  std::optional<cdc::CdcTablePollerPositionPB> start_position;
+  for (const auto& tablet_start : stream->tablet_starts()) {
+    if (tablet_start.tablet_id() == producer_tablet_info.tablet_id) {
+      start_position = tablet_start.position();
+      break;
+    }
+  }
   // The sys catalog tablet only returns changes of the catalog tables of the stream.
   poller->InitCdcTablePoller(
       rate_limiter_.get(),
       is_sys_catalog
           ? std::nullopt
           : std::make_optional<std::unordered_set<TableId>>(
-                stream->published_table_ids().begin(), stream->published_table_ids().end()));
+                stream->published_table_ids().begin(), stream->published_table_ids().end()),
+      std::move(start_position));
 
   LOG_WITH_PREFIX(INFO) << "Start polling tablet " << producer_tablet_info.tablet_id
                         << " of stream " << producer_tablet_info.stream_id
@@ -482,6 +490,25 @@ void XClusterConsumer::StartCdcTablePoller(
   // Not added to error_collector_: its errors are reported to the master per xCluster replication
   // group, and this poller belongs to none.
   poller->SchedulePoll();
+}
+
+void XClusterConsumer::FillCdcTableSplitReports(
+    google::protobuf::RepeatedPtrField<cdc::CdcTableSplitReportPB>* reports) {
+  SharedLock read_lock(pollers_map_mutex_);
+  for (const auto& [producer_info, poller] : pollers_map_) {
+    // Only CdcTablePollers are created with this replication group id, see StartCdcTablePoller.
+    if (producer_info.replication_group_id != xcluster::kCdcTableReplicationGroupId) {
+      continue;
+    }
+    auto position = std::static_pointer_cast<CdcTablePoller>(poller)->GetSplitPosition();
+    if (!position) {
+      continue;
+    }
+    auto* report = reports->Add();
+    report->set_stream_id(producer_info.stream_id.ToString());
+    report->set_tablet_id(producer_info.tablet_id);
+    *report->mutable_position() = std::move(*position);
+  }
 }
 
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly

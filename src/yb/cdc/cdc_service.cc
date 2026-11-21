@@ -5308,6 +5308,13 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const TabletStrea
     }
   }
 
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+    // A CDC table poller keeps polling a tablet while it is split, and can get here before the
+    // tablet list from the master has the children. The poller tries again.
+    SCHECK_EQ(
+        found_children, 2U, TryAgain,
+        Format("The split children of tablet $0 are not known yet", info.tablet_id));
+  }
   RSTATUS_DCHECK(
       found_children == 2, InternalError,
       Format("Could not find the two split children for tablet: $0", info.tablet_id));

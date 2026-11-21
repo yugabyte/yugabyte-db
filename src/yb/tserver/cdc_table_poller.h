@@ -16,9 +16,12 @@
 #include <optional>
 #include <unordered_set>
 
+#include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.pb.h"
 
 #include "yb/tserver/xcluster_poller.h"
+
+#include "yb/util/locks.h"
 
 namespace yb {
 
@@ -46,9 +49,17 @@ class CdcTablePoller : public XClusterPoller {
       cdc::CDCStateTable& cdc_state_table);
 
   // Changes of tables other than published_table_ids are not written. nullopt writes all.
+  // start_position is set for a tablet that came out of a split: where the poller of its parent
+  // stopped.
   void InitCdcTablePoller(
       rocksdb::RateLimiter* rate_limiter,
-      std::optional<std::unordered_set<TableId>> published_table_ids);
+      std::optional<std::unordered_set<TableId>> published_table_ids,
+      std::optional<cdc::CdcTablePollerPositionPB> start_position);
+
+  // Set once the CDC service has told this poller that its tablet has been split: what this poller
+  // has applied, which is where the pollers of the two children have to continue from.
+  std::optional<cdc::CdcTablePollerPositionPB> GetSplitPosition() const
+      EXCLUDES(split_position_lock_);
 
   // The replication errors are reported to the master per xCluster replication group, and this
   // poller belongs to none.
@@ -60,7 +71,8 @@ class CdcTablePoller : public XClusterPoller {
 
   Status PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) override REQUIRES(data_mutex_);
 
-  Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) override;
+  Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) override
+      REQUIRES(data_mutex_);
 
   void ChangesApplied(const XClusterOutputClientResponse& response) override
       REQUIRES(data_mutex_);
@@ -83,6 +95,13 @@ class CdcTablePoller : public XClusterPoller {
 
   // Unset until read from cdc_state by the first poll.
   std::optional<NextRequest> next_request_ GUARDED_BY(data_mutex_);
+
+  std::optional<cdc::CdcTablePollerPositionPB> start_position_ GUARDED_BY(data_mutex_);
+
+  bool applied_a_response_ GUARDED_BY(data_mutex_) = false;
+
+  mutable simple_spinlock split_position_lock_;
+  std::optional<cdc::CdcTablePollerPositionPB> split_position_ GUARDED_BY(split_position_lock_);
 };
 
 }  // namespace tserver

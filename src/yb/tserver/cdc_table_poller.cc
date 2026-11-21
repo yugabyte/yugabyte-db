@@ -41,8 +41,10 @@ CdcTablePoller::CdcTablePoller(
 
 void CdcTablePoller::InitCdcTablePoller(
     rocksdb::RateLimiter* rate_limiter,
-    std::optional<std::unordered_set<TableId>> published_table_ids) {
+    std::optional<std::unordered_set<TableId>> published_table_ids,
+    std::optional<cdc::CdcTablePollerPositionPB> start_position) {
   std::lock_guard l(data_mutex_);
+  start_position_ = std::move(start_position);
   output_client_ = std::make_shared<CdcTableOutputClient>(
       this, consumer_tablet_info_.table_id, local_client_, rate_limiter,
       std::move(published_table_ids));
@@ -69,13 +71,33 @@ Result<CdcTablePoller::NextRequest> CdcTablePoller::ReadCheckpointFromCdcState()
   return next;
 }
 
+std::optional<cdc::CdcTablePollerPositionPB> CdcTablePoller::GetSplitPosition() const {
+  std::lock_guard l(split_position_lock_);
+  return split_position_;
+}
+
 Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
   if (!next_request_) {
     // Blocks, on a thread of the consumer's pool. Done once per poller.
-    next_request_ = VERIFY_RESULT(ReadCheckpointFromCdcState());
+    auto next = VERIFY_RESULT(ReadCheckpointFromCdcState());
+    if (start_position_) {
+      // The tablet came out of a split. Its row in cdc_state is a copy of the parent's row from
+      // when the split was registered, and the parent's poller has got further since. The tablet
+      // has a copy of the parent's WAL, so this poller continues from where that one stopped, or
+      // from its own row once that is ahead. Starting any later would skip the changes that the
+      // parent's poller had not read yet when it was told about the split.
+      const OpId start_op_id(start_position_->term(), start_position_->index());
+      if (start_op_id > OpId(next.checkpoint.term(), next.checkpoint.index())) {
+        next.checkpoint.set_term(start_op_id.term);
+        next.checkpoint.set_index(start_op_id.index);
+      }
+      next.safe_hybrid_time = std::max(next.safe_hybrid_time, start_position_->safe_hybrid_time());
+    }
+    next_request_ = std::move(next);
     LOG_WITH_PREFIX(INFO) << "Polling from checkpoint "
                           << next_request_->checkpoint.ShortDebugString() << ", safe time "
-                          << next_request_->safe_hybrid_time;
+                          << next_request_->safe_hybrid_time
+                          << (start_position_ ? ", after the split of its parent" : "");
   }
 
   req->set_stream_id(producer_tablet_info_.stream_id.ToString());
@@ -100,13 +122,37 @@ Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
   if (next_request_->safe_hybrid_time >= 0) {
     explicit_checkpoint->set_snapshot_time(next_request_->safe_hybrid_time);
   }
+  // The CDC service writes the checkpoint to cdc_state only every
+  // cdc_state_checkpoint_update_interval_ms. Have it written right away for the position this
+  // poller starts from. For a child of a split that is the position inherited from its parent,
+  // which a later poller of the tablet must not fall behind, and the write is also what tells the
+  // master that the child has been polled, so that it can delete the parent.
+  req->set_force_update_cdc_state_checkpoint(!applied_a_response_);
   return Status::OK();
 }
 
 Status CdcTablePoller::ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) {
+  if (resp.has_error() && resp.error().code() == cdc::CDCErrorPB::TABLET_SPLIT) {
+    // The CDC service says so as soon as the tablet is marked split, wherever this poller is in
+    // the tablet's WAL, and returns nothing more for the tablet. The changes this poller has not
+    // read are read from the children. Until the master has replaced the tablet with them, this
+    // poller stays, failing with backoff: its safe time is what keeps the CDC safe time of the
+    // database from passing those changes.
+    DCHECK(next_request_);
+    std::lock_guard l(split_position_lock_);
+    if (!split_position_) {
+      split_position_.emplace();
+      split_position_->set_term(next_request_->checkpoint.term());
+      split_position_->set_index(next_request_->checkpoint.index());
+      split_position_->set_safe_hybrid_time(next_request_->safe_hybrid_time);
+      LOG_WITH_PREFIX(INFO) << "The tablet has been split. Its children continue from "
+                            << split_position_->ShortDebugString();
+    }
+    return STATUS_FORMAT(
+        TryAgain, "Tablet $0 has been split, waiting for the pollers of its children to take over",
+        producer_tablet_info_.tablet_id);
+  }
   if (resp.has_error()) {
-    // TODO: tablet splits. On TABLET_SPLIT the children have to be polled from this tablet's
-    // checkpoint. Until then this poller keeps failing with backoff.
     LOG_WITH_PREFIX(WARNING) << "GetChanges failed: code="
                              << cdc::CDCErrorPB::Code_Name(resp.error().code())
                              << ", status=" << resp.error().status().ShortDebugString();
@@ -131,6 +177,7 @@ void CdcTablePoller::ChangesApplied(const XClusterOutputClientResponse& response
   next.wal_segment_index = resp.wal_segment_index();
   next.max_index_in_sort_window = resp.max_index_in_sort_window();
   next_request_ = std::move(next);
+  applied_a_response_ = true;
 
   // The CDC service has returned every change of this tablet that commits up to this time, since
   // it skips the changes that commit up to the safe time of the next request. All of them are in

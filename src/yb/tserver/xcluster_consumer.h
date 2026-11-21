@@ -106,6 +106,10 @@ class XClusterConsumer : public XClusterConsumerIf {
     return cdc_table_registry_version_.load(std::memory_order_acquire);
   }
 
+  void FillCdcTableSplitReports(
+      google::protobuf::RepeatedPtrField<cdc::CdcTableSplitReportPB>* reports) override
+      EXCLUDES(pollers_map_mutex_);
+
   void TEST_IncrementNumSuccessfulWriteRpcs() { TEST_num_successful_write_rpcs_++; }
 
   uint32_t TEST_GetNumSuccessfulWriteRpcs() override {

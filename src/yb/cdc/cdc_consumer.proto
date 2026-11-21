@@ -91,6 +91,32 @@ message ProducerEntryPB {
   bool automatic_ddl_mode = 7;
 }
 
+// How far the poller of a tablet got. Every change before the checkpoint, and every change that
+// commits up to the safe time, is in the CDC table.
+message CdcTablePollerPositionPB {
+  int64 term = 1;
+  int64 index = 2;
+  // -1 if not known.
+  int64 safe_hybrid_time = 3;
+}
+
+// A tablet that came out of a split, and the position its poller starts from: the one that the
+// poller of its parent reported. The parent's poller is told about the split wherever it is in the
+// parent's WAL, and the rest of that WAL is only read through the children, which have a copy.
+message CdcTableTabletStartPB {
+  string tablet_id = 1;
+  CdcTablePollerPositionPB position = 2;
+}
+
+// Sent by a tserver to the master while one of its pollers is being told by the CDC service that
+// its tablet has been split.
+message CdcTableSplitReportPB {
+  string stream_id = 1;
+  string tablet_id = 2;
+  // What the poller has applied.
+  CdcTablePollerPositionPB position = 3;
+}
+
 // One CDCSDK stream whose changes the CDC table pollers write into the CDC table of its database.
 message CdcTableStreamEntryPB {
   string stream_id = 1;
@@ -99,10 +125,15 @@ message CdcTableStreamEntryPB {
   string cdc_table_id = 3;
   // Tables of the stream that belong to a publication. Changes of other tables are not written.
   repeated string published_table_ids = 4;
-  // Tablets of the published tables. Each is polled by the tserver hosting its leader.
+  // Tablets of the published tables. Each is polled by the tserver hosting its leader. A split
+  // tablet stays here until its poller has reported the split, and both its children replace it in
+  // the same registry version: the CDC safe time is the minimum over these tablets, and must not
+  // be computed without the key range of either child.
   repeated string tablet_ids = 5;
   // Whether the sys catalog tablet is polled for this stream.
   bool poll_sys_catalog = 6;
+  // For those of tablet_ids that replaced a split tablet.
+  repeated CdcTableTabletStartPB tablet_starts = 7;
 }
 
 // Sent by the master to the tservers in the heartbeat response.

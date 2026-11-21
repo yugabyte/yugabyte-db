@@ -370,6 +370,7 @@ Status HeartbeatPoller::TryHeartbeat() {
   req.set_config_index(server_.GetCurrentMasterIndex());
   req.set_cluster_config_version(server_.cluster_config_version());
   req.set_cdc_table_registry_version(server_.cdc_table_registry_version());
+  server_.FillCdcTableSplitReports(&req);
   auto result = server_.XClusterConfigVersion();
   if (result.ok()) {
     req.set_xcluster_config_version(*result);

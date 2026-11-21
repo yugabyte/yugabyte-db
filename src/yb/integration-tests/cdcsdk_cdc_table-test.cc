@@ -16,16 +16,29 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
 
+#include "yb/util/size_literals.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_filter_block_size_bytes);
+DECLARE_int64(db_index_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_uint64(tablet_split_limit_per_table);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
+DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -67,7 +80,7 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_enable_cdc_table) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
-    // Tablet splits are not handled by the CDC table pollers yet.
+    // The tests that split tablets do so themselves.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // The master creates the CDC table through the postgres of some tserver, and only one
     // tserver of the mini cluster runs postgres. With the same auth key, every tserver can
@@ -151,11 +164,179 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
     return safe_time;
   }
 
+  Status WaitForCdcSafeTimeOnAllTservers(PgOid database_oid) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      RETURN_NOT_OK(WaitForCdcSafeTime(i, database_oid, HybridTime::kMin));
+    }
+    return Status::OK();
+  }
+
   // A hybrid time that no change committed so far is later than.
   HybridTime Now() { return test_cluster()->mini_tablet_server(0)->server()->Clock()->Now(); }
 
   Result<int64_t> CountChangesUpTo(pgwrapper::PGConn& conn, HybridTime commit_time) {
     return CountChanges(conn, Format("commit_time <= $0", commit_time.ToUint64()));
+  }
+
+  // What the existing CDC tablet split tests set: cdc_state, the retention barriers and the
+  // deletion of split tablets follow the pollers closely, so that a poller reading from a position
+  // that has been released does not go unnoticed.
+  void SetTabletSplitTestFlags() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
+  }
+
+  // The current tablets of the table, in partition order.
+  Result<std::vector<TabletId>> TabletIds(const std::string& table_name) {
+    auto table = VERIFY_RESULT(GetTable(&test_cluster_, test_namespace_name, table_name));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+    std::vector<TabletId> result;
+    for (const auto& tablet : tablets) {
+      result.push_back(tablet.tablet_id());
+    }
+    return result;
+  }
+
+  // Splits the tablet, after which the table has expected_num_tablets tablets.
+  void SplitTablet(
+      const std::string& table_name, const TabletId& tablet_id, int expected_num_tablets) {
+    auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, table_name));
+    // A tablet that came out of a split cannot be split before it has been compacted.
+    ASSERT_OK(WaitForFlushTables(
+        {table.table_id()}, /* add_indexes= */ false, /* timeout_secs= */ 30,
+        /* is_compaction= */ false));
+    ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+    WaitUntilSplitIsSuccesful(tablet_id, table, expected_num_tablets);
+  }
+
+  // The tablets of user tables that have a CDC table poller, on any tserver.
+  std::set<TabletId> PolledTablets() {
+    std::set<TabletId> result;
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      auto* consumer = test_cluster()->mini_tablet_server(i)->server()->GetXClusterConsumer();
+      if (!consumer) {
+        continue;
+      }
+      for (const auto& poller : consumer->TEST_ListPollers()) {
+        const auto& tablet_id = poller->GetProducerTabletInfo().tablet_id;
+        if (tablet_id != master::kSysCatalogTabletId) {
+          result.insert(tablet_id);
+        }
+      }
+    }
+    return result;
+  }
+
+  // Waits until the pollers are those of the current tablets of the table.
+  Status WaitForPollersOfCurrentTablets(const std::string& table_name) {
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          const auto tablet_ids = VERIFY_RESULT(TabletIds(table_name));
+          return PolledTablets() == std::set<TabletId>(tablet_ids.begin(), tablet_ids.end());
+        },
+        kTimeout, Format("Wait for the pollers of the current tablets of $0", table_name));
+  }
+
+  // Stops the poller of the tablet from sending GetChanges, or lets it go on.
+  void PausePollerOf(const TabletId& tablet_id) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = tablet_id;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+    // For a GetChanges that was already under way.
+    SleepFor(1s * kTimeMultiplier);
+  }
+
+  void ResumePollers() { ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0; }
+
+  // Inserts rows until stopped, some on their own and some in transactions that span tablets. An
+  // id is inserted once, so every row of the table is one change.
+  void StartInserts(
+      TestThreadHolder* thread_holder, const std::string& table_name,
+      const std::string& value_sql = "'a'") {
+    thread_holder->AddThreadFunctor(
+        [this, table_name, value_sql, &stop = thread_holder->stop_flag()] {
+          auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+          for (int i = 0; !stop.load(std::memory_order_acquire); ++i) {
+            const int id = 4 * i + 1;
+            // A split or a leader change can fail a statement. What matters is what got
+            // committed.
+            auto status =
+                conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)", table_name, id, value_sql);
+            if (status.ok()) {
+              status = conn.Execute("BEGIN");
+            }
+            if (status.ok()) {
+              status = conn.ExecuteFormat(
+                  "INSERT INTO $0 SELECT i, $3 FROM generate_series($1, $2) i", table_name,
+                  id + 1, id + 3, value_sql);
+            }
+            if (status.ok()) {
+              status = conn.Execute("COMMIT");
+            }
+            if (!status.ok()) {
+              LOG(INFO) << "Inserts of iteration " << i << " failed: " << status;
+              ASSERT_OK(conn.Execute("ROLLBACK"));
+            }
+            SleepFor(20ms);
+          }
+        });
+  }
+
+  // The number of changes up to a CDC safe time must not grow once a reader could have got that
+  // safe time: a change that shows up later is one that the reader has missed. This keeps
+  // getting the safe time from every tserver until stopped, and records the number of changes up
+  // to it.
+  void StartSafeTimeSampling(
+      TestThreadHolder* thread_holder, PgOid database_oid,
+      std::map<HybridTime, int64_t>* changes_up_to) {
+    thread_holder->AddThreadFunctor(
+        [this, database_oid, changes_up_to, &stop = thread_holder->stop_flag()] {
+          auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+          std::vector<HybridTime> last_safe_time(
+              test_cluster()->num_tablet_servers(), HybridTime::kMin);
+          while (!stop.load(std::memory_order_acquire)) {
+            for (size_t i = 0; i < last_safe_time.size(); ++i) {
+              const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+              ASSERT_TRUE(safe_time.is_valid());
+              ASSERT_GE(safe_time, last_safe_time[i]);
+              last_safe_time[i] = safe_time;
+              const auto changes = ASSERT_RESULT(CountChangesUpTo(conn, safe_time));
+              auto [it, inserted] = changes_up_to->emplace(safe_time, changes);
+              ASSERT_EQ(it->second, changes)
+                  << "Changes up to safe time " << safe_time << " arrived late";
+            }
+            SleepFor(200ms);
+          }
+        });
+  }
+
+  // To be called once the threads above have stopped. Every row of the table has to be in the CDC
+  // table, by the time the CDC safe time covers it, and no change may have arrived after a safe
+  // time that covered it had been handed out.
+  void VerifyInsertsAndSampledSafeTimes(
+      pgwrapper::PGConn& conn, PgOid database_oid, const std::string& table_name,
+      const std::map<HybridTime, int64_t>& changes_up_to) {
+    const auto num_rows =
+        ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", table_name)));
+    ASSERT_GT(num_rows, 0);
+
+    const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+    ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time)), num_rows);
+    ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), num_rows);
+    // The same rows, not just as many.
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+            "SELECT count(*) FROM $0 WHERE id NOT IN (SELECT ($1)::int FROM $2)", table_name,
+            Int32Value("after", kIdAttnum), master::kPgYbCdcChangesTableName))),
+        0);
+
+    for (const auto& [sampled_safe_time, changes] : changes_up_to) {
+      ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, sampled_safe_time)), changes)
+          << "Changes up to safe time " << sampled_safe_time << " arrived late";
+    }
   }
 };
 
@@ -532,6 +713,367 @@ TEST_F(CDCSDKCdcTableTest, SafeTimeAcrossMasterRestart) {
   ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'b' FROM generate_series(11, 20) i"));
   const auto safe_time_after = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
   ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time_after)), 20);
+}
+
+// Tablets are split while rows are inserted. The poller of a split tablet hands over to the
+// pollers of its two children.
+TEST_F(CDCSDKCdcTableTest, TabletSplit) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 3);
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartInserts(&thread_holder, "t1");
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+  ASSERT_OK(WaitForChanges(conn, 100));
+
+  SplitTablet("t1", tablet_ids[0], 4);
+  SplitTablet("t1", tablet_ids[1], 5);
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  SleepFor(5s * kTimeMultiplier);
+
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_GT(changes_up_to.size(), 2);
+
+  // The master deletes a split tablet once the stream has polled both its children.
+  auto& catalog_manager = test_cluster()->mini_master()->catalog_manager_impl();
+  for (const auto& tablet_id : {tablet_ids[0], tablet_ids[1]}) {
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto tablet = catalog_manager.GetTabletInfo(tablet_id);
+          return !tablet.ok() || (*tablet)->LockForRead()->is_deleted();
+        },
+        kTimeout, Format("Wait for the split tablet $0 to be deleted", tablet_id)));
+  }
+}
+
+// The children of a split are split again while rows are inserted.
+TEST_F(CDCSDKCdcTableTest, TabletSplitOfChildren) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartInserts(&thread_holder, "t1");
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+  ASSERT_OK(WaitForChanges(conn, 100));
+
+  auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 3);
+  SplitTablet("t1", tablet_ids[0], 4);
+  SplitTablet("t1", tablet_ids[1], 5);
+
+  tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 5);
+  SplitTablet("t1", tablet_ids[0], 6);
+  SplitTablet("t1", tablet_ids[1], 7);
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  SleepFor(5s * kTimeMultiplier);
+
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+}
+
+// The CDC service tells a poller about the split of its tablet wherever the poller is in the
+// tablet's WAL. The changes it has not read by then come from the children, and the CDC safe time
+// must not pass them before they do.
+TEST_F(CDCSDKCdcTableTest, TabletSplitWithUnreadChanges) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  const auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 1);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  ASSERT_OK(WaitForChanges(conn, 20));
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // Written to the tablet, and not read from it before it is split.
+  PausePollerOf(tablet_ids[0]);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(21, 50) i"));
+  const auto after_unread_changes = Now();
+  SplitTablet("t1", tablet_ids[0], 2);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(51, 80) i"));
+
+  // The split tablet is still the one polled, and holds the safe time back.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 20);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_unread_changes);
+  ASSERT_EQ(PolledTablets(), std::set<TabletId>{tablet_ids[0]});
+
+  ResumePollers();
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 80);
+}
+
+// A child is split before the poller of its parent has handed over to it. Its own poller is told
+// about the split on its first GetChanges, and passes on the position it got from the parent's.
+TEST_F(CDCSDKCdcTableTest, TabletSplitOfUnpolledChild) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  const auto parent = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(parent.size(), 1);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  ASSERT_OK(WaitForChanges(conn, 20));
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // Changes in the WAL of each of the three generations, none of them read.
+  PausePollerOf(parent[0]);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(21, 50) i"));
+  SplitTablet("t1", parent[0], 2);
+  const auto children = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(51, 80) i"));
+  SplitTablet("t1", children[0], 3);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(81, 110) i"));
+
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 20);
+  ASSERT_EQ(PolledTablets(), std::set<TabletId>{parent[0]});
+
+  ResumePollers();
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 110);
+}
+
+// The leader of a tablet changes before the tablet is split. The poller on the new leader starts
+// from the tablet's row in cdc_state, and is the one that hands over to the children.
+TEST_F(CDCSDKCdcTableTest, TabletSplitAfterLeaderChange) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  ASSERT_OK(WaitForChanges(conn, 20));
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  PausePollerOf(tablet_id);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(21, 50) i"));
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(51, 80) i"));
+  SplitTablet("t1", tablet_id, 2);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(81, 110) i"));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 20);
+
+  ResumePollers();
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 110);
+}
+
+// Tablets split on their own as the table grows, a new generation as soon as the previous one has
+// been compacted. The CDC table that the pollers write to splits as well.
+TEST_F(CDCSDKCdcTableTest, AutomaticTabletSplits) {
+  SetTabletSplitTestFlags();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
+  // For a tablet to have an SST file above the split threshold after a few hundred rows.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1_KB;
+  constexpr size_t kMaxTablets = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_limit_per_table) = kMaxTablets;
+  // Past the low phase a tablet has to reach tablet_split_high_phase_size_threshold_bytes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = kMaxTablets;
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartInserts(&thread_holder, "t1", "repeat('x', 1000)");
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // Three generations of splits.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(TabletIds("t1")).size() >= kMaxTablets; },
+      5min * kTimeMultiplier, Format("Wait for t1 to have $0 tablets", kMaxTablets)));
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  SleepFor(5s * kTimeMultiplier);
+
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+}
+
+// A transaction writes to a tablet, the tablet is split, and the transaction writes more and
+// commits. All of it is applied in the children only.
+TEST_F(CDCSDKCdcTableTest, TransactionAcrossTabletSplit) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  const auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 1);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  ASSERT_OK(WaitForChanges(conn, 20));
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  auto txn_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(txn_conn.Execute("BEGIN"));
+  ASSERT_OK(txn_conn.Execute("INSERT INTO t1 SELECT i, 'b' FROM generate_series(101, 120) i"));
+  SplitTablet("t1", tablet_ids[0], 2);
+  ASSERT_OK(txn_conn.Execute("INSERT INTO t1 SELECT i, 'b' FROM generate_series(121, 140) i"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(21, 30) i"));
+  ASSERT_OK(txn_conn.Execute("COMMIT"));
+
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 70);
+  // The changes of the transaction came from two tablets, and are one transaction.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(DISTINCT (transaction_id, commit_time)) FROM $0 WHERE ($1)::int > 100",
+          master::kPgYbCdcChangesTableName, Int32Value("after", kIdAttnum)))),
+      1);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("($0)::int > 100 AND transaction_id != '$1'",
+                       Int32Value("after", kIdAttnum), kNilUuid))),
+      40);
+}
+
+// Rows written before a split are updated and deleted after it. Their before images are read from
+// the children.
+TEST_F(CDCSDKCdcTableTest, TabletSplitWithBeforeImages) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  const auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 1);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  // Not read from the tablet before it is split.
+  PausePollerOf(tablet_ids[0]);
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b' WHERE id <= 5"));
+  SplitTablet("t1", tablet_ids[0], 2);
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'c' WHERE id <= 10"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id > 15"));
+  ResumePollers();
+
+  // 20 inserts, 5 and 10 updates, 5 deletes.
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, safe_time)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 40);
+
+  // Per kind of change: how many, with which values before and after.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchAllAsString(Format(
+          "SELECT op, COALESCE($1, '-'), COALESCE($2, '-'), count(*) FROM $0 "
+          "GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
+          master::kPgYbCdcChangesTableName, StringValue("before", kValueAttnum),
+          StringValue("after", kValueAttnum)))),
+      "D, a, -, 5; I, -, a, 20; U, a, b, 5; U, a, c, 5; U, b, c, 5");
+}
+
+// The master restarts between the split of a tablet and the hand-over to its children. The new
+// master does not know where the poller of the split tablet stopped, and has the children polled
+// from their own rows in cdc_state.
+TEST_F(CDCSDKCdcTableTest, TabletSplitAcrossMasterRestart) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  const auto tablet_ids = ASSERT_RESULT(TabletIds("t1"));
+  ASSERT_EQ(tablet_ids.size(), 1);
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(1, 20) i"));
+  ASSERT_OK(WaitForChanges(conn, 20));
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  PausePollerOf(tablet_ids[0]);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(21, 50) i"));
+  SplitTablet("t1", tablet_ids[0], 2);
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(51, 80) i"));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 20);
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'a' FROM generate_series(81, 100) i"));
+
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  thread_holder.Stop();
+  VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 100);
 }
 
 TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {

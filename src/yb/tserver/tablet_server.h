@@ -412,6 +412,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t cdc_table_registry_version() const;
 
+  void FillCdcTableSplitReports(master::TSHeartbeatRequestPB* req) const;
+
   Result<uint32_t> XClusterConfigVersion() const;
 
   Status SetPausedXClusterProducerStreams(
