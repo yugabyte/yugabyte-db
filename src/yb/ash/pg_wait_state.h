@@ -28,8 +28,13 @@ class PgWaitStateInfo : public WaitStateInfo {
   AshMetadata metadata() override;
 
  private:
+  void UpdateClientAddress();
+
   const YbcPgAshConfig& config_;
   AshMetadata cached_metadata_;
+  // Raw client address that cached_metadata_.client_host_port was built from.
+  unsigned char client_addr_[16];
+  uint16_t client_port_;
 };
 
 } // namespace yb::ash
