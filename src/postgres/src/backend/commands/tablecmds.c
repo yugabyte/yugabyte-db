@@ -23559,6 +23559,13 @@ YbATDropTable(const char *namespace_name, const char *table_name)
 {
 	DropStmt   *drop_stmt = makeNode(DropStmt);
 
+	/*
+	 * Make the clone's catalog changes visible to the drop.  Otherwise the
+	 * drop's dependency scan still finds the dependent views' rules on the old
+	 * table, which the clone has repointed to the new one, and drops the views.
+	 */
+	CommandCounterIncrement();
+
 	drop_stmt->removeType = OBJECT_TABLE;
 	drop_stmt->missing_ok = false;
 	drop_stmt->objects = list_make1(list_make2(makeString(pstrdup(namespace_name)),
