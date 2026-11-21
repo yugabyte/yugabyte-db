@@ -260,45 +260,6 @@ YbOscFetchJob(int64 jobId, YbOscJob *job)
 }
 
 /*
- * Fetch the newest job from srcOid into dstOid, or return false if there is
- * none.  Job ids do not grow with time, so the newest is the one created
- * last.  A full scan: the catalog holds one row per job.
- */
-bool
-YbOscFetchLatestJob(Oid srcOid, Oid dstOid, YbOscJob *job)
-{
-	Relation	catalog = table_open(YbOnlineSchemaChangeRelationId, AccessShareLock);
-	SysScanDesc scan = systable_beginscan(catalog, InvalidOid, false /* indexOK */ ,
-										  NULL /* snapshot */ , 0 /* nkeys */ , NULL);
-	HeapTuple	tuple;
-	TimestampTz newest = 0;
-	bool		found = false;
-
-	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
-	{
-		Form_pg_yb_online_schema_change form =
-			(Form_pg_yb_online_schema_change) GETSTRUCT(tuple);
-		bool		isnull;
-		TimestampTz createdAt =
-			DatumGetTimestampTz(heap_getattr(tuple, Anum_pg_yb_online_schema_change_created_at,
-											 RelationGetDescr(catalog), &isnull));
-
-		if (form->source_table_oid != srcOid || form->target_table_oid != dstOid)
-			continue;
-		if (found && (createdAt < newest ||
-					  (createdAt == newest && form->job_id < job->job_id)))
-			continue;
-		FillJob(tuple, RelationGetDescr(catalog), job);
-		newest = createdAt;
-		found = true;
-	}
-
-	systable_endscan(scan);
-	table_close(catalog, AccessShareLock);
-	return found;
-}
-
-/*
  * Returns the id of an active job whose source or target is one of relOids,
  * or 0.  A full scan: the catalog holds one row per job.
  */

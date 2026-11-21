@@ -87,7 +87,6 @@ extern void YbOscDropForeignKeys(Oid relOid);
 extern int64 YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid,
 							const YbOscBeginOptions *opts);
 extern void YbOscSetStatus(int64 jobId, const char *status);
-extern int64 YbOscFindActiveJob(List *relOids);
 extern bool YbOscHasActiveJob(Oid srcOid, Oid dstOid);
 
 

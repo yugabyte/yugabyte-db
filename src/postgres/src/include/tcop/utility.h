@@ -34,6 +34,11 @@ typedef struct AlterTableUtilityContext
 	Oid			relid;			/* OID of ALTER's target table */
 	ParamListInfo params;		/* any parameters available to ALTER TABLE */
 	QueryEnvironment *queryEnv; /* execution environment for ALTER TABLE */
+
+	/* YB fields */
+	/* ALTER TABLE ... CONCURRENTLY; see commands/yb_alter_concurrently.h */
+	struct YbAlterTableCapture *yb_osc_capture;
+	Oid			yb_osc_shadow_oid;
 } AlterTableUtilityContext;
 
 /*

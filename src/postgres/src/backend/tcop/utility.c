@@ -1480,6 +1480,9 @@ ProcessUtilitySlow(ParseState *pstate,
 						atcontext.relid = relid;
 						atcontext.params = params;
 						atcontext.queryEnv = queryEnv;
+						/* YB */
+						atcontext.yb_osc_capture = NULL;
+						atcontext.yb_osc_shadow_oid = InvalidOid;
 
 						/* ... ensure we have an event trigger context ... */
 						EventTriggerAlterTableStart(parsetree);

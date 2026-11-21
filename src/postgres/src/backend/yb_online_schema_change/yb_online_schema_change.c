@@ -216,12 +216,12 @@ FetchCopyStatus(const YbOscJob *job, YbcPgTableBackfillStatus *bf)
 }
 
 bool
-YbOscGetCopyState(const YbOscJob *job, YbcPgTableBackfillState *state,
+YbOscGetCopyState(Oid srcOid, int64 jobId, YbcPgTableBackfillState *state,
 				  char **errorMessage)
 {
 	YbcPgTableBackfillStatus bf;
 
-	if (!FetchBackfillStatus(job->source_table_oid, job->job_id, &bf, NULL))
+	if (!FetchBackfillStatus(srcOid, jobId, &bf, NULL))
 		return false;
 	*state = bf.state;
 	if (errorMessage)
@@ -344,6 +344,18 @@ BeginJob(Oid srcOid, Oid dstOid, Oid transformOid, const YbOscBeginOptions *opts
 	table_close(srcRel, NoLock);
 
 	return jobId;
+}
+
+void
+YbOscValidateJob(Oid srcOid, Oid dstOid, Oid transformOid,
+				 const YbOscBeginOptions *opts)
+{
+	Relation	srcRel = table_open(srcOid, NoLock);
+	Relation	dstRel = table_open(dstOid, NoLock);
+
+	YbOscValidate(srcRel, dstRel, transformOid, opts);
+	table_close(dstRel, NoLock);
+	table_close(srcRel, NoLock);
 }
 
 int64

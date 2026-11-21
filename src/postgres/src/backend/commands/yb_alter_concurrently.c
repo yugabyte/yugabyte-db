@@ -6,51 +6,35 @@
  *
  * A rewriting ALTER TABLE normally copies the table row by row under
  * AccessExclusiveLock.  With CONCURRENTLY the same statement is run as an
- * online schema change job: an empty shadow table is created as a physical
- * clone of the source and the ALTER is applied to it, the per-row work of the
- * rewrite is compiled into the job's transform, the framework copies the table
- * in parallel while DML continues (captured by the job's triggers), and a
- * brief cutover applies the ALTER's catalog phase to the source and exchanges
- * the two tables' DocDB storage.  The source keeps its OID throughout, so
- * every OID-keyed object survives exactly as it does after an ordinary
- * rewrite.
+ * online schema change job.  The statement is run first on an empty shadow
+ * table, a physical clone of the source, so that PostgreSQL itself works out
+ * the new schema and how each column is recomputed; that per-row work becomes
+ * the job's transform, and the framework copies the table while DML goes on.
+ * The cutover then runs the statement on the source, as an ordinary rewrite
+ * whose phase 3 adopts the shadow's storage (YbOscSwapWithShadow) instead of
+ * copying rows.  The source keeps its OID, so every OID-keyed object survives,
+ * as after an ordinary rewrite.
  *
- * The statement spans several transactions, like CREATE INDEX CONCURRENTLY
- * and DETACH PARTITION CONCURRENTLY:
+ * Like CREATE INDEX CONCURRENTLY, the statement holds a session-level
+ * ShareUpdateExclusiveLock on the source throughout and spans several
+ * transactions:
  *
- *   T0  session-level ShareUpdateExclusiveLock on the source, held until the
- *       statement ends.
+ *   1. Create the shadow <schema>.yb_osc_shadow_<oid>, run the statement on
+ *      it, create the transform <schema>.yb_osc_xf_<oid> and check the job
+ *      as begin would.  A statement that does not rewrite runs as an
+ *      ordinary ALTER TABLE instead.  The job's copy runs in other backends,
+ *      which must see the shadow and the transform, so this commits first.
+ *   2. Begin the job (YbOscBegin), retrying transient lock conflicts.
+ *   3. Wait for the copy in a plain transaction.  A failed copy rolls the
+ *      job back.
+ *   4. Cut over (YbOscFinish), in the transaction the utility layer commits.
  *
- *   T1  preconditions; CREATE the shadow <schema>.yb_osc_shadow_<oid> with
- *       the source's attnum layout, primary key, split boundaries,
- *       reloptions, CHECK constraints and indexes; apply the ALTER to the
- *       shadow, capturing what phase 2 decided (yb_alter_table_capture) to
- *       classify the statement; create the transform
- *       <schema>.yb_osc_xf_<oid> from the captured new column values.  A
- *       statement that turns out not to rewrite drops the shadow and runs
- *       the ordinary ALTER TABLE instead.  Commit, then YbOscBegin (swap
- *       cutover, origin alter_table, the statement text as query) in a
- *       transaction of its own, retried on transient lock conflicts.
- *
- *   wait  a plain transaction (no DDL state, so the wait conflicts with no
- *         other DDL) polls the master until the copy is done.  It writes
- *         nothing.  A cancel or a failed copy rolls the job back in a DDL
- *         transaction of its own (YbOscAbort drops the shadow and the
- *         transform) before the error is re-raised.
- *
- *   T2  (the transaction the utility layer commits) YbOscFinish takes
- *       AccessExclusiveLock on both tables, drops the capture triggers and
- *       calls YbOscCutover: drop the transform, re-parse the job's query and run
- *       the ALTER on the source with yb_osc_cutover_shadow_oid set, so
- *       ATRewriteTables swaps relfilenodes with the shadow (indexes pairwise)
- *       instead of copying, and drops the shadow.
- *
- * Nothing before T2 changes the source's schema, and T2 is a single
- * transaction, so a failure at any point leaves the source as it was.  A
- * statement re-run by YB's DDL retry, or re-issued by the operator, resumes
- * the job it finds active instead of starting over.  A job whose driver died
- * can also be finished with yb_finish_mirror_table or rolled back with
- * yb_abort_mirror_table.
+ * Nothing before step 4 changes the source, and step 4 is one transaction.
+ * An error anywhere else leaves at most an active job, which re-issuing the
+ * same statement resumes and yb_abort_mirror_table rolls back, or, after a
+ * failed step 2, a shadow without a job, which the next statement on the
+ * table drops.  This is how CREATE INDEX CONCURRENTLY leaves an invalid index
+ * behind rather than cleaning up from an error path.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -77,25 +61,30 @@
 #include "access/attmap.h"
 #include "access/genam.h"
 #include "access/htup_details.h"
+#include "access/multixact.h"
 #include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/table.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaddress.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_index.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "commands/cluster.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/yb_alter_concurrently.h"
+#include "commands/yb_cmds.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -114,6 +103,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/queryjumble.h"
@@ -128,18 +118,12 @@
 
 bool		yb_enable_alter_table_concurrently = true;
 int			yb_alter_table_concurrently_poll_interval_ms = 100;
+bool		yb_osc_keep_old_table = false;
 bool		yb_test_fail_osc_cutover = false;
 
 #define YB_OSC_SHADOW_NAME_PREFIX		"yb_osc_shadow_"
 #define YB_OSC_TRANSFORM_NAME_PREFIX	"yb_osc_xf_"
 #define YB_OSC_DROPPED_COLUMN_PREFIX	"yb_osc_dropped_"
-
-/*
- * The (source index, shadow index) pairs recorded while cloning, for the
- * driver's own cutover.  A cutover without them (a resumed statement, or
- * yb_finish_mirror_table) pairs every index by definition.
- */
-static List *yb_osc_driver_index_pairs = NIL;
 
 /*
  * What ResumeDdlTransaction needs to continue the statement's DDL processing
@@ -195,12 +179,6 @@ static char *
 TransformName(Oid srcOid)
 {
 	return psprintf("%s%u", YB_OSC_TRANSFORM_NAME_PREFIX, srcOid);
-}
-
-static bool
-JobIsActive(const YbOscJob *job)
-{
-	return strcmp(job->status, YB_OSC_STATUS_ACTIVE) == 0;
 }
 
 static void
@@ -259,11 +237,13 @@ WithPresplitSentinel(List *options)
  * a utility context, which the parse transformation of subcommands such as
  * ADD COLUMN and ALTER COLUMN TYPE requires (AlterTableInternal has none), and
  * with its own event-trigger command entry.  queryString is the text the
- * subcommands' parse locations refer to.
+ * subcommands' parse locations refer to.  capture and shadowOid go into the
+ * context; see AlterTableUtilityContext.
  */
 static void
 RunAlterTable(Oid relid, List *cmds, bool recurse, const char *queryString,
-			  const AlterTableUtilityContext *outer)
+			  const AlterTableUtilityContext *outer,
+			  YbAlterTableCapture *capture, Oid shadowOid)
 {
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
 	PlannedStmt *pstmt = makeNode(PlannedStmt);
@@ -288,6 +268,8 @@ RunAlterTable(Oid relid, List *cmds, bool recurse, const char *queryString,
 	atcontext.relid = relid;
 	atcontext.params = outer ? outer->params : NULL;
 	atcontext.queryEnv = outer ? outer->queryEnv : NULL;
+	atcontext.yb_osc_capture = capture;
+	atcontext.yb_osc_shadow_oid = shadowOid;
 
 	LockRelationOid(relid, AccessExclusiveLock);
 	EventTriggerAlterTableStart((Node *) atstmt);
@@ -408,49 +390,81 @@ CheckSourceEligible(Relation rel, AlterTableStmt *stmt)
 }
 
 /*
- * The shadow and transform names are fixed per source table, so one left
- * behind by an earlier statement blocks a new one until it is cleaned up.
+ * The job's ALTER TABLE statement, parsed.  The cutover replays it, and a
+ * re-issued statement resumes the job only if it is the same.
+ */
+static AlterTableStmt *
+ParseJobStatement(int64 jobId, const char *query)
+{
+	List	   *raw = query ? raw_parser(query, RAW_PARSE_DEFAULT) : NIL;
+	RawStmt    *rawStmt = (list_length(raw) == 1) ? linitial_node(RawStmt, raw) : NULL;
+
+	if (rawStmt == NULL || !IsA(rawStmt->stmt, AlterTableStmt))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("online schema change job %lld does not record a single ALTER TABLE statement",
+						(long long) jobId),
+				 errdetail("Recorded statement: %s", query ? query : "(none)")));
+	return (AlterTableStmt *) rawStmt->stmt;
+}
+
+/*
+ * The active job of this statement on rel, to resume, or 0 if there is none.
+ * YB's DDL retry can re-run the statement after its job began, and an
+ * operator can re-issue it to finish a job whose backend died; both resume.
+ * Any other active job on rel is an error.  Subcommands are compared with
+ * equal(), which ignores parse locations, so the text need not match.
+ */
+static int64
+FindJobToResume(Relation rel, AlterTableStmt *stmt)
+{
+	int64		jobId = YbOscFindActiveJob(list_make1_oid(RelationGetRelid(rel)));
+	YbOscJob	job;
+
+	if (jobId == 0)
+		return 0;
+	if (!YbOscFetchJob(jobId, &job))
+		elog(ERROR, "online schema change job %lld disappeared", (long long) jobId);
+
+	if (strcmp(job.origin, YB_OSC_ORIGIN_ALTER_TABLE) != 0 ||
+		job.source_table_oid != RelationGetRelid(rel) ||
+		!equal(ParseJobStatement(jobId, job.query)->cmds, stmt->cmds))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("another online schema change job is in progress on table \"%s\"",
+						RelationGetRelationName(rel)),
+				 job.query ? errdetail("Job %lld runs: %s", (long long) jobId, job.query) : 0,
+				 errhint("Finish it with yb_finish_mirror_table(%lld) or roll it back with yb_abort_mirror_table(%lld).",
+						 (long long) jobId, (long long) jobId)));
+	return jobId;
+}
+
+static void
+DropShadow(Oid shadowOid)
+{
+	ObjectAddress object;
+
+	ObjectAddressSet(object, RelationRelationId, shadowOid);
+	performDeletion(&object, DROP_CASCADE, PERFORM_DELETION_INTERNAL);
+}
+
+/*
+ * With no active job on the source, a shadow can only be left over from a
+ * statement whose begin failed.  Drop it, and with it its transform, which
+ * depends on its row type.
  */
 static void
-CheckNoLeftovers(Relation rel, const char *nspName, const char *shadowName)
+DropOrphanShadow(Relation rel, const char *shadowName)
 {
-	Oid			srcOid = RelationGetRelid(rel);
-	Oid			nspOid = RelationGetNamespace(rel);
-	Oid			shadowOid = get_relname_relid(shadowName, nspOid);
-	char	   *fnName = TransformName(srcOid);
-	Oid			argtypes[1] = {rel->rd_rel->reltype};
+	Oid			shadowOid = get_relname_relid(shadowName, RelationGetNamespace(rel));
 
-	if (OidIsValid(shadowOid))
-	{
-		YbOscJob	job;
-
-		if (YbOscFetchLatestJob(srcOid, shadowOid, &job) && JobIsActive(&job))
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("an ALTER TABLE ... CONCURRENTLY job is already in progress on table \"%s\"",
-							RelationGetRelationName(rel)),
-					 errdetail("Online schema change job %lld is active.",
-							   (long long) job.job_id),
-					 errhint("Finish it with yb_finish_mirror_table(%lld) or roll it back with yb_abort_mirror_table(%lld).",
-							 (long long) job.job_id, (long long) job.job_id)));
-
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("shadow table \"%s\" of an earlier ALTER TABLE ... CONCURRENTLY still exists",
-						shadowName),
-				 errhint("Remove it with DROP TABLE %s.",
-						 quote_qualified_identifier(nspName, shadowName))));
-	}
-
-	if (OidIsValid(LookupFuncName(list_make2(makeString(pstrdup(nspName)),
-											 makeString(fnName)),
-								  1, argtypes, true /* missing_ok */ )))
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("transform function \"%s\" of an earlier ALTER TABLE ... CONCURRENTLY still exists",
-						fnName),
-				 errhint("Remove it with DROP FUNCTION %s.",
-						 quote_qualified_identifier(nspName, fnName))));
+	if (!OidIsValid(shadowOid))
+		return;
+	ereport(NOTICE,
+			(errmsg("dropping shadow table \"%s\" left behind by an earlier ALTER TABLE ... CONCURRENTLY",
+					shadowName)));
+	DropShadow(shadowOid);
+	CommandCounterIncrement();
 }
 
 /*
@@ -601,7 +615,8 @@ CreateShadow(Relation srcRel, const char *nspName, const char *shadowName,
 			cmds = lappend(cmds, cmd);
 		}
 		RunAlterTable(shadowOid, cmds, false /* recurse */ ,
-					  context->queryString, context);
+					  context->queryString, context, NULL /* capture */ ,
+					  InvalidOid /* shadowOid */ );
 		CommandCounterIncrement();
 	}
 
@@ -1004,15 +1019,6 @@ ClassifyShadowAlter(const YbAlterTableCapture *capture, Oid srcOid,
 	return true;
 }
 
-static void
-DropShadow(Oid shadowOid)
-{
-	ObjectAddress object;
-
-	ObjectAddressSet(object, RelationRelationId, shadowOid);
-	performDeletion(&object, DROP_CASCADE, PERFORM_DELETION_INTERNAL);
-}
-
 /*
  * Vars of a captured new column value address the shadow's attributes.  Map
  * them onto the source's by name: pre-existing columns have the same attnum
@@ -1259,50 +1265,44 @@ YbOscCreateTransform(Relation srcRel, Relation shadowRel, const char *nspName,
 }
 
 /*
- * Poll the master while the job's copy is running.  Returns the state the
- * copy ended in, and its error message, if any, in PortalContext.  A master
- * that cannot be asked is asked again: an error in the wait rolls the job
- * back, so the wait must not fail on a master that is briefly unreachable.
+ * Wait for the job's copy to end and return the state it ended in, and its
+ * error message, if any, in PortalContext.  A master that cannot be asked is
+ * asked again, so that a briefly unreachable master does not fail the
+ * statement.
  */
 static YbcPgTableBackfillState
-PollUntilCopyDone(const YbOscJob *job, char **errorMessage)
+WaitForCopy(Oid srcOid, int64 jobId, char **errorMessage)
 {
-	MemoryContext pollcxt = AllocSetContextCreate(PortalContext,
+	MemoryContext pollcxt = AllocSetContextCreate(CurrentMemoryContext,
 												  "ALTER TABLE CONCURRENTLY poll",
 												  ALLOCSET_SMALL_SIZES);
 	YbcPgTableBackfillState state;
+	char	   *error = NULL;
 
-	*errorMessage = NULL;
 	for (;;)
 	{
 		MemoryContext oldcxt;
-		char	   *error = NULL;
 		bool		known;
 
 		CHECK_FOR_INTERRUPTS();
 
 		MemoryContextReset(pollcxt);
 		oldcxt = MemoryContextSwitchTo(pollcxt);
-		known = YbOscGetCopyState(job, &state, &error);
+		known = YbOscGetCopyState(srcOid, jobId, &state, &error);
 		MemoryContextSwitchTo(oldcxt);
 
-		if (!known || state == YB_TABLE_BACKFILL_RUNNING)
-		{
-			pg_usleep(yb_alter_table_concurrently_poll_interval_ms * 1000L);
-			continue;
-		}
-
-		if (error != NULL)
-			*errorMessage = MemoryContextStrdup(PortalContext, error);
-		break;
+		if (known && state != YB_TABLE_BACKFILL_RUNNING)
+			break;
+		pg_usleep(yb_alter_table_concurrently_poll_interval_ms * 1000L);
 	}
-	MemoryContextDelete(pollcxt);
 
+	*errorMessage = error ? MemoryContextStrdup(PortalContext, error) : NULL;
+	MemoryContextDelete(pollcxt);
 	return state;
 }
 
 /*
- * Re-take the driver's session lock after a transaction abort released it.
+ * Re-take the statement's session lock after a transaction abort released it.
  * With object locking a session lock may only be taken over a transaction
  * lock on the same relation.
  */
@@ -1313,100 +1313,39 @@ RelockSession(LockRelId *lockrelid, LOCKMODE lockmode)
 	LockRelationIdForSession(lockrelid, lockmode);
 }
 
-/*
- * Roll the job back after the wait ended in an error or a failed copy: abort
- * the wait's transaction and run YbOscAbort, which also drops the shadow
- * and the transform, in a DDL transaction of its own that is committed before
- * the caller re-raises.  Leaves a plain transaction open, as the utility
- * layer expects.  A failed cleanup is reported as a WARNING and the returned
- * hint (otherwise NULL) names the manual way out.
- */
-static char *
-AbortJobAfterFailure(int64 jobId, Oid srcOid, const YbOscTxnState *txn,
-					 LockRelId lockrelid, LOCKMODE lockmode)
-{
-	char	   *hint = NULL;
-
-	AbortCurrentTransaction();
-	StartTransactionCommand();
-
-	/*
-	 * The abort released the session lock too.  Re-take it before the
-	 * cleanup, or a concurrent yb_finish_mirror_table could cut the job over
-	 * from under this still-live driver.
-	 */
-	RelockSession(&lockrelid, lockmode);
-
-	PG_TRY();
-	{
-		YbOscTxnState scratch;
-
-		ResumeDdlTransaction(txn);
-		YbOscAbort(jobId);
-		CommitAndStartPlainTransaction(&scratch);
-	}
-	PG_CATCH();
-	{
-		ErrorData  *cleanupError;
-
-		MemoryContextSwitchTo(PortalContext);
-		cleanupError = CopyErrorData();
-		FlushErrorState();
-
-		AbortCurrentTransaction();
-		StartTransactionCommand();
-
-		hint = psprintf("Run yb_abort_mirror_table(%lld) to clean up.",
-						(long long) jobId);
-		ereport(WARNING,
-				(errmsg("could not roll back the ALTER TABLE ... CONCURRENTLY job on table \"%s\"",
-						get_rel_name(srcOid)),
-				 errdetail("%s", cleanupError->message),
-				 errhint("%s", hint)));
-	}
-	PG_END_TRY();
-
-	return hint;
-}
-
 /* Each retry re-runs only the begin, not the copy, so the cap is generous. */
 #define YB_OSC_BEGIN_MAX_ATTEMPTS 20
 
 static bool
-YbOscIsRetryableTxnError(int errcode)
+IsRetryableBeginError(int sqlerrcode)
 {
-	return errcode == ERRCODE_YB_DEADLOCK ||
-		errcode == ERRCODE_T_R_DEADLOCK_DETECTED ||
-		errcode == ERRCODE_YB_TXN_CONFLICT ||
-		errcode == ERRCODE_T_R_SERIALIZATION_FAILURE ||
-		errcode == ERRCODE_YB_TXN_ABORTED;
+	return sqlerrcode == ERRCODE_YB_DEADLOCK ||
+		sqlerrcode == ERRCODE_T_R_DEADLOCK_DETECTED ||
+		sqlerrcode == ERRCODE_YB_TXN_CONFLICT ||
+		sqlerrcode == ERRCODE_T_R_SERIALIZATION_FAILURE ||
+		sqlerrcode == ERRCODE_YB_TXN_ABORTED;
 }
 
 /*
- * Start the online schema change job, retrying transient lock conflicts.
+ * Begin the job in a DDL transaction of its own, which the caller commits.
  *
- * YbOscBegin takes ExclusiveLock on the source to fence concurrent DML,
- * and under a live write workload the deadlock detector may abort this
- * statement to break the resulting lock cycle.  The lock is taken before any
- * trigger or master RPC, so a failed attempt has made nothing durable and the
- * begin can be re-run in a fresh transaction; the shadow and the transform
- * are already committed.
- *
- * On success this returns the job id inside an open DDL transaction holding
- * the lock and the new job, which the caller commits.  On a non-retryable error, or
- * once the attempts are exhausted, the shadow (and, by cascade, the
- * transform) is dropped and the error re-raised.
+ * YbOscBegin takes ExclusiveLock on the source to fence DML, and under a
+ * write workload the deadlock detector may pick it as the victim.  The begin
+ * has made nothing durable by then, so it is retried in a fresh transaction.
+ * Anything else, or running out of attempts, is raised with the shadow left
+ * behind for the next statement to drop (DropOrphanShadow).
  */
 static int64
-BeginJobWithRetry(Oid srcOid, Oid shadowOid, Oid transformOid,
-				  const YbOscBeginOptions *opts, const YbOscTxnState *txn,
-				  LockRelId lockrelid, LOCKMODE lockmode, const char *srcQual)
+BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
+		 const YbOscBeginOptions *opts, const YbOscTxnState *txn,
+		 LockRelId *lockrelid, LOCKMODE lockmode)
 {
 	for (int attempt = 1;; attempt++)
 	{
 		ErrorData  *edata = NULL;
 		int64		jobId = 0;
 
+		ResumeDdlTransaction(txn);
 		PushActiveSnapshot(GetTransactionSnapshot());
 		PG_TRY();
 		{
@@ -1416,6 +1355,7 @@ BeginJobWithRetry(Oid srcOid, Oid shadowOid, Oid transformOid,
 		{
 			MemoryContextSwitchTo(PortalContext);
 			edata = CopyErrorData();
+			FlushErrorState();
 		}
 		PG_END_TRY();
 
@@ -1425,79 +1365,96 @@ BeginJobWithRetry(Oid srcOid, Oid shadowOid, Oid transformOid,
 			return jobId;
 		}
 
-		/* The abort also drops the snapshot. */
-		FlushErrorState();
+		/* The abort also drops the snapshot and the session lock. */
 		AbortCurrentTransaction();
+		StartTransactionCommand();
 
-		/*
-		 * The abort released the session lock too, so both paths below re-take
-		 * it at once: it keeps a concurrent yb_finish_mirror_table out, and the
-		 * caller's final unlock expects it held.
-		 */
-		if (!YbOscIsRetryableTxnError(edata->sqlerrcode) ||
+		if (!IsRetryableBeginError(edata->sqlerrcode) ||
 			attempt >= YB_OSC_BEGIN_MAX_ATTEMPTS)
 		{
-			YbOscTxnState scratch;
-
-			StartTransactionCommand();
-			RelockSession(&lockrelid, lockmode);
-			ResumeDdlTransaction(txn);
-			PushActiveSnapshot(GetTransactionSnapshot());
-			DropShadow(shadowOid);
-
-			/* Commit the drop, or the re-raised error would roll it back. */
-			CommitAndStartPlainTransaction(&scratch);
+			if (edata->hint == NULL)
+				edata->hint = pstrdup("Re-issue the statement.");
 			ReThrowError(edata);
 		}
 
-		FreeErrorData(edata);
 		ereport(LOG,
-				(errmsg("retrying ALTER TABLE ... CONCURRENTLY on %s after a transient conflict (attempt %d)",
-						srcQual, attempt)));
+				(errmsg("retrying the begin of ALTER TABLE ... CONCURRENTLY on table \"%s\" after a transient conflict (attempt %d): %s",
+						get_rel_name(srcOid), attempt, edata->message)));
+		FreeErrorData(edata);
 		pg_usleep(Min(attempt, 10) * 100000L);	/* linear backoff, capped at 1s */
-
-		StartTransactionCommand();
-		RelockSession(&lockrelid, lockmode);
-		ResumeDdlTransaction(txn);
+		RelockSession(lockrelid, lockmode);
 	}
 }
 
 /*
- * Find an active ALTER TABLE ... CONCURRENTLY job on rel to resume.
- *
- * YB's DDL read-restart retry can re-run the whole statement after some of
- * its transactions have committed, most often when the cutover's commit
- * races concurrent DML.  The re-run must resume the job rather than trip over
- * its shadow, and the same path lets an operator re-issue the statement to
- * finish a job whose backend died.  Returns false when there is no such job,
- * else the job's id in *jobIdOut and the shadow in *shadowOidOut.
+ * Step 1 (see the file header): create the shadow and the transform and
+ * check the job.  Returns the shadow, or InvalidOid if the statement turned
+ * out not to rewrite, in which case it has been run as an ordinary ALTER
+ * TABLE.  Closes rel.
  */
-static bool
-ResumeExistingJob(Relation rel, const char *shadowName, Oid *shadowOidOut,
-				  int64 *jobIdOut)
+static Oid
+PrepareShadow(Relation rel, AlterTableStmt *stmt,
+			  AlterTableUtilityContext *context,
+			  const YbOscBeginOptions *opts, Oid *transformOid)
 {
-	Oid			nspOid = RelationGetNamespace(rel);
-	Oid			shadowOid = get_relname_relid(shadowName, nspOid);
-	YbOscJob	job;
+	Oid			relid = RelationGetRelid(rel);
+	char	   *nspName = get_namespace_name(RelationGetNamespace(rel));
+	char	   *shadowName = ShadowName(relid);
+	YbAlterTableCapture capture = {0};
+	Oid			shadowOid;
+	List	   *indexPairs;
+	List	   *shadowCmds;
+	Relation	shadowRel;
 
-	if (!OidIsValid(shadowOid) ||
-		!YbOscFetchLatestJob(RelationGetRelid(rel), shadowOid, &job) ||
-		strcmp(job.origin, YB_OSC_ORIGIN_ALTER_TABLE) != 0 ||
-		!JobIsActive(&job))
-		return false;
+	DropOrphanShadow(rel, shadowName);
 
-	*shadowOidOut = shadowOid;
-	*jobIdOut = job.job_id;
-	return true;
+	shadowOid = CreateShadow(rel, nspName, shadowName, context);
+	indexPairs = CloneIndexes(rel, shadowOid);
+	shadowCmds = CmdsForShadow(stmt->cmds, RelationGetNamespace(rel), indexPairs);
+	table_close(rel, NoLock);
+
+	RunAlterTable(shadowOid, shadowCmds, stmt->relation->inh,
+				  context->queryString, context, &capture,
+				  InvalidOid /* shadowOid */ );
+	CommandCounterIncrement();
+
+	if (!ClassifyShadowAlter(&capture, relid, shadowOid))
+	{
+		ereport(NOTICE,
+				(errmsg("no table rewrite required; executing ALTER TABLE non-concurrently")));
+		DropShadow(shadowOid);
+		LockRelationOid(relid, AccessExclusiveLock);
+		AlterTable(stmt, AccessExclusiveLock, context);
+		return InvalidOid;
+	}
+
+	rel = table_open(relid, NoLock);
+	shadowRel = table_open(shadowOid, NoLock);
+	*transformOid = YbOscCreateTransform(rel, shadowRel, nspName,
+										 TransformName(relid), capture.newvals);
+	table_close(shadowRel, NoLock);
+	table_close(rel, NoLock);
+
+	/*
+	 * Refuse what begin would refuse now, so that the error rolls the shadow
+	 * and the transform back with this transaction.
+	 */
+	YbOscValidateJob(relid, shadowOid, *transformOid, opts);
+	return shadowOid;
 }
 
-/* Whether job jobId was aborted, by yb_abort_mirror_table from another session. */
-static bool
-JobWasAborted(int64 jobId)
+/*
+ * Error context while an active job is left behind by the error: the copy
+ * runs on, and its capture triggers keep the shadow in step, until the job
+ * is resumed or rolled back.
+ */
+static void
+ActiveJobErrorCallback(void *arg)
 {
-	YbOscJob	job;
+	int64		jobId = *(int64 *) arg;
 
-	return YbOscFetchJob(jobId, &job) && strcmp(job.status, YB_OSC_STATUS_ABORTED) == 0;
+	errcontext("online schema change job %lld stays active: re-issue the same ALTER TABLE ... CONCURRENTLY statement to resume it, or roll it back with yb_abort_mirror_table(%lld)",
+			   (long long) jobId, (long long) jobId);
 }
 
 void
@@ -1505,24 +1462,13 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 						 AlterTableUtilityContext *context)
 {
 	Relation	rel;
-	Relation	shadowRel;
 	LockRelId	lockrelid;
-	char	   *nspName;
-	char	   *shadowName;
-	char	   *srcQual;
-	Oid			shadowOid;
-	Oid			transformOid;
-	List	   *indexPairs;
-	List	   *shadowCmds;
-	YbAlterTableCapture capture;
-	YbOscBeginOptions beginOpts;
+	YbOscBeginOptions opts;
 	YbOscTxnState txn;
-	MemoryContext oldcxt;
 	int64		jobId;
-	YbOscJob	job;
 	YbcPgTableBackfillState state;
 	char	   *errorMessage;
-	char	   *hint;
+	ErrorContextCallback errcallback;
 
 	YbOscCheckTransactionalDdl();
 
@@ -1530,206 +1476,87 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 	rel = table_open(relid, NoLock);
 	CheckSourceEligible(rel, stmt);
 
-	/* Names live in PortalContext: they are used after the commits below. */
-	nspName = MemoryContextStrdup(PortalContext,
-								   get_namespace_name(RelationGetNamespace(rel)));
-	shadowName = MemoryContextStrdup(PortalContext, ShadowName(relid));
-	srcQual = MemoryContextStrdup(PortalContext,
-								   quote_qualified_identifier(nspName,
-															  RelationGetRelationName(rel)));
 	/*
-	 * T0: hold the lock across the commits below, as CREATE INDEX
-	 * CONCURRENTLY does.  A transaction abort releases session locks too, so
-	 * the error paths need no explicit unlock.
+	 * Hold the lock across the commits below, as CREATE INDEX CONCURRENTLY
+	 * does.  A transaction abort releases session locks too, so the error
+	 * paths need no explicit unlock.
 	 */
 	lockrelid = rel->rd_lockInfo.lockRelId;
 	LockRelationIdForSession(&lockrelid, lockmode);
 
-	indexPairs = NIL;
-	if (!ResumeExistingJob(rel, shadowName, &shadowOid, &jobId))
+	jobId = FindJobToResume(rel, stmt);
+	if (jobId == 0)
 	{
-		CheckNoLeftovers(rel, nspName, shadowName);
+		Oid			shadowOid;
+		Oid			transformOid;
 
-		shadowOid = CreateShadow(rel, nspName, shadowName, context);
-		indexPairs = CloneIndexes(rel, shadowOid);
-		shadowCmds = CmdsForShadow(stmt->cmds, RelationGetNamespace(rel), indexPairs);
-		table_close(rel, NoLock);
+		opts.cutover_mode = YB_OSC_CUTOVER_SWAP;
+		opts.origin = YB_OSC_ORIGIN_ALTER_TABLE;
+		opts.query = AlterStatementText(context);
 
-		memset(&capture, 0, sizeof(capture));
-		yb_alter_table_capture = &capture;
-		PG_TRY();
+		shadowOid = PrepareShadow(rel, stmt, context, &opts, &transformOid);
+		if (!OidIsValid(shadowOid))
 		{
-			RunAlterTable(shadowOid, shadowCmds, stmt->relation->inh,
-						  context->queryString, context);
-		}
-		PG_FINALLY();
-		{
-			yb_alter_table_capture = NULL;
-		}
-		PG_END_TRY();
-		CommandCounterIncrement();
-
-		if (!ClassifyShadowAlter(&capture, relid, shadowOid))
-		{
-			/*
-			 * A statement that does not rewrite is a short catalog change: run
-			 * it as an ordinary ALTER TABLE.
-			 */
-			ereport(NOTICE,
-					(errmsg("no table rewrite required; executing ALTER TABLE non-concurrently")));
-			DropShadow(shadowOid);
 			UnlockRelationIdForSession(&lockrelid, lockmode);
-			LockRelationOid(relid, AccessExclusiveLock);
-			AlterTable(stmt, AccessExclusiveLock, context);
 			return;
 		}
 
-		rel = table_open(relid, NoLock);
-		shadowRel = table_open(shadowOid, NoLock);
-		transformOid = YbOscCreateTransform(rel, shadowRel, nspName,
-										TransformName(relid), capture.newvals);
-		table_close(shadowRel, NoLock);
-		table_close(rel, NoLock);
-
-		beginOpts.cutover_mode = YB_OSC_CUTOVER_SWAP;
-		beginOpts.origin = YB_OSC_ORIGIN_ALTER_TABLE;
-		beginOpts.query = AlterStatementText(context);
-
-		/* Survives the commits below. */
-		oldcxt = MemoryContextSwitchTo(PortalContext);
-		indexPairs = copyObject(indexPairs);
-		MemoryContextSwitchTo(oldcxt);
-
-		/*
-		 * Commit the shadow and the transform first, so that retrying the
-		 * begin does not redo them.
-		 */
 		CommitAndStartPlainTransaction(&txn);
-		ResumeDdlTransaction(&txn);
-		jobId = BeginJobWithRetry(relid, shadowOid, transformOid, &beginOpts, &txn,
-								  lockrelid, lockmode, srcQual);
-
-		CommitAndStartPlainTransaction(&txn);
+		jobId = BeginJob(relid, shadowOid, transformOid, &opts, &txn,
+						 &lockrelid, lockmode);
 	}
 	else
-	{
-		/*
-		 * Resuming a job.  The index pairs were not recorded across the
-		 * re-run, so the cutover pairs indexes by definition.
-		 */
 		table_close(rel, NoLock);
-		CommitAndStartPlainTransaction(&txn);
-	}
 
-	if (!YbOscFetchJob(jobId, &job))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("online schema change job of ALTER TABLE ... CONCURRENTLY on table \"%s\" disappeared",
-						get_rel_name(relid))));
-	job.status = MemoryContextStrdup(PortalContext, job.status);
-	job.origin = MemoryContextStrdup(PortalContext, job.origin);
-	job.query = job.query ? MemoryContextStrdup(PortalContext, job.query) : NULL;
+	/* Wait in a plain transaction: it conflicts with no other DDL. */
+	CommitAndStartPlainTransaction(&txn);
 
-	errorMessage = NULL;
-	PG_TRY();
-	{
-		state = PollUntilCopyDone(&job, &errorMessage);
-	}
-	PG_CATCH();
-	{
-		ErrorData  *edata;
+	errcallback.callback = ActiveJobErrorCallback;
+	errcallback.arg = &jobId;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
 
-		MemoryContextSwitchTo(PortalContext);
-		edata = CopyErrorData();
-		FlushErrorState();
-
-		hint = AbortJobAfterFailure(jobId, relid, &txn, lockrelid, lockmode);
-		if (hint != NULL && edata->hint == NULL)
-			edata->hint = hint;
-		ReThrowError(edata);
-	}
-	PG_END_TRY();
-
+	state = WaitForCopy(relid, jobId, &errorMessage);
 	if (state != YB_TABLE_BACKFILL_SUCCEEDED)
 	{
-		/* An abort from another session has already cleaned up. */
-		if (state == YB_TABLE_BACKFILL_ABORTED && JobWasAborted(jobId))
-			ereport(ERROR,
-					(errcode(ERRCODE_QUERY_CANCELED),
-					 errmsg("ALTER TABLE ... CONCURRENTLY on table \"%s\" was aborted by yb_abort_mirror_table",
-							get_rel_name(relid))));
+		YbOscTxnState scratch;
 
-		hint = AbortJobAfterFailure(jobId, relid, &txn, lockrelid, lockmode);
+		error_context_stack = errcallback.previous;
+
+		/* Roll the job back, committed before the error is raised. */
+		ResumeDdlTransaction(&txn);
+		PushActiveSnapshot(GetTransactionSnapshot());
+		YbOscAbort(jobId);
+		PopActiveSnapshot();
+		CommitAndStartPlainTransaction(&scratch);
+
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("ALTER TABLE ... CONCURRENTLY failed while copying table \"%s\"",
 						get_rel_name(relid)),
-				 errdetail("%s", errorMessage ? errorMessage : "The copy was aborted."),
-				 hint ? errhint("%s", hint) : 0));
+				 errdetail("%s", errorMessage ? errorMessage : "The copy was aborted.")));
 	}
 
 	/*
-	 * T2: the cutover, in the transaction the utility layer commits.  The
-	 * snapshot stands in for the portal's, popped at the first commit.
+	 * Cut over in the transaction the utility layer commits.  A failure rolls
+	 * the cutover back as a whole and leaves the job active.  The snapshot
+	 * stands in for the portal's, popped at the first commit.
 	 */
 	ResumeDdlTransaction(&txn);
 	PushActiveSnapshot(GetTransactionSnapshot());
-
-	yb_osc_driver_index_pairs = indexPairs;
-	PG_TRY();
-	{
-		YbOscFinish(jobId);
-	}
-	PG_CATCH();
-	{
-		ErrorData  *edata;
-
-		yb_osc_driver_index_pairs = NIL;
-
-		/*
-		 * The cutover rolls back with this transaction, status included, so
-		 * the job stays active, its triggers capturing DML, and is left for a
-		 * retry rather than rolled back.
-		 */
-		MemoryContextSwitchTo(PortalContext);
-		edata = CopyErrorData();
-		FlushErrorState();
-		if (edata->hint == NULL)
-			edata->hint = psprintf("The copy is complete: re-issue the same ALTER TABLE ... CONCURRENTLY statement to retry the cutover, or call yb_finish_mirror_table(%lld), or roll the job back with yb_abort_mirror_table(%lld).",
-								   (long long) jobId, (long long) jobId);
-		ReThrowError(edata);
-	}
-	PG_END_TRY();
-	yb_osc_driver_index_pairs = NIL;
-
+	YbOscFinish(jobId);
 	PopActiveSnapshot();
+
+	error_context_stack = errcallback.previous;
 	UnlockRelationIdForSession(&lockrelid, lockmode);
 }
 
 void
-YbOscCutover(Oid srcOid, Oid dstOid, int64 jobId, const char *alterCmds)
+YbOscCutover(Oid srcOid, Oid dstOid, int64 jobId, const char *query)
 {
-	List	   *raw;
-	RawStmt    *rawStmt;
-	AlterTableStmt *atstmt;
+	AlterTableStmt *atstmt = ParseJobStatement(jobId, query);
 	Oid			namedOid;
 	YbOscJob	job;
-
-	if (alterCmds == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("online schema change job %lld has no ALTER TABLE statement to replay",
-						(long long) jobId)));
-
-	raw = raw_parser(alterCmds, RAW_PARSE_DEFAULT);
-	rawStmt = (list_length(raw) == 1) ? linitial_node(RawStmt, raw) : NULL;
-	if (rawStmt == NULL || !IsA(rawStmt->stmt, AlterTableStmt))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("online schema change job %lld does not record a single ALTER TABLE statement",
-						(long long) jobId),
-				 errdetail("Recorded statement: %s", alterCmds)));
-	atstmt = (AlterTableStmt *) rawStmt->stmt;
 
 	/*
 	 * The source is known by OID; the statement's table name is only checked
@@ -1762,22 +1589,343 @@ YbOscCutover(Oid srcOid, Oid dstOid, int64 jobId, const char *alterCmds)
 		CommandCounterIncrement();
 	}
 
-	yb_osc_index_pairs = yb_osc_driver_index_pairs;
-	yb_osc_cutover_shadow_oid = dstOid;
-	PG_TRY();
-	{
-		RunAlterTable(srcOid, atstmt->cmds, atstmt->relation->inh, alterCmds,
-					  NULL /* outer */ );
-	}
-	PG_FINALLY();
-	{
-		yb_osc_cutover_shadow_oid = InvalidOid;
-		yb_osc_index_pairs = NIL;
-	}
-	PG_END_TRY();
+	RunAlterTable(srcOid, atstmt->cmds, atstmt->relation->inh, query,
+				  NULL /* outer */ , NULL /* capture */ , dstOid);
 
 	if (yb_test_fail_osc_cutover)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("ALTER TABLE ... CONCURRENTLY cutover failed because yb_test_fail_osc_cutover is set")));
+}
+
+/*
+ * Refuse a swap when the source's post-ALTER columns differ from the
+ * shadow's, for instance because a recovery cutover replayed the statement
+ * under a different search_path.  Swapping anyway would put a DocDB table of
+ * the wrong layout under the source.
+ */
+static void
+CheckAttrsMatch(Relation srcRel, Relation shadowRel)
+{
+	TupleDesc	src = RelationGetDescr(srcRel);
+	TupleDesc	shd = RelationGetDescr(shadowRel);
+
+	for (int i = 0; i < Max(src->natts, shd->natts); i++)
+	{
+		Form_pg_attribute a = i < src->natts ? TupleDescAttr(src, i) : NULL;
+		Form_pg_attribute b = i < shd->natts ? TupleDescAttr(shd, i) : NULL;
+
+		if (a && b && a->attisdropped && b->attisdropped)
+			continue;
+		if (a && b && !a->attisdropped && !b->attisdropped &&
+			strcmp(NameStr(a->attname), NameStr(b->attname)) == 0 &&
+			a->atttypid == b->atttypid &&
+			a->atttypmod == b->atttypmod &&
+			a->attcollation == b->attcollation &&
+			a->attnotnull == b->attnotnull)
+			continue;
+
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("table \"%s\" no longer matches its shadow at cutover",
+						RelationGetRelationName(srcRel)),
+				 errdetail("Column %d differs.", i + 1),
+				 errhint("Abort the online schema change with yb_abort_mirror_table and retry it.")));
+	}
+}
+
+/* Whether two relations have the same reloptions, ignoring those YB does not persist. */
+static bool
+ReloptionsMatch(Oid rel1, Oid rel2)
+{
+	List	   *opts[2] = {NIL, NIL};
+	Oid			relids[2] = {rel1, rel2};
+
+	for (int i = 0; i < 2; i++)
+	{
+		HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relids[i]));
+		Datum		datum;
+		bool		isnull;
+
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u", relids[i]);
+		datum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions, &isnull);
+		if (!isnull)
+			opts[i] = untransformRelOptions(ybExcludeNonPersistentReloptions(datum));
+		ReleaseSysCache(tuple);
+	}
+
+	/* DefElems of String values: equal() compares names and values. */
+	return equal(opts[0], opts[1]);
+}
+
+/* pg_index.indclass of indexOid, copied. */
+static oidvector *
+IndexClasses(Oid indexOid)
+{
+	HeapTuple	tuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexOid));
+	Datum		datum;
+	bool		isnull;
+	oidvector  *result;
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for index %u", indexOid);
+	datum = SysCacheGetAttr(INDEXRELID, tuple, Anum_pg_index_indclass, &isnull);
+	Assert(!isnull);
+	result = (oidvector *) PG_DETOAST_DATUM_COPY(datum);
+	ReleaseSysCache(tuple);
+	return result;
+}
+
+/*
+ * Whether an index of the source and an index of the shadow have the same
+ * definition: what pg_get_indexdef shows, but the names.  Key columns are
+ * compared by name, expressions and predicates by their deparsed text over
+ * the same alias.
+ */
+static bool
+IndexDefsMatch(Oid srcIndex, Oid srcHeap, Oid shadowIndex, Oid shadowHeap)
+{
+	Relation	a = index_open(srcIndex, AccessExclusiveLock);
+	Relation	b = index_open(shadowIndex, AccessExclusiveLock);
+	Form_pg_index fa = a->rd_index;
+	Form_pg_index fb = b->rd_index;
+	bool		match;
+
+	match = fa->indisunique == fb->indisunique &&
+		fa->indisprimary == fb->indisprimary &&
+		fa->indisexclusion == fb->indisexclusion &&
+		fa->indnullsnotdistinct == fb->indnullsnotdistinct &&
+		fa->indnatts == fb->indnatts &&
+		fa->indnkeyatts == fb->indnkeyatts &&
+		a->rd_rel->relam == b->rd_rel->relam &&
+		a->rd_rel->reltablespace == b->rd_rel->reltablespace;
+
+	for (int i = 0; match && i < fa->indnatts; i++)
+	{
+		AttrNumber	ka = fa->indkey.values[i];
+		AttrNumber	kb = fb->indkey.values[i];
+
+		if ((ka == 0) != (kb == 0) ||
+			(ka != 0 && strcmp(get_attname(srcHeap, ka, false),
+							   get_attname(shadowHeap, kb, false)) != 0))
+			match = false;
+	}
+
+	/* Opclasses, collations and options exist for key columns only. */
+	if (match)
+	{
+		oidvector  *ca = IndexClasses(srcIndex);
+		oidvector  *cb = IndexClasses(shadowIndex);
+
+		for (int i = 0; match && i < fa->indnkeyatts; i++)
+		{
+			if (ca->values[i] != cb->values[i] ||
+				a->rd_indcollation[i] != b->rd_indcollation[i] ||
+				a->rd_indoption[i] != b->rd_indoption[i])
+				match = false;
+		}
+	}
+
+	if (match)
+	{
+		List	   *ctxA = deparse_context_for("t", srcHeap);
+		List	   *ctxB = deparse_context_for("t", shadowHeap);
+		Node	   *exprsA = (Node *) RelationGetIndexExpressions(a);
+		Node	   *exprsB = (Node *) RelationGetIndexExpressions(b);
+		Node	   *predA = (Node *) make_ands_explicit(RelationGetIndexPredicate(a));
+		Node	   *predB = (Node *) make_ands_explicit(RelationGetIndexPredicate(b));
+
+		match = strcmp(deparse_expression(exprsA, ctxA, false, false, false, false),
+					   deparse_expression(exprsB, ctxB, false, false, false, false)) == 0 &&
+			strcmp(deparse_expression(predA, ctxA, false, false, false, false),
+				   deparse_expression(predB, ctxB, false, false, false, false)) == 0;
+	}
+
+	match = match && ReloptionsMatch(srcIndex, shadowIndex);
+
+	index_close(a, NoLock);
+	index_close(b, NoLock);
+	return match;
+}
+
+/*
+ * Give srcIndex the shadow index's DocDB index table and validity flags,
+ * leaving the old table on shadowIndex for the shadow's drop.  A YB primary
+ * key index has no DocDB table of its own, so only its flags are copied.
+ * Returns whether a DocDB index table changed hands.
+ */
+static bool
+SwapIndexFiles(Oid srcIndex, Oid shadowIndex)
+{
+	Relation	pgIndex = table_open(IndexRelationId, RowExclusiveLock);
+	HeapTuple	srcTuple = SearchSysCacheCopy1(INDEXRELID, ObjectIdGetDatum(srcIndex));
+	HeapTuple	shadowTuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(shadowIndex));
+	Form_pg_index srcForm;
+	Form_pg_index shadowForm;
+	bool		isPrimary;
+
+	if (!HeapTupleIsValid(srcTuple))
+		elog(ERROR, "cache lookup failed for index %u", srcIndex);
+	if (!HeapTupleIsValid(shadowTuple))
+		elog(ERROR, "cache lookup failed for index %u", shadowIndex);
+	srcForm = (Form_pg_index) GETSTRUCT(srcTuple);
+	shadowForm = (Form_pg_index) GETSTRUCT(shadowTuple);
+	isPrimary = srcForm->indisprimary;
+
+	if (srcForm->indisvalid != shadowForm->indisvalid ||
+		srcForm->indisready != shadowForm->indisready ||
+		srcForm->indislive != shadowForm->indislive)
+	{
+		srcForm->indisvalid = shadowForm->indisvalid;
+		srcForm->indisready = shadowForm->indisready;
+		srcForm->indislive = shadowForm->indislive;
+		CatalogTupleUpdate(pgIndex, &srcTuple->t_self, srcTuple);
+	}
+
+	ReleaseSysCache(shadowTuple);
+	heap_freetuple(srcTuple);
+	table_close(pgIndex, RowExclusiveLock);
+
+	if (isPrimary)
+	{
+		CacheInvalidateRelcacheByRelid(srcIndex);
+		return false;
+	}
+
+	YbSwapRelationFiles(srcIndex, shadowIndex, true /* is_internal */ ,
+						InvalidTransactionId, InvalidMultiXactId);
+	return true;
+}
+
+/*
+ * relid, the source table or one of its indexes, now owns a DocDB table that
+ * was created for the shadow and still carries the shadow's name and OID as
+ * its pg_table_id.  Rename it so that master-side tools show the source's
+ * names (the master allows the transient duplicate with the old table), and
+ * point its pg_table_id at relid, which the DDL-atomicity verifier, CDC and
+ * backup use to map it to pg_class.
+ */
+static void
+AdoptDocDBTable(Oid relid, ObjectType objtype)
+{
+	YbcPgStatement handle = NULL;
+	Oid			databaseId = YBCGetDatabaseOidByRelid(relid);
+
+	YBCRename(relid, objtype, get_rel_name(relid), NULL /* colname */ );
+	HandleYBStatus(YBCPgNewAlterTable(databaseId,
+									  YbGetRelfileNodeIdFromRelId(relid), &handle));
+	HandleYBStatus(YBCPgAlterTableSetPgTableId(handle, databaseId, relid));
+	YBCExecAlterTable(handle, relid);
+}
+
+/*
+ * The shadow is the rewritten table: the job filled it, and it enforced the
+ * new constraints on every row written to it.  So where an ordinary rewrite
+ * builds a transient heap, copies into it and calls finish_heap_swap, which
+ * reindexes, this swaps relfilenodes with the shadow, the table and each
+ * index with its counterpart, and drops the shadow, which then holds the old
+ * storage.  Phase 2 ran the same subcommands on both sides, so their indexes
+ * correspond one to one, and are paired by definition.
+ */
+void
+YbOscSwapWithShadow(Oid sourceOid, Oid shadowOid)
+{
+	Relation	sourceRel = table_open(sourceOid, NoLock);
+	Relation	shadowRel = table_open(shadowOid, AccessExclusiveLock);
+	List	   *shadowIndexes = RelationGetIndexList(shadowRel);
+	List	   *pairedSource = NIL;
+	List	   *pairedShadow = NIL;
+	List	   *adoptedIndexes = NIL;
+	ListCell   *lc;
+	ListCell   *lc2;
+
+	if (sourceRel->rd_rel->relkind != RELKIND_RELATION ||
+		shadowRel->rd_rel->relkind != RELKIND_RELATION ||
+		!IsYBRelation(sourceRel) || !IsYBRelation(shadowRel) ||
+		sourceRel->rd_rel->relpersistence != shadowRel->rd_rel->relpersistence)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("ALTER TABLE ... CONCURRENTLY cannot swap table \"%s\" with \"%s\"",
+						RelationGetRelationName(sourceRel),
+						RelationGetRelationName(shadowRel))));
+	CheckAttrsMatch(sourceRel, shadowRel);
+
+	foreach(lc, RelationGetIndexList(sourceRel))
+	{
+		Oid			srcIndex = lfirst_oid(lc);
+		Oid			match = InvalidOid;
+
+		foreach(lc2, shadowIndexes)
+		{
+			if (IndexDefsMatch(srcIndex, sourceOid, lfirst_oid(lc2), shadowOid))
+			{
+				match = lfirst_oid(lc2);
+				break;
+			}
+		}
+		if (!OidIsValid(match))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("could not pair index \"%s\" with a shadow index",
+							get_rel_name(srcIndex))));
+		pairedSource = lappend_oid(pairedSource, srcIndex);
+		pairedShadow = lappend_oid(pairedShadow, match);
+		shadowIndexes = list_delete_oid(shadowIndexes, match);
+	}
+	if (shadowIndexes != NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("could not pair shadow index \"%s\" with an index of \"%s\"",
+						get_rel_name(linitial_oid(shadowIndexes)),
+						RelationGetRelationName(sourceRel))));
+
+	/* Like finish_heap_swap, swap with the relations closed; locks stay. */
+	table_close(sourceRel, NoLock);
+	table_close(shadowRel, NoLock);
+
+	/*
+	 * Same frozenXid and cutoffMulti as finish_heap_swap after a rewrite:
+	 * every row of the adopted table was written by the job.
+	 */
+	YbSwapRelationFiles(sourceOid, shadowOid, true /* is_internal */ ,
+						RecentXmin, ReadNextMultiXactId());
+	forboth(lc, pairedSource, lc2, pairedShadow)
+	{
+		if (SwapIndexFiles(lfirst_oid(lc), lfirst_oid(lc2)))
+			adoptedIndexes = lappend_oid(adoptedIndexes, lfirst_oid(lc));
+	}
+	CommandCounterIncrement();
+
+	AdoptDocDBTable(sourceOid, OBJECT_TABLE);
+	foreach(lc, adoptedIndexes)
+		AdoptDocDBTable(lfirst_oid(lc), OBJECT_INDEX);
+
+	if (yb_osc_keep_old_table)
+	{
+		char		oldName[NAMEDATALEN];
+
+		snprintf(oldName, sizeof(oldName), "yb_osc_old_%u", sourceOid);
+		RenameRelationInternal(shadowOid, oldName, true /* is_internal */ ,
+							   false /* is_index */ );
+		YBCRename(shadowOid, OBJECT_TABLE, oldName, NULL /* colname */ );
+	}
+	else
+	{
+		/*
+		 * As finish_heap_swap drops the transient heap.  The transform and
+		 * the capture triggers are already gone, so DROP_RESTRICT suffices.
+		 */
+		ObjectAddress object;
+
+		ObjectAddressSet(object, RelationRelationId, shadowOid);
+		performDeletion(&object, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+	}
+
+	CacheInvalidateRelcacheByRelid(sourceOid);
+	foreach(lc, pairedSource)
+		CacheInvalidateRelcacheByRelid(lfirst_oid(lc));
+	/* Have the adopted table's pggate cache entry dropped after the DDL. */
+	YbTrackAlteredTableId(sourceOid);
+	CommandCounterIncrement();
 }

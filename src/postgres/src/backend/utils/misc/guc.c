@@ -121,7 +121,6 @@
 #include "access/yb_scan_core.h"
 #include "catalog/index.h"
 #include "commands/copy.h"
-#include "commands/tablecmds.h"
 #include "commands/yb_alter_concurrently.h"
 #include "commands/yb_analyze.h"
 #include "common/ip.h"

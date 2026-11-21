@@ -31,6 +31,7 @@
 
 #include "postgres.h"
 
+#include "nodes/pg_list.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /* Values stored in pg_yb_online_schema_change.status. */
@@ -94,16 +95,26 @@ extern void YbOscCheckTransactionalDdl(void);
 extern int64 YbOscBegin(Oid srcOid, Oid dstOid, Oid transformOid,
 						const YbOscBeginOptions *opts);
 
-/* The row of job jobId, or of the newest job from srcOid into dstOid. */
+/*
+ * The checks YbOscBegin makes before it starts the job, for a caller that
+ * wants their errors before it commits what the job will use.
+ */
+extern void YbOscValidateJob(Oid srcOid, Oid dstOid, Oid transformOid,
+							 const YbOscBeginOptions *opts);
+
+/* The row of job jobId. */
 extern bool YbOscFetchJob(int64 jobId, YbOscJob *job);
-extern bool YbOscFetchLatestJob(Oid srcOid, Oid dstOid, YbOscJob *job);
+
+/* The id of an active job whose source or target is in relOids, or 0. */
+extern int64 YbOscFindActiveJob(List *relOids);
 
 /*
  * The master's state of an active job's copy.  Returns false when the master
  * cannot be asked, so that a poller can try again.  *errorMessage, if given,
  * receives the failure detail of a failed copy, or NULL.
  */
-extern bool YbOscGetCopyState(const YbOscJob *job, YbcPgTableBackfillState *state,
+extern bool YbOscGetCopyState(Oid srcOid, int64 jobId,
+							  YbcPgTableBackfillState *state,
 							  char **errorMessage);
 
 /*

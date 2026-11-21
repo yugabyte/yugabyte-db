@@ -135,6 +135,7 @@
 #include "catalog/yb_oid_assignment.h"
 #include "commands/dbcommands.h"
 #include "commands/view.h"
+#include "commands/yb_alter_concurrently.h"
 #include "commands/yb_cmds.h"
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
@@ -167,22 +168,6 @@ typedef struct OnCommitItem
 } OnCommitItem;
 
 static List *on_commits = NIL;
-
-/*
- * YB: ALTER TABLE ... CONCURRENTLY state; see commands/tablecmds.h.
- *
- * The capture and the cutover apply only to the outermost ATController run,
- * not to the nested runs phase 2 may issue on other relations, so runs are
- * counted by depth and the outermost run's main relation is remembered as
- * the cutover source.
- */
-YbAlterTableCapture *yb_alter_table_capture = NULL;
-Oid			yb_osc_cutover_shadow_oid = InvalidOid;
-List	   *yb_osc_index_pairs = NIL;
-bool		yb_osc_keep_old_table = false;
-
-static int	yb_at_controller_depth = 0;
-static Oid	yb_osc_cutover_source_oid = InvalidOid;
 
 
 /*
@@ -749,16 +734,8 @@ static void YbATSetPKRewriteChildPartitions(List **yb_wqueue,
 static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
 static bool YbIsTablePartOfPublication(Oid relOid);
-static bool YbOscIsCutoverSource(Oid relid);
-static void YbATControllerExit(bool outermost);
-static void YbATControllerAfterCatalogs(List *wqueue);
-static void YbOscSwapWithShadow(AlteredTableInfo *tab, Oid shadow_oid);
-static bool YbOscIndexDefsMatch(Oid src_index, Oid src_heap,
-								Oid shadow_index, Oid shadow_heap);
-static void YbOscCheckAttrsMatch(Relation source_rel, Relation shadow_rel,
-								 const char *what);
-static bool YbOscReloptionsMatch(Oid rel1, Oid rel2);
-static bool YbOscSwapIndexFiles(Oid src_index, Oid shadow_index);
+static bool YbATIsOscCutover(AlterTableUtilityContext *context);
+static void YbATReportRewrite(List *wqueue, AlterTableUtilityContext *context);
 static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
 													 Relation rel,
 													 AlterTableCmd *cmd,
@@ -5019,8 +4996,6 @@ ATController(AlterTableStmt *parsetree,
 	ListCell   *lcmd;
 
 	List	   *yb_rollback_handles = NIL;
-	Oid			yb_main_relid = RelationGetRelid(rel);
-	bool		yb_outermost;
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -5032,11 +5007,6 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
-
-	/* YB: see yb_at_controller_depth; undone by YbATControllerExit */
-	yb_outermost = (yb_at_controller_depth++ == 0);
-	if (yb_outermost && OidIsValid(yb_osc_cutover_shadow_oid))
-		yb_osc_cutover_source_oid = yb_main_relid;
 
 	/* Phase 2: update system catalogs */
 	/* YB: wrap in try-catch for cache invalidation */
@@ -5058,7 +5028,6 @@ ATController(AlterTableStmt *parsetree,
 		 */
 		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
-		YbATControllerExit(yb_outermost);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -5067,8 +5036,8 @@ ATController(AlterTableStmt *parsetree,
 	/* YB: wrap in try-catch for DDL rollback and cache invalidation */
 	PG_TRY();
 	{
-		if (yb_outermost)
-			YbATControllerAfterCatalogs(wqueue);
+		if (context)
+			YbATReportRewrite(wqueue, context);
 		ATRewriteTables(parsetree, &wqueue, lockmode, context);
 		YbInvalidateTableCacheForAlteredTables();
 	}
@@ -5098,74 +5067,9 @@ ATController(AlterTableStmt *parsetree,
 		 */
 		if (!YBIsDdlTransactionBlockEnabled())
 			YbInvalidateTableCacheForAlteredTables();
-		YbATControllerExit(yb_outermost);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	YbATControllerExit(yb_outermost);
-}
-
-/*
- * YB: whether relid is the relation an ALTER TABLE ... CONCURRENTLY cutover
- * is applying its ALTER to.
- */
-static bool
-YbOscIsCutoverSource(Oid relid)
-{
-	return OidIsValid(yb_osc_cutover_shadow_oid) &&
-		relid == yb_osc_cutover_source_oid;
-}
-
-static void
-YbATControllerExit(bool outermost)
-{
-	yb_at_controller_depth--;
-	if (outermost)
-		yb_osc_cutover_source_oid = InvalidOid;
-}
-
-/*
- * YB: between phase 2 and phase 3 of the outermost ALTER TABLE, hand the
- * driver what phase 2 decided for the main relation (ADD COLUMN decides
- * whether to rewrite only there).  A cutover of a statement that does not
- * rewrite means the shadow and the source disagree, so it is refused.
- */
-static void
-YbATControllerAfterCatalogs(List *wqueue)
-{
-	AlteredTableInfo *tab;
-
-	if (wqueue == NIL)
-		return;
-	tab = (AlteredTableInfo *) linitial(wqueue);
-
-	if (yb_alter_table_capture)
-	{
-		YbAlterTableCapture *capture = yb_alter_table_capture;
-		ListCell   *lc;
-
-		capture->relid = tab->relid;
-		capture->rewrite = tab->rewrite;
-		capture->verify_new_notnull = tab->verify_new_notnull;
-		capture->newvals = NIL;
-		foreach(lc, tab->newvals)
-		{
-			NewColumnValue *ex = (NewColumnValue *) lfirst(lc);
-			YbNewColumnValue *val = palloc(sizeof(YbNewColumnValue));
-
-			val->attnum = ex->attnum;
-			val->expr = copyObject(ex->expr);
-			val->is_generated = ex->is_generated;
-			capture->newvals = lappend(capture->newvals, val);
-		}
-		capture->changed_index_oids = list_copy(tab->changedIndexOids);
-	}
-
-	if (OidIsValid(yb_osc_cutover_shadow_oid) && tab->rewrite == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("ALTER TABLE ... CONCURRENTLY cutover expected a table rewrite")));
 }
 
 /*
@@ -5602,12 +5506,10 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 											   lockmode);
 
 	/*
-	 * YB: at an ALTER TABLE ... CONCURRENTLY cutover, phase 3 replaces the
-	 * main relation's DocDB table with the shadow's, which already has the
-	 * post-ALTER schema, so no DocDB alter is sent: only the catalog side of
-	 * phase 2 applies.
+	 * YB: an ALTER TABLE ... CONCURRENTLY cutover adopts the shadow's DocDB
+	 * table, which already has the new schema, so no DocDB alter is sent.
 	 */
-	if (YbOscIsCutoverSource(main_relid))
+	if (YbATIsOscCutover(context))
 	{
 		handles = NIL;
 		yb_rollback_handle = NULL;
@@ -6405,20 +6307,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
 								 "React with thumbs up to raise its priority.")));
 
-			/*
-			 * YB: an ALTER TABLE ... CONCURRENTLY cutover adopts the online
-			 * schema change job's copy, which includes concurrent DML, so the
-			 * inconsistency notice does not apply.
-			 */
-			bool		yb_osc_cutover = YbOscIsCutoverSource(tab->relid);
-
-			if (yb_osc_cutover && tab->relkind == RELKIND_PARTITIONED_TABLE)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("ALTER TABLE ... CONCURRENTLY is not supported on partitioned tables")));
-
-			if (IsYBRelation(OldHeap) && !yb_osc_cutover &&
-				!YBSuppressUnsafeAlterNotice())
+			if (IsYBRelation(OldHeap) && !YBSuppressUnsafeAlterNotice() &&
+				!YbATIsOscCutover(context))
 				ereport(NOTICE,
 						(errmsg("table rewrite may lead to inconsistencies"),
 						 errdetail("Concurrent DMLs may not be reflected in"
@@ -6513,59 +6403,59 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 										 tab->rewrite);
 
 			/*
-			 * YB: at an ALTER TABLE ... CONCURRENTLY cutover the shadow is the
-			 * rewritten table, and it enforced the new constraints on every
-			 * row written to it, so the swap replaces the transient heap, the
-			 * row copy, the constraint checks and the reindex.
+			 * YB: an ALTER TABLE ... CONCURRENTLY cutover takes the rewritten
+			 * table, rows, constraints and indexes, from its shadow.
 			 */
-			if (yb_osc_cutover)
-				YbOscSwapWithShadow(tab, yb_osc_cutover_shadow_oid);
-			else
+			if (YbATIsOscCutover(context) && tab->relid == context->relid)
 			{
-				/*
-				 * Create transient table that will receive the modified data.
-				 *
-				 * Ensure it is marked correctly as logged or unlogged.  We have
-				 * to do this here so that buffers for the new relfilenode will
-				 * have the right persistence set, and at the same time ensure
-				 * that the original filenode's buffers will get read in with the
-				 * correct setting (i.e. the original one).  Otherwise a rollback
-				 * after the rewrite would possibly result with buffers for the
-				 * original filenode having the wrong persistence setting.
-				 *
-				 * NB: This relies on swap_relation_files() also swapping the
-				 * persistence. That wouldn't work for pg_class, but that can't be
-				 * unlogged anyway.
-				 */
-				OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod,
-										   persistence, lockmode,
-										   !tab->yb_skip_copy_split_options);
-
-				/*
-				 * Copy the heap data into the new table with the desired
-				 * modifications, and test the current data within the table
-				 * against new constraints generated by ALTER TABLE commands.
-				 */
-				ATRewriteTable(tab, OIDNewHeap, lockmode);
-
-				/*
-				 * Swap the physical files of the old and new heaps, then rebuild
-				 * indexes and discard the old heap.  We can use RecentXmin for
-				 * the table's new relfrozenxid because we rewrote all the tuples
-				 * in ATRewriteTable, so no older Xid remains in the table.  Also,
-				 * we never try to swap toast tables by content, since we have no
-				 * interest in letting this code work on system catalogs.
-				 */
-				finish_heap_swap(tab->relid, OIDNewHeap,
-								 false, false, true,
-								 !OidIsValid(tab->newTableSpace),
-								 RecentXmin,
-								 ReadNextMultiXactId(),
-								 persistence,
-								 true /* yb_copy_split_options */ ,
-								 tab->changedIndexNames,
-								 tab->changedIndexSplitOpts);
+				YbOscSwapWithShadow(tab->relid, context->yb_osc_shadow_oid);
+				InvokeObjectPostAlterHook(RelationRelationId, tab->relid, 0);
+				continue;
 			}
+
+			/*
+			 * Create transient table that will receive the modified data.
+			 *
+			 * Ensure it is marked correctly as logged or unlogged.  We have
+			 * to do this here so that buffers for the new relfilenode will
+			 * have the right persistence set, and at the same time ensure
+			 * that the original filenode's buffers will get read in with the
+			 * correct setting (i.e. the original one).  Otherwise a rollback
+			 * after the rewrite would possibly result with buffers for the
+			 * original filenode having the wrong persistence setting.
+			 *
+			 * NB: This relies on swap_relation_files() also swapping the
+			 * persistence. That wouldn't work for pg_class, but that can't be
+			 * unlogged anyway.
+			 */
+			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod,
+									   persistence, lockmode,
+									   !tab->yb_skip_copy_split_options);
+
+			/*
+			 * Copy the heap data into the new table with the desired
+			 * modifications, and test the current data within the table
+			 * against new constraints generated by ALTER TABLE commands.
+			 */
+			ATRewriteTable(tab, OIDNewHeap, lockmode);
+
+			/*
+			 * Swap the physical files of the old and new heaps, then rebuild
+			 * indexes and discard the old heap.  We can use RecentXmin for
+			 * the table's new relfrozenxid because we rewrote all the tuples
+			 * in ATRewriteTable, so no older Xid remains in the table.  Also,
+			 * we never try to swap toast tables by content, since we have no
+			 * interest in letting this code work on system catalogs.
+			 */
+			finish_heap_swap(tab->relid, OIDNewHeap,
+							 false, false, true,
+							 !OidIsValid(tab->newTableSpace),
+							 RecentXmin,
+							 ReadNextMultiXactId(),
+							 persistence,
+							 true /* yb_copy_split_options */ ,
+							 tab->changedIndexNames,
+							 tab->changedIndexSplitOpts);
 
 			InvokeObjectPostAlterHook(RelationRelationId, tab->relid, 0);
 		}
@@ -6690,488 +6580,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			CommandCounterIncrement();
 		}
 	}
-}
-
-/*
- * YB: refuse a cutover swap when the source's post-phase-2 columns differ
- * from the shadow's, for instance because a recovery cutover replayed the
- * ALTER under a different search_path.  Swapping anyway would put a DocDB
- * table of the wrong layout under the source.  Compares, in attnum order,
- * dropped-ness and, for live attributes, name, type, typmod, collation and
- * NOT NULL.
- */
-static void
-YbOscCheckAttrsMatch(Relation source_rel, Relation shadow_rel, const char *what)
-{
-	TupleDesc	src = RelationGetDescr(source_rel);
-	TupleDesc	shd = RelationGetDescr(shadow_rel);
-
-	if (src->natts != shd->natts)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s \"%s\" no longer matches its shadow at cutover",
-						what, RelationGetRelationName(source_rel)),
-				 errdetail("It has %d columns but the shadow has %d.",
-						   src->natts, shd->natts),
-				 errhint("Abort the online schema change with yb_abort_mirror_table and retry it.")));
-
-	for (int i = 0; i < src->natts; i++)
-	{
-		Form_pg_attribute a = TupleDescAttr(src, i);
-		Form_pg_attribute b = TupleDescAttr(shd, i);
-
-		if (a->attisdropped != b->attisdropped)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("%s \"%s\" no longer matches its shadow at cutover",
-							what, RelationGetRelationName(source_rel)),
-					 errdetail("Column %d is dropped on one side but not the other.", i + 1),
-					 errhint("Abort the online schema change with yb_abort_mirror_table and retry it.")));
-
-		if (a->attisdropped)
-			continue;
-
-		if (strcmp(NameStr(a->attname), NameStr(b->attname)) != 0 ||
-			a->atttypid != b->atttypid ||
-			a->atttypmod != b->atttypmod ||
-			a->attcollation != b->attcollation ||
-			a->attnotnull != b->attnotnull)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("%s \"%s\" no longer matches its shadow at cutover",
-							what, RelationGetRelationName(source_rel)),
-					 errdetail("Column %d (\"%s\") differs from the shadow's \"%s\".",
-							   i + 1, NameStr(a->attname), NameStr(b->attname)),
-					 errhint("Abort the online schema change with yb_abort_mirror_table and retry it.")));
-	}
-}
-
-/*
- * After the relfilenode swap, relid (the source table or one of its
- * indexes) owns a DocDB table that was created for the shadow and still
- * records the shadow's OID as its pg_table_id.  Point it at relid, so that
- * whatever maps a DocDB table back to pg_class finds the live relation.
- */
-static void
-YbOscSetAdoptedPgTableId(Oid relid)
-{
-	YbcPgStatement handle = NULL;
-	Oid			databaseId = YBCGetDatabaseOidByRelid(relid);
-
-	HandleYBStatus(YBCPgNewAlterTable(databaseId,
-									  YbGetRelfileNodeIdFromRelId(relid), &handle));
-	HandleYBStatus(YBCPgAlterTableSetPgTableId(handle, databaseId, relid));
-	YBCExecAlterTable(handle, relid);
-}
-
-/*
- * YB: phase 3 of an ALTER TABLE ... CONCURRENTLY cutover.  The online schema
- * change job has already populated the shadow, so instead of copying rows into
- * a transient heap the altered relation adopts the shadow's DocDB table and
- * index tables by relfilenode swap, and the shadow, now holding the old ones,
- * is dropped.
- *
- * Indexes are paired first by the pairs the driver recorded for indexes that
- * exist on both sides before the ALTER, then by definition for the indexes
- * phase 2 recreated on both sides (ALTER TYPE rebuilds, a new primary key).
- * Both sides ran the same subcommands, so the sets correspond 1:1; an
- * unpaired index is an internal error.
- */
-static void
-YbOscSwapWithShadow(AlteredTableInfo *tab, Oid shadow_oid)
-{
-	Oid			source_oid = tab->relid;
-	Relation	source_rel;
-	Relation	shadow_rel;
-	char	   *source_name;
-	List	   *source_indexes;
-	List	   *shadow_indexes;
-	List	   *paired_source = NIL;
-	List	   *paired_shadow = NIL;
-	List	   *adopted_indexes = NIL;
-	ListCell   *lc;
-	ListCell   *lc2;
-
-	if (tab->chgPersistence || OidIsValid(tab->newAccessMethod))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ALTER TABLE ... CONCURRENTLY cannot change the persistence or access method of a table")));
-
-	/* The driver already holds this lock; the swap rewrites both pg_class rows. */
-	shadow_rel = table_open(shadow_oid, AccessExclusiveLock);
-	source_rel = table_open(source_oid, NoLock);
-
-	if (!IsYBRelation(source_rel) ||
-		source_rel->rd_rel->relkind != RELKIND_RELATION ||
-		!IsYBRelation(shadow_rel) ||
-		shadow_rel->rd_rel->relkind != RELKIND_RELATION)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("ALTER TABLE ... CONCURRENTLY cutover requires plain YugabyteDB tables"),
-				 errdetail("Table \"%s\" or its shadow \"%s\" is not one.",
-						   RelationGetRelationName(source_rel),
-						   RelationGetRelationName(shadow_rel))));
-
-	/* swap_relation_files swaps relpersistence along with the relfilenode. */
-	if (source_rel->rd_rel->relpersistence != shadow_rel->rd_rel->relpersistence)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("shadow table \"%s\" does not have the persistence of \"%s\"",
-						RelationGetRelationName(shadow_rel),
-						RelationGetRelationName(source_rel))));
-
-	source_name = pstrdup(RelationGetRelationName(source_rel));
-	source_indexes = RelationGetIndexList(source_rel);
-	shadow_indexes = RelationGetIndexList(shadow_rel);
-
-	YbOscCheckAttrsMatch(source_rel, shadow_rel, "table");
-
-	/* Like finish_heap_swap, swap with the relations closed; locks stay. */
-	table_close(source_rel, NoLock);
-	table_close(shadow_rel, NoLock);
-
-	foreach(lc, yb_osc_index_pairs)
-	{
-		List	   *pair = (List *) lfirst(lc);
-		Oid			src_index = linitial_oid(pair);
-		Oid			shadow_index = lsecond_oid(pair);
-
-		/* Recreated by the ALTER on a side: paired by definition below. */
-		if (!list_member_oid(source_indexes, src_index) ||
-			!list_member_oid(shadow_indexes, shadow_index))
-			continue;
-
-		paired_source = lappend_oid(paired_source, src_index);
-		paired_shadow = lappend_oid(paired_shadow, shadow_index);
-		source_indexes = list_delete_oid(source_indexes, src_index);
-		shadow_indexes = list_delete_oid(shadow_indexes, shadow_index);
-	}
-
-	foreach(lc, source_indexes)
-	{
-		Oid			src_index = lfirst_oid(lc);
-		Oid			match = InvalidOid;
-
-		foreach(lc2, shadow_indexes)
-		{
-			if (YbOscIndexDefsMatch(src_index, source_oid,
-									lfirst_oid(lc2), shadow_oid))
-			{
-				match = lfirst_oid(lc2);
-				break;
-			}
-		}
-		if (!OidIsValid(match))
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("could not pair index \"%s\" with a shadow index",
-							get_rel_name(src_index))));
-
-		paired_source = lappend_oid(paired_source, src_index);
-		paired_shadow = lappend_oid(paired_shadow, match);
-		shadow_indexes = list_delete_oid(shadow_indexes, match);
-	}
-	if (shadow_indexes != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("could not pair shadow index \"%s\" with an index of \"%s\"",
-						get_rel_name(linitial_oid(shadow_indexes)),
-						source_name)));
-
-	/* The driver-recorded pairs skipped the definition match above. */
-	forboth(lc, paired_source, lc2, paired_shadow)
-	{
-		Relation	si = index_open(lfirst_oid(lc), AccessExclusiveLock);
-		Relation	di = index_open(lfirst_oid(lc2), AccessExclusiveLock);
-
-		YbOscCheckAttrsMatch(si, di, "index");
-		index_close(si, NoLock);
-		index_close(di, NoLock);
-	}
-
-	/*
-	 * Same frozenXid and cutoffMulti as finish_heap_swap on the rewrite path:
-	 * every row of the adopted table was written by the online schema change
-	 * job.
-	 */
-	YbSwapRelationFiles(source_oid, shadow_oid, true /* is_internal */ ,
-						RecentXmin, ReadNextMultiXactId());
-
-	forboth(lc, paired_source, lc2, paired_shadow)
-	{
-		if (YbOscSwapIndexFiles(lfirst_oid(lc), lfirst_oid(lc2)))
-			adopted_indexes = lappend_oid(adopted_indexes, lfirst_oid(lc));
-	}
-
-	/* The renames below reach the adopted DocDB tables through the relcache. */
-	CommandCounterIncrement();
-
-	/*
-	 * The adopted DocDB tables still carry the shadow's names and pg_table_id.
-	 * Rename them so that master-side tools show the source's names (RPCs
-	 * address them by id, and the master allows the transient duplicate name
-	 * with the old table), and repair their pg_table_id, which the
-	 * DDL-atomicity verifier, CDC and backup use to map them to pg_class.
-	 */
-	YBCRename(source_oid, OBJECT_TABLE, source_name, NULL /* colname */ );
-	YbOscSetAdoptedPgTableId(source_oid);
-	foreach(lc, adopted_indexes)
-	{
-		Oid			src_index = lfirst_oid(lc);
-
-		YBCRename(src_index, OBJECT_INDEX, get_rel_name(src_index),
-				  NULL /* colname */ );
-		YbOscSetAdoptedPgTableId(src_index);
-	}
-
-	if (yb_osc_keep_old_table)
-	{
-		char		old_name[NAMEDATALEN];
-
-		snprintf(old_name, sizeof(old_name), "yb_osc_old_%u", source_oid);
-		RenameRelationInternal(shadow_oid, old_name, true /* is_internal */ ,
-							   false /* is_index */ );
-		YBCRename(shadow_oid, OBJECT_TABLE, old_name, NULL /* colname */ );
-		CommandCounterIncrement();
-	}
-	else
-	{
-		ObjectAddress object;
-
-		/*
-		 * The shadow now owns the old DocDB tables; dropping it drops them,
-		 * as finish_heap_swap drops the transient heap.  The transform and
-		 * the capture triggers are already gone, so DROP_RESTRICT suffices.
-		 */
-		object.classId = RelationRelationId;
-		object.objectId = shadow_oid;
-		object.objectSubId = 0;
-		performDeletion(&object, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
-		/* performDeletion does CommandCounterIncrement at end */
-	}
-
-	CacheInvalidateRelcacheByRelid(source_oid);
-	foreach(lc, paired_source)
-		CacheInvalidateRelcacheByRelid(lfirst_oid(lc));
-	/* Have the adopted table's pggate cache entry dropped after the DDL. */
-	YbTrackAlteredTableId(source_oid);
-	CommandCounterIncrement();
-}
-
-/*
- * YB: whether two indexes, one on each side of a cutover, have the same
- * definition: pg_get_indexdef equality modulo the relation and index names,
- * compared field by field.  Key columns are compared by name.
- */
-static bool
-YbOscIndexDefsMatch(Oid src_index, Oid src_heap,
-					Oid shadow_index, Oid shadow_heap)
-{
-	Relation	a = index_open(src_index, AccessExclusiveLock);
-	Relation	b = index_open(shadow_index, AccessExclusiveLock);
-	Form_pg_index fa = a->rd_index;
-	Form_pg_index fb = b->rd_index;
-	bool		match;
-
-	match = fa->indisunique == fb->indisunique &&
-		fa->indisprimary == fb->indisprimary &&
-		fa->indisexclusion == fb->indisexclusion &&
-		fa->indnullsnotdistinct == fb->indnullsnotdistinct &&
-		fa->indnatts == fb->indnatts &&
-		fa->indnkeyatts == fb->indnkeyatts &&
-		a->rd_rel->relam == b->rd_rel->relam &&
-		a->rd_rel->reltablespace == b->rd_rel->reltablespace;
-
-	for (int i = 0; match && i < fa->indnatts; i++)
-	{
-		AttrNumber	ka = fa->indkey.values[i];
-		AttrNumber	kb = fb->indkey.values[i];
-
-		if ((ka == 0) != (kb == 0))
-			match = false;
-		else if (ka != 0 &&
-				 strcmp(get_attname(src_heap, ka, false),
-						get_attname(shadow_heap, kb, false)) != 0)
-			match = false;
-	}
-
-	if (match)
-	{
-		HeapTuple	ta = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(src_index));
-		HeapTuple	tb = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(shadow_index));
-		bool		isnull;
-		oidvector  *ca;
-		oidvector  *cb;
-
-		if (!HeapTupleIsValid(ta))
-			elog(ERROR, "cache lookup failed for index %u", src_index);
-		if (!HeapTupleIsValid(tb))
-			elog(ERROR, "cache lookup failed for index %u", shadow_index);
-		ca = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID, ta,
-														   Anum_pg_index_indclass,
-														   &isnull));
-		Assert(!isnull);
-		cb = (oidvector *) DatumGetPointer(SysCacheGetAttr(INDEXRELID, tb,
-														   Anum_pg_index_indclass,
-														   &isnull));
-		Assert(!isnull);
-
-		/* Opclasses, collations and options exist for key columns only. */
-		for (int i = 0; match && i < fa->indnkeyatts; i++)
-		{
-			if (ca->values[i] != cb->values[i] ||
-				a->rd_indcollation[i] != b->rd_indcollation[i] ||
-				a->rd_indoption[i] != b->rd_indoption[i])
-				match = false;
-		}
-		ReleaseSysCache(ta);
-		ReleaseSysCache(tb);
-	}
-
-	if (match)
-	{
-		List	   *exprs_a = RelationGetIndexExpressions(a);
-		List	   *exprs_b = RelationGetIndexExpressions(b);
-		List	   *pred_a = RelationGetIndexPredicate(a);
-		List	   *pred_b = RelationGetIndexPredicate(b);
-
-		match = list_length(exprs_a) == list_length(exprs_b) &&
-			(pred_a == NIL) == (pred_b == NIL);
-
-		if (match && (exprs_a != NIL || pred_a != NIL))
-		{
-			/* The same alias on both sides keeps relation names out. */
-			List	   *ctx_a = deparse_context_for("t", src_heap);
-			List	   *ctx_b = deparse_context_for("t", shadow_heap);
-			ListCell   *la;
-			ListCell   *lb;
-
-			forboth(la, exprs_a, lb, exprs_b)
-			{
-				if (match &&
-					strcmp(deparse_expression((Node *) lfirst(la), ctx_a,
-											  false, false, false, false),
-						   deparse_expression((Node *) lfirst(lb), ctx_b,
-											  false, false, false, false)) != 0)
-					match = false;
-			}
-			if (match && pred_a != NIL)
-				match = strcmp(deparse_expression((Node *) make_ands_explicit(pred_a),
-												  ctx_a, false, false, false, false),
-							   deparse_expression((Node *) make_ands_explicit(pred_b),
-												  ctx_b, false, false, false, false)) == 0;
-		}
-	}
-
-	if (match)
-		match = YbOscReloptionsMatch(src_index, shadow_index);
-
-	index_close(a, NoLock);
-	index_close(b, NoLock);
-	return match;
-}
-
-/*
- * YB: whether two relations have the same pg_class.reloptions, in order,
- * ignoring options YB does not persist.
- */
-static bool
-YbOscReloptionsMatch(Oid rel1, Oid rel2)
-{
-	List	   *opts[2] = {NIL, NIL};
-	Oid			relids[2] = {rel1, rel2};
-	ListCell   *l1;
-	ListCell   *l2;
-
-	for (int i = 0; i < 2; i++)
-	{
-		HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relids[i]));
-		Datum		datum;
-		bool		isnull;
-
-		if (!HeapTupleIsValid(tuple))
-			elog(ERROR, "cache lookup failed for relation %u", relids[i]);
-		datum = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
-								&isnull);
-		if (!isnull)
-			opts[i] = untransformRelOptions(ybExcludeNonPersistentReloptions(datum));
-		ReleaseSysCache(tuple);
-	}
-
-	if (list_length(opts[0]) != list_length(opts[1]))
-		return false;
-
-	forboth(l1, opts[0], l2, opts[1])
-	{
-		DefElem    *d1 = (DefElem *) lfirst(l1);
-		DefElem    *d2 = (DefElem *) lfirst(l2);
-
-		if (strcmp(d1->defname, d2->defname) != 0 ||
-			(d1->arg == NULL) != (d2->arg == NULL) ||
-			(d1->arg != NULL && strcmp(strVal(d1->arg), strVal(d2->arg)) != 0))
-			return false;
-	}
-	return true;
-}
-
-/*
- * YB: give src_index the shadow index's DocDB index table and validity flags,
- * leaving the old table on shadow_index for the shadow's drop.  A YB primary
- * key index has no DocDB table of its own, so only its flags are copied.
- * Returns whether a DocDB index table changed hands.
- */
-static bool
-YbOscSwapIndexFiles(Oid src_index, Oid shadow_index)
-{
-	Relation	pg_index;
-	HeapTuple	src_tuple;
-	HeapTuple	shadow_tuple;
-	Form_pg_index src_form;
-	Form_pg_index shadow_form;
-	bool		is_primary;
-
-	pg_index = table_open(IndexRelationId, RowExclusiveLock);
-
-	src_tuple = SearchSysCacheCopy1(INDEXRELID, ObjectIdGetDatum(src_index));
-	if (!HeapTupleIsValid(src_tuple))
-		elog(ERROR, "cache lookup failed for index %u", src_index);
-	shadow_tuple = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(shadow_index));
-	if (!HeapTupleIsValid(shadow_tuple))
-		elog(ERROR, "cache lookup failed for index %u", shadow_index);
-	src_form = (Form_pg_index) GETSTRUCT(src_tuple);
-	shadow_form = (Form_pg_index) GETSTRUCT(shadow_tuple);
-
-	if (src_form->indisprimary != shadow_form->indisprimary)
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("could not pair index \"%s\" with shadow index \"%s\"",
-						get_rel_name(src_index), get_rel_name(shadow_index)),
-				 errdetail("Only one of them is a primary key index.")));
-	is_primary = src_form->indisprimary;
-
-	if (src_form->indisvalid != shadow_form->indisvalid ||
-		src_form->indisready != shadow_form->indisready ||
-		src_form->indislive != shadow_form->indislive)
-	{
-		src_form->indisvalid = shadow_form->indisvalid;
-		src_form->indisready = shadow_form->indisready;
-		src_form->indislive = shadow_form->indislive;
-		CatalogTupleUpdate(pg_index, &src_tuple->t_self, src_tuple);
-	}
-
-	ReleaseSysCache(shadow_tuple);
-	heap_freetuple(src_tuple);
-	table_close(pg_index, RowExclusiveLock);
-
-	if (is_primary)
-	{
-		CacheInvalidateRelcacheByRelid(src_index);
-		return false;
-	}
-
-	YbSwapRelationFiles(src_index, shadow_index, true /* is_internal */ ,
-						InvalidTransactionId, InvalidMultiXactId);
-	return true;
 }
 
 /*
@@ -24801,4 +24209,56 @@ YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
 						   getObjectDescription(&obj, false), colName),
 				 errhint("Drop the index first, or add a new column with the new type.")));
 	}
+}
+
+/*
+ * YB: whether this ALTER TABLE is the cutover of an ALTER TABLE ...
+ * CONCURRENTLY job.  Only the outermost ALTER TABLE of a statement has these
+ * fields set: nested ones get a context of their own.
+ */
+static bool
+YbATIsOscCutover(AlterTableUtilityContext *context)
+{
+	return context != NULL && OidIsValid(context->yb_osc_shadow_oid);
+}
+
+/*
+ * YB: between phase 2 and phase 3, tell ALTER TABLE ... CONCURRENTLY what
+ * phase 2 decided for the main relation.  Run on the shadow, it records how
+ * each column is recomputed; at the cutover, a statement that no longer
+ * rewrites means the source and the shadow disagree.
+ */
+static void
+YbATReportRewrite(List *wqueue, AlterTableUtilityContext *context)
+{
+	AlteredTableInfo *tab = NULL;
+	ListCell   *lc;
+
+	foreach(lc, wqueue)
+	{
+		if (((AlteredTableInfo *) lfirst(lc))->relid == context->relid)
+			tab = (AlteredTableInfo *) lfirst(lc);
+	}
+
+	if (context->yb_osc_capture && tab)
+	{
+		YbAlterTableCapture *capture = context->yb_osc_capture;
+
+		capture->rewrite = tab->rewrite;
+		foreach(lc, tab->newvals)
+		{
+			NewColumnValue *ex = (NewColumnValue *) lfirst(lc);
+			YbNewColumnValue *val = palloc(sizeof(YbNewColumnValue));
+
+			val->attnum = ex->attnum;
+			val->expr = copyObject(ex->expr);
+			val->is_generated = ex->is_generated;
+			capture->newvals = lappend(capture->newvals, val);
+		}
+	}
+
+	if (YbATIsOscCutover(context) && (tab == NULL || tab->rewrite == 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("ALTER TABLE ... CONCURRENTLY cutover expected a table rewrite")));
 }
