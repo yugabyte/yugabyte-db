@@ -70,8 +70,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   // deterministic on retry after a partial failure.
   private final Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
   private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
-  // Node UUID -> (mount path -> disk UUID). Shared with YNPProvisioning params so CaptureFstab
-  // can populate it before provisioning runs in the same task execution.
+  // Node UUID -> (mount path -> disk UUID), from the mapping saved on the node or from
+  // CaptureFstab. Shared with YNPProvisioning params so CaptureFstab can populate it before
+  // provisioning runs in the same task execution.
   private final Map<UUID, Map<String, String>> deviceMappingByNode = new ConcurrentHashMap<>();
 
   private final XClusterUniverseService xClusterUniverseService;
@@ -105,11 +106,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     @JsonProperty("replacementCompletedNodes")
     Set<UUID> replacementCompletedNodes = ConcurrentHashMap.newKeySet();
-
-    // Node UUID to mount-path -> disk-UUID mapping captured from /etc/fstab before root volume
-    // replacement.
-    @JsonProperty("deviceMappingByNode")
-    Map<UUID, Map<String, String>> deviceMappingByNode = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -125,6 +121,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   @Override
   public NodeState getNodeState() {
     return NodeState.VMImageUpgrade;
+  }
+
+  /**
+   * An earlier attempt that left the node in this state may have deleted its node agent record,
+   * which ReplaceRootVolume does before the swap, so the stop can fail. A rerun is a first try, so
+   * the base doesn't tolerate that, but the node gets a new root volume and agent anyway.
+   */
+  @Override
+  protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
+    return super.isIgnoreStopError(upgradeContext, nodeDetails)
+        || nodeDetails.state == NodeState.VMImageUpgrade;
   }
 
   @Override
@@ -264,13 +271,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .nodesAreStopped(true)
                   .preAction(
                       node -> {
-                        if (!runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
-                          // Capture /etc/fstab before the root volume is replaced (old root is
-                          // detached after).
-                          if (!runtimeInfo.deviceMappingByNode.containsKey(node.getNodeUuid())) {
-                            createCaptureFstabTask(universe, node)
-                                .setSubTaskGroupType(getTaskSubGroupType());
-                          }
+                        // Capture /etc/fstab before the root volume is replaced (old root is
+                        // detached after).
+                        if (!reuseSavedDeviceMapping(universe, node)) {
+                          createCaptureFstabTask(universe, node)
+                              .setSubTaskGroupType(getTaskSubGroupType());
                         }
                       })
                   .postAction(
@@ -283,6 +288,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                                     nodeDetails.sshUserOverride = node.sshUserOverride;
                                     nodeDetails.sshPortOverride = node.sshPortOverride;
                                     nodeDetails.ybPrebuiltAmi = node.ybPrebuiltAmi;
+                                    nodeDetails.pathToUUIDMapping = null;
                                     if (!taskParams().isSoftwareUpdateViaVm) {
                                       u.updateConfig(
                                           ImmutableMap.of(
@@ -391,12 +397,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   private void restoreRuntimeInfoAndPrepareVolumes(
       Collection<NodeDetails> nodes, Map<String, ImageSettings> imageSettingsMap) {
-    // Restore mount-path -> UUID mappings from a prior attempt so YNPProvisioning can remount.
-    runtimeInfo.deviceMappingByNode.forEach(
-        (nodeUuid, mapping) ->
-            deviceMappingByNode
-                .computeIfAbsent(nodeUuid, k -> new ConcurrentHashMap<>())
-                .putAll(mapping));
     if (runtimeInfo.volumesCreated) {
       replacementRootDevices.putAll(runtimeInfo.replacementRootDevices);
       replacementRootVolumes.putAll(runtimeInfo.replacementRootVolumes);
@@ -703,13 +703,44 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     return replaceDiskTask;
   }
 
-  private SubTaskGroup createCaptureFstabTask(Universe universe, NodeDetails node) {
+  private static Set<String> getMountPoints(Universe universe, NodeDetails node) {
     DeviceInfo deviceInfo =
         universe
             .getUniverseDetails()
             .getClusterByUuid(node.placementUuid)
             .userIntent
             .evaluateDeviceInfoForNode(node);
+    return new HashSet<>(Util.getMountPoints(deviceInfo));
+  }
+
+  /**
+   * Uses the mapping an earlier attempt saved on the node if it covers the node's mount points. The
+   * node may be on its new root volume by now, where /etc/fstab no longer has the data disks.
+   */
+  private boolean reuseSavedDeviceMapping(Universe universe, NodeDetails node) {
+    NodeDetails savedNode = universe.getNode(node.nodeName);
+    Map<String, String> saved = savedNode == null ? null : savedNode.pathToUUIDMapping;
+    if (saved == null) {
+      return false;
+    }
+    Set<String> mountPoints = getMountPoints(universe, node);
+    if (!saved.keySet().equals(mountPoints)) {
+      log.info(
+          "Mapping saved on node {} has mount points {} instead of {}, capturing fstab again",
+          node.nodeName,
+          saved.keySet(),
+          mountPoints);
+      return false;
+    }
+    log.info("Reusing the fstab mapping saved on node {}", node.nodeName);
+    deviceMappingByNode
+        .computeIfAbsent(node.getNodeUuid(), k -> new ConcurrentHashMap<>())
+        .putAll(saved);
+    return true;
+  }
+
+  private SubTaskGroup createCaptureFstabTask(Universe universe, NodeDetails node) {
+    Set<String> mountPoints = getMountPoints(universe, node);
     SubTaskGroup subTaskGroup = createSubTaskGroup("CaptureFstab", getTaskSubGroupType());
     List<String> command = Arrays.asList("cat", "/etc/fstab");
     RunNodeCommand.Params params = new RunNodeCommand.Params();
@@ -723,7 +754,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
               response
                   .processErrors("Failed to read /etc/fstab on node " + node.nodeName)
                   .extractRunCommandOutput();
-          Set<String> mountPoints = new HashSet<>(Util.getMountPoints(deviceInfo));
           Map<String, String> parsed = Util.parseFstabPathToUUID(output);
           parsed.keySet().retainAll(mountPoints);
           if (!parsed.keySet().equals(mountPoints)) {
@@ -739,9 +769,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   node.getNodeUuid(), k -> new ConcurrentHashMap<>());
           mapping.clear();
           mapping.putAll(parsed);
-          updateRuntimeInfo(
-              RuntimeInfo.class,
-              info -> info.deviceMappingByNode.put(node.getNodeUuid(), new HashMap<>(mapping)));
+          saveUniverseDetails(
+              u -> {
+                NodeDetails nodeDetails = u.getNode(node.nodeName);
+                if (nodeDetails != null) {
+                  nodeDetails.pathToUUIDMapping = new HashMap<>(parsed);
+                }
+              });
         };
 
     RunNodeCommand task = createTask(RunNodeCommand.class);

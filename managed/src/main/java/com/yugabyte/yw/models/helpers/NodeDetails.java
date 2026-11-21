@@ -19,6 +19,7 @@ import static com.yugabyte.yw.common.NodeActionType.STOP;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -31,6 +32,7 @@ import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -98,6 +100,14 @@ public class NodeDetails {
 
   @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS migration pending for this node")
   public boolean migrationPending;
+
+  // Mount path to filesystem UUID of the data disks, read from /etc/fstab before a VM image upgrade
+  // replaces the root volume, whose new fstab doesn't have them. Kept until the node's upgrade
+  // finishes, so that a retry or rerun can remount the disks on a node already on its new root
+  // volume. Not cloned: the UUIDs belong to this node's disks.
+  @ApiModelProperty(hidden = true, value = "YbaApi Internal. Data disk mount path to fs UUID")
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public Map<String, String> pathToUUIDMapping;
 
   // Possible states in which this node can exist.
   public enum NodeState {
