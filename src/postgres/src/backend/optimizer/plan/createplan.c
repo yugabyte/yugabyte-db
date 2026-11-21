@@ -55,6 +55,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "executor/ybExpr.h"
+#include "executor/ybOptimizeModifyTable.h"
 #include "optimizer/ybplan.h"
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
@@ -3893,6 +3894,18 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
 	bms_free(generated_cols_source_attrs);
 	bms_free(affected_generated_attrs);
+
+	/*
+	 * A generated column may be part of the primary key. Updating a source
+	 * then moves the DocKey, so every secondary index must refresh its
+	 * ybctid. Reject before has_applicable_indices so the skip list stays empty.
+	 */
+	if (path->operation == CMD_UPDATE &&
+		YbIsPrimaryKeyUpdated(relation, update_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	/*
 	 * In most cases, the primary key of a leaf partition is a superset of the

@@ -473,3 +473,58 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET k = k + 10;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 90 + 2 WHERE k < 30;
 
 SELECT * FROM gin_table ORDER BY k;
+
+--
+-- GH-33617: primary key is a stored generated column. Updating a source moves
+-- the DocKey, so every secondary index must refresh its ybctid. The plan-time
+-- skip list must stay empty, and the single-row path must be refused.
+--
+CREATE TABLE t33617 (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED,
+	v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v_33617 ON t33617 (v);
+INSERT INTO t33617 (id, c1, v) VALUES (1, 1, 10);
+
+-- Expression SET at default GUCs: Index Scan, no assert, index consistent.
+EXPLAIN (COSTS OFF) UPDATE t33617 SET c1 = c1 + 1 WHERE g = 2;
+UPDATE t33617 SET c1 = c1 + 1 WHERE g = 2;
+SELECT * FROM t33617 ORDER BY id;
+SELECT yb_index_check('idx_v_33617'::regclass);
+
+-- Same with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t33617 SET c1 = c1 + 1 WHERE g = 4;
+SELECT * FROM t33617 ORDER BY id;
+SELECT yb_index_check('idx_v_33617'::regclass);
+SET yb_update_num_cols_to_compare TO 50;
+
+-- Constant SET: must not take the Result path; Index Scan fetches ybctid.
+EXPLAIN (COSTS OFF) UPDATE t33617 SET c1 = 5 WHERE g = 6;
+UPDATE t33617 SET c1 = 5 WHERE g = 6;
+SELECT * FROM t33617 ORDER BY id;
+SELECT yb_index_check('idx_v_33617'::regclass);
+
+-- Source in SET but the PK value does not change. The unrelated index is still
+-- written: when the PK may change, no secondary index is put on the skip list.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t33617 SET c1 = c1 WHERE g = 10;
+SELECT * FROM t33617 ORDER BY id;
+SELECT yb_index_check('idx_v_33617'::regclass);
+
+-- ON CONFLICT DO UPDATE that moves the generated PK.
+INSERT INTO t33617 (id, c1, v) VALUES (2, 5, 20)
+	ON CONFLICT (g) DO UPDATE SET c1 = EXCLUDED.c1 + 1;
+SELECT * FROM t33617 ORDER BY id;
+SELECT yb_index_check('idx_v_33617'::regclass);
+
+DROP TABLE t33617;
+
+-- Control: generated column is not the PK. An unrelated secondary index is
+-- still skipped when neither its key nor the PK moves.
+CREATE TABLE t33617_ctrl (id INT PRIMARY KEY, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT);
+CREATE INDEX NONCONCURRENTLY idx_v_33617_ctrl ON t33617_ctrl (v);
+INSERT INTO t33617_ctrl (id, c1, v) VALUES (1, 1, 10);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t33617_ctrl SET c1 = c1 + 1 WHERE id = 1;
+SELECT * FROM t33617_ctrl ORDER BY id;
+SELECT yb_index_check('idx_v_33617_ctrl'::regclass);
+DROP TABLE t33617_ctrl;
