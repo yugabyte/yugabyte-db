@@ -100,9 +100,13 @@ SELECT a FROM pctest1 WHERE a < 10;
 SELECT a FROM pctest1 WHERE a < 10;
 
 -- with grouping
+-- A Finalize HashAggregate over a Gather costs the same within the planner's
+-- fuzz and returns the groups in no fixed order.
+set enable_hashagg = off;
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
+reset enable_hashagg;
 
 -- Joins
 -- Nest loop

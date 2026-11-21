@@ -292,3 +292,101 @@ order by qid, nid;
 reset parallel_leader_participation;
 
 drop table baseline_scan_nodes;
+
+-- Block 4: ORDER BY and LIMIT under a Gather Merge.  A worker's rows reach
+-- the leader only when the worker has filled a quarter of its tuple queue or
+-- finishes, and a worker whose scan the LIMIT bounds stops at the bound.  The
+-- queries below keep one row in a hundred, so the bound's rows are far less
+-- than a quarter of the queue and take several parallel ranges to find: every
+-- request a worker makes comes before the leader's first row.  The Gather
+-- Merge's startup cost has to pay for those requests, and the Limit above it
+-- then has no run cost to charge (#36851).
+-- "Requests" compares the requests of a worker before the first row as the
+-- Gather Merge's startup cost prices them, at the scan's cost per request and
+-- rounded up to whole requests, with the requests each worker made.  The
+-- leader does not scan, so that the workers make all of the requests.  How
+-- the workers share the ranges differs from run to run by a request or two,
+-- so the comparison allows 15%.
+create view check_gather_merge_limit_estimates as
+with plans as (
+    select
+        q.qid,
+        js.explain_line::jsonb #> '{0,Plan}' lim
+    from
+        queries q,
+        explain_query_options opt,
+        lateral explain_query_json(q.query, opt.with_analyze) js
+),
+nodes as (
+    select qid, lim, lim #> '{Plans,0}' gm, lim #> '{Plans,0,Plans,0}' scan
+    from plans
+),
+estimates as (
+    select
+        qid,
+        lim->>'Node Type' || ' / ' || (gm->>'Node Type') || ' / ' ||
+            (scan->>'Node Type') shape,
+        (lim->>'Total Cost')::numeric - (lim->>'Startup Cost')::numeric
+            limit_run_cost,
+        est.scan_requests est_scan_requests,
+        ceil(1 + ((gm->>'Startup Cost')::numeric -
+                  (scan->>'Startup Cost')::numeric -
+                  current_setting('parallel_setup_cost')::numeric) /
+                 ((scan->>'Total Cost')::numeric -
+                  (scan->>'Startup Cost')::numeric) *
+                 (est.scan_requests - 1)) est_requests,
+        -- EXPLAIN reports the requests of a parallel scan for each loop
+        coalesce((scan->>'Storage Table Read Requests')::numeric, 0) +
+        coalesce((scan->>'Storage Index Read Requests')::numeric, 0)
+            act_requests
+    from nodes,
+         lateral (select coalesce((scan->>'Estimated Table Roundtrips')::numeric, 0) +
+                         coalesce((scan->>'Estimated Index Roundtrips')::numeric, 0))
+             est(scan_requests)
+)
+select
+    qid, shape,
+    est_scan_requests "Estimated Scan Requests",
+    est_requests "Estimated Requests Before First Row",
+    act_requests "Actual Requests",
+    case when abs(est_requests - act_requests) <=
+              greatest(1.0, 0.15 * act_requests) then 'passed'
+         else 'failed' end "Requests",
+    limit_run_cost "Limit Run Cost"
+from estimates;
+
+delete from queries;
+insert into queries (qid, query)
+select 70000 + k,
+       'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+       || ' order by pk limit ' || k
+from (values (10), (20), (40)) limits(k);
+
+select * from queries order by qid;
+
+set yb_test_force_parallel = force;
+set max_parallel_workers_per_gather = 2;
+set parallel_leader_participation = off;
+set yb_parallel_range_size = 524288;
+
+update explain_query_options set with_analyze = true;
+
+-- The plan's side: each worker is priced to make more requests before the
+-- first row as the LIMIT grows, and the Limit charges no run cost.
+select qid, shape, "Estimated Scan Requests",
+       "Estimated Requests Before First Row", "Limit Run Cost"
+from check_gather_merge_limit_estimates
+order by qid;
+
+-- should not return any row.
+select qid, shape, "Estimated Scan Requests",
+       "Estimated Requests Before First Row", "Actual Requests", "Requests"
+from check_gather_merge_limit_estimates
+where "Requests" <> 'passed'
+order by qid;
+
+reset yb_test_force_parallel;
+reset max_parallel_workers_per_gather;
+reset parallel_leader_participation;
+reset yb_parallel_range_size;
+drop view check_gather_merge_limit_estimates;

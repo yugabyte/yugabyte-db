@@ -322,5 +322,8 @@ extern void yb_init_bnl_workspace(JoinCostWorkspace *workspace,
 extern List *yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel,
 								List *clauses, Relids batchedrelids,
 								List *groups);
+extern double yb_path_first_batch_rows(Path *path);
+extern Cost yb_run_cost_for_rows(Cost run_cost, double path_rows,
+								 double first_batch_rows, double rows);
 
 #endif							/* COST_H */

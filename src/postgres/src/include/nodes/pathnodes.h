@@ -1331,6 +1331,11 @@ typedef struct YbPathInfo
  * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
  * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
  * is not an estimate but derived from the query and plan shape.
+ *
+ * 'first_batch_rows' is the number of the path's rows that its startup_cost
+ * pays for: the rows of a scan's first response
+ * (yb_charge_startup_cost_by_first_batch), or the rows the leader of a Gather
+ * or Gather Merge can read when the node returns its first row.
  */
 typedef struct YbPlanInfo
 {
@@ -1346,6 +1351,7 @@ typedef struct YbPlanInfo
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
 	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
+	double		first_batch_rows;	/* rows paid for by startup_cost */
 } YbPlanInfo;
 
 /*
