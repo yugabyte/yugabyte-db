@@ -253,6 +253,10 @@ class PgClient {
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
   Status StartTableBackfill(
       tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline);
+  Status AbortTableBackfill(
+      tserver::PgAbortTableBackfillRequestPB* req, CoarseTimePoint deadline);
+  Result<master::TableBackfillStatusPB> GetTableBackfillStatus(
+      tserver::PgGetTableBackfillStatusRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t* num_rows_read_from_table,

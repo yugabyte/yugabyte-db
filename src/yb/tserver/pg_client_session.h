@@ -59,6 +59,8 @@ class PgSessionGuard;
     (AlterTable) \
     (BackfillIndex) \
     (StartTableBackfill) \
+    (AbortTableBackfill) \
+    (GetTableBackfillStatus) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateTable) \

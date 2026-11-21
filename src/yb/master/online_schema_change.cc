@@ -36,8 +36,6 @@
 DECLARE_int32(index_backfill_rpc_max_delay_ms);
 DECLARE_int32(index_backfill_rpc_max_retries);
 DECLARE_int32(index_backfill_tablet_split_completion_timeout_sec);
-DECLARE_int32(leader_lease_duration_ms);
-DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(ysql_index_backfill_rpc_timeout_ms);
 
 DEFINE_RUNTIME_uint32(online_schema_change_backfill_resume_interval_ms, 60 * 1000,
@@ -51,14 +49,6 @@ DEFINE_RUNTIME_uint32(online_schema_change_backfill_max_resumes, 20,
     "job that reaches this budget is failing repeatedly rather than making progress, so it is "
     "failed the way any copy failure fails it: the delete-marker retention pin comes off, and "
     "postgres sees the job as failed. 0 disables the budget.");
-
-DEFINE_RUNTIME_uint32(online_schema_change_backfill_pin_release_margin_ms, 10 * 1000,
-    "After an online schema change copy succeeds, how much longer than "
-    "ysql_index_backfill_rpc_timeout_ms, the leader lease and the max clock skew its "
-    "delete-marker retention pin stays. A chunk RPC that an earlier leader sent can still be "
-    "writing on a tserver after the copy is recorded as done; the tserver checks the RPC deadline "
-    "between pages, so this margin covers the last page. Releasing the pin before such a write "
-    "lands lets compaction drop a tombstone that hides the row the write brings back.");
 
 DEFINE_test_flag(uint32, online_schema_change_backfill_replay_chunks_per_tablet, 0,
     "Throw away the first N chunk responses of each source tablet: neither the resume key nor the "
@@ -74,6 +64,7 @@ namespace {
 server::MonitoredTaskState MonitoredStateFor(OnlineSchemaChangeJobPB::State state) {
   switch (state) {
     case OnlineSchemaChangeJobPB::SUCCESS: return server::MonitoredTaskState::kComplete;
+    case OnlineSchemaChangeJobPB::ABORTED: return server::MonitoredTaskState::kAborted;
     default:                               return server::MonitoredTaskState::kFailed;
   }
 }
@@ -107,6 +98,7 @@ bool IsOnlineSchemaChangeJobResumable(OnlineSchemaChangeJobPB::State state) {
     case OnlineSchemaChangeJobPB::SUCCESS:
     case OnlineSchemaChangeJobPB::FAILED:
     case OnlineSchemaChangeJobPB::CANCELLED:
+    case OnlineSchemaChangeJobPB::ABORTED:
       return false;
   }
   return false;
@@ -124,6 +116,8 @@ Status ValidateOnlineSchemaChangeJob(const OnlineSchemaChangeJobPB& job) {
                 "Online schema change job $0 has no source table oid", job.pg_job_id());
   SCHECK_FORMAT(job.has_target_table_oid() && job.target_table_oid() != kPgInvalidOid, Corruption,
                 "Online schema change job $0 has no target table oid", job.pg_job_id());
+  SCHECK_FORMAT(!job.target_table_id().empty(), Corruption,
+                "Online schema change job $0 has no target table id", job.pg_job_id());
   SCHECK_FORMAT(job.has_transform_fn_oid() && job.transform_fn_oid() != kPgInvalidOid, Corruption,
                 "Online schema change job $0 has no transform function oid", job.pg_job_id());
   return Status::OK();
@@ -239,20 +233,6 @@ OnlineSchemaChangeController::OnlineSchemaChangeController(
     : master_(master), catalog_manager_(catalog_manager) {}
 
 OnlineSchemaChangeController::~OnlineSchemaChangeController() = default;
-
-bool OnlineSchemaChangeController::PinReleaseDue(
-    const OnlineSchemaChangeJobPB& entry, HybridTime now) {
-  if (entry.state() != OnlineSchemaChangeJobPB::SUCCESS || !entry.has_finished_at()) {
-    return true;
-  }
-  // The terminal write and the release may be on different masters, whose clocks differ by up to
-  // the max skew.
-  const auto delay = MonoDelta::FromMilliseconds(
-      static_cast<int64_t>(FLAGS_ysql_index_backfill_rpc_timeout_ms) +
-      FLAGS_leader_lease_duration_ms + FLAGS_online_schema_change_backfill_pin_release_margin_ms) +
-      MonoDelta::FromMicroseconds(static_cast<int64_t>(FLAGS_max_clock_skew_usec));
-  return now >= HybridTime(entry.finished_at()).AddDelta(delay);
-}
 
 void OnlineSchemaChangeController::RunOnce(const LeaderEpoch& epoch) {
   const auto now = CoarseMonoClock::Now();
@@ -500,9 +480,8 @@ Result<bool> OnlineSchemaChangeController::ReconcileOnce(
     if (!job.resolved) {
       RETURN_NOT_OK(ResolveTables(job, *entry, /* skip_missing = */ true));
     }
-    if (VERIFY_RESULT(Release(job, *entry, epoch))) {
-      Forget(job_ptr, MonitoredStateFor(entry->state()));
-    }
+    RETURN_NOT_OK(Release(job, *entry, epoch));
+    Forget(job_ptr, MonitoredStateFor(entry->state()));
     return false;
   }
 
@@ -586,8 +565,7 @@ Result<bool> OnlineSchemaChangeController::Adopt(
 Status OnlineSchemaChangeController::ResolveTables(
     Job& job, const OnlineSchemaChangeJobPB& entry, bool skip_missing) {
   // A missing target fails the job.
-  auto target = catalog_manager_->GetOnlineSchemaChangeTargetTable(
-      job.source_table->namespace_id(), entry.target_table_oid());
+  auto target = catalog_manager_->FindTableById(entry.target_table_id());
   job.source_leaves = {job.source_table};
   job.target_leaves.clear();
   if (target.ok()) {
@@ -758,7 +736,7 @@ Result<bool> OnlineSchemaChangeController::Copy(
   // The leaf OID comes from the leaf the tablets are enumerated under, not from the tablet's own
   // table, which for a colocated leaf would be the colocation parent.
   for (const auto& leaf : job.source_leaves) {
-    const auto leaf_oid = VERIFY_RESULT(GetPgsqlTableOid(leaf->id()));
+    const auto leaf_oid = VERIFY_RESULT(leaf->GetPgTableOid());
     for (auto& tablet : VERIFY_RESULT(leaf->GetTablets())) {
       ++total;
       std::optional<std::string> resume_key;
@@ -778,11 +756,31 @@ Result<bool> OnlineSchemaChangeController::Copy(
   }
   if (pending.empty()) {
     LOG(INFO) << job.prefix << "All " << total << " source tablets have been copied";
+    // As the index backfill does when it finishes: the pin comes off before the outcome is
+    // recorded, with the read time as the birth time of the target's indexes, so that no reader
+    // that has seen SUCCESS, and so no cutover, finds the target still pinned. A leader that fails
+    // over in between re-pins on takeover and comes back here. A chunk RPC still running on a
+    // tserver, e.g. one a deposed leader sent, can still write after the release; the index
+    // backfill has the same exposure.
+    const HybridTime birth_time(entry.backfilling_timestamp());
+    for (const auto& table : job.target_leaves) {
+      RETURN_NOT_OK(catalog_manager_->UnpinOnlineSchemaChangeTargetDeleteMarkers(
+          table, job.pg_job_id, epoch, birth_time));
+    }
     return WriteTerminal(job, OnlineSchemaChangeJobPB::SUCCESS, Status::OK(), epoch);
   }
 
   const std::weak_ptr<Job> weak_job = job_ptr;
   for (auto& p : pending) {
+    {
+      // A pass runs about once a second while chunks are in flight, so check before building a
+      // task: a task that is never run must not be destroyed. Only a pass adds chunks, and passes
+      // over one job do not overlap.
+      std::lock_guard lock(mutex_);
+      if (job.chunks.contains(p.tablet->id())) {
+        continue;
+      }
+    }
     tserver::TableBackfillChunkRequestPB req;
     req.set_tablet_id(p.tablet->tablet_id());
     req.set_read_at_hybrid_time(entry.backfilling_timestamp());
@@ -804,9 +802,7 @@ Result<bool> OnlineSchemaChangeController::Copy(
     }
     {
       std::lock_guard lock(mutex_);
-      if (!job.chunks.emplace(p.tablet->id(), task).second) {
-        continue;
-      }
+      job.chunks.emplace(p.tablet->id(), task);
     }
     auto sent = task ? task->Launch() : TEST_send_chunk_(p.tablet, req);
     if (!sent.ok()) {
@@ -922,7 +918,7 @@ Result<bool> OnlineSchemaChangeController::WriteTerminal(
     return true;
   }
   auto* entry = pb.mutable_online_schema_change_job();
-  // A terminal entry is never overwritten.
+  // A terminal entry may have been written by the abort; never overwrite it.
   if (entry->pg_job_id() != job.pg_job_id ||
       !IsOnlineSchemaChangeJobResumable(entry->state())) {
     return true;
@@ -954,11 +950,8 @@ Result<bool> OnlineSchemaChangeController::WriteTerminal(
   return true;
 }
 
-Result<bool> OnlineSchemaChangeController::Release(
+Status OnlineSchemaChangeController::Release(
     Job& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch) {
-  if (!PinReleaseDue(entry, master_->clock()->Now())) {
-    return false;
-  }
   // Every release is tried; the first failure is returned.
   Status status;
   const auto keep_first = [&status](const Status& s) {
@@ -972,7 +965,7 @@ Result<bool> OnlineSchemaChangeController::Release(
   }
   keep_first(ClearTabletProgress(job, epoch));
   RETURN_NOT_OK_PREPEND(status, "Failed to release what the finished job holds");
-  return true;
+  return Status::OK();
 }
 
 Status OnlineSchemaChangeController::ClearTabletProgress(const Job& job, const LeaderEpoch& epoch) {
@@ -1023,7 +1016,6 @@ void OnlineSchemaChangeController::Discover(const LeaderEpoch& epoch) {
   // Jobs still entitled to a pin. pg job ids are unique only within a database.
   std::set<std::pair<NamespaceId, int64_t>> live_pins;
   std::vector<TableInfoPtr> to_drive;
-  const auto now = master_->clock()->Now();
   {
     CatalogManager::SharedLock lock(catalog_manager_->mutex_);
     auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
@@ -1043,8 +1035,7 @@ void OnlineSchemaChangeController::Discover(const LeaderEpoch& epoch) {
       }
       const auto& job = l->pb.online_schema_change_job();
       const bool resumable = IsOnlineSchemaChangeJobResumable(job.state());
-      const bool pin_due_later = !PinReleaseDue(job, now);
-      if (resumable || pin_due_later) {
+      if (resumable) {
         // Before validation, so a malformed entry still keeps its job's pin.
         live_pins.emplace(table->namespace_id(), job.pg_job_id());
       }
@@ -1057,7 +1048,7 @@ void OnlineSchemaChangeController::Discover(const LeaderEpoch& epoch) {
             << ": " << valid;
         continue;
       }
-      if (resumable || pin_due_later) {
+      if (resumable) {
         to_drive.push_back(table);
         continue;
       }
@@ -1126,12 +1117,32 @@ std::string TableBackfillChunk::description() const {
 }
 
 bool TableBackfillChunk::SendRequest(int attempt) {
+  // A retry runs on a reactor thread, which must not wait for the Raft lock that the leadership
+  // check takes, so the check and the send run on the callback pool.
+  auto status = callback_pool_->SubmitFunc(
+      [task = shared_from(this), attempt] { task->CheckLeaderAndSend(attempt); });
+  if (!status.ok()) {
+    TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
+    return false;
+  }
+  return true;
+}
+
+void TableBackfillChunk::CheckLeaderAndSend(int attempt) {
+  // An abort that got here first has unregistered the task.
+  if (state() != server::MonitoredTaskState::kRunning) {
+    return;
+  }
   // A master that is no longer the leader must not keep resending: once its lease has expired, the
   // new leader may finish the job and release the pin, and a write that lands after that can bring
-  // back a deleted row (see online_schema_change_backfill_pin_release_margin_ms).
+  // back a deleted row.
   if (auto valid = master_->catalog_manager_impl()->IsEpochValid(epoch()); !valid.ok()) {
     TransitionToFailedState(server::MonitoredTaskState::kRunning, valid);
-    return false;
+    // As Run() does after a send that failed, unless an abort moved the task first.
+    if (state() == server::MonitoredTaskState::kFailed) {
+      UnregisterAsyncTask();
+    }
+    return;
   }
   auto req = req_;
   req.set_dest_uuid(permanent_uuid());
@@ -1139,7 +1150,6 @@ bool TableBackfillChunk::SendRequest(int attempt) {
   ts_admin_proxy_->TableBackfillChunkAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Sent " << description() << " to " << permanent_uuid() << " (attempt " << attempt
           << ")";
-  return true;
 }
 
 bool TableBackfillChunk::TabletIsGoneFromCatalog() const {

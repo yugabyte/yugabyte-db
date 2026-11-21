@@ -512,11 +512,22 @@ YbcStatus YBCPgBackfillIndex(
 
 YbcStatus YBCPgStartTableBackfill(
     const YbcPgOid database_oid,
-    const YbcPgOid source_table_oid,
-    const YbcPgOid target_table_oid,
+    const YbcPgOid source_relfilenode_oid,
+    const YbcPgOid target_relfilenode_oid,
     const YbcPgOid transform_fn_oid,
     uint64_t backfill_timestamp,
     int64_t pg_job_id);
+
+YbcStatus YBCPgAbortTableBackfill(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_relfilenode_oid,
+    int64_t pg_job_id);
+
+YbcStatus YBCPgGetTableBackfillStatus(
+    const YbcPgOid database_oid,
+    const YbcPgOid source_relfilenode_oid,
+    int64_t pg_job_id,
+    YbcPgTableBackfillStatus *status);
 
 YbcStatus YBCPgWaitVectorIndexReady(
     const YbcPgOid database_oid,

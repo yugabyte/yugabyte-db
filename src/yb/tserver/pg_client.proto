@@ -42,6 +42,10 @@ service PgClientService {
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
   rpc StartTableBackfill(PgStartTableBackfillRequestPB)
       returns (PgStartTableBackfillResponsePB);
+  rpc AbortTableBackfill(PgAbortTableBackfillRequestPB)
+      returns (PgAbortTableBackfillResponsePB);
+  rpc GetTableBackfillStatus(PgGetTableBackfillStatusRequestPB)
+      returns (PgGetTableBackfillStatusResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
   rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
       returns (PgCreateReplicationSlotResponsePB);
@@ -287,9 +291,11 @@ message PgBackfillIndexResponsePB {
 }
 
 message PgStartTableBackfillRequestPB {
+  reserved 3;
   uint64 session_id = 1;
+  // Both by relfilenode, like every other table a pggate request names.
   PgObjectIdPB source_table_id = 2;
-  uint32 target_table_oid = 3;
+  PgObjectIdPB target_table_id = 7;
   uint32 transform_fn_oid = 4;
   uint64 backfill_timestamp = 5;
   int64 pg_job_id = 6;
@@ -297,6 +303,27 @@ message PgStartTableBackfillRequestPB {
 
 message PgStartTableBackfillResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgAbortTableBackfillRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB source_table_id = 2;
+  int64 pg_job_id = 3;
+}
+
+message PgAbortTableBackfillResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgGetTableBackfillStatusRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB source_table_id = 2;
+  int64 pg_job_id = 3;
+}
+
+message PgGetTableBackfillStatusResponsePB {
+  AppStatusPB status = 1;
+  master.TableBackfillStatusPB job_status = 2;
 }
 
 message PgRenameColumnPB {
