@@ -2464,6 +2464,44 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitDoesNotBlockWriter
   ASSERT_OK(index_future.get());
 }
 
+// With ysql_enable_concurrent_ddl off, DETACH PARTITION CONCURRENTLY waits for a writer to the
+// parent in its second transaction, and the writer's transaction then runs a DDL. The DETACH takes
+// the database DDL lock only after that wait, so the DDL runs, and the DETACH finishes once the
+// writer commits.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DetachConcurrentlyWaitDoesNotBlockWritersDdl) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE p(k INT PRIMARY KEY) PARTITION BY RANGE (k)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE p1 PARTITION OF p FOR VALUES FROM (1) TO (100)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
+  }
+
+  auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(writer_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(writer_conn.Execute("BEGIN"));
+  ASSERT_OK(writer_conn.Execute("INSERT INTO p VALUES (1)"));
+
+  auto detach_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(detach_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  auto detach_future = std::async(std::launch::async, [&detach_conn]() {
+    return detach_conn.Execute("ALTER TABLE p DETACH PARTITION p1 CONCURRENTLY");
+  });
+  // The DETACH waits for the writer in WaitForLockersMultiple. That wait shows in ASH.
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
+    auto waiting = observer.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM yb_active_session_history"
+        " WHERE wait_event_aux = 'WaitForLockersMultiple'");
+    return waiting.ok() && *waiting > 0;
+  }, 30s * kTimeMultiplier, "the DETACH to wait for the writer"));
+
+  ASSERT_OK(writer_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
+  ASSERT_OK(writer_conn.Execute("COMMIT"));
+  ASSERT_OK(detach_future.get());
+}
+
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).
 //
 // Neither flag is a runtime flag, so each takes a rolling restart. In the first,

@@ -3007,13 +3007,14 @@ YBAddDdlTxnState(YbDdlMode mode)
 }
 
 /*
- * For the CREATE INDEX phases after the first. A phase waits for lockers or
- * backends right after entering DDL state, and takes the database lock with
- * YbLockDatabaseForGlobalDdl only after the wait. The wait is registered under
- * the session's transaction, while the lock belongs to the phase's
+ * For a DDL transaction that waits for lockers or backends right after
+ * entering DDL state: a CREATE INDEX phase after the first, and the second
+ * transaction of DETACH PARTITION CONCURRENTLY. It takes the database lock
+ * with YbLockDatabaseForGlobalDdl only after the wait. The wait is registered
+ * under the session's transaction, while the lock belongs to the DDL's
  * transaction, so a writer the wait waits for, running a DDL that queues on a
- * lock the phase already held, would block with the phase until a timeout,
- * with no deadlock reported.
+ * lock the DDL already held, would block with it until a timeout, with no
+ * deadlock reported.
  */
 void
 YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
