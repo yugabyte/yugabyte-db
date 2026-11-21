@@ -116,7 +116,14 @@ set(YB_RUST_TEST_EXCLUDES
     --exclude yb-cpp-host)
 
 # Native libraries the Rust standard library needs (from `rustc --print native-static-libs`).
-set(YB_RUST_NATIVE_LIBS gcc_s util rt pthread m dl)
+# An LTO server binary may only depend on glibc (build-support/check_lto_dependencies.sh): there the
+# static runtimes on the link line supply what std takes from libgcc_s (__divti3, unwinding), and
+# std uses nothing from libutil.
+if(YB_LTO_ENABLED)
+  set(YB_RUST_NATIVE_LIBS rt pthread m dl)
+else()
+  set(YB_RUST_NATIVE_LIBS gcc_s util rt pthread m dl)
+endif()
 
 # Runs Cargo on every build and lets it decide what is stale. The library is a BYPRODUCT, so with
 # Ninja's restat a no-op Cargo run does not relink anything.
