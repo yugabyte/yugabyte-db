@@ -61,13 +61,29 @@ Provides a list of all replication slots that currently exist on the database cl
 | database | text | The name of the database this slot is associated with. |
 | temporary | boolean | True if this is a temporary replication slot. Temporary slots are automatically dropped on error or when the session has finished. |
 | active | boolean | True if this slot is currently actively being used. In YSQL, an "active" replication slot means a slot which has been consumed at least once in a certain time frame. The time is defined using the `ysql_cdc_active_replication_slot_window_ms` flag, which has a default of 5 minutes. |
-| active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. |
+| active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. The PID doesn't identify the node; match it to `pid` in [`pg_stat_replication`](#pg-stat-replication). |
 | xmin | xid | The oldest transaction that this slot needs the database to retain. |
 | catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |
 | restart_lsn | pg_lsn | The Log Sequence Number ([LSN](../key-concepts/#lsn-type)) of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
 | confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the `confirmed_flush_lsn` are not available anymore. |
 | yb_stream_id | text | UUID of the CDC stream |
 | yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the `restart_lsn`. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the `consistent_point`) in the case when a replication slot already exists. |
+
+### pg_stat_replication
+
+Lists WAL senders on the node you are connected to. On a multi-node universe, an empty result means no consumer is attached to that node. Connect to every node before you conclude that nothing is consuming.
+
+[`pg_replication_slots`](#pg-replication-slots) lists every slot in the cluster, but `active_pid` doesn't say which node the process is on. Match it to `pid` in this view on the node where the sender is running. Nothing locks a slot to a single consumer (issue {{<issue 20755>}}), so this per-node check is how you see what is attached.
+
+List the nodes with [`yb_servers()`](../../../../api/ysql/exprs/func_yb_servers/), connect to each `host` and `port`, and run:
+
+```plpgsql
+SELECT pid, application_name, client_addr
+FROM pg_stat_activity
+WHERE backend_type = 'walsender';
+```
+
+Query `pg_stat_replication` on that same connection.
 
 ## CDC service metrics
 
