@@ -864,6 +864,44 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
   }
 
   @Test
+  public void testPartitionIndexTablespaces() throws Exception {
+    Tablespace ts1 = new Tablespace("partition_ts1", Collections.singletonList(1));
+    Tablespace ts2 = new Tablespace("partition_ts2", Collections.singletonList(2));
+    Tablespace ts3 = new Tablespace("partition_ts3", Collections.singletonList(3));
+    ts1.create(connection);
+    ts2.create(connection);
+    ts3.create(connection);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE index_part (a int, b int) PARTITION BY RANGE (a)");
+      stmt.execute("CREATE TABLE index_part1 PARTITION OF index_part " +
+          "FOR VALUES FROM (0) TO (10) TABLESPACE " + ts1.name);
+      // Exercise recursion over existing partitions with and without an explicit tablespace.
+      stmt.execute("CREATE INDEX index_part_b_idx ON index_part (b) TABLESPACE " + ts3.name);
+      stmt.execute("CREATE UNIQUE INDEX index_part_a_b_idx ON index_part (a, b)");
+      stmt.execute("CREATE TABLE index_part2 PARTITION OF index_part " +
+          "FOR VALUES FROM (10) TO (20) TABLESPACE " + ts2.name);
+      stmt.execute("CREATE TABLE index_part3 (a int, b int) TABLESPACE " + ts1.name);
+      stmt.execute("ALTER TABLE index_part ATTACH PARTITION index_part3 " +
+          "FOR VALUES FROM (20) TO (30)");
+      try {
+        stmt.execute("SET default_tablespace TO " + ts3.name);
+        stmt.execute("CREATE TABLE index_part4 PARTITION OF index_part " +
+            "FOR VALUES FROM (30) TO (40) TABLESPACE pg_default");
+      } finally {
+        stmt.execute("RESET default_tablespace");
+      }
+    }
+
+    for (String partition : Arrays.asList("index_part1", "index_part3")) {
+      verifyPlacement(Arrays.asList(partition, partition + "_b_idx", partition + "_a_b_idx"), ts1);
+    }
+    verifyPlacement(Arrays.asList("index_part2", "index_part2_b_idx", "index_part2_a_b_idx"), ts2);
+    verifyPlacement(
+        Arrays.asList("index_part4", "index_part4_b_idx", "index_part4_a_b_idx"), defaultTablespace);
+  }
+
+  @Test
   public void testAlterTableSetTablespaceWithPlacementUuid() throws Exception {
     setPlacementUuid("placement_uuid");
     try {
