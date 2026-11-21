@@ -1302,14 +1302,15 @@ pub fn pg_table_oid(id: &[u8]) -> Option<u32> {
     pg_oid(id, 24)
 }
 
-/// The YSQL databases `qos_max_db_count` limits: all but the templates, the sequences database,
-/// and DELETED or FAILED ones.
+/// The YSQL databases `qos_max_db_count` limits: those that hold their name, but the templates,
+/// the sequences database, and DELETED or FAILED ones.
 pub(crate) fn qos_counted_databases(snapshot: &CatalogSnapshot) -> usize {
     use sys_namespace_entry_pb::State;
     const SEQUENCES_DATA_NAMESPACE_ID: &[u8] = b"0000ffff000030008000000000000000";
     snapshot
         .iter(SysRowEntryType::NAMESPACE)
         .filter(|e| &*e.key.id != SEQUENCES_DATA_NAMESPACE_ID)
+        .filter(|e| crate::lookup::holds_name(snapshot, e))
         .filter(|e| {
             e.namespace().is_some_and(|n| {
                 n.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
@@ -1415,13 +1416,8 @@ impl TableLifecycle {
                         return Ok((Mutation::new(), Err((found.key.id.to_vec(), e))));
                     }
                 }
-                let named = self.named_databases.lock().unwrap().clone();
                 if let Some(found) =
-                    crate::lookup::namespaces_named(snapshot, req.name(), pgsql as i32)
-                        .find(|e| {
-                            !crate::lookup::is_releasable_database(e)
-                                || named.contains(&(token.term(), e.key.id.to_vec()))
-                        })
+                    crate::lookup::find_namespace_by_name(snapshot, req.name(), pgsql as i32)
                         .filter(|_| reused.is_none())
                 {
                     return existing(
@@ -1793,12 +1789,10 @@ impl TableLifecycle {
         .await
     }
 
-    /// Keeps the name of the database while it is FAILED or DELETING in this term
-    /// (`named_databases`).
+    /// Keeps the database's name while it is FAILED or DELETING in this leader epoch
+    /// (`lookup::holds_name`).
     pub(crate) fn keep_database_name(&self, token: &LeaderToken, id: &[u8]) {
-        let mut named = self.named_databases.lock().unwrap();
-        named.retain(|(term, _)| *term == token.term());
-        named.insert((token.term(), id.to_vec()));
+        self.catalog.kept_names().keep(token, id);
     }
 
     /// Marks a PREPARING namespace RUNNING or FAILED.

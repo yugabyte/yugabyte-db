@@ -47,6 +47,8 @@ pub struct CatalogSnapshot {
     pub last_op: Option<OpId>,
     /// Incremented on every publish.
     pub seq: u64,
+    /// Not part of this version: the catalog's one set, which the leader changes in place.
+    pub(crate) kept_names: Arc<crate::KeptNames>,
 }
 
 impl std::fmt::Debug for CatalogSnapshot {
@@ -90,6 +92,12 @@ impl CatalogSnapshot {
         self.by_type
             .iter()
             .flat_map(|(t, m)| m.values().map(move |e| (*t, &*e.key.id, &*e.raw)))
+    }
+
+    /// Whether the leader keeps the name of `namespace_id` in its current epoch
+    /// ([`crate::KeptNames`]).
+    pub fn keeps_name(&self, namespace_id: &[u8]) -> bool {
+        self.kept_names.keeps(namespace_id)
     }
 
     /// The table named `name` in namespace `namespace_id`.

@@ -22,10 +22,12 @@
 //!   in flight, conflicts and [`CatalogWriter::mutate`] rebuilds it from the newer snapshot.
 
 pub mod defaults;
+mod kept_names;
 mod materializer;
 mod snapshot;
 mod writer;
 
+pub use kept_names::KeptNames;
 pub use materializer::run_materializer;
 pub use snapshot::{is_inactive_state, rows_digest, CatalogSnapshot};
 pub use writer::{CatalogWriter, Lane, Mutation, MutationError, WriteOptions, WriterOptions};
@@ -60,6 +62,8 @@ pub struct Catalog {
     reloads_sent: watch::Receiver<u64>,
     /// Reloads whose load has been published.
     reloads_done: watch::Sender<u64>,
+    /// Shared by every snapshot this catalog publishes.
+    kept_names: Arc<KeptNames>,
     /// Counters.
     pub stats: CatalogStats,
 }
@@ -67,14 +71,24 @@ pub struct Catalog {
 impl Catalog {
     /// An empty, unloaded catalog fed by the stream `sender` belongs to.
     pub fn new(sender: ApplySender) -> Arc<Catalog> {
+        let kept_names = Arc::new(KeptNames::default());
         Arc::new(Catalog {
-            current: ArcSwap::from_pointee(CatalogSnapshot::default()),
+            current: ArcSwap::from_pointee(CatalogSnapshot {
+                kept_names: kept_names.clone(),
+                ..Default::default()
+            }),
             changed: watch::channel(0).0,
             reloads_sent: sender.reloads_sent(),
             reloads_done: watch::channel(0).0,
             sender,
+            kept_names,
             stats: CatalogStats::default(),
         })
+    }
+
+    /// The names the leader keeps in its current epoch.
+    pub fn kept_names(&self) -> &Arc<KeptNames> {
+        &self.kept_names
     }
 
     /// The latest snapshot.
@@ -122,6 +136,7 @@ impl Catalog {
 
     fn publish(&self, mut snapshot: CatalogSnapshot) -> Arc<CatalogSnapshot> {
         snapshot.seq = self.current.load().seq + 1;
+        snapshot.kept_names = self.kept_names.clone();
         let seq = snapshot.seq;
         let snapshot = Arc::new(snapshot);
         self.current.store(snapshot.clone());

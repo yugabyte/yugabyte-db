@@ -40,11 +40,15 @@ verified yet.
 
 A failed or dropping database gives up its name as C++'s by-name map does, so CREATE DATABASE can
 be retried at once: a failed copy (FAILED), a failed creating transaction (DELETING), and whatever
-a new leader finds FAILED or DELETING free their name; a database whose drop, or whose colocated
-parent table, failed or started in this term keeps it (`named_databases`, in memory per term). By
-name, a live database is found before a failed one of the same name. Its id stays taken, even by
-a DELETED tombstone, since the dropped database's catalog tables may still use the OID; that
-collision carries `PgsqlError(YB_PG_DUPLICATE_DATABASE)`, on which PG retries with the next OID.
+a new leader or a PITR restore finds FAILED or DELETING free their name; a database whose drop, or
+whose colocated parent table, failed or started in this leader epoch (term and restore count)
+keeps it. The kept names are in memory, in the catalog's `KeptNames`, which every snapshot
+carries, so every by-name lookup (`find_namespace`, `find_namespace_by_name`, in any component),
+the CREATE DATABASE name check and the `qos_max_db_count` count answer by the one rule; by id the
+database is still found. A live database is found before a failed one of the same name. Its id
+stays taken, even by a DELETED tombstone, since the dropped database's catalog tables may still
+use the OID; that collision carries `PgsqlError(YB_PG_DUPLICATE_DATABASE)`, on which PG retries
+with the next OID.
 
 A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the

@@ -160,6 +160,7 @@ struct Harness {
     catalog: Arc<Catalog>,
     token: LeaderToken,
     ts_manager: Arc<TsManager>,
+    raft: Arc<FakeLeaderState>,
 }
 
 impl Harness {
@@ -213,6 +214,7 @@ impl Harness {
             catalog,
             token,
             ts_manager,
+            raft: source,
         }
     }
 
@@ -256,6 +258,20 @@ impl Harness {
 
     fn snapshot(&self) -> Arc<CatalogSnapshot> {
         self.catalog.snapshot()
+    }
+
+    /// Until this master leads `term` and is Ready in it.
+    async fn lead(&self, term: i64) {
+        let leadership = &self.lifecycle.leadership;
+        self.raft.lead(term);
+        let mut phases = leadership.subscribe();
+        loop {
+            leadership.step();
+            if matches!(*phases.borrow_and_update(), Phase::Ready { term: t, .. } if t == term) {
+                return;
+            }
+            let _ = tokio::time::timeout(Duration::from_millis(10), phases.changed()).await;
+        }
     }
 }
 
@@ -1966,6 +1982,122 @@ mod ysql {
             )
             .await
             .unwrap();
+    }
+
+    /// Writes a YSQL database row.
+    async fn put_database(
+        h: &Harness,
+        id: &[u8],
+        name: &str,
+        state: sys_namespace_entry_pb::State,
+    ) {
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |_| {
+                let mut ns = SysNamespaceEntryPB::new();
+                ns.set_name(name.as_bytes().to_vec());
+                ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+                ns.set_state(state);
+                let mutation = master_catalog_state::Mutation::new()
+                    .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
+                    .unwrap();
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `find_namespace` by name, and by id.
+    fn found(h: &Harness, name: &str, id: &[u8]) -> (Result<Vec<u8>, Code>, bool) {
+        let snapshot = h.snapshot();
+        let mut ident = yb_proto::pb::master_types::NamespaceIdentifierPB::new();
+        ident.set_name(name.into());
+        ident.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+        let by_name = crate::lookup::find_namespace(&snapshot, &ident)
+            .map(|e| e.key.id.to_vec())
+            .map_err(|e| e.code());
+        let mut ident = yb_proto::pb::master_types::NamespaceIdentifierPB::new();
+        ident.set_id(id.to_vec());
+        (
+            by_name,
+            crate::lookup::find_namespace(&snapshot, &ident).is_ok(),
+        )
+    }
+
+    /// Drops `DB_ID` ("yugabyte"), which leaves it DELETING.
+    async fn start_drop(h: &Harness) {
+        let mut drop = DeleteNamespaceRequestPB::new();
+        drop.namespace
+            .mut_or_insert_default()
+            .set_id(DB_ID.to_vec());
+        h.lifecycle
+            .delete_namespace(&h.token, Harness::deadline(), &drop)
+            .await
+            .unwrap();
+        let state = h
+            .snapshot()
+            .get(SysRowEntryType::NAMESPACE, DB_ID)
+            .unwrap()
+            .namespace()
+            .unwrap()
+            .state;
+        assert_eq!(state, sys_namespace_entry_pb::State::DELETING as i32);
+    }
+
+    /// A FAILED database is not in C++'s by-name map (its creation failed, or a leader loaded it
+    /// so); by id it is found.
+    #[tokio::test]
+    async fn a_failed_database_is_found_by_id_but_not_by_name() {
+        let h = ysql_harness().await;
+        let failed: &[u8] = b"000033f4000030008000000000000000";
+        put_database(&h, failed, "db", sys_namespace_entry_pb::State::FAILED).await;
+        assert_eq!(
+            found(&h, "db", failed),
+            (Err(Code::NAMESPACE_NOT_FOUND), true)
+        );
+    }
+
+    /// A database whose drop started in this leader epoch keeps its name, and a live database of
+    /// the same name is found before it. A PITR restore, a catalog load in C++, releases it.
+    #[tokio::test]
+    async fn a_dropping_database_keeps_its_name_until_a_restore() {
+        let h = ysql_harness().await;
+        start_drop(&h).await;
+        assert_eq!(found(&h, "yugabyte", DB_ID), (Ok(DB_ID.to_vec()), true));
+
+        let live: &[u8] = b"000033f5000030008000000000000000";
+        put_database(&h, live, "yugabyte", sys_namespace_entry_pb::State::RUNNING).await;
+        assert_eq!(found(&h, "yugabyte", DB_ID), (Ok(live.to_vec()), true));
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |snapshot| {
+                let row = snapshot.get(SysRowEntryType::NAMESPACE, live).unwrap();
+                let mutation = master_catalog_state::Mutation::new()
+                    .read(row)
+                    .delete(SysRowEntryType::NAMESPACE, live);
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        assert_eq!(found(&h, "yugabyte", DB_ID), (Ok(DB_ID.to_vec()), true));
+
+        h.lifecycle.leadership.begin_reload();
+        h.lifecycle.leadership.end_reload();
+        assert_eq!(
+            found(&h, "yugabyte", DB_ID),
+            (Err(Code::NAMESPACE_NOT_FOUND), true)
+        );
+    }
+
+    /// A new leader loads the dropping database without its name, as C++'s namespace loader does.
+    #[tokio::test]
+    async fn a_new_leader_does_not_find_a_dropping_database_by_name() {
+        let h = ysql_harness().await;
+        start_drop(&h).await;
+        assert_eq!(found(&h, "yugabyte", DB_ID), (Ok(DB_ID.to_vec()), true));
+        h.lead(4).await;
+        assert_eq!(
+            found(&h, "yugabyte", DB_ID),
+            (Err(Code::NAMESPACE_NOT_FOUND), true)
+        );
     }
 
     #[tokio::test]

@@ -468,11 +468,6 @@ pub struct TableLifecycle {
     /// The YSQL databases being created, by term and id: the rest of the PREPARING ones were
     /// interrupted by a leader change.
     pub(crate) creating_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
-    /// The FAILED or DELETING YSQL databases that keep their name, by term and id: those whose
-    /// drop started, or whose colocated parent table failed, in this term. C++ releases the name
-    /// of every other one (a failed creation, a failed creating transaction, and whatever a new
-    /// leader loads FAILED or DELETING), so CREATE DATABASE can be retried at once.
-    pub(crate) named_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
     /// The tablespace placement the leader knows.
     pub(crate) tablespaces: Arc<Tablespaces>,
     /// Rollbacks to a sub-transaction, by transaction id.
@@ -723,6 +718,7 @@ impl TableLifecycle {
         host: Arc<dyn SchemaHost>,
         options: LifecycleOptions,
     ) -> Arc<TableLifecycle> {
+        catalog.kept_names().set_leadership(leadership.clone());
         Arc::new(TableLifecycle {
             catalog,
             writer,
@@ -733,7 +729,6 @@ impl TableLifecycle {
             names: tokio::sync::Mutex::new(()),
             ddl_alters: Default::default(),
             creating_databases: Default::default(),
-            named_databases: Default::default(),
             tablespaces: Tablespaces::new(options.tablespaces),
             subtxn_rollbacks: Default::default(),
             local_transaction_tables: tokio::sync::Mutex::new(()),

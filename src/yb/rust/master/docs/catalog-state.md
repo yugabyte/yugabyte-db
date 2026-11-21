@@ -11,6 +11,12 @@ table's tablets by partition start (a table row never lists its tablets), and ea
 colocated children. A tablet with `hosted_tables_mapped_by_parent_id` lists no colocated tables;
 `hosted_table_ids` derives them from the children index, as `TabletInfo::GetTableIds` does.
 
+Every snapshot also carries the catalog's one `KeptNames`, which is not versioned: the namespaces
+whose name the leader keeps in its current epoch (term and restore count) although their state
+gives it up, as C++'s by-name map keeps them until the next catalog load. The leader changes it
+in place; `keeps_name` checks the epoch against `Leadership`, so a new term or a PITR restore
+releases every kept name.
+
 Hot fields are read from the row's top-level fields on the wire. The C++ master loads a row whose
 nested `string` fields are not UTF-8 (it only logs); the Rust parser rejects it, so such a row
 keeps its hot fields and only full parses fail. A `REDIS_TABLE_TYPE` table named `transactions`

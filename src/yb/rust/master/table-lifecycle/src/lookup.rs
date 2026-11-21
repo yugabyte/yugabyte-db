@@ -60,9 +60,9 @@ fn is_deleted_namespace(entity: &Entity) -> bool {
         .is_some_and(|n| n.state == sys_namespace_entry_pb::State::DELETED as i32)
 }
 
-/// `FindNamespaceUnlocked`: by id if the identifier has one, else by name and database type. The
-/// namespace's state is not checked; a deleted namespace is not found, as C++ drops it from its
-/// maps.
+/// `FindNamespaceUnlocked`: by id if the identifier has one, else by name and database type
+/// ([`find_namespace_by_name`]). The namespace's state is not checked; a deleted namespace is not
+/// found, as C++ drops it from its maps.
 pub fn find_namespace(
     snapshot: &CatalogSnapshot,
     ident: &NamespaceIdentifierPB,
@@ -105,41 +105,42 @@ pub fn find_namespace(
 }
 
 /// The namespace named `name` of `database_type`, as C++ `namespace_names_mapper_` holds it:
-/// case-sensitive, in any state but DELETED. A failed or dropping YSQL database may have lost its
-/// name to a new database (see `TableLifecycle::named_databases`), so the other one comes first.
+/// case-sensitive, and not DELETED. A live namespace comes first; a FAILED or DELETING YSQL
+/// database is found only if it holds its name ([`holds_name`]).
 pub fn find_namespace_by_name(
     snapshot: &CatalogSnapshot,
     name: &str,
     database_type: i32,
 ) -> Option<Arc<Entity>> {
-    let mut named = namespaces_named(snapshot, name, database_type);
-    let first = named.next()?;
-    if !is_releasable_database(first) {
-        return Some(first.clone());
-    }
-    Some(
-        named
-            .find(|e| !is_releasable_database(e))
-            .unwrap_or(first)
-            .clone(),
-    )
-}
-
-/// The namespaces named `name` of `database_type` that are not DELETED.
-pub(crate) fn namespaces_named<'a>(
-    snapshot: &'a CatalogSnapshot,
-    name: &'a str,
-    database_type: i32,
-) -> impl Iterator<Item = &'a Arc<Entity>> + 'a {
-    snapshot.iter(SysRowEntryType::NAMESPACE).filter(move |e| {
-        e.namespace()
+    let mut kept = None;
+    for namespace in snapshot.iter(SysRowEntryType::NAMESPACE) {
+        let named = namespace
+            .namespace()
             .is_some_and(|n| n.name == name && n.database_type == database_type)
-            && !is_deleted_namespace(e)
-    })
+            && !is_deleted_namespace(namespace);
+        if !named {
+            continue;
+        }
+        if !is_releasable_database(namespace) {
+            return Some(namespace.clone());
+        }
+        if kept.is_none() && holds_name(snapshot, namespace) {
+            kept = Some(namespace);
+        }
+    }
+    kept.cloned()
 }
 
-/// A YSQL database that is FAILED or DELETING, whose name C++ may have released.
-pub(crate) fn is_releasable_database(entity: &Entity) -> bool {
+/// Whether the namespace is in C++'s by-name map. A FAILED or DELETING YSQL database is not, so
+/// CREATE DATABASE can be retried at once, unless the leader keeps its name in this epoch
+/// ([`CatalogSnapshot::keeps_name`]): one whose drop, or whose colocated parent table, failed or
+/// started in it.
+pub(crate) fn holds_name(snapshot: &CatalogSnapshot, namespace: &Entity) -> bool {
+    !is_releasable_database(namespace) || snapshot.keeps_name(&namespace.key.id)
+}
+
+/// A YSQL database that is FAILED or DELETING.
+fn is_releasable_database(entity: &Entity) -> bool {
     entity.namespace().is_some_and(|n| {
         n.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
             && (n.state == sys_namespace_entry_pb::State::FAILED as i32
