@@ -2491,7 +2491,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *stream-ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* `minus <interval>`: The same format as described in [restore_snapshot_schedule](#restore-snapshot-schedule).
+* `minus <interval>`: A relative time, using the same formats as [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
 

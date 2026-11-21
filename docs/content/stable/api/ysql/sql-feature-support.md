@@ -51,7 +51,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/partial>}} | Altering a column's data type     |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                         |
 |   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                        |
-|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints)              |
+|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint)              |
 |   {{<icon/yes>}}   | Removing constraints              | [DROP CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade)   |
 |   {{<icon/no>}}    | Altering indexes                  |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding indexes                    | [CREATE INDEX](../the-sql-language/statements/ddl_create_index/)                                                      |
@@ -124,33 +124,33 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
-| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#group-data)                                       |
+| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#grouping)    |
 | {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
-| {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)                                   |
-| {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)                     |
-| {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../the-sql-language/with-clause/)       |
-| {{<icon/yes>}} | Upserts (INSERT ... ON CONFLICT DO NOTHING/UPDATE)                  | [Upsert](../the-sql-language/statements/dml_insert/#on-conflict-clause)                                     |
+| {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)  |
+| {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)  |
+| {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../the-sql-language/with-clause/)             |
+| {{<icon/yes>}} | Upserts (INSERT ... ON CONFLICT DO NOTHING/UPDATE)                  | [Upsert](../the-sql-language/statements/dml_insert/#on-conflict-clause)    |
 {.sno-1}
 
 ## Advanced SQL
 
 |                |                      Component                       |                                      Details                                       |
 | :------------: | :--------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../the-sql-language/statements/ddl_create_procedure/)                                         |
-| {{<icon/yes>}} | User-defined functions                               | [Functions](../user-defined-subprograms-and-anon-blocks/#functions) |
-| {{<icon/yes>}} | Cursors                                              | [Cursors](../cursors/)                                            |
+| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../the-sql-language/statements/ddl_create_procedure/)          |
+| {{<icon/yes>}} | User-defined functions                               | [Functions](../user-defined-subprograms-and-anon-blocks/#functions)                |
+| {{<icon/yes>}} | Cursors                                              | [Cursors](../cursors/)                                                             |
 | {{<icon/yes>}} | Row-level triggers (BEFORE, AFTER, INSTEAD OF)       |                                                                                    |
 | {{<icon/yes>}} | Statement-level triggers (BEFORE, AFTER, INSTEAD OF) |                                                                                    |
 | {{<icon/no>}}  | Deferrable triggers                                  |                                                                                    |
 | {{<icon/no>}}  | Transition tables (REFERENCING clause for triggers)  |                                                                                    |
-| {{<icon/yes>}} | Sequences                                            | [CREATE SEQUENCE](../the-sql-language/statements/ddl_create_sequence/) |
+| {{<icon/yes>}} | Sequences                                            | [CREATE SEQUENCE](../the-sql-language/statements/ddl_create_sequence/)             |
 | {{<icon/yes>}} | Identity columns                                     |                                                                                    |
-| {{<icon/yes>}} | Views                                                | [Views](../the-sql-language/statements/ddl_create_view/)                                               |
-| {{<icon/yes>}} | Table inheritance                                    | [Table inheritance](../the-sql-language/ddl-inherit/)                                                                   |
-| {{<icon/yes>}} | Materialized views                                   | [Materialized views](../the-sql-language/statements/ddl_create_matview/)               |
-| {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                      |
+| {{<icon/yes>}} | Views                                                | [Views](../the-sql-language/statements/ddl_create_view/)                           |
+| {{<icon/yes>}} | Table inheritance                                    | [Table inheritance](../the-sql-language/ddl-inherit/)                              |
+| {{<icon/yes>}} | Materialized views                                   | [Materialized views](../the-sql-language/statements/ddl_create_matview/)           |
+| {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                                     |
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
-| {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)                                         |
-| {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../the-sql-language/statements/ddl_create_foreign_data_wrapper/)               |
+| {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)               |
+| {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../the-sql-language/statements/ddl_create_foreign_data_wrapper/)  |
 | {{<icon/no>}}  | Large objects                                        |                                                                                    |
 {.sno-1}

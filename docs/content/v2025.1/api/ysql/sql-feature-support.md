@@ -49,7 +49,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/partial>}} | Altering a column's data type     |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                         |
 |   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                        |
-|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints)              |
+|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint)              |
 |   {{<icon/yes>}}   | Removing constraints              | [DROP CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade)   |
 |   {{<icon/no>}}    | Altering indexes                  |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding indexes                    | [CREATE INDEX](../the-sql-language/statements/ddl_create_index/)                                                      |
@@ -122,7 +122,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
-| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#group-data)                                       |
+| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#grouping)                                       |
 | {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
 | {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)                                   |
 | {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)                     |
