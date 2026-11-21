@@ -71,3 +71,13 @@ typedef enum YbParseType
 	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_addr"
 #define YB_YCM_CLIENT_PORT \
 	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_port"
+
+/*
+ * YB: Marks the end of the reserved startup parameters in the startup packet
+ * and in the auth passthrough 'A' packet. The connection manager writes its
+ * own reserved parameters first, then this marker, then the parameters that
+ * came from the logical client. Postgres rejects any reserved parameter that
+ * appears after the marker, so a logical client can never supply one.
+ */
+#define YB_YCM_INTERNAL_END \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "end"
