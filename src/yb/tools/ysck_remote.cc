@@ -47,6 +47,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -221,7 +222,13 @@ Status RemoteYsckMaster::Build(const HostPort& address, shared_ptr<YsckMaster>* 
   MessengerBuilder builder(kMessengerName);
   auto messenger = VERIFY_RESULT(builder.Build());
   messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
-  master->reset(new RemoteYsckMaster(address, std::move(messenger)));
+  return Build(address, /* secure_context= */ nullptr, std::move(messenger), master);
+}
+
+Status RemoteYsckMaster::Build(
+    const HostPort& address, std::unique_ptr<rpc::SecureContext> secure_context,
+    std::unique_ptr<rpc::Messenger> messenger, shared_ptr<YsckMaster>* master) {
+  master->reset(new RemoteYsckMaster(address, std::move(secure_context), std::move(messenger)));
   return Status::OK();
 }
 
@@ -371,8 +378,10 @@ Status RemoteYsckMaster::GetTableInfo(const TableId& table_id,
 }
 
 RemoteYsckMaster::RemoteYsckMaster(
-    const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger)
-    : messenger_(std::move(messenger)),
+    const HostPort& address, std::unique_ptr<rpc::SecureContext> secure_context,
+    std::unique_ptr<rpc::Messenger> messenger)
+    : secure_context_(std::move(secure_context)),
+      messenger_(std::move(messenger)),
       proxy_cache_(new rpc::ProxyCache(messenger_.get())),
       generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
       client_proxy_(new master::MasterClientProxy(proxy_cache_.get(), address)),
