@@ -32,6 +32,7 @@
 using std::string;
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(force_global_transactions);
@@ -743,6 +744,132 @@ TEST_F(PgTablespacesTest, CreateTablePersistsTablespace) {
     ASSERT_TRUE(table->LockForRead()->pb.has_no_custom_tablespace()) << table->id();
   }
   ASSERT_EQ(num_tablegroup_parents, 1);
+}
+
+// The master hints which replica of a new tablet should become its first leader. In these tests
+// the hint is the only way for a new tablet to get a leader and nothing moves a leader afterwards,
+// so the leaders found after CREATE TABLE are the hinted ones, and CREATE TABLE does not finish
+// for a tablet that got no hint.
+class PgTablespacesHintedElectionTest : public PgTablespacesTest {
+ protected:
+  static constexpr auto kHintedTable = "hinted_election_tbl";
+  static constexpr int kNumReplicas = 3;
+  static constexpr int kClusterPreferredRegion = 1;
+
+  // Turns the load balancer off, makes tservers skip the election they start on detecting that a
+  // tablet has no leader, and makes kClusterPreferredRegion the cluster's only preferred zone.
+  Status PreferRegionAndKeepOnlyHintedElections() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_election_when_fail_detected) = true;
+
+    tools::ClusterAdminClient yb_admin_client(
+        cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(20));
+    RETURN_NOT_OK(yb_admin_client.Init());
+    // A preferred zone has to be in the cluster placement, which is empty by default.
+    RETURN_NOT_OK(yb_admin_client.ModifyPlacementInfo(
+        BuildPlacementString({PlacementBlock("cloud0", "*", "*", kNumReplicas)}), kNumReplicas,
+        "" /* optional_uuid */));
+    return yb_admin_client.SetPreferredZones(
+        {Format("cloud0.region$0.zone", kClusterPreferredRegion)});
+  }
+
+  Status CreateHintedTable(const std::string& tablespace_clause) {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY) $1 SPLIT INTO 12 TABLETS", kHintedTable,
+        tablespace_clause);
+  }
+
+  // The master may learn who the leader is a little after CREATE TABLE returns. Waiting for that
+  // cannot hide a first leader in the wrong region, as leaders do not move in these tests.
+  Status WaitForLeadersInRegion(int region) {
+    return WaitFor(
+        [&]() { return CheckLeaderPlacement(kHintedTable, {PlacementBlock(region, 1)}); },
+        30s * kTimeMultiplier, Format("Leaders of $0 in region $1", kHintedTable, region));
+  }
+};
+
+// The tablespace prefers region 2 for leaders and the cluster prefers region 1. Each tablet has a
+// replica in both, and its first leader is the one in region 2.
+TEST_F(PgTablespacesHintedElectionTest, TablespaceLeaderPreferenceOverCluster) {
+  ASSERT_OK(PreferRegionAndKeepOnlyHintedElections());
+
+  const Tablespace tablespace(
+      "ts", kNumReplicas,
+      {PlacementBlock(1, 1), PlacementBlock(2, 1, /* leader_preference = */ 1),
+       PlacementBlock(3, 1)});
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(tablespace.CreateCmd()));
+  ASSERT_OK(CreateHintedTable("TABLESPACE ts"));
+
+  ASSERT_OK(WaitForLeadersInRegion(2));
+}
+
+// The tablespace has no replica in the region the cluster prefers. Its tablets still get a first
+// leader, in the region the tablespace prefers.
+TEST_F(PgTablespacesHintedElectionTest, TablespaceOutsideClusterPreferredZone) {
+  ASSERT_OK(PreferRegionAndKeepOnlyHintedElections());
+  ASSERT_OK(AddAdditionalTabletServers(1));
+
+  const Tablespace tablespace(
+      "ts", kNumReplicas,
+      {PlacementBlock(2, 1), PlacementBlock(3, 1, /* leader_preference = */ 1),
+       PlacementBlock(4, 1)});
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(tablespace.CreateCmd()));
+  ASSERT_OK(CreateHintedTable("TABLESPACE ts"));
+
+  ASSERT_OK(WaitForLeadersInRegion(3));
+}
+
+// A table without a tablespace follows the cluster's preferred zone. With 4 tservers and 3
+// replicas, some of its tablets have no replica in that zone. Those tablets still get a first
+// leader, and the other tablets get theirs in the preferred zone.
+TEST_F(PgTablespacesHintedElectionTest, NoVoterInPreferredZone) {
+  ASSERT_OK(PreferRegionAndKeepOnlyHintedElections());
+  ASSERT_OK(AddAdditionalTabletServers(1));
+
+  ASSERT_OK(CreateHintedTable("" /* tablespace_clause */));
+
+  const auto preferred_region = Format("region$0", kClusterPreferredRegion);
+  auto find_leader = [](const master::TabletLocationsPB& tablet) {
+    const master::TabletLocationsPB::ReplicaPB* leader = nullptr;
+    for (const auto& replica : tablet.replicas()) {
+      if (replica.role() == PeerRole::LEADER) {
+        leader = &replica;
+      }
+    }
+    return leader;
+  };
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& tablet : VERIFY_RESULT(GetTabletsForTable(kHintedTable))) {
+          if (!find_leader(tablet)) {
+            return false;
+          }
+        }
+        return true;
+      },
+      30s * kTimeMultiplier, "The master knows the leader of every tablet"));
+
+  size_t num_tablets_outside_preferred_region = 0;
+  for (const auto& tablet : ASSERT_RESULT(GetTabletsForTable(kHintedTable))) {
+    const auto* leader = find_leader(tablet);
+    ASSERT_NE(leader, nullptr) << tablet.tablet_id();
+    const bool has_preferred_replica = std::any_of(
+        tablet.replicas().begin(), tablet.replicas().end(),
+        [&preferred_region](const auto& replica) {
+          return replica.ts_info().cloud_info().placement_region() == preferred_region;
+        });
+    if (has_preferred_replica) {
+      ASSERT_EQ(leader->ts_info().cloud_info().placement_region(), preferred_region)
+          << tablet.tablet_id();
+    } else {
+      ++num_tablets_outside_preferred_region;
+    }
+  }
+  ASSERT_GT(num_tablets_outside_preferred_region, 0)
+      << "Every tablet has a replica in the preferred region, so the case under test did not occur";
 }
 
 } // namespace client
