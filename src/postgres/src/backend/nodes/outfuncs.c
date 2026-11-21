@@ -344,6 +344,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_INT_FIELD(stmt_len);
 	WRITE_INT_FIELD(yb_num_referenced_relations);
 	WRITE_UINT64_FIELD(ybPlanId);
+	WRITE_BOOL_FIELD(ybHintGenerationFailed);
 }
 
 /*
