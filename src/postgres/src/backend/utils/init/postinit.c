@@ -1180,7 +1180,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		uint64_t	shared_catalog_version;
 
 		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+		const bool	use_tserver_cache_for_auth =
+			YbUseTserverResponseCacheForAuth(shared_catalog_version);
+
+		if (use_tserver_cache_for_auth)
 		{
 			/*
 			 * Serve the connection-auth prefetch from the tserver response
@@ -1208,6 +1211,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
+
+		/*
+		 * pg_hba.conf rules on group membership (+role, samerole) read
+		 * pg_auth_members.  Take it from the same cached response as
+		 * pg_authid instead of reading it from the master leader.
+		 */
+		if (use_tserver_cache_for_auth)
+			YbRegisterSysTableForPrefetching(AuthMemRelationId);	/* pg_auth_members */
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{

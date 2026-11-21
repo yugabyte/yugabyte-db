@@ -195,6 +195,69 @@ TEST_F_EX(PgConnTest, UriMd5, PgConnTestAuthMd5) {
   TestUriAuth();
 }
 
+// The rule for +blocked makes authentication check membership in the role blocked, which reads
+// pg_auth_members.
+class PgConnTestHbaGroupRule : public PgConnTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_hba_conf_csv="
+        "host all postgres all trust,host all yugabyte all trust,"
+        "host all +blocked all reject,host all all all trust");
+  }
+
+  void TestHbaGroupRule();
+};
+
+class PgConnTestHbaGroupRuleAuthCache : public PgConnTestHbaGroupRule {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConnTestHbaGroupRule::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_enable_read_request_cache_for_connection_auth=true");
+    // The ASH collector connects while initdb runs and fills the connection-auth cache entry
+    // before initdb creates the database yugabyte.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ash=false");
+  }
+};
+
+void PgConnTestHbaGroupRule::TestHbaGroupRule() {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE blocked"));
+  ASSERT_OK(conn.Execute("CREATE ROLE member LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE ROLE outsider LOGIN"));
+  ASSERT_OK(conn.Execute("GRANT blocked TO member"));
+  WaitForCatalogVersionToPropagate();
+
+  auto connect_as = [this](const std::string& user) {
+    return PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->ysql_port(),
+      .dbname = "yugabyte",
+      .user = user,
+      .connect_timeout = 5,
+    }).Connect();
+  };
+  auto outsider_result = connect_as("outsider");
+  LOG(INFO) << "outsider: "
+            << (outsider_result.ok() ? "connected" : AsString(outsider_result.status()));
+  auto member_result = connect_as("member");
+  LOG(INFO) << "member: "
+            << (member_result.ok() ? "connected" : AsString(member_result.status()));
+
+  EXPECT_OK(outsider_result);
+  ASSERT_NOK(member_result) << "Rule '+blocked reject' did not reject a member of blocked";
+  ASSERT_STR_CONTAINS(member_result.status().ToString(), "pg_hba.conf rejects connection");
+}
+
+TEST_F_EX(PgConnTest, HbaGroupRule, PgConnTestHbaGroupRule) {
+  TestHbaGroupRule();
+}
+
+TEST_F_EX(PgConnTest, HbaGroupRuleAuthCache, PgConnTestHbaGroupRuleAuthCache) {
+  TestHbaGroupRule();
+}
+
 class PgConnTestLimit : public PgConnTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
