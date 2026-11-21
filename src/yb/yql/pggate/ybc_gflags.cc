@@ -194,6 +194,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
+DEFINE_test_flag(uint32, ysql_delay_before_relcache_init_phase3_ms, 0,
+    "Delay a starting YSQL backend after it has checked that its database exists and before "
+    "RelationCacheInitializePhase3.");
+
 DEFINE_test_flag(bool, enable_obj_tuple_locks, false,
     "Enable object tuple locks in the lock manager.");
 
@@ -327,6 +331,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_delay_before_relcache_init_phase3_ms =
+          &FLAGS_TEST_ysql_delay_before_relcache_init_phase3_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
           &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
