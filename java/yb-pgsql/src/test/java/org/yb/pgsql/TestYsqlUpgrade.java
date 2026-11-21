@@ -2069,6 +2069,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(1)));
       Map<Long, String> pgOpfamilyNameByOidMap = snapshot.catalog.get("pg_opfamily").stream()
           .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(2)));
+      Map<Long, String> pgAuthidNameByOidMap = snapshot.catalog.get("pg_authid").stream()
+          .collect(Collectors.toMap((r) -> r.getLong(0), (r) -> r.getString(1)));
 
       Map<Long, Map<Long, String>> entityNamesMap = snapshot.catalog.get("pg_class").stream()
           .filter((classRow) -> classRow.getBoolean(SysCatalogSnapshot.RELHASOIDS_COL_IDX))
@@ -2090,6 +2092,10 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
                               return String.format("pg_cast for %s->%s",
                                   pgTypeNameByOidMap.get(r.getLong(1)),
                                   pgTypeNameByOidMap.get(r.getLong(2)));
+                            case "pg_auth_members":
+                              return String.format("%s member of %s",
+                                  pgAuthidNameByOidMap.get(r.getLong(2)),
+                                  pgAuthidNameByOidMap.get(r.getLong(1)));
                             case "pg_opclass":
                             case "pg_opfamily":
                               return r.getString(2);
@@ -2369,7 +2375,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         break;
       case "pg_constraint":
         replace.accept(2 /* connamespace */, entityNamesMap.get(pgNamespaceOid));
-        replace.accept(8 /* contypid */, entityNamesMap.get(pgTypeOid));
+        replace.accept(9 /* contypid */, entityNamesMap.get(pgTypeOid));
         break;
       case "pg_language":
         replace.accept(5 /* lanplcallfoid */, entityNamesMap.get(pgProcOid));
