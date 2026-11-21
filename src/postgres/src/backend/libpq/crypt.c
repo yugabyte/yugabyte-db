@@ -29,6 +29,7 @@
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+
 /*
  * Fetch stored password for a user, for authentication.
  *

@@ -65,6 +65,7 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+
 /* YB includes */
 #include "catalog/namespace.h"
 #include "commands/defrem.h"
