@@ -8,7 +8,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +29,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
@@ -62,15 +69,28 @@ public class SetFlagInMemoryTest extends CommissionerBaseTest {
   }
 
   private void runSetFlagInMemory(ServerType serverType) {
+    SetFlagInMemory task = app.injector().instanceOf(SetFlagInMemory.class);
+    task.initialize(params(serverType));
+    task.run();
+  }
+
+  private SetFlagInMemory.Params params(ServerType serverType) {
     SetFlagInMemory.Params params = new SetFlagInMemory.Params();
     params.setUniverseUUID(universe.getUniverseUUID());
     params.nodeName = NODE_NAME;
     params.serverType = serverType;
     params.force = true;
     params.gflags = Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, USER_PG_CONF_CSV);
-    SetFlagInMemory task = app.injector().instanceOf(SetFlagInMemory.class);
+    return params;
+  }
+
+  /** A task that does not wait between retries and retries for the given time. */
+  private SetFlagInMemory retryingTask(SetFlagInMemory.Params params, Duration timeout) {
+    SetFlagInMemory task = spy(app.injector().instanceOf(SetFlagInMemory.class));
+    doReturn(timeout).when(task).retryTimeout();
+    doNothing().when(task).waitBeforeRetry(any());
     task.initialize(params);
-    task.run();
+    return task;
   }
 
   private void persistTelemetryConfig(TelemetryConfig telemetryConfig) {
@@ -132,6 +152,43 @@ public class SetFlagInMemoryTest extends CommissionerBaseTest {
   @Test
   public void testFailedRpcFailsTask() throws Exception {
     when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(false);
-    assertThrows(RuntimeException.class, () -> runSetFlagInMemory(ServerType.TSERVER));
+    SetFlagInMemory task = retryingTask(params(ServerType.TSERVER), Duration.ofMinutes(5));
+    assertThrows(RuntimeException.class, task::run);
+    // The server answered, so the refusal is not retried.
+    verify(mockClient).setFlag(any(), anyString(), anyString(), anyBoolean());
+    verify(task, never()).waitBeforeRetry(any());
+  }
+
+  @Test
+  public void testRetriesUntilRestartingServerIsBack() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new IOException("Connection reset"))
+        .thenThrow(new IOException("Connection reset"))
+        .thenReturn(true);
+    SetFlagInMemory task = retryingTask(params(ServerType.TSERVER), Duration.ofMinutes(5));
+    task.run();
+    verify(mockClient, times(3))
+        .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), eq(USER_PG_CONF_CSV), eq(true));
+  }
+
+  @Test
+  public void testFailsOnceRetryTimeoutPasses() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new IOException("Connection reset"));
+    SetFlagInMemory task = retryingTask(params(ServerType.TSERVER), Duration.ZERO);
+    assertThrows(RuntimeException.class, task::run);
+    verify(mockClient).setFlag(any(), anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
+  public void testBestEffortPushIsNotRetried() throws Exception {
+    when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+        .thenThrow(new IOException("Connection reset"));
+    SetFlagInMemory.Params params = params(ServerType.TSERVER);
+    params.ignoreErrors = true;
+    SetFlagInMemory task = retryingTask(params, Duration.ofMinutes(5));
+    task.run();
+    verify(mockClient).setFlag(any(), anyString(), anyString(), anyBoolean());
+    verify(task, never()).waitBeforeRetry(any());
   }
 }
