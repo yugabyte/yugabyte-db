@@ -236,6 +236,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void FlushFinished(internal::BatcherPtr batcher);
 
   ConsistentReadPoint* read_point();
+  const std::shared_ptr<ConsistentReadPoint>& ysql_read_point_handle() const;
+  void SetYsqlReadPointHandle(std::shared_ptr<ConsistentReadPoint> read_point);
 
   void SetRejectionScoreSource(RejectionScoreSourcePtr rejection_score_source);
 
@@ -260,7 +262,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
     int64_t leader_term = OpId::kUnknownTerm;
     ThreadSafeArenaPtr arena;
 
-    ConsistentReadPoint* read_point() const;
+    const std::shared_ptr<ConsistentReadPoint>& read_point() const;
   };
 
  private:
