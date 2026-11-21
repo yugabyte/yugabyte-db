@@ -1956,7 +1956,12 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	while (nextNotify != NULL)
 	{
 		if (IsYugaByteEnabled())
-			qe = *((AsyncQueueEntry *) lfirst(nextNotify));
+		{
+			AsyncQueueEntry *pending = (AsyncQueueEntry *) lfirst(nextNotify);
+
+			/* Pending entries are allocated only pending->length bytes. */
+			memcpy(&qe, pending, pending->length);
+		}
 		else
 		{
 			Notification *n = (Notification *) lfirst(nextNotify);
@@ -3542,15 +3547,24 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 /*
  * Construct a queue entry using the record received from the replication slot
  * and add it to the list of entries pending to be written to the queue.
+ *
+ * A whole transaction is buffered until its COMMIT, so keep only qe.length
+ * bytes of each entry: sizeof(AsyncQueueEntry) is about 8 KB, while a typical
+ * entry is under 100 bytes.
  */
 static void
 ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
-	AsyncQueueEntry *qe = palloc0(sizeof(AsyncQueueEntry));
+	AsyncQueueEntry qe;
+	MemoryContext oldcontext;
+	AsyncQueueEntry *pending;
 
-	ybRecordToAsyncQueueEntry(record, qe);
-	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, qe);
+	ybRecordToAsyncQueueEntry(record, &qe);
+
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+	pending = palloc(qe.length);
+	memcpy(pending, &qe, qe.length);
+	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, pending);
 	MemoryContextSwitchTo(oldcontext);
 }
 
