@@ -4334,7 +4334,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				else
 				{
@@ -4364,7 +4363,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				else
 				{
@@ -4431,11 +4429,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 						if (!YbIsRangeVarTempRelation(rel))
 							is_version_increment = true;
-						else if (!marked_temp)
-						{
+						else
 							marked_temp = true;
-							YBMarkTxnUsesTempRelAndSetTxnId();
-						}
 						if (is_version_increment && marked_temp)
 							break;
 					}
@@ -4544,7 +4539,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
 					break;
 				}
 
@@ -4590,7 +4584,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					is_breaking_change = false;
 					is_version_increment = false;
 					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				break;
 			}
@@ -4620,7 +4613,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				{
 					is_version_increment = false;
 					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
@@ -4712,12 +4704,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 * similar way.
 					 */
 					is_version_increment = false;
-					/*
-					 * REFRESH MATERIALIZED VIEW CONCURRENTLY uses temp tables
-					 * which generates a PostgreSQL XID. Mark the transaction
-					 * as such, so that it can be handled at commit time.
-					 */
-					YbSetTxnUsesTempRel();
 				}
 				else
 					/*

@@ -622,14 +622,6 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	/* Nothing to insert if WITH NO DATA is specified. */
 	if (!myState->into->skipData)
 	{
-		/*
-		 * YB: if we are creating and inserting into a temporary table,
-		 * we must use PG transaction codepaths as well
-		 */
-		if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
-			IsYugaByteEnabled())
-			YbSetTxnUsesTempRel();
-
 		if (IsYBRelation(myState->rel))
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(myState->yb_per_tuple_context);

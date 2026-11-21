@@ -379,6 +379,13 @@ pg_current_xact_id(PG_FUNCTION_ARGS)
 /*
  * Same as pg_current_xact_id() but doesn't assign a new xid if there
  * isn't one yet.
+ *
+ * YB: a PG xid is assigned only by writes to local (temp) storage and by
+ * explicit requests such as pg_current_xact_id(). DocDB writes, which include
+ * all DML to YB-backed tables and all catalog changes made by DDL (temp DDL
+ * included), do not assign one.
+ * Unlike vanilla Postgres, a NULL result therefore does not mean the
+ * transaction has not written anything.
  */
 Datum
 pg_current_xact_id_if_assigned(PG_FUNCTION_ARGS)

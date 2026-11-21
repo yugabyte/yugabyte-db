@@ -133,10 +133,6 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		/* Open and lock the relation, using the appropriate lock type. */
 		rel = table_openrv(stmt->relation, lockmode);
 
-		if (rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP &&
-			IsYugaByteEnabled())
-			YbSetTxnUsesTempRel();
-
 		relid = RelationGetRelid(rel);
 
 		nsitem = addRangeTableEntryForRelation(pstate, rel, lockmode,
