@@ -40,6 +40,7 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
+#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/doc_key.h"
 
@@ -244,6 +245,26 @@ Status CqlPopulateDocOps(
   return Status::OK();
 }
 
+// Always-on cap on the per-transaction-per-tablet intra-transaction write ID (#33499):
+// without the cap the uint32 counter wrapped silently at 2^32, and IDs at or above
+// kIntraTxnWriteIdLimit are reserved. Admission happens here, before Raft submission, so an
+// oversized transaction gets a clean error with no WAL or intent side effects and no replica
+// ever evaluates the doomed batch. The reservation covers everything apply can consume
+// (docdb::MaxIntraTxnWriteIdsForBatch), passes to the write operation at submit and is
+// released when the batch applies or aborts, so concurrent and pipelined batches of one
+// transaction are accounted exactly; TransactionalWriter's fail-stop check remains the
+// backstop against corrupt or incompatible replicated data.
+Result<IntraTxnWriteIdReservation> ReserveIntraTxnWriteIds(
+    Tablet* tablet, const docdb::LWKeyValueWriteBatchPB& write_batch) {
+  if (!write_batch.has_transaction()) {
+    return IntraTxnWriteIdReservation();
+  }
+  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+      write_batch.transaction().transaction_id()));
+  return tablet->transaction_participant()->ReserveIntraTxnWriteIds(
+      txn_id, docdb::MaxIntraTxnWriteIdsForBatch(write_batch));
+}
+
 } // namespace
 
 enum class WriteQuery::ExecuteMode {
@@ -286,6 +307,7 @@ LWWritePB& WriteQuery::request() {
 }
 
 std::unique_ptr<WriteOperation> WriteQuery::PrepareSubmit() {
+  operation_->SetIntraTxnWriteIdReservation(std::move(intra_txn_write_id_reservation_));
   operation_->set_completion_callback(
       [operation = operation_.get(), query = this](const Status& status) {
     std::unique_ptr<WriteQuery> query_holder(query);
@@ -1226,6 +1248,9 @@ Status WriteQuery::DoCompleteExecute() {
       paths.clear();
     }
   }
+
+  intra_txn_write_id_reservation_ =
+      VERIFY_RESULT(ReserveIntraTxnWriteIds(tablet.get(), write_batch));
   return Status::OK();
 }
 
