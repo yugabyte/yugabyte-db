@@ -430,6 +430,11 @@ def main() -> int:
         except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"[lint] {linter.name} failed: {exc}", file=sys.stderr)
             traceback.print_exc()
+            # The linter checked none of its files, so they must not pass.
+            where = matched[0] if len(matched) == 1 else f"{matched[0]} (+{len(matched) - 1} more)"
+            all_msgs.append(Message(where, None, "error", "runner-failed",
+                                    f"linter failed to run: {type(exc).__name__}: {exc}",
+                                    linter.name))
 
     for m in all_msgs:
         print(m.format())
