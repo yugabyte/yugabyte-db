@@ -22,6 +22,7 @@
 #include "yb/common/init.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/gutil/casts.h"
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
@@ -64,7 +65,9 @@ Status DbServerBase::Init() {
   if (!bound_addresses.empty()) {
     ServerRegistrationPB reg;
     RETURN_NOT_OK(GetRegistration(&reg, server::RpcOnly::kTrue));
-    shared_object()->SetHostEndpoint(bound_addresses.front(), PublicHostPort(reg).host());
+    const auto& host_port = DesiredHostPort(reg, options().MakeCloudInfoPB());
+    shared_object()->SetHostEndpoint(
+        bound_addresses.front(), host_port.host(), narrow_cast<uint16_t>(host_port.port()));
   }
 
   return Status::OK();
