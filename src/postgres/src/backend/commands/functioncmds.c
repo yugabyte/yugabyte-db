@@ -1330,6 +1330,9 @@ RemoveFunctionById(Oid funcOid)
 
 	prokind = ((Form_pg_proc) GETSTRUCT(tup))->prokind;
 
+	/* YB: an online schema change transform is frozen while in use. */
+	YbOscCheckTransformChange(funcOid, "drop");
+
 	CatalogTupleDelete(relation, tup);
 
 	ReleaseSysCache(tup);
@@ -1385,6 +1388,9 @@ AlterFunction(ParseState *pstate, AlterFunctionStmt *stmt)
 	rel = table_open(ProcedureRelationId, RowExclusiveLock);
 
 	funcOid = LookupFuncWithArgs(stmt->objtype, stmt->func, false);
+
+	/* YB: an online schema change transform is frozen while in use. */
+	YbOscCheckTransformChange(funcOid, "alter");
 
 	ObjectAddressSet(address, ProcedureRelationId, funcOid);
 
@@ -2470,6 +2476,12 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	if (proc->proowner == newOwnerId)
 		return;
 
+	/*
+	 * An online schema change transform is frozen while in use; the copy runs
+	 * it as its owner.
+	 */
+	YbOscCheckTransformChange(procId, "change the owner of");
+
 	/* Superusers and yb_db_admin role can bypass permission checks */
 	if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 	{
@@ -2545,6 +2557,9 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 		if (!has_privs_of_role(GetUserId(), proc->proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION, NameStr(proc->proname));
 	}
+
+	/* An online schema change transform is frozen while in use. */
+	YbOscCheckTransformChange(proc->oid, "rename");
 
 	/* Make sure function with new name doesn't exist */
 	IsThereFunctionInNamespace(newname, proc->pronargs,

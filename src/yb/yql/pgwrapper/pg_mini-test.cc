@@ -29,6 +29,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
@@ -126,6 +127,10 @@ DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_int32(backfill_index_rate_rows_per_sec);
+DECLARE_int32(index_backfill_rpc_max_retries);
+DECLARE_uint64(online_schema_change_backfill_rows_per_chunk);
+DECLARE_uint32(TEST_online_schema_change_backfill_replay_chunks_per_tablet);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -184,6 +189,109 @@ METRIC_DECLARE_gauge_uint64(wal_replayable_applied_transactions);
 
 namespace yb::pgwrapper {
 namespace {
+
+Result<int64_t> BeginOnlineSchemaChange(
+    PGConn* conn, const std::string& source_table, const std::string& target_table,
+    const std::string& transform_fn) {
+  return conn->FetchRow<int64_t>(Format(
+      "SELECT yb_begin_mirror_table('$0'::regclass, '$1'::regclass, '$2'::regproc)",
+      source_table, target_table, transform_fn));
+}
+
+// The id of the latest job over the pair, which the other lifecycle functions take. Read from
+// the view: the catalog is not readable by a table owner who is not a superuser.
+Result<int64_t> OnlineSchemaChangeJobId(
+    PGConn* conn, const std::string& source_table, const std::string& target_table) {
+  return conn->FetchRow<int64_t>(Format(
+      "SELECT job_id FROM pg_catalog.yb_online_schema_change "
+      "WHERE source_table = '$0'::regclass AND target_table = '$1'::regclass "
+      "ORDER BY job_id DESC LIMIT 1",
+      source_table, target_table));
+}
+
+// Waits for the copy with yb_wait_mirror_table.
+Status WaitForOnlineSchemaChange(
+    PGConn* conn, const std::string& source_table, const std::string& target_table) {
+  const auto job_id = VERIFY_RESULT(OnlineSchemaChangeJobId(conn, source_table, target_table));
+  RETURN_NOT_OK(conn->Execute("SET statement_timeout = '120s'"));
+  const auto status = conn->ExecuteFormat(
+      "DO $$$$ BEGIN PERFORM yb_wait_mirror_table($0); END $$$$", job_id);
+  RETURN_NOT_OK(conn->Execute("RESET statement_timeout"));
+  return status;
+}
+
+Status FinishOnlineSchemaChange(
+    PGConn* conn, const std::string& source_table, const std::string& target_table) {
+  const auto job_id = VERIFY_RESULT(OnlineSchemaChangeJobId(conn, source_table, target_table));
+  return conn->ExecuteFormat(
+      "DO $$$$ BEGIN PERFORM yb_finish_mirror_table($0); END $$$$", job_id);
+}
+
+Status AbortOnlineSchemaChange(
+    PGConn* conn, const std::string& source_table, const std::string& target_table) {
+  const auto job_id = VERIFY_RESULT(OnlineSchemaChangeJobId(conn, source_table, target_table));
+  return conn->ExecuteFormat(
+      "DO $$$$ BEGIN PERFORM yb_abort_mirror_table($0); END $$$$", job_id);
+}
+
+Result<std::string> LatestOnlineSchemaChangeJobStatus(PGConn* conn) {
+  return conn->FetchRow<std::string>(
+      "SELECT status FROM pg_catalog.yb_online_schema_change ORDER BY job_id DESC LIMIT 1");
+}
+
+// Recreates t1, t2 and the t1_to_t2 transform, which returns ROW(<transform_exprs>)::t2, and
+// returns the status of yb_begin_mirror_table over them. Dropping t1 with CASCADE also drops the
+// transform, which takes t1's row type.
+Status BeginOnlineSchemaChangeOverShapes(
+    PGConn* conn, const std::string& src_ddl, const std::string& dst_ddl,
+    const std::string& transform_exprs,
+    const std::vector<std::string>& extra_src_ddl = {},
+    const std::vector<std::string>& extra_dst_ddl = {}) {
+  RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS t2 CASCADE"));
+  RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS t1 CASCADE"));
+  RETURN_NOT_OK(conn->Execute(src_ddl));
+  for (const auto& stmt : extra_src_ddl) {
+    RETURN_NOT_OK(conn->Execute(stmt));
+  }
+  RETURN_NOT_OK(conn->Execute(dst_ddl));
+  for (const auto& stmt : extra_dst_ddl) {
+    RETURN_NOT_OK(conn->Execute(stmt));
+  }
+  RETURN_NOT_OK(conn->ExecuteFormat(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path FROM CURRENT AS $$$$ BEGIN RETURN ROW($0)::t2; END $$$$",
+      transform_exprs));
+  return ResultToStatus(BeginOnlineSchemaChange(conn, "t1", "t2", "t1_to_t2"));
+}
+
+// Ids of the tables whose tablets retain delete markers. Read from the tablet metadata, which is
+// what compaction consults, so this also shows that the pin reached the tablets.
+std::set<TableId> TablesRetainingDeleteMarkers(MiniCluster* cluster) {
+  std::set<TableId> result;
+  for (const auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    auto metadata = peer->tablet_metadata();
+    if (!metadata) {
+      continue;
+    }
+    metadata->IterateColocatedTables([&result](const tablet::TableInfo& info) {
+      if (info.schema().table_properties().retain_delete_markers()) {
+        result.insert(info.table_id);
+      }
+    });
+  }
+  return result;
+}
+
+// For tests whose copy fails the same way on every attempt: the chunk is otherwise retried 10
+// times with backoff, about 7 s, before the job fails. Two retries still ride out a transient
+// error.
+auto FewerChunkRetries() {
+  const auto old_retries = FLAGS_index_backfill_rpc_max_retries;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_max_retries) = 2;
+  return ScopeExit([old_retries] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_max_retries) = old_retries;
+  });
+}
 
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
   auto version_getter =
@@ -249,6 +357,15 @@ class PgMiniTestSingleNode : public PgMiniTest {
  protected:
   size_t NumTabletServers() override {
     return 1;
+  }
+};
+
+// Online schema change requires transactional DDL, which debug builds leave off by default.
+class PgMiniOnlineSchemaChangeTest : public PgMiniTestSingleNode {
+ protected:
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ false);
+    PgMiniTestSingleNode::SetUp();
   }
 };
 
@@ -609,6 +726,2196 @@ TEST_F(PgMiniTest, Simple) {
 
   auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeSimple) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b2' WHERE id = 2"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto status = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT status FROM pg_catalog.yb_online_schema_change ORDER BY job_id DESC LIMIT 1"));
+  ASSERT_EQ(status, "finished");
+
+  // After the swap, t1 is the former t2.
+  const auto new_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(new_count, 2);  // rows 2 and 3 (row 1 was deleted)
+
+  const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v, v2 FROM t1 WHERE id = 2")));
+  ASSERT_EQ(row, (decltype(row){"b2", "b2_x"}));
+
+  const auto missing = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE id = 1"));
+  ASSERT_EQ(missing, 0);
+
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+// The copy names the source row "s" and the transform's result "t".  Source columns with those
+// names must not change what the copy passes to the transform, and an overload of the transform
+// that takes such a column's type must not be called instead of it.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeSourceColumnsNamedLikeAliases) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, s INT, t TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 10, 'a'), (2, 20, 'b')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, s INT, t TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.s, src.t || '_x')::t2; END $$"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src INT) RETURNS t2 LANGUAGE sql IMMUTABLE "
+      "AS $$ SELECT ROW(-src, -src, 'wrong')::t2 $$"));
+
+  ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT yb_begin_mirror_table('t1'::regclass, 't2'::regclass, "
+      "'t1_to_t2(t1)'::regprocedure::regproc)"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, std::string>(
+      "SELECT id, s, t FROM t2 ORDER BY id")));
+  ASSERT_EQ(rows, (decltype(rows){{1, 10, "a_x"}, {2, 20, "b_x"}}));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeDistributedBackfill) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, 100) AS i"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    auto status = VERIFY_RESULT(conn.FetchRow<std::string>(
+        "SELECT status FROM pg_catalog.yb_online_schema_change "
+        "ORDER BY job_id DESC LIMIT 1"));
+    return status == "ready";
+  }, 60s, "Wait for online schema change backfill to complete"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // After the swap, t1 is the former t2.
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, 100);
+
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeConcurrentDml) {
+  constexpr int kNumRows = 200;
+  constexpr int kNumThreads = 4;
+  constexpr int kDmlDurationMs = 2000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 4 TABLETS"));
+  ASSERT_OK(conn.Execute(Format(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows)));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT) "
+                         "SPLIT INTO 4 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  std::atomic<int64_t> insert_count{0};
+  std::atomic<int64_t> update_count{0};
+  std::atomic<int64_t> delete_count{0};
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(),
+         &insert_count, &update_count, &delete_count] {
+      auto dml_conn = ASSERT_RESULT(Connect());
+      while (!stop.load(std::memory_order_acquire)) {
+        const auto key = RandomUniformInt(1, kNumRows);
+        const auto value = RandomHumanReadableString(16);
+        const auto op = RandomUniformInt(0, 2);
+
+        if (op == 0) {
+          auto status = dml_conn.Execute(Format(
+              "INSERT INTO t1(id, v) VALUES ($0, '$1') "
+              "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v", key, value));
+          if (status.ok()) {
+            insert_count++;
+          }
+        } else if (op == 1) {
+          auto status = dml_conn.Execute(Format(
+              "UPDATE t1 SET v = '$1' WHERE id = $0", key, value));
+          if (status.ok()) {
+            update_count++;
+          }
+        } else {
+          auto status = dml_conn.Execute(Format("DELETE FROM t1 WHERE id = $0", key));
+          if (status.ok()) {
+            delete_count++;
+          }
+        }
+      }
+    });
+  }
+
+  SleepFor(MonoDelta::FromMilliseconds(kDmlDurationMs / 2));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  SleepFor(MonoDelta::FromMilliseconds(kDmlDurationMs / 2));
+
+  thread_holder.Stop();
+
+  LOG(INFO) << "Operations completed - inserts: " << insert_count.load()
+            << ", updates: " << update_count.load()
+            << ", deletes: " << delete_count.load();
+
+  auto job_id = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change "
+      "WHERE source_table_oid = 't1'::regclass ORDER BY job_id DESC LIMIT 1"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  std::string old_table_name = Format("yb_osc_old_$0", job_id);
+
+  // The renamed old source is the ground truth.
+  std::map<int, std::string> expected_state;
+  auto old_rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      Format("SELECT id, v FROM $0", old_table_name))));
+  for (const auto& [id, v] : old_rows) {
+    expected_state[id] = v;
+  }
+
+  std::map<int, std::string> actual_state;
+  auto new_rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>("SELECT id, v FROM t1")));
+  for (const auto& [id, v] : new_rows) {
+    actual_state[id] = v;
+  }
+
+  LOG(INFO) << "Old source row count: " << expected_state.size()
+            << ", New target row count: " << actual_state.size();
+
+  int missing_count = 0, extra_count = 0, mismatch_count = 0;
+
+  for (const auto& [id, v] : expected_state) {
+    auto it = actual_state.find(id);
+    if (it == actual_state.end()) {
+      if (missing_count < 10) {
+        LOG(ERROR) << "Row id=" << id << " in old source (v='" << v
+                   << "') but not in new target";
+      }
+      missing_count++;
+    } else if (it->second != v) {
+      if (mismatch_count < 5) {
+        LOG(ERROR) << "Row id=" << id << " value mismatch: old='" << v
+                   << "', new='" << it->second << "'";
+      }
+      mismatch_count++;
+    }
+  }
+
+  for (const auto& [id, v] : actual_state) {
+    if (expected_state.count(id) == 0) {
+      if (extra_count < 5) {
+        LOG(ERROR) << "Row id=" << id << " in new target but not in old source";
+      }
+      extra_count++;
+    }
+  }
+
+  if (missing_count > 0 || extra_count > 0 || mismatch_count > 0) {
+    LOG(ERROR) << "Verification failed - missing: " << missing_count
+               << ", extra: " << extra_count << ", mismatched: " << mismatch_count;
+  }
+
+  ASSERT_EQ(missing_count, 0) << "Some rows from old source are missing in new target";
+  ASSERT_EQ(extra_count, 0) << "Some rows in new target don't exist in old source";
+  ASSERT_EQ(mismatch_count, 0)
+      << "Some rows have different values between old source and new target";
+
+  const auto transform_mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(transform_mismatched, 0) << "Transform function not applied correctly";
+}
+
+// Only the target has a unique index on v. A row inserted after begin duplicates the v of an
+// existing row, and the trigger writes it to the target first. When the copy then writes the
+// existing row at the earlier read time, the uniqueness check must see the later entry, as it does
+// for online CREATE INDEX, and fail the backfill.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeUniqueIndexViolation) {
+  auto retries = FewerChunkRetries();
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX ON t2 (v)"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'a')"));
+
+  auto backfill_status = WaitForOnlineSchemaChange(&conn, "t1", "t2");
+  ASSERT_NOK(backfill_status);
+  ASSERT_STR_CONTAINS(backfill_status.ToString(), "failed");
+}
+
+// The target has non-unique, unique, multi-column, expression and partial indexes. DML runs between
+// begin and the end of the backfill, so rows written by both the trigger and the copy must be
+// reachable through each index.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeIndexes) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, age INT, city TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 VALUES"
+      " (1, 'alice', 30, 'nyc'),"
+      " (2, 'bob', 25, 'sfo'),"
+      " (3, 'carol', 35, 'nyc'),"
+      " (4, 'dave', 40, 'sea'),"
+      " (5, 'eve', 28, 'sfo'),"
+      " (6, 'frank', 33, 'nyc'),"
+      " (7, 'grace', 45, 'sea'),"
+      " (8, 'heidi', 22, 'sfo')"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT, age INT, city TEXT, tag TEXT)"));
+
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_city_idx ON t2 (city)"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t2_name_idx ON t2 (name)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_city_age_idx ON t2 (city, age)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_lower_name_idx ON t2 (lower(name))"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_senior_idx ON t2 (age) WHERE age >= 30"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.name, src.age, src.city, src.city || "
+      "'_' || src.age::text)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (9, 'ivan', 38, 'nyc')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET age = 31 WHERE id = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 8"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET name = 'robert' WHERE id = 2"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // The current t1 is the ground truth.
+  auto expected_rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, int32_t, std::string>(
+      "SELECT id, name, age, city FROM t1 ORDER BY id")));
+
+  {
+    auto t2_count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2"));
+    ASSERT_EQ(static_cast<size_t>(t2_count), expected_rows.size()) << "row count differs";
+  }
+
+  {
+    auto t2_rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, int32_t, std::string>(
+        "SELECT id, name, age, city FROM t2 ORDER BY id")));
+    ASSERT_EQ(expected_rows.size(), t2_rows.size());
+    for (size_t i = 0; i < expected_rows.size(); ++i) {
+      ASSERT_EQ(expected_rows[i], t2_rows[i]) << "row mismatch at position " << i;
+    }
+  }
+
+  {
+    auto bad = ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM t2 WHERE tag IS DISTINCT FROM (city || '_' || age)"));
+    ASSERT_EQ(bad, 0) << "transform function not applied correctly";
+  }
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+
+  for (const auto& [id, name, age, city] : expected_rows) {
+    {
+      auto t2_id = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
+          "SELECT id FROM t2 WHERE name = '$0'", name)));
+      ASSERT_EQ(t2_id, id) << "unique index lookup for name='" << name << "' returned wrong id";
+    }
+
+    {
+      auto found = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM t2 WHERE city = '$0' AND id = $1", city, id)));
+      ASSERT_EQ(found, 1) << "city index: row id=" << id << " not found via city='" << city << "'";
+    }
+
+    {
+      auto found = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM t2 WHERE city = '$0' AND age = $1 AND id = $2",
+          city, age, id)));
+      ASSERT_EQ(found, 1) << "multi-column index: row id=" << id << " not found";
+    }
+
+    {
+      auto t2_id = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
+          "SELECT id FROM t2 WHERE lower(name) = lower('$0')", name)));
+      ASSERT_EQ(t2_id, id) << "expression index: lower('" << name << "') returned wrong id";
+    }
+
+    if (age >= 30) {
+      auto found = ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM t2 WHERE age = $0 AND id = $1", age, id)));
+      ASSERT_EQ(found, 1) << "partial index: row id=" << id << " (age=" << age << ") not found";
+    }
+  }
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBulkUpdateFlushRequests) {
+  constexpr int kNumRows = 500;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'val_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  auto explain_json = ASSERT_RESULT(conn.FetchRow<JsonDocument>(Format(
+      "EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) "
+      "UPDATE t1 SET v = 'new_' || v")));
+
+  LOG(INFO) << "EXPLAIN output: " << ASSERT_RESULT(explain_json.Root().ToString());
+
+  auto flush_requests = ASSERT_RESULT(
+      explain_json.Root()[0]["Storage Flush Requests"].GetDouble());
+  LOG(INFO) << "Storage Flush Requests for bulk UPDATE on a captured source (" << kNumRows
+            << " rows): " << flush_requests;
+  ASSERT_LE(flush_requests, 10)
+      << "Statement-level capture trigger should batch writes into very few flushes";
+
+  auto write_requests = ASSERT_RESULT(
+      explain_json.Root()[0]["Storage Write Requests"].GetDouble());
+  LOG(INFO) << "Storage Write Requests: " << write_requests;
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// Each tablet's copy must scan only its own range of a range-sharded source.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRangePartitioned) {
+  constexpr int kNumRows = 400;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES ((100), (200), (300))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES ((100), (200), (300))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+
+  // Spot-check rows from each tablet's range.
+  for (int id : {1, 100, 200, 300, 400}) {
+    const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(Format(
+        "SELECT v, v2 FROM t1 WHERE id = $0", id))));
+    ASSERT_EQ(row, (decltype(row){Format("v_$0", id), Format("v_$0_x", id)}));
+  }
+}
+
+// The trigger and the copy write by primary key value, so the sharding schemes of the source and
+// the target are independent.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCrossSchemeRangeToHash) {
+  constexpr int kNumRows = 200;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES ((50), (100), (150))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT) SPLIT INTO 4 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRangeConcurrentDml) {
+  constexpr int kNumRows = 300;
+  constexpr int kNumThreads = 4;
+  constexpr int kDmlDurationMs = 2000;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES ((75), (150), (225))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC)) "
+      "SPLIT AT VALUES ((75), (150), (225))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag()] {
+      auto dml_conn = ASSERT_RESULT(Connect());
+      while (!stop.load(std::memory_order_acquire)) {
+        const auto key = RandomUniformInt(1, kNumRows);
+        const auto value = RandomHumanReadableString(16);
+        const auto op = RandomUniformInt(0, 2);
+        if (op == 0) {
+          (void) dml_conn.ExecuteFormat(
+              "INSERT INTO t1(id, v) VALUES ($0, '$1') "
+              "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v", key, value);
+        } else if (op == 1) {
+          (void) dml_conn.ExecuteFormat(
+              "UPDATE t1 SET v = '$1' WHERE id = $0", key, value);
+        } else {
+          (void) dml_conn.ExecuteFormat("DELETE FROM t1 WHERE id = $0", key);
+        }
+      }
+    });
+  }
+
+  SleepFor(MonoDelta::FromMilliseconds(kDmlDurationMs / 2));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  SleepFor(MonoDelta::FromMilliseconds(kDmlDurationMs / 2));
+
+  thread_holder.Stop();
+
+  auto job_id = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change "
+      "WHERE source_table_oid = 't1'::regclass ORDER BY job_id DESC LIMIT 1"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // The renamed old source is the ground truth.
+  std::string old_table_name = Format("yb_osc_old_$0", job_id);
+  std::map<int, std::string> expected;
+  for (const auto& [id, v] : ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+           Format("SELECT id, v FROM $0", old_table_name))))) {
+    expected[id] = v;
+  }
+  std::map<int, std::string> actual;
+  for (const auto& [id, v] : ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+           "SELECT id, v FROM t1")))) {
+    actual[id] = v;
+  }
+  ASSERT_EQ(actual, expected);
+
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+// Tablets that hold more than one prefetch page (yb_fetch_row_limit, default 1024) of rows, so the
+// copy must resume across pages via the backfill spec's next_row_key.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeMultiPageTabletRange) {
+  constexpr int kNumRows = 3000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+  const auto out_of_range = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM t1 WHERE id < 1 OR id > $0", kNumRows)));
+  ASSERT_EQ(out_of_range, 0);
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeMultiPageTabletHash) {
+  // Several tablets: a single hash tablet spans the whole hash space, so any resume key falls in
+  // its bounds, which would hide a scan that ignores the tablet's partition key.
+  constexpr int kNumRows = 6000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+  const auto out_of_range = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM t1 WHERE id < 1 OR id > $0", kNumRows)));
+  ASSERT_EQ(out_of_range, 0);
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+// backfill_index_rate_rows_per_sec paces the online schema change backfill as it paces an index
+// backfill. Only a lower bound on the elapsed time is asserted; the unthrottled copy takes a
+// fraction of a second.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRateLimited) {
+  // More than one page, in one tablet, so a single copy does all the pacing.
+  constexpr int kNumRows = 2000;
+  constexpr int kRowsPerSec = 500;
+  // The final chunk is not paced, so the floor comes from the chunks before it.
+  constexpr auto kMinDuration = 1500ms;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = kRowsPerSec;
+  auto se = ScopeExit(
+      [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0; });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  const auto start = MonoTime::Now();
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Throttled backfill of " << kNumRows << " rows at " << kRowsPerSec
+            << " rows/s took " << elapsed;
+  ASSERT_GE(elapsed, MonoDelta(kMinDuration));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+// online_schema_change_backfill_rows_per_chunk splits the copy of one tablet into several chunk
+// RPCs, and the master persists the resume key, a raw DocDB key, between them. A key that does not
+// round-trip exactly shows up as missing or duplicated rows, and as a rows_done that differs from
+// the row count.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeMultiChunkTablet) {
+  constexpr int kNumRows = 6000;
+  // Not page-aligned, so a chunk boundary falls mid-page.
+  constexpr int kRowsPerChunk = 700;
+
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = kRowsPerChunk;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Range-sharded and single-tablet, so every chunk of the run resumes the same scan.
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // Accumulated per chunk, so it catches a chunk counted twice or skipped.
+  const auto rows_done = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT rows_done FROM pg_catalog.yb_online_schema_change ORDER BY job_id DESC LIMIT 1"));
+  ASSERT_EQ(rows_done, kNumRows);
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, kNumRows);
+  const auto out_of_range = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      Format("SELECT count(*) FROM t1 WHERE id < 1 OR id > $0", kNumRows)));
+  ASSERT_EQ(out_of_range, 0);
+  const auto mismatched = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')"));
+  ASSERT_EQ(mismatched, 0);
+}
+
+// A chunk whose response never reached the master is copied again over the same range, and that
+// must not fail: the base-table write is blind, and a unique index entry rewritten with identical
+// bytes passes the duplicate check. The bytes are identical because indexed transform columns
+// must be immutable.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeChunkReplayIsIdempotent) {
+  constexpr int kNumRows = 3000;
+  // Not page-aligned, so the re-copied range is not either.
+  constexpr int kRowsPerChunk = 700;
+  constexpr uint32_t kReplaysPerTablet = 2;
+
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = kRowsPerChunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_replay_chunks_per_tablet) =
+      kReplaysPerTablet;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_replay_chunks_per_tablet) =
+        0;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Range-sharded and single-tablet, so every chunk of the run resumes the same scan.
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  // A unique index, whose entries a replayed chunk rewrites.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, v TEXT, u TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t2_u_idx ON t2 (u)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_v_idx ON t2 (v)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, 'u_' || src.id::text)::t2; END $$"));
+
+  StringWaiterLogSink dropped_chunks("TEST: dropping the response of a chunk");
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // Make sure that a chunk was actually replayed.
+  ASSERT_GE(dropped_chunks.GetEventCount(), kReplaysPerTablet);
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM t2 WHERE v IS DISTINCT FROM ('v_' || id) "
+          "OR u IS DISTINCT FROM ('u_' || id)")),
+      0);
+
+  // Through the unique index, every row is reached exactly once.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE u >= 'u_'")), kNumRows);
+  for (int id : {1, kRowsPerChunk, kNumRows / 2, kNumRows}) {
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchRow<int32_t>(Format("SELECT id FROM t2 WHERE u = 'u_$0'", id))),
+        id);
+  }
+  ASSERT_OK(conn.Execute("SET enable_seqscan = on"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), kNumRows);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT count(*) FROM t1 WHERE u IS DISTINCT FROM ('u_' || id)")),
+      0);
+}
+
+// An abort takes effect between chunks, because a running chunk RPC cannot be interrupted. With
+// small chunks and a throttled copy, the copy must stop short of the full row count.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeAbortObservedMidCopy) {
+  constexpr int kNumRows = 10000;
+  constexpr int kRowsPerChunk = 1000;
+
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = kRowsPerChunk;
+  // Throttle the copy so that it cannot finish before the abort lands.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 500;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  // Abort only once the copy has made progress.
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    return VERIFY_RESULT(conn.FetchRow<int64_t>(
+        "SELECT rows_done FROM pg_catalog.yb_online_schema_change "
+        "ORDER BY job_id DESC LIMIT 1")) > 0;
+  }, 60s, "Wait for the copy to report progress"));
+
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+
+  // Once the master has released the target, no chunk is left to write to it.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for the aborted job to release its delete-marker retention"));
+  const auto copied = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2"));
+  ASSERT_GT(copied, 0);
+  ASSERT_LT(copied, kNumRows);
+
+  ASSERT_OK(conn.Execute("DROP TABLE t2 CASCADE"));
+}
+
+// The backfill pins delete-marker retention on the target and on each of its indexes while it runs,
+// and releases the pins when it finishes. The trigger's blind deletes write tombstones into the
+// indexes too, and a unique index insert reads at the backfill time, which fails with
+// SnapshotTooOld without the pin.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRetentionPinnedDuringBackfill) {
+  constexpr int kNumRows = 2000;
+  // Slow the copy down enough to observe the pin while it is held.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 500;
+  auto se = ScopeExit(
+      [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0; });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT, v TEXT, v2 TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t2_v_uniq ON t2 (v)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_v2_idx ON t2 (v2)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  // CREATE INDEX releases its own retention pins asynchronously; wait for that first.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for CREATE INDEX to release delete-marker retention"));
+
+  // The throttled copy spans several controller passes. A pass must not build a chunk task for
+  // the tablet whose chunk is in flight and then destroy it unrun (a DFATAL in debug builds).
+  StringWaiterLogSink dropped_task("task in a wrong state");
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  // The target and its two indexes.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).size() == 3; }, 30s,
+      "Wait for the online schema change backfill to pin the target and its indexes"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(dropped_task.GetEventCount(), 0);
+
+  // Released once the copy has succeeded, not deferred to cutover.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for the online schema change backfill to release its delete-marker retention pins"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), kNumRows);
+}
+
+// The target's indexes serve reads as soon as the cutover commits. These two indexes are built
+// without a backfill, so they have no birth time of their own, and a pinned index with no birth
+// time has its reads retried until the pin is released.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeIndexesReadableRightAfterCutover) {
+  constexpr int kNumRows = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT UNIQUE, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_v2_idx ON t2 (v2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn.Execute("SET statement_timeout = '20s'"));
+  for (const auto& [column, value, index] : {
+           std::tuple{"v", "v_7", "t2_v_key"},
+           std::tuple{"v2", "v_7_x", "t2_v2_idx"}}) {
+    const auto query = Format("SELECT id FROM t1 WHERE $0 = '$1'", column, value);
+    const auto plan = ASSERT_RESULT(conn.FetchAllAsString("EXPLAIN " + query));
+    ASSERT_STR_CONTAINS(plan, index);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(query)), 7);
+  }
+}
+
+// After an abort from "ready", the trigger is gone, the source is untouched, and the pair can be
+// changed again.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeAbortAfterReady) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+
+  ASSERT_NOK_STR_CONTAINS(AbortOnlineSchemaChange(&conn, "t1", "t2"), "is aborted");
+
+  const auto t2_before = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  const auto t2_after = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2"));
+  ASSERT_EQ(t2_after, t2_before);
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 3);
+
+  ASSERT_OK(conn.Execute("TRUNCATE t2"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+}
+
+// A rewrite gives a table a new relfilenode, and the DocDB table id comes from it, so the master
+// must not be sent the OIDs. The source has had its column type changed, and the target has been
+// emptied the way begin's hint for a non-empty target suggests.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRewrittenTables) {
+  constexpr int kNumRows = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v VARCHAR(20))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ALTER COLUMN v TYPE TEXT USING v || ''"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (0, 'stale', 'stale')"));
+  ASSERT_OK(conn.Execute("TRUNCATE t2"));
+  const auto num_rewritten = [&conn] {
+    return conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM pg_class WHERE relname IN ('t1', 't2') AND relfilenode <> oid");
+  };
+  ASSERT_EQ(ASSERT_RESULT(num_rewritten()), 2);
+
+  // Abort names the source to the master too.
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+
+  ASSERT_OK(conn.Execute("TRUNCATE t2"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (0, 'v_0')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "ready");
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 = v || '_x'")), kNumRows + 1);
+}
+
+// A copy that completes after the abort must not bring the job back.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeAbortDuringBackfill) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, 2000) AS i"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+
+  // Releasing the target's retention is the last of the master's teardown.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for the aborted job to release its delete-marker retention"));
+  ASSERT_NOK_STR_CONTAINS(WaitForOnlineSchemaChange(&conn, "t1", "t2"), "is aborted");
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeAbortNoJob) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+
+  ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT yb_abort_mirror_table(12345)"),
+                          "online schema change job 12345 does not exist");
+}
+
+namespace {
+
+// Creates t1 with two rows, t2, and the t1_to_t2 transform.
+Status CreateOnlineSchemaChangePair(PGConn* conn) {
+  RETURN_NOT_OK(conn->Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  RETURN_NOT_OK(conn->Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  RETURN_NOT_OK(conn->Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  return conn->Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$");
+}
+
+}  // namespace
+
+class PgMiniOnlineSchemaChangeLegacyDdlTest : public PgMiniTestSingleNode {
+ protected:
+  void SetUp() override {
+    ToggleDDLMode(/* use_legacy = */ true);
+    PgMiniTestSingleNode::SetUp();
+  }
+};
+
+// Without transactional DDL, every lifecycle step is refused.
+TEST_F(PgMiniOnlineSchemaChangeLegacyDdlTest, OnlineSchemaChangeRequiresTransactionalDdl) {
+  constexpr auto kError = "online schema change requires transactional DDL";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"), kError);
+  ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT yb_finish_mirror_table(1)"), kError);
+  ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT yb_abort_mirror_table(1)"), kError);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+}
+
+// yb_begin_mirror_table returns the job id, which the other lifecycle functions take.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeLifecycleByReturnedJobId) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change ORDER BY job_id DESC LIMIT 1")),
+      job_id) << "yb_begin_mirror_table did not return the job id";
+  const auto how = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(Format(
+      "SELECT command, cutover_mode FROM pg_catalog.yb_online_schema_change WHERE job_id = $0",
+      job_id))));
+  ASSERT_EQ(how, (decltype(how){"yb_begin_mirror_table", "rename"}));
+  const auto recorded = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(Format(
+      "SELECT origin, query FROM pg_catalog.pg_yb_online_schema_change WHERE job_id = $0",
+      job_id))));
+  ASSERT_EQ(recorded, (decltype(recorded){
+      "manual",
+      "SELECT yb_begin_mirror_table('t1'::regclass, 't2'::regclass, 't1_to_t2'::regproc)"}));
+  ASSERT_RESULT(conn.FetchFormat("SELECT yb_wait_mirror_table($0)", job_id));
+  ASSERT_RESULT(conn.FetchFormat("SELECT yb_finish_mirror_table($0)", job_id));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+      "SELECT status FROM pg_catalog.pg_yb_online_schema_change WHERE job_id = $0", job_id))),
+      "finished");
+  ASSERT_NOK_STR_CONTAINS(conn.FetchFormat("SELECT yb_abort_mirror_table($0)", job_id),
+                          "is finished");
+}
+
+// The job records only the begin statement of a multi-statement query string.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRecordsBeginStatement) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  const std::string begin_stmt = "SELECT yb_begin_mirror_table('t1', 't2', 't1_to_t2')";
+  ASSERT_OK(conn.Execute(
+      "SET client_min_messages = notice; " + begin_stmt + "; RESET client_min_messages"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT query FROM pg_catalog.pg_yb_online_schema_change "
+      "WHERE source_table_oid = 't1'::regclass")),
+      begin_stmt);
+  const auto job_id = ASSERT_RESULT(OnlineSchemaChangeJobId(&conn, "t1", "t2"));
+  ASSERT_RESULT(conn.FetchFormat("SELECT yb_wait_mirror_table($0)", job_id));
+  ASSERT_RESULT(conn.FetchFormat("SELECT yb_finish_mirror_table($0)", job_id));
+}
+
+// A copy that has finished survives a master restart: the new leader still reports it as done,
+// and the cutover goes through.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverAfterMasterRestart) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(cluster_->mini_master(0)->Restart());
+  ASSERT_OK(cluster_->mini_master(0)->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(FinishOnlineSchemaChange(&conn2, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn2)), "finished");
+}
+
+// A cutover whose commit fails leaves the job "ready", and can be retried.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverRetriedAfterCommitFails) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 1"));
+  ASSERT_NOK_STR_CONTAINS(
+      FinishOnlineSchemaChange(&conn, "t1", "t2"), "Failed DDL operation as requested");
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "ready");
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v2 FROM t1 WHERE id = 1")), "a_x");
+}
+
+// Foreign keys are not supported yet: begin refuses a source or a target that has one, or a
+// source that one references. Nothing blocks DDL on the source while the job runs, so the cutover
+// checks the source again.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeForeignKeysRejected) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, pid INT REFERENCES parent(id))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, pid INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid)::t2; END $$"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
+      "source table \"t1\" of an online schema change must not have foreign keys");
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP CONSTRAINT t1_pid_fkey"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD FOREIGN KEY (pid) REFERENCES parent(id)"));
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
+      "target table \"t2\" of an online schema change must not have foreign keys");
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t2_pid_fkey"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE child (id INT PRIMARY KEY, t1_id INT REFERENCES t1(id))"));
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
+      "must not be referenced by foreign keys");
+  ASSERT_OK(conn.Execute("DROP TABLE child"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD FOREIGN KEY (pid) REFERENCES parent(id)"));
+  ASSERT_NOK_STR_CONTAINS(
+      FinishOnlineSchemaChange(&conn, "t1", "t2"), "must not have foreign keys");
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP CONSTRAINT t1_pid_fkey"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+}
+
+// The target's primary key adds a derived column to the source's. Distinct ids already keep the
+// rows apart, so the pair is accepted.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessTargetPkSuperset) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, 50) AS i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT, part INT, v TEXT, PRIMARY KEY (id, part))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.id % 4, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (51, 'v_51')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'updated' WHERE id = 2"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 3"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 50);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1 WHERE id = 3")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t1 WHERE id = 2")),
+            "updated");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE part IS DISTINCT FROM id % 4")), 0);
+}
+
+// The source's key is (a, b) and the target's is (a), which OnlineSchemaChangeKeyWitnessRejected
+// refuses, but a unique index on the source's a is a witness.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessSecondaryUniqueIndex) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (a, b))"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, i * 10, 'v_' || i FROM generate_series(1, 30) AS i"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.a, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (31, 310, 'v_31')"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 4"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 30);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1 WHERE a = 4")), 0);
+}
+
+// A secondary-index witness, unlike a YB primary key, can be dropped while the job runs, so the
+// cutover checks the witness again and refuses the swap without it.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessRecheckedAtCutover) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (a, b))"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, i * 10, 'v_' || i FROM generate_series(1, 10) AS i"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.a, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_OK(conn.Execute("DROP INDEX t1_a_uniq"));
+  ASSERT_NOK_STR_CONTAINS(
+      FinishOnlineSchemaChange(&conn, "t1", "t2"), "no unique index on source table \"t1\"");
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "ready");
+
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 10);
+}
+
+// The witness need not list its columns in the order of the target's primary key.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessColumnOrder) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (a, b))"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, i * 10, 'v_' || i FROM generate_series(1, 20) AS i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (b, a))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.a, src.b, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'updated' WHERE a = 1"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 20);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v FROM t1 WHERE a = 1")),
+            "updated");
+}
+
+// A dropped target column leaves the primary key at an attnum that differs from its position among
+// the live columns.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessDroppedTargetColumn) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, 20) AS i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (junk INT, id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP COLUMN junk"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (21, 'v_21')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 21);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM v || '_x'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeGeneratedColumnsRejected) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, "
+      "v2 TEXT GENERATED ALWAYS AS (v || '_x') STORED)",
+      "src.id, src.v, src.v || '_x'");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not have generated columns");
+  ASSERT_STR_CONTAINS(status.ToString(), "\"v2\"");
+
+  // The copy and the trigger never advance a sequence the target owns, so after cutover its next
+  // value would repeat a copied key.
+  for (const auto* identity : {"ALWAYS", "BY DEFAULT"}) {
+    status = BeginOnlineSchemaChangeOverShapes(
+        &conn,
+        "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)",
+        Format("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, n INT GENERATED $0 AS IDENTITY)",
+               identity),
+        "src.id, src.v, 1");
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "must not have identity columns");
+    ASSERT_STR_CONTAINS(status.ToString(), "\"n\"");
+  }
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, n SERIAL)",
+      "src.id, src.v, 1");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not own a sequence");
+  ASSERT_STR_CONTAINS(status.ToString(), "\"t2_n_seq\"");
+
+  // A sequence the target does not own is accepted.
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE shared_seq"));
+  ASSERT_OK(BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, n INT DEFAULT nextval('shared_seq'))",
+      "src.id, src.v, 1"));
+  // A copy still running at teardown holds up tserver shutdown for two minutes.
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// Only the tserver's copy connection may call the chunk function, which runs a caller-chosen
+// transform as the source table's owner.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeChunkFunctionIsTserverOnly) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kCall =
+      "SELECT * FROM pg_catalog.yb_backfill_online_schema_change_chunk(0, 0, 0, 0, NULL, '\\x00')";
+
+  auto status = conn.Execute(kCall);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "can only be called by the tserver");
+
+  ASSERT_OK(conn.Execute("CREATE ROLE admin"));
+  ASSERT_OK(conn.Execute("GRANT yb_db_admin TO admin"));
+  ASSERT_OK(conn.Execute("SET ROLE admin"));
+  status = conn.Execute(kCall);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "permission denied for function");
+}
+
+// The copy writes GIN and vector index entries as backfill writes, like the base-table rows; a
+// transactional index write would share a write batch with them, which is not allowed.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeGinAndVectorIndexes) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT, e vector(3)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i, format('[%s,%s,%s]', i, i, i)::vector "
+      "FROM generate_series(1, 100) AS i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, tags TEXT[], e vector(3))"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_tags ON t2 USING ybgin (tags)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_e ON t2 USING ybhnsw (e vector_l2_ops)"));
+  // The transform may call only built-in functions, so it passes the vector through.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, ARRAY[src.v], src.e)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (101, 'v_101', '[101,101,101]')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE tags = ARRAY[v] AND e IS NOT NULL")), 101);
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT id FROM t1 ORDER BY e <-> '[42,42,42]' LIMIT 1")), 42);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT id FROM t1 ORDER BY e <-> '[101,101,101]' LIMIT 1")), 101);
+}
+
+// The cutover rename would leave the archived table in the inheritance hierarchy.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeInheritanceRejected) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kSrcDdl = "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)";
+  constexpr auto kDstDdl = "CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)";
+  constexpr auto kBody = "src.id, src.v, src.v || '_x'";
+
+  auto status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kSrcDdl, kDstDdl, kBody,
+      {"CREATE TABLE t1_child (c INT, PRIMARY KEY (id)) INHERITS (t1)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "source table \"t1\" has inheritance children");
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kSrcDdl, kDstDdl, kBody, {}, {"CREATE TABLE t2_child () INHERITS (t2)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "target table \"t2\" has inheritance children");
+
+  ASSERT_OK(conn.Execute("CREATE TABLE base (v TEXT)"));
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, "CREATE TABLE t1 (id INT PRIMARY KEY) INHERITS (base)", kDstDdl, kBody);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "source table \"t1\" inherits from another table");
+
+  // Inherited columns come first, so t2 is (v, id, v2).
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kSrcDdl, "CREATE TABLE t2 (id INT PRIMARY KEY, v2 TEXT) INHERITS (base)",
+      "src.v, src.id, src.v || '_x'");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "target table \"t2\" inherits from another table");
+
+  ASSERT_OK(BeginOnlineSchemaChangeOverShapes(&conn, kSrcDdl, kDstDdl, kBody));
+  // A copy still running at teardown holds up tserver shutdown for two minutes.
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// The copy only writes, so a target row without a source counterpart would survive the cutover.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTargetMustBeEmpty) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT g, 'good' || g FROM generate_series(1, 10) g"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (999, 'stale', 'stale')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "target table \"t2\" is not empty");
+
+  ASSERT_OK(conn.Execute("TRUNCATE t2"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 10);
+}
+
+// Pairs without a key witness are refused.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessRejected) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // The target's key is a prefix of the source's, so (1, 10) and (1, 20) would share target key 1.
+  auto status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (a, b))",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "no unique index on source table \"t1\"");
+  ASSERT_STR_CONTAINS(status.ToString(), "is not part of the target's primary key");
+  ASSERT_STR_CONTAINS(status.ToString(), "CREATE UNIQUE INDEX ON public.t1 (a)");
+
+  // A partial unique index says nothing about the rows it excludes.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, del BOOL NOT NULL DEFAULT false, "
+      "v TEXT, PRIMARY KEY (a, b))",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v",
+      {"CREATE UNIQUE INDEX t1_a_live ON t1 (a) WHERE NOT del"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "\"t1_a_live\" is partial");
+
+  // An expression index has no column to pair with a target key column.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (a, b))",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v",
+      {"CREATE UNIQUE INDEX t1_abs_a ON t1 (abs(a))"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "\"t1_abs_a\" is on an expression");
+
+  // A unique index allows any number of NULLs. Such rows fail on the target's NOT NULL key, but
+  // only once the copy or the trigger reaches them.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (id INT PRIMARY KEY, a INT, v TEXT)",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v",
+      {"CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "column \"a\" of unique index \"t1_a_uniq\" is nullable");
+
+  // A narrower typmod can map distinct source values to one target value.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a VARCHAR(64) PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (a VARCHAR(8) PRIMARY KEY, v TEXT)",
+      "src.a::varchar(8), src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "does not have the same type, length or collation");
+
+  // So can a narrower type.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a BIGINT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a::int, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "does not have the same type, length or collation");
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT NOT NULL, v TEXT)",
+      "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "table \"t1\" must have a primary key");
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (a INT NOT NULL, v TEXT)",
+      "src.a, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "table \"t2\" must have a primary key");
+
+  // No target key column exists on the source, so there is no index to suggest.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn,
+      "CREATE TABLE t1 (a INT PRIMARY KEY, v TEXT)",
+      "CREATE TABLE t2 (k INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "names no column of the source");
+}
+
+// An invalid unique index is not a witness. No supported path leaves one behind, so the test sets
+// indisvalid directly.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessInvalidIndex) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, a INT NOT NULL, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.a, src.v)::t2; END $$"));
+
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+  ASSERT_OK(conn.Execute(
+      "UPDATE pg_index SET indisvalid = false WHERE indexrelid = 't1_a_uniq'::regclass"));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT indisvalid FROM pg_index WHERE indexrelid = 't1_a_uniq'::regclass")));
+
+  const auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "\"t1_a_uniq\" is not valid");
+}
+
+namespace {
+
+// The source's key is (b, a), so the copy runs in b order, and the target's is (a). Nothing on the
+// source shows that a is unique, so only a target index that includes b can be the key witness.
+constexpr auto kTargetWitnessSrcDdl =
+    "CREATE TABLE t1 (a INT NOT NULL, b INT NOT NULL, v TEXT, PRIMARY KEY (b ASC, a ASC))";
+constexpr auto kTargetWitnessDstDdl = "CREATE TABLE t2 (a INT PRIMARY KEY, b INT, v TEXT)";
+constexpr auto kTargetWitnessIndexDdl = "CREATE UNIQUE INDEX t2_a_b ON t2 (a) INCLUDE (b)";
+
+}  // namespace
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTargetKeyWitness) {
+  auto conn = ASSERT_RESULT(Connect());
+  const std::vector<std::string> seed = {
+      "INSERT INTO t1 SELECT i, i * 10, 'v_' || i FROM generate_series(1, 30) AS i"};
+
+  auto status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, "src.a, src.b, src.v", seed);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "Or add one on the target with: "
+                      "CREATE UNIQUE INDEX ON public.t2 (a) INCLUDE (b)");
+
+  ASSERT_OK(BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, "src.a, src.b, src.v", seed,
+      {kTargetWitnessIndexDdl}));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (31, 310, 'v_31')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'updated' WHERE a = 2"));
+  // A new source key on the same target key: the trigger's tombstone comes first, so this is not
+  // a collision with the copy's older entry for a = 3.
+  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 41 WHERE a = 3"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 4"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  constexpr auto kRows = "SELECT a, b, v FROM t1 ORDER BY a";
+  const auto expected = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, std::string>(kRows)));
+  ASSERT_EQ(expected.size(), 30);
+  ASSERT_EQ(expected[1], std::make_tuple(2, 20, std::string("updated")));
+  ASSERT_EQ(expected[2], std::make_tuple(3, 41, std::string("v_3")));
+  ASSERT_EQ(std::get<0>(expected[3]), 5);
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, std::string>(kRows))), expected);
+}
+
+// Two source rows that reach one target key must fail the job, or the statement that creates the
+// second one, instead of collapsing into one target row.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTargetKeyWitnessCollision) {
+  // Enough rows for several 20-row chunks between b = 1 and b = 500, and few enough that the copy
+  // throttled to 50 rows/s below takes about a second.
+  constexpr int kSeedRows = 51;
+  auto retries = FewerChunkRetries();
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = 20;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+  });
+  auto conn = ASSERT_RESULT(Connect());
+  const auto begin = [&conn](const std::string& seed, const std::string& transform_exprs) {
+    return BeginOnlineSchemaChangeOverShapes(
+        &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, transform_exprs,
+        {Format("INSERT INTO t1 SELECT i, i, 'v_' || i FROM generate_series(10, $0) AS i",
+                10 + kSeedRows - 1),
+         seed},
+        {kTargetWitnessIndexDdl});
+  };
+  const auto expect_copy_fails = [&conn]() -> Status {
+    auto status = WaitForOnlineSchemaChange(&conn, "t1", "t2");
+    SCHECK(!status.ok(), IllegalState, "the copy kept one of two colliding rows");
+    SCHECK_STR_CONTAINS(status.ToString(), "failed");
+    SCHECK(!FinishOnlineSchemaChange(&conn, "t1", "t2").ok(), IllegalState,
+           "finish accepted a failed job");
+    return AbortOnlineSchemaChange(&conn, "t1", "t2");
+  };
+
+  // Both rows are copied, in one chunk and then many chunks apart.
+  for (const auto* seed : {"INSERT INTO t1 VALUES (1, 1, 'x'), (1, 2, 'y')",
+                           "INSERT INTO t1 VALUES (1, 1, 'x'), (1, 500, 'y')"}) {
+    SCOPED_TRACE(seed);
+    ASSERT_OK(begin(seed, "src.a, src.b, src.v"));
+    ASSERT_OK(expect_copy_fails());
+  }
+
+  // The trigger writes the second row before the throttled copy reaches the first.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 50;
+  ASSERT_OK(begin("INSERT INTO t1 VALUES (1, 500, 'x')", "src.a, src.b, src.v"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 600, 'y')"));
+  ASSERT_OK(expect_copy_fails());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0;
+
+  // After the copy, the trigger's insert fails on the target's primary key.
+  ASSERT_OK(begin("INSERT INTO t1 VALUES (1, 1, 'x')", "src.a, src.b, src.v"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("INSERT INTO t1 VALUES (1, 2, 'y')"), "duplicate key");
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), kSeedRows + 1);
+
+  // The witness only separates the rows while the transform copies b unchanged.
+  ASSERT_NOK_STR_CONTAINS(
+      begin("INSERT INTO t1 VALUES (1, 1, 'x'), (1, 2, 'y')", "src.a, 0, src.v"),
+      "must pass key column \"b\" through unchanged");
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTargetKeyWitnessRejected) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // A key without b says nothing about the rows that differ only in b.
+  auto status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, "src.a, src.b, src.v", {},
+      {"CREATE UNIQUE INDEX t2_a ON t2 (a)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "unique index \"t2_a\" does not include source primary key column \"b\"");
+
+  // Rows that share a target key can differ in b, and so in this index's key.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, "src.a, src.b, src.v", {},
+      {"CREATE UNIQUE INDEX t2_a_b ON t2 (a, b)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "column \"b\" of unique index \"t2_a_b\" is not part of the target's "
+                      "primary key");
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, kTargetWitnessDstDdl, "src.a, src.b, src.v", {},
+      {"CREATE UNIQUE INDEX t2_a_b ON t2 (a) INCLUDE (b) WHERE v IS NOT NULL"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "unique index \"t2_a_b\" is partial");
+
+  // The target cannot hold the source's b unchanged, so no target index can be a witness.
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, "CREATE TABLE t2 (a INT PRIMARY KEY, b BIGINT, v TEXT)",
+      "src.a, src.b, src.v", {}, {"CREATE UNIQUE INDEX t2_a_b ON t2 (a) INCLUDE (b)"});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "source primary key column \"b\" does not have the same type, length or "
+                      "collation on the target");
+
+  status = BeginOnlineSchemaChangeOverShapes(
+      &conn, kTargetWitnessSrcDdl, "CREATE TABLE t2 (a INT PRIMARY KEY, v TEXT)",
+      "src.a, src.v");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "source primary key column \"b\" is not a column of the target");
+  ASSERT_STR_NOT_CONTAINS(status.ToString(), "Or add one on the target");
+}
+
+// The transform must be an IMMUTABLE PL/pgSQL function that sets its own search_path.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTransformMustBeDeterministic) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT)"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION sqlfn(src t1) RETURNS t2 LANGUAGE SQL IMMUTABLE AS $$ "
+      "SELECT src.id, src.v $$"));
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "sqlfn"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must be a PL/pgSQL function");
+
+  // STABLE is not enough: the copy and the trigger call the transform in different statements.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION stbl(src t1) RETURNS t2 LANGUAGE plpgsql STABLE "
+      "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v)::t2; END $$"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "stbl"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must be IMMUTABLE");
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION nopath(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE AS $$ "
+      "BEGIN RETURN ROW(src.id, src.v)::t2; END $$"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "nopath"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must set search_path");
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION good(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path = public AS $$ BEGIN RETURN ROW(src.id, src.v)::t2; END $$"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "good"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// The transform is opaque, so a volatile one is refused even when only a column the online schema
+// change never recomputes, such as one filled by gen_random_uuid(), uses the volatile function.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeVolatileTransform) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, u UUID)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql VOLATILE "
+      "SET search_path FROM CURRENT AS $$ "
+      "BEGIN RETURN ROW(src.id, src.v, gen_random_uuid())::t2; END $$"));
+  const auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must be IMMUTABLE");
+}
+
+// Begin checks the transform's body once, so the body must have a shape it can check: a single
+// RETURN of ROW(...)::<target>.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTransformBodyShape) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (id INT PRIMARY KEY, v TEXT)"));
+
+  const std::vector<std::pair<std::string, std::string>> kRefused = {
+      {"DECLARE x TEXT := 'a'; BEGIN RETURN ROW(src.id, x)::t2; END",
+       "must be a single RETURN statement"},
+      {"BEGIN RETURN ROW(src.id, src.v)::t2; EXCEPTION WHEN others THEN RETURN NULL; END",
+       "must be a single RETURN statement"},
+      {"BEGIN IF src.id > 0 THEN RETURN ROW(src.id, 'p')::t2; END IF; "
+       "RETURN ROW(src.id, src.v)::t2; END",
+       "must be a single RETURN statement"},
+      {"BEGIN RETURN ROW(src.id, src.v); END", "must return ROW(...)::t2"},
+      {"BEGIN RETURN ROW(src.id, x.v)::t2 FROM t3 x WHERE x.id = src.id; END",
+       "with no FROM, WHERE or other SELECT clause"},
+      {"BEGIN RETURN ROW(src.id, FOUND::text)::t2; END",
+       "refers to a variable other than its argument"},
+  };
+  for (const auto& [body, error] : kRefused) {
+    ASSERT_OK(conn.Execute("DROP FUNCTION IF EXISTS xf"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION xf(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+        "SET search_path FROM CURRENT AS $$$$ $0 $$$$", body));
+    ASSERT_NOK_STR_CONTAINS(ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "xf")),
+                            error);
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+}
+
+// Each column's expression is checked when the job begins, and the error names the column.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTransformColumnRules) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'v' || i FROM generate_series(1, 10) AS i"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, w TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t2 (w)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE s"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION myupper(t TEXT) RETURNS TEXT LANGUAGE sql IMMUTABLE AS "
+      "$$ SELECT upper(t) $$"));
+
+  const std::vector<std::pair<std::string, std::string>> kRefused = {
+      // The witness proves the source keys distinct, not the transform's output.
+      {"ROW(src.id + 1, src.v, src.v)", "must pass key column \"id\" through unchanged"},
+      {"ROW(0, src.v, src.v)", "must pass key column \"id\" through unchanged"},
+      {"ROW(src.id, (SELECT x.v FROM t3 x WHERE x.id = src.id), src.v)",
+       "computes column \"v\" with a subquery"},
+      {"ROW(src.id, myupper(src.v), src.v)", "computes column \"v\" with a user-defined function"},
+      {"ROW(src.id, nextval('s')::text, src.v)", "computes column \"v\" with a sequence function"},
+      {"ROW(src.id, src.v || now(), src.v)", "computes column \"v\" with a stable expression"},
+      {"ROW(src.id, src.v, gen_random_uuid()::text)",
+       "computes indexed column \"w\" with a volatile expression"},
+  };
+  for (const auto& [row, error] : kRefused) {
+    ASSERT_OK(conn.Execute("DROP FUNCTION IF EXISTS xf"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION xf(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+        "SET search_path FROM CURRENT AS $$$$ BEGIN RETURN $0::t2; END $$$$", row));
+    ASSERT_NOK_STR_CONTAINS(ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "xf")),
+                            error);
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT is_called FROM s")));
+
+  // Built-in functions, CASE and a volatile expression for a column no index covers are fine.
+  ASSERT_OK(conn.Execute("DROP INDEX t2_w_idx"));
+  ASSERT_OK(conn.Execute("DROP FUNCTION xf"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION xf(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, "
+      "CASE WHEN src.id % 2 = 0 THEN upper(src.v) ELSE src.v END, "
+      "gen_random_uuid()::text)::t2; END $$"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "xf"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (12, 'v12')"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v = CASE WHEN id % 2 = 0 THEN upper('v' || id) "
+      "ELSE 'v' || id END AND w IS NOT NULL")), 11);
+}
+
+// The job relies on the transform it checked at begin, so the transform cannot be replaced,
+// altered, renamed, moved or dropped until the job ends.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTransformFrozenDuringJob) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA other"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // The new body would land row 2 on target key 3.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "CREATE OR REPLACE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+          "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id + 1, src.v)::t2; END $$"),
+      "cannot replace function t1_to_t2(t1) while it is the transform of online schema change "
+      "job");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER FUNCTION t1_to_t2 VOLATILE"),
+                          "cannot alter function t1_to_t2(t1)");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER FUNCTION t1_to_t2 SET search_path = other"),
+                          "cannot alter function t1_to_t2(t1)");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER FUNCTION t1_to_t2 RENAME TO xf"),
+                          "cannot rename function t1_to_t2(t1)");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER FUNCTION t1_to_t2 SET SCHEMA other"),
+                          "cannot set the schema of function t1_to_t2(t1)");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("DROP FUNCTION t1_to_t2"),
+                          "cannot drop function t1_to_t2(t1)");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("DROP FUNCTION t1_to_t2 CASCADE"),
+                          "cannot drop function t1_to_t2(t1)");
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 'b')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 2")), 1);
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 VOLATILE"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 RENAME TO xf"));
+  ASSERT_OK(conn.Execute("DROP FUNCTION xf"));
+}
+
+// The capture triggers are internal, so pg_dump leaves them out and DROP TRIGGER is refused, and
+// a backend that cached the source's relcache entry before begin still captures. Abort finds them
+// by function, so it also drops a renamed one.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCaptureTriggersAreInternal) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path FROM CURRENT AS $$ "
+      "BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  auto other = ASSERT_RESULT(Connect());
+  ASSERT_OK(other.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't1'::regclass AND tgisinternal")), 3);
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // Only the trigger can deliver a row written after the copy.
+  ASSERT_OK(other.Execute("INSERT INTO t1 VALUES (2, 'b')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 2")), 1);
+
+  const auto trigger = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT tgname::text FROM pg_trigger WHERE tgrelid = 't1'::regclass ORDER BY tgname "
+      "LIMIT 1"));
+  ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat("DROP TRIGGER $0 ON t1", trigger),
+                          "because table t1 requires it");
+  ASSERT_OK(conn.ExecuteFormat("ALTER TRIGGER $0 ON t1 RENAME TO renamed", trigger));
+
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't1'::regclass")), 0);
+}
+
+// The catalog writes and trigger DDL that the lifecycle runs as superuser do not resolve names
+// through the caller's search_path.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeSearchPathIsPinned) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_user"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO osc_user"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA evil AUTHORIZATION osc_user"));
+
+  auto admin_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(admin_conn.Execute("SET ROLE osc_user"));
+  ASSERT_OK(admin_conn.Execute("CREATE TABLE evil.calls (who TEXT)"));
+  ASSERT_OK(admin_conn.Execute(
+      "CREATE FUNCTION evil.int8eq(int8, int8) RETURNS bool LANGUAGE plpgsql AS $$ "
+      "BEGIN INSERT INTO evil.calls VALUES (current_user); "
+      "RETURN $1 OPERATOR(pg_catalog.=) $2; END $$"));
+  ASSERT_OK(admin_conn.Execute(
+      "CREATE OPERATOR evil.= (LEFTARG = int8, RIGHTARG = int8, FUNCTION = evil.int8eq)"));
+  ASSERT_OK(admin_conn.Execute("SET search_path = evil, pg_catalog, public"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&admin_conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&admin_conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&admin_conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM evil.calls")), 0);
+}
+
+namespace {
+
+Status RunOnlineSchemaChangeLifecycleAs(PGConn* conn, PGConn* role_conn) {
+  RETURN_NOT_OK(BeginOnlineSchemaChange(role_conn, "t1", "t2", "t1_to_t2"));
+  RETURN_NOT_OK(WaitForOnlineSchemaChange(role_conn, "t1", "t2"));
+  RETURN_NOT_OK(role_conn->Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  RETURN_NOT_OK(FinishOnlineSchemaChange(role_conn, "t1", "t2"));
+
+  SCHECK_EQ(VERIFY_RESULT(LatestOnlineSchemaChangeJobStatus(conn)), "finished", IllegalState,
+            "job status");
+  SCHECK_EQ(VERIFY_RESULT(conn->FetchRow<int64_t>("SELECT count(*) FROM t1")), 3, IllegalState,
+            "row count");
+  SCHECK_EQ(VERIFY_RESULT(conn->FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 WHERE v2 IS DISTINCT FROM (v || '_x')")), 0, IllegalState,
+      "rows not transformed");
+  return Status::OK();
+}
+
+}  // namespace
+
+// A role that owns both tables and the transform, and may rename tables in their schema, runs the
+// whole lifecycle with no other privilege.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTableOwnerLifecycle) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_user"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO osc_user"));
+
+  auto user_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(user_conn.Execute("SET ROLE osc_user"));
+  ASSERT_OK(RunOnlineSchemaChangeLifecycleAs(&conn, &user_conn));
+}
+
+// A yb_db_admin member may ALTER any table, so it can change tables it does not own. The copy
+// runs as the transform's owner, the caller here, not as the tables' superuser owner.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeYbDbAdminLifecycle) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_admin"));
+  ASSERT_OK(conn.Execute("GRANT yb_db_admin TO osc_admin"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_admin"));
+
+  auto admin_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(admin_conn.Execute("SET ROLE osc_admin"));
+  ASSERT_OK(RunOnlineSchemaChangeLifecycleAs(&conn, &admin_conn));
+}
+
+// session_replication_role = replica skips triggers that fire on origin, and a yb_db_admin member
+// may set it. The capture triggers fire always, so writes made under it still reach the target.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCapturesUnderReplicaRole) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE writer"));
+  ASSERT_OK(conn.Execute("GRANT yb_db_admin TO writer"));
+  ASSERT_OK(conn.Execute("GRANT ALL ON t1 TO writer"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't1'::regclass AND "
+      "tgfoid = 'yb_online_schema_change_trigger'::regproc AND tgenabled <> 'A'")), 0);
+
+  auto writer_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(writer_conn.Execute("SET ROLE writer"));
+  ASSERT_OK(writer_conn.Execute("SET session_replication_role = replica"));
+  ASSERT_OK(writer_conn.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  ASSERT_OK(writer_conn.Execute("UPDATE t1 SET v = 'b2' WHERE id = 2"));
+  ASSERT_OK(writer_conn.Execute("DELETE FROM t1 WHERE id = 1"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::string>(
+      "SELECT id, v, v2 FROM t1 ORDER BY id")));
+  ASSERT_EQ(rows, (decltype(rows){{2, "b2", "b2_x"}, {3, "c", "c_x"}}));
+}
+
+// The lifecycle functions require the privilege ALTER TABLE requires on both tables. Begin also
+// requires the privileges of the transform's owner, which the copy runs as, so that a yb_db_admin
+// member cannot run a transform as a superuser.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRequiresAlterPrivilege) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_user"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_admin"));
+  ASSERT_OK(conn.Execute("GRANT yb_db_admin TO osc_admin"));
+
+  auto user_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(user_conn.Execute("SET ROLE osc_user"));
+  constexpr auto kNotT1Owner = "must be owner of table t1";
+  ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&user_conn, "t1", "t2", "t1_to_t2"),
+                          kNotT1Owner);
+  ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&user_conn, "t2", "t1", "t1_to_t2"),
+                          kNotT1Owner);
+
+  // The cutover renames the tables, which ALTER TABLE allows only with CREATE on the schema.
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO osc_user"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_user"));
+  ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&user_conn, "t1", "t2", "t1_to_t2"),
+                          "permission denied for schema public");
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO CURRENT_USER"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO CURRENT_USER"));
+
+  auto admin_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(admin_conn.Execute("SET ROLE osc_admin"));
+  ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&admin_conn, "t1", "t2", "t1_to_t2"),
+                          "must be owner of transform function t1_to_t2");
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
+
+  // Abort makes the same check on the job's tables.
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK_STR_CONTAINS(AbortOnlineSchemaChange(&user_conn, "t1", "t2"), kNotT1Owner);
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// The copy runs the transform as its owner. The transform cannot name the role, since
+// current_user is stable, so it calls pg_read_file, which only superusers may call: the copy fails
+// even though a superuser owns the tables and began the job. The owner cannot change while the
+// job runs.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBackfillRunsAsTransformOwner) {
+  auto retries = FewerChunkRetries();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_owner"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, 100) AS i"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, version TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, pg_read_file('PG_VERSION'))::t2; "
+      "END $$"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_owner"));
+  ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO osc_owner"));
+  ASSERT_OK(conn.Execute("GRANT INSERT ON t2 TO osc_owner"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO CURRENT_USER"),
+                          "cannot change the owner of function");
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("ALTER ROUTINE t1_to_t2 OWNER TO CURRENT_USER"),
+                          "cannot change the owner of function");
+  ASSERT_NOK_STR_CONTAINS(WaitForOnlineSchemaChange(&conn, "t1", "t2"),
+                          "the copy of online schema change job");
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(conn.FetchRow<std::string>(
+          "SELECT error_message FROM pg_catalog.yb_online_schema_change")),
+      "permission denied for function pg_read_file");
+  // The failure can quote source data, so a role that may not ALTER the source does not see it.
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_reader"));
+  ASSERT_OK(conn.Execute("SET ROLE osc_reader"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT status || ':' || coalesce(error_message, '<hidden>') || ':' || command "
+      "FROM pg_catalog.yb_online_schema_change")), "failed:<hidden>:yb_begin_mirror_table");
+  // The catalog keeps the text of the statement that started the job, which can quote literals.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT query FROM pg_catalog.pg_yb_online_schema_change"),
+      "permission denied for table pg_yb_online_schema_change");
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBeginRequiresTransformOwnerPrivileges) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_owner"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION t1_to_t2 OWNER TO osc_owner"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
+      "owner of transform function t1_to_t2 cannot read table \"t1\"");
+  ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO osc_owner"));
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
+      "owner of transform function t1_to_t2 cannot insert into target table \"t2\"");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
+
+  ASSERT_OK(conn.Execute("GRANT INSERT ON t2 TO osc_owner"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+TEST_F(PgMiniTestSingleNode, BulkUpdateFlushRequestsNoOnlineSchemaChange) {
+  constexpr int kNumRows = 500;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'val_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  auto explain_json = ASSERT_RESULT(conn.FetchRow<JsonDocument>(
+      "EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) "
+      "UPDATE t1 SET v = 'new_' || v"));
+
+  LOG(INFO) << "EXPLAIN output (no capture trigger): "
+            << ASSERT_RESULT(explain_json.Root().ToString());
+
+  auto flush_requests = ASSERT_RESULT(
+      explain_json.Root()[0]["Storage Flush Requests"].GetDouble());
+  LOG(INFO) << "Storage Flush Requests for bulk UPDATE without capture trigger ("
+            << kNumRows << " rows): " << flush_requests;
+
+  auto write_requests = ASSERT_RESULT(
+      explain_json.Root()[0]["Storage Write Requests"].GetDouble());
+  LOG(INFO) << "Storage Write Requests (no capture trigger): " << write_requests;
 }
 
 class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterface<bool> {
@@ -5469,12 +7776,12 @@ TEST_F(PgMiniTest, CatalogVersionsCacheRefreshesWhileBackgroundPoolIsBusy) {
 // ------------------------------------------------------------------------------------------------
 // Online schema change change-capture trigger tests
 // ------------------------------------------------------------------------------------------------
-// The triggers are attached directly, as YbOscCreateTrigger does, to an empty target. A source
-// row inserted before the triggers are attached stands for a row the backfill has not copied yet.
+// The triggers are attached directly, as YbOscCreateTrigger does, to an empty target. A source row
+// inserted before the triggers are attached stands for a row the backfill has not copied yet.
 
 namespace {
 
-Status AttachOnlineSchemaChangeTriggers(
+Status CreateOnlineSchemaChangeTriggers(
     PGConn* conn, const std::string& src, const std::string& target,
     const std::string& transform) {
   const auto target_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
@@ -5534,7 +7841,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerInsertReplay) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b'), (3, NULL)"));
 
@@ -5552,7 +7859,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeletePresent) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
@@ -5571,7 +7878,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeleteAbsentTarget) {
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
 
   ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
@@ -5590,7 +7897,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeleteAbsentTargetWithVect
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, '[1,2,3]'::vector, src.v)::t2; END $$"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
   ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b2' WHERE id = 2"));
@@ -5605,7 +7912,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdatePresent) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
   ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'a2' WHERE id = 1"));
@@ -5625,7 +7932,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdateAbsentTarget) {
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'a2' WHERE id = 1"));
 
   const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
@@ -5640,7 +7947,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdateChangesPrimaryKey) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
   ASSERT_OK(conn.Execute("UPDATE t1 SET id = 2 WHERE id = 1"));
@@ -5657,7 +7964,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerEmptyStatement) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'v' FROM generate_series(1, 0) i"));
   ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'x' WHERE id = 999"));
@@ -5673,7 +7980,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDroppedTargetColumn) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
   ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 2"));
@@ -5699,7 +8006,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerSecondaryIndexes) {
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.name, src.age, src.city, src.city || "
       "'_' || src.age::text)::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute(
       "INSERT INTO t1 VALUES (1,'alice',30,'nyc'), (2,'bob',25,'sfo'), "
@@ -5747,7 +8054,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDataTypes) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.n, src.b, src.ts, src.raw)::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute(
       "INSERT INTO t1 VALUES "
@@ -5769,7 +8076,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerWorkloadEquivalence) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   for (int i = 0; i < kOps; ++i) {
     const auto key = RandomUniformInt(1, kKeys);
@@ -5806,7 +8113,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerMergeUnsupported) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1,'keep'), (2,'upd'), (3,'del')"));
   ASSERT_OK(conn.Execute("CREATE TABLE s (id INT PRIMARY KEY, v TEXT, act TEXT)"));
@@ -5840,7 +8147,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRequiresSuperuser) {
       "CREATE FUNCTION mine_to_victim(src mine) RETURNS victim LANGUAGE plpgsql IMMUTABLE SET "
       "search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v)::victim; END $$"));
   ASSERT_NOK_STR_CONTAINS(
-      AttachOnlineSchemaChangeTriggers(&conn, "mine", "victim", "mine_to_victim"),
+      CreateOnlineSchemaChangeTriggers(&conn, "mine", "victim", "mine_to_victim"),
       "permission denied for function pg_catalog.yb_online_schema_change_trigger");
   ASSERT_OK(conn.Execute("INSERT INTO mine VALUES (1, 'x')"));
   ASSERT_OK(conn.Execute("RESET ROLE"));
@@ -5855,7 +8162,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRunsAsInvoker) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, current_user::text)::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(conn.Execute("CREATE ROLE app"));
   ASSERT_OK(conn.Execute("GRANT SELECT, INSERT, UPDATE ON t1 TO app"));
 
@@ -5878,7 +8185,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRejectsSystemTarget) {
       "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.objoid, src.classoid, "
       "src.objsubid, src.description)::pg_description; END $$"));
   ASSERT_OK(
-      AttachOnlineSchemaChangeTriggers(&conn, "t1", "pg_catalog.pg_description", "t1_to_desc"));
+      CreateOnlineSchemaChangeTriggers(&conn, "t1", "pg_catalog.pg_description", "t1_to_desc"));
 
   ASSERT_NOK_STR_CONTAINS(
       conn.Execute("INSERT INTO t1 VALUES (4000000000, 1259, 0, 'x')"),
@@ -5941,7 +8248,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRejectsUnreplayableOrder) 
     if (!c.seed.empty()) {
       ASSERT_OK(conn.Execute(c.seed));
     }
-    ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+    ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
     const auto source_before = ASSERT_RESULT(conn.FetchAllAsString(
         "SELECT t1::text AS r FROM t1 ORDER BY r"));
 
@@ -6008,7 +8315,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerReplayableOrders) {
     for (const auto& stmt : c.setup) {
       ASSERT_OK(conn.Execute(stmt));
     }
-    ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+    ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
     if (!c.seed.empty()) {
       ASSERT_OK(conn.Execute(c.seed));
     }
@@ -6030,7 +8337,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerReplayOrderAcrossStatement
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   for (int i = 1; i <= kIters; ++i) {
@@ -6069,7 +8376,7 @@ TEST_F_EX(PgMiniTest, OnlineSchemaChangeTriggerRetriedStatement, PgMiniTestFailO
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (0, 'seed')"));
 
   std::atomic<int> committed{0};
@@ -6125,7 +8432,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushInsert) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   const auto osc_single = ASSERT_RESULT(ExplainFlushes(
       &conn, "INSERT INTO t1 VALUES (-1, 'x')"));
   const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(&conn, Format(
@@ -6158,7 +8465,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushUpdate) {
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(
       &conn, "UPDATE t1 SET v = 'new_' || v"));
 
@@ -6185,7 +8492,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushDelete) {
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(&conn, "DELETE FROM t1"));
 
   LOG(INFO) << "[FLUSH] DELETE bulk(" << kNumRows << "): baseline=" << base_bulk
@@ -6204,7 +8511,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushSecondaryIndexes) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION s0_to_d0(src s0) RETURNS d0 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::d0; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "s0", "d0", "s0_to_d0"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "s0", "d0", "s0_to_d0"));
   const auto no_idx = ASSERT_RESULT(ExplainFlushes(&conn, Format(
       "INSERT INTO s0 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
 
@@ -6216,7 +8523,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushSecondaryIndexes) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION s3_to_d3(src s3) RETURNS d3 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::d3; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "s3", "d3", "s3_to_d3"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "s3", "d3", "s3_to_d3"));
   const auto three_idx = ASSERT_RESULT(ExplainFlushes(&conn, Format(
       "INSERT INTO s3 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
 
@@ -6243,7 +8550,7 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
-  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION ins_t1(n INT) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
       "FOR i IN 1..n LOOP INSERT INTO t1 VALUES (i, 'v'); END LOOP; END $$"));

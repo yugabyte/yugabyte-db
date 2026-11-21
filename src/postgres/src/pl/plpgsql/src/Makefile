@@ -28,6 +28,9 @@ OBJS = \
 	pl_handler.o \
 	pl_scanner.o
 
+# YB: the online schema change transform check
+OBJS += yb_pl_transform.o
+
 DATA = plpgsql.control plpgsql--1.0.sql
 
 REGRESS_OPTS = --dbname=$(PL_TESTDB)
@@ -74,6 +77,7 @@ uninstall-headers:
 
 # Force these dependencies to be known even without dependency info built:
 pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o pl_scanner.o: plpgsql.h pl_gram.h plerrcodes.h
+yb_pl_transform.o: plpgsql.h pl_gram.h plerrcodes.h
 pl_scanner.o: pl_reserved_kwlist_d.h pl_unreserved_kwlist_d.h
 
 # See notes in src/backend/parser/Makefile about the following two rules
