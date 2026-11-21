@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
+
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -50,6 +53,10 @@ struct DecodeStrongWriteIntentResult {
 
   // Whether this intent from the same transaction as specified in context.
   bool same_transaction = false;
+
+  // Set for an intent of the same transaction that the command ids of the intent and the read
+  // decide to be visible; the in_txn_limit of the read time does not apply to it.
+  bool visible_by_command_id = false;
 
   std::string ToString() const;
 
@@ -90,11 +97,15 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache);
 
+// Called before the intents of each pair are enumerated.
+using EnumerateIntentsPairCallback = std::function<void(const LWKeyValuePairPB&)>;
+
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse,
+    const EnumerateIntentsPairCallback& pair_callback = {});
 
 // Class that is used while combining external intents into single key value pair.
 class ExternalIntentsProvider {
@@ -126,6 +137,20 @@ inline auto EncodeSubTransactionId(SubTransactionId id) {
     auto big_endian_id = BigEndian::FromHost32(id);
     result.AppendWithPrefix(
         dockv::KeyEntryTypeAsChar::kSubTransactionId, Slice::FromPod(&big_endian_id));
+  }
+  return result;
+}
+
+// The command id as intent values store it: the kCommandId marker followed by the big endian id,
+// empty when the writer did not record one.
+inline auto EncodeCommandId(std::optional<uint32_t> id) {
+  constexpr size_t kBufferSize = 8;
+  static_assert(1 + sizeof(uint32_t) <= kBufferSize);
+  ByteBuffer<kBufferSize> result;
+  if (id) {
+    auto big_endian_id = BigEndian::FromHost32(*id);
+    result.AppendWithPrefix(
+        dockv::ValueEntryTypeAsChar::kCommandId, Slice::FromPod(&big_endian_id));
   }
   return result;
 }

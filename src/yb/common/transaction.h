@@ -19,6 +19,7 @@
 
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -382,6 +383,8 @@ struct TransactionOperationContext {
   TransactionId transaction_id;
   SubTransactionMetadata subtransaction;
   TransactionStatusManager* txn_status_manager;
+  // YSQL command id of the reading statement, see PgsqlReadRequestPB::read_command_id.
+  std::optional<uint32_t> read_command_id;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionOperationContext& context) {
