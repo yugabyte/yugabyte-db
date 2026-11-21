@@ -48,6 +48,8 @@ You can specify multiple directories using the [`--fs_data_dirs`](../../../refer
 
 {{<tags/feature/tp idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 
+If you [enabled TCMalloc per-CPU caches](../system-config/#enable-tcmalloc-per-cpu-caches) during system configuration, put `GLIBC_TUNABLES=glibc.pthread.rseq=0` before the command.
+
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
 ## Run YB-Master servers with configuration file
