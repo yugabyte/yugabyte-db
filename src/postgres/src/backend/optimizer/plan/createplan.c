@@ -4686,6 +4686,16 @@ create_indexscan_plan(PlannerInfo *root,
 			replace_nestloop_params(root, (Node *) indexorderbys);
 	}
 
+	/*
+	 * YB: A bitmap index scan takes scan_clauses from its parent table path,
+	 * which can be parameterized when this path is not (reparameterize_path,
+	 * or an unparameterized BitmapAnd/BitmapOr arm).  Outer Vars in qpqual
+	 * must still become Params: DocDB resolves a pushed-down Var by attribute
+	 * number as a column of the scanned table.
+	 */
+	if (bitmapindex && !best_path->path.param_info)
+		qpqual = (List *) replace_nestloop_params(root, (Node *) qpqual);
+
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->path.parent->is_yb_relation)
 	{
