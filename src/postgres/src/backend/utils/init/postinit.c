@@ -1670,6 +1670,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	YbFinishStaleCatalogPrefetch();
 
 	/*
+	 * YB: am_superuser comes from the pg_authid row read before
+	 * authentication.  If a DDL committed while the client was
+	 * authenticating, the catalog cache preload in
+	 * RelationCacheInitializePhase3 replaced that row, so look again before
+	 * the database and startup-option checks below use it.
+	 */
+	if (IsYugaByteEnabled() && MyProcPort != NULL)
+		am_superuser = superuser();
+
+	/*
 	 * YB: Also cache whether the database is colocated for optimization
 	 * purposes.
 	 */

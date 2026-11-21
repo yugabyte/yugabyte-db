@@ -10,11 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <poll.h>
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 
 using namespace std::chrono_literals;
 
@@ -334,6 +339,213 @@ TEST_F_EX(PgConnTest, SessionExpiration, PgSessionExpirationTest) {
       ASSERT_FALSE(server->WasUnsafeShutdown());
     }
   }
+}
+
+namespace {
+
+// A libpq connection that stops after sending the startup packet and receiving the
+// authentication request. The backend has finished the connection-auth catalog prefetch and the
+// pg_authid catalog cache preload by the time it sends that request, and it then waits for the
+// password until Finish() is called.
+class AuthPausedConnection {
+ public:
+  ~AuthPausedConnection() {
+    if (conn_) {
+      PQfinish(conn_);
+    }
+  }
+
+  Status Start(
+      const std::string& host, uint16_t port, const std::string& user,
+      const std::string& password, const std::string& options = "") {
+    const auto port_str = std::to_string(port);
+    const char* keywords[] = {
+        "host", "port", "dbname", "user", "password", "sslmode", "gssencmode", "options", nullptr};
+    const char* values[] = {
+        host.c_str(), port_str.c_str(), "yugabyte", user.c_str(), password.c_str(), "disable",
+        "disable", options.c_str(), nullptr};
+    conn_ = PQconnectStartParams(keywords, values, 0 /* expand_dbname */);
+    SCHECK(conn_ && PQstatus(conn_) != CONNECTION_BAD, NetworkError, "PQconnectStartParams failed");
+    auto poll_status = PGRES_POLLING_WRITING;
+    for (;;) {
+      RETURN_NOT_OK(WaitForSocket(poll_status));
+      poll_status = PQconnectPoll(conn_);
+      SCHECK_NE(poll_status, PGRES_POLLING_FAILED, NetworkError, PQerrorMessage(conn_));
+      SCHECK_NE(poll_status, PGRES_POLLING_OK, IllegalState, "Connected without authentication");
+      if (poll_status == PGRES_POLLING_READING && PQstatus(conn_) == CONNECTION_AWAITING_RESPONSE) {
+        break;
+      }
+    }
+    // The socket becomes readable when the authentication request arrives. Do not let libpq read
+    // it, so that the password is not sent yet.
+    return WaitForSocket(PGRES_POLLING_READING);
+  }
+
+  Status Finish() {
+    auto poll_status = PGRES_POLLING_READING;
+    for (;;) {
+      RETURN_NOT_OK(WaitForSocket(poll_status));
+      poll_status = PQconnectPoll(conn_);
+      SCHECK_NE(poll_status, PGRES_POLLING_FAILED, NetworkError, PQerrorMessage(conn_));
+      if (poll_status == PGRES_POLLING_OK) {
+        return Status::OK();
+      }
+    }
+  }
+
+  // Runs a query. Returns the first column of the first row, or the error message prefixed by
+  // "ERROR: ".
+  std::string Query(const std::string& query) {
+    PGresult* res = PQexec(conn_, query.c_str());
+    std::string result;
+    const auto status = PQresultStatus(res);
+    if (status == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+      result = PQgetvalue(res, 0, 0);
+    } else if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK) {
+      result = std::string("ERROR: ") + PQresultErrorMessage(res);
+    }
+    PQclear(res);
+    LOG(INFO) << query << " -> " << result;
+    return result;
+  }
+
+ private:
+  Status WaitForSocket(PostgresPollingStatusType poll_status) {
+    pollfd pfd = {
+      .fd = PQsocket(conn_),
+      .events = narrow_cast<int16_t>(poll_status == PGRES_POLLING_READING ? POLLIN : POLLOUT),
+      .revents = 0,
+    };
+    const int rc = poll(&pfd, 1 /* nfds */, 60000 /* timeout_ms */);
+    SCHECK_EQ(rc, 1, TimedOut, "Socket did not become ready");
+    return Status::OK();
+  }
+
+  PGconn* conn_ = nullptr;
+};
+
+} // namespace
+
+// The password authentication method makes the backend wait for the client between the
+// connection-auth catalog prefetch and the rest of the connection startup.
+class PgConnTestAuthCatcache : public PgConnTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_hba_conf_csv="
+        "host all postgres all trust,host all yugabyte all trust,host all all all password");
+  }
+
+  virtual bool PreloadsCatalogCaches() const { return false; }
+
+  void TestSuperuserRevokedDuringAuth();
+};
+
+class PgConnTestAuthCatcachePreload : public PgConnTestAuthCatcache {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConnTestAuthCatcache::UpdateMiniClusterOptions(options);
+    // Every connection preloads the relcache and catalog caches in RelationCacheInitializePhase3.
+    options->extra_tserver_flags.push_back("--ysql_catalog_preload_additional_tables=true");
+  }
+
+  bool PreloadsCatalogCaches() const override { return true; }
+};
+
+// A connection to tserver 1 reads pg_authid during authentication. While it waits for the
+// password, a DDL on tserver 0 revokes SUPERUSER from the connecting role. After the connection
+// completes and the new catalog version reaches tserver 1, the session must not act as a
+// superuser.
+void PgConnTestAuthCatcache::TestSuperuserRevokedDuringAuth() {
+  constexpr auto kLoginTsIndex = 1;
+  auto* ddl_ts = cluster_->tablet_server(0);
+  auto* login_ts = cluster_->tablet_server(kLoginTsIndex);
+  auto ddl_conn = ASSERT_RESULT(ConnectToTs(*ddl_ts));
+  const auto db_oid = ASSERT_RESULT(GetDatabaseOid(&ddl_conn, "yugabyte"));
+  ASSERT_OK(ddl_conn.Execute("CREATE ROLE su LOGIN SUPERUSER PASSWORD 'pw'"));
+  ASSERT_OK(WaitForShmDBCatalogVersion(
+      kLoginTsIndex, db_oid, ASSERT_RESULT(GetCatalogVersion(&ddl_conn))));
+
+  AuthPausedConnection login;
+  ASSERT_OK(login.Start(login_ts->bind_host(), login_ts->ysql_port(), "su", "pw"));
+  AuthPausedConnection login_with_su_option;
+  ASSERT_OK(login_with_su_option.Start(
+      login_ts->bind_host(), login_ts->ysql_port(), "su", "pw",
+      "-c log_min_duration_statement=0"));
+  ASSERT_OK(ddl_conn.Execute("ALTER ROLE su NOSUPERUSER"));
+  ASSERT_OK(login.Finish());
+  // Without the preload, startup has no pg_authid row newer than the one read for authentication.
+  if (PreloadsCatalogCaches()) {
+    auto status = login_with_su_option.Finish();
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+  }
+  ASSERT_OK(WaitForShmDBCatalogVersion(
+      kLoginTsIndex, db_oid, ASSERT_RESULT(GetCatalogVersion(&ddl_conn))));
+
+  // A connection made after the DDL is not allowed to set a superuser-only parameter.
+  {
+    auto fresh_conn = ASSERT_RESULT(PGConnBuilder({
+      .host = login_ts->bind_host(),
+      .port = login_ts->ysql_port(),
+      .dbname = "yugabyte",
+      .user = "su",
+      .password = "pw",
+    }).Connect());
+    auto status = fresh_conn.Execute("SET log_min_duration_statement = 0");
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "permission denied to set parameter");
+  }
+
+  ASSERT_EQ(login.Query("SELECT rolsuper FROM pg_roles WHERE rolname = current_user"), "f");
+  ASSERT_STR_CONTAINS(
+      login.Query("SET log_min_duration_statement = 0"),
+      "permission denied to set parameter");
+}
+
+TEST_F_EX(PgConnTest, SuperuserRevokedDuringAuth, PgConnTestAuthCatcache) {
+  TestSuperuserRevokedDuringAuth();
+}
+
+TEST_F_EX(PgConnTest, SuperuserRevokedDuringAuthWithPreload, PgConnTestAuthCatcachePreload) {
+  TestSuperuserRevokedDuringAuth();
+}
+
+// Release builds enable object locking by default.
+class PgConnTestAuthCatcachePreloadObjectLocking : public PgConnTestAuthCatcachePreload {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConnTestAuthCatcachePreload::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=true");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+  }
+};
+
+TEST_F_EX(PgConnTest, SuperuserRevokedDuringAuthWithPreloadObjectLocking,
+          PgConnTestAuthCatcachePreloadObjectLocking) {
+  TestSuperuserRevokedDuringAuth();
+}
+
+// Authentication reads pg_authid from the tserver response cache.
+class PgConnTestAuthCatcachePreloadAuthCache : public PgConnTestAuthCatcachePreload {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgConnTestAuthCatcachePreload::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_enable_read_request_cache_for_connection_auth=true");
+    // The ASH collector connects while initdb runs and fills the connection-auth cache entry
+    // before initdb creates the database yugabyte.
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_ash=false");
+  }
+};
+
+TEST_F_EX(PgConnTest, SuperuserRevokedDuringAuthWithPreloadAuthCache,
+          PgConnTestAuthCatcachePreloadAuthCache) {
+  TestSuperuserRevokedDuringAuth();
 }
 
 } // namespace pgwrapper
