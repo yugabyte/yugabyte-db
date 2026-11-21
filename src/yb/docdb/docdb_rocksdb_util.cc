@@ -195,6 +195,10 @@ DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
 DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
     "Controls the number of data blocks to be indexed inside an index block.");
 
+DEFINE_NON_RUNTIME_bool(db_write_cumulative_index_entry_counts, false,
+    "Write cumulative data block counts into the upper-level entries of multi-level SST indexes. "
+    "Nothing reads them yet; they are for position-based ANALYZE sampling in a later change.");
+
 DEFINE_NON_RUNTIME_bool(prioritize_tasks_by_disk, false,
     "Consider disk load when considering compaction and flush priorities.");
 
@@ -468,6 +472,7 @@ void AutoInitBlockBasedTableOptionsFromFlags(rocksdb::BlockBasedTableOptions* ta
   table_options->filter_block_size = FLAGS_db_filter_block_size_bytes;
   table_options->index_block_size = FLAGS_db_index_block_size_bytes;
   table_options->min_keys_per_index_block = FLAGS_db_min_keys_per_index_block;
+  table_options->write_cumulative_index_entry_counts = FLAGS_db_write_cumulative_index_entry_counts;
 
   if (FLAGS_block_restart_interval < kMinBlockRestartInterval) {
     LOG(INFO) << "FLAGS_block_restart_interval was set to a very low value, overriding "
