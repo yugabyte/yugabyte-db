@@ -5,3 +5,4 @@
 ####################################################################################################
 test: yb.orig.util
 test: yb.orig.explain
+test: yb.orig.agg_pushdown_rescan_memory
