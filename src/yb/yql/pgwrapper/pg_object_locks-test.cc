@@ -2265,7 +2265,8 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockDoesNotCrossDatabases
 }
 
 // With ysql_enable_concurrent_ddl off, a DDL in a transaction block holds the database DDL lock
-// until the block ends, also after ROLLBACK TO a savepoint taken before an earlier DDL.
+// until the block ends. The block rolls back to a savepoint taken before its first DDL, then runs
+// another DDL, which takes the lock again.
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);

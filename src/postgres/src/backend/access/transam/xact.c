@@ -3398,25 +3398,6 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
-static void YbCommitTransactionCommandIntermediateInternal(bool lock_database);
-
-void
-YbCommitTransactionCommandIntermediate(void)
-{
-	YbCommitTransactionCommandIntermediateInternal(true /* lock_database */ );
-}
-
-/*
- * For a caller that waits for lockers right after the new transaction starts,
- * which must not hold the database DDL lock during that wait (see
- * YbAddDdlTxnStateWithoutDatabaseLock). It takes the lock after the wait.
- */
-void
-YbCommitTransactionCommandIntermediateWithoutDatabaseLock(void)
-{
-	YbCommitTransactionCommandIntermediateInternal(false /* lock_database */ );
-}
-
 static void
 YbCommitTransactionCommandIntermediateInternal(bool lock_database)
 {
@@ -3470,6 +3451,24 @@ YbCommitTransactionCommandIntermediateInternal(bool lock_database)
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }
+
+void
+YbCommitTransactionCommandIntermediate(void)
+{
+	YbCommitTransactionCommandIntermediateInternal(true /* lock_database */ );
+}
+
+/*
+ * For a caller that waits for lockers right after the new transaction starts,
+ * which must not hold the database DDL lock during that wait (see
+ * YbAddDdlTxnStateWithoutDatabaseLock). It takes the lock after the wait.
+ */
+void
+YbCommitTransactionCommandIntermediateWithoutDatabaseLock(void)
+{
+	YbCommitTransactionCommandIntermediateInternal(false /* lock_database */ );
+}
+
 
 /*
  *	StartTransactionCommand

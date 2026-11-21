@@ -2950,7 +2950,7 @@ YbTrackAlteredTableId(Oid relid)
  * database run one at a time: each takes this lock in EXCLUSIVE mode. With it
  * on, they take no lock here and run as concurrently as object locks allow.
  */
-void
+static void
 YbLockDatabaseForGlobalDdl(void)
 {
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl)
@@ -3010,7 +3010,7 @@ YBAddDdlTxnState(YbDdlMode mode)
  * For a DDL transaction that waits for lockers or backends right after
  * entering DDL state: a CREATE INDEX phase after the first, and the second
  * transaction of DETACH PARTITION CONCURRENTLY. It takes the database lock
- * with YbLockDatabaseForGlobalDdl only after the wait. The wait is registered
+ * with YbLockDatabaseForDdlAfterWait only after the wait. The wait is registered
  * under the session's transaction, while the lock belongs to the DDL's
  * transaction, so a writer the wait waits for, running a DDL that queues on a
  * lock the DDL already held, would block with it until a timeout, with no
@@ -3020,6 +3020,19 @@ void
 YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode)
 {
 	YbAddDdlTxnStateInternal(mode, false /* lock_database */ );
+}
+
+/*
+ * Takes the lock that YbAddDdlTxnStateWithoutDatabaseLock or
+ * YbCommitTransactionCommandIntermediateWithoutDatabaseLock left out, under
+ * the same conditions as YBAddDdlTxnState. Called after the wait.
+ */
+void
+YbLockDatabaseForDdlAfterWait(void)
+{
+	if (YBIsDdlTransactionBlockEnabled() && YBCPgIsDdlMode() &&
+		(YBGetCurrentDdlMode() & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+		YbLockDatabaseForGlobalDdl();
 }
 
 static void
