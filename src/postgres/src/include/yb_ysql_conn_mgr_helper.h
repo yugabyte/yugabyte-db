@@ -77,9 +77,13 @@ extern bool yb_ysql_conn_mgr_sticky_locks;
  */
 extern bool yb_ysql_conn_mgr_sticky_nontxn_object;
 
+extern bool yb_ysql_conn_mgr_sticky_prepare;
+
 extern bool yb_ysql_conn_mgr_sticky_replication_origin;
 
 extern bool yb_conn_mgr_replication_origin_permanent_sticky;
+
+extern bool yb_conn_mgr_prepare_permanent_sticky;
 
 /*
  * The "local" component of Logical Client Version. It is only incremented
@@ -187,3 +191,5 @@ extern int YbAuthFailedErrorLevel(const bool auth_passthrough);
  *    progress)
  */
 extern bool YbIsAuthPassthroughInProgress(struct Port *port);
+
+extern bool YbIsConnMgrReservedStartupParameter(const char *name);

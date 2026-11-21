@@ -62,6 +62,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSlotRowDeletion(bool multiple_streams);
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
+  void TestDmlAndDropTableInTxnBlock(bool transactional_ddl);
 
   void TestStoppedSlotRetainsWalIntentsAndHistory(bool pub_refresh);
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
@@ -69,6 +70,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
   void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
   void TestVectorIndexAlterDoesNotLeakIndexSchema(bool colocated);
+  Result<bool> ConsumeDDLTxn(const xrepl::StreamId& stream_id);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -5805,6 +5807,107 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUpdatePublicationRefreshTable
   ASSERT_EQ(fresh_inserts_streamed, kNumFreshRows);
 }
 
+// The virtual WAL must detect DROP TABLE from the pg_class DELETE record and stop polling the
+// dropped table, so GetChanges does not fail once the master deletes its hidden tablet.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALStopsPollingDroppedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto dropped_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "dropped_table"));
+  auto live_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "live_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {dropped_table.table_id(), live_table.table_id()}, kVWALSessionId1,
+      nullptr /* vslot_hash_range */, true /* include_oid_to_relfilenode */));
+
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true, 2, dropped_table.table_name().c_str()));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", dropped_table.table_name()));
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true, 2, live_table.table_name().c_str()));
+
+  // Streams past the drop, applying the publication refresh it triggers the way the walsender does.
+  ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(stream_id, dropped_table, live_table));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return test_client()
+            ->GetTabletsFromTableId(dropped_table.table_id(), 0, &dropped_tablets)
+            .IsNotFound();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the hidden tablet to be deleted"));
+
+  ASSERT_OK(WriteRowsHelper(2, 3, &test_cluster_, true, 2, live_table.table_name().c_str()));
+  auto change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {live_table.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */));
+  ASSERT_EQ(change_resp.records.size(), 3);  // BEGIN, INSERT, COMMIT
+  ASSERT_EQ(change_resp.record_count[1], 1);  // INSERT
+}
+
+// A transaction that writes a table and then drops it must still have its COMMIT shipped after
+// the drop triggers a publication refresh that removes the table's tablet queue. Why it is:
+// - transactional_ddl off: at equal commit time, sys-catalog records sort after every COMMIT, so
+//   the table's COMMIT is shipped before the drop is detected.
+// - transactional_ddl on: the drop is detected first and removing the table discards the COMMIT
+//   in its queue, but the DROP's write to the sys-catalog tablet has its own COMMIT for the same
+//   transaction, which is shipped instead.
+void CDCSDKConsumptionConsistentChangesTest::TestDmlAndDropTableInTxnBlock(
+    bool transactional_ddl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
+      transactional_ddl;
+  ToggleDDLMode(/* use_legacy = */ false);
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto dropped_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "dropped_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {dropped_table.table_id()}, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", dropped_table.table_name()));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", dropped_table.table_name()));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // The drop leaves the publication empty, so apply its refresh with no tables, as the walsender
+  // does. That removes dropped_table's tablet queue.
+  bool refreshed = false;
+  int count[8] = {0};  // DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          UpdateRecordCount(record, count);
+        }
+        if (resp.needs_publication_table_list_refresh()) {
+          refreshed = true;
+          RETURN_NOT_OK(UpdatePublicationTableList(stream_id, {} /* table_ids */));
+        }
+        return count[7] > 0;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the transaction's COMMIT"));
+  ASSERT_TRUE(refreshed);
+  ASSERT_EQ(count[1], 1);  // INSERT
+  ASSERT_EQ(count[6], 1);  // BEGIN
+  ASSERT_EQ(count[7], 1);  // COMMIT
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDmlAndDropTableInTxnBlock) {
+  TestDmlAndDropTableInTxnBlock(/* transactional_ddl = */ false);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDmlAndDropTableInTxnBlockWithTransactionalDdl) {
+  TestDmlAndDropTableInTxnBlock(/* transactional_ddl = */ true);
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenTableOnVWALRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
@@ -6026,6 +6129,38 @@ TEST_F(
       std::nullopt /* expected_unqualified_table_ids*/, true /* include_catalog_tables */);
 }
 
+// With transactional DDL, a DDL comes as its own transaction of DDL records once the sys catalog
+// tablet is polled, after a varying number of empty responses, and the pub refresh signal comes
+// with its first records. Consumes responses up to the DDL's COMMIT and returns whether any of
+// them had the signal.
+Result<bool> CDCSDKConsumptionConsistentChangesTest::ConsumeDDLTxn(
+    const xrepl::StreamId& stream_id) {
+  bool seen_ddl = false;
+  bool seen_pub_refresh = false;
+  const auto deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(30);
+  while (CoarseMonoClock::Now() < deadline) {
+    auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (resp.has_needs_publication_table_list_refresh() || resp.has_publication_refresh_time()) {
+      SCHECK(
+          resp.needs_publication_table_list_refresh() && resp.publication_refresh_time() > 0,
+          IllegalState, Format("Bad publication refresh signal: $0", resp.ShortDebugString()));
+      seen_pub_refresh = true;
+    }
+    for (const auto& record : resp.cdc_sdk_proto_records()) {
+      const auto op = record.row_message().op();
+      if (op == RowMessage_Op_DDL) {
+        seen_ddl = true;
+      } else if (op == RowMessage_Op_COMMIT) {
+        SCHECK(
+            seen_ddl, IllegalState,
+            Format("COMMIT without a DDL record: $0", resp.ShortDebugString()));
+        return seen_pub_refresh;
+      }
+    }
+  }
+  return STATUS(TimedOut, "Timed out waiting for the DDL transaction");
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTriggerPubRefresh) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
@@ -6053,19 +6188,23 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Any DDL which causes table rewrite should send the pub refresh signal to the walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN serial_col SERIAL"));
 
-  // Consume the DDL record.
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_TRUE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
+  } else {
+    // Consume the DDL record.
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 1);
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
 
-  // Next GetConsistentChanges will signal for pub refresh.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
-  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+    // Next GetConsistentChanges will signal for pub refresh.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+    ASSERT_TRUE(
+        change_resp.has_needs_publication_table_list_refresh() &&
+        change_resp.needs_publication_table_list_refresh() &&
+        change_resp.has_publication_refresh_time());
+    ASSERT_GT(change_resp.publication_refresh_time(), 0);
+  }
 
   auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
   ASSERT_OK(UpdatePublicationTableList(
@@ -6075,17 +6214,21 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
 
-  // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet queue
-  // becoming empty.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_FALSE(
-      change_resp.has_needs_publication_table_list_refresh() ||
-      change_resp.has_publication_refresh_time());
+  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    ASSERT_FALSE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
+  } else {
+    // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet
+    // queue becoming empty.
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+    ASSERT_FALSE(
+        change_resp.has_needs_publication_table_list_refresh() ||
+        change_resp.has_publication_refresh_time());
 
-  // Consume the DDL record.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+    // Consume the DDL record.
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+  }
 }
 
 TEST_F(
@@ -7850,8 +7993,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStoppedImplicitSlotRetention)
 }
 
 // The walsender reads the catalog within the transaction of each record. Intents of a
-// subtransaction rolled back to a savepoint are still in the intents DB, so the BEGIN record of
-// such a transaction carries the aborted subtransactions for the walsender to skip them (#36047).
+// subtransaction rolled back to a savepoint are still in the intents DB, so the response carries
+// the aborted subtransactions of such a transaction for the walsender to skip them (#36047).
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
@@ -7905,28 +8048,27 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTran
   ASSERT_EQ(inserted_keys, (std::vector<int32_t>{1, 3, 4, 5}));
   ASSERT_NE(savepoint_txn_id, other_txn_id);
 
-  // Only the BEGIN record of the transaction with the savepoint rollback carries the set.
-  int savepoint_txn_begin_records = 0;
-  int other_txn_begin_records = 0;
+  // Only the transaction with the savepoint rollback has a set, and it comes only in the response
+  // map, not on any record.
+  ASSERT_EQ(resp.aborted_subtxns.size(), 1);
+  const auto& [aborted_txn_id, aborted_entry] = *resp.aborted_subtxns.begin();
+  ASSERT_EQ(aborted_txn_id, savepoint_txn_id);
+  auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(aborted_entry.aborted_subtxns().set()));
+  ASSERT_FALSE(aborted.IsEmpty());
+
+  int begin_records = 0;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
     SCOPED_TRACE(record.ShortDebugString());
-    if (row_message.op() == RowMessage_Op_BEGIN &&
-        row_message.transaction_id() == savepoint_txn_id) {
-      ASSERT_TRUE(row_message.has_aborted_subtxns());
-      auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(row_message.aborted_subtxns().set()));
-      ASSERT_FALSE(aborted.IsEmpty());
-      ++savepoint_txn_begin_records;
-      continue;
-    }
     ASSERT_FALSE(row_message.has_aborted_subtxns());
     if (row_message.op() == RowMessage_Op_BEGIN) {
-      ASSERT_EQ(row_message.transaction_id(), other_txn_id);
-      ++other_txn_begin_records;
+      ++begin_records;
+      if (row_message.transaction_id() == savepoint_txn_id) {
+        ASSERT_EQ(aborted_entry.commit_time(), row_message.commit_time());
+      }
     }
   }
-  ASSERT_EQ(savepoint_txn_begin_records, 1);
-  ASSERT_EQ(other_txn_begin_records, 1);
+  ASSERT_EQ(begin_records, 2);
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 

@@ -31,6 +31,8 @@
 
 #include "yb/rpc/rpc.h"
 
+#include "yb/server/server_fwd.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
@@ -77,9 +79,11 @@ struct BackgroundDdlCallbacks {
 // Helper class that encapsulates the logic to poll the transaction status.
 class PollTransactionStatusBase {
  public:
+  // clock, if set, is updated with the hybrid time propagated on transaction status responses, so
+  // that it is past the commit time of a committed transaction once polling finds it complete.
   PollTransactionStatusBase(
       const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
-      const std::string& description);
+      const std::string& description, server::Clock* clock = nullptr);
 
   virtual ~PollTransactionStatusBase();
 
@@ -98,6 +102,7 @@ class PollTransactionStatusBase {
                            const tserver::GetTransactionStatusResponsePB& response);
 
   std::shared_future<client::YBClient*> client_future_;
+  server::Clock* const clock_;
   rpc::Rpcs rpcs_;
   Synchronizer sync_;
 

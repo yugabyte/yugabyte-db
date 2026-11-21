@@ -50,5 +50,6 @@ extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);
 
 extern const uint32_t *YBCGetAbortedSubtxnSet(const char *docdb_txn_id,
 											  int *size);
+extern void YBCDropAbortedSubtxnSets(uint64_t commit_time_ht);
 
 #endif

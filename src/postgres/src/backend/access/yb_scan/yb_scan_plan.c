@@ -196,3 +196,15 @@ YbIsScanCompatible(Oid column_typid,
 			return false;
 	}
 }
+
+/*
+ * Whether a YB index scan binds a search array condition, indexkey op ANY
+ * (array), of the given strategy.  DocDB binds an array only as an IN list,
+ * so only the equality strategy qualifies.
+ * TODO(#37239): bind an inequality on a range column as a range bound.
+ */
+bool
+YbCanBindSearchArray(StrategyNumber strategy)
+{
+	return strategy == BTEqualStrategyNumber;
+}

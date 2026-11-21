@@ -86,9 +86,11 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.yaml.snakeyaml.Yaml;
@@ -225,6 +227,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Map<String, String> universeConfig;
     public CommandType commandType;
     public String helmReleaseName;
+    // VOLUME_DELETE only: the releases whose storage is deleted, in place of helmReleaseName.
+    public Set<String> helmReleaseNames;
+    // VOLUME_DELETE only: a failed delete is logged and skipped.
+    public boolean isForceDelete;
     public String namespace;
     public boolean isReadOnlyCluster;
     public String ybSoftwareVersion = null;
@@ -270,6 +276,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String command = null;
     public String azCode = null;
     public String pvcName = null;
+    // VOLUME_DELETE_SHELL_MODE_MASTER: pods of serverType that keep their PVCs.
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
@@ -280,7 +287,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Telemetry export state to render into the otel collector overrides, populated via
     // KubernetesTaskBase.getDesiredTelemetryConfig: the persisted export_telemetry_config row for
     // regular helm flows, or the desired state while the export-telemetry configure task runs.
-    // When null (no persisted row yet), helm overrides fall back to the userIntent copies.
+    // When null (no persisted row yet), helm overrides render no telemetry export.
     public TelemetryConfig telemetryConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
@@ -494,10 +501,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .helmDelete(config, taskParams().helmReleaseName, taskParams().namespace);
         break;
       case VOLUME_DELETE_SHELL_MODE_MASTER:
-        // We are deleting only master volumes for now,
-        // perhaps tserver volumes should also be deleted ?
+        // Deletes the PVCs no pod of the server type uses; master unless serverType is TSERVER.
         Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        String appLabelValue = "yb-master";
+        String appLabelValue =
+            taskParams().serverType == ServerType.TSERVER ? "yb-tserver" : "yb-master";
         kubernetesManagerFactory
             .getManager()
             .deleteUnusedPVCs(
@@ -510,9 +517,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
-        kubernetesManagerFactory
-            .getManager()
-            .deleteStorage(config, taskParams().helmReleaseName, taskParams().namespace);
+        try {
+          kubernetesManagerFactory
+              .getManager()
+              .deleteStorage(
+                  taskParams().getUniverseUUID(),
+                  config,
+                  CollectionUtils.isNotEmpty(taskParams().helmReleaseNames)
+                      ? taskParams().helmReleaseNames
+                      : Collections.singleton(taskParams().helmReleaseName),
+                  taskParams().namespace);
+        } catch (CancellationException e) {
+          throw e;
+        } catch (RuntimeException e) {
+          if (!taskParams().isForceDelete) {
+            throw e;
+          }
+          log.warn(
+              "Ignoring error deleting storage in namespace {} due to isForceDelete being set.",
+              taskParams().namespace,
+              e);
+        }
         break;
       case NAMESPACE_DELETE:
         kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
@@ -1522,17 +1547,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       // Only audit/query logging contribute PostgreSQL settings; don't touch the gflag for
       // metrics-only or log-only (master/tserver glog) configs.
       if (telemetryConfig.requiresYsqlPgConfCsv()) {
-        String combinedPGConfCSV =
-            GFlagsUtil.mergeCSVs(
-                tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
-                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getAuditLogConfig()),
-                true);
-        combinedPGConfCSV =
-            GFlagsUtil.mergeCSVs(
-                combinedPGConfCSV,
-                GFlagsUtil.getYsqlPgConfCsv(telemetryConfig.getQueryLogConfig()),
-                true);
-        tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+        tserverGFlags.put(
+            GFlagsUtil.YSQL_PG_CONF_CSV,
+            GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV),
+                GFlagsUtil.getYsqlPgConfCsv(
+                    telemetryConfig.getAuditLogConfig(), telemetryConfig.getQueryLogConfig())));
       }
       String logLinePrefix =
           GFlagsUtil.getLogLinePrefix(
@@ -1763,12 +1783,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         HelmUtils.mergeYaml(overrides, azOverrides);
       }
     } catch (IOException e) {
-      log.error(
-          String.format(
-              "Error in writing overrides map to string or string to map: "
-                  + "universe overrides: %s, azOverrides: %s",
-              taskParams().universeOverrides, taskParams().azOverrides),
-          e);
+      // The overrides can hold secrets, so they are not logged.
+      log.error("Error in writing overrides map to string or string to map", e);
       throw new RuntimeException("Error in writing overrides map to string.");
     }
     // The provider, universe and AZ overrides were merged over the generated gflags, so they can
@@ -1792,10 +1808,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         serverGFlags.put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "true");
         serverGFlags.remove(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID);
         serverGFlags.remove(GFlagsUtil.VERIFY_CLIENT_ENDPOINT);
-      } else if (overrides.get("gflags") instanceof Map<?, ?> gflags
-          && gflags.get(server) instanceof Map<?, ?> serverGFlags
-          && serverGFlags.containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
-        ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+      } else {
+        // No instanceof patterns: pr-lint runs google-java-format on Java 11.
+        Object gflags = overrides.get("gflags");
+        Object serverGFlags = gflags instanceof Map ? ((Map<?, ?>) gflags).get(server) : null;
+        if (serverGFlags instanceof Map
+            && ((Map<?, ?>) serverGFlags).containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES)) {
+          ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
+        }
       }
     }
     // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
@@ -2150,7 +2170,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> values = defaultValuesYaml.load(defaultValuesStr);
       // apply overrides on the helm chart default values
       HelmUtils.mergeYaml(values, overrides);
-      log.trace("Running validations on merged yaml: {}", values);
+      // The values hold the gflags, overrides and TLS keys, so they are not logged.
+      log.trace("Running validations on merged yaml");
       // run any validations against the final values for helm install/upgrade
       // allow K8SCertManager cert type only with override
       allowK8SCertManagerOnlyWithOverride(values);

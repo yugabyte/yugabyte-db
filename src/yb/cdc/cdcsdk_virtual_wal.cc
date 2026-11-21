@@ -880,7 +880,13 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // the commit record for this pg_txn_id once we are sure that we have fully shipped all DMLs
     // with the same commit_time.
     if (record->row_message().op() == RowMessage_Op_COMMIT && !should_ship_commit) {
-      if (is_txn_in_progress && !curr_active_txn_commit_record) {
+      // With transactional DDL, a publication refresh inside a DDL transaction can add a table
+      // whose tablets return older transactions. Don't hold a COMMIT that can't get an LSN: it
+      // would be picked to ship on every iteration and block the queue. It's rejected below with
+      // the rest of its old transaction instead.
+      if (is_txn_in_progress && !curr_active_txn_commit_record &&
+          (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+           unique_id->GreaterThanDistributedLSN(last_seen_unique_record_id_))) {
         VLOG_WITH_PREFIX(2) << "Encountered 1st commit record for txn_id: " << last_seen_txn_id_
                             << "with commit_time " << record->row_message().commit_time()
                             << ". Will store it for shipping later";
@@ -939,6 +945,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                           << ", Rejected record received from tablet_id: " << tablet_id
                           << ", Last_shipped_record's tablet_id: " << last_shipped_record_tablet_id;
     }
+
+    // Done before last_seen_unique_record_id_ moves to this record, and for the BEGIN records that
+    // are not shipped because their transaction is merged with another one at the same commit time.
+    MoveAbortedSubtxnsToResponse(row_message, resp);
 
     if (lsn_result.ok() && txn_id_result.ok()) {
       row_message->set_pg_lsn(*lsn_result);
@@ -1493,6 +1503,21 @@ Result<uint32_t> CDCSDKVirtualWAL::GetRecordTxnID(
   }
 
   return STATUS_FORMAT(InternalError, "Record's commit_time is lesser than last seen record.");
+}
+
+void CDCSDKVirtualWAL::MoveAbortedSubtxnsToResponse(
+    RowMessage* row_message, GetConsistentChangesResponsePB* resp) {
+  // A BEGIN at an earlier commit time is a duplicate of one already handled.
+  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+      row_message->op() != RowMessage_Op_BEGIN || !row_message->has_aborted_subtxns() ||
+      row_message->commit_time() < last_seen_unique_record_id_->GetCommitTime()) {
+    return;
+  }
+
+  auto& entry = (*resp->mutable_aborted_subtxns())[row_message->transaction_id()];
+  entry.set_commit_time(row_message->commit_time());
+  *entry.mutable_aborted_subtxns() = std::move(*row_message->mutable_aborted_subtxns());
+  row_message->clear_aborted_subtxns();
 }
 
 Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
@@ -2050,11 +2075,11 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
-      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
-      return record->row_message().op() == RowMessage_Op_DELETE
-                 ? PubRefreshTrigger::kTableDropped
-                 : PubRefreshTrigger::kTableRewritten;
+      const bool is_drop = record->row_message().op() == RowMessage_Op_DELETE;
+      LOG_WITH_PREFIX(INFO) << "Table " << (is_drop ? "drop" : "rewrite")
+                            << " detected, will trigger a publication refresh";
+      return is_drop ? PubRefreshTrigger::kTableDropped : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
@@ -2226,7 +2251,9 @@ Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalo
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GetPgCatalogUint32Column(row_message, "oid", true /* use_new_tuple */);
+  // A DELETE record carries the row's key only in the old tuple.
+  auto oid = GetPgCatalogUint32Column(
+      row_message, "oid", row_message.op() != RowMessage_Op_DELETE /* use_new_tuple */);
   if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }
