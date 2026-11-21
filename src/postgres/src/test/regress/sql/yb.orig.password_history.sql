@@ -556,4 +556,25 @@ RESET password_encryption;
 \c yugabyte yugabyte
 DROP USER phenc;
 
+-- Settings saved for a role and for all roles can still give a login both
+-- yb_allow_prehashed_passwords on and a reuse window: the SET-time checks
+-- see only this session's values. The role can still change its password
+-- in plaintext, under its reuse policy; a pre-hashed one is refused.
+ALTER ROLE ALL SET yb_password_reuse_history = 0;
+\c yugabyte yugabyte
+CREATE ROLE phsaved LOGIN PASSWORD 'pw_one';
+ALTER ROLE phsaved SET yb_password_reuse_history = 3;
+ALTER ROLE ALL SET yb_allow_prehashed_passwords = on;
+\c yugabyte phsaved
+SHOW yb_allow_prehashed_passwords;
+SHOW yb_password_reuse_history;
+ALTER ROLE phsaved PASSWORD 'pw_two';
+ALTER ROLE phsaved PASSWORD 'pw_two';              -- fail: reused
+ALTER ROLE phsaved PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail
+\c yugabyte yugabyte
+ALTER ROLE phsaved PASSWORD 'pw_three';            -- ok: admin reset
+DROP ROLE phsaved;
+ALTER ROLE ALL RESET ALL;
+\c yugabyte yugabyte
+
 DROP FUNCTION pwd_hist_len(text);

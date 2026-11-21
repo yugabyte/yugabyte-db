@@ -14,8 +14,9 @@
 #define YB_PASSWORD_HISTORY_H
 
 /*
- * Rejects a pre-hashed password when yb_allow_prehashed_passwords is off.
- * Called from CreateRole() and AlterRole() before the password is applied.
+ * Rejects a pre-hashed password when yb_allow_prehashed_passwords is off or
+ * a password reuse window is on. Called from CreateRole() and AlterRole()
+ * before the password is applied.
  * Read-only: errors or returns, never writes catalog.
  */
 extern void YbCheckPreHashedPasswordAllowed(const char *password);
