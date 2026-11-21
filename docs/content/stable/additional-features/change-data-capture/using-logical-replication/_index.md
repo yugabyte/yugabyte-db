@@ -114,13 +114,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     When performing [switchover](../../../deploy/multi-dc/async-replication/async-transactional-switchover/) or [failover](../../../deploy/multi-dc/async-replication/async-transactional-failover/) on xCluster, if you are using CDC, remember to also reconfigure CDC to use the new primary universe.
 
-- Starting in v2026.1, CDC supports streaming DDLs that cause table rewrites on non-colocated tables. CDC detects the rewrite, notifies the client, and transitions to the new tablets. For configuration, limitations, and unsupported scenarios, refer to [Streaming DDLs causing table rewrite](./advanced-topic/#streaming-ddls-causing-table-rewrite). In versions earlier than v2026.1, CDC blocks DDLs that cause table rewrites when logical replication is active; DROP TABLE and TRUNCATE TABLE operations after slot creation are also not supported.
-
-- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in issue {{<issue 29674>}}.
-
-- When a DDL causes a table rewrite, CDC re-sends existing data that was re-written to the new tablets. Tracked in issue {{<issue 31636>}}.
-
-- DDLs that cause table rewrites on _colocated_ tables remain blocked when CDC is enabled, even in v2026.1 and later. Tracked in issue {{<issue 31908>}}.
+- Support for DDLs that cause a table rewrite, `TRUNCATE`, and `DROP TABLE` on tables with active logical replication depends on the release and on whether the table is colocated. See [Schema evolution](./advanced-topic/#schema-evolution) for the matrix. Open items: no truncate record is sent to the client ({{<issue 29674>}}); existing rows are re-sent after a table rewrite ({{<issue 31636>}}); rewrites and `TRUNCATE` on colocated tables are blocked ({{<issue 31908>}}).
 
 - YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
 
