@@ -32,6 +32,9 @@ struct SysCatalogLoadingState {
 
   const LeaderEpoch epoch;
 
+  // Whether the catalog being replaced was loaded in epoch.leader_term, e.g. on a PITR reload.
+  bool reload_in_loaded_term = false;
+
   explicit SysCatalogLoadingState(LeaderEpoch leader_epoch = {});
 
   void AddPostLoadTask(std::function<void()>&& func, std::string&& msg);

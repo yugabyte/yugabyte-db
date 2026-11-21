@@ -1539,6 +1539,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   }
 
   // Before anything below clears in-memory state.
+  state->reload_in_loaded_term = catalog_loaded_term() == term;
   catalog_loaded_term_.store(OpId::kUnknownTerm, std::memory_order_release);
   TEST_SYNC_POINT("CatalogManager::VisitSysCatalog::CatalogLoadedTermReset");
 
@@ -1693,6 +1694,20 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear Ddl transaction state.
   {
     LockGuard l(ddl_txn_verifier_mutex_);
+    ysql_ddl_txns_release_all_deferred_.clear();
+    // A map loaded in an earlier term may hold stale entries. Collect under the same lock hold as
+    // the clear, so that no release-all can be deferred into the map after it was read.
+    if (state->reload_in_loaded_term) {
+      for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
+        // The flag means the txn has finished: only a release with no subtxn id and no locks
+        // sets it, and tservers send that only at txn end. Mid-txn releases, including the
+        // phased-DDL session lock release_all, carry a subtxn id. A still running DDL txn keeps
+        // its locks and releases them itself when it finishes.
+        if (verifier_state.release_all_deferred) {
+          ysql_ddl_txns_release_all_deferred_.insert(txn_id);
+        }
+      }
+    }
     ysql_ddl_txn_verfication_state_map_.clear();
     ysql_ddl_txn_undergoing_subtransaction_rollback_map_.clear();
   }
@@ -1732,6 +1747,9 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->ts_manager()->RunLoader(
       master_->MakeCloudInfoPB(), &master_->proxy_cache(), *state));
   RETURN_NOT_OK(Load<ObjectLockLoader>("Object locks", state));
+  state->AddPostLoadTask(
+      std::bind(&CatalogManager::ReleaseObjectLocksOfDeferredTxnsPostLoad, this),
+      "Release object locks of DDL txns with deferred release and no verification state");
   RETURN_NOT_OK(RefreshYsqlHistoryRetentionPin());
 
   if (!transaction_tables_config_) {
