@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <csignal>
 #include <set>
 
 #include <boost/algorithm/string/classification.hpp>
@@ -30,6 +31,10 @@
 
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
+
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/subprocess.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_load_balancing);
@@ -180,6 +185,56 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
         },
         kTimeout,
         Format("Wait for $0 changes matching [$1] in the CDC table", expected, filter));
+  }
+
+  // Creates a HYBRID_TIME slot with the test_decoding plugin, which prints a change as text.
+  Status CreateTextSlot(pgwrapper::PGConn& conn, const std::string& slot_name) {
+    RETURN_NOT_OK(conn.FetchFormat(
+        "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding', false, false, "
+        "'HYBRID_TIME')", slot_name));
+    return Status::OK();
+  }
+
+  // Starts pg_recvlogical on the slot with a walsender that reads the CDC table instead of calling
+  // the CDC service, which the pollers have taken over.
+  Result<std::unique_ptr<Subprocess>> StartRecvlogical(
+      const std::string& slot_name, const std::string& out_file,
+      const std::vector<std::string>& extra_args = {}) {
+    const auto& pg = test_cluster_.pg_host_port_;
+    const auto pg_recvlogical = GetPgToolPath("pg_recvlogical");
+    std::vector<std::string> args{
+        pg_recvlogical, Format("--dbname=$0", test_namespace_name), "--username=yugabyte",
+        Format("--host=$0", pg.host()), Format("--port=$0", pg.port()),
+        Format("--slot=$0", slot_name), "--option=include-xids=0",
+        Format("--file=$0", out_file)};
+    args.insert(args.end(), extra_args.begin(), extra_args.end());
+    args.push_back("--start");
+    auto proc = std::make_unique<Subprocess>(pg_recvlogical, args);
+    proc->SetEnv("PGOPTIONS", "-c yb_use_table_based_cdc=on");
+    RETURN_NOT_OK(proc->Start());
+    return proc;
+  }
+
+  // Waits until the output file has at least as much as expected, then returns what it has.
+  Result<std::string> WaitForOutput(const std::string& out_file, const std::string& expected) {
+    std::string content;
+    auto status = LoggedWaitFor(
+        [&]() -> Result<bool> {
+          // The file does not exist until pg_recvlogical has connected.
+          if (!Env::Default()->FileExists(out_file)) {
+            return false;
+          }
+          faststring data;
+          RETURN_NOT_OK(ReadFileToString(Env::Default(), out_file, &data));
+          content = data.ToString();
+          return content.size() >= expected.size();
+        },
+        kTimeout, "Wait for the walsender output");
+    // The caller compares the output with the expectation, which says more than a timeout.
+    if (!status.ok() && content.empty()) {
+      return status;
+    }
+    return content;
   }
 };
 
@@ -415,6 +470,202 @@ TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {
   ASSERT_TRUE(resp.has_error());
   ASSERT_STR_CONTAINS(
       StatusFromPB(resp.error().status()).ToString(), "TEST_cdcsdk_enable_cdc_table");
+}
+
+// The walsender streams what the pollers wrote to the CDC table as the change stream of the slot,
+// with the values converted the way they are from the CDC service.
+TEST_F(CDCSDKCdcTableTest, WalsenderStreamsChanges) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  // The pollers only poll the tables of publications.
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  ASSERT_OK(CreateTextSlot(conn, "slot1"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 'b')"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (4, NULL)"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'a2' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 3"));
+
+  // The reader does not stream a change that reaches the table after a later one was read, so the
+  // walsender starts once all of them are there.
+  const auto t1_filter = ASSERT_RESULT(TableFilter("t1"));
+  ASSERT_OK(WaitForChanges(conn, 6, t1_filter));
+
+  const auto out_file = GetTestPath("walsender.out");
+  auto recvlogical = ASSERT_RESULT(StartRecvlogical("slot1", out_file));
+
+  const std::string kExpected =
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:1 v[text]:'a'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:2 v[text]:'b'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:3 v[text]:'c'\n"
+      "table public.t1: INSERT: id[integer]:4 v[text]:null\n"
+      "table public.t1: UPDATE: old-key: id[integer]:1 v[text]:'a' "
+      "new-tuple: id[integer]:1 v[text]:'a2'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.t1: DELETE: id[integer]:3 v[text]:'c'\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out_file, kExpected)), kExpected);
+
+  // A change made while the walsender runs follows the ones it has already streamed.
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (5, 'live')"));
+  const std::string kLive =
+      kExpected +
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:5 v[text]:'live'\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out_file, kLive)), kLive);
+
+  ASSERT_OK(recvlogical->Kill(SIGINT));
+  ASSERT_OK(recvlogical->Wait());
+}
+
+// A walsender restarted on the slot resumes after what the client confirmed, even when the client
+// asks to start from 0/0, rather than send the slot's changes again from its creation.
+TEST_F(CDCSDKCdcTableTest, WalsenderResumesFromSlot) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  ASSERT_OK(CreateTextSlot(conn, "slot1"));
+  const auto t1_filter = ASSERT_RESULT(TableFilter("t1"));
+  const auto confirmed_flush = [&conn]() {
+    return conn.FetchRow<std::string>(
+        "SELECT confirmed_flush_lsn::text FROM pg_replication_slots WHERE slot_name = 'slot1'");
+  };
+  const auto initial_flush = ASSERT_RESULT(confirmed_flush());
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 'b')"));
+  ASSERT_OK(WaitForChanges(conn, 2, t1_filter));
+
+  // Fsync and report the position every second, so that the slot confirms it soon.
+  const std::vector<std::string> kAckOften{"--fsync-interval=1", "--status-interval=1"};
+  const auto out1 = GetTestPath("walsender1.out");
+  auto recvlogical = ASSERT_RESULT(StartRecvlogical("slot1", out1, kAckOften));
+  const std::string kFirst =
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:1 v[text]:'a'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:2 v[text]:'b'\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out1, kFirst)), kFirst);
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(confirmed_flush()) != initial_flush; },
+      kTimeout, "Wait for the slot to persist the confirmed position"));
+  ASSERT_OK(recvlogical->Kill(SIGINT));
+  ASSERT_OK(recvlogical->Wait());
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  ASSERT_OK(WaitForChanges(conn, 3, t1_filter));
+
+  // pg_recvlogical starts from 0/0, so only the slot's position keeps the first two out.
+  const auto out2 = GetTestPath("walsender2.out");
+  recvlogical = ASSERT_RESULT(StartRecvlogical("slot1", out2, kAckOften));
+  const std::string kSecond =
+      "BEGIN\n"
+      "table public.t1: INSERT: id[integer]:3 v[text]:'c'\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out2, kSecond)), kSecond);
+  // Nothing else follows.
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out2, kSecond)), kSecond);
+
+  ASSERT_OK(recvlogical->Kill(SIGINT));
+  ASSERT_OK(recvlogical->Wait());
+}
+
+// Values of the types that DocDB stores differently from PostgreSQL reach the walsender as the
+// QLValuePBs of an image. They must come out of the walsender as they went in.
+TEST_F(CDCSDKCdcTableTest, WalsenderStreamsColumnTypes) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE ty (id INT PRIMARY KEY, b BIGINT, f DOUBLE PRECISION, ok BOOL, bt BYTEA, "
+      "n NUMERIC, d DATE, ts TIMESTAMP, u UUID, j JSONB)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE ty REPLICA IDENTITY FULL"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE ty"));
+  ASSERT_OK(CreateTextSlot(conn, "slot1"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO ty VALUES (1, 9223372036854775807, 1.5, true, '\\x0001ff', 123.456, "
+      "'2026-11-20', '2026-11-20 10:11:12.123456', '123e4567-e89b-12d3-a456-426614174000', "
+      "'{\"a\": [1, 2]}')"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO ty VALUES (2, -9223372036854775808, -0.25, false, '', -0.5, "
+      "'2000-01-01', '1999-12-31 23:59:59', '00000000-0000-0000-0000-000000000000', 'null')"));
+  ASSERT_OK(conn.Execute("INSERT INTO ty (id) VALUES (3)"));
+
+  ASSERT_OK(WaitForChanges(conn, 3, ASSERT_RESULT(TableFilter("ty"))));
+
+  const auto out_file = GetTestPath("walsender.out");
+  auto recvlogical = ASSERT_RESULT(StartRecvlogical("slot1", out_file));
+
+  const std::string kExpected =
+      "BEGIN\n"
+      "table public.ty: INSERT: id[integer]:1 b[bigint]:9223372036854775807 "
+      "f[double precision]:1.5 ok[boolean]:true bt[bytea]:'\\x0001ff' n[numeric]:123.456 "
+      "d[date]:'2026-11-20' ts[timestamp without time zone]:'2026-11-20 10:11:12.123456' "
+      "u[uuid]:'123e4567-e89b-12d3-a456-426614174000' j[jsonb]:'{\"a\": [1, 2]}'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.ty: INSERT: id[integer]:2 b[bigint]:-9223372036854775808 "
+      "f[double precision]:-0.25 ok[boolean]:false bt[bytea]:'\\x' n[numeric]:-0.5 "
+      "d[date]:'2000-01-01' ts[timestamp without time zone]:'1999-12-31 23:59:59' "
+      "u[uuid]:'00000000-0000-0000-0000-000000000000' j[jsonb]:'null'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.ty: INSERT: id[integer]:3 b[bigint]:null f[double precision]:null "
+      "ok[boolean]:null bt[bytea]:null n[numeric]:null d[date]:null "
+      "ts[timestamp without time zone]:null u[uuid]:null j[jsonb]:null\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out_file, kExpected)), kExpected);
+
+  ASSERT_OK(recvlogical->Kill(SIGINT));
+  ASSERT_OK(recvlogical->Wait());
+}
+
+// DocDB records no type OID for an enum, so the decoder takes its type from the relation.
+TEST_F(CDCSDKCdcTableTest, WalsenderStreamsEnumAndArray) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TYPE mood AS ENUM ('sad', 'happy')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE en (id INT PRIMARY KEY, m mood, a INT[], t TEXT[])"));
+  ASSERT_OK(conn.Execute("ALTER TABLE en REPLICA IDENTITY FULL"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE en"));
+  ASSERT_OK(CreateTextSlot(conn, "slot1"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO en VALUES (1, 'happy', '{1,2,3}', '{a,\"b c\"}')"));
+  ASSERT_OK(conn.Execute("INSERT INTO en VALUES (2, NULL, NULL, NULL)"));
+  ASSERT_OK(WaitForChanges(conn, 2, ASSERT_RESULT(TableFilter("en"))));
+
+  const auto out_file = GetTestPath("walsender.out");
+  auto recvlogical = ASSERT_RESULT(StartRecvlogical("slot1", out_file));
+
+  const std::string kExpected =
+      "BEGIN\n"
+      "table public.en: INSERT: id[integer]:1 m[public.mood]:'happy' a[integer[]]:'{1,2,3}' "
+      "t[text[]]:'{a,\"b c\"}'\n"
+      "COMMIT\n"
+      "BEGIN\n"
+      "table public.en: INSERT: id[integer]:2 m[public.mood]:null a[integer[]]:null "
+      "t[text[]]:null\n"
+      "COMMIT\n";
+  ASSERT_EQ(ASSERT_RESULT(WaitForOutput(out_file, kExpected)), kExpected);
+
+  ASSERT_OK(recvlogical->Kill(SIGINT));
+  ASSERT_OK(recvlogical->Wait());
 }
 
 }  // namespace yb::cdc
