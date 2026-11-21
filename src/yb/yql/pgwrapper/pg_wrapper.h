@@ -48,7 +48,8 @@ struct PgProcessConf : public ProcessWrapperCommonConfig {
 
   static Result<PgProcessConf> CreateValidateAndRunInitDb(
       const std::string& bind_addresses,
-      const std::string& data_dir);
+      const std::string& data_dir,
+      bool force_disable_log_file = false);
 
   std::string ToString();
 
