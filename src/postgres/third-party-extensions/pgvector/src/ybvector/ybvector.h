@@ -40,6 +40,12 @@ typedef struct YbVectorScanOpaqueData
 	/* The query vector on which we will do ANN. */
 	Datum query_vector;
 
+	/*
+	 * The vector searched with when the query vector is NULL, built on first
+	 * use and kept across rescans.
+	 */
+	Datum null_query_vector;
+
 	/* Pushed down limit on the number of results. */
 	int32_t limit;
 

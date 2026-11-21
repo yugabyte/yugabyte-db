@@ -32,6 +32,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/yb_type.h"
 #include "commands/defrem.h"
+#include "common/pg_prng.h"
 #include "nodes/nodeFuncs.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -349,6 +350,30 @@ bindKeyFilter(IndexScanDesc scan, YbOpaque yb_scan)
 }
 
 /*
+ * The vector a scan searches with when its query vector is NULL.  Every
+ * distance is NULL then, so any row order is correct, but DocDB can't search
+ * without a vector.  The vector must not make many rows tie: a page ending in a
+ * tie widens by at most vector_index_max_extra_tied_results rows, and a later
+ * page keeps only rows farther than every row fetched before from that tablet,
+ * so the rest of a tie is lost.  A zero vector ties every row under cosine and
+ * inner product.  Coordinates with integer relations between them, such as
+ * multiples of the golden ratio mod 1, tie large groups of rows on binary or
+ * small-integer data.  Pseudo-random coordinates have no such relations, and
+ * the fixed seed makes every NULL scan search with the same vector.
+ */
+static Vector *
+makeNullQueryStandIn(int dim)
+{
+	Vector	   *result = InitVector(dim);
+	pg_prng_state state;
+
+	pg_prng_seed(&state, 38105);
+	for (int i = 0; i < dim; i++)
+		result->x[i] = (float) pg_prng_double(&state);
+	return result;
+}
+
+/*
  * Bind search keys to the ANN scan. These include
  * - the query vector
  * - the prefetch size (how many nearest neighbours we expect to return)
@@ -357,20 +382,32 @@ static void bindAnnSearchKeys(YbOpaque yb_scan, IndexScanDesc scan,
 							  Relation rel, int nkeys, int norderbys,
 							  YbVectorScanOpaque so)
 {
+	int ind_dim = TupleDescAttr(scan->indexRelation->rd_att, 0)->atttypmod;
+
 	if (scan->orderByData->sk_flags & SK_ISNULL)
 	{
-		yb_scan->quit_scan = true;
-		return;
+		if (so->null_query_vector == (Datum) 0)
+		{
+			MemoryContext oldcontext =
+				MemoryContextSwitchTo(GetMemoryChunkContext(so));
+
+			so->null_query_vector =
+				PointerGetDatum(makeNullQueryStandIn(ind_dim));
+			MemoryContextSwitchTo(oldcontext);
+		}
+		so->query_vector = so->null_query_vector;
+	}
+	else
+	{
+		int vec_dim = ((Vector*) scan->orderByData->sk_argument)->dim;
+		if (ind_dim != vec_dim)
+			ereport(ERROR,
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						errmsg("different vector dimensions %d and %d", ind_dim, vec_dim)));
+
+		so->query_vector = scan->orderByData->sk_argument;
 	}
 
-	int ind_dim = TupleDescAttr(scan->indexRelation->rd_att, 0)->atttypmod;
-	int vec_dim = ((Vector*) scan->orderByData->sk_argument)->dim;
-	if (ind_dim != vec_dim)
-		ereport(ERROR,
-					(errcode(ERRCODE_DATA_EXCEPTION),
-					errmsg("different vector dimensions %d and %d", ind_dim, vec_dim)));
-
-	so->query_vector = scan->orderByData->sk_argument;
 	YbcPgExpr vec_handle = YBCNewConstant(
 		so->yb_scan_desc->handle, BYTEAOID, InvalidOid /* collation_id */,
 		so->query_vector, false);
@@ -394,6 +431,7 @@ ybvectorbeginscan(Relation rel, int nkeys, int norderbys)
 	/* allocate private workspace */
 	so = (YbVectorScanOpaque) palloc(sizeof(YbVectorScanOpaqueData));
 	so->limit = -1;
+	so->null_query_vector = (Datum) 0;
 
 	so->first = true;
 	scan->opaque = so;
