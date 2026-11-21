@@ -59,7 +59,7 @@ DECLARE_bool(never_fsync);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(TEST_store_apply_state_in_old_format);
+DECLARE_bool(TEST_store_apply_state_without_apply_op_id_and_log_ht);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -2352,7 +2352,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
 
   // Apply only the first batch, and store the apply state for the rest the way older releases did.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_in_old_format) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat(
@@ -2363,7 +2363,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
     return VERIFY_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular)) >
            static_cast<size_t>(kApplyBatchRecords);
   }, 10s * kTimeMultiplier, "First apply batch"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_in_old_format) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) = false;
   const auto tablet_id = tablet->tablet_id();
   peers.clear();
   tablet.reset();

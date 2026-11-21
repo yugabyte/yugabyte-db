@@ -66,7 +66,7 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
-DEFINE_test_flag(bool, store_apply_state_in_old_format, false,
+DEFINE_test_flag(bool, store_apply_state_without_apply_op_id_and_log_ht, false,
                  "Store the apply state of a large transaction without its apply op id and log "
                  "hybrid time, as older releases did.");
 
@@ -848,7 +848,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   ApplyTransactionStatePB pb;
   apply_state().ToPB(&pb);
   pb.set_commit_ht(commit_ht_.ToUint64());
-  if (!FLAGS_TEST_store_apply_state_in_old_format) {
+  if (!FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) {
     apply_op_id_.ToPB(pb.mutable_apply_op_id());
     if (log_ht_) {
       pb.set_log_ht(log_ht_.ToUint64());

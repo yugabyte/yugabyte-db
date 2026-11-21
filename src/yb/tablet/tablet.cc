@@ -3146,6 +3146,7 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
   for (const auto& metadata : metadatas) {
     min_op_id = std::min(min_op_id, metadata.apply_op_id);
     max_op_id = std::max(max_op_id, metadata.apply_op_id);
+    DCHECK(metadata.commit_ht) << metadata.ToString();
     for (auto ht : {metadata.commit_ht, metadata.log_ht}) {
       min_ht.MakeAtMost(ht);
       max_ht.MakeAtLeast(ht);
