@@ -779,16 +779,18 @@ SICleanupQueue(bool callerHasWriteLock, int minFree)
 
 			/*
 			 * In YSQL, the backend of stateP only applies messages sent
-			 * by itself. Therefore we do not need to set stateP->resetState
-			 * to true if those discarded messages that have not been consumed
-			 * by the backend of stateP yet were sent by other backends.
+			 * by itself, plus YbIsCrossProcessInvalMessage ones from anyone.
+			 * Therefore we do not need to set stateP->resetState to true if
+			 * none of the discarded messages that have not been consumed by
+			 * the backend of stateP yet is one it would apply.
 			 */
 			for (next = stateP->nextMsgNum; next < min; next++)
 			{
 				SharedInvalidationMessage *msg = &segP->buffer[next %
 															   MAXNUMMESSAGES];
 
-				if (msg->yb_header.yb_sender_pid == procPid)
+				if (msg->yb_header.yb_sender_pid == procPid ||
+					YbIsCrossProcessInvalMessage(msg))
 				{
 					elog(LOG, "resetState of %d", procPid);
 					stateP->resetState = true;

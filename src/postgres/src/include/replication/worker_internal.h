@@ -66,6 +66,9 @@ typedef struct LogicalRepWorker
 	TimestampTz last_recv_time;
 	XLogRecPtr	reply_lsn;
 	TimestampTz reply_time;
+
+	/* YB fields */
+	bool		yb_owns_subscription;	/* apply worker holds the sub's lock */
 } LogicalRepWorker;
 
 /* Main memory context for apply worker. Permanent during worker lifetime. */
@@ -108,5 +111,8 @@ am_tablesync_worker(void)
 {
 	return OidIsValid(MyLogicalRepWorker->relid);
 }
+
+/* YB declarations */
+extern bool yb_logicalrep_owns_subscription(Oid subid);
 
 #endif							/* WORKER_INTERNAL_H */
