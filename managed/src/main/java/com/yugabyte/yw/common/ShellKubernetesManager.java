@@ -41,9 +41,10 @@ import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -66,6 +67,7 @@ import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
@@ -113,8 +115,15 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void createNamespace(Map<String, String> config, String namespace) {
-    String namespaceFile = generateNamespaceYaml(namespace);
+  public void createNamespace(
+      Map<String, String> config, String namespace, Map<String, String> labels) {
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("name", namespace);
+    putLabels(metadata, labels);
+    String namespaceFile =
+        writeTempYaml(
+            List.of(ImmutableMap.of("apiVersion", "v1", "kind", "Namespace", "metadata", metadata)),
+            "namespace");
     List<String> commandList =
         ImmutableList.of("kubectl", "apply", "-f", namespaceFile, "--server-side");
     execCommand(config, commandList).processErrors();
@@ -127,14 +136,55 @@ public class ShellKubernetesManager extends KubernetesManager {
   // -luniverse=uni1. Tracked here:
   // https://github.com/yugabyte/yugabyte-db/issues/7012
   @Override
-  public void applySecret(Map<String, String> config, String namespace, String pullSecret) {
+  public void applySecret(
+      Map<String, String> config, String namespace, String pullSecret, Map<String, String> labels) {
+    // The labels go into the manifest rather than onto the secret afterwards, so that admission
+    // policies requiring them see them when the secret is created. Labels already in the
+    // provider's pull secret win.
+    List<Object> docs = new ArrayList<>();
+    try (InputStream in = Files.newInputStream(Path.of(pullSecret))) {
+      for (Object doc : new Yaml().loadAll(in)) {
+        if (doc instanceof Map<?, ?> resource) {
+          @SuppressWarnings("unchecked")
+          Map<String, Object> metadata =
+              (Map<String, Object>)
+                  ((Map<String, Object>) resource)
+                      .computeIfAbsent("metadata", k -> new HashMap<>());
+          putLabels(metadata, labels);
+        }
+        if (doc != null) {
+          docs.add(doc);
+        }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Unable to read the pull secret " + pullSecret, e);
+    }
+    String labeledPullSecret = writeTempYaml(docs, "pull-secret");
     // --server-side flag ensures that there is no race condition when
     // multiple kubectl apply try to apply same secret in same
     // namespace.
     List<String> commandList =
         ImmutableList.of(
-            "kubectl", "apply", "-f", pullSecret, "--namespace", namespace, "--server-side");
-    execCommand(config, commandList).processErrors();
+            "kubectl", "apply", "-f", labeledPullSecret, "--namespace", namespace, "--server-side");
+    try {
+      execCommand(config, commandList).processErrors();
+    } finally {
+      FileUtils.deleteQuietly(new File(labeledPullSecret));
+    }
+  }
+
+  // Adds the labels to the resource's metadata, keeping any label it already has.
+  @SuppressWarnings("unchecked")
+  private static void putLabels(
+      Map<String, Object> metadata, @Nullable Map<String, String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return;
+    }
+    Map<String, Object> merged = new HashMap<>(labels);
+    if (metadata.get("labels") instanceof Map<?, ?> existing) {
+      merged.putAll((Map<String, Object>) existing);
+    }
+    metadata.put("labels", merged);
   }
 
   @Override
@@ -187,35 +237,47 @@ public class ShellKubernetesManager extends KubernetesManager {
    * method works even without get/list on namespaces at the cluster level.
    */
   @Override
-  public boolean dbNamespaceExists(Map<String, String> config, String namespace) {
+  public boolean dbNamespaceExists(
+      Map<String, String> config, String namespace, Map<String, String> labels) {
     String secretName = "ns-check-" + RandomStringUtils.randomAlphanumeric(20).toLowerCase();
+    // Admission policies see dry-run requests too, so the secret carries the labels. kubectl
+    // create secret has no flag for labels, hence the manifest.
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("name", secretName);
+    putLabels(metadata, labels);
+    String secretFile =
+        writeTempYaml(
+            List.of(
+                ImmutableMap.of(
+                    "apiVersion",
+                    "v1",
+                    "kind",
+                    "Secret",
+                    "metadata",
+                    metadata,
+                    "stringData",
+                    ImmutableMap.of("namespace", "check"))),
+            "ns-check");
     List<String> commandList =
         ImmutableList.of(
-            "kubectl",
-            "create",
-            "secret",
-            "generic",
-            secretName,
-            "--from-literal=namespace=check",
-            "-n",
-            namespace,
-            "--dry-run=server");
+            "kubectl", "create", "-f", secretFile, "-n", namespace, "--dry-run=server");
     try {
       execCommand(config, commandList)
           .processErrors("Unable to create secret (dry run) for namespace existance check");
     } catch (RuntimeException e) {
-      if (e.getMessage()
-              .contains(
-                  "error: failed to create secret secrets \"" + secretName + "\" already exists")
-          || e.getMessage().contains("Error from server (AlreadyExists): secrets")) {
+      // kubectl create -f reports: Error from server (NotFound): error when creating "<file>":
+      // namespaces "<namespace>" not found
+      if (e.getMessage().contains("(AlreadyExists)")
+          && e.getMessage().contains("secrets \"" + secretName + "\" already exists")) {
         return true;
       }
-      if (e.getMessage()
-              .contains("error: failed to create secret namespaces \"" + namespace + "\" not found")
-          || e.getMessage().contains("Error from server (NotFound): namespaces")) {
+      if (e.getMessage().contains("(NotFound)")
+          && e.getMessage().contains("namespaces \"" + namespace + "\" not found")) {
         return false;
       }
       throw e;
+    } finally {
+      FileUtils.deleteQuietly(new File(secretFile));
     }
     return true;
   }
@@ -437,28 +499,6 @@ public class ShellKubernetesManager extends KubernetesManager {
         execCommand(config, commandList, false /*logCmdOutput*/)
             .processErrors("Unable to list events");
     return deserialize(response.message, EventList.class).getItems();
-  }
-
-  // generateNamespaceYaml creates a namespace YAML file for given
-  // name. This can be later extended to add other metadata like
-  // labels, annotations etc.
-  private String generateNamespaceYaml(String name) {
-    Map<String, Object> namespace = new HashMap<String, Object>();
-    namespace.put("apiVersion", "v1");
-    namespace.put("kind", "Namespace");
-    namespace.put("metadata", ImmutableMap.of("name", name));
-    Yaml yaml = new Yaml();
-
-    try {
-      Path tempFile =
-          fileHelperService.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
-      BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
-      yaml.dump(namespace, bw);
-      return tempFile.toAbsolutePath().toString();
-    } catch (IOException e) {
-      log.error(e.getMessage());
-      throw new RuntimeException("Error writing Namespace YAML file.");
-    }
   }
 
   @Override
@@ -1524,9 +1564,8 @@ public class ShellKubernetesManager extends KubernetesManager {
           cluster.uuid);
       return;
     }
-    // Get helm overrides to extract commonLabels
-    Map<String, Object> commonLabels = extractCommonLabelsFromHelmOverrides(cluster);
-    String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType, commonLabels);
+    UniverseDefinitionTaskParams.UserIntent primaryIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     PlacementInfo pi = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
@@ -1537,18 +1576,34 @@ public class ShellKubernetesManager extends KubernetesManager {
     // to all pods within a single namespace across all AZs. Similar policies will be created
     // for different namespaces within the same cluster or namespaces with the same name
     // across different clusters.
+    Map<UUID, String> namespacePerAZ = new HashMap<>();
+    Map<String, List<UUID>> azsPerNamespace = new HashMap<>();
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
-      Map<String, String> config = entry.getValue();
       AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
       String namespace =
           KubernetesUtil.getKubernetesNamespace(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
               az.getCode(),
-              config,
+              entry.getValue(),
               universe.getUniverseDetails().useNewHelmNamingStyle,
               isReadOnlyCluster,
               false /* addKubeClusterPrefix */);
+      namespacePerAZ.put(entry.getKey(), namespace);
+      azsPerNamespace.computeIfAbsent(namespace, ns -> new ArrayList<>()).add(entry.getKey());
+    }
+    Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      Map<String, String> config = entry.getValue();
+      String namespace = namespacePerAZ.get(entry.getKey());
+      // AZs sharing a namespace share the PDB, which gets the helm commonLabels of all of them.
+      Map<String, String> labels =
+          labelsPerNamespace.computeIfAbsent(
+              namespace,
+              ns ->
+                  KubernetesUtil.getHelmCommonLabels(
+                      primaryIntent, universe.getConfig(), azsPerNamespace.get(ns)));
+      String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType, labels);
       List<String> commandList =
           ImmutableList.of("kubectl", "apply", "-f", pdbPolicyYaml, "--namespace", namespace);
       execCommand(config, commandList).processErrors("Unable to create PodDisruptionBudget policy");
@@ -1559,7 +1614,7 @@ public class ShellKubernetesManager extends KubernetesManager {
       Universe universe,
       UniverseDefinitionTaskParams.Cluster cluster,
       ServerType serverType,
-      Map<String, Object> commonLabels) {
+      Map<String, String> labels) {
     Map<String, Object> policy = new HashMap<String, Object>();
     policy.put("apiVersion", "policy/v1");
     policy.put("kind", "PodDisruptionBudget");
@@ -1571,23 +1626,10 @@ public class ShellKubernetesManager extends KubernetesManager {
             serverType.name().toLowerCase());
     Map<String, Object> metadata = new HashMap<>();
     metadata.put("name", policyName);
-    // Add commonLabels to metadata if present
-    if (commonLabels != null && !commonLabels.isEmpty()) {
-      metadata.put("labels", commonLabels);
-    }
+    putLabels(metadata, labels);
     policy.put("metadata", metadata);
     policy.put("spec", createPDBSpec(cluster, universe, serverType));
-    Yaml yaml = new Yaml();
-    try {
-      Path tempFile =
-          fileHelperService.createTempFile(UUID.randomUUID().toString() + "-" + policyName, ".yml");
-      BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
-      yaml.dump(policy, bw);
-      return tempFile.toAbsolutePath().toString();
-    } catch (IOException e) {
-      log.error(e.getMessage());
-      throw new RuntimeException("Error writing PodDisruptionBudget YAML file..");
-    }
+    return writeTempYaml(List.of(policy), policyName);
   }
 
   private Map<String, Object> createPDBSpec(
@@ -1635,43 +1677,6 @@ public class ShellKubernetesManager extends KubernetesManager {
     } else {
       return Optional.empty();
     }
-  }
-
-  /**
-   * Extracts commonLabels from helm overrides. Similar to generateHelmOverride() in
-   * KubernetesCommandExecutor, this checks merged overrides which include provider, universe, and
-   * AZ-level overrides. Returns the first non-empty commonLabels found.
-   *
-   * @param cluster The cluster to extract commonLabels from
-   * @return Map of commonLabels, or empty map if not found
-   */
-  @SuppressWarnings("unchecked")
-  private Map<String, Object> extractCommonLabelsFromHelmOverrides(
-      UniverseDefinitionTaskParams.Cluster cluster) {
-    try {
-      // Get final overrides which merges provider, universe, and AZ overrides
-      // This follows the same precedence as generateHelmOverride() in KubernetesCommandExecutor:
-      // provider overrides -> universe overrides -> AZ overrides
-      Map<UUID, Map<String, Object>> finalOverrides =
-          KubernetesUtil.getFinalOverrides(
-              cluster, cluster.userIntent.universeOverrides, cluster.userIntent.azOverrides);
-
-      // Check merged overrides (which include provider, universe, and AZ overrides)
-      // The merged overrides follow the same precedence as generateHelmOverride()
-      if (finalOverrides != null && !finalOverrides.isEmpty()) {
-        for (Map<String, Object> mergedOverrides : finalOverrides.values()) {
-          if (mergedOverrides != null && mergedOverrides.containsKey("commonLabels")) {
-            Object commonLabelsObj = mergedOverrides.get("commonLabels");
-            if (commonLabelsObj instanceof Map) {
-              return (Map<String, Object>) commonLabelsObj;
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.warn("Error extracting commonLabels from helm overrides: {}", e.getMessage());
-    }
-    return new HashMap<>();
   }
 
   public void checkOpentelemetryOperatorRunning() {
