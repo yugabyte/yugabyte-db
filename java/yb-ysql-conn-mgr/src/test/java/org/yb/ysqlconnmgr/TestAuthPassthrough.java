@@ -818,6 +818,32 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     }
   }
 
+  // An error the control backend raises after authenticating the client reaches the client.
+  @Test
+  public void testStartupOptionErrorAfterAuthReachesClient() throws Exception {
+    Properties props = new Properties();
+    props.put("options", "-c work_mem=invalid");
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(TEST_USERNAME)
+             .withPassword(TEST_PASSWORD)
+             .connect(props)) {
+      fail("Connection with an invalid startup option should fail");
+    } catch (SQLException e) {
+      assertTrue("Unexpected error: " + e,
+          e.getMessage().contains("invalid value for parameter \"work_mem\""));
+    }
+
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(TEST_USERNAME)
+             .withPassword(TEST_PASSWORD)
+             .connect();
+        Statement statement = connection.createStatement()) {
+      statement.executeQuery("SELECT 1");
+    }
+  }
+
   // Verify that the auth passthrough path emits the expected "connection received"
   // and "connection authorized" log lines when log_connections is enabled.
   // Restarts the cluster with log_connections=on as connection logging happens
