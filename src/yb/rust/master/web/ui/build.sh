@@ -28,9 +28,10 @@ node_ok() {
   major=$(node_major) && [[ $major -ge $REQUIRED_NODE_MAJOR ]]
 }
 
-# Node.js from PATH, else one installed by nvm, as in yugabyted-ui/build.sh.
+# Node.js from PATH, else one installed by nvm, else nvm installs the .nvmrc version (CI machines
+# often have nvm but not that Node.js), as in yugabyted-ui/build.sh.
+NVM_DIR=${NVM_DIR:-$HOME/.nvm}
 if ! node_ok; then
-  NVM_DIR=${NVM_DIR:-$HOME/.nvm}
   for node_bin in "$NVM_DIR"/versions/node/v*/bin; do
     if [[ -x $node_bin/node ]]; then
       version=${node_bin%/bin}
@@ -41,6 +42,15 @@ if ! node_ok; then
       fi
     fi
   done
+fi
+if ! node_ok && [[ -s $NVM_DIR/nvm.sh ]]; then
+  log "Installing Node.js $(cat "$UI_DIR/.nvmrc") with nvm"
+  # nvm.sh does not run under set -eu.
+  set +eu
+  # shellcheck disable=SC1090,SC1091
+  . "$NVM_DIR/nvm.sh"
+  nvm install "$(cat "$UI_DIR/.nvmrc")"
+  set -eu
 fi
 if ! node_ok; then
   fatal "Node.js >= ${REQUIRED_NODE_MAJOR} is required to build the master UI" \

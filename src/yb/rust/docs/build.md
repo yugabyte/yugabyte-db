@@ -12,7 +12,9 @@
 `--build-master-ui` first builds the master's web UI (`master/web/ui`, needs Node.js 22) into
 `$BUILD_ROOT/master-ui`; while that directory has an `index.html`, the Cargo steps get
 `YB_MASTER_UI_DIR` pointing at it and `master-web` embeds it. Without it a leader answers the page
-URLs with a note saying how to build it.
+URLs with a note saying how to build it. Jenkins builds (`build-support/jenkins/yb-jenkins-build.sh`)
+pass it, so release packages have the UI; `ui/build.sh` installs the `.nvmrc` Node.js with nvm when
+no Node.js 22 is found.
 
 ## Toolchain
 

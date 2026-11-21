@@ -103,6 +103,10 @@ build_cpp_code() {
   # Static check of bash scripts need only be done during one phase of the build.
   yb_build_args+=( "--shellcheck" )
 
+  # The master's web UI is embedded in yb-master at compile time. Later yb_build.sh runs (the LTO
+  # link) keep embedding it from $BUILD_ROOT/master-ui without rebuilding it.
+  yb_build_args+=( "--build-master-ui" )
+
   log "Building cpp code with options: ${yb_build_args[*]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
