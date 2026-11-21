@@ -163,6 +163,7 @@ typedef enum {
 	OD_YB_MAX_PREPARED_STATEMENTS,
 	OD_YB_WAIT_FOR_RFQ_ON_SYNC,
 	OD_YB_BACKEND_DRAIN_TIMEOUT_MS,
+	OD_YB_QUERY_WAIT_TIMEOUT_MS,
 	OD_YB_DATA_DIRECTORY,
 	OD_YB_LTLS_MAX_PROTOCOL_VERSION,
 	OD_YB_LTLS_PREFER_SERVER_CIPHERS,
@@ -365,6 +366,7 @@ static od_keyword_t od_config_keywords[] = {
 		   OD_YB_WAIT_FOR_RFQ_ON_SYNC),
 	od_keyword("yb_backend_drain_timeout_ms",
 		   OD_YB_BACKEND_DRAIN_TIMEOUT_MS),
+	od_keyword("yb_query_wait_timeout_ms", OD_YB_QUERY_WAIT_TIMEOUT_MS),
 	od_keyword("yb_data_directory", OD_YB_DATA_DIRECTORY),
 	/* TLS */
 	od_keyword("yb_tls_max_protocol_version", OD_YB_LTLS_MAX_PROTOCOL_VERSION),
@@ -2709,6 +2711,17 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			if (val < 0)
 				goto error;
 			config->yb_backend_drain_timeout_ms = val;
+			continue;
+		}
+		/* yb_query_wait_timeout_ms */
+		case OD_YB_QUERY_WAIT_TIMEOUT_MS: {
+			int val;
+			if (!od_config_reader_number(reader, &val)) {
+				goto error;
+			}
+			if (val < 0)
+				goto error;
+			config->yb_query_wait_timeout_ms = val;
 			continue;
 		}
 		/* yb_data_directory */
