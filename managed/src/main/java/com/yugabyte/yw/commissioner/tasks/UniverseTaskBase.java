@@ -5741,7 +5741,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   /**
    * Removes tservers that were just deleted from the server blacklist, after waiting {@code
    * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live
-   * first.
+   * first. Before the clear, also removes them from the master's registry when {@code
+   * yb.edit.remove_dead_tservers} is on and the DB version has the master RPC.
    */
   public void createClearTserverBlacklistTasks(
       Universe universe, Collection<NodeDetails> tservers) {
@@ -5752,8 +5753,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createWaitForDurationSubtask(universe, sleepBeforeClear)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
+    createRemoveTabletServersTask(universe, tservers, SubTaskGroupType.RemovingUnusedServers);
     createModifyBlackListTask(null /* addNodes */, tservers, false /* isLeaderBlacklist */)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Removes the tservers of nodes that are gone for good from the master's registry. Must run while
+   * the nodes are still on the server blacklist. Adds nothing when {@code
+   * yb.edit.remove_dead_tservers} is off or the DB version lacks the master RPC.
+   */
+  public void createRemoveTabletServersTask(
+      Universe universe, Collection<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    if (CollectionUtils.isEmpty(nodes)
+        || !confGetter.getConfForScope(universe, UniverseConfKeys.ybEditRemoveDeadTservers)
+        || !RemoveTabletServers.isSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      return;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RemoveTabletServers");
+    RemoveTabletServers.Params params = new RemoveTabletServers.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodes = new ArrayList<>(nodes);
+    RemoveTabletServers task = createTask(RemoveTabletServers.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
   }
 
   /**
@@ -6090,14 +6116,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
-   */
+  /** Waits until the master leader reports every tserver of the universe as live. */
   public SubTaskGroup createWaitForTServerHeartBeatsTask() {
+    return createWaitForTServerHeartBeatsTask(null);
+  }
+
+  /**
+   * Waits until the master leader reports the tservers of the given nodes as live, or of every
+   * tserver of the universe when {@code nodes} is null.
+   */
+  public SubTaskGroup createWaitForTServerHeartBeatsTask(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForTServerHeartBeats");
     WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
     WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    if (nodes != null) {
+      params.nodeNames = nodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toSet());
+    }
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

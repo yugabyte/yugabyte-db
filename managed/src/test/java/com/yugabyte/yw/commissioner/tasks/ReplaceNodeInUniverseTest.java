@@ -7,8 +7,6 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
@@ -26,7 +24,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ListTabletServersResponse;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -60,10 +57,8 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
         .when(mockNodeManager)
         .nodeCommand(eq(NodeCommandType.List), any());
     try {
-      ListTabletServersResponse mockListTabletServersResponse =
-          mock(ListTabletServersResponse.class);
-      when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
-      when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      mockLiveTabletServersFromUniverses(
+          mockClient, (universe, node) -> node.state == NodeDetails.NodeState.Live);
       setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception e) {
       fail(e.getMessage());

@@ -254,11 +254,10 @@ public class EditUniverse extends EditUniverseTaskBase {
         createMasterLeaderStepdownTask();
       }
 
-      // Wait for the master leader to hear from all tservers.
-      // NOTE: Universe expansion will fail in the master leader failover scenario - if a node
-      // is down externally for >15 minutes and the master leader then marks the node down for
-      // real. Then that down TServer will timeout this task and universe expansion will fail.
-      createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Wait for the master leader to hear from the new tservers.
+      createWaitForTServerHeartBeatsTask(
+              PlacementInfoUtil.getTserversToProvision(taskParams().nodeDetailsSet))
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Re-configure cross-cloud federated IAM if the universe is already federated, so nodes added
       // or changed by this edit match. Keyed off the persisted flag (not the provider) to avoid a
