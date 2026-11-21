@@ -81,7 +81,8 @@ bool ConsensusFrontier::Equals(const UserFrontier& pre_rhs) const {
          hybrid_time_filter_ == rhs.hybrid_time_filter_ &&
          max_value_level_ttl_expiration_time_ == rhs.max_value_level_ttl_expiration_time_ &&
          primary_schema_version_ == rhs.primary_schema_version_ &&
-         cotable_schema_versions_ == rhs.cotable_schema_versions_;
+         cotable_schema_versions_ == rhs.cotable_schema_versions_ &&
+         txn_apply_op_index_ == rhs.txn_apply_op_index_;
 }
 
 void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
@@ -122,6 +123,9 @@ void ConsensusFrontier::ToPB(google::protobuf::Any* any) const {
   }
   if (split_min_chunk_serial_no_) {
     pb.set_split_min_chunk_serial_no(split_min_chunk_serial_no_);
+  }
+  if (txn_apply_op_index_) {
+    pb.set_txn_apply_op_index(txn_apply_op_index_);
   }
   VLOG(3) << "ConsensusFrontierPB: " << pb.ShortDebugString();
   any->PackFrom(pb);
@@ -174,6 +178,7 @@ Status ConsensusFrontier::FromPB(const google::protobuf::Any& any) {
   has_vector_deletion_ = pb.has_vector_deletion();
   split_generation_ = pb.split_generation();
   split_min_chunk_serial_no_ = pb.split_min_chunk_serial_no();
+  txn_apply_op_index_ = pb.txn_apply_op_index();
   VLOG(3) << "ConsensusFrontier: " << ToString();
   return Status::OK();
 }
@@ -231,6 +236,9 @@ std::string ConsensusFrontier::ToString() const {
   }
   if (split_min_chunk_serial_no_) {
     fields += Format("split_min_chunk_serial_no: $0 ", split_min_chunk_serial_no_);
+  }
+  if (txn_apply_op_index_) {
+    fields += Format("txn_apply_op_index: $0 ", txn_apply_op_index_);
   }
   return Format("{$0}", fields);
 }
@@ -370,7 +378,19 @@ void ConsensusFrontier::Update(
     UpdateField(
         &split_min_chunk_serial_no_, rhs.split_min_chunk_serial_no_,
         storage::UpdateUserValueType::kLargest);
+    // A value stays valid once written, so the highest one written holds. A lower one can follow:
+    // the later chunks of a large apply carry its index again, and intents removals record zero
+    // while enable_wal_retention_for_unremoved_intents is off.
+    txn_apply_op_index_ = std::max(txn_apply_op_index_, rhs.txn_apply_op_index_);
   }
+}
+
+std::optional<int64_t> UnremovedIntentsRetainIndex(
+    int64_t regular_txn_apply_op_index, int64_t intents_txn_apply_op_index) {
+  if (regular_txn_apply_op_index <= intents_txn_apply_op_index) {
+    return std::nullopt;
+  }
+  return intents_txn_apply_op_index;
 }
 
 Slice ConsensusFrontier::FilterAsSlice() {

@@ -421,6 +421,7 @@ DECLARE_bool(cdc_enable_time_based_intent_retention);
 DECLARE_bool(consistent_restore);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(enable_wal_retention_for_unremoved_intents);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -593,8 +594,14 @@ void InitFrontiers(const TransactionApplyData& data, docdb::ConsensusFrontiers& 
   InitFrontiers(data.op_id, data.log_ht, data.commit_ht, frontiers);
 }
 
+int64_t FlushedTxnApplyOpIndexForDb(rocksdb::DB* db) {
+  auto frontier = db ? db->GetFlushedFrontier() : nullptr;
+  return frontier ? down_cast<docdb::ConsensusFrontier&>(*frontier).txn_apply_op_index() : 0;
+}
+
 void InitFrontiers(const RemoveIntentsData& data, docdb::ConsensusFrontiers& frontiers) {
   InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
+  frontiers.Largest().set_txn_apply_op_index(data.txn_apply_op_index);
 }
 
 storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
@@ -1612,7 +1619,8 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
       MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
       /* min_start_ht_cdc_unstreamed_txns */ HybridTime::kInvalid);
   RETURN_NOT_OK(transaction_participant_->SetDB(
-      doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
+      doc_db(), FlushedTxnApplyOpIndexForDb(regular_db_.get()),
+      &pending_op_counter_blocking_rocksdb_shutdown_start_));
   if (FLAGS_cdc_immediate_transaction_cleanup) {
     CleanupIntentFiles();
   }
@@ -3036,6 +3044,12 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
   AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_intents_ms);
   docdb::ConsensusFrontiers frontiers;
   InitFrontiers(data, frontiers);
+  // CDC keeps intents of applied transactions without removal writes, which would hold the
+  // intents bound below this apply op id and pin the WAL, so such applies are not recorded.
+  if (FLAGS_enable_wal_retention_for_unremoved_intents &&
+      transaction_participant_->GetLatestCheckPoint() == OpId::Max()) {
+    frontiers.Largest().set_txn_apply_op_index(data.op_id.index);
+  }
   auto vector_indexes = vector_indexes_->List().impl();
   docdb::ApplyIntentsContextCompleteListener complete_listener;
   if (!vector_indexes_->has_vector_deletion()) {
@@ -3069,16 +3083,27 @@ Status Tablet::RemoveIntentsImpl(
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
+  // The retention bound in data assumes the removal of exactly one transaction.
+  DCHECK(data.txn_apply_op_index == 0 || ids.size() == 1);
+
   rocksdb::WriteBatch intents_write_batch;
-  HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
     std::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
+      // No intent hybrid time file filter here: it is keyed on the minimum running transaction
+      // start time, while a removal target is typically past running, so the filter can prune the
+      // very SST files holding the transaction's reverse index, silently turning the removal into
+      // a no-op. StopTrackingUnremovedIntentsApply below relies on the removal having actually
+      // processed the reverse index.
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), HybridTime::kInvalid, intents_db_.get(),
+          &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
+      // A chunked removal stamps the retention bound on every chunk: the first chunk deletes the
+      // transaction metadata record, and without it the transaction is not loaded at bootstrap, so
+      // a re-delivered APPLYING is a no-op.
       InitFrontiers(data, frontiers);
       WriteToRocksDB(frontiers, &intents_write_batch, StorageDbType::kIntents);
 
@@ -3098,6 +3123,10 @@ Status Tablet::RemoveIntentsImpl(
 
       AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
     }
+    // The transaction's intents removal is now fully written (possibly still in the memtable;
+    // durability is what the consensus frontier recorded by WriteToRocksDB tracks), so it no
+    // longer needs its APPLYING operation retained in the WAL.
+    transaction_participant_->StopTrackingUnremovedIntentsApply(id);
   }
   DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RemoveIntentsImpl");
   return Status::OK();
@@ -5061,6 +5090,11 @@ Result<DocDbPersistentState> Tablet::GetPersistentState(bool invalid_if_no_new_d
 Result<int64_t> Tablet::EarliestNeededLogIndex(
     const yb::OpId& latest_log_entry_op_id, const LogIndexFactorCallback& add_factor) {
   FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+  // Read the intents watermark before the regular DB state: it only reaches a transaction's apply
+  // index once its removal is flushed, and an apply flushed after it was read is then seen either
+  // as unflushed regular data or in the regular watermark read below.
+  const auto intents_txn_apply_op_index =
+      VERIFY_RESULT(FlushedTxnApplyOpIndex(StorageDbType::kIntents));
   auto persistent_state = VERIFY_RESULT(GetPersistentState(true /* invalid_if_no_new_data */));
   int64_t min_index = std::numeric_limits<int64_t>::max();
   auto add_storage = [&min_index, &add_factor](const char* name, const OpId& op_id) {
@@ -5072,6 +5106,23 @@ Result<int64_t> Tablet::EarliestNeededLogIndex(
   };
   add_storage("max persistent regular op ID idx", persistent_state.regular);
   add_storage("max persistent intents op ID idx", persistent_state.intents);
+  if (FLAGS_enable_wal_retention_for_unremoved_intents && intents_db_) {
+    const auto regular_txn_apply_op_index =
+        VERIFY_RESULT(FlushedTxnApplyOpIndex(StorageDbType::kRegular));
+    auto retain_index = docdb::UnremovedIntentsRetainIndex(
+        regular_txn_apply_op_index, intents_txn_apply_op_index);
+    if (retain_index) {
+      // The intents watermark may be behind only because no flushed removal write is going to
+      // carry it there.
+      retain_index = docdb::UnremovedIntentsRetainIndex(
+          regular_txn_apply_op_index,
+          RecordIntentsTxnApplyOpIndexIfIdle(intents_txn_apply_op_index));
+    }
+    if (retain_index) {
+      min_index = std::min(min_index, *retain_index);
+      add_factor("min unremoved intents apply op ID idx", *retain_index, std::string());
+    }
+  }
   return std::min(
       min_index,
       VERIFY_RESULT(EarliestNeededLogIndexForVectorIndexes(latest_log_entry_op_id, add_factor)));
@@ -5131,6 +5182,13 @@ Result<int64_t> Tablet::EarliestNeededLogIndexForVectorIndexes(
   return min_index;
 }
 
+Result<int64_t> Tablet::FlushedTxnApplyOpIndex(StorageDbType db_type) const {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  return FlushedTxnApplyOpIndexForDb(
+      db_type == StorageDbType::kIntents ? intents_db_.get() : regular_db_.get());
+}
+
 void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!scoped_read_operation.ok()) {
@@ -5158,6 +5216,44 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
       }
     }
   }
+}
+
+// The intents RocksDB txn_apply_op_index normally becomes durable when the memtable holding the
+// removal write that carries it is flushed. It does not when that removal found nothing to delete,
+// which leaves its memtable empty, or when it was lost in a crash after the intents SST file
+// cleanup had deleted the transaction's intents: the transaction is then not loaded at bootstrap
+// and no removal write follows. The flushed regular value would stay above the flushed intents
+// one, keeping the whole WAL, until the next intents removal on the tablet. So when the intents
+// RocksDB has nothing to flush, this records the participant's value in the flushed frontier
+// directly and returns it. Otherwise it returns flushed_index, the current flushed value.
+// The caller holds a tablet peer that finished bootstrap, and all transactions must be loaded, so
+// the participant tracks every applied transaction that is still loaded.
+int64_t Tablet::RecordIntentsTxnApplyOpIndexIfIdle(int64_t flushed_index) {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  if (!scoped_read_operation.ok() || !intents_db_ || !transaction_participant_ ||
+      !transaction_participant_->AllTransactionsLoaded()) {
+    return flushed_index;
+  }
+  // Read before the flush ability. With nothing to flush, every removal written before this read
+  // is flushed or deleted nothing. A removal completed after this read is not covered by the
+  // value, since its transaction was still tracked.
+  const auto index = transaction_participant_->IntentsTxnApplyOpIndex();
+  if (index <= flushed_index ||
+      intents_db_->GetFlushAbility() != rocksdb::FlushAbility::kNoNewData) {
+    return flushed_index;
+  }
+  docdb::ConsensusFrontier frontier;
+  frontier.set_txn_apply_op_index(index);
+  auto status = intents_db_->ModifyFlushedFrontier(
+      frontier.Clone(), rocksdb::FrontierModificationMode::kUpdateIgnoreBackwards);
+  if (!status.ok()) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 60)
+        << "Failed to update intents DB flushed txn_apply_op_index: " << status;
+    return flushed_index;
+  }
+  LOG_WITH_PREFIX(INFO) << "Updated intents DB flushed txn_apply_op_index from " << flushed_index
+                        << " to " << index;
+  return index;
 }
 
 Status Tablet::MayAdvanceDeactivatedVectorIndexesFlushedOpId() {

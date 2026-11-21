@@ -194,6 +194,17 @@ DEFINE_test_flag(double, txn_participant_error_on_load, 0.0,
 DEFINE_test_flag(bool, skip_process_apply, false,
                  "If true, ProcessApply will be skipped");
 
+DEFINE_test_flag(bool, skip_notify_applied, false,
+                 "If true, the participant applies locally but suppresses the APPLIED "
+                 "notification to the status tablet, so the coordinator keeps re-sending APPLYING "
+                 "(the duplicate). Grows coordinator state; use on short tests only.");
+
+DEFINE_RUNTIME_bool(enable_wal_retention_for_unremoved_intents, true,
+    "Keep WAL segments containing the APPLYING operation of an applied transaction (and replay "
+    "them at bootstrap) until the removal of the transaction's intents is durably flushed to the "
+    "intents RocksDB. Disabling it re-opens a silent data-loss window on a re-delivered "
+    "APPLYING.");
+
 DEFINE_test_flag(bool, load_transactions_sync, false,
                  "If true, the test will block until the loader has finished loading all txns.");
 
@@ -462,6 +473,7 @@ class TransactionParticipant::Impl
       if (pending_apply) {
         txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
         txn->SetApplyData(pending_apply->state);
+        RecordUnremovedIntentsApply(metadata.transaction_id, pending_apply->apply_op_id);
       }
     }
 
@@ -744,6 +756,63 @@ class TransactionParticipant::Impl
   CoarseTimePoint GetCheckpointExpirationTime() {
     std::lock_guard lock(mutex_);
     return cdc_sdk_min_checkpoint_op_id_expiration_;
+  }
+
+  // See the field comments next to unremoved_intents_applies_mutex_. Zero when the feature is
+  // disabled or when no apply has been seen yet.
+  int64_t IntentsTxnApplyOpIndex(const TransactionId* removed_id) const override
+      EXCLUDES(unremoved_intents_applies_mutex_) {
+    if (!FLAGS_enable_wal_retention_for_unremoved_intents) {
+      return 0;
+    }
+    std::lock_guard lock(unremoved_intents_applies_mutex_);
+    const auto& by_apply_op_index = unremoved_intents_applies_.get<ApplyOpIndexTag>();
+    auto it = by_apply_op_index.begin();
+    if (it != by_apply_op_index.end() && removed_id && it->transaction_id == *removed_id) {
+      ++it;
+    }
+    if (it != by_apply_op_index.end()) {
+      return it->apply_op_index - 1;
+    }
+    // No applied transaction is waiting for intents removal; any future apply gets a higher index
+    // and is recorded before its removal can be written.
+    return max_recorded_apply_op_index_;
+  }
+
+  // Starts tracking a transaction that was applied at apply_op_id but whose intents removal has
+  // not been written to the intents RocksDB yet. Every recorded transaction must eventually be
+  // passed to StopTrackingUnremovedIntentsApply, otherwise IntentsTxnApplyOpIndex stops
+  // advancing and WAL GC stalls (conservative, but unbounded log growth).
+  void RecordUnremovedIntentsApply(const TransactionId& id, const OpId& apply_op_id)
+      EXCLUDES(unremoved_intents_applies_mutex_) {
+    // A real APPLYING replication op id is never empty; an empty one would hold the bound at
+    // index 0 forever.
+    if (!apply_op_id.is_valid_not_empty()) {
+      return;
+    }
+    std::lock_guard lock(unremoved_intents_applies_mutex_);
+    if (unremoved_intents_applies_.emplace(UnremovedIntentsApply{id, apply_op_id.index}).second) {
+      max_recorded_apply_op_index_ = std::max(max_recorded_apply_op_index_, apply_op_id.index);
+    }
+  }
+
+  // Stops tracking the given transaction, because its intents removal has been fully written to
+  // the intents RocksDB, or because intents cleanup was handed over to CDC's intent SST file
+  // cleanup (see HandleTransactionCleanup). No-op for transactions that were never recorded.
+  void StopTrackingUnremovedIntentsApply(const TransactionId& id)
+      EXCLUDES(unremoved_intents_applies_mutex_) {
+    std::lock_guard lock(unremoved_intents_applies_mutex_);
+    unremoved_intents_applies_.erase(id);
+  }
+
+  // Drops all tracked transactions. Only for SetDB on an existing tablet (truncate/restore):
+  // the intents RocksDB is replaced, so the tracked transactions' removal writes will never
+  // happen and would otherwise pin the WAL GC floor until process restart. Their intents are
+  // deleted with the DB, so a later re-delivered APPLYING has nothing left to re-apply.
+  // max_recorded_apply_op_index_ is kept so the reported bound stays valid.
+  void ClearUnremovedIntentsApplies() EXCLUDES(unremoved_intents_applies_mutex_) {
+    std::lock_guard lock(unremoved_intents_applies_mutex_);
+    unremoved_intents_applies_.clear();
   }
 
   // Cleans transactions that are requested and now is safe to clean.
@@ -1045,6 +1114,9 @@ class TransactionParticipant::Impl
             applying_txn = txn;
           }
         }));
+        // From this point the transaction counts as applied here (this op is its apply op), but
+        // its intents still await removal; keep its APPLYING in the WAL.
+        RecordUnremovedIntentsApply(data.transaction_id, data.op_id);
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
             << "Apply transaction before last safe time " << data.transaction_id << ": "
             << data.log_ht << " vs " << last_safe_time_;
@@ -1118,6 +1190,11 @@ class TransactionParticipant::Impl
   void NotifyApplied(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(4) << Format("NotifyApplied($0)", data);
 
+    if (PREDICT_FALSE(FLAGS_TEST_skip_notify_applied)) {
+      // Apply locally but never tell the status tablet, so the coordinator keeps re-sending
+      // APPLYING (the duplicate). The local apply still advances MinRunningHybridTime.
+      return;
+    }
     NotifyApplied(data.leader_term, data.status_tablet, data.transaction_id);
   }
 
@@ -1217,8 +1294,17 @@ class TransactionParticipant::Impl
   }
 
   Status SetDB(
-      const docdb::DocDB& db,
+      const docdb::DocDB& db, int64_t regular_txn_apply_op_index,
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
+    {
+      // The value removals stamp while nothing is tracked, until the first apply after restart.
+      // An apply at or below the regular flushed watermark either has its intents removal flushed,
+      // or is kept in the WAL and replayed at bootstrap, which tracks it again if its transaction
+      // is still loaded.
+      std::lock_guard lock(unremoved_intents_applies_mutex_);
+      max_recorded_apply_op_index_ =
+          std::max(max_recorded_apply_op_index_, regular_txn_apply_op_index);
+    }
     bool had_db = db_.intents != nullptr;
     db_ = db;
     pending_op_counter_blocking_rocksdb_shutdown_start_ =
@@ -1244,6 +1330,7 @@ class TransactionParticipant::Impl
     DumpClear(RemoveReason::kSetDB);
     size_t num_transactions = transactions_.size();
     transactions_.clear();
+    ClearUnremovedIntentsApplies();
     // TODO(#26796): this matches the Consume(), but both are inaccurate, since RunningTransaction
     // has dynamically allocated fields.
     mem_tracker_->Release(num_transactions * kRunningTransactionSize);
@@ -1877,6 +1964,32 @@ class TransactionParticipant::Impl
       >
   >;
 
+  class ApplyOpIndexTag;
+
+  struct UnremovedIntentsApply {
+    TransactionId transaction_id;
+    int64_t apply_op_index;
+  };
+
+  // Applied transactions whose intents removal has not been written yet, indexed by transaction
+  // id (to stop tracking one) and by apply op index (to get the minimum). The apply op index index
+  // is non-unique so that the container never depends on apply op indexes being distinct across
+  // transactions.
+  using UnremovedIntentsApplies = boost::multi_index_container<UnremovedIntentsApply,
+      boost::multi_index::indexed_by <
+          boost::multi_index::hashed_unique <
+              boost::multi_index::member <
+                  UnremovedIntentsApply, TransactionId, &UnremovedIntentsApply::transaction_id>,
+              TransactionIdHash
+          >,
+          boost::multi_index::ordered_non_unique <
+              boost::multi_index::tag<ApplyOpIndexTag>,
+              boost::multi_index::member <
+                  UnremovedIntentsApply, int64_t, &UnremovedIntentsApply::apply_op_index>
+          >
+      >
+  >;
+
   struct AppliedTransactionState {
     OpId apply_op_id;
     HybridTime first_write_ht;
@@ -2105,6 +2218,14 @@ class TransactionParticipant::Impl
     // if CDC is enabled on the tablet. Intents of such txns will be deleted by the intent SST
     // file cleanup codepath after CDC streams them.
     if (is_txn_loaded_with_cdc) {
+      // No intents-removal write will follow (the intent SST file cleanup deletes the files after
+      // CDC streams them), so stop tracking the transaction. This deliberately leaves such
+      // transactions with today's exposure to a re-delivered APPLYING after a crash: CDC's xrepl
+      // WAL retention is a soft floor (time/disk policies can override it), and the bootstrap
+      // flushed-entries optimizer stays enabled unless skip_wal_replay_from_beginning_with_cdc is
+      // set to false. Keeping them tracked instead would hold the intents RocksDB
+      // txn_apply_op_index back for the whole CDC retention window.
+      StopTrackingUnremovedIntentsApply((**it).id());
       return {should_remove_transaction, post_apply_metadata_entry};
     }
 
@@ -2119,6 +2240,10 @@ class TransactionParticipant::Impl
           FLAGS_cdc_enable_time_based_intent_retention && cdc_active;
       if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents) && !skip_intent_removal) {
         (**it).ScheduleRemoveIntents(*it, reason);
+      } else if (skip_intent_removal) {
+        // Same handover as for CDC-loaded transactions above: no intents-removal write will
+        // follow, so stop tracking (see the comment above for what this leaves unprotected).
+        StopTrackingUnremovedIntentsApply(txn_id);
       }
     } else {
       if (!FLAGS_cdc_write_post_apply_metadata ||
@@ -2132,6 +2257,9 @@ class TransactionParticipant::Impl
           .commit_ht = (**it).GetCommitHybridTime(),
           .log_ht = (**it).GetApplyHybridTime(),
       };
+      // Same handover as above: no intents-removal write will follow, so stop tracking (see the
+      // comment above for what this leaves unprotected).
+      StopTrackingUnremovedIntentsApply(txn_id);
     }
 
     return {should_remove_transaction, post_apply_metadata_entry};
@@ -2295,6 +2423,7 @@ class TransactionParticipant::Impl
                           << pending_apply->ToString();
       txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
       txn->SetApplyData(pending_apply->state);
+      RecordUnremovedIntentsApply(txn->id(), pending_apply->apply_op_id);
     }
     // All transactions loaded during tablet bootstrap do not have an apply OpID. However, these
     // transactions may still be needed by CDC (if enabled). To prevent unintended cleanup of
@@ -3057,6 +3186,17 @@ class TransactionParticipant::Impl
   std::atomic<OpId> historical_max_op_id = OpId::Invalid();
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
 
+  // Transactions that were applied on this tablet but whose intents removal has not yet been
+  // written to the intents RocksDB. IntentsTxnApplyOpIndex provides the WAL retention and
+  // replay lower bound recorded in the intents RocksDB consensus frontier (see
+  // ConsensusFrontierPB.txn_apply_op_index for the why). A dedicated mutex (never
+  // taken together with mutex_ except nested inside it) so that computing the value for a removal
+  // write does not take the main participant lock.
+  mutable std::mutex unremoved_intents_applies_mutex_;
+  UnremovedIntentsApplies unremoved_intents_applies_ GUARDED_BY(unremoved_intents_applies_mutex_);
+  // Highest apply op index ever recorded; used as the bound when no removal is pending.
+  int64_t max_recorded_apply_op_index_ GUARDED_BY(unremoved_intents_applies_mutex_) = 0;
+
   // Time up to which intents SST files retained for CDC can be safely deleted, provided the maximum
   // record time in the SST file is earlier than this value.
   HybridTime min_start_ht_cdc_unstreamed_txns_ GUARDED_BY(mutex_) = HybridTime::kInvalid;
@@ -3195,9 +3335,10 @@ Result<std::optional<TabletId>> TransactionParticipant::FindStatusTablet(const T
 }
 
 Status TransactionParticipant::SetDB(
-    const docdb::DocDB& db,
+    const docdb::DocDB& db, int64_t regular_txn_apply_op_index,
     RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
-  return impl_->SetDB(db, pending_op_counter_blocking_rocksdb_shutdown_start);
+  return impl_->SetDB(
+      db, regular_txn_apply_op_index, pending_op_counter_blocking_rocksdb_shutdown_start);
 }
 
 void TransactionParticipant::GetStatus(
@@ -3317,6 +3458,14 @@ OpId TransactionParticipant::GetRetainOpId() const {
 
 CoarseTimePoint TransactionParticipant::GetCheckpointExpirationTime() const {
   return impl_->GetCheckpointExpirationTime();
+}
+
+int64_t TransactionParticipant::IntentsTxnApplyOpIndex() const {
+  return impl_->IntentsTxnApplyOpIndex(/* removed_id= */ nullptr);
+}
+
+void TransactionParticipant::StopTrackingUnremovedIntentsApply(const TransactionId& id) {
+  impl_->StopTrackingUnremovedIntentsApply(id);
 }
 
 OpId TransactionParticipant::GetLatestCheckPoint() const {
