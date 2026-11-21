@@ -29,3 +29,5 @@ test: yb.orig.alter_partitioned_table_locks
 test: yb.orig.rollback_to_savepoint_retains_table_locks
 test: yb.orig.revoke_honored_in_txn_block
 test: yb.orig.conflict_retry_retakes_object_locks
+test: yb.orig.batched_copy_concurrent_ddl
+test: yb.orig.batched_copy_new_partition
