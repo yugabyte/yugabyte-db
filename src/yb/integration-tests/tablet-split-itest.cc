@@ -459,7 +459,8 @@ TEST_F(TabletSplitITest, HiddenParentTabletRemovedFromTableMapsAfterRetention) {
       client::WaitSnapshot::kTrue, kInterval, kRetention));
 
   ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
-  const auto parent_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(kNumRows, /* parent_tablet_protected_from_deletion = */ true));
+  const auto parent_tablet_id = ASSERT_RESULT(
+      SplitTabletAndValidate(kNumRows, /* parent_tablet_protected_from_deletion = */ true));
 
   const auto table_id = ASSERT_RESULT(GetTestTableId());
 
@@ -2663,7 +2664,8 @@ class  AutomaticTabletSplitAddServerITest: public AutomaticTabletSplitITest {
   Result<std::map<std::string, master::TabletLocationsPB::ReplicaPB>> GetReplicas(
       const TabletId& tablet_id) {
     std::map<std::string, master::TabletLocationsPB::ReplicaPB> result;
-    for (const auto& replica : VERIFY_RESULT(MasterApi().GetTabletLocations(tablet_id)).replicas()) {
+    const auto locations = VERIFY_RESULT(MasterApi().GetTabletLocations(tablet_id));
+    for (const auto& replica : locations.replicas()) {
       result[replica.ts_info().permanent_uuid()] = replica;
     }
     return result;

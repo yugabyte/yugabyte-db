@@ -1959,16 +1959,18 @@ TEST_F(XClusterDBScopedTest, CreateReplicationWithHiddenTables) {
   const auto hidden_table_id = new_table->id();
 
   MasterTestApi producer_api(producer_cluster());
-  ASSERT_TRUE(
-      ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))->LockForRead()->visible_to_client());
+  ASSERT_TRUE(ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))
+                  ->LockForRead()
+                  ->visible_to_client());
 
   ASSERT_OK(DropYsqlTable(
       &producer_cluster_, table_name.namespace_name(), table_name.pgschema_name(),
       table_name.table_name()));
   ASSERT_NOK(producer_client()->OpenTable(table_name, &new_table));
 
-  ASSERT_FALSE(
-      ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))->LockForRead()->visible_to_client());
+  ASSERT_FALSE(ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))
+                   ->LockForRead()
+                   ->visible_to_client());
 
   // Setup replication and make sure it is healthy.
   ASSERT_OK(CheckpointReplicationGroup());

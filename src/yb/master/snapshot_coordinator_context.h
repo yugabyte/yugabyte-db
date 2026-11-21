@@ -42,7 +42,8 @@ using TabletSnapshotOperationCallback =
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
 
 // A snapshot or restore RPC to one tablet, sent by the master leader. The coordinator fills in the
-// fields of the operation it creates through SnapshotCoordinatorContext::CreateAsyncTabletSnapshotOp.
+// fields of the operation it creates through
+// SnapshotCoordinatorContext::CreateAsyncTabletSnapshotOp.
 class AsyncTabletSnapshotOp {
  public:
   virtual ~AsyncTabletSnapshotOp() = default;

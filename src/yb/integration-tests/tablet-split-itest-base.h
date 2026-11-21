@@ -60,7 +60,7 @@ Status DoSplitTablet(MiniClusterBase* cluster, const tablet::Tablet& tablet);
 // The master asks the tablet's leader for the split keys, so the tablet needs flushed data.
 Status SplitTabletAndWaitForChildren(
     MiniClusterBase* cluster, const TabletId& tablet_id, int split_factor,
-    MonoDelta timeout = MonoDelta::FromSeconds(60 * kTimeMultiplier));
+    MonoDelta timeout = MonoDelta::FromSeconds(kTimeMultiplier * 60));
 
 template <class MiniClusterType>
 class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType> {

@@ -12,9 +12,10 @@
 
 // Quorums of Rust masters (yb-master) in external processes: a follower answers the
 // follower-servable RPCs and keeps its in-memory catalog equal to the sys catalog through DDL,
-// snapshots and a PITR restore; the leader serves the cluster, client and heartbeat RPCs and the web
-// pages (src/yb/rust/master/docs/testing.md). Mixed quorums of C++ and Rust masters are covered by
-// upgrade-tests/rust_master_upgrade_rollback-itest.cc, against the R-1 release's C++ masters.
+// snapshots and a PITR restore; the leader serves the cluster, client and heartbeat RPCs and the
+// web pages (src/yb/rust/master/docs/testing.md). Mixed quorums of C++ and Rust masters are
+// covered by upgrade-tests/rust_master_upgrade_rollback-itest.cc, against the R-1 release's C++
+// masters.
 
 #include <algorithm>
 #include <map>

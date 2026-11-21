@@ -310,7 +310,8 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   // Write some rows to the tablet.
   ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
-  const auto source_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(kNumRows, /* parent_tablet_protected_from_deletion */ true));
+  const auto source_tablet_id = ASSERT_RESULT(
+      SplitTabletAndValidate(kNumRows, /* parent_tablet_protected_from_deletion */ true));
 
   // Ensure that a GetChanges still works on the source tablet.
   cdc::GetChangesRequestPB change_req;
@@ -701,7 +702,8 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
 
   // Perform one tablet split.
   ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
-  ASSERT_OK(SplitTabletAndValidate(kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitTabletAndValidate(
+      kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
 
   // Write some more rows, and then perform another split on both children.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));

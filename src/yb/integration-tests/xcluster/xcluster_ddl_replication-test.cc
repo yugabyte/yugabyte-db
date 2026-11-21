@@ -7400,7 +7400,8 @@ class XClusterWalAnchorStreamTest : public XClusterDDLReplicationTest {
   }
 
   Result<bool> TargetHasPendingDeletionMarker(const TableId& target_table_id) {
-    auto table_info = VERIFY_RESULT(MasterTestApi(consumer_cluster()).GetTableInfo(target_table_id));
+    auto table_info =
+        VERIFY_RESULT(MasterTestApi(consumer_cluster()).GetTableInfo(target_table_id));
     return table_info->LockForRead()
         ->pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
   }

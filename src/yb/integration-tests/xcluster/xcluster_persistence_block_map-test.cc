@@ -118,8 +118,8 @@ class XClusterPersistenceBlockMapTest : public PgMiniTestBase {
   Result<bool> AnyTServerMayHoldLease() {
     for (const auto& [uuid, text] :
          VERIFY_RESULT(Api().DumpRows(master::SysRowEntryType::TSERVER_REGISTRATION))) {
-      auto row = VERIFY_RESULT(
-          master::DebugStringToCatalogEntityPB(master::SysRowEntryType::TSERVER_REGISTRATION, text));
+      auto row = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(
+          master::SysRowEntryType::TSERVER_REGISTRATION, text));
       const auto& entry = *static_cast<master::SysTabletServerEntryPB*>(row.get());
       if (entry.xcluster_guarded_lease_state() !=
           master::SysTabletServerEntryPB::DEFINITELY_NO_LEASE) {

@@ -3290,7 +3290,8 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
                   master::WriteSysCatalogEntryRequestPB::WriteOp_Name(req.op_type()));
           }
           const auto type = req.entry_type();
-          auto pb = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(type, req.pb_debug_string()));
+          auto pb =
+              VERIFY_RESULT(master::DebugStringToCatalogEntityPB(type, req.pb_debug_string()));
           LOG_WITH_FUNC(WARNING) << "Updating Sys Catalog. OpType: "
                                  << QLWriteRequestPB::QLStmtType_Name(op_type)
                                  << ", EntryType: " << master::SysRowEntryType_Name(type)

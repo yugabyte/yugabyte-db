@@ -174,7 +174,8 @@ void CatalogSnapshot::AddTableRow(const TableId& id, const master::SysTablesEntr
   tables_[id] = std::move(table);
 }
 
-void CatalogSnapshot::AddNamespaceRow(const NamespaceId& id, const master::SysNamespaceEntryPB& pb) {
+void CatalogSnapshot::AddNamespaceRow(
+    const NamespaceId& id, const master::SysNamespaceEntryPB& pb) {
   auto ns = make_scoped_refptr<master::NamespaceInfo>(id, /* tasks_tracker= */ nullptr);
   auto lock = ns->LockForWrite();
   lock.mutable_data()->pb.CopyFrom(pb);
@@ -245,7 +246,8 @@ Result<CatalogSnapshot> MasterTestApi::Catalog() {
   }
   for (const auto& [id, text] : VERIFY_RESULT(DumpRows(master::SysRowEntryType::TABLE))) {
     snapshot.AddTableRow(
-        id, VERIFY_RESULT(ParseRow<master::SysTablesEntryPB>(master::SysRowEntryType::TABLE, text)));
+        id,
+        VERIFY_RESULT(ParseRow<master::SysTablesEntryPB>(master::SysRowEntryType::TABLE, text)));
   }
   for (const auto& [id, text] : VERIFY_RESULT(DumpRows(master::SysRowEntryType::TABLET))) {
     RETURN_NOT_OK(snapshot.AddTabletRow(
