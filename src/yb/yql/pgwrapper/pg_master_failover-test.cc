@@ -13,14 +13,14 @@
 
 #include <vector>
 
-#include "yb/master/mini_master.h"
-#include "yb/master/ts_manager.h"
+#include "yb/integration-tests/master_test_api.h"
 
-#include "yb/tablet/tablet_peer.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -121,23 +121,29 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
   conn = ASSERT_RESULT(ConnectToDB("test"));
   ASSERT_OK(conn.Execute("CREATE TABLE t (i INT)"));
 
-  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
-  LOG(INFO) << "Old leader: " << peer->permanent_uuid();
-  ASSERT_OK(StepDown(peer, /* new_leader_uuid */ std::string(), ForceStepDown::kTrue));
-  ASSERT_OK(WaitFor([this, peer]() -> Result<bool> {
+  const auto old_leader_uuid = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->permanent_uuid();
+  LOG(INFO) << "Old leader: " << old_leader_uuid;
+  MasterTestApi api(cluster_.get());
+  ASSERT_OK(api.StepDownLeader());
+  ASSERT_OK(WaitFor([this, &old_leader_uuid]() -> Result<bool> {
     LOG(INFO) << "Getting new leader";
-    auto leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
-    if (leader->permanent_uuid() != peer->permanent_uuid()) {
-      LOG(INFO) << "New leader: " << leader->permanent_uuid();
+    // No leader is found while the election runs.
+    auto leader = cluster_->GetLeaderMiniMaster();
+    if (!leader.ok()) {
+      return false;
+    }
+    const auto leader_uuid = (*leader)->permanent_uuid();
+    if (leader_uuid != old_leader_uuid) {
+      LOG(INFO) << "New leader: " << leader_uuid;
       return true;
     }
     return false;
   }, 10s, "Wait leader change"));
 
   if (wait_for_ts) {
-    master::TSManager& ts_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->ts_manager();
-    ASSERT_OK(WaitFor([this, &ts_manager]() -> Result<bool> {
-      return ts_manager.GetAllDescriptors().size() == NumTabletServers();
+    ASSERT_OK(WaitFor([this, &api]() -> Result<bool> {
+      return implicit_cast<size_t>(VERIFY_RESULT(api.ListTabletServers()).servers_size()) ==
+             NumTabletServers();
     }, 10s, "Wait all TServers to be registered"));
   }
 

@@ -43,6 +43,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
 
@@ -68,6 +69,8 @@
 using std::vector;
 using std::string;
 
+using namespace std::literals;
+
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_filter_block_size_bytes);
@@ -87,13 +90,17 @@ DECLARE_int32(auto_compact_check_interval_sec);
 
 namespace yb {
 
-void DumpTableLocations(
-    master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name) {
-  master::GetTableLocationsResponsePB resp;
+void DumpTableLocations(MiniClusterBase* cluster, const client::YBTableName& table_name) {
   master::GetTableLocationsRequestPB req;
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-  ASSERT_OK(catalog_mgr->GetTableLocations(&req, &resp));
+  master::GetTableLocationsResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(30s * kTimeMultiplier);
+  master::MasterClientProxy proxy(
+      &cluster->proxy_cache(), ASSERT_RESULT(cluster->GetLeaderMasterBoundRpcAddr()));
+  ASSERT_OK(proxy.GetTableLocations(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   LOG(INFO) << "Table locations:";
   for (auto& tablet : resp.tablet_locations()) {
     LOG(INFO) << "Tablet: " << tablet.tablet_id()
@@ -110,40 +117,60 @@ void DumpWorkloadStats(const TestYcqlWorkload& workload) {
   LOG(INFO) << "Rows read try again: " << workload.rows_read_try_again();
 }
 
-Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
-  const auto& tablet_id = tablet.tablet_id();
-  LOG(INFO) << "Tablet: " << tablet_id;
+namespace {
+
+void LogTabletForSplit(const tablet::Tablet& tablet) {
+  LOG(INFO) << "Tablet: " << tablet.tablet_id();
   LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
   std::string properties;
   tablet.regular_db()->GetProperty(
       rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
-
-  return catalog_mgr->SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, kDefaultNumSplitParts,
-      catalog_mgr->GetLeaderEpochInternal());
 }
 
-Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
-  const auto& tablet_id = tablet.tablet_id();
-  LOG(INFO) << "Tablet: " << tablet_id;
-  LOG(INFO) << "Number of SST files: " << tablet.regular_db()->GetCurrentVersionNumSSTFiles();
-  std::string properties;
-  tablet.regular_db()->GetProperty(
-      rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
-  LOG(INFO) << "DB properties: " << properties;
+Result<bool> SplitRegistered(MiniClusterBase* cluster, const TabletId& tablet_id) {
+  auto tablet = VERIFY_RESULT(MasterTestApi(cluster).GetTabletInfo(tablet_id));
+  return tablet->LockForRead()->pb.split_tablet_ids_size() > 0;
+}
 
-  const auto split_keys = VERIFY_RESULT(tablet.GetSplitKeys(kDefaultNumSplitParts));
-  const auto& encoded_split_key = split_keys.encoded_keys.front();
-  std::string partition_split_key = encoded_split_key;
-  if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
-    LOG(INFO) << "Middle hash key: " << doc_key_hash;
-    partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
-  }
-  LOG(INFO) << "Partition split key: " << Slice(partition_split_key).ToDebugHexString();
+} // namespace
 
-  return catalog_mgr->TEST_SplitTablet(tablet_id, encoded_split_key, partition_split_key);
+Status SplitTablet(MiniClusterBase* cluster, const tablet::Tablet& tablet) {
+  LogTabletForSplit(tablet);
+  return MasterTestApi(cluster).SplitTablet(tablet.tablet_id(), kDefaultNumSplitParts);
+}
+
+Status DoSplitTablet(MiniClusterBase* cluster, const tablet::Tablet& tablet) {
+  LogTabletForSplit(tablet);
+  return SplitTabletAndWaitForChildren(cluster, tablet.tablet_id(), kDefaultNumSplitParts);
+}
+
+Status SplitTabletAndWaitForChildren(
+    MiniClusterBase* cluster, const TabletId& tablet_id, int split_factor, MonoDelta timeout) {
+  MasterTestApi api(cluster);
+  // The split is started in the background, and a start can fail before anything is registered
+  // (the leader moved, its split key was not ready yet), so the request is repeated until the
+  // children show up. An error of the request itself is final unless the leader is unknown.
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        if (VERIFY_RESULT(SplitRegistered(cluster, tablet_id))) {
+          return true;
+        }
+        auto status = api.SplitTablet(tablet_id, split_factor);
+        if (!status.ok() && !status.IsAlreadyPresent() &&
+            !(status.IsNotFound() && status.message().ToBuffer().find("No leader") !=
+                                         std::string::npos)) {
+          return status;
+        }
+        for (int i = 0; i < 10; ++i) {
+          if (VERIFY_RESULT(SplitRegistered(cluster, tablet_id))) {
+            return true;
+          }
+          SleepFor(100ms * kTimeMultiplier);
+        }
+        return false;
+      },
+      timeout, Format("Wait for the children of tablet $0 to be registered", tablet_id));
 }
 
 //
@@ -312,9 +339,8 @@ Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGet
 }
 
 template <class MiniClusterType>
-Result<master::TabletInfoPtr> TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
-    master::CatalogManagerIf* catalog_mgr) {
-  auto tablet_infos = VERIFY_RESULT(catalog_mgr->GetTableInfo(this->table_->id())->GetTablets());
+Result<master::TabletInfoPtr> TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo() {
+  auto tablet_infos = VERIFY_RESULT(MasterApi().GetTablets(this->table_->id()));
 
   SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
   return tablet_infos.front();
@@ -400,15 +426,22 @@ void TabletSplitITest::SetUp() {
 }
 
 Result<master::TabletInfos> TabletSplitITest::GetTabletInfosForTable(const TableId& table_id) {
-  return VERIFY_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
+  return MasterApi().GetTablets(table_id);
+}
+
+Result<std::set<std::string>> TabletSplitITest::GetReplicaUuids(const TabletId& tablet_id) {
+  std::set<std::string> result;
+  for (const auto& replica : VERIFY_RESULT(MasterApi().GetTabletLocations(tablet_id)).replicas()) {
+    result.insert(replica.ts_info().permanent_uuid());
+  }
+  return result;
 }
 
 Result<TabletId> TabletSplitITest::CreateSingleTabletAndSplit(
     uint32_t num_rows, bool wait_for_intents) {
   CreateSingleTablet();
-  const auto split_hash_code =
-      VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows, wait_for_intents));
-  return SplitTabletAndValidate(split_hash_code, num_rows);
+  VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(num_rows, wait_for_intents));
+  return SplitTabletAndValidate(num_rows);
 }
 
 Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::SendTServerRpcSyncGetSplitKey(
@@ -524,30 +557,20 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
   }
   LOG(INFO) << "Waiting for tablet split to be completed - DONE";
 
-  DumpTableLocations(VERIFY_RESULT(catalog_manager()), table);
+  DumpTableLocations(cluster_.get(), table);
   return Status::OK();
 }
 
-Result<TabletId> TabletSplitITest::SplitSingleTablet(
-    const std::vector<docdb::DocKeyHash>& split_hash_codes) {
-  auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
-
-  auto source_tablet_info = VERIFY_RESULT(GetSingleTestTabletInfo(catalog_mgr));
-  const auto source_tablet_id = source_tablet_info->id();
-
-  RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_codes));
+Result<TabletId> TabletSplitITest::SplitSingleTablet() {
+  const auto source_tablet_id = VERIFY_RESULT(GetSingleTestTabletInfo())->id();
+  RETURN_NOT_OK(SplitTabletAndWaitForChildren(
+      cluster_.get(), source_tablet_id, cluster_->GetSplitFactor()));
   return source_tablet_id;
 }
 
-Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_hash_code) {
-  return SplitSingleTablet(std::vector<docdb::DocKeyHash>{split_hash_code});
-}
-
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
-    const std::vector<docdb::DocKeyHash>& split_hash_codes,
-    size_t num_rows,
-    bool parent_tablet_protected_from_deletion) {
-  auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_codes));
+    size_t num_rows, bool parent_tablet_protected_from_deletion) {
+  auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet());
   RETURN_NOT_OK(this->cluster_->WaitForLoadBalancerToStabilize(
       RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
 
@@ -556,7 +579,7 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
       ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_deleting_split_tablets) ||
       parent_tablet_protected_from_deletion;
 
-  const auto expected_non_split_tablets = split_hash_codes.size() + 1;
+  const size_t expected_non_split_tablets = cluster_->GetSplitFactor();
   RETURN_NOT_OK(
       WaitForTabletSplitCompletion(expected_non_split_tablets, expected_split_tablets));
 
@@ -567,15 +590,6 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
   }
 
   return source_tablet_id;
-}
-
-Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
-    docdb::DocKeyHash split_hash_code,
-    size_t num_rows,
-    bool parent_tablet_protected_from_deletion) {
-  return SplitTabletAndValidate(
-      std::vector<docdb::DocKeyHash>{split_hash_code}, num_rows,
-      parent_tablet_protected_from_deletion);
 }
 
 Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tablet_id) {
@@ -1024,8 +1038,9 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
 
   RETURN_NOT_OK(FlushTestTable());
 
-  // Split tablet should crash before creating either tablet
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "1.0"));
+  // The master crashes once it has registered the children, before it sends the split.
+  RETURN_NOT_OK(
+      cluster_->SetFlagOnMasters("TEST_fault_crash_after_registering_split_children", "1.0"));
 
   // Retrieve split key from a leader peer
   if (split_partition_key) {
@@ -1040,7 +1055,8 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   }
 
   RETURN_NOT_OK(RestartAllMasters(cluster_.get()));
-  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_crash_after_registering_split_tablets", "0.0"));
+  RETURN_NOT_OK(
+      cluster_->SetFlagOnMasters("TEST_fault_crash_after_registering_split_children", "0.0"));
 
   if (change_split_boundary) {
     RETURN_NOT_OK(WriteRows(kNumRows * 2, kNumRows));

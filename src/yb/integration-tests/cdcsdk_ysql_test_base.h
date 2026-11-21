@@ -32,16 +32,16 @@
 #include "yb/client/transaction.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/common/common.pb.h"
 
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
@@ -861,6 +861,20 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool is_compaction);
 
   Status XReplValidateSplitCandidateTable(const TableId& table);
+
+  // The stream's sys catalog row, as the master leader has it.
+  Result<master::SysCDCStreamEntryPB> GetCDCStreamRow(const xrepl::StreamId& stream_id);
+
+  // The CDC retention barriers of a master's sys catalog tablet, as its tablet peer reports them.
+  struct SysCatalogRetentionBarriers {
+    HybridTime cdc_sdk_safe_time;
+    int64_t cdc_min_replicated_index;
+    OpId cdc_sdk_min_checkpoint_op_id;
+  };
+  Result<SysCatalogRetentionBarriers> GetSysCatalogRetentionBarriers(master::MiniMaster* master);
+  Result<SysCatalogRetentionBarriers> GetSysCatalogRetentionBarriers(size_t master_idx = 0) {
+    return GetSysCatalogRetentionBarriers(test_cluster()->mini_master(master_idx));
+  }
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);

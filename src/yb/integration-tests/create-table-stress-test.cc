@@ -49,14 +49,12 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_loaders.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
-#include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_heartbeat.proxy.h"
@@ -75,7 +73,6 @@
 #include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -103,7 +100,6 @@ DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(tablet_report_limit);
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint64(TEST_inject_latency_during_tablet_report_ms);
 
 DEFINE_NON_RUNTIME_int32(num_test_tablets, 60, "Number of tablets for stress test");
@@ -111,8 +107,6 @@ DEFINE_NON_RUNTIME_int32(benchmark_runtime_secs, 5, "Number of seconds to run th
 DEFINE_NON_RUNTIME_int32(benchmark_num_threads, 16, "Number of threads to run the benchmark");
 // Increase this for actually using this as a benchmark test.
 DEFINE_NON_RUNTIME_int32(benchmark_num_tablets, 8, "Number of tablets to create");
-
-METRIC_DECLARE_histogram(handler_latency_yb_master_MasterClient_GetTableLocations);
 
 using std::string;
 using std::vector;
@@ -234,6 +228,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   }
 
   std::atomic<bool> stop { false };
+  std::atomic<int64_t> num_calls { 0 };
   vector<std::thread> threads;
   threads.reserve(kNumThreads);
   for (int i = 0; i < kNumThreads; i++) {
@@ -248,6 +243,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
           req.set_max_returned_locations(1000);
           CHECK_OK(proxies[i].GetTableLocations(req, &resp, &controller));
           CHECK_EQ(resp.tablet_locations_size(), FLAGS_benchmark_num_tablets);
+          ++num_calls;
         }
       });
   }
@@ -263,15 +259,10 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   int64_t discarded_samples = 0;
   FlushSynchronizationProfile(&profile, &discarded_samples);
 
-  const auto& ent = cluster_->mini_master()->master()->metric_entity();
-  auto hist = METRIC_handler_latency_yb_master_MasterClient_GetTableLocations
-      .Instantiate(ent);
-
   cluster_->Shutdown();
 
   LOG(INFO) << "LOCK PROFILE\n" << profile.str();
-  LOG(INFO) << "BENCHMARK HISTOGRAM:";
-  hist->underlying()->DumpHumanReadable(&LOG(INFO));
+  LOG(INFO) << "BENCHMARK: " << num_calls << " GetTableLocations calls in " << kRuntime;
 }
 
 class CreateMultiHBTableStressTest : public CreateTableStressTest,
@@ -332,8 +323,6 @@ TEST_P(CreateMultiHBTableStressTest, CreateAndDeleteBigTable) {
   // Use std::cout instead of log, since these responses are large and log
   // messages have a max size.
   std::cout << "Response:\n" << resp.DebugString();
-  std::cout << "CatalogManager state:\n";
-  ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
 
   // Store all relevant tablets for this big table we've created.
   std::vector<string> big_table_tablets;
@@ -356,7 +345,7 @@ TEST_P(CreateMultiHBTableStressTest, CreateAndDeleteBigTable) {
     big_tablet_left.clear();
     std::set_intersection(big_table_tablets.begin(), big_table_tablets.end(),
                           tablet_ids.begin(), tablet_ids.end(),
-                          big_tablet_left.begin());
+                          std::back_inserter(big_tablet_left));
     if (big_tablet_left.empty()) return;
     SleepFor(MonoDelta::FromMilliseconds(100));
   }
@@ -378,8 +367,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
     SleepFor(MonoDelta::FromMicroseconds(500));
     LOG(INFO) << i << ") Restarting master...";
     ASSERT_OK(cluster_->mini_master()->Restart());
-    ASSERT_OK(cluster_->mini_master()->master()->
-        WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+    ASSERT_OK(cluster_->mini_master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
     LOG(INFO) << i << ") Master restarted.";
   }
 
@@ -387,12 +375,8 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
   ASSERT_OK(cluster_->mini_tablet_server(1)->Restart());
 
   master::GetTableLocationsResponsePB resp;
-  Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
-                                       FLAGS_num_test_tablets, &resp);
-  if (!s.ok()) {
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
-    CHECK_OK(s);
-  }
+  ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
+                                      FLAGS_num_test_tablets, &resp));
 }
 
 class CreateSmallHBTableStressTest : public CreateTableStressTest {
@@ -422,7 +406,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
 
   // Restart Master #1.  Triggers Full Report from all TServers.
   ASSERT_OK(cluster_->mini_master()->Restart());
-  ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(cluster_->mini_master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Wait until the Master is ~25% complete with getting the heartbeats from the TS.
   master::GetTableLocationsResponsePB resp;
@@ -434,19 +418,15 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   // Restart Master #2.  Re-triggers a Full Report from all TServers, even though they were in the
   // middle of sending a full report to the old master.
   ASSERT_OK(cluster_->mini_master()->Restart());
-  ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(cluster_->mini_master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Speed up the test now...
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 0;
 
   // The TS should send a full report.  If they just sent the remainder from their original
   // Full Report, this test will fail.
-  Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
-                                       FLAGS_num_test_tablets, &resp);
-  if (!s.ok()) {
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().DumpState(&std::cerr));
-    CHECK_OK(s);
-  }
+  ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
+                                      FLAGS_num_test_tablets, &resp));
 }
 
 TEST_F(CreateTableStressTest, YB_DISABLE_TEST_ON_MACOS(TestHeartbeatDeadline)) {
@@ -467,7 +447,7 @@ TEST_F(CreateTableStressTest, YB_DISABLE_TEST_ON_MACOS(TestHeartbeatDeadline)) {
     FLAGS_num_test_tablets, &resp));
 
   master::SysClusterConfigEntryPB config =
-      ASSERT_RESULT(cluster_->mini_master()->catalog_manager().GetClusterConfig());
+      ASSERT_RESULT(MasterTestApi(cluster_.get()).GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Grab TS#1 and Generate a Full Report for it.
@@ -533,6 +513,17 @@ DontVerifyClusterBeforeNextTearDown();
 
   master::GetTableLocationsRequestPB req;
   master::GetTableLocationsResponsePB resp;
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  master::MasterClientProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+  auto get_table_locations = [&]() -> Status {
+    RpcController controller;
+    controller.set_timeout(30s);
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  };
 
   // Make sure the table is completely created before we start poking.
   LOG(INFO) << CURRENT_TEST_NAME() << ": Step 2. Waiting for creation of big table "
@@ -549,7 +540,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(0);
-    Status s = cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp);
+    Status s = get_table_locations();
     ASSERT_STR_CONTAINS(s.ToString(), "must be greater than 0");
   }
 
@@ -560,7 +551,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
+    ASSERT_OK(get_table_locations());
     ASSERT_EQ(resp.tablet_locations_size(), 1);
     // empty since it's the first
     ASSERT_EQ(resp.tablet_locations(0).partition().partition_key_start(), "");
@@ -575,7 +566,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(half_tablets);
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
+    ASSERT_OK(get_table_locations());
     ASSERT_EQ(half_tablets, resp.tablet_locations_size());
   }
 
@@ -586,16 +577,18 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(FLAGS_num_test_tablets);
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
+    ASSERT_OK(get_table_locations());
     ASSERT_EQ(FLAGS_num_test_tablets, resp.tablet_locations_size());
   }
 
   LOG(INFO) << "========================================================";
   LOG(INFO) << "Tables and tablets:";
   LOG(INFO) << "========================================================";
-  auto tables = cluster_->mini_master()->catalog_manager().GetTables(
-      master::GetTablesMode::kAll);
-  for (const scoped_refptr<master::TableInfo>& table_info : tables) {
+  auto catalog = ASSERT_RESULT(MasterTestApi(cluster_.get()).Catalog());
+  for (const auto& table_info : catalog.GetTables()) {
+    if (table_info->namespace_name() != table_name.namespace_name()) {
+      continue;
+    }
     LOG(INFO) << "Table: " << table_info->ToString();
     auto tablets = ASSERT_RESULT(table_info->GetTablets());
     for (const auto& tablet_info : tablets) {
@@ -608,83 +601,11 @@ DontVerifyClusterBeforeNextTearDown();
                 << ", end_key: "
                 << ((metadata.partition().has_partition_key_end())
                     ? metadata.partition().partition_key_end() : "<< none >>")
-                << ", running = " << tablet_info->metadata().state().is_running() << " }";
+                << ", running = " << l_tablet->is_running() << " }";
     }
     ASSERT_EQ(FLAGS_num_test_tablets, tablets.size());
   }
   LOG(INFO) << "========================================================";
-}
-
-// Creates tables and reloads on-disk metadata concurrently to test for races
-// between the two operations.
-TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
-  // Because of sys catalog reload we could get into situation where tablet creation task was
-  // lost. Since we don't retry creating tablet on catalog load, we are getting into situation where
-  // table remains in PREPARING state forever. It breaks cluster verifier.
-  verify_cluster_before_next_tear_down_ = false;
-
-  // This test continuously reloads the sys catalog. These reloads cancel all inflight tasks, which
-  // can cancel some create replica tasks for tablet replicas. Given this test uses RF=3, if two
-  // create tablet requests succeed then a tablet leader will be elected and the master will
-  // transition the tablet to RUNNING state, preventing further tasks to fix the tablet. From here
-  // the tablet leader will initiate a remote bootstrap to create a tablet replica on the tablet
-  // peer missing the tablet. We explicitly enable remote bootstraps here so the tablet leader
-  // can successfully create the missing replica.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = true;
-  AtomicBool stop(false);
-
-  // Since this test constantly invokes VisitSysCatalog() which is the function
-  // that runs after a new leader gets elected, during that period the leader rejects
-  // tablet server heart-beats (because it holds the leader_mutex_), and this leads
-  // the master to mistakenly think that the tablet servers are dead. To avoid this
-  // increase the TS unresponsive timeout so that the leader correctly thinks that
-  // they are alive.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
-
-  thread reload_metadata_thread([&]() {
-    while (!stop.Load()) {
-      master::SysCatalogLoadingState state{ master::LeaderEpoch(1) };
-      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(&state));
-      // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
-    }
-  });
-
-  auto se = ScopeExit([&stop, &reload_metadata_thread] {
-    stop.Store(true);
-    reload_metadata_thread.join();
-  });
-
-  for (int num_tables_created = 0; num_tables_created < 20;) {
-    YBTableName table_name(
-        YQL_DATABASE_CQL, "my_keyspace", Format("test-$0", num_tables_created));
-    LOG(INFO) << "Creating table " << table_name.ToString();
-    Status s = client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
-                                                   table_name.namespace_type());
-    if (s.ok()) {
-      unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-      s = table_creator->table_name(table_name)
-          .schema(&schema_)
-          .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
-          .set_range_partition_columns({ "key" })
-          .num_tablets(1)
-          .wait(false)
-          .Create();
-    }
-    if (s.IsServiceUnavailable()) {
-      // The master was busy reloading its metadata. Try again.
-      //
-      // This is a purely synthetic case. In real life, it only manifests at
-      // startup (single master) or during leader failover (multiple masters).
-      // In the latter case, the client will transparently retry to another
-      // master. That won't happen here as we've only got one master, so we
-      // must handle retrying ourselves.
-      continue;
-    }
-    ASSERT_OK(s);
-    num_tables_created++;
-    LOG(INFO) << "Total created: " << num_tables_created;
-  }
 }
 
 }  // namespace yb

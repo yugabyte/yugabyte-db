@@ -23,7 +23,6 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -113,14 +112,6 @@ Result<TableId> PgMiniTestBase::GetTableIDFromTableName(const std::string& table
   return STATUS_FORMAT(NotFound, "Didn't find table with name: $0.", table_name);
 }
 
-Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
-  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
-}
-
-Result<master::CatalogManager*> PgMiniTestBase::catalog_manager_impl() const {
-  return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
-}
-
 void PgMiniTestBase::EnableYSQLFlags() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -174,9 +165,8 @@ Status PgMiniTestBase::RestartCluster() {
 
 Status PgMiniTestBase::RestartMaster() {
   LOG(INFO) << "Restarting Master";
-  auto mini_master_ = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-  RETURN_NOT_OK(mini_master_->Restart());
-  return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
+  auto* mini_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+  return mini_master->Restart(/* wait_until_catalog_manager_is_leader= */ true);
 }
 
 void PgMiniTestBase::StopPostgres() {

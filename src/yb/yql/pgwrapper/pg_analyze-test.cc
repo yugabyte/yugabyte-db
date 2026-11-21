@@ -18,6 +18,7 @@
 #include "yb/common/pgsql_error.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -755,15 +756,15 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
         }
 
         {
-          master::TabletLocationsPB tablet_locations_pb;
-          auto status = cluster_->mini_master()->catalog_manager().GetTabletLocations(
-              read_req->tablet_id(), &tablet_locations_pb);
+          auto tablet_locations = MasterTestApi(cluster_.get()).GetTabletLocations(
+              read_req->tablet_id().ToBuffer());
           LOG(INFO) << "Intercepted sampling request for tablet: " << read_req->tablet_id()
                     << " partition: "
-                    << (status.ok() ? AsDebugHexString(std::make_pair(
-                                          tablet_locations_pb.partition().partition_key_start(),
-                                          tablet_locations_pb.partition().partition_key_end()))
-                                    : status.ToString())
+                    << (tablet_locations.ok()
+                            ? AsDebugHexString(std::make_pair(
+                                  tablet_locations->partition().partition_key_start(),
+                                  tablet_locations->partition().partition_key_end()))
+                            : tablet_locations.status().ToString())
                     << " partition_key: "
                     << Slice(read_req->pgsql_batch().front().partition_key()).ToDebugHexString()
                     << " sampling_state: "
@@ -807,24 +808,9 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       sync_point.SetCallBack("ReadRpc::NotifyBatcher", read_rpc_notify_batchr_cb);
       sync_point.EnableProcessing();
 
-      // Enable dynamic tablet splitting only for table to be analyzed.
-      {
-        auto& split_manager = cluster_->mini_master()->master()->tablet_split_manager();
-        const auto yb_table_names = VERIFY_RESULT(client_->ListTables());
-        for (const auto& yb_table_name : yb_table_names) {
-          if (yb_table_name.is_system() || !yb_table_name.is_pgsql_namespace() ||
-              yb_table_name.pgschema_name() != "public") {
-            continue;
-          }
-          if (yb_table_name.table_id() == table_id) {
-            continue;
-          }
-          LOG(INFO) << "Disable splitting for table: " << yb_table_name.ToString();
-          split_manager.DisableSplittingForTtlTable(yb_table_name.table_id());
-        }
-
-        itest::SetupQuickSplit(1_KB);
-      }
+      // Enables automatic splitting for every table. Besides the analyzed table only the source
+      // table remains, and its splits do not affect the analyzed table's samples.
+      itest::SetupQuickSplit(1_KB);
 
       auto conn = VERIFY_RESULT(ConnectToDB(database_name_));
       for (auto i = 0; i < kNumAnalyzeRuns; ++i) {

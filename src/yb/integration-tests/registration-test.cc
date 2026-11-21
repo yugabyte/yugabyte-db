@@ -31,10 +31,12 @@
 //
 
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/client/yb_table_name.h"
 
@@ -48,18 +50,20 @@
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
+#include "yb/master/sys_catalog_constants.h"
 
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -68,17 +72,44 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 
-METRIC_DECLARE_counter(rows_inserted);
+using namespace std::literals;
 
 namespace yb {
 
 using std::vector;
 using std::shared_ptr;
 using std::string;
-using master::TSDescriptor;
 using master::TabletLocationsPB;
 using tserver::MiniTabletServer;
 using client::YBTableName;
+
+namespace {
+
+// rows_inserted of the master's sys catalog tablet, from the master server's metric registry: a
+// Rust master has no C++ object to reach the tablet through. 0 before the tablet has its metrics.
+Result<int64_t> SysCatalogRowsInserted(master::MiniMaster* master) {
+  std::stringstream out;
+  JsonWriter writer(&out, JsonWriter::COMPACT);
+  MetricJsonOptions opts;
+  opts.general_metrics_allowlist = std::vector<std::string>{"rows_inserted"};
+  RETURN_NOT_OK(master->server().metric_registry()->WriteAsJson(&writer, opts));
+  rapidjson::Document doc;
+  doc.Parse(out.str().c_str());
+  SCHECK(!doc.HasParseError() && doc.IsArray(), Corruption, "Unexpected metrics JSON");
+  for (const auto& entity : doc.GetArray()) {
+    if (entity["id"].GetString() != std::string_view(master::kSysCatalogTabletId)) {
+      continue;
+    }
+    for (const auto& metric : entity["metrics"].GetArray()) {
+      if (metric["name"].GetString() == std::string_view("rows_inserted")) {
+        return metric["value"].GetInt64();
+      }
+    }
+  }
+  return 0;
+}
+
+} // namespace
 
 // Tests for the Tablet Server registering with the Master,
 // and the master maintaining the tablet descriptor.
@@ -109,7 +140,7 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     EasyCurl c;
     faststring buf;
     std::string addr = yb::ToString(cluster_->mini_master()->bound_http_addr());
-    ASSERT_OK(c.FetchURL(Format("http://$0/tablet-servers", addr), &buf));
+    ASSERT_OK(c.FetchURL(Format("http://$0/api/v1/tablet-servers", addr), &buf));
 
     // Should include the TS UUID
     string expected_uuid =
@@ -128,7 +159,7 @@ TEST_F(RegistrationTest, TestTSRegisters) {
   ASSERT_EQ(1, descs.size());
 
   // Verify that the registration is sane.
-  auto reg = descs[0]->GetRegistration();
+  const auto& reg = descs[0].registration().common();
   {
     SCOPED_TRACE(reg.ShortDebugString());
     ASSERT_EQ(reg.ShortDebugString().find("0.0.0.0"), string::npos)
@@ -171,18 +202,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
 
   MiniTabletServer* ts = cluster_->mini_tablet_server(0);
 
-  auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
-    auto tablet_peer = cluster_->mini_master()->tablet_peer();
-    auto tablet_result = tablet_peer->shared_tablet();
-    if (!tablet_result.ok()) {
-      LOG(WARNING) << "Failed to get tablet: " << tablet_result.status();
-      return 0;
-    }
-    auto tablet = *tablet_result;
-    auto metrics = tablet->GetTabletMetricsEntity();
-    return prototype.Instantiate(metrics)->value();
-  };
-  auto before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+  auto* mini_master = cluster_->mini_master();
+  auto before_rows_inserted = ASSERT_RESULT(SysCatalogRowsInserted(mini_master));
   LOG(INFO) << "Begin calculating sys catalog rows inserted";
 
   // Add a tablet, make sure it reports itself.
@@ -199,20 +220,22 @@ TEST_F(RegistrationTest, TestTabletReports) {
   LOG(INFO) << "Tablet successfully reported on " << locs.replicas(0).ts_info().permanent_uuid();
 
   LOG(INFO) << "Finish calculating sys catalog rows inserted";
-  auto after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+  auto after_create_rows_inserted = ASSERT_RESULT(SysCatalogRowsInserted(mini_master));
   // Check that we inserted the right number of rows for the first table:
-  // - 2 for the namespace
+  // - for the namespace: 2 on a C++ master (PREPARING, then RUNNING), 1 on a Rust master
   // - 2 for the table
   // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
   //    PREPARING, first heartbeat, leader election heartbeat
-  int64_t expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 3;
-  EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
+  int64_t expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * 3;
+  const auto namespace_rows =
+      after_create_rows_inserted - before_rows_inserted - expected_rows;
+  EXPECT_TRUE(namespace_rows == 1 || namespace_rows == 2) << namespace_rows;
 
   // Add another tablet, make sure it is reported via incremental.
   Schema schema_copy = Schema(schema_);
 
   // Record the number of rows before the new table.
-  before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+  before_rows_inserted = ASSERT_RESULT(SysCatalogRowsInserted(mini_master));
   LOG(INFO) << "Begin calculating sys catalog rows inserted (2)";
   CreateTabletForTesting(
       cluster_.get(),
@@ -223,7 +246,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   auto sleep_duration_sec = MonoDelta::FromSeconds(RegularBuildVsSanitizers(2, 5));
   SleepFor(sleep_duration_sec);
   LOG(INFO) << "Finish calculating sys catalog rows inserted (2)";
-  after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+  after_create_rows_inserted = ASSERT_RESULT(SysCatalogRowsInserted(mini_master));
   // We expect 3 writes per tablet. and 2 write for the table.
   expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * 3;
   EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
@@ -244,8 +267,18 @@ TEST_F(RegistrationTest, TestTabletReports) {
   // After restart, check that the tablet reports produced the expected number of writes to the
   // catalog table. We expect two updates per tablet, since both replicas should have increased
   // their term on restart.
-  // We also expect one write for the ts registry entry written for the tserver.
-  EXPECT_EQ(2 * FLAGS_yb_num_shards_per_tserver + 1, GetCatalogMetric(METRIC_rows_inserted));
+  // We also expect one write for the ts registry entry written for the tserver. A Rust master may
+  // apply the reports later than the sleep above.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(SysCatalogRowsInserted(mini_master)) >=
+               2 * FLAGS_yb_num_shards_per_tserver + 1;
+      },
+      30s * kTimeMultiplier, "Wait for the tablets' new terms to be written"));
+  SleepFor(sleep_duration_sec);
+  EXPECT_EQ(
+      2 * FLAGS_yb_num_shards_per_tserver + 1,
+      ASSERT_RESULT(SysCatalogRowsInserted(mini_master)));
 
   // If we restart just the master, it should not write any data to the catalog, since the
   // tablets themselves are not changing term, etc.
@@ -253,7 +286,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
   ASSERT_OK(cluster_->WaitForTabletServerCount(1));
   SleepFor(sleep_duration_sec);
-  EXPECT_EQ(0, GetCatalogMetric(METRIC_rows_inserted));
+  EXPECT_EQ(0, ASSERT_RESULT(SysCatalogRowsInserted(mini_master)));
 
   // TODO: KUDU-870: once the master supports detecting failed/lost replicas,
   // we should add a test case here which removes or corrupts metadata, restarts

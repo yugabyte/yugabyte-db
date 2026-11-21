@@ -18,22 +18,24 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
-
-METRIC_DECLARE_histogram(handler_latency_yb_master_MasterClient_GetTabletLocations);
 
 DECLARE_int64(meta_cache_lookup_throttling_max_delay_ms);
 DECLARE_int64(meta_cache_lookup_throttling_step_ms);
@@ -77,13 +79,18 @@ class NetworkFailureTest : public MiniClusterTestWithClient<MiniCluster> {
   client::TableHandle table_;
 };
 
-int64_t CountLookups(MiniCluster* cluster) {
+// A Rust master's services instantiate their RPC metrics from prototypes of their own, so the
+// metric is found by name rather than by the C++ service's prototype.
+Result<int64_t> CountLookups(MiniCluster* cluster) {
+  constexpr std::string_view kMetric = "handler_latency_yb_master_MasterClient_GetTabletLocations";
   int64_t result = 0;
   for (size_t i = 0; i != cluster->num_masters(); ++i) {
-    auto new_leader_master = cluster->mini_master(i);
-    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateMetric<Histogram>(
-        &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
-    result += histogram->TotalCount();
+    const auto metrics = cluster->mini_master(i)->server().metric_entity()->TEST_UsageMetricsMap();
+    auto it = std::find_if(metrics.begin(), metrics.end(), [kMetric](const auto& entry) {
+      return entry.first->name() == kMetric;
+    });
+    SCHECK(it != metrics.end(), NotFound, Format("Master $0 has no $1", i, kMetric));
+    result += down_cast<Histogram*>(it->second.get())->TotalCount();
   }
   return result;
 }
@@ -147,7 +154,7 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
     ASSERT_OK(status);
   }
 
-  auto old_lookups = CountLookups(cluster_.get());
+  auto old_lookups = ASSERT_RESULT(CountLookups(cluster_.get()));
 
   auto leader_master_idx = cluster_->LeaderMasterIdx();
   LOG(INFO) << "Old leader: " << leader_master_idx;
@@ -159,7 +166,7 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
   thread_holder.WaitAndStop(10s);
 
-  auto new_lookups = CountLookups(cluster_.get());
+  auto new_lookups = ASSERT_RESULT(CountLookups(cluster_.get()));
 
   LOG(INFO) << "Lookups before: " << old_lookups << ", after: " << new_lookups;
 

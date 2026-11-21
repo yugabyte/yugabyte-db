@@ -74,13 +74,13 @@
 #include "yb/gutil/stl_util.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
-#include "yb/master/master_client.pb.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
@@ -259,11 +259,22 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_NO_FATALS(CreatePgSqlTable());
   }
 
-  string GetFirstTabletId(YBTable* table) {
+  Result<GetTableLocationsResponsePB> GetTableLocations(const YBTableName& table_name) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
-    table->name().SetIntoTableIdentifierPB(req.mutable_table());
-    CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClientProxy>());
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(30));
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
+  string GetFirstTabletId(YBTable* table) {
+    auto resp = CHECK_RESULT(GetTableLocations(table->name()));
     CHECK_GT(resp.tablet_locations_size(), 0);
     return resp.tablet_locations(0).tablet_id();
   }
@@ -654,7 +665,7 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto t1 = std::thread([&]() { ASSERT_NO_FATALS(
@@ -671,7 +682,7 @@ TEST_F(ClientTest, TestLookupAllTablets) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto future = client_->LookupAllTabletsFuture(
@@ -687,7 +698,7 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
@@ -821,7 +832,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -1771,9 +1782,8 @@ TEST_F(ClientTest, TestStaleLocations) {
   string tablet_id = GetFirstTabletId(client_table2_.get());
 
   // The Tablet is up and running the location should not be stale
-  master::TabletLocationsPB locs_pb;
-  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(
-                  tablet_id, &locs_pb));
+  MasterTestApi api(cluster_.get());
+  auto locs_pb = ASSERT_RESULT(api.GetTabletLocations(tablet_id));
   ASSERT_FALSE(locs_pb.stale());
 
   // On Master restart and no tablet report we expect the locations to be stale
@@ -1781,9 +1791,8 @@ TEST_F(ClientTest, TestStaleLocations) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
   ASSERT_OK(cluster_->mini_master()->Restart());
-  ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-  locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
+  ASSERT_OK(cluster_->mini_master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  locs_pb = ASSERT_RESULT(api.GetTabletLocations(tablet_id));
   ASSERT_TRUE(locs_pb.stale());
 
   // Restart the TS and Wait for the tablets to be reported to the master.
@@ -1791,15 +1800,13 @@ TEST_F(ClientTest, TestStaleLocations) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
-  locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
+  locs_pb = ASSERT_RESULT(api.GetTabletLocations(tablet_id));
 
   // It may take a while to bootstrap the tablet and send the location report
   // so spin until we get a non-stale location.
   int wait_time = 1000;
   for (int i = 0; i < 80; ++i) {
-    locs_pb.Clear();
-    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
+    locs_pb = ASSERT_RESULT(api.GetTabletLocations(tablet_id));
     if (!locs_pb.stale()) {
       break;
     }
@@ -2391,10 +2398,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
   // Find the followers.
-  GetTableLocationsRequestPB req;
-  GetTableLocationsResponsePB resp;
-  table->name().SetIntoTableIdentifierPB(req.mutable_table());
-  CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
+  auto resp = ASSERT_RESULT(GetTableLocations(table->name()));
   ASSERT_EQ(1, resp.tablet_locations_size());
   ASSERT_EQ(3, resp.tablet_locations(0).replicas_size());
   const string& tablet_id = resp.tablet_locations(0).tablet_id();
@@ -3433,8 +3437,8 @@ class ClientTestWithHashAndRangePk : public ClientTest {
 };
 
 // We concurrently execute batches of insert operations, each batch targeting the same hash
-// partition key. Concurrently we emulate table partition list version increase and meta cache
-// invalidation.
+// partition key. Concurrently we split the table's tablets, which increases its partition list
+// version, and invalidate the meta cache.
 // This tests https://github.com/yugabyte/yugabyte-db/issues/9806 with a scenario
 // when the batcher is emptied due to part of tablet lookups failing, but callback was not called.
 TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
@@ -3442,20 +3446,25 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
   constexpr auto kWriters = 4;
   const auto kTotalNumBatches = 50;
   const auto kFlushTimeout = 10s * kTimeMultiplier;
+  // The writers go on past kTotalNumBatches until this many splits are done.
+  constexpr auto kMinSplits = 2;
+  const auto deadline = CoarseMonoClock::now() + 120s * kTimeMultiplier;
 
   TestThreadHolder thread_holder;
   std::atomic<int> next_batch_hash_key{10000};
+  std::atomic<int> num_splits{0};
   const auto stop_at_batch_hash_key = next_batch_hash_key.load() + kTotalNumBatches;
 
   for (int i = 0; i != kWriters; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &next_batch_hash_key,
                                     num_rows_per_batch = kNumRowsPerBatch, stop_at_batch_hash_key,
-                                    kFlushTimeout] {
+                                    kFlushTimeout, &num_splits, deadline] {
       SetFlagOnExit set_flag_on_exit(&stop);
 
       while (!stop.load(std::memory_order_acquire)) {
         auto batch_hash_key = next_batch_hash_key.fetch_add(1);
-        if (batch_hash_key >= stop_at_batch_hash_key) {
+        if (batch_hash_key >= stop_at_batch_hash_key &&
+            (num_splits.load() >= kMinSplits || CoarseMonoClock::now() > deadline)) {
           break;
         }
         auto session = CreateSession(client_.get());
@@ -3473,20 +3482,34 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
     });
   }
 
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &num_splits] {
     SetFlagOnExit set_flag_on_exit(&stop);
 
     const auto table = client_table_.table();
+    MasterTestApi api(cluster_.get());
 
     while (!stop.load(std::memory_order_acquire)) {
-      ASSERT_OK(cluster_->mini_master()->catalog_manager()
-          .TEST_IncrementTablePartitionListVersion(table->id()));
+      // A split needs the parent's data on disk. A child cannot split again until it is
+      // compacted, so some of these splits fail, which is fine.
+      ASSERT_OK(cluster_->FlushTablets());
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      ASSERT_OK(client_->GetTablets(
+          table->name(), /* max_tablets = */ 0, &tablets, /* partition_list_version = */ nullptr));
+      const auto& tablet_id =
+          tablets.Get(RandomUniformInt<int>(0, tablets.size() - 1)).tablet_id();
+      auto status = api.SplitTablet(tablet_id);
+      if (status.ok()) {
+        ++num_splits;
+      } else {
+        LOG(INFO) << "Split of " << tablet_id << " failed: " << status;
+      }
       table->MarkPartitionsAsStale();
       SleepFor(RegularBuildVsSanitizers(10ms, 100ms));
     }
   });
 
   thread_holder.JoinAll();
+  ASSERT_GE(num_splits.load(), kMinSplits);
 }
 
 class ClientTestWithThreeMasters : public ClientTest {

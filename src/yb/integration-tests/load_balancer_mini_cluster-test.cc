@@ -17,44 +17,51 @@
 
 #include "yb/client/table_creator.h"
 
+#include <rapidjson/document.h>
+
 #include "yb/gutil/dynamic_annotations.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master.h"
-#include "yb/master/ts_manager.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/util/multi_drive_test_env.h"
 
 #include "yb/tools/yb-admin_client.h"
 
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status_format.h"
 
+METRIC_DECLARE_entity(cluster);
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
 METRIC_DECLARE_event_stats(load_balancer_duration);
 METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
 METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 
-DECLARE_bool(TEST_fail_async_delete_replica_task);
-DECLARE_bool(enable_load_balancing);
 DECLARE_bool(load_balancer_drive_aware);
 DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
-DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
+DECLARE_int32(load_balancer_max_concurrent_adds);
 DECLARE_int32(TEST_load_balancer_wait_ms);
-DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(load_balancer_max_concurrent_moves);
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
@@ -94,27 +101,31 @@ class StatEmuEnv : public EnvWrapper {
   std::mutex data_mutex_;
 };
 
+// The master leader's locations of the table's tablets, by tablet id.
+Result<std::map<TabletId, master::TabletLocationsPB>> GetTableLocations(
+    MiniCluster* mini_cluster, const client::YBTableName& table_name) {
+  MasterTestApi api(mini_cluster);
+  auto table = VERIFY_RESULT(api.FindTable(table_name));
+  std::map<TabletId, master::TabletLocationsPB> result;
+  for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+    result[tablet->id()] = VERIFY_RESULT(api.GetTabletLocations(tablet->id()));
+  }
+  return result;
+}
+
 void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
                         const yb::client::YBTableName& table_name,
                         const std::string& ts_uuid,
                         int min_expected_count = 1) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto leader_mini_master = mini_cluster->GetLeaderMiniMaster();
-    if (!leader_mini_master.ok()) {
-      return false;
-    }
-    scoped_refptr<master::TableInfo> tbl_info =
-      (*leader_mini_master)->catalog_manager().
-          GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
-                                                    table_name.namespace_name(),
-                                                    table_name.table_name());
     int count = min_expected_count;
-    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
-      auto replica_map = tablet->GetReplicaLocations();
-      count -= replica_map->count(ts_uuid);
-      if (count <= 0) {
-        return true;
+    for (const auto& [tablet_id, locations] :
+         VERIFY_RESULT(GetTableLocations(mini_cluster, table_name))) {
+      for (const auto& replica : locations.replicas()) {
+        if (replica.ts_info().permanent_uuid() == ts_uuid && --count <= 0) {
+          return true;
+        }
       }
     }
     return false;
@@ -147,25 +158,55 @@ struct TSDriveStats {
 
 using DriveStats = std::unordered_map<TabletServerId, TSDriveStats>;
 
+// The replicas the master leader locates, with the data directory each tserver holds its replica
+// in: the directory the tserver reports, and the drive-aware balancer balances.
 Result<DriveStats> GetTabletsDriveStats(
     MiniCluster* mini_cluster, const client::YBTableName& table_name) {
   DriveStats result;
-  scoped_refptr<master::TableInfo> tbl_info =
-    VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager().
-      GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
-                                                table_name.namespace_name(),
-                                                table_name.table_name());
-  for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
-    auto replica_map = tablet->GetReplicaLocations();
-    for (const auto& [ts_uuid, replica] : *replica_map) {
+  for (const auto& [tablet_id, locations] :
+       VERIFY_RESULT(GetTableLocations(mini_cluster, table_name))) {
+    for (const auto& replica : locations.replicas()) {
+      const auto& ts_uuid = replica.ts_info().permanent_uuid();
       auto& ts = result[ts_uuid];
-      if (replica.role == PeerRole::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         ++ts.num_leaders;
       }
-      if (!replica.fs_data_dir.empty()) {
-        ts.dir_tablets[replica.fs_data_dir].push_back(tablet->id());
+      auto* tserver = mini_cluster->find_tablet_server(ts_uuid);
+      auto peer = tserver ? tserver->server()->tablet_manager()->LookupTablet(tablet_id) : nullptr;
+      if (peer) {
+        ts.dir_tablets[peer->tablet_metadata()->data_root_dir()].push_back(tablet_id);
       }
     }
+  }
+  return result;
+}
+
+// The leader's "cluster" metric entity, where it keeps the balancer's metrics.
+Result<scoped_refptr<MetricEntity>> LeaderClusterMetrics(MiniCluster* mini_cluster) {
+  auto* registry = VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->server().metric_registry();
+  return METRIC_ENTITY_cluster.Instantiate(registry, "yb.cluster");
+}
+
+// The leader's /api/v1/load-distribution page: the balancer's latest run.
+Result<std::string> FetchLoadDistribution(MiniCluster* mini_cluster) {
+  auto* leader = VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster());
+  EasyCurl curl;
+  faststring body;
+  RETURN_NOT_OK(curl.FetchURL(
+      Format("http://$0/api/v1/load-distribution", leader->bound_http_addr()), &body));
+  return body.ToString();
+}
+
+// The descriptions of the tasks of the balancer's latest run, one per task type and state.
+Result<std::vector<std::string>> LatestBalancerTasks(MiniCluster* mini_cluster) {
+  const auto json = VERIFY_RESULT(FetchLoadDistribution(mini_cluster));
+  rapidjson::Document doc;
+  doc.Parse(json.c_str());
+  SCHECK(!doc.HasParseError() && doc.IsObject() && doc.HasMember("tasks_summary"), Corruption,
+         "Unexpected JSON: " + json);
+  std::vector<std::string> result;
+  for (const auto& task : doc["tasks_summary"].GetArray()) {
+    result.push_back(task["example_description"].GetString());
   }
   return result;
 }
@@ -217,25 +258,6 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
     return Status::OK();
   }
 
-  Status WaitForNoPendingDeletes() {
-    auto ts_descriptors = VERIFY_RESULT(
-        mini_cluster()->GetLeaderMiniMaster())->master()->ts_manager()->GetAllDescriptors();
-    return WaitFor([&]() -> Result<bool> {
-      for (const auto& ts : ts_descriptors) {
-        if (ts->HasTabletDeletePending()) {
-          return false;
-        }
-      }
-      return true;
-    }, kDefaultTimeout, "WaitForNoPendingDeletes");
-  }
-
-  void DeleteTableAsync() {
-    if (table_exists_) {
-      ASSERT_OK(client_->DeleteTable(table_name(), false /* wait */));
-      table_exists_ = false;
-    }
-  }
 };
 
 class LoadBalancerMiniClusterRf3Test : public LoadBalancerMiniClusterTest {
@@ -252,7 +274,7 @@ class LoadBalancerMiniClusterRf3Test : public LoadBalancerMiniClusterTest {
 TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_ms) = 5;
   auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
-  auto master_metric_entity = mini_master->master()->metric_entity();
+  auto master_metric_entity = mini_master->server().metric_entity();
   auto stats = master_metric_entity->FindOrCreateMetric<EventStats>(
       &METRIC_load_balancer_duration);
   // The metric should get a value.
@@ -271,46 +293,42 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
 
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
   auto kTimeout = 30s;
-  auto load_balancer = ASSERT_RESULT(
-      mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
-  ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
+  // The latest run started exactly one task, and the description names its type.
+  auto wait_for_task = [&](const std::string& type, const std::string& message) {
+    return WaitFor([&]() -> Result<bool> {
+      auto tasks = VERIFY_RESULT(LatestBalancerTasks(mini_cluster()));
+      return tasks.size() == 1 && tasks[0].starts_with(type);
+    }, kTimeout, message);
+  };
+  // Idle: the latest run started nothing, and no task it started earlier is still running.
+  auto wait_for_idle = [&](const std::string& message) {
+    return WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(LatestBalancerTasks(mini_cluster())).empty() &&
+             VERIFY_RESULT(client_->IsLoadBalancerIdle());
+    }, kTimeout, message);
+  };
+  ASSERT_OK(wait_for_idle("Wait for the balancer to be idle"));
 
   // Add a tablet server. The load balancer should start an add server task.
   auto new_ts_index = mini_cluster()->num_tablet_servers();
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kAddServer;
-  }, kTimeout, "Wait for add server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for add server task to complete"));
+  ASSERT_OK(wait_for_task("AddServer ", "Wait for add server task to start"));
+  ASSERT_OK(wait_for_idle("Wait for add server task to complete"));
 
   // Leader blacklist the new tablet server. The load balancer should start a stepdown task.
   ASSERT_OK(mini_cluster()->AddTServerToLeaderBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kTryStepDown;
-  }, kTimeout, "Wait for stepdown task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for stepdown task to complete"));
+  ASSERT_OK(wait_for_task("Stepdown Leader ", "Wait for stepdown task to start"));
+  ASSERT_OK(wait_for_idle("Wait for stepdown task to complete"));
 
   // Blacklist the new tablet server. The load balancer should start a remove server task.
   ASSERT_OK(mini_cluster()->AddTServerToBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kRemoveServer;
-  }, kTimeout, "Wait for remove server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for remove server task to complete"));
+  ASSERT_OK(wait_for_task("RemoveServer ", "Wait for remove server task to start"));
+  ASSERT_OK(wait_for_idle("Wait for remove server task to complete"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
   const int ts_idx = 0;
-  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
-  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto cluster_metric_entity = ASSERT_RESULT(LeaderClusterMetrics(mini_cluster()));
   auto tablets_in_wrong_placement =
       cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(METRIC_tablets_in_wrong_placement);
   ASSERT_EQ(tablets_in_wrong_placement->value(), 0);
@@ -356,8 +374,7 @@ TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
 }
 
 TEST_F(LoadBalancerMiniClusterTest, BlacklistedLeadersMetric) {
-  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
-  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto cluster_metric_entity = ASSERT_RESULT(LeaderClusterMetrics(mini_cluster()));
   auto blacklisted_leaders =
       cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(METRIC_blacklisted_leaders);
   ASSERT_EQ(blacklisted_leaders->value(), 0);
@@ -374,8 +391,7 @@ TEST_F(LoadBalancerMiniClusterTest, BlacklistedLeadersMetric) {
 
 TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
   const auto kNumTablets = static_cast<uint32_t>(num_tablets());
-  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
-  auto cluster_metric_entity = mini_master->master()->metric_entity_cluster();
+  auto cluster_metric_entity = ASSERT_RESULT(LeaderClusterMetrics(mini_cluster()));
   auto load_difference_metric = cluster_metric_entity->FindOrNull<AtomicGauge<uint32_t>>(
       METRIC_total_table_load_difference);
 
@@ -407,106 +423,6 @@ TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
     load_difference_low_water_mark = load_difference;
     return load_difference == 0 && VERIFY_RESULT(client_->IsLoadBalancerIdle());
   }, 30s, "Wait for tablet moves after adding ts-3"));
-}
-
-// See issue #6278. This test tests the segfault that used to occur during a rare race condition,
-// where we would have an uninitialized TSDescriptor that we try to access.
-// To trigger the race condition, we need a pending add task that gets completed after
-// CountPendingTasksUnlocked, and for the tserver that the add is going to needs to be marked as
-// not live before hitting AnalyzeTablets.
-TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
-  const int test_bg_task_wait_ms = 5000;
-  const int test_short_delay_ms = 100;
-  // See MiniTabletServer::MiniTabletServer for default placement info.
-  ASSERT_OK(yb_admin_client_->
-    ModifyPlacementInfo("cloud1.region1.zone,cloud1.region2.zone,cloud2.region3.zone", 3, ""));
-
-  // Disable load balancing.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-
-  // Increase the time between LB runs so we can better time things.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = test_bg_task_wait_ms;
-  // Set this to delay the add task so that we can have a pending add.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) =
-      test_bg_task_wait_ms + test_short_delay_ms;
-  // Insert a pause after finding pending tasks so that the race condition can be hit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 4000;
-    // Don't allow for leader moves, only want add tasks.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 0;
-
-  // Add new tserver in to force load balancer moves.
-  tserver::TabletServerOptions extra_opts =
-      ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
-  // Important to set to cloud2 (see TEST_SetupConnectivity, we group servers in groups of two).
-  extra_opts.SetPlacement("cloud2", "region3", "zone");
-  ASSERT_OK(mini_cluster()->AddTabletServer(extra_opts));
-  ASSERT_OK(mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1));
-  const auto ts3_uuid = mini_cluster_->mini_tablet_server(3)->server()->permanent_uuid();
-
-  // Re-enable the load balancer.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
-
-  // LB RUN #1 : Start an add server task.
-
-  // LB RUN #2 : Count the pending add task, and then pause for
-  //             FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms.
-
-  // Wait for the add task to be processed (at least one replica reporting on the new tserver).
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
-    if (!leader_mini_master.ok()) {
-      return false;
-    }
-    scoped_refptr<master::TableInfo> tbl_info =
-      (*leader_mini_master)->catalog_manager().
-          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                    table_name().namespace_name(),
-                                                    table_name().table_name());
-    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
-      auto replica_map = tablet->GetReplicaLocations();
-      if (replica_map->find(ts3_uuid) != replica_map->end()) {
-        return true;
-      }
-    }
-    return false;
-  }, kDefaultTimeout, "WaitForAddTaskToBeProcessed"));
-
-  // Modify GetAllReportedDescriptors so that it does not report the new tserver
-  // (this could happen normally from a late heartbeat).
-  master::TSDescriptorVector ts_descs;
-  ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())
-      ->ts_manager().GetAllReportedDescriptors(&ts_descs);
-  auto ts3_it = std::find_if(
-      ts_descs.cbegin(), ts_descs.cend(),
-      [&ts3_uuid](const auto& ts_desc) -> bool {
-        return ts_desc->id() == ts3_uuid; });
-  ASSERT_NE(ts3_it, ts_descs.cend());
-  {
-    master::TSDescriptorPtr ts3_desc = *ts3_it;
-    auto l = ts3_desc->LockForWrite();
-    l.mutable_data()->pb.set_state(master::SysTabletServerEntryPB::REPLACED);
-    l.Commit();
-  }
-
-  // LB run #2 will now continue, with GetAllReportedDescriptors not reporting this tserver, but
-  // with GetReplicaLocations reporting it.
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    bool is_idle = VERIFY_RESULT(client_->IsLoadBalancerIdle());
-    return !is_idle;
-  },  kDefaultTimeout * 2, "IsLoadBalancerActive"));
-
-  // If the seg fault occurs, it will occur in the first 2 runs.
-  SleepFor(MonoDelta::FromMilliseconds(3 * test_bg_task_wait_ms));
-
-  // If it has yet to happen, bring back the tserver so that load balancing can complete.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 0;
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return client_->IsLoadBalancerIdle();
-  },  kDefaultTimeout * 2, "IsLoadBalancerIdle"));
 }
 
 // Tests that load balancer shouldn't run for deleted/deleting tables.
@@ -541,50 +457,9 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
 
   LOG(INFO) << "Table deleted successfully.";
 
-  // We should be able to find the deleted table in the list of skipped tables now.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto leader_mini_master = mini_cluster()->GetLeaderMiniMaster();
-        if (!leader_mini_master.ok()) {
-          return false;
-        }
-        const auto tables = (*leader_mini_master)
-                                ->catalog_manager()
-                                .cluster_balancer()
-                                ->GetAllTablesClusterBalancerSkipped();
-        for (const auto& table : tables) {
-          if (table->name() == table_name().table_name() &&
-              table->namespace_name() == table_name().namespace_name()) {
-            return true;
-          }
-        }
-        return false;
-      },
-      kDefaultTimeout,
-      "IsLBSkippingDeletedTables"));
-}
-
-// Check flow tablet size data from tserver to master
-TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
-  auto num_peers = ListTabletPeers(mini_cluster(), ListPeersFilter::kAll).size();
-
-  auto& catalog_manager =
-      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
-
-  scoped_refptr<master::TableInfo> tbl_info = catalog_manager.
-        GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                  table_name().namespace_name(),
-                                                  table_name().table_name());
-  int updated = 0;
-  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
-    auto replica_map = tablet->GetReplicaLocations();
-    for (const auto& replica : *replica_map.get()) {
-      if (!replica.second.fs_data_dir.empty()) {
-        ++updated;
-      }
-    }
-  }
-  ASSERT_EQ(updated, num_peers);
+  // The balancer leaves the deleted table's replicas alone: it goes idle with nothing to do.
+  WaitLoadBalancerIdle(client_.get(), "IsLBSkippingDeletedTables");
+  ASSERT_TRUE(ASSERT_RESULT(LatestBalancerTasks(mini_cluster())).empty());
 }
 
 TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDisabledDriveAware) {
@@ -611,19 +486,24 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
   // Wait for the add task to be processed (at least one replica reporting on the new tserver).
   WaitForReplicaOnTS(mini_cluster(), table_name(), new_ts_uuid);
 
-  // Drive data should be empty
-  scoped_refptr<master::TableInfo> tbl_info =
-    ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager().
-        GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                  table_name().namespace_name(),
-                                                  table_name().table_name());
-  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
-    auto replica_map = tablet->GetReplicaLocations();
-    for (const auto& replica : *replica_map.get()) {
-      ASSERT_EQ(replica.second.drive_info.sst_files_size, 0);
-      ASSERT_EQ(replica.second.drive_info.wal_files_size, 0);
+  // Drive data should be empty: the master shows the sizes its tablet leaders report.
+  const auto locations = ASSERT_RESULT(GetTableLocations(mini_cluster(), table_name()));
+  master::GetTabletsMetadataRequestPB req;
+  master::GetTabletsMetadataResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kDefaultTimeout);
+  auto proxy = ASSERT_RESULT(mini_cluster()->GetLeaderMasterProxy<master::MasterClientProxy>());
+  ASSERT_OK(proxy.GetTabletsMetadata(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+  size_t found = 0;
+  for (const auto& tablet : resp.tablet_metadatas()) {
+    if (locations.contains(tablet.tablet_id())) {
+      ++found;
+      ASSERT_EQ(tablet.sst_files_disk_size(), 0);
+      ASSERT_EQ(tablet.wal_files_disk_size(), 0);
     }
   }
+  ASSERT_EQ(found, locations.size());
 }
 
 TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
@@ -684,33 +564,6 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   ASSERT_GE(balanced_servers, 2);
 }
 
-TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
-  // Make sure that deleting tablet task is failed/times out.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_async_delete_replica_task) = true;
-  // Delete the table, async. The sync call will fail since the table will not get deleted.
-  DeleteTableAsync();
-  // This sleep currently functions to wait until all DeleteTablet RPCs have been sent out and have
-  // failed. Need a better condition here.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto& catalog_manager =
-        VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    auto recent_tasks = catalog_manager.GetRecentTasks();
-    auto num_delete_tasks = 0;
-    // Make sure that all deleted tasks triggered have failed and at least 1 delete has been
-    // triggered.
-    for (const auto& task : recent_tasks) {
-      if (task->type() == server::MonitoredTaskType::kDeleteReplica) {
-        if (task->state() != server::MonitoredTaskState::kFailed) {
-          return false;
-        }
-        num_delete_tasks++;
-      }
-    }
-    return num_delete_tasks > 0;
-  }, kDefaultTimeout, "deleted tasks failed"));
-  ASSERT_OK(WaitForNoPendingDeletes());
-}
-
 TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
       "cloud1.region1.zone,cloud1.region2.zone,cloud2.region3.zone", 3, ""));
@@ -742,14 +595,22 @@ TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
     ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());
   }
 
-  // Get the same order of tables as the load balancer processes them in.
-  auto& catalog_manager = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
-  auto all_tables =
-      catalog_manager.GetTables(master::GetTablesMode::kAll, master::PrimaryTablesOnly::kTrue);
+  // The load balancer processes tables in table id order; take the first of this keyspace's.
+  auto catalog = ASSERT_RESULT(MasterTestApi(mini_cluster()).Catalog());
+  const auto keyspace = ASSERT_RESULT(catalog.FindNamespace(
+      YQLDatabase::YQL_DATABASE_CQL, table_name().namespace_name()));
+  master::TableInfoPtr first_table;
+  for (const auto& table : catalog.GetTables()) {
+    if (table->namespace_id() == keyspace->id() && !table->is_deleted() &&
+        (!first_table || table->id() < first_table->id())) {
+      first_table = table;
+    }
+  }
+  ASSERT_NE(first_table, nullptr);
 
   // Select the first table to be processed by the load balancer, and move it to the other region.
   client::YBTableName first_table_name(
-      YQLDatabase::YQL_DATABASE_CQL, all_tables[0]->namespace_name(), all_tables[0]->name());
+      YQLDatabase::YQL_DATABASE_CQL, table_name().namespace_name(), first_table->name());
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
       first_table_name, "cloud2.region4.zone,cloud3.region5.zone,cloud3.region6.zone", 3, ""));
 
@@ -819,18 +680,11 @@ TEST_F(LoadBalancerFailedDrive, CheckTabletSizeData) {
   WaitLoadBalancerActive(client_.get());
   WaitLoadBalancerIdle(client_.get());
 
-  auto& catalog_manager =
-      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
-
-  scoped_refptr<master::TableInfo> tbl_info = catalog_manager.
-      GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                table_name().namespace_name(),
-                                                table_name().table_name());
   const auto ts1_uuid = mini_cluster_->mini_tablet_server(0)->server()->permanent_uuid();
-  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
-    auto replica_map = tablet->GetReplicaLocations();
-    for (const auto& replica : *replica_map.get()) {
-      EXPECT_NE(ts1_uuid, replica.first);
+  for (const auto& [tablet_id, locations] :
+       ASSERT_RESULT(GetTableLocations(mini_cluster(), table_name()))) {
+    for (const auto& replica : locations.replicas()) {
+      EXPECT_NE(ts1_uuid, replica.ts_info().permanent_uuid()) << tablet_id;
     }
   }
 }

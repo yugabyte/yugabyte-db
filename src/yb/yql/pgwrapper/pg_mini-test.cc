@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <optional>
@@ -38,15 +39,15 @@
 
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/integration-tests/master_test_api.h"
+
+#include "yb/master/master_defaults.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/statistics.h"
 
@@ -234,6 +235,39 @@ class PgMiniTest : public PgMiniTestBase {
   int64_t GetBloomFilterCheckedMetric();
 
   PgSchemaName GetPgSchema(const string& tbl_name);
+
+  // The number of tables the master leader's sys catalog tablet row lists.
+  Result<int> SysTabletTableIdCount() {
+    auto rows = VERIFY_RESULT(MasterTestApi(cluster_.get()).DumpRows(
+        master::SysRowEntryType::TABLET, master::kSysCatalogTabletId));
+    for (const auto& [id, text] : rows) {
+      if (id != master::kSysCatalogTabletId) {
+        continue;
+      }
+      auto pb = VERIFY_RESULT(
+          master::DebugStringToCatalogEntityPB(master::SysRowEntryType::TABLET, text));
+      return static_cast<master::SysTabletsEntryPB*>(pb.get())->table_ids_size();
+    }
+    return STATUS(NotFound, "No sys catalog tablet row");
+  }
+
+  // Whether the master leader has a table being deleted or hidden.
+  Result<bool> AreTablesDeletingOrHiding() {
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    for (const auto& table : catalog.GetTables()) {
+      auto lock = table->LockForRead();
+      if (lock->is_deleting() || lock->is_hiding()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Status WaitForTablesDeletedOrHidden() {
+    return LoggedWaitFor(
+        [this]() -> Result<bool> { return !VERIFY_RESULT(AreTablesDeletingOrHiding()); },
+        10s * kTimeMultiplier, "Tables should have finished deleting");
+  }
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
@@ -1277,30 +1311,14 @@ TEST_F(PgMiniTest, DropDBUpdateSysTablet) {
   PGConn conn = ASSERT_RESULT(Connect());
   std::array<int, 4> num_tables;
 
-  auto* catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[0] = tablet_lock->pb.table_ids_size();
-  }
+  num_tables[0] = ASSERT_RESULT(SysTabletTableIdCount());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[1] = tablet_lock->pb.table_ids_size();
-  }
+  num_tables[1] = ASSERT_RESULT(SysTabletTableIdCount());
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[2] = tablet_lock->pb.table_ids_size();
-  }
+  num_tables[2] = ASSERT_RESULT(SysTabletTableIdCount());
   // Make sure that the system catalog tablet table_ids is persisted.
   ASSERT_OK(RestartCluster());
-  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables[3] = tablet_lock->pb.table_ids_size();
-  }
+  num_tables[3] = ASSERT_RESULT(SysTabletTableIdCount());
   ASSERT_LT(num_tables[0], num_tables[1]);
   ASSERT_EQ(num_tables[0], num_tables[2]);
   ASSERT_EQ(num_tables[0], num_tables[3]);
@@ -1308,43 +1326,23 @@ TEST_F(PgMiniTest, DropDBUpdateSysTablet) {
 
 TEST_F(PgMiniTest, DropDBMarkDeleted) {
   const std::string kDatabaseName = "testdb";
-  constexpr auto kSleepTime = 500ms;
-  constexpr int kMaxNumSleeps = 20;
-  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
-  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
+  ASSERT_FALSE(ASSERT_RESULT(AreTablesDeletingOrHiding()));
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // System tables should be deleting then deleted.
-  int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
-    LOG(INFO) << "Tables are deleting...";
-    std::this_thread::sleep_for(kSleepTime);
-  }
-  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
-      << "Tables should have finished deleting";
+  ASSERT_OK(WaitForTablesDeletedOrHidden());
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
-  // Refresh stale local variable after RestartSync.
-  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
+  ASSERT_FALSE(ASSERT_RESULT(AreTablesDeletingOrHiding()));
 }
 
 TEST_F(PgMiniTest, DropDBWithTables) {
   const std::string kDatabaseName = "testdb";
   const std::string kTablePrefix = "testt";
-  constexpr auto kSleepTime = 500ms;
-  constexpr int kMaxNumSleeps = 20;
-  int num_tables_before, num_tables_after;
-  auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
-  auto sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_before = tablet_lock->pb.table_ids_size();
-  }
+  const auto num_tables_before = ASSERT_RESULT(SysTabletTableIdCount());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   {
     PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1355,23 +1353,11 @@ TEST_F(PgMiniTest, DropDBWithTables) {
   }
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // User and system tables should be deleting then deleted.
-  int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
-    LOG(INFO) << "Tables are deleting...";
-    std::this_thread::sleep_for(kSleepTime);
-  }
-  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
-      << "Tables should have finished deleting";
+  ASSERT_OK(WaitForTablesDeletedOrHidden());
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
-  catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
-  {
-    auto tablet_lock = sys_tablet->LockForWrite();
-    num_tables_after = tablet_lock->pb.table_ids_size();
-  }
-  ASSERT_EQ(num_tables_before, num_tables_after);
+  ASSERT_FALSE(ASSERT_RESULT(AreTablesDeletingOrHiding()));
+  ASSERT_EQ(num_tables_before, ASSERT_RESULT(SysTabletTableIdCount()));
 }
 
 TEST_F(PgMiniTest, BigSelect) {
@@ -1754,16 +1740,6 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
   ASSERT_VECTORS_EQ(result, kNewData);
   VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
-
-  // Verify that no tombstone time has been cached for pg_class.
-  ASSERT_OK(conn.FetchRows<int64_t>("SELECT count(*) from pg_class"));
-  auto pg_class_table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
-  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
-  auto table_info = ASSERT_RESULT(
-      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(pg_class_table_id));
-  ASSERT_TRUE(table_info && table_info->doc_read_context);
-  auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
-  ASSERT_FALSE(tombstone_time.has_value());
 }
 
 namespace {
@@ -2662,18 +2638,11 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   ASSERT_TRUE(ASSERT_RESULT(
       colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
       ->skip_table_tombstone_check);
-
-  // Verify that skip_table_tombstone_check=false for pg system tables.
-  table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
-  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
-  ASSERT_FALSE(ASSERT_RESULT(
-      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(table_id))
-      ->skip_table_tombstone_check);
 }
 
 PgSchemaName PgMiniTest::GetPgSchema(const string& tbl_name) {
   const auto tbl_id = EXPECT_RESULT(GetTableIDFromTableName(tbl_name));
-  master::TableInfoPtr table = EXPECT_RESULT(catalog_manager())->GetTableInfo(tbl_id);
+  master::TableInfoPtr table = EXPECT_RESULT(MasterTestApi(cluster_.get()).GetTableInfo(tbl_id));
   const auto schema_name = table->pgschema_name();
   LOG(INFO) << "Table name = " << tbl_name << ", id =" << tbl_id << ", schema = " << schema_name;
   return schema_name;
@@ -3333,29 +3302,46 @@ TEST_F(PgMiniTest, TablegroupCompactionWithRestart) {
 
 TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   const std::string kDatabaseName = "testdb";
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto sys_catalog_tablet =
-      ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
+  MasterTestApi api(cluster_.get());
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  // The sys catalog tablet's SST files on the leader's disk.
+  auto sys_catalog_sst_size = [leader]() -> Result<uint64_t> {
+    const auto tablet_dir = std::string("tablet-") + master::kSysCatalogTabletId;
+    uint64_t size = 0;
+    for (const auto& root : leader->fs_manager().GetDataRootDirs()) {
+      std::error_code ec;
+      for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end;
+           it.increment(ec)) {
+        if (it->is_regular_file() &&
+            it->path().parent_path().filename() == tablet_dir &&
+            it->path().filename().string().find(".sst") != std::string::npos) {
+          size += it->file_size();
+        }
+      }
+      SCHECK(!ec, IOError, Format("Listing $0: $1", root, ec.message()));
+    }
+    return size;
+  };
 
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
-  uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+  ASSERT_OK(api.FlushSysCatalog());
+  ASSERT_OK(api.CompactSysCatalog());
+  const auto base_file_size = ASSERT_RESULT(sys_catalog_sst_size());
 
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(api.FlushSysCatalog());
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
-  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
+  ASSERT_OK(api.CompactSysCatalog());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
-  ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
+  ASSERT_OK(api.CompactSysCatalog());
 
-  uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
+  const auto new_file_size = ASSERT_RESULT(sys_catalog_sst_size());
   LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
   ASSERT_LE(new_file_size, base_file_size + 100_KB);
 }

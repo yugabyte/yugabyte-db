@@ -20,6 +20,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/gutil/strings/join.h"
@@ -27,8 +28,6 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/flush_manager.h"
 #include "yb/master/master_admin.pb.h"
 
 #include "yb/rpc/io_thread_pool.h"
@@ -314,31 +313,7 @@ class TestRedisService : public RedisTableTestBase {
   void VerifyCallbacks();
 
   Status FlushRedisTable() {
-    // Flush the table
-    auto epoch = master::LeaderEpoch(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
-                                         ->catalog_manager()
-                                         .leader_ready_term());
-    master::FlushTablesRequestPB req;
-    req.set_is_compaction(false);
-    table_name().SetIntoTableIdentifierPB(req.add_tables());
-    master::FlushTablesResponsePB resp;
-    RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->flush_manager().
-                  FlushTables(&req, &resp, /* rpc_context */ nullptr, epoch));
-
-    master::IsFlushTablesDoneRequestPB wait_req;
-    // Wait for table creation.
-    wait_req.set_flush_request_id(resp.flush_request_id());
-
-    for (int k = 0; k < 20; ++k) {
-      master::IsFlushTablesDoneResponsePB wait_resp;
-      RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
-                        ->flush_manager().IsFlushTablesDone(&wait_req, &wait_resp));
-      if (wait_resp.done()) {
-        return Status::OK();
-      }
-      SleepFor(MonoDelta::FromSeconds(1));
-    }
-    return STATUS(IllegalState, "Could not flush redis table.");
+    return client_->FlushTables({table_name()}, MonoDelta::FromSeconds(20));
   }
 
   int server_port() { return redis_server_port_; }

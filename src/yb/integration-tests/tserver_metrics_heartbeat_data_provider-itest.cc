@@ -26,11 +26,11 @@
 #include "yb/dockv/partition.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
@@ -178,9 +178,8 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
   Status WaitForNoPendingTabletAssignments(MonoDelta timeout) {
     return WaitFor(
         [this]() -> Result<bool> {
-          auto* leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-          auto& catalog_manager = leader_master->catalog_manager();
-          for (const auto& table : catalog_manager.GetTables(master::GetTablesMode::kAll)) {
+          auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+          for (const auto& table : catalog.GetTables()) {
             auto tablets = VERIFY_RESULT(table->GetTablets());
             for (const auto& tablet : tablets) {
               auto lock = tablet->LockForRead();
@@ -207,14 +206,14 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
       std::function<bool(const master::FullCompactionStatusPB&)> full_compaction_status_check) {
     return [this,
             full_compaction_status_check](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
-      auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+      auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
       for (const auto& full_compaction_status : req.full_compaction_statuses()) {
         if (!full_compaction_status.has_tablet_id()) {
           return false;
         }
 
         const auto tablet_info =
-            VERIFY_RESULT(catalog_manager.GetTabletInfo(full_compaction_status.tablet_id()));
+            VERIFY_RESULT(catalog.GetTabletInfo(full_compaction_status.tablet_id()));
         if (tablet_info->table()->id() != test_table_id_) {
           continue;
         }

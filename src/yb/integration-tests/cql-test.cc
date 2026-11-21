@@ -22,13 +22,15 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/db.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
@@ -401,8 +403,7 @@ TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
   LOG(INFO) << "Prepare";
   auto prepared = ASSERT_RESULT(session.Prepare("INSERT INTO t2 (i, j) VALUES (?, ?)"));
   LOG(INFO) << "Step down";
-  auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
-  ASSERT_OK(StepDown(peer, std::string(), ForceStepDown::kTrue));
+  ASSERT_RESULT(cluster_->StepDownMasterLeader());
   LOG(INFO) << "Insert";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5000;
   bool has_ok = false;
@@ -456,8 +457,6 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
   constexpr uint32_t kTruncateTimeoutMs = 0;
 #endif
 
-  master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
-      cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   auto cql = [&](const string& query, uint32_t timeout_ms = 0) {
     ASSERT_OK(session.ExecuteQuery(query, timeout_ms));
@@ -483,18 +482,25 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
 
   const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
   const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
-  const master::TableInfoPtr table = ASSERT_RESULT(catalog_manager.FindTableById(table_id));
 
-  std::array<master::TableInfoPtr, num_indexes> index;
+  std::array<TableId, num_indexes> index;
   for (int i = 0; i < num_indexes; ++i) {
     const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, Format("i$0", i + 1));
-    const TableId index_id = ASSERT_RESULT(client::GetTableId(client_.get(), index_name));
-    index[i] = ASSERT_RESULT(catalog_manager.FindTableById(index_id));
+    index[i] = ASSERT_RESULT(client::GetTableId(client_.get(), index_name));
   }
 
-  auto check_no_truncate_tasks = [](const master::TableInfoPtr& table_info, const string& label) {
+  // IsTruncateTableDone is done once no truncate of the table's tablets runs on the master.
+  auto check_no_truncate_tasks = [this](const TableId& id, const string& label) {
     LOG(INFO) << "Checking " << label;
-    ASSERT_FALSE(table_info->HasTasks(server::MonitoredTaskType::kTruncateTablet));
+    master::IsTruncateTableDoneRequestPB req;
+    master::IsTruncateTableDoneResponsePB resp;
+    req.set_table_id(id);
+    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s);
+    ASSERT_OK(proxy.IsTruncateTableDone(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
+    ASSERT_TRUE(resp.done());
   };
 
   auto check_table_and_indexes = [&](const string& comment) {
@@ -502,7 +508,7 @@ TEST_F(CqlTest, TestTruncateTableWithIndexes) {
     for (int i = num_indexes - 1; i >= 0; --i) {
         check_no_truncate_tasks(index[i], Format("index i$0", i + 1));
     }
-    check_no_truncate_tasks(table, "main table tbl");
+    check_no_truncate_tasks(table_id, "main table tbl");
   };
 
   check_table_and_indexes("Check tasks before TRUNCATE tbl");
@@ -1561,18 +1567,23 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   WaitForReadPermsOnAllIndexes("tbl", index_names);
 
   class CheckHelper {
-    master::CatalogManager& catalog_manager;
+    MiniCluster* cluster_;
    public:
-    explicit CheckHelper(MiniCluster* cluster) : catalog_manager(CHECK_NOTNULL(EXPECT_RESULT(
-        CHECK_NOTNULL(cluster)->GetLeaderMiniMaster()))->catalog_manager_impl()) {}
+    explicit CheckHelper(MiniCluster* cluster) : cluster_(CHECK_NOTNULL(cluster)) {}
+
+    Result<master::MasterDdlProxy> Proxy() {
+      return cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    }
 
     Result<bool> IsDeleteDone(const TableId& table_id) {
       master::IsDeleteTableDoneRequestPB req;
       master::IsDeleteTableDoneResponsePB resp;
       req.set_table_id(table_id);
-      const Status s = catalog_manager.IsDeleteTableDone(&req, &resp);
+      rpc::RpcController rpc;
+      rpc.set_timeout(30s);
+      RETURN_NOT_OK(VERIFY_RESULT(Proxy()).IsDeleteTableDone(req, &resp, &rpc));
       LOG(INFO) << "IsDeleteTableDone response for [id=" << table_id << "]: " << resp.DebugString();
-      if (!s.ok()) {
+      if (resp.has_error()) {
         return client::internal::StatusFromResp(resp);
       }
       return resp.done();
@@ -1590,7 +1601,12 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
       req.set_include_not_running(true);
       req.set_exclude_system_tables(true);
       // Get all user tables.
-      RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
+      rpc::RpcController rpc;
+      rpc.set_timeout(30s);
+      RETURN_NOT_OK(VERIFY_RESULT(Proxy()).ListTables(req, &resp, &rpc));
+      if (resp.has_error()) {
+        return client::internal::StatusFromResp(resp);
+      }
       LOG(INFO) << "ListTables returned " << resp.tables().size() << " tables";
 
       // Check RUNNNING tables.

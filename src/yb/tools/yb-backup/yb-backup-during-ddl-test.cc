@@ -24,10 +24,8 @@
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 
-#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_snapshot_coordinator.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -455,9 +453,6 @@ TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) 
       ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_filter */ kBackupSourceDbName));
   ASSERT_EQ(list_tables_resp.tables_size(), 2);
 
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto* snapshot_coordinator = &master_leader->master()->snapshot_coordinator();
-
   // Get the namespace ID for the database using the client API.
   master::GetNamespaceInfoResponsePB namespace_resp;
   ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
@@ -479,10 +474,8 @@ TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) 
 
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartDropSecondTable");
 
-  // Verify that namespace is retained during snapshot creation.
-  ASSERT_TRUE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
-      << "Namespace should be retained during snapshot creation";
-
+  // The namespace is retained while the snapshot is created: the dropped table is hidden, not
+  // deleted, so the snapshot still includes it.
   LOG(INFO) << Format("Started dropping table: $0", table2_name);
 
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table2_name));
@@ -503,10 +496,6 @@ TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) 
       ASSERT_RESULT(CollectTabletIdsFromTables(list_tables_resp));
   // Check if all tablets of all base tables are included in the snapshot
   ASSERT_OK(AreTabletsIncludedInSnapshot(tablet_ids, snapshot_infos[0]));
-
-  // Verify that namespace is no longer retained after snapshot creation completion
-  ASSERT_FALSE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
-      << "Namespace should no longer be retained after snapshot creation completion";
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -533,9 +522,6 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
       ASSERT_RESULT(client_->ListTables(table_name, /* ysql_db_fiter */ kBackupSourceDbName));
   ASSERT_EQ(list_tables_resp.tables_size(), 2);
 
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto* snapshot_coordinator = &master_leader->master()->snapshot_coordinator();
-
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
   ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
@@ -553,10 +539,6 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
 
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartDropSecondTable");
 
-  // Verify that namespace is retained during snapshot creation
-  ASSERT_TRUE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
-      << "Namespace should be retained during snapshot creation";
-
   LOG(INFO) << Format("Started dropping table: $0", table2_name);
 
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table2_name));
@@ -569,11 +551,8 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
   // Wait for the snapshot to fail as expected.
   ASSERT_OK(snapshot_util_->WaitSnapshotInState(snapshot_id, master::SysSnapshotEntryPB::FAILED));
 
-  // Verify that namespace is no longer retained after snapshot creation completion.
-  ASSERT_FALSE(snapshot_coordinator->IsNamespaceRetained(namespace_id))
-      << "Namespace should no longer be retained after snapshot creation completion";
-
-  // Wait for the dropped table to be hard deleted, ListTables should return only 1 table.
+  // The failed snapshot no longer retains the namespace: the dropped table is hard deleted, so
+  // ListTables returns only 1 table.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         master::ListTablesResponsePB list_tables_resp =

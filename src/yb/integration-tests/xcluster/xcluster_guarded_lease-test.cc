@@ -17,14 +17,13 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/gutil/casts.h"
+
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/xcluster/xcluster_manager.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -188,7 +187,26 @@ TEST_F(XClusterGuardedLeaseTest, OidAllocationBlockedWithoutLease) {
   ASSERT_OK(get_new_object_id());
 }
 
-class XClusterPropagateGuardedInfoTest : public XClusterGuardedLeaseTest {};
+// The master propagates its xCluster-guarded info to the TServers that may hold a lease on every
+// XClusterStartPersisting (and XClusterStopPersisting) call, which these tests use to trigger it.
+class XClusterPropagateGuardedInfoTest : public XClusterGuardedLeaseTest {
+ protected:
+  // Propagates within `timeout`; the master's own deadline for propagating is a little shorter.
+  Status Propagate(const NamespaceId& namespace_id, MonoDelta timeout) {
+    return MasterTestApi(cluster_.get()).XClusterStartPersisting({namespace_id}, timeout);
+  }
+
+  Result<master::SysTabletServerEntryPB::XClusterGuardedLeaseState> LeaseState(
+      const std::string& tserver_uuid) {
+    auto rows = VERIFY_RESULT(MasterTestApi(cluster_.get())
+                                  .DumpRows(master::SysRowEntryType::TSERVER_REGISTRATION,
+                                            tserver_uuid));
+    SCHECK_EQ(rows.size(), 1U, NotFound, Format("No registry row for TServer $0", tserver_uuid));
+    auto row = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(
+        master::SysRowEntryType::TSERVER_REGISTRATION, rows.front().second));
+    return static_cast<master::SysTabletServerEntryPB*>(row.get())->xcluster_guarded_lease_state();
+  }
+};
 
 // Uses leases long enough that stopping heartbeats does not make roles UNAVAILABLE during a test.
 class XClusterPropagateGuardedInfoTestLongLease : public XClusterPropagateGuardedInfoTest {
@@ -200,8 +218,6 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
           XClusterPropagateGuardedInfoTestLongLease) {
   auto conn = ASSERT_RESULT(Connect());
   const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
   const auto& tservers = cluster_->mini_tablet_servers();
   auto get_oid_cache_invalidations_count = [](const auto& tserver) {
     return tserver->server()->GetXClusterContext().GetOidCacheInvalidationsCount();
@@ -214,26 +230,23 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
   const auto old_oid_invalidations_count =
       ASSERT_RESULT(get_oid_cache_invalidations_count(tservers[0]));
 
-  ASSERT_OK(xcluster_manager->SetXClusterRole(
-      catalog_manager.GetLeaderEpochInternal(), namespace_id,
-      XClusterNamespaceInfoPB::AUTOMATIC_SOURCE));
-  ASSERT_OK(catalog_manager.InvalidateTserverOidCaches());
+  // Bumping the cluster config's count is how the master invalidates the TServers' OID caches.
+  MasterTestApi api(cluster_.get());
+  auto config = ASSERT_RESULT(api.GetClusterConfig());
+  config.set_oid_cache_invalidations_count(config.oid_cache_invalidations_count() + 1);
+  ASSERT_OK(api.ChangeClusterConfig(config));
+
+  for (const auto& tserver : tservers) {
+    EXPECT_EQ(
+        ASSERT_RESULT(get_oid_cache_invalidations_count(tserver)), old_oid_invalidations_count);
+  }
+
+  ASSERT_OK(Propagate(namespace_id, 10s * kTimeMultiplier));
 
   for (const auto& tserver : tservers) {
     EXPECT_EQ(
         tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
         XClusterNamespaceInfoPB::NOT_AUTOMATIC_MODE);
-    EXPECT_EQ(
-        ASSERT_RESULT(get_oid_cache_invalidations_count(tserver)), old_oid_invalidations_count);
-  }
-
-  ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(
-      MonoTime::Now() + MonoDelta(10s * kTimeMultiplier)));
-
-  for (const auto& tserver : tservers) {
-    EXPECT_EQ(
-        tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
-        XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
     EXPECT_EQ(
         ASSERT_RESULT(get_oid_cache_invalidations_count(tserver)),
         old_oid_invalidations_count + 1);
@@ -241,8 +254,8 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
 }
 
 TEST_F(XClusterPropagateGuardedInfoTest, PropagateEvenWithDeadTServer) {
-  auto* mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto* xcluster_manager = mini_master->catalog_manager_impl().GetXClusterManagerImpl();
+  auto conn = ASSERT_RESULT(Connect());
+  const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
   auto* dead_tserver = cluster_->mini_tablet_server(0);
   const auto dead_tserver_uuid = dead_tserver->server()->permanent_uuid();
   dead_tserver->Shutdown();
@@ -250,22 +263,23 @@ TEST_F(XClusterPropagateGuardedInfoTest, PropagateEvenWithDeadTServer) {
   // Master does not yet know the TServer cannot hold a lease, so it must be waited for, and it is
   // not going to answer.  Keep the deadline well short of the lease duration so the TServer is
   // still MAYBE_HAS_LEASE when the call gives up.
-  auto status = xcluster_manager->PropagateXClusterGuardedInfo(MonoTime::Now() + MonoDelta(3s));
+  auto status = Propagate(namespace_id, 5s);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), dead_tserver_uuid);
 
   // A TServer that loses its lease while we are trying is excused: give the call a deadline past
   // the point master marks the dead TServer DEFINITELY_NO_LEASE.
-  auto descriptor =
-      ASSERT_RESULT(mini_master->master()->ts_manager()->LookupTSByUUID(dead_tserver_uuid));
-  ASSERT_TRUE(descriptor->MaybeHasXClusterGuardedLease());
-  ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(
-      MonoTime::Now() + GetLeaseDuration() + MonoDelta(10s * kTimeMultiplier)));
-  ASSERT_FALSE(descriptor->MaybeHasXClusterGuardedLease());
+  ASSERT_NE(
+      ASSERT_RESULT(LeaseState(dead_tserver_uuid)),
+      master::SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
+  ASSERT_OK(Propagate(namespace_id, GetLeaseDuration() + MonoDelta(10s * kTimeMultiplier)));
+  ASSERT_EQ(
+      ASSERT_RESULT(LeaseState(dead_tserver_uuid)),
+      master::SysTabletServerEntryPB::DEFINITELY_NO_LEASE);
 
   // Once master knows the TServer cannot hold a lease, it is skipped from the start, so a deadline
   // that was too short above now suffices.
-  ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(MonoTime::Now() + MonoDelta(3s)));
+  ASSERT_OK(Propagate(namespace_id, 5s));
 }
 
 }  // namespace yb

@@ -41,10 +41,10 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.proxy.h"
 
@@ -270,17 +270,13 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     std::vector<std::string> tablet_ids;
     std::unordered_set<std::string> replicas;
 
-    auto tablet_infos = GetTabletInfos(table.name());
-    if (!tablet_infos) {
-      return STATUS_FORMAT(NotFound,
-                           "No tablet information found for $0",
-                           table->name());
-    }
-    for (auto tablet_info : *tablet_infos) {
-      tablet_ids.emplace_back(tablet_info->tablet_id());
-      auto replica_map = tablet_info->GetReplicaLocations();
-      for (auto it = replica_map->begin(); it != replica_map->end(); it++) {
-        replicas.insert(it->first);
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> locations;
+    RETURN_NOT_OK(client_->GetTablets(
+        table.name(), /* max_tablets = */ 0, &locations, /* partition_list_version = */ nullptr));
+    for (const auto& location : locations) {
+      tablet_ids.emplace_back(location.tablet_id());
+      for (const auto& replica : location.replicas()) {
+        replicas.insert(replica.ts_info().permanent_uuid());
       }
     }
     return TabletIdsAndReplicas(tablet_ids, replicas);
@@ -492,20 +488,8 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     return Status::OK();
   }
 
-  Result<scoped_refptr<master::TableInfo>> GetTableInfo(const YBTableName& table_name) {
-    auto& catalog_manager =
-        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    auto all_tables = catalog_manager.GetTables(master::GetTablesMode::kAll);
-    for (const auto& table : all_tables) {
-      if (table->name() == table_name.table_name()) {
-        return table;
-      }
-    }
-    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
-  }
-
   Result<master::TabletInfos> GetTabletInfos(const YBTableName& table_name) {
-    return VERIFY_RESULT(GetTableInfo(table_name))->GetTablets();
+    return VERIFY_RESULT(MasterTestApi(cluster_.get()).FindTable(table_name))->GetTablets();
   }
 
   Status WaitForTableCreation(const YBTableName& table_name,

@@ -439,15 +439,8 @@ TEST_F_EX(CqlTabletSplitTest, SecondaryIndexWithDrop, CqlTabletSplitTestMultiMas
 
     if (iter > 1) {
       // Test tracking split tablets in case of leader master failover.
-      const auto leader_master_idx = cluster_->LeaderMasterIdx();
-      const auto sys_catalog_tablet_peer_leader =
-          cluster_->mini_master(leader_master_idx)->tablet_peer();
-      const auto sys_catalog_tablet_peer_follower =
-          cluster_->mini_master((leader_master_idx + 1) % cluster_->num_masters())->tablet_peer();
       LOG(INFO) << "Iteration " << iter << ": stepping down master leader";
-      ASSERT_OK(StepDown(
-          sys_catalog_tablet_peer_leader, sys_catalog_tablet_peer_follower->permanent_uuid(),
-          ForceStepDown::kFalse));
+      ASSERT_RESULT(cluster_->StepDownMasterLeader());
       LOG(INFO) << "Iteration " << iter << ": stepping down master leader - done";
     }
 

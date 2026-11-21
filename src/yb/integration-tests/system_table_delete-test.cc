@@ -13,9 +13,9 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 
@@ -49,16 +49,14 @@ TEST_F(SystemTableDelete, DeleteSysTableWithFixedOid) {
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl TO 1"));
   ASSERT_NOK_STR_CONTAINS(conn.Execute(create_table_stmt), "Failed DDL operation as requested ");
 
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-
+  MasterTestApi api(cluster_.get());
   master::ListTablesRequestPB req;
   req.set_name_filter(table_name);
   req.set_include_not_running(true);
 
   ASSERT_OK(WaitFor(
-      [&catalog_manager, &req]() -> Result<bool> {
-        master::ListTablesResponsePB resp;
-        RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
+      [&api, &req]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(api.ListTables(req));
         SCHECK_EQ(resp.tables_size(), 1, IllegalState, "Expected to find one table");
         LOG(INFO) << "Found table: " << resp.DebugString();
         return resp.tables(0).state() == SysTablesEntryPB::DELETED;

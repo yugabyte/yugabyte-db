@@ -21,24 +21,24 @@
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.proxy.h"
 
 #include "yb/fs/fs_manager.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -52,6 +52,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
@@ -162,16 +163,49 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ReplicationInfoPB replication_info;
   replication_info.mutable_live_replicas()->set_num_replicas(3);
+  // A YCQL table: the Rust master does not serve YEDIS.
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  client::YBSchema schema;
+  ASSERT_OK(builder.Build(&schema));
   ASSERT_OK(table_creator->table_name(table_name)
-                .table_type(client::YBTableType::REDIS_TABLE_TYPE)
+                .schema(&schema)
                 .num_tablets(num_tablets)
                 .wait(false)
                 .Create());
 }
 
-OpId LastReceivedOpId(master::MiniMaster* master) {
-  auto consensus = CHECK_RESULT(master->tablet_peer()->GetConsensus());
-  return consensus->GetLastReceivedOpId();
+// The master's sys catalog Raft state, as CatalogManager::GetCurrentConfig returned it, asked of
+// the master's consensus service from the test's messenger, which the partitions do not cut.
+Result<consensus::ConsensusStatePB> GetCurrentConfig(MiniCluster* cluster, size_t master_idx) {
+  auto* master = cluster->mini_master(master_idx);
+  consensus::ConsensusServiceProxy proxy(&cluster->proxy_cache(), master->bound_rpc_addr());
+  consensus::GetConsensusStateRequestPB req;
+  req.set_dest_uuid(master->permanent_uuid());
+  req.set_tablet_id(master::kSysCatalogTabletId);
+  req.set_type(consensus::CONSENSUS_CONFIG_COMMITTED);
+  consensus::GetConsensusStateResponsePB resp;
+  RpcController controller;
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy.GetConsensusState(req, &resp, &controller));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.cstate();
+}
+
+OpId LastReceivedOpId(MiniCluster* cluster, master::MiniMaster* master) {
+  consensus::ConsensusServiceProxy proxy(&cluster->proxy_cache(), master->bound_rpc_addr());
+  consensus::GetLastOpIdRequestPB req;
+  req.set_dest_uuid(master->permanent_uuid());
+  req.set_tablet_id(master::kSysCatalogTabletId);
+  req.set_opid_type(consensus::RECEIVED_OPID);
+  consensus::GetLastOpIdResponsePB resp;
+  RpcController controller;
+  controller.set_timeout(10s);
+  CHECK_OK(proxy.GetLastOpId(req, &resp, &controller));
+  CHECK(!resp.has_error()) << resp.ShortDebugString();
+  return OpId::FromPB(resp.opid());
 }
 
 TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
@@ -198,7 +232,8 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     if (!leader_mini_master.ok()) {
       return false;
     }
-    if (LastReceivedOpId(*leader_mini_master) != LastReceivedOpId(cluster_->mini_master(0))) {
+    if (LastReceivedOpId(cluster_.get(), *leader_mini_master) !=
+        LastReceivedOpId(cluster_.get(), cluster_->mini_master(0))) {
       if (connectivity_broken) {
         for (const auto& p : break_connectivity) {
           RETURN_NOT_OK(RestoreMasterConnectivityTo(p.first, p.second));
@@ -229,7 +264,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
       kTimeout,
       "Wait for master 0 to hear from all tservers"));
 
-  YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "test_table");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateTable(table_name, FLAGS_num_test_tablets));
   LOG(INFO) << "Created table successfully!";
 
@@ -244,9 +279,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     // term.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_preelection) = false;
 
-    consensus::ConsensusStatePB cpb;
-    ASSERT_OK(cluster_->mini_master(0)->catalog_manager().GetCurrentConfig(&cpb));
-    const auto initial_term = cpb.current_term();
+    const auto initial_term = ASSERT_RESULT(GetCurrentConfig(cluster_.get(), 0)).current_term();
 
     // master-0 cannot send updates to master 2. This will cause master-2
     // to increase its term. And cause the leader (master-0) to step down
@@ -254,22 +287,19 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     ASSERT_OK(BreakMasterConnectivityTo(0, 2));
     ASSERT_OK(WaitFor(
         [this, initial_term]() {
-          consensus::ConsensusStatePB cpb;
-          return cluster_->mini_master(2)->catalog_manager().GetCurrentConfig(&cpb).ok() &&
-                 cpb.current_term() > initial_term;
+          auto cpb = GetCurrentConfig(cluster_.get(), 2);
+          return cpb.ok() && cpb->current_term() > initial_term;
         },
         kTimeout,
         "Wait for master 2 to do elections and increase the term"));
 
     ASSERT_OK(RestoreMasterConnectivityTo(0, 2));
 
-    ASSERT_OK(cluster_->mini_master(2)->catalog_manager().GetCurrentConfig(&cpb));
-    const auto new_term = cpb.current_term();
+    const auto new_term = ASSERT_RESULT(GetCurrentConfig(cluster_.get(), 2)).current_term();
     ASSERT_OK(WaitFor(
         [this, new_term]() {
-          consensus::ConsensusStatePB cpb;
-          return cluster_->mini_master(0)->catalog_manager().GetCurrentConfig(&cpb).ok() &&
-                 cpb.current_term() > new_term;
+          auto cpb = GetCurrentConfig(cluster_.get(), 0);
+          return cpb.ok() && cpb->current_term() > new_term;
         },
         kTimeout,
         "Wait for master 0 to update its term"));
@@ -308,16 +338,11 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   ASSERT_OK(WaitFor(
     [&]() -> Result<bool> {
       // Get the config of the old leader.
-      consensus::ConsensusStatePB cbp, cbp1, cbp2;
-      RETURN_NOT_OK(
-          cluster_->mini_master(old_leader_idx)->catalog_manager().GetCurrentConfig(&cbp));
+      const auto cbp = VERIFY_RESULT(GetCurrentConfig(cluster_.get(), old_leader_idx));
 
       // Get the config of the new cluster.
-      RETURN_NOT_OK(
-          cluster_->mini_master(new_cohort_peer1)->catalog_manager().GetCurrentConfig(&cbp1));
-
-      RETURN_NOT_OK(
-          cluster_->mini_master(new_cohort_peer2)->catalog_manager().GetCurrentConfig(&cbp2));
+      const auto cbp1 = VERIFY_RESULT(GetCurrentConfig(cluster_.get(), new_cohort_peer1));
+      const auto cbp2 = VERIFY_RESULT(GetCurrentConfig(cluster_.get(), new_cohort_peer2));
 
       // Term number of the new cohort's config should increase.
       // Leader should not be the same as the old leader.
@@ -331,14 +356,10 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   ));
 
   // Get the index of the new leader.
-  string uuid1 = cluster_->mini_master(new_cohort_peer1)->master()->fs_manager()->uuid();
-  string uuid2 = cluster_->mini_master(new_cohort_peer2)->master()->fs_manager()->uuid();
+  string uuid1 = cluster_->mini_master(new_cohort_peer1)->permanent_uuid();
+  string uuid2 = cluster_->mini_master(new_cohort_peer2)->permanent_uuid();
 
-  consensus::ConsensusStatePB cbp1;
-  ASSERT_OK(cluster_->mini_master(new_cohort_peer1)
-                    ->master()
-                    ->catalog_manager()
-                    ->GetCurrentConfig(&cbp1));
+  const auto cbp1 = ASSERT_RESULT(GetCurrentConfig(cluster_.get(), new_cohort_peer1));
 
   ssize_t new_leader_idx = -1;
   if (cbp1.leader_uuid() == uuid1) {
@@ -349,12 +370,12 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   LOG(INFO) << "Leader of the new cohort " << new_leader_idx;
 
   // Wait for the leader lease to expire on the new master.
-  ASSERT_OK(cluster_->mini_master(new_leader_idx)->catalog_manager().WaitUntilCaughtUpAsLeader(
-      MonoDelta::FromSeconds(100)));
+  ASSERT_OK(
+      cluster_->mini_master(new_leader_idx)->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   // Now perform an RPC that involves a SHARED_LEADER_LOCK and confirm that it fails.
-  yb::master::Master* m = cluster_->mini_master(old_leader_idx)->master();
-  master::MasterClusterProxy proxy(&m->proxy_cache(), m->rpc_server()->GetRpcHostPort()[0]);
+  master::MasterClusterProxy proxy(
+      &cluster_->proxy_cache(), cluster_->mini_master(old_leader_idx)->bound_rpc_addr());
 
   RpcController controller;
   controller.Reset();
@@ -390,7 +411,7 @@ TEST_F(MasterPartitionedTest, DeleteEvictedReplicaAfterConnectivityRestored) {
   }
 
   const int kNumTablets = 6;
-  YBTableName table_name(YQL_DATABASE_REDIS, "my_keyspace", "delete_evicted_replica");
+  YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "delete_evicted_replica");
   ASSERT_NO_FATALS(CreateTable(table_name, kNumTablets));
 
   std::shared_ptr<client::YBTable> table;
@@ -458,9 +479,13 @@ TEST_F(MasterPartitionedTest, DeleteEvictedReplicaAfterConnectivityRestored) {
   ASSERT_OK(BreakConnectivityWithAll(cluster_.get(), target_ts_idx));
 
   ASSERT_OK(WaitFor([this, &target_uuid]() -> Result<bool> {
-    auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
-    auto desc = VERIFY_RESULT(master->ts_manager()->LookupTSByUUID(target_uuid));
-    return !desc->IsLive();
+    const auto tservers = VERIFY_RESULT(MasterTestApi(cluster_.get()).ListTabletServers());
+    for (const auto& entry : tservers.servers()) {
+      if (entry.instance_id().permanent_uuid() == target_uuid) {
+        return !entry.alive();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Tablet server $0 is not registered", target_uuid);
   }, kTimeout, "Wait for the master to mark the isolated tablet server as dead"));
   LOG(INFO) << "Master marked tablet server " << target_uuid << " as dead";
 

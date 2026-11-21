@@ -28,6 +28,7 @@
 
 #include "yb/docdb/doc_vector_index.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
@@ -35,14 +36,10 @@
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_source_manager.h"
-#include "yb/master/xcluster/xcluster_status.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -116,7 +113,6 @@ DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
 
 DECLARE_bool(TEST_block_apply_intent);
-DECLARE_int32(TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms);
 DECLARE_bool(TEST_disable_tablet_deletion);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
@@ -289,11 +285,8 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-    auto table_info = VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())
-                          ->catalog_manager_impl()
-                          .GetTableInfo(kPgSequencesDataTableId);
-    SCHECK_NOTNULL(table_info);
-    return Status::OK();
+    return ResultToStatus(
+        MasterTestApi(cluster->mini_cluster_.get()).GetTableInfo(kPgSequencesDataTableId));
   }));
 }
 
@@ -473,9 +466,6 @@ TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
 
 TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
   ASSERT_OK(SetUpClusters());
-  auto& catalog_manager =
-      ASSERT_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
   const auto namespace_id =
       ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
   auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
@@ -502,18 +492,20 @@ TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
     EXPECT_EQ(current_role, "source");
   }
 
-  // Manually change the role to AUTOMATIC_TARGET and verify the change is seen.
-  ASSERT_OK(xcluster_manager->SetXClusterRole(
-      catalog_manager.GetLeaderEpochInternal(), namespace_id,
-      XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET));
-  // TODO(mlillibridge): replace with a call to wait for heartbeats once that call is available.
-  std::this_thread::sleep_for(30s);
+  // The consumer has role AUTOMATIC_TARGET, seen the same two ways.
   {
-    EXPECT_EQ(
-        xcluster_context.GetXClusterRole(namespace_id),
-        XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET);
+    const auto consumer_namespace_id =
+        ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name));
+    auto& consumer_xcluster_context =
+        consumer_cluster_.mini_cluster_->mini_tablet_server(0)->server()->GetXClusterContext();
+    ASSERT_OK(WaitFor(
+        [&]() {
+          return consumer_xcluster_context.GetXClusterRole(consumer_namespace_id) ==
+                 XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET;
+        },
+        kTimeout, "Wait for the consumer TServer to see role AUTOMATIC_TARGET"));
     std::string current_role =
-        ASSERT_RESULT(producer_conn_->FetchRowAsString(
+        ASSERT_RESULT(consumer_conn_->FetchRowAsString(
             "SELECT yb_xcluster_ddl_replication.get_replication_role()"));
     EXPECT_EQ(current_role, "target");
   }
@@ -1064,17 +1056,10 @@ TEST_F(XClusterDDLReplicationTest, IndexCreationImmediatelyAfterInsert) {
   ASSERT_EQ(producer_result, consumer_result);
 
   // Make sure we have cleared out the xcluster_table_info information by end of backfill.
-  auto& catalog_manager = consumer_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-  {
-    auto table_info = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
-        YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, "demo", "public");
-    auto& table_info_pb = table_info->LockForRead()->pb;
-    EXPECT_TRUE(!table_info_pb.has_xcluster_table_info())
-        << AsString(table_info_pb.xcluster_table_info());
-  }
-  {
-    auto table_info = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
-        YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, "demo_mod_d_idx", "public");
+  auto catalog = ASSERT_RESULT(MasterTestApi(consumer_cluster()).Catalog());
+  for (const auto& table_name : {"demo", "demo_mod_d_idx"}) {
+    auto table_info = ASSERT_RESULT(catalog.FindTable(
+        client::YBTableName(YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, table_name)));
     auto& table_info_pb = table_info->LockForRead()->pb;
     EXPECT_TRUE(!table_info_pb.has_xcluster_table_info())
         << AsString(table_info_pb.xcluster_table_info());
@@ -1811,9 +1796,8 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedTableWithPause) {
   ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 
   // Verify that xcluster table info is cleaned up.
-  auto target_table_info = ASSERT_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMiniMaster())
-                               ->catalog_manager_impl()
-                               .GetTableInfo(consumer_table->id());
+  auto target_table_info =
+      ASSERT_RESULT(MasterTestApi(consumer_cluster()).GetTableInfo(consumer_table->id()));
   LOG(INFO) << "Table info: " << target_table_info->LockForRead()->pb.ShortDebugString();
   EXPECT_FALSE(target_table_info->LockForRead()->pb.has_xcluster_table_info());
   // Replication info should no longer have any historical schemas for this colocation id.
@@ -3615,34 +3599,25 @@ TEST_F(XClusterDDLReplicationTest, RepairOldSchemaVersionsOnLoad) {
   // Clear old_consumer_schema_versions and persist. This simulates the upgrade behaviour that
   // results in old_producer_schema_versions_size != old_consumer_schema_versions_size.
   {
-    auto* leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-    auto& catalog_mgr = leader_master->catalog_manager_impl();
-    const auto epoch = catalog_mgr.GetLeaderEpochInternal();
-    auto cluster_config = catalog_mgr.ClusterConfig();
-    auto l = cluster_config->LockForWrite();
-    auto& stream_entry = (*(*l.mutable_data()
-                                 ->pb.mutable_consumer_registry()
+    MasterTestApi api(consumer_cluster());
+    auto cluster_config = ASSERT_RESULT(api.GetClusterConfig());
+    auto& stream_entry = (*(*cluster_config.mutable_consumer_registry()
                                  ->mutable_producer_map())[kReplicationGroupId.ToString()]
                                .mutable_stream_map())[stream_id.ToString()];
     stream_entry.mutable_schema_versions()->clear_old_consumer_schema_versions();
     ASSERT_EQ(stream_entry.schema_versions().old_producer_schema_versions_size(), 1);
     ASSERT_EQ(stream_entry.schema_versions().old_consumer_schema_versions_size(), 0);
-    ASSERT_OK(catalog_mgr.sys_catalog()->Upsert(epoch, cluster_config.get()));
-    l.Commit();
+    ASSERT_OK(api.ChangeClusterConfig(cluster_config));
   }
 
-  // Restart the consumer master; SysCatalogLoaded should repair in-memory.
+  // The master pairs the old versions it has rather than reading past the shorter list, so a
+  // restarted master keeps replicating.
   ASSERT_OK(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->Restart());
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/true));
 
-  auto repaired = ASSERT_RESULT(get_schema_versions());
-  ASSERT_EQ(
-      repaired.old_producer_schema_versions_size(), repaired.old_consumer_schema_versions_size());
-  ASSERT_GT(repaired.old_producer_schema_versions_size(), 0);
-
-  // Trigger another DDL; the natural CMOP path will Upsert the repaired cluster_config to
-  // syscatalog. After this, sizes still match and we keep making progress on replication.
+  // Trigger another DDL; the master persists the stream's schema versions paired again. After
+  // this, sizes match and we keep making progress on replication.
   ASSERT_OK(producer_conn_->Execute("ALTER TABLE tbl1 ADD COLUMN b int"));
   ASSERT_OK(
       producer_conn_->Execute("INSERT INTO tbl1 SELECT i,i,i FROM generate_series(11, 20) as i"));
@@ -5772,23 +5747,28 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
       kTimeout, "Wait for master to report REPLICATION_DDL_QUEUE_PAUSED"));
 
   // Check that the master also has the full error string.
-  auto& catalog_manager =
-      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-  const auto xcluster_status =
-      ASSERT_RESULT(catalog_manager.GetXClusterManagerImpl()->GetXClusterStatus());
+  auto master_proxy = ASSERT_RESULT(
+      consumer_cluster()->GetLeaderMasterProxy<master::MasterReplicationProxy>());
+  master::GetReplicationStatusRequestPB status_req;
+  master::GetReplicationStatusResponsePB status_resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kTimeout);
+  ASSERT_OK(master_proxy.GetReplicationStatus(status_req, &status_resp, &rpc));
+  ASSERT_FALSE(status_resp.has_error()) << status_resp.ShortDebugString();
   bool found_ddl_queue_status = false;
-  for (const auto& group : xcluster_status.inbound_replication_group_statuses) {
-    for (const auto& [_, table_statuses] : group.table_statuses_by_namespace) {
-      for (const auto& table : table_statuses) {
-        if (table.target_table_id == consumer_ddl_queue_table.table_id()) {
-          found_ddl_queue_status = true;
-          ASSERT_STR_CONTAINS(table.status, "DDL_QUEUE_PAUSED");
-          ASSERT_STR_CONTAINS(table.status, "Failed DDL operation as requested");
-        }
+  for (const auto& table : status_resp.statuses()) {
+    if (table.table_id() != consumer_ddl_queue_table.table_id()) {
+      continue;
+    }
+    for (const auto& error : table.errors()) {
+      if (error.error() == ReplicationErrorPb::REPLICATION_DDL_QUEUE_PAUSED) {
+        found_ddl_queue_status = true;
+        ASSERT_STR_CONTAINS(error.error_detail(), "Failed DDL operation as requested");
       }
     }
   }
-  ASSERT_TRUE(found_ddl_queue_status) << "ddl_queue table not found in xCluster status";
+  ASSERT_TRUE(found_ddl_queue_status)
+      << "ddl_queue table's DDL_QUEUE_PAUSED error not found in " << status_resp.ShortDebugString();
 }
 
 // The ddl_queue poller waits for the other pollers to reach the apply safe time before running a
@@ -7063,19 +7043,14 @@ TEST_F(XClusterDDLReplicationTest, AddForeignKeySkipsValidationOnTarget) {
       ASSERT_RESULT(consumer_conn_->FetchRow<int32_t>("SELECT id FROM parent WHERE id = 6")), 6);
 }
 
-// Regression for the SchedulePostTabletCreationTasks check-then-act race. Concurrent heartbeat
-// threads can each schedule AddTableToXClusterTargetTask for the same multi-tablet table, and
-// the duplicates fail with "N:1 replication topology not supported", aborting the target CREATE.
+// Each tablet of a new multi-tablet table reports to the master, and only one
+// AddTableToXClusterTargetTask may run for the table: duplicates fail with "N:1 replication
+// topology not supported", aborting the target CREATE.
 TEST_F(XClusterDDLReplicationTest, CreateMultiTabletTableDoesNotScheduleDuplicateTasks) {
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.replication_factor = 3;
   ASSERT_OK(SetUpClustersAndReplication(params));
   ASSERT_OK(MoveDdlQueueTabletLeaderToPgProxy(consumer_cluster_));
-
-  // The normal check-then-act window is tiny, so we widen it with a delay to make the real
-  // concurrent heartbeat race reproduce reliably.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms) =
-      3000;
 
   StringWaiterLogSink n1_error_sink("N:1 replication topology not supported");
 
@@ -7322,14 +7297,10 @@ class XClusterWalAnchorStreamTest : public XClusterDDLReplicationTest {
     return table->id();
   }
 
-  Result<master::XClusterManager*> SourceXClusterManager() {
-    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
-    return leader->catalog_manager_impl().GetXClusterManagerImpl();
-  }
-
   // The WAL anchor stream id for source_table_id, or empty string if the table has no anchor.
   Result<std::string> GetWalAnchorStreamId(const TableId& source_table_id) {
-    return VERIFY_RESULT(SourceXClusterManager())->TEST_GetWalAnchorStreamId(source_table_id);
+    auto stream_ids = VERIFY_RESULT(SourceWalAnchorStreamIdsForTable(source_table_id));
+    return stream_ids.empty() ? std::string() : *stream_ids.begin();
   }
 
   Result<bool> HasWalAnchorStream(const TableId& source_table_id) {
@@ -7396,13 +7367,9 @@ class XClusterWalAnchorStreamTest : public XClusterDDLReplicationTest {
 
   Result<master::ListCDCStreamsResponsePB> ListSourceStreamsForTable(
       const TableId& source_table_id) {
-    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
     master::ListCDCStreamsRequestPB req;
-    master::ListCDCStreamsResponsePB resp;
     req.set_table_id(source_table_id);
-    RETURN_NOT_OK(leader->catalog_manager_impl().ListCDCStreams(&req, &resp));
-    SCHECK(!resp.has_error(), IllegalState, "ListCDCStreams failed");
-    return resp;
+    return MasterTestApi(producer_cluster()).ListCDCStreams(req);
   }
 
   Result<std::set<std::string>> SourceStreamIdsForTable(const TableId& source_table_id) {
@@ -7428,18 +7395,12 @@ class XClusterWalAnchorStreamTest : public XClusterDDLReplicationTest {
   }
 
   Result<size_t> CountAllSourceXClusterStreams() {
-    auto* leader = VERIFY_RESULT(producer_cluster_.mini_cluster_->GetLeaderMiniMaster());
-    master::ListCDCStreamsRequestPB req;
-    master::ListCDCStreamsResponsePB resp;
-    RETURN_NOT_OK(leader->catalog_manager_impl().ListCDCStreams(&req, &resp));
-    SCHECK(!resp.has_error(), IllegalState, "ListCDCStreams failed");
+    auto resp = VERIFY_RESULT(MasterTestApi(producer_cluster()).ListCDCStreams({}));
     return static_cast<size_t>(resp.streams_size());
   }
 
   Result<bool> TargetHasPendingDeletionMarker(const TableId& target_table_id) {
-    auto* leader = VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMiniMaster());
-    auto table_info = leader->catalog_manager_impl().GetTableInfo(target_table_id);
-    SCHECK(table_info != nullptr, NotFound, "Target table info not found");
+    auto table_info = VERIFY_RESULT(MasterTestApi(consumer_cluster()).GetTableInfo(target_table_id));
     return table_info->LockForRead()
         ->pb.has_xcluster_pending_wal_anchor_deletion_source_table_id();
   }

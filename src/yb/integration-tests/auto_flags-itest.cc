@@ -17,14 +17,15 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master_auto_flags_manager.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base.proxy.h"
 
@@ -35,6 +36,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/common/version_info.h"
 
@@ -181,9 +183,40 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
     return CreateClient();
   }
 
+  Result<AutoFlagsConfigPB> LeaderConfig() {
+    return MasterTestApi(cluster_.get()).GetAutoFlagsConfig();
+  }
+
+  // The config version the master has applied, as its GenericService reports it. A follower's
+  // config is not served over RPC; its version shows whether it has the leader's config.
+  Result<uint32_t> MasterConfigVersion(master::MiniMaster* master) {
+    server::GenericServiceProxy proxy(&cluster_->proxy_cache(), master->bound_rpc_addr());
+    server::GetAutoFlagsConfigVersionRequestPB req;
+    server::GetAutoFlagsConfigVersionResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kTimeout);
+    RETURN_NOT_OK(proxy.GetAutoFlagsConfigVersion(req, &resp, &controller));
+    return resp.config_version();
+  }
+
+  template <class Req, class Resp>
+  Result<Resp> CallLeader(
+      Status (master::MasterClusterProxy::*method)(
+          const Req&, Resp*, rpc::RpcController*) const,
+      const Req& req) {
+    auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+    Resp resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kTimeout);
+    RETURN_NOT_OK((proxy.*method)(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
   Status ValidateConfig() {
-    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    const AutoFlagsConfigPB leader_config = leader_master->master()->GetAutoFlagsConfig();
+    const AutoFlagsConfigPB leader_config = VERIFY_RESULT(LeaderConfig());
     const auto leader_config_process_count =
         static_cast<size_t>(leader_config.promoted_flags().size());
 
@@ -208,12 +241,10 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
 
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
       auto master = cluster_->mini_master(i);
-      const AutoFlagsConfigPB follower_config = master->master()->GetAutoFlagsConfig();
       SCHECK_EQ(
-          follower_config.DebugString(), leader_config.DebugString(), IllegalState,
-          Format(
-              "Config of master follower $0 does not match leader $1", *master->master(),
-              *leader_master->master()));
+          VERIFY_RESULT(MasterConfigVersion(master)), leader_config.config_version(),
+          IllegalState,
+          Format("Config version of master $0 does not match the leader's", master->ToString()));
     }
 
     RETURN_NOT_OK(cluster_->AddTabletServer());
@@ -224,56 +255,38 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
       const AutoFlagsConfigPB tserver_config = tserver->server()->TEST_GetAutoFlagConfig();
       SCHECK_EQ(
           tserver_config.DebugString(), leader_config.DebugString(), IllegalState,
-          Format(
-              "Config of tserver $0 does not match leader $1", *tserver->server(),
-              *leader_master->master()));
+          Format("Config of tserver $0 does not match the leader's", *tserver->server()));
     }
 
     return OK();
   }
 
-  Status WaitForAllLeaderOpsToApply() {
-    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
-    auto leader_peer = leader_master->catalog_manager()->tablet_peer();
-    const auto last_op_id = leader_peer->log()->GetLatestEntryOpId();
-
-    return WaitFor(
-        [&]() -> Result<bool> {
-          auto applied_op_id = VERIFY_RESULT(leader_peer->GetRaftConsensus())->GetAllAppliedOpId();
-          return applied_op_id >= last_op_id;
-        },
-        kTimeout, Format("Wait OpId apply within $0 seconds failed", kTimeout.ToSeconds()));
-  }
-
   Status ValidateConfigOnMasters(uint32_t expected_config_version) {
-    RETURN_NOT_OK(WaitForAllLeaderOpsToApply());
-
-    auto* leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
-    const auto leader_config = leader_master->GetAutoFlagsConfig();
+    const auto leader_config = VERIFY_RESULT(LeaderConfig());
     SCHECK_EQ(
         expected_config_version, leader_config.config_version(), IllegalState,
-        Format("Invalid Config version leader master $0", *leader_master));
+        "Invalid Config version on the leader master");
 
+    // The followers apply the config as they replicate the leader's sys catalog write.
     for (size_t i = 0; i < cluster_->num_masters(); i++) {
       auto master = cluster_->mini_master(i);
-      const auto follower_config = master->master()->GetAutoFlagsConfig();
-      SCHECK_EQ(
-          follower_config.DebugString(), leader_config.DebugString(), IllegalState,
-          Format(
-              "Config of master follower $0 does not match leader $1", *master->master(),
-              *leader_master));
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            return VERIFY_RESULT(MasterConfigVersion(master)) == expected_config_version;
+          },
+          kTimeout, Format("Config version $0 on master $1", expected_config_version,
+                           master->ToString())));
     }
 
     return OK();
   }
 
   Status ValidateConfigOnTservers(uint32_t expected_config_version) {
-    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master();
-    const auto master_config = leader_master->GetAutoFlagsConfig();
+    const auto master_config = VERIFY_RESULT(LeaderConfig());
     SCHECK_EQ(
         expected_config_version, master_config.config_version(), IllegalState,
-        Format("Invalid Config version leader master $0", *leader_master));
-    LOG(INFO) << leader_master->ToString() << " AutoFlag config: " << master_config.DebugString();
+        "Invalid Config version on the leader master");
+    LOG(INFO) << "Leader master AutoFlag config: " << master_config.DebugString();
 
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       auto tserver = cluster_->mini_tablet_server(i);
@@ -296,32 +309,28 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
   }
 
   Result<master::PromoteAutoFlagsResponsePB> PromoteFlags(
-      master::Master* leader_master, AutoFlagClass flag_class, bool force = false) {
+      const master::PromoteAutoFlagsRequestPB& req) {
+    return CallLeader(&master::MasterClusterProxy::PromoteAutoFlags, req);
+  }
+
+  Result<master::PromoteAutoFlagsResponsePB> PromoteFlags(
+      AutoFlagClass flag_class, bool force = false) {
     master::PromoteAutoFlagsRequestPB req;
     req.set_max_flag_class(ToString(flag_class));
     req.set_promote_non_runtime_flags(true);
     req.set_force(force);
-
-    master::PromoteAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
-
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-
-    return resp;
+    return PromoteFlags(req);
   }
 
-  auto PromoteFlagsAndValidate(
-      uint32 expected_config_version, master::Master* leader_master, AutoFlagClass flag_class) {
-    auto resp = CHECK_RESULT(PromoteFlags(leader_master, flag_class, /* force */ false));
+  auto PromoteFlagsAndValidate(uint32 expected_config_version, AutoFlagClass flag_class) {
+    auto resp = CHECK_RESULT(PromoteFlags(flag_class, /* force */ false));
     CHECK(resp.has_new_config_version());
     CHECK_EQ(resp.new_config_version(), expected_config_version);
     CHECK(resp.flags_promoted());
 
     CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
 
-    auto config = leader_master->GetAutoFlagsConfig();
+    auto config = CHECK_RESULT(LeaderConfig());
     CHECK_EQ(expected_config_version, config.config_version());
     CHECK_GE(CountPromotedFlags(config), 1);
     return config;
@@ -329,23 +338,21 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
 
   auto RollbackFlagsAndValidate(
       uint32_t rollback_config_version, uint32_t expected_config_version,
-      master::Master* leader_master, bool expect_success = true) {
+      bool expect_success = true) {
     master::RollbackAutoFlagsRequestPB rollback_req;
     rollback_req.set_rollback_version(rollback_config_version);
 
-    master::RollbackAutoFlagsResponsePB rollback_resp;
-    auto s =
-        leader_master->GetAutoFlagsManagerImpl()->RollbackAutoFlags(&rollback_req, &rollback_resp);
-    auto config = leader_master->GetAutoFlagsConfig();
+    auto rollback_resp =
+        CallLeader(&master::MasterClusterProxy::RollbackAutoFlags, rollback_req);
+    auto config = CHECK_RESULT(LeaderConfig());
     if (!expect_success) {
-      CHECK(!s.ok());
+      CHECK(!rollback_resp.ok());
       return config;
     }
 
-    CHECK_OK(s);
-    CHECK(!rollback_resp.has_error());
-    CHECK_EQ(rollback_resp.new_config_version(), expected_config_version);
-    CHECK(rollback_resp.flags_rolledback());
+    CHECK_OK(rollback_resp);
+    CHECK_EQ(rollback_resp->new_config_version(), expected_config_version);
+    CHECK(rollback_resp->flags_rolledback());
     CHECK_EQ(expected_config_version, config.config_version());
 
     CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
@@ -354,25 +361,23 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
   }
 
   auto DemoteSingleFlagAndValidate(
-      const std::string& process_name, const std::string& flag_name, master::Master* leader_master,
+      const std::string& process_name, const std::string& flag_name,
       uint32_t& expected_config_version, bool flag_demoted = true, bool expect_success = true) {
     master::DemoteSingleAutoFlagRequestPB req;
     req.set_process_name(process_name);
     req.set_auto_flag_name(flag_name);
-    master::DemoteSingleAutoFlagResponsePB resp;
-    auto s = leader_master->GetAutoFlagsManagerImpl()->DemoteSingleAutoFlag(&req, &resp);
-    auto config = leader_master->GetAutoFlagsConfig();
+    auto resp = CallLeader(&master::MasterClusterProxy::DemoteSingleAutoFlag, req);
+    auto config = CHECK_RESULT(LeaderConfig());
 
     if (!expect_success) {
-      CHECK(!s.ok());
+      CHECK(!resp.ok());
       return config;
     }
 
-    CHECK_OK(s);
-    CHECK(!resp.has_error());
-    CHECK(resp.has_new_config_version());
-    CHECK_EQ(resp.new_config_version(), expected_config_version);
-    CHECK_EQ(resp.flag_demoted(), flag_demoted);
+    CHECK_OK(resp);
+    CHECK(resp->has_new_config_version());
+    CHECK_EQ(resp->new_config_version(), expected_config_version);
+    CHECK_EQ(resp->flag_demoted(), flag_demoted);
 
     CHECK_OK(ValidateConfigOnAllProcesses(expected_config_version));
 
@@ -402,8 +407,7 @@ TEST_F(AutoFlagsMiniClusterTest, BackfillFlagInfos) {
   ASSERT_OK(RunSetUp());
   ASSERT_OK(ValidateConfig());
 
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto config = leader_master->GetAutoFlagsConfig();
+  auto config = ASSERT_RESULT(LeaderConfig());
 
   // yb-master and yb-tserver processes
   ASSERT_EQ(config.promoted_flags_size(), 2);
@@ -415,7 +419,7 @@ TEST_F(AutoFlagsMiniClusterTest, BackfillFlagInfos) {
   uint32 expected_config_version = 2;
   ASSERT_NO_FATALS(
       config = PromoteFlagsAndValidate(
-          expected_config_version, leader_master, AutoFlagClass::kLocalVolatile));
+          expected_config_version, AutoFlagClass::kLocalVolatile));
 
   // flag_infos should now be set
   ASSERT_EQ(config.promoted_flags(0).flag_infos_size(), config.promoted_flags(0).flags_size());
@@ -432,17 +436,12 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
   // Start with an empty config
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
 
   ASSERT_OK(TestPromote(
       /* get_current_config */
-      [&]() { return leader_master->GetAutoFlagsConfig(); },
+      [&]() { return LeaderConfig(); },
       /* promote_auto_flags */
-      [&](const auto& req) -> Result<master::PromoteAutoFlagsResponsePB> {
-        master::PromoteAutoFlagsResponsePB resp;
-        RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
-        return resp;
-      },
+      [&](const auto& req) { return PromoteFlags(req); },
       /* validate_config_on_all_nodes */
       [&](uint32_t config_version) { return ValidateConfigOnAllProcesses(config_version); }));
 }
@@ -451,53 +450,51 @@ TEST_F(AutoFlagsMiniClusterTest, Rollback) {
   // Start with an empty config.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_limit_auto_flag_promote_for_new_universe) = 0;
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   uint32 expected_config_version = 0;
-  auto config = leader_master->GetAutoFlagsConfig();
+  auto config = ASSERT_RESULT(LeaderConfig());
   ASSERT_EQ(expected_config_version, config.config_version());
   ASSERT_EQ(0, CountPromotedFlags(config));
 
   // Promote kLocalVolatile flags.
   ASSERT_NO_FATALS(PromoteFlagsAndValidate(
-      ++expected_config_version, leader_master, AutoFlagClass::kLocalVolatile));
+      ++expected_config_version, AutoFlagClass::kLocalVolatile));
 
   // Rollback the promoted flags.
   auto rollback_version = expected_config_version - 1;
   ASSERT_NO_FATALS(
-      RollbackFlagsAndValidate(rollback_version, ++expected_config_version, leader_master));
+      RollbackFlagsAndValidate(rollback_version, ++expected_config_version));
   CHECK_EQ(0, CountPromotedFlags(config));
 
   // Promote kLocalVolatile flags again.
   ASSERT_NO_FATALS(PromoteFlagsAndValidate(
-      ++expected_config_version, leader_master, AutoFlagClass::kLocalVolatile));
+      ++expected_config_version, AutoFlagClass::kLocalVolatile));
 
   // Rollback promoted flags back to initial version 0.
-  ASSERT_NO_FATALS(RollbackFlagsAndValidate(0, ++expected_config_version, leader_master));
+  ASSERT_NO_FATALS(RollbackFlagsAndValidate(0, ++expected_config_version));
   CHECK_EQ(0, CountPromotedFlags(config));
 
   // Promote kExternal AutoFlags.
   ASSERT_NO_FATALS(
-      PromoteFlagsAndValidate(++expected_config_version, leader_master, AutoFlagClass::kExternal));
+      PromoteFlagsAndValidate(++expected_config_version, AutoFlagClass::kExternal));
 
   // Rollback AutoFlags should now fail.
   rollback_version = expected_config_version - 1;
   ASSERT_NO_FATALS(RollbackFlagsAndValidate(
-      rollback_version, ++expected_config_version, leader_master, /* expect_success= */ false));
+      rollback_version, ++expected_config_version, /* expect_success= */ false));
   ASSERT_NO_FATALS(RollbackFlagsAndValidate(
-      0, ++expected_config_version, leader_master, /* expect_success= */ false));
+      0, ++expected_config_version, /* expect_success= */ false));
 }
 
 TEST_F(AutoFlagsMiniClusterTest, Demote) {
   ASSERT_OK(RunSetUp());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_flags_apply_delay_ms) = 0;
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   uint32 expected_config_version = 1;
   const auto kExternalAutoFlagName = "enable_tablet_split_of_xcluster_replicated_tables";
   const auto& kExternalAutoFlag = FLAGS_enable_tablet_split_of_xcluster_replicated_tables;
   const auto kYbMasterProcess = "yb-master";
 
   // Initial config.
-  auto config = leader_master->GetAutoFlagsConfig();
+  auto config = ASSERT_RESULT(LeaderConfig());
   ASSERT_EQ(expected_config_version, config.config_version());
   // Flag exists with latest promoted_version.
   ASSERT_EQ(CountFlagsInConfig(kExternalAutoFlagName, config, config.config_version()), 1);
@@ -506,7 +503,7 @@ TEST_F(AutoFlagsMiniClusterTest, Demote) {
   // Demote external flag.
   ASSERT_NO_FATALS(
       config = DemoteSingleFlagAndValidate(
-          kYbMasterProcess, kExternalAutoFlagName, leader_master, ++expected_config_version));
+          kYbMasterProcess, kExternalAutoFlagName, ++expected_config_version));
   // Flag does not exist in any vers
   ASSERT_EQ(CountFlagsInConfig(kExternalAutoFlagName, config), 0);
   ASSERT_EQ(CountPromotedFlags(config), initial_promoted_flags_count - 1);
@@ -515,7 +512,7 @@ TEST_F(AutoFlagsMiniClusterTest, Demote) {
   // Demote of an un-promoted external flag should be a no-op.
   ASSERT_NO_FATALS(
       config = DemoteSingleFlagAndValidate(
-          kYbMasterProcess, kExternalAutoFlagName, leader_master, expected_config_version,
+          kYbMasterProcess, kExternalAutoFlagName, expected_config_version,
           /* flag_demoted = */ false));
   ASSERT_EQ(CountFlagsInConfig(kExternalAutoFlagName, config), 0);
   ASSERT_EQ(CountPromotedFlags(config), initial_promoted_flags_count - 1);
@@ -524,7 +521,7 @@ TEST_F(AutoFlagsMiniClusterTest, Demote) {
   // Promote all AutoFlags.
   ASSERT_NO_FATALS(
       config = PromoteFlagsAndValidate(
-          ++expected_config_version, leader_master, AutoFlagClass::kExternal));
+          ++expected_config_version, AutoFlagClass::kExternal));
   ASSERT_EQ(CountFlagsInConfig(kExternalAutoFlagName, config, config.config_version()), 1);
   ASSERT_EQ(CountPromotedFlags(config), initial_promoted_flags_count);
   ASSERT_TRUE(kExternalAutoFlag);
@@ -535,8 +532,7 @@ TEST_F(AutoFlagsMiniClusterTest, Demote) {
 TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_versioned_auto_flags) = true;
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto config = leader_master->GetAutoFlagsConfig();
+  auto config = ASSERT_RESULT(LeaderConfig());
 
   // yb-master and yb-tserver processes
   ASSERT_EQ(config.promoted_flags_size(), 2);
@@ -551,36 +547,13 @@ TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
   // Demote and promote a flag so that it has a higher version than the rest.
   ASSERT_NO_FATALS(
       config = DemoteSingleFlagAndValidate(
-          kYbTServerProcess, kVolatileAutoFlagName, leader_master, expected_config_version,
+          kYbTServerProcess, kVolatileAutoFlagName, expected_config_version,
           /* flag_demoted = */ false, /* expect_success = */ false));
 
   // flag_infos should still not be set
   ASSERT_EQ(config.promoted_flags(0).flag_infos_size(), 0);
   ASSERT_EQ(config.promoted_flags(1).flag_infos_size(), 0);
 }
-
-// This test is in master namespace so that it can access private methods of
-// yb::master::MasterAutoFlagsManager.
-namespace master {
-TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
-  ASSERT_OK(RunSetUp());
-  ASSERT_OK(ValidateConfig());
-
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto auto_flags_manager = leader_master->master()->GetAutoFlagsManagerImpl();
-
-  auto config = auto_flags_manager->GetConfig();
-  for (auto& promoted_flags : *config.mutable_promoted_flags()) {
-    promoted_flags.add_flags("missing_flag");
-  }
-  config.set_config_version(config.config_version() + 1);
-
-  auto s = auto_flags_manager->LoadNewConfig(config);
-  ASSERT_NOK(s);
-  ASSERT_TRUE(s.ToString().find("missing_flag") != std::string::npos) << s;
-  ASSERT_TRUE(s.ToString().find(VersionInfo::GetShortVersionString()) != std::string::npos) << s;
-}
-}  // namespace master
 
 // Make sure AutoFlags are not applied before auto_flags_apply_delay_ms
 TEST_F(AutoFlagsMiniClusterTest, HeartbeatDelay) {
@@ -590,8 +563,7 @@ TEST_F(AutoFlagsMiniClusterTest, HeartbeatDelay) {
   // Wait for initial heartbeats with full tablet reports to finish.
   SleepFor(kTimeout);
 
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  auto initial_config_version = leader_master->GetAutoFlagConfigVersion();
+  auto initial_config_version = ASSERT_RESULT(LeaderConfig()).config_version();
 
   std::vector<tserver::TabletServer*> tservers;
   for (auto mini_tablet_server : cluster_->mini_tablet_servers()) {
@@ -621,7 +593,7 @@ TEST_F(AutoFlagsMiniClusterTest, HeartbeatDelay) {
 
   // Bump up the config.
   auto config =
-      ASSERT_RESULT(PromoteFlags(leader_master, AutoFlagClass::kExternal, /* force */ true));
+      ASSERT_RESULT(PromoteFlags(AutoFlagClass::kExternal, /* force */ true));
   ASSERT_EQ(config.new_config_version(), initial_config_version + 1);
   SleepFor(MonoDelta::FromMilliseconds(heartbeat_sleep_ms));
 
@@ -663,7 +635,7 @@ TEST_F(AutoFlagsMiniClusterTest, AddTserverBeforeApplyDelay) {
   AutoFlagsConfigPB config;
   ASSERT_NO_FATALS(
       config = PromoteFlagsAndValidate(
-          ++expected_config_version, leader_master->master(), AutoFlagClass::kExternal));
+          ++expected_config_version, AutoFlagClass::kExternal));
 
   ASSERT_TRUE(config.has_config_apply_time());
   HybridTime config_apply_ht;
@@ -699,7 +671,6 @@ TEST_F(AutoFlagsMiniClusterTest, RollbackBeforeApply) {
   const auto& kLocalVolatileAutoFlag = FLAGS_ysql_yb_pushdown_strict_inequality;
 
   ASSERT_OK(RunSetUp());
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   uint32 initial_config_version = 0;
   CHECK_OK(ValidateConfigOnAllProcesses(initial_config_version));
 
@@ -712,12 +683,12 @@ TEST_F(AutoFlagsMiniClusterTest, RollbackBeforeApply) {
 
   ASSERT_NO_FATALS(
       auto config = PromoteFlagsAndValidate(
-          initial_config_version + 1, leader_master, AutoFlagClass::kLocalVolatile));
+          initial_config_version + 1, AutoFlagClass::kLocalVolatile));
   ASSERT_FALSE(kLocalVolatileAutoFlag);
 
   // Rollback before the Apply happens.
   ASSERT_NO_FATALS(
-      RollbackFlagsAndValidate(initial_config_version, initial_config_version + 2, leader_master));
+      RollbackFlagsAndValidate(initial_config_version, initial_config_version + 2));
   ASSERT_FALSE(kLocalVolatileAutoFlag);
 
   // Wait for 3x the Apply delay.
@@ -737,8 +708,7 @@ TEST_F(AutoFlagsMiniClusterTest, ValidateAutoFlagsConfig) {
   const auto kVolatileAutoFlagName = "ysql_yb_pushdown_strict_inequality";
   ASSERT_OK(RunSetUp());
 
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  const auto current_config = leader_master->master()->GetAutoFlagsConfig();
+  const auto current_config = ASSERT_RESULT(LeaderConfig());
   AutoFlagsConfigPB config;
   config.set_config_version(kMinAutoFlagsConfigVersion);
 

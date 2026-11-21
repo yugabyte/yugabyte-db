@@ -60,12 +60,12 @@
 #include "yb/integration-tests/create-table-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
@@ -3144,14 +3144,6 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
     return STATUS(NotFound, "No tablets found");
   }
 
-  Result<master::TabletInfoPtr> GetSingleTestTabletInfo(
-      master::CatalogManagerIf* catalog_mgr) {
-    auto tablet_infos =
-        VERIFY_RESULT(catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets());
-    SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
-    return tablet_infos.front();
-  }
-
  protected:
   Status WriteRow(int32_t k, int32_t v) {
     VERIFY_RESULT(client::kv_table_test::WriteRow(&table_handle_, client_->NewSession(60s), k, v));
@@ -3194,8 +3186,6 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
     const auto new_ts_id = new_tserver->permanent_uuid();
     LOG(INFO) << "Added new tserver: " << new_ts_id;
 
-    auto* const catalog_mgr = &CHECK_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
     BuildTServerMap();
     const auto leader = ts_map_[leader_id].get();
 
@@ -3204,7 +3194,16 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
         leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, std::nullopt, 10s));
 
     // Wait for config change reported to master.
-    ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto locations = VERIFY_RESULT(MasterTestApi(cluster_.get()).GetTabletLocations(
+              tablet_id));
+          const auto& replicas = locations.replicas();
+          return std::any_of(replicas.begin(), replicas.end(), [&](const auto& replica) {
+            return replica.ts_info().permanent_uuid() == new_ts_id;
+          });
+        },
+        20s * kTimeMultiplier, Format("Waiting for replica $0 to be added", new_ts_id)));
 
     // Wait until replicated to new tserver and ready for electing it as new leader.
     ASSERT_OK(WaitFor(

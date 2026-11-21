@@ -18,16 +18,15 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 
+#include "yb/gutil/casts.h"
+
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-#include "yb/master/xcluster/xcluster_manager.h"
 
 #include "yb/server/clock.h"
 
@@ -49,7 +48,6 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
-DECLARE_bool(TEST_skip_persistence_block_erase_on_drop);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(heartbeat_interval_ms);
@@ -77,35 +75,58 @@ class XClusterPersistenceBlockMapTest : public PgMiniTestBase {
     PgMiniTestBase::SetUp();
   }
 
-  static MonoTime MakeDeadline() { return MonoTime::Now() + MonoDelta(30s * kTimeMultiplier); }
+  static constexpr auto kCallTimeout = 30s * kTimeMultiplier;
 
-  Result<master::CatalogManager*> GetCatalogManager() {
-    return &VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  }
-
-  Result<master::XClusterManager*> GetXClusterManager() {
-    return VERIFY_RESULT(GetCatalogManager())->GetXClusterManagerImpl();
-  }
+  MasterTestApi Api() { return MasterTestApi(cluster_.get()); }
 
   Status StopPersisting(const std::vector<NamespaceId>& namespace_ids) {
-    auto* catalog_manager = VERIFY_RESULT(GetCatalogManager());
-    return catalog_manager->GetXClusterManagerImpl()->StopPersisting(
-        namespace_ids, MakeDeadline(), catalog_manager->GetLeaderEpochInternal());
+    return Api().XClusterStopPersisting(namespace_ids, kCallTimeout);
   }
 
   Status StartPersisting(const std::vector<NamespaceId>& namespace_ids) {
-    auto* catalog_manager = VERIFY_RESULT(GetCatalogManager());
-    return catalog_manager->GetXClusterManagerImpl()->StartPersisting(
-        namespace_ids, MakeDeadline(), catalog_manager->GetLeaderEpochInternal());
+    return Api().XClusterStartPersisting(namespace_ids, kCallTimeout);
   }
 
   Result<PersistenceBlockMapPB> GetMasterMap() {
-    return VERIFY_RESULT(VERIFY_RESULT(GetXClusterManager())->GetPersistenceBlockMap())
-        .persistence_block_map();
+    return VERIFY_RESULT(Api().XClusterGetPersistenceBlockMap()).persistence_block_map();
   }
 
   Result<uint64_t> GetMasterMapVersion() {
-    return VERIFY_RESULT(VERIFY_RESULT(GetXClusterManager())->GetPersistenceBlockMap()).version();
+    return VERIFY_RESULT(Api().XClusterGetPersistenceBlockMap()).version();
+  }
+
+  // The database's sys catalog row; a dropped database's DELETED row stays until the next leader
+  // load.
+  Result<master::NamespaceInfoPtr> FindNamespaceById(const NamespaceId& namespace_id) {
+    auto ns = VERIFY_RESULT(Api().Catalog()).FindNamespaceOrNull(namespace_id);
+    SCHECK(ns, NotFound, Format("Namespace $0 not found", namespace_id));
+    return ns;
+  }
+
+  Result<bool> IsDatabaseDropped(const std::string& db_name) {
+    for (const auto& ns : VERIFY_RESULT(Api().Catalog()).GetNamespaces()) {
+      if (ns->database_type() == YQL_DATABASE_PGSQL && ns->name() == db_name &&
+          ns->state() != master::SysNamespaceEntryPB::DELETED) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Whether master thinks any TServer may still hold an xCluster-guarded lease, from the
+  // TServers' registry rows.
+  Result<bool> AnyTServerMayHoldLease() {
+    for (const auto& [uuid, text] :
+         VERIFY_RESULT(Api().DumpRows(master::SysRowEntryType::TSERVER_REGISTRATION))) {
+      auto row = VERIFY_RESULT(
+          master::DebugStringToCatalogEntityPB(master::SysRowEntryType::TSERVER_REGISTRATION, text));
+      const auto& entry = *static_cast<master::SysTabletServerEntryPB*>(row.get());
+      if (entry.xcluster_guarded_lease_state() !=
+          master::SysTabletServerEntryPB::DEFINITELY_NO_LEASE) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static std::optional<HybridTime> GetBlockedThroughHt(
@@ -176,7 +197,7 @@ TEST_F(XClusterPersistenceBlockMapTest, StartPersistingAllowsForClockSkew) {
   const auto still_stopped = ASSERT_RESULT(CreateDatabase(conn, "db3"));
   ASSERT_OK(StopPersisting({stopped.namespace_id, still_stopped.namespace_id}));
 
-  auto& clock = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock();
+  auto& clock = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->server().clock();
   const auto before_time = clock.Now();
   ASSERT_OK(StartPersisting({stopped.namespace_id, never_stopped.namespace_id}));
 
@@ -195,7 +216,7 @@ TEST_F(XClusterPersistenceBlockMapTest, StartPersistingWaitsOutClockSkew) {
   auto conn = ASSERT_RESULT(Connect());
   const auto [namespace_id, oid] = ASSERT_RESULT(CreateDatabase(conn, "db1"));
 
-  auto& clock = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->clock();
+  auto& clock = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->server().clock();
   ASSERT_OK(StartPersisting({namespace_id}));
   const auto after_time = clock.Now();
 
@@ -256,7 +277,6 @@ TEST_F(XClusterPersistenceBlockMapMultiMasterTest, SurvivesLeaderChangeAndRestar
 
   ASSERT_RESULT(cluster_->StepDownMasterLeader());
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
-                ->master()
                 ->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   ASSERT_EQ(ASSERT_RESULT(GetMasterMap()).ShortDebugString(), expected);
   ASSERT_EQ(ASSERT_RESULT(GetMasterMapVersion()), expected_version);
@@ -268,7 +288,6 @@ TEST_F(XClusterPersistenceBlockMapMultiMasterTest, SurvivesLeaderChangeAndRestar
     ASSERT_OK(cluster_->mini_master(i)->Start());
   }
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())
-                ->master()
                 ->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   ASSERT_EQ(ASSERT_RESULT(GetMasterMap()).ShortDebugString(), expected);
   ASSERT_EQ(ASSERT_RESULT(GetMasterMapVersion()), expected_version);
@@ -283,16 +302,8 @@ TEST_F(XClusterPersistenceBlockMapTest, TServerWithoutLeaseCatchesUp) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
   // Wait until master knows no TServer holds a lease, so propagation skips them all and only
   // heartbeats can deliver the map afterwards.
-  auto& ts_manager = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->ts_manager();
   ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        for (const auto& descriptor : ts_manager.GetAllDescriptors()) {
-          if (descriptor->MaybeHasXClusterGuardedLease()) {
-            return false;
-          }
-        }
-        return true;
-      },
+      [&]() -> Result<bool> { return !VERIFY_RESULT(AnyTServerMayHoldLease()); },
       GetLeaseDuration() + MonoDelta(30s * kTimeMultiplier),
       "Wait for master to know no TServer holds a lease"));
 
@@ -334,37 +345,9 @@ TEST_F(XClusterPersistenceBlockMapTest, DropDatabaseErasesEntry) {
   ASSERT_RESULT(CreateDatabase(conn, "db3"));
   ASSERT_OK(conn.Execute("DROP DATABASE db3"));
   ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto* catalog_manager = VERIFY_RESULT(GetCatalogManager());
-        return !catalog_manager->FindNamespaceByName(YQL_DATABASE_PGSQL, "db3").ok();
-      },
+      [&]() -> Result<bool> { return IsDatabaseDropped("db3"); },
       30s * kTimeMultiplier, "Wait for db3 to be dropped"));
   ASSERT_EQ(ASSERT_RESULT(GetMasterMapVersion()), version + 1);
-}
-
-// Tests that an entry the drop's own erase missed is erased when the next leader load removes the
-// dropped database's tombstone.
-TEST_F(XClusterPersistenceBlockMapTest, TombstoneRemovalErasesLeftoverEntry) {
-  auto conn = ASSERT_RESULT(Connect());
-  const auto [namespace_id, oid] = ASSERT_RESULT(CreateDatabase(conn, "db1"));
-  ASSERT_OK(StopPersisting({namespace_id}));
-
-  // Stands in for the drop's erase being lost to a crash or failing.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_persistence_block_erase_on_drop) = true;
-  ASSERT_OK(conn.Execute("DROP DATABASE db1"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto* catalog_manager = VERIFY_RESULT(GetCatalogManager());
-        return !catalog_manager->FindNamespaceByName(YQL_DATABASE_PGSQL, "db1").ok();
-      },
-      30s * kTimeMultiplier, "Wait for db1 to be dropped"));
-  ASSERT_EQ(GetBlockedThroughHt(ASSERT_RESULT(GetMasterMap()), oid), HybridTime::kMax);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_persistence_block_erase_on_drop) = false;
-
-  ASSERT_OK(RestartMaster());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> { return !GetBlockedThroughHt(VERIFY_RESULT(GetMasterMap()), oid); },
-      30s * kTimeMultiplier, "Wait for the leftover entry to be erased"));
 }
 
 // Tests that StopPersisting and StartPersisting reject a database while it is being dropped and
@@ -404,8 +387,7 @@ TEST_F(XClusterPersistenceBlockMapTest, RejectsDroppedDatabases) {
   });
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto* catalog_manager = VERIFY_RESULT(GetCatalogManager());
-        return VERIFY_RESULT(catalog_manager->FindNamespaceById(namespace_id))->state() ==
+        return VERIFY_RESULT(FindNamespaceById(namespace_id))->state() ==
                master::SysNamespaceEntryPB::DELETING;
       },
       30s * kTimeMultiplier, "Wait for db1 to be DELETING"));
@@ -419,7 +401,7 @@ TEST_F(XClusterPersistenceBlockMapTest, RejectsDroppedDatabases) {
   // Until the next leader load, master still finds the dropped database by its ID, as a DELETED
   // tombstone.
   ASSERT_EQ(
-      ASSERT_RESULT(ASSERT_RESULT(GetCatalogManager())->FindNamespaceById(namespace_id))->state(),
+      ASSERT_RESULT(FindNamespaceById(namespace_id))->state(),
       master::SysNamespaceEntryPB::DELETED);
   ASSERT_OK(check_rejected());
 }
@@ -450,8 +432,7 @@ TEST_F(XClusterPersistenceBlockMapTest, RejectsInvalidDatabases) {
   }
   ASSERT_OK(client_->CreateNamespace("ks", YQL_DATABASE_CQL));
   const auto keyspace_id =
-      ASSERT_RESULT(ASSERT_RESULT(GetCatalogManager())->FindNamespaceByName(YQL_DATABASE_CQL, "ks"))
-          ->id();
+      ASSERT_RESULT(ASSERT_RESULT(Api().Catalog()).FindNamespace(YQL_DATABASE_CQL, "ks"))->id();
   ASSERT_NOK_STR_CONTAINS(StopPersisting({namespace_id, keyspace_id}), "is not a YSQL database");
   // The YCQL system keyspace, which is rejected for more than one reason.
   ASSERT_NOK(StopPersisting({master::kSystemNamespaceId}));

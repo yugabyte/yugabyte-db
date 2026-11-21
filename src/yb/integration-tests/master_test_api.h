@@ -111,6 +111,13 @@ class MasterTestApi {
   Status FlushSysCatalog();
   Status CompactSysCatalog();
   Result<bool> IsInitDbDone();
+  // xCluster persistence of YSQL databases. The master's own deadline is set from `timeout`.
+  Status XClusterStopPersisting(const std::vector<NamespaceId>& namespace_ids, MonoDelta timeout);
+  Status XClusterStartPersisting(const std::vector<NamespaceId>& namespace_ids, MonoDelta timeout);
+  Result<master::SysPersistenceBlockMapEntryPB> XClusterGetPersistenceBlockMap();
+  // Consensus LeaderStepDown of the leader's sys catalog tablet, forced, retried while the leader
+  // is not ready to step down. An empty new_leader_uuid leaves the next leader to the election.
+  Status StepDownLeader(const std::string& new_leader_uuid = "");
 
   Result<HostPort> LeaderAddress();
 

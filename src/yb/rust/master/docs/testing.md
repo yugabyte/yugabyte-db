@@ -79,23 +79,23 @@ gets `system.transactions` created first.
 
 Java tests read the same variable: `MiniYBCluster` starts those masters as `yb-master-rs`.
 
-### Tests that wait on W14
+### Reading master state in tests
 
-These read the C++ master's objects, so they run on Rust masters only after W14 ports them to
-RPCs. The second column covers the same area on Rust masters until then.
+Tests outside `src/yb/master` read the master only through RPCs, so they run on either master.
+`MasterTestApi` (`src/yb/integration-tests/master_test_api.h`, for a MiniCluster or an
+ExternalMiniCluster) wraps the leader's RPCs that tests need: table and tablet locations, tserver
+lists, the cluster config, balancer idleness, splits, sys-catalog flush and compaction, and
+`DumpSysCatalogEntries`. `Catalog()` builds a read-only `CatalogSnapshot` of `TableInfo`,
+`TabletInfo` and `NamespaceInfo` objects from the dumped rows, for tests written against the C++
+objects; it holds the rows at the time of the call and never changes. `FindTable` skips DELETED
+tables, so a test that looks for a table a DDL rollback may already have dropped must scan
+`GetTables()` instead.
 
-| Tests | Covered on Rust masters by |
-|---|---|
-| `CqlTest.TestTruncateTableWithIndexes` | `CqlTest.TestTruncateTable` |
-| `AutoFlagsMiniClusterTest.*` (they crash on the null `master()`) | `AutoFlagsExternalMiniClusterTest.*` |
-| `PgDdlSavepointMiniClusterTest.*` (reads the C++ DDL verifier state) | `a_rollback_to_a_savepoint_undoes_only_later_ddl` (`master-table-lifecycle`), `PgDdlTransactionTest.*` |
-| MiniCluster YSQL tests whose helpers call `catalog_manager()` or `master()` (`PgMiniTestBase::RestartMaster`) | `pg_libpq-test`, `pg_catalog_version-test` |
-| `MasterTxnStatusCheck.*` (`transaction_status_check-test`: counts C++ background-task runs, `TEST_catalog_manager_bg_task_run_count`, and matches C++ log lines) | `CqlGeoTransactionsTest.AddTransactionTablet` |
-| `CqlIndexTest.*` (`cql-index-test`, a MiniCluster suite; `EmptyIndexRecovery` and `DropTableWithIndexesIsAtomic` read `catalog_manager_impl()`) | `org.yb.cql.TestIndex`, `AdminCliTest.DdlLog` |
-| `PgDdlAtomicityMiniClusterTest.*`, `PgDdlAtomicityTxnBlockMiniClusterTest.*`, `PgDdlAtomicitySavepointMiniClusterTest.*` (C++ master sync points, `catalog_manager()`, `RestartMaster`; a sync point the Rust master never reaches hangs the test) | The `PgDdlAtomicity*` ExternalMiniCluster tests, including `DdlRollbackMasterRestart` and `TestCreateDbAndRestartGC` |
+`MasterAdmin.SplitTablet` takes no split key, so the split helpers in `tablet-split-itest-base`
+split where the tablet leader chooses; a test cannot split at a chosen hash code.
 
-`WaitForInitDb` asks `IsInitDbDone` over RPC on Rust masters, so `PgMiniTestBase` suites that use
-no other C++ accessor (`pg_advisory_lock-test`, `pg_auto_analyze-test`) run on Rust masters.
+`WaitForInitDb` asks `IsInitDbDone` over RPC, and `MiniCluster::WaitForTabletServerCount` returns the
+`ListTabletServers` entries.
 
 ## Tserver simulator and the C++ baseline
 

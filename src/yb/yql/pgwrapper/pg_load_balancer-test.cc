@@ -14,7 +14,6 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/gutil/dynamic_annotations.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_peer.h"

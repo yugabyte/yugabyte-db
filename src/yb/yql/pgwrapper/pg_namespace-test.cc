@@ -25,11 +25,10 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -151,25 +150,25 @@ TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
   auto old_leader = cluster_->mini_master(old_leader_idx);
   auto new_leader = cluster_->mini_master(new_leader_idx);
 
+  MasterTestApi api(cluster_.get());
   // Step down the leader.
-  LOG(INFO) << "Stepping down from " << old_leader->tablet_peer()->permanent_uuid()
+  LOG(INFO) << "Stepping down from " << old_leader->permanent_uuid()
             << " to " << new_leader->permanent_uuid();
-  ASSERT_OK(StepDown(
-      old_leader->tablet_peer(), new_leader->permanent_uuid(), ForceStepDown::kFalse));
+  ASSERT_OK(api.StepDownLeader(new_leader->permanent_uuid()));
   // This waits for the new leader to be elected.
   ASSERT_EQ(new_leader_idx, cluster_->LeaderMasterIdx());
   // The new master's catalog loader should enqueue a DeleteYsqlDatabaseAsync task which will mark
   // the namespace as DELETED.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto result = VERIFY_RESULT(new_leader->catalog_manager().FindNamespaceById(ns_id));
-    return result->state() == master::SysNamespaceEntryPB_State_DELETED;
+    auto ns = VERIFY_RESULT(api.Catalog()).FindNamespaceOrNull(ns_id);
+    SCHECK(ns, NotFound, Format("Namespace $0 not found", ns_id));
+    return ns->state() == master::SysNamespaceEntryPB_State_DELETED;
   }, 10s * kTimeMultiplier, "Wait for namespace to be marked as DELETED"));
 
   // Step down the new leader to the original leader.
   LOG(INFO) << "Stepping down from " << new_leader->permanent_uuid()
-            << " to " << old_leader->tablet_peer()->permanent_uuid();
-  ASSERT_OK(StepDown(
-      new_leader->tablet_peer(), old_leader->permanent_uuid(), ForceStepDown::kFalse));
+            << " to " << old_leader->permanent_uuid();
+  ASSERT_OK(api.StepDownLeader(old_leader->permanent_uuid()));
 
   // Wait for the sys catalog load to start. It should get blocked on the leader_mutex_ that is held
   // by ProcessPendingNamespace.
@@ -179,9 +178,8 @@ TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
   // The new master's catalog loader should enqueue a DeleteYsqlDatabaseAsync task which will
   // physically delete the now DELETED namespace and remove it from the namespace map.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto result = old_leader->catalog_manager().FindNamespaceById(ns_id);
-    return !result.ok() && result.status().IsNotFound();
-  }, 10s * kTimeMultiplier, "Wait for namespace to be removed from namespace map"));
+    return VERIFY_RESULT(api.Catalog()).FindNamespaceOrNull(ns_id) == nullptr;
+  }, 10s * kTimeMultiplier, "Wait for namespace to be removed from the catalog"));
 }
 
 }  // namespace integration_tests

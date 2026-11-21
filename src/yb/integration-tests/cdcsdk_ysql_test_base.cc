@@ -24,13 +24,15 @@
 
 #include "yb/client/yb_table_name.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -787,17 +789,10 @@ Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluste
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
-  auto* leader = VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster());
-  if (leader->is_rust()) {
-    // A Rust master has no CatalogManager; MasterAdmin.SplitTablet is the same manual split.
-    master::MasterAdminProxy proxy(&cluster->client_->proxy_cache(), leader->bound_rpc_addr());
-    RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &rpc));
-  } else {
-    auto& cm = leader->catalog_manager();
-    RETURN_NOT_OK(cm.SplitTablet(
-        tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
-        cm.GetLeaderEpochInternal()));
-  }
+  master::MasterAdminProxy proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+  RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &rpc));
 
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
@@ -1686,9 +1681,9 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
 Status CDCSDKYsqlTest::PopulateOidToRelfileNode(
     const std::vector<TableId>& table_ids,
     google::protobuf::Map<uint32_t, uint32_t>* oid_to_relfilenode_map) {
+  auto catalog = VERIFY_RESULT(MasterTestApi(test_cluster_.mini_cluster_.get()).Catalog());
   for (const auto& table_id : table_ids) {
-    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager();
-    auto table_info = VERIFY_RESULT(cm.FindTableById(table_id));
+    auto table_info = VERIFY_RESULT(catalog.GetTableInfo(table_id));
     auto relfilenode = VERIFY_RESULT(table_info->GetPgRelfilenodeOid());
     auto oid = VERIFY_RESULT(table_info->GetPgTableOid());
     oid_to_relfilenode_map->emplace(oid, relfilenode);
@@ -2277,9 +2272,14 @@ Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
     return STATUS_FORMAT(NotFound, "No tablets found for table $0", old_table.table_name());
   }
 
-  // Get the hide time of the old_table's tablet using CatalogManager::GetTabletHideTime().
-  auto& catalog_mgr = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-  HybridTime hide_time = VERIFY_RESULT(catalog_mgr.GetTabletHideTime(old_tablets[0].tablet_id()));
+  // The old table's tablet is hidden, retained for the stream; its row carries the hide time.
+  auto old_tablet = VERIFY_RESULT(
+      MasterTestApi(test_cluster_.mini_cluster_.get()).GetTabletInfo(old_tablets[0].tablet_id()));
+  const auto& old_tablet_pb = old_tablet->LockForRead()->pb;
+  SCHECK(
+      old_tablet_pb.has_hide_hybrid_time(), NotFound, "Tablet $0 is not hidden",
+      old_tablets[0].tablet_id());
+  HybridTime hide_time(old_tablet_pb.hide_hybrid_time());
 
   return WaitFor(
       [&]() -> Result<bool> {
@@ -2682,9 +2682,7 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
       [&]() -> Result<bool> {
         SleepFor(MonoDelta::FromSeconds(1));
 
-        auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-        auto stream_info = VERIFY_RESULT(cm.GetXReplStreamInfo(stream_id));
-        auto stream_lock = stream_info->LockForRead();
+        auto stream_pb = VERIFY_RESULT(GetCDCStreamRow(stream_id));
 
         auto all_expected_table_ids = expected_table_ids;
         if (include_catalog_tables) {
@@ -2697,41 +2695,41 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
           all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
         }
 
-        if (static_cast<size_t>(stream_lock->pb.table_id_size()) != all_expected_table_ids.size()) {
+        if (static_cast<size_t>(stream_pb.table_id_size()) != all_expected_table_ids.size()) {
           return false;
         }
         std::unordered_set<std::string> table_ids(
-            stream_lock->pb.table_id().begin(), stream_lock->pb.table_id().end());
+            stream_pb.table_id().begin(), stream_pb.table_id().end());
         if (table_ids != all_expected_table_ids) {
           return false;
         }
 
         if (expected_unqualified_table_ids.has_value()) {
-          if (static_cast<size_t>(stream_lock->pb.unqualified_table_id_size()) !=
+          if (static_cast<size_t>(stream_pb.unqualified_table_id_size()) !=
               expected_unqualified_table_ids->size()) {
             return false;
           }
           std::unordered_set<std::string> unqualified_table_ids(
-              stream_lock->pb.unqualified_table_id().begin(),
-              stream_lock->pb.unqualified_table_id().end());
+              stream_pb.unqualified_table_id().begin(),
+              stream_pb.unqualified_table_id().end());
           if (unqualified_table_ids != *expected_unqualified_table_ids) {
             return false;
           }
         }
 
         if (expected_dropped_table_ids.has_value()) {
-          if (static_cast<size_t>(stream_lock->pb.dropped_table_id_size()) !=
+          if (static_cast<size_t>(stream_pb.dropped_table_id_size()) !=
               expected_dropped_table_ids->size()) {
             return false;
           }
           std::unordered_set<std::string> dropped_table_ids(
-              stream_lock->pb.dropped_table_id().begin(), stream_lock->pb.dropped_table_id().end());
+              stream_pb.dropped_table_id().begin(), stream_pb.dropped_table_id().end());
           if (dropped_table_ids != *expected_dropped_table_ids) {
             return false;
           }
         }
 
-        if (stream_lock->pb.state() != expected_state) {
+        if (stream_pb.state() != expected_state) {
           return false;
         }
 
@@ -3974,8 +3972,7 @@ void CDCSDKYsqlTest::CDCSDKAlterWithSysCatalogCompaction(bool packed_row) {
       301 /* start */, 401 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-  CHECK_OK(ASSERT_RESULT(test_cluster()->mini_master(0)->tablet_peer()->shared_tablet())
-                ->ForceManualRocksDBCompact());
+  ASSERT_OK(MasterTestApi(test_cluster()).CompactSysCatalog());
 
   GetChangesResponsePB change_resp;
   auto result = GetChangesFromCDC(stream_id, tablets);
@@ -4821,8 +4818,60 @@ Status CDCSDKYsqlTest::WaitForFlushTables(
 }
 
 Status CDCSDKYsqlTest::XReplValidateSplitCandidateTable(const TableId& table_id) {
-  auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
-  return cm.XReplValidateSplitCandidateTable(table_id);
+  // The master has no RPC that only validates a split. A manual split with split factor 1 runs the
+  // same table checks first and, when they pass, is rejected for its split factor without
+  // splitting anything.
+  auto tablets = VERIFY_RESULT(MasterTestApi(test_cluster()).GetTablets(table_id));
+  SCHECK(!tablets.empty(), NotFound, "Table $0 has no tablets", table_id);
+  auto status = MasterTestApi(test_cluster()).SplitTablet(tablets.front()->id(), 1);
+  if (status.IsInvalidArgument() &&
+      status.message().AsStringView().find("Split factor must be at least 2") !=
+          std::string::npos) {
+    return Status::OK();
+  }
+  SCHECK(!status.ok(), IllegalState, "A split with split factor 1 was accepted");
+  return status;
+}
+
+Result<CDCSDKYsqlTest::SysCatalogRetentionBarriers>
+CDCSDKYsqlTest::GetSysCatalogRetentionBarriers(master::MiniMaster* master) {
+  // Every change of a tablet's retention barriers flushes its superblock, so the superblock on
+  // disk holds what the master's sys catalog peer reports.
+  auto& fs_manager = master->fs_manager();
+  tablet::RaftGroupReplicaSuperBlockPB superblock;
+  RETURN_NOT_OK(tablet::RaftGroupMetadata::ReadSuperBlockFromDisk(
+      fs_manager.env(), VERIFY_RESULT(fs_manager.GetRaftGroupMetadataPath(
+                            master::kSysCatalogTabletId)),
+      &superblock));
+  SysCatalogRetentionBarriers barriers;
+  barriers.cdc_sdk_safe_time = HybridTime::FromPB(superblock.cdc_sdk_safe_time());
+  barriers.cdc_min_replicated_index = superblock.cdc_min_replicated_index();
+  // As RaftGroupMetadata loads it.
+  barriers.cdc_sdk_min_checkpoint_op_id =
+      superblock.has_cdc_sdk_min_checkpoint_op_id()
+          ? OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id())
+          : OpId::Invalid();
+  if (barriers.cdc_sdk_min_checkpoint_op_id == OpId() &&
+      !superblock.is_under_cdc_sdk_replication()) {
+    barriers.cdc_sdk_min_checkpoint_op_id = OpId::Invalid();
+  }
+  return barriers;
+}
+
+Result<master::SysCDCStreamEntryPB> CDCSDKYsqlTest::GetCDCStreamRow(
+    const xrepl::StreamId& stream_id) {
+  for (const auto& [id, text] : VERIFY_RESULT(MasterTestApi(test_cluster()).DumpRows(
+           master::SysRowEntryType::CDC_STREAM, stream_id.ToString()))) {
+    if (id != stream_id.ToString()) {
+      continue;
+    }
+    auto message = VERIFY_RESULT(
+        master::DebugStringToCatalogEntityPB(master::SysRowEntryType::CDC_STREAM, text));
+    auto* pb = dynamic_cast<master::SysCDCStreamEntryPB*>(message.get());
+    SCHECK_NOTNULL(pb);
+    return std::move(*pb);
+  }
+  return STATUS_FORMAT(NotFound, "Stream $0 not found in sys catalog", stream_id);
 }
 
 void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(

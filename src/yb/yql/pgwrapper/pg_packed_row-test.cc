@@ -21,6 +21,7 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/packed_row_test_base.h"
 
 #include "yb/master/mini_master.h"
@@ -359,8 +360,7 @@ TEST_P(PgPackedRowTest, AlterTable) {
   auto deadline = CoarseMonoClock::now() + 90s;
 
   while (!thread_holder.stop_flag().load() && CoarseMonoClock::now() < deadline) {
-    ASSERT_OK(ASSERT_RESULT(cluster_->mini_master()->tablet_peer()->shared_tablet())
-                  ->ForceManualRocksDBCompact());
+    ASSERT_OK(MasterTestApi(cluster_.get()).CompactSysCatalog());
   }
 
   thread_holder.Stop();

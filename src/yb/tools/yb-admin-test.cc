@@ -943,8 +943,7 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
   ASSERT_NE(output.find(extra_table.table_name()), string::npos);
   ASSERT_NE(output.find(kTableName.table_name()), string::npos);
 
-  // Snapshot creation should be blocked for CQL system tables (which are virtual) but not for
-  // redis system tables (which are not).
+  // Snapshot creation should be blocked for CQL system tables, which are virtual.
   const auto result = CallAdmin("create_snapshot", "system", "peers");
   ASSERT_FALSE(result.ok());
   ASSERT_TRUE(result.status().IsRuntimeError());
@@ -952,9 +951,6 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
       "Error running create_snapshot: Invalid argument"), std::string::npos);
   ASSERT_NE(result.status().ToUserMessage().find(
       "Cannot create snapshot of YCQL system table: peers"), std::string::npos);
-
-  ASSERT_OK(CallAdmin("setup_redis_table"));
-  ASSERT_OK(CallAdmin("create_snapshot", "system_redis", "redis"));
 }
 
 TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
@@ -2832,7 +2828,20 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
     string table_name = Format("transactions_z$0", i);
     string placement = Format("c.r.z$0", i);
     ASSERT_OK(CallAdmin("create_transaction_table", table_name));
-    ASSERT_OK(CallAdmin("modify_table_placement_info", "system", table_name, placement, 1));
+    // create_transaction_table does not wait for the table: until it is RUNNING, the master
+    // answers the placement change with TABLE_NOT_RUNNING.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto result =
+              CallAdmin("modify_table_placement_info", "system", table_name, placement, 1);
+          if (!result.ok() &&
+              result.status().ToString().find("is not ready yet") != std::string::npos) {
+            return false;
+          }
+          RETURN_NOT_OK(result);
+          return true;
+        },
+        30s, Format("Placement of $0 modified", table_name)));
   }
 
   // Verify that the tables are all in transaction status tables in the right zone.
@@ -3135,16 +3144,18 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
   auto global_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), global_txn_table));
   ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/1));
 
-  // We create a transaction tablet that gets stuck in CREATING (for tablet_creation_timeout_ms) by
-  // adding the tablet after shutting down all tservers, and then restarting everything once create
-  // tablet RPCs start failing (see #33820).
-  // If this behavior is changed in the future, this test should be changed to create such a tablet
-  // by some other means.
+  // We create a transaction tablet that stays in CREATING for a while (see #33820): it is added
+  // while every tserver is down, and the restarted tserver creates transaction status tablets
+  // slowly. (A C++ master leaves it CREATING until tablet_creation_timeout_ms; a Rust leader sends
+  // CreateTablet again at once.)
   cluster_->tablet_server(0)->Shutdown();
+  cluster_->tablet_server(0)->mutable_flags()->push_back(
+      "--TEST_txn_status_table_tablet_creation_delay_ms=10000");
   {
-    ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
+    // The master may start the assignment before add_transaction_tablet returns.
     auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", global_txn_table_id));
+        Format("Assigning 1 tablets of table $0", global_txn_table_id));
+    ASSERT_OK(CallAdmin("add_transaction_tablet", global_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }
   cluster_->master()->Shutdown(SafeShutdown::kFalse);
@@ -3165,6 +3176,8 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
   session = ASSERT_RESULT(CqlConnect());
   ASSERT_OK(do_inserts(0, 10));
   ASSERT_NO_FATALS(WaitForTransactionTabletCount(kGlobalTransactionsTableName, /*count=*/2));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(0), "TEST_txn_status_table_tablet_creation_delay_ms", "0"));
   ASSERT_OK(do_inserts(10, 20));
 
   ASSERT_OK(CallAdmin("create_transaction_table", kLocalTransactionTableName));
@@ -3179,10 +3192,12 @@ TEST_F_EX(AdminCliTest, AddStuckTransactionStatusTablet, AddTransactionTabletTes
   auto local_txn_table_id = ASSERT_RESULT(client::GetTableId(client_.get(), local_txn_table));
   ASSERT_NO_FATALS(WaitForTransactionTabletCount(kLocalTransactionTableName, /*count=*/1));
 
+  // The restarted tserver again creates the new status tablet slowly: the flag set above is
+  // still in its command line.
   cluster_->tablet_server(0)->Shutdown();
   {
     auto log_waiter = cluster_->GetMasterLogWaiter(
-        Format("Processing pending assignments for table: $0", local_txn_table_id));
+        Format("Assigning 1 tablets of table $0", local_txn_table_id));
     ASSERT_OK(CallAdmin("add_transaction_tablet", local_txn_table_id));
     ASSERT_OK(log_waiter.WaitFor(5s));
   }

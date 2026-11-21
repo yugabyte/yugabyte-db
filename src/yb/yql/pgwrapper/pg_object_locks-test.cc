@@ -23,10 +23,11 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+#include "yb/integration-tests/master_test_api.h"
+
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/object_lock_info_manager.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -118,11 +119,6 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
   void Init() {
     ts_lock_manager_ = cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager();
-    master_lock_manager_ = cluster_->mini_master()
-                               ->master()
-                               ->catalog_manager_impl()
-                               ->object_lock_info_manager()
-                               ->TEST_ts_local_lock_manager();
   }
 
   size_t NumTabletServers() override {
@@ -137,12 +133,25 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     return ts_lock_manager_->TEST_WaitingLocksSize();
   }
 
-  size_t NumGrantedLocksOnMaster() const {
-    return master_lock_manager_->TEST_GrantedLocksSize();
-  }
-
-  size_t NumWaitingLocksOnMaster() const {
-    return master_lock_manager_->TEST_WaitingLocksSize();
+  // The DDL locks the master leader granted, as it persists them in OBJECT_LOCK_ENTRY rows until
+  // they are released.
+  Result<size_t> NumGrantedLocksOnMaster() {
+    size_t num_locks = 0;
+    auto rows = VERIFY_RESULT(
+        MasterTestApi(cluster_.get()).DumpRows(master::SysRowEntryType::OBJECT_LOCK_ENTRY));
+    for (const auto& [id, text] : rows) {
+      auto pb = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(
+          master::SysRowEntryType::OBJECT_LOCK_ENTRY, text));
+      const auto& entry = *static_cast<master::SysObjectLockEntryPB*>(pb.get());
+      for (const auto& [epoch, txns] : entry.lease_epochs()) {
+        for (const auto& [txn, subtxns] : txns.transactions()) {
+          for (const auto& [subtxn, locks] : subtxns.subtxns()) {
+            num_locks += locks.locks_size();
+          }
+        }
+      }
+    }
+    return num_locks;
   }
 
   Status AssertNumLocks(size_t granted_locks, size_t waiting_locks) {
@@ -262,7 +271,6 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
   }
 
   tserver::TSLocalLockManagerPtr ts_lock_manager_;
-  tserver::TSLocalLockManagerPtr master_lock_manager_;
 };
 
 TEST_F(PgObjectLocksTestRF1, TestLockTuple) {
@@ -283,9 +291,8 @@ TEST_F(PgObjectLocksTestRF1, TestLockTuple) {
     return Status::OK();
   });
 
-  EXPECT_OK(WaitFor([&]() {
-    return NumWaitingLocks() >= 1 || NumWaitingLocksOnMaster() >= 1;
-  }, 5s * kTimeMultiplier, "Timed out waiting for num waiting locks >= 1"));
+  // The second ALTER waits for the first one's exclusive lock, on this tserver or on the master.
+  ASSERT_EQ(status_future.wait_for(2s * kTimeMultiplier), std::future_status::timeout);
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_OK(status_future.get());
 }
@@ -546,9 +553,9 @@ class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
   Status WaitToReleaseAllLocks(MonoDelta timeout) {
     LOG(INFO) << "Waiting for locks to be cleaned up";
     return LoggedWaitFor(
-        [this]() -> bool {
+        [this]() -> Result<bool> {
           auto granted_locks = NumGrantedLocks();
-          auto granted_master_locks = NumGrantedLocksOnMaster();
+          auto granted_master_locks = VERIFY_RESULT(NumGrantedLocksOnMaster());
           LOG(INFO) << "Num granted locks: " << granted_locks;
           LOG(INFO) << "Num granted master locks: " << granted_master_locks;
           return granted_locks == 0 && granted_master_locks == 0;
@@ -593,7 +600,7 @@ TEST_F(PgObjectLocksTestRF1SessionExpiry, CleanupExclusiveLocksOnExpiredSessions
   LOG(INFO) << "Acquiring exclusive lock on test table";
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION;"));
   ASSERT_OK(conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE;"));
-  ASSERT_GE(NumGrantedLocksOnMaster(), 1);
+  ASSERT_GE(ASSERT_RESULT(NumGrantedLocksOnMaster()), 1);
   ASSERT_GE(NumGrantedLocks(), 1);
   LOG(INFO) << "Expiring connection";
   ExpireSession(conn);

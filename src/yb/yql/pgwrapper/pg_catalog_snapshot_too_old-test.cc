@@ -17,20 +17,17 @@
 #include <string>
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog_constants.h"
+
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/master/master.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -98,7 +95,7 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = false;
 
     metrics_.emplace(
-        *cluster_->mini_master()->master()->metric_entity(),
+        *cluster_->mini_master()->server().metric_entity(),
         *cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
@@ -110,10 +107,6 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
   };
 
   Result<MetricDeltaInfo> MetricDeltaForDefaultTablespaceGUC() {
-    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    auto sys_catalog_tablet =
-        VERIFY_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
-
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.ExecuteFormat(R"_tblsp_(
     create tablespace rf3 with
@@ -140,9 +133,9 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
     // Compacting the sys catalog tablet updates the history cutoff time
     // on the tablet to reflect the h/istory_retention_interval_sec flags
     LOG(INFO) << "Trigger a flush and compaction of the sys catalog tablet";
-    RETURN_NOT_OK(
-        sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
-    RETURN_NOT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
+    MasterTestApi api(cluster_.get());
+    RETURN_NOT_OK(api.FlushSysCatalog());
+    RETURN_NOT_OK(api.CompactSysCatalog());
 
     SleepFor(1s);
 

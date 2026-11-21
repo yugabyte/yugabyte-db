@@ -17,7 +17,6 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/tablet_creation_limits.h"
 
 #include "yb/rpc/rpc_controller.h"
 

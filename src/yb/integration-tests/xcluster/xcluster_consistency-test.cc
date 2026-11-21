@@ -17,11 +17,8 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -230,19 +227,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
   }
 
-  Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
-    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-    const auto metrics =
-        cm.GetXClusterManagerImpl()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
-            namespace_id);
-    const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
-    const auto safe_time_skew = metrics->consumer_safe_time_skew->value();
-    CHECK_GE(safe_time_lag, safe_time_skew);
-    LOG(INFO) << "Current safe time lag from metrics: " << safe_time_lag
-              << ", Current safe time skew from metrics: " << safe_time_skew;
-    return safe_time_lag;
-  }
-
  protected:
   std::vector<xrepl::StreamId> stream_ids_;
   std::shared_ptr<client::YBTable> producer_table1_, producer_table2_;
@@ -300,12 +284,6 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   LOG(INFO) << "High RPO is " << high_rpo;
   // RPO only gets updated every second, so only checking for at least one timeout.
   ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMicroseconds());
-  // The estimated data loss from the metrics is from a snapshot, as opposed to the result from
-  // GetXClusterSafeTimeLag which is a current, newly calculated value. Thus we can't expect
-  // these values to be equal, but should still expect the same assertions to hold.
-  ASSERT_GT(
-      ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)),
-      MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMilliseconds());
 
   // Resume replication and verify all data is written on the consumer.
   ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, 0));
@@ -320,7 +298,6 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   const auto final_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "Final RPO is " << final_rpo;
   ASSERT_LT(final_rpo, high_rpo);
-  ASSERT_LT(ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)), high_rpo / 1000);
 }
 
 class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {

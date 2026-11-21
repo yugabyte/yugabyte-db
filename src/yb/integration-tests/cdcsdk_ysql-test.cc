@@ -28,17 +28,15 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/tasks_tracker.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
@@ -12899,17 +12897,16 @@ TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
   t1.join();
   t2.join();
 
-  auto mini_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
-  auto tablet_peer = mini_master->tablet_peer();
-
   // 2 entries for the sys catalog tablet and 2 slot entries.
   auto row_count = ASSERT_RESULT(GetStateTableRowCount());
   ASSERT_EQ(row_count, 4);
 
   auto checkpoint_result_1 =
-      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_1, tablet_peer->tablet_id()));
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_1, master::kSysCatalogTabletId));
   auto checkpoint_result_2 =
-      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_2, tablet_peer->tablet_id()));
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_2, master::kSysCatalogTabletId));
+  // One master.
+  auto barriers = ASSERT_RESULT(GetSysCatalogRetentionBarriers());
 
   // Both the sys catalog tablet state table entris should have a valid checkpoint.
   ASSERT_GT(checkpoint_result_1.checkpoint().op_id().term(), 0);
@@ -12918,19 +12915,13 @@ TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
   ASSERT_GT(checkpoint_result_2.checkpoint().op_id().index(), 0);
 
   // Since we are setting the history barrier, cdc_sdk_safe_time should be valid.
-  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(barriers.cdc_sdk_safe_time, HybridTime::kInvalid);
 
   // Checkpoint in state table should be >= the retention boundary OpId (index).
-  ASSERT_GE(
-      checkpoint_result_1.checkpoint().op_id().index(),
-      tablet_peer->get_cdc_min_replicated_index());
-  ASSERT_GE(
-      checkpoint_result_2.checkpoint().op_id().index(),
-      tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_GE(checkpoint_result_1.checkpoint().op_id().index(), barriers.cdc_min_replicated_index);
+  ASSERT_GE(checkpoint_result_2.checkpoint().op_id().index(), barriers.cdc_min_replicated_index);
 
-  ASSERT_EQ(
-      tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
-      tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_EQ(barriers.cdc_sdk_min_checkpoint_op_id.index, barriers.cdc_min_replicated_index);
 }
 
 TEST_F(CDCSDKYsqlTest, TestLargeTxnOnCatalogTablet) {
@@ -13158,9 +13149,9 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
           FLAGS_cdc_min_replicated_index_considered_stale_secs_master * 2 * kTimeMultiplier));
   // Checking that CDCMasterBgTask has not expired the tablet checkpoint.
   for (size_t i = 0; i < test_cluster()->num_masters(); i++) {
-    auto mini_master = test_cluster()->mini_master(i);
-    auto tablet_peer_ptr = ASSERT_NOTNULL(mini_master->tablet_peer());
-    ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max())
+    // An expired intent retention barrier is OpId::Max().
+    ASSERT_NE(ASSERT_RESULT(GetSysCatalogRetentionBarriers(i)).cdc_sdk_min_checkpoint_op_id,
+              OpId::Max())
         << "Retention barrier expired on master " << i;
   }
 }
@@ -13216,9 +13207,8 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
   });
 
   // Checking that the stream is still present.
-  auto& cm = master->catalog_manager_impl();
-  auto stream_info = ASSERT_RESULT(cm.GetXReplStreamInfo(stream_id1));
-  ASSERT_TRUE(stream_info->LockForRead()->is_deleting());
+  ASSERT_EQ(
+      ASSERT_RESULT(GetCDCStreamRow(stream_id1)).state(), master::SysCDCStreamEntryPB::DELETING);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = false;
   // Waiting for catalog manager's background task to delete the stream_id1's related cdc state
@@ -13226,8 +13216,8 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
   auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto stream_info = cm.GetXReplStreamInfo(stream_id1);
-        bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+        auto stream_row = GetCDCStreamRow(stream_id1);
+        bool stream_deleted = !stream_row.ok() && stream_row.status().IsNotFound();
         auto tablet_stream_entry = VERIFY_RESULT(
             cdc_state_table.TryFetchEntry({table1_tablets[0].tablet_id(), stream_id1}));
         auto slot_entry =
@@ -13295,7 +13285,6 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
 
   test_thread_holder.JoinAll();
 
-  auto& cm = master->catalog_manager_impl();
   auto cdc_state_table = MakeCDCStateTable(test_client());
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -13303,8 +13292,8 @@ void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
         // deleted. Also, check that the table in test_namespace_name is deleted.
         bool checker = true;
         for (const auto& stream_id : {stream_id1, stream_id2}) {
-          auto stream_info = cm.GetXReplStreamInfo(stream_id);
-          bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+          auto stream_row = GetCDCStreamRow(stream_id);
+          bool stream_deleted = !stream_row.ok() && stream_row.status().IsNotFound();
           auto tablet_stream_entry = VERIFY_RESULT(
               cdc_state_table.TryFetchEntry({table1_tablets[0].tablet_id(), stream_id}));
           // For gRPC streams, we won't have corresponding 'slot_entry'. So, its value won't impact
@@ -13373,9 +13362,9 @@ TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
   // Asserting that the stream is not marked as DELETING and so slot entry is present in
   // cdc_state_table.
   auto master = test_cluster()->mini_master();
-  auto& cm = master->catalog_manager_impl();
-  auto stream_info = ASSERT_RESULT(cm.GetXReplStreamInfo(stream_id));
-  ASSERT_FALSE(stream_info->LockForRead()->started_deleting());
+  auto stream_state = ASSERT_RESULT(GetCDCStreamRow(stream_id)).state();
+  ASSERT_NE(stream_state, master::SysCDCStreamEntryPB::DELETING);
+  ASSERT_NE(stream_state, master::SysCDCStreamEntryPB::DELETED);
   auto cdc_state_table = MakeCDCStateTable(test_client());
   auto slot_entry =
       ASSERT_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
@@ -13385,17 +13374,20 @@ TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
   ASSERT_OK(master->Restart());
   ASSERT_OK(test_cluster()->WaitForAllTabletServers());
 
-  // The stream should be marked as DELETING during its loading from sys catalog after restart.
-  auto& cm_after_restart = master->catalog_manager_impl();
-  stream_info = ASSERT_RESULT(cm_after_restart.GetXReplStreamInfo(stream_id));
-  ASSERT_TRUE(stream_info->LockForRead()->is_deleting());
+  // The stream should be marked as DELETING once the restarted master leads.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(GetCDCStreamRow(stream_id)).state() ==
+               master::SysCDCStreamEntryPB::DELETING;
+      },
+      MonoDelta::FromSeconds(30), "Timed out waiting for the stream to be marked DELETING"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = false;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto stream_info = cm_after_restart.GetXReplStreamInfo(stream_id);
-        bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+        auto stream_row = GetCDCStreamRow(stream_id);
+        bool stream_deleted = !stream_row.ok() && stream_row.status().IsNotFound();
         slot_entry =
             VERIFY_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
         return stream_deleted && !slot_entry.has_value();
@@ -13790,12 +13782,15 @@ TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
   ASSERT_OK(conn.Execute("DROP TABLE test_table_qualified"));
   ASSERT_OK(conn.Execute("DROP TABLE test_table_unqualified"));
 
+  // Until the cleanup runs, the stream keeps naming the dropped tables. The master finds them
+  // dropped from the catalog on each cleanup pass rather than listing them in the stream's
+  // dropped_table_id when they are dropped, so that list is not checked.
   VerifyTablesAndStateInStreamMetadata(
       stream_id,
       std::unordered_set<std::string>{qualified_table.table_id(), non_dropped_table.table_id()},
       std::unordered_set<std::string>{unqualified_table.table_id()},
-      std::unordered_set<std::string>{qualified_table.table_id(), unqualified_table.table_id()},
-      master::SysCDCStreamEntryPB::ACTIVE, false /* include_catalog_tables */);
+      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::ACTIVE,
+      false /* include_catalog_tables */);
   CheckTabletsInCDCStateTable(
       {tablets_qualified[0].tablet_id(), tablets_non_dropped[0].tablet_id(),
        kCDCSDKSlotEntryTabletId},
@@ -13814,230 +13809,6 @@ TEST_F(CDCSDKYsqlTest, TestPopulationOfDroppedTableListInStreamMetadata) {
       {tablets_non_dropped[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
       {} /* expected_colocated_table_ids */,
       "Timed out waiting for state table entries to get deleted");
-}
-
-TEST_F(CDCSDKYsqlTest, TestUpgradeFromDeletingMetadataToDroppedTableList) {
-  // This test tests the race when the upgrade is done during
-  // CatalogManager::CleanUpCDCSDKStreamsMetadata(). Table rewrite only changes when
-  // CleanUpCDCSDKStreamsMetadata is invoked, hence disabling
-  // FLAGS_enable_table_rewrite_for_cdcsdk_table to simplify the test.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
-  // Simulate pre-upgrade universe where the flag is false.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
-
-  SyncPoint::GetInstance()->LoadDependency(
-      {{"TestUpgradeFromDeletingMetadataToDroppedTableList::VerifyDroppedTableList",
-        "CleanUpCDCStreamMetadata::StartStep1"}});
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(SetUpWithParams(
-      1 /* rf */, 1 /* num_masters */, false /* colocated */,
-      true /* cdc_populate_safepoint_record */));
-
-  auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
-  auto non_dropped_table = ASSERT_RESULT(
-      CreateTable(
-          &test_cluster_, test_namespace_name, "test_table_non_dropped", 1 /* num_tablets */));
-
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-
-  DropTable(&test_cluster_, "test_table_to_drop");
-  // With the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup set to false, dropping a table
-  // should mark the stream as DELETING_METADATA.
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{table.table_id(), non_dropped_table.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::DELETING_METADATA,
-      true /* include_catalog_tables */,
-      "Timed out waiting for stream to be in DELETING_METADATA state" /* timeout_msg */);
-
-  // Simulate upgrade: set the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup to true before
-  // restarting the master so it takes effect during catalog load.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
-  auto master = test_cluster_.mini_cluster_->mini_master();
-  ASSERT_OK(master->Restart(true /* wait_until_catalog_manager_is_leader */));
-  LOG(INFO) << "Master Restarted";
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
-
-  // After restart with the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup enabled and drop
-  // table cleanup allowed, the stream should be ACTIVE and the dropped table should be present in
-  // the dropped_table_id list.
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{table.table_id(), non_dropped_table.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::unordered_set<std::string>{table.table_id()}, master::SysCDCStreamEntryPB::ACTIVE,
-      true /* include_catalog_tables */,
-      "Timed out waiting for stream to be in ACTIVE state" /* timeout_msg */);
-
-  TEST_SYNC_POINT("TestUpgradeFromDeletingMetadataToDroppedTableList::VerifyDroppedTableList");
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{non_dropped_table.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::ACTIVE,
-      true /* include_catalog_tables */,
-      "Timed out waiting for cleanup completion of stream metadata" /* timeout_msg */);
-}
-
-TEST_F(CDCSDKYsqlTest, TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList) {
-  // This test tests the race when the drop stream operation is done during
-  // CatalogManager::CleanUpCDCSDKStreamsMetadata(). Table rewrite only changes when
-  // CleanUpCDCSDKStreamsMetadata is invoked, hence disabling
-  // FLAGS_enable_table_rewrite_for_cdcsdk_table to simplify the test.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
-  //  Simulate pre-upgrade universe where the flag is false.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
-
-  SyncPoint::GetInstance()->LoadDependency(
-      {{"GetCDCSDKStreamsToCleanMetadata::AfterFilteringStreamsWithDeletingMetadataState",
-        "TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::BeforeDropStream"},
-       {"TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::AfterDropStream",
-        "GetCDCSDKStreamsToCleanMetadata::BeforeProcessingStreamsWithDeletingMetadataState"},
-       {"GetCDCSDKStreamsToCleanMetadata::AfterProcessingStreamsWithDeletingMetadataState",
-        "TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::"
-        "BeforeCheckingStreamState"}});
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(SetUpWithParams(
-      1 /* rf */, 1 /* num_masters */, false /* colocated */,
-      true /* cdc_populate_safepoint_record */));
-
-  auto table = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_to_drop", 1 /* num_tablets */));
-
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-
-  DropTable(&test_cluster_, "test_table_to_drop");
-  // With the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup set to false, dropping a table
-  // should mark the stream as DELETING_METADATA.
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{table.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::DELETING_METADATA,
-      true /* include_catalog_tables */,
-      "Timed out waiting for stream to be in DELETING_METADATA state" /* timeout_msg */);
-
-  // Simulate upgrade: set the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup to true before
-  // restarting the master so it takes effect during catalog load.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
-  auto master = test_cluster_.mini_cluster_->mini_master();
-  ASSERT_OK(master->Restart(true /* wait_until_catalog_manager_is_leader */));
-  LOG(INFO) << "Master Restarted";
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
-
-  TEST_SYNC_POINT(
-      "TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::BeforeDropStream");
-
-  ASSERT_TRUE(DeleteCDCStream(stream_id));
-
-  TEST_SYNC_POINT(
-      "TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::AfterDropStream");
-
-  TEST_SYNC_POINT(
-      "TestDropStreamDuringUpgradeFromDeletingMetadataToDroppedTableList::"
-      "BeforeCheckingStreamState");
-
-  // The stream shouldn't be marked as ACTIVE after completion of
-  // CatalogManager::GetCDCSDKStreamsToCleanMetadata(). It should remain in DELETING state.
-  auto& cm = master->catalog_manager_impl();
-  auto stream_info = ASSERT_RESULT(cm.GetXReplStreamInfo(stream_id));
-  ASSERT_TRUE(stream_info->LockForRead()->is_deleting());
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = false;
-  auto cdc_state_table = MakeCDCStateTable(test_client());
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto stream_info = cm.GetXReplStreamInfo(stream_id);
-        bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
-        auto slot_entry =
-            VERIFY_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
-        return stream_deleted && !slot_entry.has_value();
-      },
-      MonoDelta::FromSeconds(60),
-      Format(
-          "Timed out waiting for stream $0 to be deleted",
-          stream_id.ToString()) /* timeout_msg */));
-}
-
-TEST_F(CDCSDKYsqlTest, TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList) {
-  // This test tests the race when the drop table operation is done during
-  // CatalogManager::CleanUpCDCSDKStreamsMetadata(). Table rewrite only changes when
-  // CleanUpCDCSDKStreamsMetadata is invoked, hence disabling
-  // FLAGS_enable_table_rewrite_for_cdcsdk_table to simplify the test.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
-  // Simulate pre-upgrade universe where the flag is false.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
-
-  SyncPoint::GetInstance()->LoadDependency(
-      {{"GetCDCSDKStreamsToCleanMetadata::AfterFilteringStreamsWithDeletingMetadataState",
-        "TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::BeforeDropTable"},
-       {"TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::AfterDropTable",
-        "GetCDCSDKStreamsToCleanMetadata::BeforeProcessingStreamsWithDeletingMetadataState"},
-       {"TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::"
-        "AfterVerifyingDroppedTableIdList",
-        "GetCDCSDKStreamsToCleanMetadata::AfterProcessingStreamsWithDeletingMetadataState"}});
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(SetUpWithParams(
-      1 /* rf */, 1 /* num_masters */, false /* colocated */,
-      true /* cdc_populate_safepoint_record */));
-
-  auto table_1 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_1", 1 /* num_tablets */));
-  auto table_2 = ASSERT_RESULT(
-      CreateTable(&test_cluster_, test_namespace_name, "test_table_2", 1 /* num_tablets */));
-
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-
-  DropTable(&test_cluster_, "test_table_1");
-  // With the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup set to false, dropping a table
-  // should mark the stream as DELETING_METADATA.
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{table_1.table_id(), table_2.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::DELETING_METADATA,
-      true /* include_catalog_tables */,
-      "Timed out waiting for stream to be in DELETING_METADATA state" /* timeout_msg */);
-
-  // Simulate upgrade: set the flag FLAGS_cdcsdk_use_dropped_table_list_for_cleanup to true before
-  // restarting the master so it takes effect during catalog load.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) = true;
-  auto master = test_cluster_.mini_cluster_->mini_master();
-  ASSERT_OK(master->Restart(true /* wait_until_catalog_manager_is_leader */));
-  LOG(INFO) << "Master Restarted";
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
-
-  TEST_SYNC_POINT(
-      "TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::BeforeDropTable");
-
-  DropTable(&test_cluster_, "test_table_2");
-
-  TEST_SYNC_POINT(
-      "TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::AfterDropTable");
-
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, std::unordered_set<std::string>{table_1.table_id(), table_2.table_id()},
-      std::nullopt /* expected_unqualified_table_ids */,
-      std::unordered_set<std::string>{table_1.table_id(), table_2.table_id()},
-      master::SysCDCStreamEntryPB::ACTIVE, true /* include_catalog_tables */,
-      "Timed out waiting for populating dropped_table_id list for stream" /* timeout_msg */);
-
-  TEST_SYNC_POINT(
-      "TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTableList::"
-      "AfterVerifyingDroppedTableIdList");
-
-  VerifyTablesAndStateInStreamMetadata(
-      stream_id, {} /* expected_table_ids */, std::nullopt /* expected_unqualified_table_ids */,
-      std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::ACTIVE,
-      true /* include_catalog_tables */,
-      "Timed out waiting for cleanup completion of stream metadata" /* timeout_msg */);
 }
 
 TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
@@ -14255,11 +14026,16 @@ TEST_F(CDCSDKYsqlTest, TestNoMetricsCreationForSysCatalogTablet) {
   auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
   ASSERT_FALSE(change_resp.has_error());
 
-  auto cdc_service = test_cluster()->mini_master()->master()->tablet_server()->GetCDCService();
-  // Verify metrics don't exist for sys catalog tablet.
-  auto metrics = GetCDCSDKTabletMetrics(
-      *cdc_service, master::kSysCatalogTabletId, stream_id, CreateMetricsEntityIfNotFound::kFalse);
-  ASSERT_TRUE(!metrics.ok() && metrics.status().IsNotFound());
+  // Verify metrics don't exist for sys catalog tablet. The master's CDC service registers its
+  // tablet metrics, entity "<stream>:<tablet>", in the master server's registry.
+  std::stringstream metrics_json;
+  JsonWriter writer(&metrics_json, JsonWriter::COMPACT);
+  ASSERT_OK(test_cluster()->mini_master()->server().metric_registry()->WriteAsJson(
+      &writer, MetricJsonOptions()));
+  ASSERT_EQ(
+      metrics_json.str().find(Format("\"$0:$1\"", stream_id, master::kSysCatalogTabletId)),
+      std::string::npos)
+      << metrics_json.str();
 }
 
 TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
@@ -14279,21 +14055,12 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
 
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  auto mini_master = test_cluster_.mini_cluster_->mini_master();
-  auto tablet_peer = mini_master->tablet_peer();
-  auto metadata = tablet_peer->tablet_metadata();
-
+  // The master's history cutoff (AllowedHistoryCutoffProvider) is not visible outside it; what it
+  // is computed from, the sys catalog tablet's retention barriers, is.
   // Given that the auto flag FLAGS_cdc_enable_dynamic_schema_changes is false, the CDCMasterBgTask
-  // will not run. Thus, the sys_catalog tablet's cdc_sdk_safe_time will not be set. And history
-  // cutoff will be computed based on FLAGS_timestamp_syscatalog_history_retention_interval_sec by
-  // AllowedHistoryCutoffProvider.
-  auto& cm = mini_master->catalog_manager_impl();
-  auto cutoff = cm.AllowedHistoryCutoffProvider(metadata.get());
-  auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
-  auto diff_us = static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
-                 static_cast<int64_t>(cutoff.primary_cutoff_ht.GetPhysicalValueMicros());
-  ASSERT_GE(diff_us, FLAGS_timestamp_syscatalog_history_retention_interval_sec);
-  ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
+  // will not run. Thus, the sys_catalog tablet's cdc_sdk_safe_time will not be set.
+  ASSERT_EQ(
+      ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time, HybridTime::kInvalid);
 
   // Skip running CDCMasterBgTask.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
@@ -14301,14 +14068,10 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = true;
 
   // Since CDCMasterBgTask hasn't ran yet, the sys_catalog tablet's cdc_sdk_safe_time will not be
-  // set. And history cutoff will still be computed based on
-  // FLAGS_timestamp_syscatalog_history_retention_interval_sec by AllowedHistoryCutoffProvider.
-  auto cutoff_after_upgrade = cm.AllowedHistoryCutoffProvider(metadata.get());
-  current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
-  diff_us = static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
-            static_cast<int64_t>(cutoff_after_upgrade.primary_cutoff_ht.GetPhysicalValueMicros());
-  ASSERT_GE(diff_us, FLAGS_timestamp_syscatalog_history_retention_interval_sec);
-  ASSERT_EQ(metadata->cdc_sdk_safe_time(), HybridTime::kInvalid);
+  // set.
+  SleepFor(MonoDelta::FromSeconds(2 * FLAGS_update_min_cdc_indices_master_interval_secs));
+  ASSERT_EQ(
+      ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time, HybridTime::kInvalid);
 
   // Now allow CDCMasterBgTask to run.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
@@ -14318,10 +14081,8 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());
-        return (cutoff_after_bg_task.primary_cutoff_ht > HybridTime::kMin) &&
-               (cutoff_after_bg_task.primary_cutoff_ht < HybridTime::kInvalid) &&
-               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+        auto safe_time = VERIFY_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time;
+        return safe_time > HybridTime::kMin && safe_time < HybridTime::kInvalid;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Timed out waiting for CDCMasterBgTask to move ahead history retention barrier on sys "
@@ -14339,7 +14100,8 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   // So to check the consequences of stream expiry we will create a new stream which will poll
   // sys_catalog tablet for changes.
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-  ASSERT_NE(metadata->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_NE(
+      ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_min_checkpoint_op_id, OpId::Max());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs_master) = 10;
@@ -14349,14 +14111,13 @@ TEST_F(CDCSDKYsqlTest, TestHistoryBarrierMovementForSysCatalogDuringUpgrade) {
   // stale.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto cutoff_after_bg_task = cm.AllowedHistoryCutoffProvider(metadata.get());
+        auto barriers = VERIFY_RESULT(GetSysCatalogRetentionBarriers());
         auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
         auto diff_us =
             static_cast<int64_t>(current_time.GetPhysicalValueMicros()) -
-            static_cast<int64_t>(cutoff_after_bg_task.primary_cutoff_ht.GetPhysicalValueMicros());
-        return (std::abs(diff_us) < 5000000) &&
-               (cutoff_after_bg_task.primary_cutoff_ht == metadata->cdc_sdk_safe_time()) &&
-               (metadata->cdc_sdk_min_checkpoint_op_id() == OpId::Max());
+            static_cast<int64_t>(barriers.cdc_sdk_safe_time.GetPhysicalValueMicros());
+        return barriers.cdc_sdk_safe_time.is_valid() && (std::abs(diff_us) < 5000000) &&
+               (barriers.cdc_sdk_min_checkpoint_op_id == OpId::Max());
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Timed out waiting for CDCMasterBgTask to release retention barriers on sys catalog"));
@@ -14375,19 +14136,11 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
 
   auto stream = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  auto mini_master = test_cluster_.mini_cluster_->mini_master();
-  auto& cm = mini_master->catalog_manager_impl();
-  auto tablet_peer = mini_master->tablet_peer();
-  auto metadata = tablet_peer->tablet_metadata();
-
-  // Wait for CDCMasterBgTask to set the history retention barrier on the sys catalog tablet. Thus,
-  // verify that AllowedHistoryCutoffProvider returns the cdc_sdk_safe_time-based cutoff.
+  // Wait for CDCMasterBgTask to set the history retention barrier on the sys catalog tablet.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto cutoff_before_drop_stream = cm.AllowedHistoryCutoffProvider(metadata.get());
-        return (cutoff_before_drop_stream.primary_cutoff_ht > HybridTime::kMin) &&
-               (cutoff_before_drop_stream.primary_cutoff_ht < HybridTime::kInvalid) &&
-               (cutoff_before_drop_stream.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+        auto safe_time = VERIFY_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time;
+        return safe_time > HybridTime::kMin && safe_time < HybridTime::kInvalid;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Timed out waiting for CDCMasterBgTask to set history retention barrier on sys catalog "
@@ -14402,9 +14155,8 @@ TEST_F(CDCSDKYsqlTest, TestDropStreamReleasesHistoryBarrierOnSysCatalog) {
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto cutoff_after_drop_stream = cm.AllowedHistoryCutoffProvider(metadata.get());
-        return (cutoff_after_drop_stream.primary_cutoff_ht == HybridTime::kMax) &&
-               (metadata->cdc_sdk_safe_time() == HybridTime::kInvalid);
+        return VERIFY_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time ==
+               HybridTime::kInvalid;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Timed out waiting for ResetStaleRetentionBarriersOp to release the history retention "
@@ -14433,23 +14185,17 @@ TEST_F(CDCSDKYsqlTest, TestNoChangeInSysCatalogHistoryCutOffAfterMasterRestart) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_dynamic_schema_changes) = true;
 
   auto mini_master = test_cluster_.mini_cluster_->mini_master();
-  auto tablet_peer = mini_master->tablet_peer();
-  auto metadata = tablet_peer->tablet_metadata();
-
-  auto& cm_after_upgrade = mini_master->catalog_manager_impl();
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto cutoff_after_upgrade = cm_after_upgrade.AllowedHistoryCutoffProvider(metadata.get());
-        return (cutoff_after_upgrade.primary_cutoff_ht > HybridTime::kMin) &&
-               (cutoff_after_upgrade.primary_cutoff_ht < HybridTime::kInvalid) &&
-               (cutoff_after_upgrade.primary_cutoff_ht == metadata->cdc_sdk_safe_time());
+        auto safe_time = VERIFY_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time;
+        return safe_time > HybridTime::kMin && safe_time < HybridTime::kInvalid;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Timed out waiting for CDCMasterBgTask to move ahead the history retention barrier on sys "
       "catalog"));
 
-  auto cutoff_after_upgrade = metadata->cdc_sdk_safe_time();
+  auto cutoff_after_upgrade = ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = true;
   // Restart the master after upgrade and check that the history cutoff calculated for sys_catalog
@@ -14459,21 +14205,14 @@ TEST_F(CDCSDKYsqlTest, TestNoChangeInSysCatalogHistoryCutOffAfterMasterRestart) 
   ASSERT_OK(test_cluster()->WaitForAllTabletServers());
   SleepFor(MonoDelta::FromSeconds(5));
 
-  mini_master = test_cluster_.mini_cluster_->mini_master();
-  tablet_peer = mini_master->tablet_peer();
-  metadata = tablet_peer->tablet_metadata();
-
-  auto& cm_after_restart = mini_master->catalog_manager_impl();
-  auto cutoff_after_restart = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
-  ASSERT_EQ(cutoff_after_restart.primary_cutoff_ht, metadata->cdc_sdk_safe_time());
-  ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
+  ASSERT_EQ(
+      ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time, cutoff_after_upgrade);
 
   // Allow CDCMasterBgTask to run. The history cutoff should still compute to same value.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_master_bg_task) = false;
   SleepFor(MonoDelta::FromSeconds(10));
-  auto cutoff_after_bg_task = cm_after_restart.AllowedHistoryCutoffProvider(metadata.get());
-  ASSERT_EQ(cutoff_after_bg_task.primary_cutoff_ht, metadata->cdc_sdk_safe_time());
-  ASSERT_EQ(metadata->cdc_sdk_safe_time(), cutoff_after_upgrade);
+  ASSERT_EQ(
+      ASSERT_RESULT(GetSysCatalogRetentionBarriers()).cdc_sdk_safe_time, cutoff_after_upgrade);
 }
 
 // Testing that XCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue,
@@ -14751,11 +14490,9 @@ TEST_F(CDCSDKYsqlTest, TestCreationOfgRPCStreamBoundToSpecificTablesViaYBAdmin) 
        "DYNAMIC_TABLES_DISABLED", Format("$0,$1", table_0.table_id(), table_1.table_id())}));
 
   // Find the newly created stream via master ListCDCStreams.
-  auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
   master::ListCDCStreamsRequestPB list_req;
-  master::ListCDCStreamsResponsePB list_resp;
   list_req.set_id_type(master::IdTypePB::NAMESPACE_ID);
-  ASSERT_OK(cm.ListCDCStreams(&list_req, &list_resp));
+  auto list_resp = ASSERT_RESULT(MasterTestApi(test_cluster()).ListCDCStreams(list_req));
   ASSERT_EQ(list_resp.streams_size(), 1)
       << "Expected exactly one stream, got " << list_resp.DebugString();
   auto stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(list_resp.streams(0).stream_id()));

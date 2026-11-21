@@ -38,11 +38,12 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 
@@ -54,6 +55,7 @@
 #include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -2251,29 +2253,53 @@ class MasterFullCompactionMonitoringTest : public FullCompactionMonitoringTest {
   void SetUp() override {
     FullCompactionMonitoringTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    test_tablets_ = ASSERT_RESULT(catalog_manager.GetTableInfo(workload_table_id_)->GetTablets());
+    for (const auto& tablet :
+         ASSERT_RESULT(MasterTestApi(cluster_.get()).GetTablets(workload_table_id_))) {
+      test_tablet_ids_.push_back(tablet->id());
+    }
   }
 
  protected:
   int NumTabletServers() override { return 3; }
 
+  // Waits until the leader's GetCompactionStatus lists expected_num_peers replicas of each of
+  // the tablets, each satisfying check.
   Status WaitForCompactionStatusesToSatisfy(
-      const master::TabletInfos& tablet_infos,
+      const std::vector<TabletId>& tablet_ids,
       std::function<bool(const TabletServerId&, const master::FullCompactionStatus&)>
           check,
       const int expected_num_peers = FLAGS_replication_factor) {
     return WaitFor(
-        [&]() {
-          for (const auto& tablet_info : tablet_infos) {
-            const auto replica_locations = tablet_info->GetReplicaLocations();
-            if (static_cast<int>(replica_locations->size()) != expected_num_peers) {
-              return false;
-            }
-            for (const auto& pair : *replica_locations) {
-              if (!check(pair.first, pair.second.full_compaction_status)) {
+        [&]() -> Result<bool> {
+          master::GetCompactionStatusRequestPB req;
+          req.mutable_table()->set_table_id(workload_table_id_);
+          req.set_show_tablets(true);
+          master::GetCompactionStatusResponsePB resp;
+          rpc::RpcController controller;
+          controller.set_timeout(10s);
+          auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>());
+          RETURN_NOT_OK(proxy.GetCompactionStatus(req, &resp, &controller));
+          if (resp.has_error()) {
+            return StatusFromPB(resp.error().status());
+          }
+          for (const auto& tablet_id : tablet_ids) {
+            int num_peers = 0;
+            for (const auto& replica : resp.replica_statuses()) {
+              if (replica.tablet_id() != tablet_id) {
+                continue;
+              }
+              ++num_peers;
+              master::FullCompactionStatus status {
+                .full_compaction_state = replica.full_compaction_state(),
+                // Not FromPB, which reads 0 (never compacted) as an invalid time.
+                .last_full_compaction_time = HybridTime(replica.last_full_compaction_time()),
+              };
+              if (!check(replica.ts_id(), status)) {
                 return false;
               }
+            }
+            if (num_peers != expected_num_peers) {
+              return false;
             }
           }
           return true;
@@ -2282,95 +2308,73 @@ class MasterFullCompactionMonitoringTest : public FullCompactionMonitoringTest {
         "Wait for the full compaction states on master");
   }
 
-  master::TabletInfos test_tablets_;
+  std::vector<TabletId> test_tablet_ids_;
 };
 
-TEST_F(MasterFullCompactionMonitoringTest, UnknownStateAfterReplicaLocationChange) {
-  const auto test_tablet = test_tablets_.front();
+// A replica's full compaction status comes only from its own tserver's metrics heartbeats. A
+// config change reported by another tserver changes the replica set but keeps the statuses of the
+// replicas that stay, and the added replica gets its status from its own tserver.
+TEST_F(MasterFullCompactionMonitoringTest, StatusFollowsReplicaLocationChange) {
+  const auto& test_tablet_id = test_tablet_ids_.front();
 
   ASSERT_OK(cluster_->AddTabletServer());
   ASSERT_OK(cluster_->WaitForTabletServerCount(NumTabletServers() + 1));
 
   const auto proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
   const master::MasterClusterProxy master_proxy(
-      proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+      proxy_cache_.get(), ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
   const auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, proxy_cache_.get()));
 
   const auto new_ts_uuid =
       cluster_->mini_tablet_server(NumTabletServers())->server()->permanent_uuid();
   const auto* new_ts = ts_map.find(new_ts_uuid)->second.get();
   itest::TServerDetails* leader_ts;
-  ASSERT_OK(itest::FindTabletLeader(ts_map, test_tablet->id(), 10s /* timeout */, &leader_ts));
+  ASSERT_OK(itest::FindTabletLeader(ts_map, test_tablet_id, 10s /* timeout */, &leader_ts));
 
+  const auto idle = [](const TabletServerId&, const master::FullCompactionStatus& status) {
+    return status.full_compaction_state == tablet::IDLE &&
+           status.last_full_compaction_time.ToUint64() == 0;
+  };
   // Wait for all the metrics heartbeats to come in.
-  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      {test_tablet}, [](const TabletServerId&, const master::FullCompactionStatus& status) {
-        return status.full_compaction_state == tablet::IDLE &&
-               status.last_full_compaction_time.ToUint64() == 0;
-      }));
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy({test_tablet_id}, idle));
 
-  // Fail heartbeats of the old tservers so we know the new tserver will send the config change.
+  // Fail heartbeats of the old tservers so that only the new tserver reports the config change.
   for (int i = 0; i < NumTabletServers(); ++i) {
     cluster_->mini_tablet_server(i)->FailHeartbeats();
   }
 
   // Cause a config change by adding a new tablet peer to the new tserver.
   ASSERT_OK(itest::AddServer(
-      leader_ts, test_tablet->id(), new_ts, consensus::PeerMemberType::PRE_OBSERVER,
+      leader_ts, test_tablet_id, new_ts, consensus::PeerMemberType::PRE_OBSERVER,
       std::nullopt /* cas_config_opid_index */, 10s /* timeout */));
-
-  // Check that the full compaction states on master are all reset to UNKNOWN except for the tserver
-  // that sent the config change heartbeat.
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      {test_tablet},
-      [&new_ts_uuid](const TabletServerId& tserver_id, const master::FullCompactionStatus& status) {
-        if (tserver_id == new_ts_uuid) {
-          return status.full_compaction_state == tablet::IDLE &&
-                 status.last_full_compaction_time.ToUint64() == 0;
-        }
-        return status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN;
-      },
-      FLAGS_replication_factor + 1 /* num_peers */));
+      {test_tablet_id}, idle, FLAGS_replication_factor + 1 /* num_peers */));
 
-  // Re-enable heartbeats to check that the full compaction states on master eventually get
-  // updated correctly.
+  // The same for removing a tablet peer, reported by the leader alone.
+  for (auto& ts : cluster_->mini_tablet_servers()) {
+    ts->FailHeartbeats(ts->server()->permanent_uuid() != leader_ts->uuid());
+  }
+  ASSERT_OK(itest::RemoveServer(
+      leader_ts, test_tablet_id, new_ts, std::nullopt /* cas_config_opid_index */,
+      10s /* timeout */));
+  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
+      {test_tablet_id},
+      [&new_ts_uuid](const TabletServerId& tserver_id, const master::FullCompactionStatus& status) {
+        return tserver_id != new_ts_uuid && status.full_compaction_state == tablet::IDLE &&
+               status.last_full_compaction_time.ToUint64() == 0;
+      },
+      FLAGS_replication_factor /* num_peers */));
+
   for (auto& ts : cluster_->mini_tablet_servers()) {
     ts->FailHeartbeats(false);
   }
-  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      {test_tablet},
-      [](const TabletServerId&, const master::FullCompactionStatus& status) {
-        return status.full_compaction_state == tablet::IDLE &&
-               status.last_full_compaction_time.ToUint64() == 0;
-      },
-      FLAGS_replication_factor + 1 /* num_peers */));
-
-  // Test the same thing but for removing a tablet peer.
-  for (auto& ts : cluster_->mini_tablet_servers()) {
-    if (ts->server()->permanent_uuid() != leader_ts->uuid()) {
-      ts->FailHeartbeats();
-    }
-  }
-  ASSERT_OK(itest::RemoveServer(
-      leader_ts, test_tablet->id(), new_ts, std::nullopt /* cas_config_opid_index */,
-      10s /* timeout */));
-  ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      {test_tablet},
-      [&leader_ts](const TabletServerId& tserver_id, const master::FullCompactionStatus& status) {
-        if (tserver_id == leader_ts->uuid()) {
-          return status.full_compaction_state == tablet::IDLE &&
-                 status.last_full_compaction_time.ToUint64() == 0;
-        }
-        return status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN;
-      },
-      FLAGS_replication_factor /* num_peers */));
 }
 
 TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
   ASSERT_OK(TriggerAdminCompactions(ShouldWait::kFalse));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
+      test_tablet_ids_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::COMPACTING &&
                status.last_full_compaction_time.ToUint64() == 0;
       }));
@@ -2379,7 +2383,7 @@ TEST_F(MasterFullCompactionMonitoringTest, CompactionStateDuringAdminCompaction)
 TEST_F(MasterFullCompactionMonitoringTest, IdleStateAfterAdminCompactionCompletion) {
   ASSERT_OK(TriggerAdminCompactions(ShouldWait::kTrue));
   ASSERT_OK(WaitForCompactionStatusesToSatisfy(
-      test_tablets_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
+      test_tablet_ids_, [](const TabletServerId&, const master::FullCompactionStatus& status) {
         return status.full_compaction_state == tablet::IDLE &&
                status.last_full_compaction_time.ToUint64() > 0;
       }));

@@ -42,16 +42,12 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master-path-handlers.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
@@ -88,7 +84,6 @@
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_string(TEST_master_extra_list_host_port);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_uint64(rpc_connection_timeout_ms);
 
@@ -115,7 +110,6 @@ DECLARE_int32(tablet_overhead_size_percentage);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
 DECLARE_uint64(object_lock_cleanup_interval_ms);
-DECLARE_bool(master_enable_deleted_tablet_cleanup);
 
 namespace yb::integration_tests {
 
@@ -128,6 +122,9 @@ const client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_tabl
 const uint kNumMasters(3);
 const uint kNumTservers(3);
 const uint kNumTablets(3);
+// A tserver's status on the tablet servers page.
+const std::string kTserverAlive = "ALIVE";
+const std::string kTserverDead = "DEAD";
 
 template <class T>
 class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
@@ -517,12 +514,12 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
 bool verifyTServersAlive(int n, const std::string& result) {
   size_t pos = 0;
   for (int i = 0; i < n; i++) {
-    pos = result.find(master::kTserverAlive, pos + 1);
+    pos = result.find(kTserverAlive, pos + 1);
     if (pos == std::string::npos) {
       return false;
     }
   }
-  return result.find(master::kTserverAlive, pos + 1) == std::string::npos;
+  return result.find(kTserverAlive, pos + 1) == std::string::npos;
 }
 
 TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
@@ -551,9 +548,9 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   ASSERT_TRUE(verifyTServersAlive(2, result_str));
 
   // Now verify dead.
-  size_t pos = result_str.find(master::kTserverDead, 0);
+  size_t pos = result_str.find(kTserverDead, 0);
   ASSERT_TRUE(pos != std::string::npos);
-  ASSERT_TRUE(result_str.find(master::kTserverDead, pos + 1) == std::string::npos);
+  ASSERT_TRUE(result_str.find(kTserverDead, pos + 1) == std::string::npos);
 
   // Startup the tserver and wait for heartbeats.
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -848,13 +845,13 @@ class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
   }
 };
 
+// Followers fetch a leader page from the leader.
 TEST_F_EX(MasterPathHandlersItest, Forward, MultiMasterPathHandlersItest) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_master_extra_list_host_port) = RandomHumanReadableString(16) + ".com";
   EasyCurl curl;
   faststring content;
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    auto url = Format("http://$0/tablet-servers", cluster_->mini_master(i)->bound_http_addr());
+    auto url =
+        Format("http://$0/api/v1/tablet-servers", cluster_->mini_master(i)->bound_http_addr());
     content.clear();
     ASSERT_OK(curl.FetchURL(url, &content));
   }
@@ -866,7 +863,6 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
     MasterPathHandlersItest::SetUp();
   }
 
@@ -878,6 +874,35 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
       QLAddInt32HashValue(req, i);
       ASSERT_OK(session->TEST_ApplyAndFlush(insert));
     }
+  }
+
+  // Splits the table's first tablet and waits until the parent's row is `done`. The split key is
+  // the one the tserver picks: MasterAdmin.SplitTablet takes none.
+  Result<TabletId> SplitFirstTablet(
+      const client::TableHandle& table, std::function<bool(const master::TabletInfo&)> done,
+      const std::string& description) {
+    MasterTestApi api(cluster_.get());
+    auto tablets = VERIFY_RESULT(api.GetTablets(table->id()));
+    SCHECK(!tablets.empty(), IllegalState, Format("Table $0 has no tablets", table->id()));
+    const auto parent_id = tablets[0]->tablet_id();
+    RETURN_NOT_OK(yb_admin_client_->FlushTables({table_name}));
+    RETURN_NOT_OK(api.SplitTablet(parent_id));
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> { return done(*VERIFY_RESULT(api.GetTabletInfo(parent_id))); },
+        30s * kTimeMultiplier, description));
+    return parent_id;
+  }
+
+  Result<TabletId> SplitFirstTabletAndWaitForParentDeleted(const client::TableHandle& table) {
+    return SplitFirstTablet(
+        table, [](const master::TabletInfo& parent) { return parent.LockForRead()->is_deleted(); },
+        "Wait for tablet split to complete and parent to be deleted");
+  }
+
+  Result<TabletId> SplitFirstTabletAndWaitForParentHidden(const client::TableHandle& table) {
+    return SplitFirstTablet(
+        table, [](const master::TabletInfo& parent) { return parent.LockForRead()->is_hidden(); },
+        "Wait for tablet split to complete and parent to be hidden");
   }
 };
 
@@ -932,6 +957,9 @@ TEST_F_EX(
       30s /* timeout */, "Wait for the tables page to carry the table's size as its sort key"));
 }
 
+// The table page's JSON lists a deleted split parent as Deleted, and the page shows it only with
+// show_deleted. A master may also drop it from memory (design decision: deleted tablets may
+// disappear from the pages), so not listing it is accepted too.
 TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
   CreateTestTable(1 /* num_tablets */);
 
@@ -939,92 +967,29 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
   ASSERT_OK(table.Open(table_name, client_.get()));
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  const auto parent_tablet_id = ASSERT_RESULT(SplitFirstTabletAndWaitForParentDeleted(table));
+  const auto children = ASSERT_RESULT(MasterTestApi(cluster_.get()).GetTablets(table->id()));
+  ASSERT_EQ(children.size(), 2);
 
-  const auto webpage_shows_deleted_tablets =
-      [this, &table](const bool should_show_deleted) -> Result<bool> {
-        faststring result;
-        RETURN_NOT_OK(GetUrl(
-            "/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""), &result));
-        const auto webpage = result.ToString();
-        std::smatch match;
-        const std::regex regex(
-            "<tr>[\\S\\s]*<td>Deleted</td><td>0</td><td>Not serving tablet deleted upon request "
-            "at(.|\n)*</tr>");
-        std::regex_search(webpage, match, regex);
-        return !match.empty();
-  };
-
-  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
-
-  ASSERT_OK(WaitFor(
-      [&]() { return tablet->LockForRead()->is_deleted(); },
-      30s /* timeout */,
-      "Wait for tablet split to complete and parent to be deleted"));
-
-  ASSERT_FALSE(ASSERT_RESULT(webpage_shows_deleted_tablets(false /* should_show_deleted */)));
-  ASSERT_TRUE(ASSERT_RESULT(webpage_shows_deleted_tablets(true /* should_show_deleted */)));
-}
-
-// With the cleanup on, a split parent removed from memory is still listed, with its children, when
-// the table page shows deleted tablets.
-TEST_F_EX(MasterPathHandlersItest, ShowRemovedSplitParent, TabletSplitMasterPathHandlersItest) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = true;
-  CreateTestTable(1 /* num_tablets */);
-
-  client::TableHandle table;
-  ASSERT_OK(table.Open(table_name, client_.get()));
-  InsertRows(table, /* num_rows_to_insert = */ 500);
-
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-  const auto parent_tablet_id = tablet->tablet_id();
-
-  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto parent = catalog_manager.GetTabletInfo(parent_tablet_id);
-        return !parent.ok() && parent.status().IsDeleted();
-      },
-      30s /* timeout */, "Wait for split parent to be removed from memory"));
-
-  const auto table_page = [this, &table](const bool show_deleted) -> Result<std::string> {
-    faststring result;
-    RETURN_NOT_OK(GetUrl(
-        "/table?id=" + table->id() + (show_deleted ? "&show_deleted" : ""), &result));
-    return result.ToString();
-  };
-  // Match the row, since the task list can also mention the parent.
-  ASSERT_STR_NOT_CONTAINS(
-      ASSERT_RESULT(table_page(false /* show_deleted */)), "<tr><th>" + parent_tablet_id);
-  const auto page = ASSERT_RESULT(table_page(true /* show_deleted */));
-  ASSERT_STR_CONTAINS(page, parent_tablet_id);
-  // The state message is kept. Partition and split depth are checked through the JSON endpoint.
-  ASSERT_STR_CONTAINS(page, "Not serving tablet deleted upon request at");
-
-  // The JSON endpoint lists it too, with the same rebuilt fields.
-  faststring json_result;
-  ASSERT_OK(GetUrl("/api/v1/table?id=" + table->id(), &json_result));
   JsonDocument doc;
-  auto json_obj = ASSERT_RESULT(doc.Parse(json_result.ToString()));
-  bool found_parent = false;
-  for (const auto& tablet_json : ASSERT_RESULT(json_obj["tablets"].GetArray())) {
-    if (ASSERT_RESULT(tablet_json["tablet_id"].GetString()) != parent_tablet_id) {
+  auto json = ASSERT_RESULT(GetJson("/api/v1/table?id=" + table->id(), &doc));
+  std::set<TabletId> listed;
+  for (const auto& tablet_json : ASSERT_RESULT(json["tablets"].GetArray())) {
+    const auto tablet_id = ASSERT_RESULT(tablet_json["tablet_id"].GetString());
+    listed.insert(tablet_id);
+    if (tablet_id != parent_tablet_id) {
       continue;
     }
-    found_parent = true;
     ASSERT_FALSE(ASSERT_RESULT(tablet_json["partition"].GetString()).empty());
     ASSERT_EQ(ASSERT_RESULT(tablet_json["split_depth"].GetUint64()), 0);
     ASSERT_EQ(ASSERT_RESULT(tablet_json["state"].GetString()), "Deleted");
     ASSERT_STR_CONTAINS(
         ASSERT_RESULT(tablet_json["message"].GetString()),
         "Not serving tablet deleted upon request at");
-    ASSERT_TRUE(ASSERT_RESULT(tablet_json["locations"].GetArray()).empty());
   }
-  ASSERT_TRUE(found_parent) << json_result.ToString();
+  for (const auto& child : children) {
+    ASSERT_TRUE(listed.contains(child->tablet_id())) << AsString(listed);
+  }
 }
 
 // Hidden split parent tablet shouldn't be shown as leaderless.
@@ -1040,9 +1005,6 @@ TEST_F_EX(
   ASSERT_OK(table.Open(table_name, client_.get()));
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-
   auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util->SetProxy(&client_->proxy_cache());
   snapshot_util->SetCluster(cluster_.get());
@@ -1055,18 +1017,12 @@ TEST_F_EX(
   auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
   ASSERT_EQ(schedules.size(), 1);
 
-  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
-
   // The parent tablet should be retained because of the snapshot schedule.
-  ASSERT_OK(WaitFor(
-      [&]() { return tablet->LockForRead()->is_hidden(); },
-      30s /* timeout */,
-      "Wait for tablet split to complete and parent to be hidden"));
+  const auto parent_tablet_id = ASSERT_RESULT(SplitFirstTabletAndWaitForParentHidden(table));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
   std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
+  ASSERT_EQ(result.find(parent_tablet_id), std::string::npos);
 }
 
 // Undeleted split parent tablets shouldn't be shown as leaderless.
@@ -1083,15 +1039,14 @@ TEST_F_EX(
   ASSERT_OK(table.Open(table_name, client_.get()));
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-
+  auto tablet_id = ASSERT_RESULT(MasterTestApi(cluster_.get()).GetTablets(table->id()))[0]
+      ->tablet_id();
   ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
+  ASSERT_OK(MasterTestApi(cluster_.get()).SplitTablet(tablet_id));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 }
 
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersItest {
@@ -1119,8 +1074,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
   CreateTestTable(1 /* num_tablets */);
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
+  auto tablet = ASSERT_RESULT(MasterTestApi(cluster_.get()).GetTablets(table->id()))[0];
   auto leader = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet->id()));
   const auto proxy_cache = std::make_unique<rpc::ProxyCache>(client_->messenger());
   auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
@@ -2122,55 +2076,6 @@ TEST_F(MasterPathHandlersLeaderlessRF1ITest, TestRF1) {
   ASSERT_OK(cluster_->tablet_server(0)->Resume());
 }
 
-TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
-  auto table = CreateTestTable(kNumTablets);
-  const auto kLeaderlessTabletAlertDelaySecs = 5;
-
-  // Prevent heartbeats from overwriting replica locations.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
-      kLeaderlessTabletAlertDelaySecs;
-
-  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto table_info = catalog_mgr.GetTableInfo(table->id());
-  auto tablets = ASSERT_RESULT(table_info->GetTablets());
-  ASSERT_EQ(tablets.size(), kNumTablets);
-
-  // Make all tablets leaderless.
-  MonoTime last_time_with_valid_leader_override = MonoTime::Now();
-  last_time_with_valid_leader_override.SubtractDelta(kLeaderlessTabletAlertDelaySecs * 1s);
-  for (auto& tablet : tablets) {
-    auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
-    for (auto& replica : *replicas) {
-      replica.second.role = PeerRole::FOLLOWER;
-    }
-    tablet->SetReplicaLocations(replicas);
-    tablet->TEST_set_last_time_with_valid_leader(last_time_with_valid_leader_override);
-  }
-  auto running_tablet = tablets[0];
-  auto deleted_tablet = tablets[1];
-  auto replaced_tablet = tablets[2];
-
-  auto deleted_lock = deleted_tablet->LockForWrite();
-  deleted_lock.mutable_data()->set_state(master::SysTabletsEntryPB::DELETED, "");
-  deleted_lock.Commit();
-
-  auto replaced_lock = replaced_tablet->LockForWrite();
-  replaced_lock.mutable_data()->set_state(master::SysTabletsEntryPB::REPLACED, "");
-  replaced_lock.Commit();
-
-  // Only the RUNNING tablet should be returned in the endpoint.
-  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  LOG(INFO) << result;
-  ASSERT_NE(result.find(running_tablet->id()), std::string::npos);
-  ASSERT_EQ(result.find(deleted_tablet->id()), std::string::npos);
-  ASSERT_EQ(result.find(replaced_tablet->id()), std::string::npos);
-
-  // Shutdown cluster to prevent cluster consistency check from failing because of the edited
-  // tablet states.
-  cluster_->Shutdown();
-}
-
 TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
   static const auto kExpectedAutoFlag = "use_parent_table_id_field";
 
@@ -2278,11 +2183,7 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
   auto table = CreateTestTable(10);
   auto dead_uuid = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
   ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 20s * kTimeMultiplier, UserTabletsOnly::kFalse));
-  auto* load_balancer =
-    ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
-  ASSERT_OK(WaitFor([load_balancer] -> Result<bool> {
-        return load_balancer->GetLatestActivityInfo().IsIdle();
-      }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for load balancer to become idle"));
+  ASSERT_OK(MasterTestApi(cluster_.get()).WaitForLoadBalancerIdle(60s * kTimeMultiplier));
   // Prevent the load balancer from adding new PRE_VOTERs between our check and Shutdown(). Without
   // this, the load balancer can add a PRE_VOTER right after the check passes, creating a config
   // with only 2 VOTERs + 1 PRE_VOTER. If one VOTER dies before promotion, the surviving single
@@ -2369,13 +2270,7 @@ TEST_F_EX(
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
   InsertRows(table, /* num_rows_to_insert = */ 500);
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
-  ASSERT_OK(WaitFor(
-      [&]() { return tablet->LockForRead()->is_deleted(); }, 30s /* timeout */,
-      "Wait for tablet split to complete and parent to be deleted"));
+  ASSERT_OK(SplitFirstTabletAndWaitForParentDeleted(table));
   ExpectLoadDistributionViewTabletsShown(4);
 }
 
@@ -2390,8 +2285,6 @@ TEST_F_EX(
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
   InsertRows(table, /* num_rows_to_insert = */ 500);
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
   auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util->SetProxy(&client_->proxy_cache());
   snapshot_util->SetCluster(cluster_.get());
@@ -2406,13 +2299,8 @@ TEST_F_EX(
 
   // Split the first tablet, resulting in it becoming a split parent; 2 new children tablets are
   // created as part of this.
-  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
-  ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
   // The parent tablet should be retained because of the snapshot schedule.
-  ASSERT_OK(WaitFor(
-      [&]() { return tablet->LockForRead()->is_hidden(); },
-      30s /* timeout */,
-      "Wait for tablet split to complete and parent to be hidden"));
+  ASSERT_OK(SplitFirstTabletAndWaitForParentHidden(table));
   // We continue to count the split tablet because it is hidden not deleted.
   ExpectLoadDistributionViewTabletsShown(5);
 
@@ -2492,11 +2380,10 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerOngoingRbs) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_min_inbound_remote_bootstraps_per_tserver) = 50;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
   CreateTestTable(3 /* num_tablets */);
-  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto table_info = cm.GetTableInfoFromNamespaceNameAndTableName(
-      table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
+  MasterTestApi api(cluster_.get());
+  const auto table_id = ASSERT_RESULT(api.FindTable(table_name))->id();
   std::unordered_set<TabletId> tablet_ids;
-  for (auto& tablet : ASSERT_RESULT(table_info->GetTablets())) {
+  for (auto& tablet : ASSERT_RESULT(api.GetTablets(table_id))) {
     tablet_ids.insert(tablet->tablet_id());
   }
   std::unordered_set<TabletServerId> orig_tserver_ids;

@@ -35,10 +35,6 @@ DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 constexpr const char* const kDefaultCassandraUsername = "cassandra";
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 using yb::util::kBcryptHashSize;
@@ -707,8 +703,9 @@ class TestQLRole : public QLTestAuthentication {
     auto s = processor->Run(select);
     CHECK(s.ok());
     auto row_block = processor->row_block();
-    EXPECT_EQ(2, row_block->row_count());
-    auto& row = row_block->row(0);
+    ASSERT_EQ(2, row_block->row_count());
+    // The other row is the default role; the virtual table lists roles in no particular order.
+    auto& row = row_block->row(row_block->row(0).column(0).string_value() == role_name ? 0 : 1);
 
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(can_login, row.column(1).bool_value());

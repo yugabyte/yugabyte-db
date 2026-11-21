@@ -26,11 +26,11 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master.h"
-#include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/ts_manager.h"
+#include "yb/integration-tests/master_test_api.h"
+
+#include "yb/master/master_heartbeat.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/decimal.h"
 #include "yb/util/format.h"
@@ -1592,7 +1592,6 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   auto row_block = processor->row_block();
   ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
-  auto* leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
   NodeInstancePB instance;
   instance.set_permanent_uuid("test");
   instance.set_instance_seqno(0);
@@ -1607,9 +1606,16 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   master::TSHeartbeatRequestPB heartbeat_request;
   *heartbeat_request.mutable_common()->mutable_ts_instance() = instance;
   *heartbeat_request.mutable_registration() = registration;
-  ASSERT_OK(leader_master->ts_manager()->RegisterFromHeartbeat(
-      heartbeat_request, leader_master->catalog_manager_impl()->GetLeaderEpochInternal(),
-      CloudInfoPB(), nullptr));
+  // A master accepts a heartbeat only from a tserver of its universe.
+  heartbeat_request.set_universe_uuid(
+      ASSERT_RESULT(MasterTestApi(cluster_.get()).GetClusterConfig()).universe_uuid());
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterHeartbeatProxy>());
+  master::TSHeartbeatResponsePB heartbeat_response;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30));
+  ASSERT_OK(proxy.TSHeartbeat(heartbeat_request, &heartbeat_response, &rpc));
+  ASSERT_FALSE(heartbeat_response.has_error()) << heartbeat_response.error().ShortDebugString();
+  ASSERT_OK(cluster_->WaitForTabletServerToRegister("test", MonoDelta::FromSeconds(30)));
 
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));

@@ -19,10 +19,10 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet.h"
@@ -194,15 +194,12 @@ TEST_F(CqlIndexTest, DropTableWithIndexesIsAtomic) {
   ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx1 ON t (v1)"));
   ASSERT_OK(session.ExecuteQuery("CREATE INDEX idx2 ON t (v2)"));
 
+  MasterTestApi api(cluster_.get());
   std::vector<TableId> dropped_table_ids;
-  {
-    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-    for (const auto* name : {"t", "idx1", "idx2"}) {
-      auto table = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
-          YQL_DATABASE_CQL, kNamespace, name);
-      ASSERT_NE(table, nullptr) << name;
-      dropped_table_ids.push_back(table->id());
-    }
+  for (const auto* name : {"t", "idx1", "idx2"}) {
+    auto table = ASSERT_RESULT(
+        api.FindTable(client::YBTableName(YQL_DATABASE_CQL, kNamespace, name)));
+    dropped_table_ids.push_back(table->id());
   }
 
   // The failed drop leaves the in-memory table unchanged, so a backfill still updating it would
@@ -214,12 +211,11 @@ TEST_F(CqlIndexTest, DropTableWithIndexesIsAtomic) {
         IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)),
         IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   }
-  ASSERT_OK(WaitFor([this, &dropped_table_ids]() -> Result<bool> {
-    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-    auto table = catalog_manager.GetTableInfo(dropped_table_ids.front());
-    SCHECK(table, NotFound, "Table t not found");
-    return !table->IsBackfilling() &&
-           table->LockForRead()->pb.state() == master::SysTablesEntryPB::RUNNING;
+  ASSERT_OK(WaitFor([&api, &dropped_table_ids]() -> Result<bool> {
+    auto table = VERIFY_RESULT(api.GetTableInfo(dropped_table_ids.front()));
+    auto lock = table->LockForRead();
+    return lock->pb.backfill_jobs().empty() &&
+           lock->pb.state() == master::SysTablesEntryPB::RUNNING;
   }, 60s * kTimeMultiplier, "The table is done altering"));
 
   // The master persists the deletion and then fails before it applies it in memory.
@@ -231,10 +227,10 @@ TEST_F(CqlIndexTest, DropTableWithIndexesIsAtomic) {
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart(
       /* wait_until_catalog_manager_is_leader = */ true));
 
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  ASSERT_OK(WaitFor([&catalog_manager, &dropped_table_ids]() -> Result<bool> {
+  ASSERT_OK(WaitFor([&api, &dropped_table_ids]() -> Result<bool> {
+    auto catalog = VERIFY_RESULT(api.Catalog());
     for (const auto& table_id : dropped_table_ids) {
-      auto table = catalog_manager.GetTableInfo(table_id);
+      auto table = catalog.FindTableOrNull(table_id);
       if (table && !table->LockForRead()->started_deleting()) {
         LOG(INFO) << "Table " << table->ToString() << " is not deleted";
         return false;
@@ -262,13 +258,11 @@ TEST_F(CqlIndexTest, CreateIndexFailureAfterPersistKeepsIndex) {
   ASSERT_NOK(create_status);
 
   auto check_index_listed = [this]() -> Status {
-    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-    auto index = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
-        YQL_DATABASE_CQL, kNamespace, kIndexName);
-    SCHECK(index, NotFound, "Index not found");
-    auto indexed_table = catalog_manager.GetTableInfoFromNamespaceNameAndTableName(
-        YQL_DATABASE_CQL, kNamespace, "t");
-    SCHECK(indexed_table, NotFound, "Indexed table not found");
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    auto index = VERIFY_RESULT(
+        catalog.FindTable(client::YBTableName(YQL_DATABASE_CQL, kNamespace, kIndexName)));
+    auto indexed_table = VERIFY_RESULT(
+        catalog.FindTable(client::YBTableName(YQL_DATABASE_CQL, kNamespace, "t")));
     SCHECK(!indexed_table->GetIndexInfo(index->id()).table_id().empty(), IllegalState,
            "Indexed table does not list the index");
     return Status::OK();

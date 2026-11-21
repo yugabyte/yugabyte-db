@@ -17,7 +17,6 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -65,8 +64,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
     ASSERT_OK(CreateObjects());
-
-    producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
 
     ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       auto table_name =
@@ -304,7 +301,6 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     return ValidateRows();
   }
 
-  master::Master* producer_master_ = nullptr;
   client::YBTableName yb_table_name_;
   NamespaceId namespace_id_;
   std::unique_ptr<pgwrapper::PGConn> producer_conn_, consumer_conn_;
@@ -419,10 +415,7 @@ TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
   TEST_SYNC_POINT("MasterFailoverRetryAddTableToXcluster::BeforeStepDown");
   SyncPoint::GetInstance()->ClearAllCallBacks();
 
-  auto master_leader = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-
-  ASSERT_OK(StepDown(
-      master_leader->tablet_peer(), std::string() /* new_leader_uuid */, ForceStepDown::kTrue));
+  ASSERT_OK(consumer_cluster()->StepDownMasterLeader());
 
   test_thread_holder.JoinAll();
   ASSERT_OK(status);
@@ -585,8 +578,6 @@ class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {
     ASSERT_OK(InitProducerClusterOnly(opts));
 
     ASSERT_OK(CreateTable(&producer_cluster_));
-
-    producer_master_ = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->master();
 
     yb_table_name_ = ASSERT_RESULT(
         GetYsqlTable(&producer_cluster_, namespace_name, "" /* schema_name */, kTableName));

@@ -14,9 +14,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/integration-tests/master_test_api.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_types.pb.h"
-#include "yb/master/mini_master.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/server/server_base.pb.h"
@@ -42,23 +42,28 @@ class CreateAbortTest : public pgwrapper::PgMiniTestBase {
     return GetTableIDFromTableName(name).ok();
   }
 
-  // Returns true iff the table/index exists in the catalog manager and is not being deleted.
-  bool TableExistsInCatalog(master::CatalogManager& cm,
-    const std::string& name, const std::string& namespace_name = "yugabyte") {
-    for (const auto& table : cm.GetTables(master::GetTablesMode::kAll)) {
+  // Returns true iff the table/index exists in the master's catalog and is not being deleted.
+  Result<bool> TableExistsInCatalog(
+      const std::string& name, const std::string& namespace_name = "yugabyte") {
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    const auto ns = VERIFY_RESULT(catalog.FindNamespace(YQL_DATABASE_PGSQL, namespace_name));
+    for (const auto& table : catalog.GetTables()) {
       auto l = table->LockForRead();
-      if (!l->started_deleting() && l->namespace_name() == namespace_name && l->name() == name) {
+      if (!l->started_deleting() && l->pb.namespace_id() == ns->id() && l->name() == name) {
         return true;
       }
     }
     return false;
   }
 
-  // Waits until the table/index is gone from the catalog manager or is being deleted.
-  Status WaitForTableNotInCatalog(master::CatalogManager& cm,
-    const std::string& name, const std::string& namespace_name = "yugabyte") {
-    return WaitFor([&]() { return !TableExistsInCatalog(cm, name, namespace_name); },
-                   30s * kTimeMultiplier, Format("Wait for $0 to leave the catalog", name));
+  // Waits until the table/index is gone from the master's catalog or is being deleted.
+  Status WaitForTableNotInCatalog(
+      const std::string& name, const std::string& namespace_name = "yugabyte") {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return !VERIFY_RESULT(TableExistsInCatalog(name, namespace_name));
+        },
+        30s * kTimeMultiplier, Format("Wait for $0 to leave the catalog", name));
   }
 
   // Returns true iff the table/index is not queryable via PG and
@@ -84,20 +89,20 @@ TEST_F(CreateAbortTest, TestAbortTableCreation) {
 
   auto cconn = ASSERT_RESULT(Connect());
   auto qconn = ASSERT_RESULT(Connect());
-  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
 
   // create table should abort if the test flag is 1
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 1;
   auto s = cconn.Execute("CREATE TABLE test_create_abort_t1 (k1 int primary key, k2 int)");
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-  ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t1"));
+  ASSERT_FALSE(ASSERT_RESULT(TableExistsInCatalog("test_create_abort_t1")));
   ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t1"));
   ASSERT_FALSE(TableExistsInClientList("test_create_abort_t1"));
 
   // the test flag only applies to table names that start with
   // 'test_create_abort_' prefix and should not impact any other table.
   ASSERT_OK(cconn.Execute("CREATE TABLE rand_table (k1 int primary key, k2 int)"));
+  ASSERT_TRUE(ASSERT_RESULT(TableExistsInCatalog("rand_table")));
 
   // create table should not abort if the test flag is 2
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_abort_create_table) = 2;
@@ -123,7 +128,6 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
 
   auto cconn = ASSERT_RESULT(Connect());
   auto qconn = ASSERT_RESULT(Connect());
-  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
 
   // setup: create tables on which indexes will be created
   ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t1 (k1 int primary key, k2 int)"));
@@ -134,7 +138,7 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
   auto s = cconn.Execute("CREATE INDEX test_create_abort_t1_idx1 ON test_create_abort_t1 (k2)");
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-  ASSERT_FALSE(TableExistsInCatalog(cm, "test_create_abort_t1_idx1"));
+  ASSERT_FALSE(ASSERT_RESULT(TableExistsInCatalog("test_create_abort_t1_idx1")));
   ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t1_idx1"));
   ASSERT_FALSE(TableExistsInClientList("test_create_abort_t1_idx1"));
 
@@ -146,7 +150,7 @@ TEST_F(CreateAbortTest, TestAbortIndexCreation) {
   s = cconn.Execute("CREATE INDEX test_create_abort_t3_idx1 ON test_create_abort_t3 (k2)");
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-  ASSERT_OK(WaitForTableNotInCatalog(cm, "test_create_abort_t3_idx1"));
+  ASSERT_OK(WaitForTableNotInCatalog("test_create_abort_t3_idx1"));
   ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t3_idx1"));
   ASSERT_FALSE(TableExistsInClientList("test_create_abort_t3_idx1"));
 
@@ -165,7 +169,6 @@ TEST_F(CreateAbortTest, TestAbortColocatedIndexCreation) {
 
   auto cconn = ASSERT_RESULT(ConnectToDB("colo_db"));
   auto qconn = ASSERT_RESULT(ConnectToDB("colo_db"));
-  auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
 
   ASSERT_OK(cconn.Execute("CREATE TABLE test_create_abort_t1 (k1 int primary key, k2 int)"));
   ASSERT_OK(cconn.Execute("INSERT INTO test_create_abort_t1 VALUES (1, 10)"));
@@ -175,7 +178,7 @@ TEST_F(CreateAbortTest, TestAbortColocatedIndexCreation) {
     auto s = cconn.Execute("CREATE INDEX test_create_abort_t1_idx ON test_create_abort_t1 (k2)");
     ASSERT_NOK(s);
     ASSERT_STR_CONTAINS(s.ToString(), "TEST: Aborting due to FLAGS_TEST_abort_create_table");
-    ASSERT_OK(WaitForTableNotInCatalog(cm, "test_create_abort_t1_idx", "colo_db"));
+    ASSERT_OK(WaitForTableNotInCatalog("test_create_abort_t1_idx", "colo_db"));
     ASSERT_TRUE(TableNotQueryable(qconn, "test_create_abort_t1_idx"));
     ASSERT_FALSE(TableExistsInClientList("test_create_abort_t1_idx"));
 

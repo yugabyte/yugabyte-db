@@ -28,11 +28,10 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
@@ -126,7 +125,7 @@ TEST_F(OrphanedTabletCleanupTest, SysCatalogCorruption) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_sys_catalog_data_loss) = true;
 
   // Step down the leader to trigger a full tablet report and validate that we do not lose any data.
-  auto new_leader = ASSERT_RESULT(cluster_->StepDownMasterLeader());
+  ASSERT_OK(MasterTestApi(cluster_.get()).StepDownLeader());
   SleepFor(MonoDelta::FromSeconds(kWaitTimeForDeleteTabletProcessingSec));
   ASSERT_NO_FATALS(VerifyTabletDataOnTserver(3 /* num_expected_tablet_peers */));
 }
@@ -137,7 +136,7 @@ TEST_F(OrphanedTabletCleanupTest, PreviousBehaviorWithNoDeletionCheck) {
   // wiped, that tablets that are thought to be orphaned are cleaned up.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deletion_check_for_orphaned_tablets) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_sys_catalog_data_loss) = true;
-  auto new_leader = ASSERT_RESULT(cluster_->StepDownMasterLeader());
+  ASSERT_OK(MasterTestApi(cluster_.get()).StepDownLeader());
 
   SleepFor(MonoDelta::FromSeconds(kWaitTimeForDeleteTabletProcessingSec));
   ASSERT_NO_FATALS(VerifyTabletDataOnTserver(0 /* num_expected_tablet_peers */));
@@ -150,7 +149,7 @@ TEST_F(OrphanedTabletCleanupTest, MasterLeaderFailover) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_tablet_deletion) = true;
   auto db_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   ASSERT_OK(db_conn.ExecuteFormat("DROP TABLE $0", kTableName));
-  auto new_leader = ASSERT_RESULT(cluster_->StepDownMasterLeader());
+  ASSERT_OK(MasterTestApi(cluster_.get()).StepDownLeader());
   ASSERT_NO_FATALS(VerifyTabletDataOnTserver(3));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_tablet_deletion) = false;
 
@@ -166,7 +165,7 @@ TEST_F(OrphanedTabletCleanupTest, HiddenTabletsNotDeletedAfterCorruption) {
   ASSERT_OK(db_conn.ExecuteFormat("DROP TABLE $0", kTableName));
   ASSERT_NO_FATALS(VerifyTabletDataOnTserver(3 /* num_expected_tablet_peers */));
 
-  auto leader_master = ASSERT_RESULT(cluster_->StepDownMasterLeader());
+  ASSERT_OK(MasterTestApi(cluster_.get()).StepDownLeader());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_sys_catalog_data_loss) = true;
 
   SleepFor(MonoDelta::FromSeconds(kWaitTimeForDeleteTabletProcessingSec));

@@ -97,7 +97,6 @@ class RustMasterMiniClusterTest : public YBTest {
 TEST_F(RustMasterMiniClusterTest, LeadsFailsOverAndRestarts) {
   auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   ASSERT_TRUE(leader->is_rust());
-  ASSERT_EQ(leader->master(), nullptr);
   ASSERT_OK(cluster_->WaitForTabletServerCount(3));
   const auto old_leader_uuid = leader->permanent_uuid();
 

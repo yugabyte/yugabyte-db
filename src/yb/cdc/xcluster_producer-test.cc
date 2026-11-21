@@ -25,13 +25,14 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.h"
-#include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -180,10 +181,7 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
   }
 
   Result<uint32> GetAutoFlagsConfigVersion() {
-    return VERIFY_RESULT(cluster_->GetLeaderMiniMaster())
-        ->master()
-        ->GetAutoFlagsConfig()
-        .config_version();
+    return VERIFY_RESULT(MasterTestApi(cluster_.get()).GetAutoFlagsConfig()).config_version();
   }
 
   tserver::MiniTabletServer* tablet_server_;
@@ -399,9 +397,12 @@ TEST_F(XClusterProducerTest, ProducerUpgrade) {
   promote_auto_flags_req.set_promote_non_runtime_flags(true);
   promote_auto_flags_req.set_force(true);
   master::PromoteAutoFlagsResponsePB promote_auto_flags_resp;
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  ASSERT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(
-      &promote_auto_flags_req, &promote_auto_flags_resp));
+  auto master_proxy =
+      ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  rpc::RpcController promote_rpc;
+  promote_rpc.set_timeout(kTimeout);
+  ASSERT_OK(master_proxy.PromoteAutoFlags(
+      promote_auto_flags_req, &promote_auto_flags_resp, &promote_rpc));
   ASSERT_FALSE(promote_auto_flags_resp.has_error());
   ASSERT_EQ(promote_auto_flags_resp.new_config_version(), config_version + 1);
 

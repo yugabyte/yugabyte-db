@@ -19,10 +19,6 @@
 using std::string;
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                                \

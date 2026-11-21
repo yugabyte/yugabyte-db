@@ -19,6 +19,8 @@
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/catalog_entity_parser.h"
@@ -28,6 +30,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_util.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -186,11 +189,10 @@ Status CatalogSnapshot::AddTabletRow(const TabletId& id, const master::SysTablet
     return Status::OK();
   }
   auto tablet = std::make_shared<master::TabletInfo>(primary_table, id);
-  {
-    auto lock = tablet->LockForWrite();
-    lock.mutable_data()->pb.CopyFrom(pb);
-    lock.Commit();
-  }
+  // TableInfo::AddTablets reads the tablet's dirty state, so add it under the write lock, as the
+  // loader does.
+  auto lock = tablet->LockForWrite();
+  lock.mutable_data()->pb.CopyFrom(pb);
   tablets_[id] = tablet;
   // As the loader does: a colocated tablet belongs to every table listed on it.
   std::vector<TableId> table_ids(pb.table_ids().begin(), pb.table_ids().end());
@@ -202,6 +204,7 @@ Status CatalogSnapshot::AddTabletRow(const TabletId& id, const master::SysTablet
       RETURN_NOT_OK(table->AddTablets({tablet}));
     }
   }
+  lock.Commit();
   return Status::OK();
 }
 
@@ -414,6 +417,66 @@ Result<bool> MasterTestApi::IsInitDbDone() {
     return STATUS_FORMAT(RuntimeError, "initdb failed: $0", resp.initdb_error());
   }
   return resp.done();
+}
+
+Status MasterTestApi::XClusterStopPersisting(
+    const std::vector<NamespaceId>& namespace_ids, MonoDelta timeout) {
+  master::XClusterStopPersistingRequestPB req;
+  for (const auto& id : namespace_ids) {
+    req.add_namespace_ids(id);
+  }
+  master::XClusterStopPersistingResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(timeout);
+  auto proxy = VERIFY_RESULT(LeaderProxy<master::MasterReplicationProxy>());
+  return ResponseStatus(proxy.XClusterStopPersisting(req, &resp, &controller), resp);
+}
+
+Status MasterTestApi::XClusterStartPersisting(
+    const std::vector<NamespaceId>& namespace_ids, MonoDelta timeout) {
+  master::XClusterStartPersistingRequestPB req;
+  for (const auto& id : namespace_ids) {
+    req.add_namespace_ids(id);
+  }
+  master::XClusterStartPersistingResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(timeout);
+  auto proxy = VERIFY_RESULT(LeaderProxy<master::MasterReplicationProxy>());
+  return ResponseStatus(proxy.XClusterStartPersisting(req, &resp, &controller), resp);
+}
+
+Result<master::SysPersistenceBlockMapEntryPB> MasterTestApi::XClusterGetPersistenceBlockMap() {
+  master::XClusterGetPersistenceBlockMapRequestPB req;
+  master::XClusterGetPersistenceBlockMapResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  auto proxy = VERIFY_RESULT(LeaderProxy<master::MasterReplicationProxy>());
+  RETURN_NOT_OK(
+      ResponseStatus(proxy.XClusterGetPersistenceBlockMap(req, &resp, &controller), resp));
+  return resp.persistence_block_map();
+}
+
+Status MasterTestApi::StepDownLeader(const std::string& new_leader_uuid) {
+  consensus::LeaderStepDownRequestPB req;
+  req.set_tablet_id(master::kSysCatalogTabletId);
+  if (!new_leader_uuid.empty()) {
+    req.set_new_leader_uuid(new_leader_uuid);
+  }
+  req.set_force_step_down(true);
+  return WaitFor([&]() -> Result<bool> {
+    consensus::LeaderStepDownResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(kRpcTimeout);
+    auto proxy = VERIFY_RESULT(LeaderProxy<consensus::ConsensusServiceProxy>());
+    RETURN_NOT_OK(proxy.LeaderStepDown(req, &resp, &controller));
+    if (!resp.has_error()) {
+      return true;
+    }
+    if (resp.error().code() == tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_STEP_DOWN) {
+      return false;
+    }
+    return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp.ShortDebugString());
+  }, kRpcTimeout, Format("Step down of the master leader to '$0'", new_leader_uuid));
 }
 
 } // namespace yb

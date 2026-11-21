@@ -31,7 +31,6 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
@@ -540,16 +539,11 @@ Status XClusterTestBase::GetCDCStreamForTable(
     if (!leader_mini_master.ok()) {
       return false;
     }
-    Status s;
-    if ((*leader_mini_master)->is_rust()) {
-      rpc::ProxyCache proxy_cache(&(*leader_mini_master)->messenger());
-      master::MasterReplicationProxy proxy(&proxy_cache, (*leader_mini_master)->bound_rpc_addr());
-      rpc::RpcController controller;
-      controller.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-      s = proxy.ListCDCStreams(req, resp, &controller);
-    } else {
-      s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
-    }
+    rpc::ProxyCache proxy_cache(&(*leader_mini_master)->messenger());
+    master::MasterReplicationProxy proxy(&proxy_cache, (*leader_mini_master)->bound_rpc_addr());
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    auto s = proxy.ListCDCStreams(req, resp, &controller);
     if (!s.ok() || resp->has_error()) {
       return false;
     }
@@ -1132,13 +1126,9 @@ Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy(
 }
 
 Status XClusterTestBase::ClearFailedUniverse(Cluster& cluster) {
-  auto* leader = VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster());
-  if (leader->is_rust()) {
-    // A Rust leader keeps a failed setup's outcome in memory only; nothing is left to delete.
-    return Status::OK();
-  }
-  auto& catalog_manager = leader->catalog_manager_impl();
-  return catalog_manager.ClearFailedUniverse(catalog_manager.GetLeaderEpochInternal());
+  // The master keeps a failed setup's outcome in memory only (it never persists a FAILED
+  // universe), so there is no row to delete before the next setup attempt.
+  return Status::OK();
 }
 
 } // namespace yb

@@ -55,8 +55,9 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/memory/arena_fwd.h"
@@ -125,7 +126,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
   Result<std::unique_ptr<client::YBClient>> CreateClient() {
     YBClientBuilder builder;
     for (int i = 0; i < num_masters_; i++) {
-      if (!cluster_->mini_master(i)->master()->IsShutdown()) {
+      if (cluster_->mini_master(i)->is_running()) {
         builder.add_master_server_addr(cluster_->mini_master(i)->bound_rpc_addr_str());
       }
     }
@@ -161,8 +162,8 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Check that all " << num_masters_ << " masters are up first.";
     for (int i = 0; i < num_masters_; ++i) {
       LOG(INFO) << "Checking master " << i;
-      auto* master = cluster_->mini_master(i)->master();
-      ASSERT_FALSE(master->IsShutdown());
+      auto* master = cluster_->mini_master(i);
+      ASSERT_TRUE(master->is_running());
       ASSERT_OK(master->WaitForCatalogManagerInit());
     }
 

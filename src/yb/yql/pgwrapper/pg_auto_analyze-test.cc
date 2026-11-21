@@ -33,7 +33,6 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/schema.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/tserver/mini_tablet_server.h"

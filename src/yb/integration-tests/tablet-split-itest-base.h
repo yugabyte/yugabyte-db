@@ -14,6 +14,8 @@
 #pragma once
 
 #include <chrono>
+#include <set>
+#include <string>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/ql-dml-test-base.h"
@@ -24,9 +26,7 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/integration-tests/create-table-itest-base.h"
-
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
+#include "yb/integration-tests/master_test_api.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -45,14 +45,22 @@ class SnapshotTestUtil;
 
 }
 
-void DumpTableLocations(
-    master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
+void DumpTableLocations(MiniClusterBase* cluster, const client::YBTableName& table_name);
 
 void DumpWorkloadStats(const TestYcqlWorkload& workload);
 
-Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
+// MasterAdmin.SplitTablet: the master asks the tablet's leader for the split key and registers the
+// children in the background.
+Status SplitTablet(MiniClusterBase* cluster, const tablet::Tablet& tablet);
 
-Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
+// SplitTablet, then waits until the master has registered the children.
+Status DoSplitTablet(MiniClusterBase* cluster, const tablet::Tablet& tablet);
+
+// Splits the tablet into split_factor children and waits until the master has registered them.
+// The master asks the tablet's leader for the split keys, so the tablet needs flushed data.
+Status SplitTabletAndWaitForChildren(
+    MiniClusterBase* cluster, const TabletId& tablet_id, int split_factor,
+    MonoDelta timeout = MonoDelta::FromSeconds(60 * kTimeMultiplier));
 
 template <class MiniClusterType>
 class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType> {
@@ -111,8 +119,9 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(
       uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<std::shared_ptr<master::TabletInfo>> GetSingleTestTabletInfo(
-      master::CatalogManagerIf* catalog_manager);
+  Result<master::TabletInfoPtr> GetSingleTestTabletInfo();
+
+  MasterTestApi MasterApi() { return MasterTestApi(this->cluster_.get()); }
 
   void CreateSingleTablet() {
     this->SetNumTablets(1);
@@ -161,15 +170,10 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<master::Master&> GetLeaderMaster() {
-    return *CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master());
-  }
-
-  Result<master::CatalogManagerIf*> catalog_manager() {
-    return VERIFY_RESULT(GetLeaderMaster()).get().catalog_manager();
-  }
-
   Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id);
+
+  // The uuids of the tservers the master lists for the tablet's replicas.
+  Result<std::set<std::string>> GetReplicaUuids(const TabletId& tablet_id);
 
   // By default we wait until all split tablets are cleanup. expected_split_tablets could be
   // overridden if needed to test behaviour of split tablet when its deletion is disabled.
@@ -183,19 +187,18 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<master::SplitTabletResponsePB> SendMasterRpcSyncSplitTablet(const TabletId& tablet_id);
 
-  Result<TabletId> SplitSingleTablet(const std::vector<docdb::DocKeyHash>& split_hash_codes);
-
-  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
-
-  Result<TabletId> SplitTabletAndValidate(
-      const std::vector<docdb::DocKeyHash>& split_hash_codes,
-      size_t num_rows,
-      bool parent_tablet_protected_from_deletion = false);
+  // Splits the test table's only tablet into cluster_->GetSplitFactor() children at the keys its
+  // leader picks, and waits until the master has registered them.
+  Result<TabletId> SplitSingleTablet();
 
   Result<TabletId> SplitTabletAndValidate(
-      docdb::DocKeyHash split_hash_code,
-      size_t num_rows,
-      bool parent_tablet_protected_from_deletion = false);
+      size_t num_rows, bool parent_tablet_protected_from_deletion = false);
+
+  // The master picks the split keys (MasterAdmin.SplitTablet takes none), so a split at a chosen
+  // hash code is not available: this keeps an old call from converting the hash code to num_rows.
+  Result<TabletId> SplitTabletAndValidate(
+      docdb::DocKeyHash split_hash_code, size_t num_rows,
+      bool parent_tablet_protected_from_deletion = false) = delete;
 
   // Checks source tablet behaviour after split:
   // - It should reject reads and writes.

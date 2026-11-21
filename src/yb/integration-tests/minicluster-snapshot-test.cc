@@ -52,21 +52,17 @@
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/postgres-minicluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/tablet_creation_limits.h"
-#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -94,6 +90,7 @@ DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enforce_tablet_replica_limits);
+DECLARE_uint32(tablet_replicas_per_core_limit);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(leader_lease_duration_ms);
@@ -374,12 +371,6 @@ class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return schema;
   }
 
-  LeaderEpoch CurrentLeaderEpoch() {
-    return LeaderEpoch(
-        cluster_->mini_master()->catalog_manager().leader_ready_term(),
-        cluster_->mini_master()->sys_catalog().pitr_count());
-  }
-
  protected:
   void DoTearDown() override {
     messenger_->Shutdown();
@@ -393,50 +384,6 @@ class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
-
-TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
-  auto first_epoch = CurrentLeaderEpoch();
-  const auto timeout = MonoDelta::FromSeconds(20);
-  client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
-  ASSERT_OK(client_->CreateNamespaceIfNotExists(
-      table_name.namespace_name(), table_name.namespace_type()));
-  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      backup_proxy_.get(), table_name.namespace_type(), table_name.namespace_name(),
-      MonoDelta::FromSeconds(60), MonoDelta::FromSeconds(600), timeout));
-  ASSERT_OK(WaitScheduleSnapshot(backup_proxy_.get(), schedule_id, timeout));
-
-  auto table_creator = client_->NewTableCreator();
-  auto schema = ASSERT_RESULT(CreateTestSchema());
-  ASSERT_OK(
-      table_creator->table_name(table_name).schema(&schema).num_tablets(1).wait(true).Create());
-
-  auto yb_table_info = ASSERT_RESULT(client_->GetYBTableInfo(table_name));
-  LOG(INFO) << "Getting table info,";
-  auto table_info =
-      cluster_->mini_master()->catalog_manager_impl().GetTableInfo(yb_table_info.table_id);
-  ASSERT_TRUE(table_info != nullptr);
-  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
-  HybridTime ht = ASSERT_RESULT(HybridTime::ParseHybridTime(time.ToString()));
-  LOG(INFO) << "Performing restoration.";
-  auto restoration_id =
-      ASSERT_RESULT(RestoreSnapshotSchedule(backup_proxy_.get(), schedule_id, ht, timeout));
-  LOG(INFO) << "Waiting for restoration.";
-  ASSERT_OK(WaitForRestoration(backup_proxy_.get(), restoration_id, timeout));
-
-  LOG(INFO) << "Restoration finished.";
-  {
-    auto table_lock = table_info->LockForWrite();
-    table_lock.mutable_data()->pb.set_parent_table_id("fnord");
-    LOG(INFO) << Format(
-        "Writing with stale epoch: $0, $1", first_epoch.leader_term, first_epoch.pitr_count);
-    ASSERT_NOK(cluster_->mini_master()->sys_catalog().Upsert(first_epoch, table_info));
-    auto post_restore_epoch = CurrentLeaderEpoch();
-    LOG(INFO) << Format(
-        "Writing with fresh epoch: $0, $1", post_restore_epoch.leader_term,
-        post_restore_epoch.pitr_count);
-    ASSERT_OK(cluster_->mini_master()->sys_catalog().Upsert(post_restore_epoch, table_info));
-  }
-}
 
 TEST_F(MasterSnapshotTest, ListSnapshotSchedulesHasNoSnapshotDetails) {
   const auto timeout = MonoDelta::FromSeconds(20);
@@ -472,10 +419,15 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
 
   MiniCluster* mini_cluster() { return cluster_.get(); }
 
+  // The table as the leader has it now; a later state needs another call.
   Result<TableInfoPtr> GetTable(const std::string& table_name, const std::string& db_name) {
-    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    for (const auto& table : leader_master->catalog_manager_impl().GetTables(GetTablesMode::kAll)) {
-      if (table->name() == table_name && table->namespace_name() == db_name) {
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    for (const auto& table : catalog.GetTables()) {
+      if (table->LockForRead()->is_deleted() || table->name() != table_name) {
+        continue;
+      }
+      auto ns = catalog.FindNamespaceOrNull(table->namespace_id());
+      if ((ns ? ns->name() : table->namespace_name()) == db_name) {
         return table;
       }
     }
@@ -501,151 +453,6 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
     return time;
   }
 };
-
-class MasterExportSnapshotTest
-    : public PostgresMiniClusterTest,
-      public ::testing::WithParamInterface<master::YsqlColocationConfig> {
- public:
-  void SetUp() override {
-    // The snapshot generated as of a time reflects the tablet consensus state at that time, while
-    // the ground truth export reflects the current one. A load balancer leader move in between
-    // makes them differ, so keep tablet leadership stable.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-    PostgresMiniClusterTest::SetUp();
-    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
-    backup_proxy = std::make_unique<master::MasterBackupProxy>(
-        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
-    admin_proxy = std::make_unique<master::MasterAdminProxy>(
-        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
-    client_ =
-        ASSERT_RESULT(client::YBClientBuilder()
-                          .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-                          .Build());
-    ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
-  }
-
-  Status CreateDatabaseWithSnapshotSchedule(
-      master::YsqlColocationConfig colocated = master::YsqlColocationConfig::kNotColocated) {
-    RETURN_NOT_OK(CreateDatabase(kNamespaceName, colocated));
-    LOG(INFO) << "Database created.";
-    schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
-        backup_proxy.get(), YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
-    RETURN_NOT_OK(WaitScheduleSnapshot(backup_proxy.get(), schedule_id, timeout));
-    return Status::OK();
-  }
-
- protected:
-  const std::string kNamespaceName = "testdb";
-  const MonoDelta timeout = MonoDelta::FromSeconds(30);
-  SnapshotScheduleId schedule_id = SnapshotScheduleId::Nil();
-  std::unique_ptr<rpc::Messenger> messenger_;
-  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
-  std::unique_ptr<master::MasterBackupProxy> backup_proxy;
-  std::unique_ptr<master::MasterAdminProxy> admin_proxy;
-  std::unique_ptr<client::YBClient> client_;
-};
-
-INSTANTIATE_TEST_CASE_P(
-    Colocation, MasterExportSnapshotTest,
-    ::testing::Values(
-        master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
-
-// Test that export_snapshot_from_schedule as of time generates correct SnapshotInfoPB.
-// 1. Create some tables.
-// 2. Mark time t and wait for a new snapshot to be created as part of the snapshot schedule.
-// 3. export_snapshot to generate the SnapshotInfoPB as of current time. It is the traditional
-// export_snapshot command (not the new command) to serve as ground truth.
-// 4. Create more tables.
-// 5. Generate snapshotInfo from schedule using the time t.
-// 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
-TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-  // 1.
-  LOG(INFO) << Format("Create tables t1,t2");
-  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, c1 TEXT, c2 TEXT)"));
-  // 2.
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << Format("current timestamp is: {$0}", time);
-
-  // 3.
-  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(backup_proxy.get(), schedule_id));
-  ASSERT_OK(WaitForSnapshotComplete(backup_proxy.get(), decoded_snapshot_id));
-  master::SnapshotInfoPB ground_truth =
-      ASSERT_RESULT(ExportSnapshot(backup_proxy.get(), decoded_snapshot_id));
-  // 4.
-  ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, c1 INT, c2 TEXT, c3 TEXT)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD COLUMN new_col TEXT"));
-  // 5.
-  LOG(INFO) << Format(
-      "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
-  auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
-      mini_cluster()
-          ->mini_master()
-          ->catalog_manager_impl()
-          .GenerateSnapshotInfoFromScheduleForClone(
-              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
-  // 6.
-  // Clear PITR related fields from ground_truth as these fields are cleared when generating
-  // snapshotInfo as of time.
-  ground_truth.mutable_entry()->clear_schedule_id();
-  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
-  LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
-  LOG(INFO) << Format(
-      "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
-  std::string diff;
-  ASSERT_TRUE(
-      pb_util::ArePBsEqual(std::move(ground_truth), std::move(snapshot_info_as_of_time), &diff))
-      << diff;
-  messenger_->Shutdown();
-}
-
-// Test that export_snapshot_from_schedule as of time doesn't include hidden tables in
-// SnapshotInfoPB.
-TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-  // 1. Create table t1, then delete it to mark it as hidden and then recreate table t1.
-  LOG(INFO) << Format("Create tables t1");
-  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(conn.Execute("DROP TABLE t1"));
-  ASSERT_OK(conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-
-  // 2. Mark time t and wait for a new snapshot to be created as part of the snapshot schedule.
-  Timestamp time = ASSERT_RESULT(GetCurrentTime());
-  LOG(INFO) << Format("current timestamp is: {$0}", time);
-
-  // 3. export_snapshot to generate the SnapshotInfoPB as of current time. It is the traditional
-  // export_snapshot command (not the new command) to serve as ground truth.
-  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(backup_proxy.get(), schedule_id));
-  ASSERT_OK(WaitForSnapshotComplete(backup_proxy.get(), decoded_snapshot_id));
-  master::SnapshotInfoPB ground_truth =
-      ASSERT_RESULT(ExportSnapshot(backup_proxy.get(), decoded_snapshot_id));
-  // 4. Create another table that shouldn't be included in generate snapshot as of time
-  ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, c1 TEXT, c2 TEXT)"));
-  // 5. Generate snapshotInfo from schedule using the time t.
-  LOG(INFO) << Format(
-      "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
-  auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
-      mini_cluster()
-          ->mini_master()
-          ->catalog_manager_impl()
-          .GenerateSnapshotInfoFromScheduleForClone(
-              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
-  // 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
-  ground_truth.mutable_entry()->clear_schedule_id();
-  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
-  LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
-  LOG(INFO) << Format(
-      "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
-  std::string diff;
-  ASSERT_TRUE(
-      pb_util::ArePBsEqual(std::move(ground_truth), std::move(snapshot_info_as_of_time), &diff))
-      << diff;
-  messenger_->Shutdown();
-}
 
 class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
  protected:
@@ -1415,7 +1222,8 @@ TEST_F(PgCloneTest, TabletSplitting) {
   // Wait for the split to complete on master.
   // The parent should still be running because we have cleanup is still disabled.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(source_table->GetTabletsIncludeInactive()).size() == 5;
+    auto table = VERIFY_RESULT(GetTable("t1", kSourceNamespaceName));
+    return VERIFY_RESULT(table->GetTabletsIncludeInactive()).size() == 5;
   }, 30s, "Wait for master split."));
   auto after_master_split_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
 
@@ -1426,7 +1234,8 @@ TEST_F(PgCloneTest, TabletSplitting) {
   // Enable cleanup of split parents and wait for the split parent to be deleted.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto tablets = VERIFY_RESULT(source_table->GetTabletsIncludeInactive());
+    auto table = VERIFY_RESULT(GetTable("t1", kSourceNamespaceName));
+    auto tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
     for (auto& tablet : tablets) {
       if (tablet->id() == split_tablet_id) {
         return tablet->LockForRead()->is_hidden();
@@ -1458,7 +1267,8 @@ TEST_F(PgCloneTest, TabletSplittingWithIndex) {
 
   // Wait for split to complete.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return VERIFY_RESULT(source_index->GetTablets()).size() == 4;
+    auto index = VERIFY_RESULT(GetTable("i1", kSourceNamespaceName));
+    return VERIFY_RESULT(index->GetTablets()).size() == 4;
   }, 30s, "Wait for split to complete."));
 
   // Clone.
@@ -1589,15 +1399,19 @@ TEST_F(PgCloneTest, Tablespaces) {
       "CREATE TABLESPACE $0 WITH (replica_placement='{\"num_replicas\": 1, \"placement_blocks\": "
       "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone\","
       "\"min_num_replicas\":1}]}')", kTablespaceName));
-  auto* catalog_mgr = cluster_->mini_master()->master()->catalog_manager();
-
   // Wait for n running replicas of each tablet of table t1 in the given namespace.
   auto wait_for_n_replicas = [&](const std::string& namespace_name, int n) {
     return WaitFor([&]() -> Result<bool> {
       GetTableLocationsRequestPB req;
       req.mutable_table()->set_table_id(VERIFY_RESULT(GetTable("t1", namespace_name))->id());
       GetTableLocationsResponsePB resp;
-      RETURN_NOT_OK(catalog_mgr->GetTableLocations(&req, &resp));
+      rpc::RpcController controller;
+      controller.set_timeout(30s);
+      auto proxy = VERIFY_RESULT(cluster_->GetLeaderMasterProxy<MasterClientProxy>());
+      RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
+      if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+      }
       SCHECK(!resp.tablet_locations().empty(), IllegalState, "No tablets found");
       for (const auto& tablet_locs : resp.tablet_locations()) {
         if (tablet_locs.replicas_size() != n) return false;
@@ -1721,13 +1535,15 @@ class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest 
 
 TEST_F(PgCloneColocationTestWithTabletLimitsCheck, TabletLimitsColocated) {
   // We should only count physical tables when checking the tablet limits.
-  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto cluster_info = ComputeAggregatedClusterInfo(
-      leader_master->catalog_manager().GetAllLiveNotBlacklistedTServers(), BlacklistSet(), "");
+  // The live tablet replicas the tservers report in their heartbeats, which the limit counts.
+  size_t total_live_replicas = 0;
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    total_live_replicas += ts->server()->tablet_manager()->GetNumLiveTablets();
+  }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
   // Allow no extra tablet replicas initially.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
-      static_cast<uint32_t>(cluster_info.total_live_replicas) / NumTabletServers();
+      static_cast<uint32_t>(total_live_replicas) / NumTabletServers();
 
   // Create some more colocated tables. These should use the existing tablet created in the test
   // setup.
@@ -1742,7 +1558,7 @@ TEST_F(PgCloneColocationTestWithTabletLimitsCheck, TabletLimitsColocated) {
   // Allow for NumTabletServers() more tablet replicas so the clone of the one colocated tablet
   // succeeds.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
-      static_cast<uint32_t>(cluster_info.total_live_replicas + NumTabletServers());
+      static_cast<uint32_t>(total_live_replicas + NumTabletServers());
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
 }

@@ -6789,11 +6789,10 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
   }
 
   auto mini_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
-  auto tablet_peer = mini_master->tablet_peer();
-
-  auto initial_wal_barrier = tablet_peer->get_cdc_min_replicated_index();
-  auto initial_intent_barrier = tablet_peer->cdc_sdk_min_checkpoint_op_id();
-  auto initial_history_barrier = tablet_peer->get_cdc_sdk_safe_time();
+  auto initial_barriers = ASSERT_RESULT(GetSysCatalogRetentionBarriers(mini_master));
+  auto initial_wal_barrier = initial_barriers.cdc_min_replicated_index;
+  auto initial_intent_barrier = initial_barriers.cdc_sdk_min_checkpoint_op_id;
+  auto initial_history_barrier = initial_barriers.cdc_sdk_safe_time;
 
   // Advance gRPC streams via GetChanges with explicit checkpoint.
   for (auto& info : streams) {
@@ -6884,9 +6883,10 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
   }
 
   // Verify sys_catalog tablet barriers.
+  auto barriers = ASSERT_RESULT(GetSysCatalogRetentionBarriers(mini_master));
   if (use_logical_replication_stream) {
-    ASSERT_GT(tablet_peer->get_cdc_min_replicated_index(), initial_wal_barrier);
-    ASSERT_GT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), initial_intent_barrier);
+    ASSERT_GT(barriers.cdc_min_replicated_index, initial_wal_barrier);
+    ASSERT_GT(barriers.cdc_sdk_min_checkpoint_op_id, initial_intent_barrier);
   } else {
     // With only gRPC streams, the sys_catalog tablet is never polled, so CDCMasterBgTask never
     // advances its WAL and intent retention barriers; they stay at their initial (untouched)
@@ -6894,14 +6894,14 @@ void CDCSDKConsumptionConsistentChangesTest::TestSysCatalogRetentionBarriers(
     // OpId::Max().index, while the intent barrier defaults to OpId::Invalid() (which
     // TransactionParticipant::GetLatestCheckPoint() treats as OpId::Max(), i.e. intents can be
     // GCed freely).
-    ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+    ASSERT_EQ(barriers.cdc_min_replicated_index, OpId::Max().index);
+    ASSERT_EQ(barriers.cdc_sdk_min_checkpoint_op_id, OpId::Invalid());
   }
 
   if (initial_history_barrier != HybridTime::kInvalid) {
-    ASSERT_GT(tablet_peer->get_cdc_sdk_safe_time(), initial_history_barrier);
+    ASSERT_GT(barriers.cdc_sdk_safe_time, initial_history_barrier);
   }
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), min_restart_time);
+  ASSERT_EQ(barriers.cdc_sdk_safe_time, min_restart_time);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSysCatalogBarriersWithOnlyGRPCStreams) {
@@ -6949,10 +6949,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
-  auto leader_tablet_peer = leader_master->tablet_peer();
-  auto initial_wal_barrier = leader_tablet_peer->get_cdc_min_replicated_index();
-  auto initial_intents_barrier = leader_tablet_peer->cdc_sdk_min_checkpoint_op_id();
-  auto initial_history_barrier = leader_tablet_peer->get_cdc_sdk_safe_time();
+  auto initial_barriers = ASSERT_RESULT(GetSysCatalogRetentionBarriers(leader_master));
+  auto initial_wal_barrier = initial_barriers.cdc_min_replicated_index;
+  auto initial_intents_barrier = initial_barriers.cdc_sdk_min_checkpoint_op_id;
+  auto initial_history_barrier = initial_barriers.cdc_sdk_safe_time;
 
   ASSERT_LT(initial_wal_barrier, OpId::Max().index);
   ASSERT_LT(initial_intents_barrier, OpId::Max());
@@ -6968,7 +6968,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         RETURN_NOT_OK(GetConsistentChangesFromCDC(stream_id));
-        return leader_tablet_peer->get_cdc_min_replicated_index() > initial_wal_barrier;
+        return VERIFY_RESULT(GetSysCatalogRetentionBarriers(leader_master))
+                   .cdc_min_replicated_index > initial_wal_barrier;
       },
       MonoDelta::FromSeconds(30 * kTimeMultiplier), "Sys catalog WAL barrier did not advance"));
 
@@ -6979,11 +6980,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarriersPropagateToF
 
   auto check_all_masters_barriers = [&]() {
     for (size_t i = 0; i < num_masters; i++) {
-      auto* mini_master = test_cluster_.mini_cluster_->mini_master(i);
-      auto peer = mini_master->tablet_peer();
-      auto wal_barrier = peer->get_cdc_min_replicated_index();
-      auto intents_barrier = peer->cdc_sdk_min_checkpoint_op_id();
-      auto history_barrier = peer->get_cdc_sdk_safe_time();
+      auto barriers = ASSERT_RESULT(GetSysCatalogRetentionBarriers(i));
+      auto wal_barrier = barriers.cdc_min_replicated_index;
+      auto intents_barrier = barriers.cdc_sdk_min_checkpoint_op_id;
+      auto history_barrier = barriers.cdc_sdk_safe_time;
 
       ASSERT_LT(wal_barrier, OpId::Max().index);
       ASSERT_LT(initial_wal_barrier, wal_barrier);

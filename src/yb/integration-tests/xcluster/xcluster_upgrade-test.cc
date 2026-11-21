@@ -13,10 +13,9 @@
 #include "yb/client/table.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
-#include "yb/master/master.h"
-#include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/rpc/rpc_controller.h"
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(limit_auto_flag_promote_for_new_universe);
@@ -74,10 +73,12 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     req.set_max_flag_class(ToString(flag_class));
     req.set_promote_non_runtime_flags(false);
     req.set_force(force);
-    auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
 
     master::PromoteAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
+    auto proxy = VERIFY_RESULT(cluster.GetLeaderMasterProxy<master::MasterClusterProxy>());
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+    RETURN_NOT_OK(proxy.PromoteAutoFlags(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -90,10 +91,12 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
   Status RollbackAutoFlags(MiniCluster& cluster, uint32_t rollback_config_version) {
     master::RollbackAutoFlagsRequestPB req;
     req.set_rollback_version(rollback_config_version);
-    auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
 
     master::RollbackAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->RollbackAutoFlags(&req, &resp));
+    auto proxy = VERIFY_RESULT(cluster.GetLeaderMasterProxy<master::MasterClusterProxy>());
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+    RETURN_NOT_OK(proxy.RollbackAutoFlags(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -110,8 +113,10 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     req.set_auto_flag_name(flag_name);
 
     master::DemoteSingleAutoFlagResponsePB resp;
-    auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
-    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->DemoteSingleAutoFlag(&req, &resp));
+    auto proxy = VERIFY_RESULT(cluster.GetLeaderMasterProxy<master::MasterClusterProxy>());
+    rpc::RpcController rpc;
+    rpc.set_timeout(kTimeout);
+    RETURN_NOT_OK(proxy.DemoteSingleAutoFlag(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }

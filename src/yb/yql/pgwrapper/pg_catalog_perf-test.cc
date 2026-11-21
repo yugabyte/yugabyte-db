@@ -22,13 +22,12 @@
 #include "yb/common/json_util.h"
 #include "yb/common/pgsql_error.h"
 
-#include "yb/master/master.h"
+#include "yb/integration-tests/master_test_api.h"
+
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
 
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/server/server_base.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -62,6 +61,8 @@ METRIC_DECLARE_counter(ysql_catalog_prefetch_new_admissions);
 METRIC_DECLARE_gauge_int64(ysql_catalog_prefetches_in_progress);
 
 DECLARE_bool(ysql_enable_read_request_caching);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
@@ -213,7 +214,7 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = false;
     PgMiniTestBase::SetUp();
-    metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
+    metrics_.emplace(*cluster_->mini_master()->server().metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
@@ -1258,15 +1259,16 @@ TEST_F_EX(PgCatalogPerfTest,
   std::this_thread::sleep_for(1s);
 
   {
-    // Cutoff catalog history for current time to avoid reading with old read time
-    auto tablet = ASSERT_RESULT(
-        cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->shared_tablet());
-    auto* policy = tablet->RetentionPolicy();
-    auto cutoff = policy->GetRetentionDirective().history_cutoff;
-    cutoff.primary_cutoff_ht = HybridTime::FromMicros(
-        implicit_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count()));
-    policy->UpdateCommittedHistoryCutoff(cutoff);
+    // Cut off catalog history at the current time, to avoid reading with an old read time: with
+    // no retention a sys catalog compaction moves the history cutoff up to now.
+    const auto retention = FLAGS_timestamp_history_retention_interval_sec;
+    const auto syscatalog_retention = FLAGS_timestamp_syscatalog_history_retention_interval_sec;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+    ASSERT_OK(MasterTestApi(cluster_.get()).CompactSysCatalog());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = retention;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+        syscatalog_retention;
   }
 
   // Sleep for a while to make sure that new reads from catalog will use read time
@@ -1357,7 +1359,7 @@ class PgCatalogPrefetchAdmissionTest : public PgMiniTestBase {
   }
 
   [[nodiscard]] const MetricEntity& MasterMetrics() const {
-    return *cluster_->mini_master()->master()->metric_entity();
+    return *cluster_->mini_master()->server().metric_entity();
   }
 
   [[nodiscard]] int64_t Rejections() const {

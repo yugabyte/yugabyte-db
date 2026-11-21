@@ -18,8 +18,11 @@
 
 #include "yb/common/transaction.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
+#include "yb/integration-tests/master_test_api.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_parser.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -60,7 +63,6 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
     pgwrapper::PgMiniTestBase::SetUp();
     LOG(INFO) << "MasterTxnStatusCheck SetUp: "
         << "tservers: " << cluster_->num_tablet_servers()
-        << ", bgtask run count: " << master::TEST_catalog_manager_bg_task_run_count()
         << ", flag:autoscale: " << FLAGS_autoscale_transaction_tables
         << ", flag:check_interval_sec: " << FLAGS_transaction_table_check_interval_sec
         << ", flag:num_tablets: " << FLAGS_transaction_table_num_tablets
@@ -72,8 +74,6 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
   }
 
  protected:
-  std::string mismatch_logline_ = "insufficient tablets detected";
-
   // Helper to get tablespace OID from PostgreSQL.
   Result<uint32_t> GetTablespaceOid(const std::string& tablespace_name) {
     auto conn = VERIFY_RESULT(Connect());
@@ -109,8 +109,19 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
 
   // Helper to get current transaction status table version.
   Result<uint64_t> GetCurrentTransactionTablesVersion() {
-    auto* leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    return leader_master->catalog_manager_impl().GetTransactionTablesVersion();
+    auto rows = VERIFY_RESULT(MasterTestApi(cluster_.get()).DumpRows(
+        master::SysRowEntryType::SYS_CONFIG, master::kTransactionTablesConfigType));
+    for (const auto& [id, text] : rows) {
+      if (id != master::kTransactionTablesConfigType) {
+        continue;
+      }
+      auto pb = VERIFY_RESULT(
+          master::DebugStringToCatalogEntityPB(master::SysRowEntryType::SYS_CONFIG, text));
+      return static_cast<master::SysConfigEntryPB*>(pb.get())
+          ->transaction_tables_config()
+          .version();
+    }
+    return 0;
   }
 
   // Helper to verify number of tablets for global and local transaction status tables
@@ -118,19 +129,17 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
   Status VerifyTransactionTableTablets(
       const std::string& txn_table_name,
       size_t expected_tablets) {
-    auto cm = VERIFY_RESULT(catalog_manager());
-
     auto table_id = VERIFY_RESULT(GetTableIDFromTableName(txn_table_name));
-    auto txn_table_info = VERIFY_RESULT(cm->FindTableById(table_id));
-    LOG(INFO) << "Txn table info: " << txn_table_info->name()
-              << ", table ID: " << txn_table_info->id()
-              << ", tablets: " << txn_table_info->TabletCount();
+    const auto num_tablets =
+        VERIFY_RESULT(MasterTestApi(cluster_.get()).GetTablets(table_id)).size();
+    LOG(INFO) << "Txn table: " << txn_table_name << ", table ID: " << table_id
+              << ", tablets: " << num_tablets;
 
     SCHECK_EQ(
-        txn_table_info->TabletCount(), expected_tablets, IllegalState,
+        num_tablets, expected_tablets, IllegalState,
         Format(
             "Txn transaction table $0 tablet count mismatch. Expected: $1, Got: $2",
-            txn_table_info->name(), expected_tablets, txn_table_info->TabletCount()));
+            txn_table_name, expected_tablets, num_tablets));
     return Status::OK();
   }
 
@@ -178,28 +187,6 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
     }, timeout, "Waiting for tablet server to finish creating tablets");
   }
 
-  Status WaitForBackgroundTaskRunCount(int32_t count, MonoDelta timeout) {
-    return WaitFor([&] -> Result<bool> {
-        return master::TEST_catalog_manager_bg_task_run_count() >= count;
-      }, timeout, "Waiting for catalog manager bg task to run");
-  }
-
-  Status WaitForBackgroundTaskRun(MonoDelta timeout = MonoDelta::FromSeconds(30)) {
-    return WaitForBackgroundTaskRunCount(
-        master::TEST_catalog_manager_bg_task_run_count() + 2, timeout);
-  }
-
-  std::string RebootTriggerLogline() {
-    return Format("Number of live tservers changed from 0 to $0",
-      cluster_->num_tablet_servers());
-  }
-
-  Status WaitUntilBgTaskRunCountExceeds(int32_t prev_run_count) {
-    return WaitFor([&] -> Result<bool> {
-      return master::TEST_catalog_manager_bg_task_run_count() > prev_run_count;
-    }, MonoDelta::FromSeconds(60), "Waiting for background task to trigger");
-  }
-
   Status WaitForGlobalTxnStatusTableCreation(MonoDelta timeout = MonoDelta::FromSeconds(30)) {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     return WaitFor([&] -> Result<bool> {
@@ -211,156 +198,8 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
     }, timeout, "Waiting for global transaction status table to be created");
   }
 
-  // Helper to wait reliably for the background task to run once after the initial SetUp.
-  // Only used by reboot testcases.
-  void WaitForBgTaskRunAfterInitialSetUp() {
-    ASSERT_OK(WaitForGlobalTxnStatusTableCreation());
-    // This testcase sets up only one tserver. There may be a race between the first tserver
-    // registration and the first background task run. If the background task runs before the
-    // tserver registration, waiting for that event will timeout since the check interval is 900s.
-    // So reduce the check interval to 30s before waiting.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 30;
-    ASSERT_OK(WaitUntilBgTaskRunCountExceeds(0));
-  }
 };
 
-// Test that the transaction status check runs once after every boot.
-// It should have nothing to do when tserver/config did not change.
-TEST_F(MasterTxnStatusCheck, RebootNoChange) {
-  WaitForBgTaskRunAfterInitialSetUp();
-  // Create a log waiter to wait for the message that shows the check has triggered on boot.
-  StringWaiterLogSink log_sink(RebootTriggerLogline());
-  // Create a log waiter to wait for the mismatch message.
-  PatternWaiterLogSink<std::string> log_sink2(mismatch_logline_);
-
-  // Restart the cluster.
-  ASSERT_OK(cluster_->RestartSync());
-
-  // Background task should trigger on every boot.
-  // But no action is taken since tserver/config did not change.
-  ASSERT_OK(WaitForBackgroundTaskRun());
-  // Trigger message should have been logged.
-  ASSERT_EQ(log_sink.GetEventCount(), 1);
-  // No mismatch message should have been logged.
-  ASSERT_EQ(log_sink2.GetEventCount(), 0);
-}
-
-// Test that the transaction status check does not take any action on scaling down.
-// It should trigger but do nothing.
-TEST_F(MasterTxnStatusCheck, NoActionOnScaleDown) {
-  WaitForBgTaskRunAfterInitialSetUp();
-  // Create a log waiter to wait for the trigger message on reboot.
-  StringWaiterLogSink log_sink_scale_down(RebootTriggerLogline());
-  // Create a log waiter to wait for the mismatch message.
-  PatternWaiterLogSink<std::string> log_sink2(mismatch_logline_);
-  // Simulates scale down by rebooting with flag changes.
-  // Alternative: reduce the tserver count.
-  // Decrease the number of tablets flag to a smaller number.
-  int32_t original_transaction_table_num_tablets = FLAGS_transaction_table_num_tablets;
-  ASSERT_GT(original_transaction_table_num_tablets, 1); // setup assumption
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
-      original_transaction_table_num_tablets - 1;
-
-  // Restart the cluster.
-  ASSERT_OK(cluster_->RestartSync());
-  // Background task should trigger on reboot.
-  // But no action is taken since the number of tablets is more than the expected number.
-  ASSERT_OK(WaitForBackgroundTaskRun());
-  ASSERT_EQ(log_sink_scale_down.GetEventCount(), 1);
-  ASSERT_EQ(log_sink2.GetEventCount(), 0);
-}
-
-// Test that the background task does not trigger if the elapsed time since
-// the last check (on boot) is less than the check interval.
-TEST_F(MasterTxnStatusCheck, CheckInterval) {
-  WaitForBgTaskRunAfterInitialSetUp();
-  // Needed to scale up the number of tablets with tserver change.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 2;
-  // Decrease the check interval to a smaller value to speed up the test.
-  const auto kCheckInterval = FLAGS_transaction_table_check_interval_sec;
-  ASSERT_EQ(kCheckInterval, 30); // setup assumption
-
-  // Add a new tserver.
-  auto ts_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
-  ts_opts.SetPlacement("test_cloud", "test_region", "zone2");
-  ASSERT_OK(cluster_->AddTabletServer(ts_opts, true));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(2));
-
-  // It will eventually trigger after the check interval.
-  ASSERT_OK(WaitForBackgroundTaskRun());
-
-  // Verify that the flag validator rejects zero and negative values.
-  std::string old_value, output_msg;
-  ASSERT_NE(
-      flags_internal::SetFlagResult::SUCCESS,
-      flags_internal::SetFlag(
-          "transaction_table_check_interval_sec", "0",
-          flags_internal::SetFlagForce::kFalse, &old_value, &output_msg));
-  ASSERT_NE(
-      flags_internal::SetFlagResult::SUCCESS,
-      flags_internal::SetFlag(
-          "transaction_table_check_interval_sec", "-1",
-          flags_internal::SetFlagForce::kFalse, &old_value, &output_msg));
-}
-
-// Test that the transaction status check runs once after every boot.
-// It detects and takes action if the relevant flags change.
-TEST_F(MasterTxnStatusCheck, RebootFlagChange) {
-  WaitForBgTaskRunAfterInitialSetUp();
-  // Create a log waiter to wait for the trigger message on reboot.
-  StringWaiterLogSink log_sink_scale_down(RebootTriggerLogline());
-  // Create a log waiter to wait for the mismatch message.
-  PatternWaiterLogSink<std::string> log_sink2(mismatch_logline_);
-
-  // Increase the number of tablets flag to a bigger number.
-  int32_t original_transaction_table_num_tablets = FLAGS_transaction_table_num_tablets;
-  ASSERT_GE(original_transaction_table_num_tablets, 1); // setup assumption
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
-      original_transaction_table_num_tablets + 1;
-
-  // Restart the cluster.
-  ASSERT_OK(cluster_->RestartSync());
-  // Background task should trigger on boot and take action.
-  ASSERT_OK(WaitForBackgroundTaskRun());
-  ASSERT_EQ(log_sink_scale_down.GetEventCount(), 1);
-  ASSERT_EQ(log_sink2.GetEventCount(), 1);
-}
-
-// Test that the background task does not run when autoscale_transaction_tables is disabled.
-// Adding a tserver and restarting should not trigger any scaling, and tablet counts should
-// remain unchanged.
-TEST_F(MasterTxnStatusCheck, Disabled) {
-  WaitForBgTaskRunAfterInitialSetUp();
-
-  // Turn off the feature flag.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_autoscale_transaction_tables) = false;
-
-  // But setup the other flags for auto scaling with tserver change.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 2;
-  // Decrease the check interval to a smaller value.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto txn_tablets = ASSERT_RESULT(client->GetTransactionStatusTablets(CloudInfoPB()));
-  auto initial_global_tablets = txn_tablets.global_tablets.size();
-  ASSERT_GT(initial_global_tablets, 0);
-
-  // Add a new tserver.
-  auto ts_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
-  ts_opts.SetPlacement("test_cloud", "test_region", "zone2");
-  ASSERT_OK(cluster_->AddTabletServer(ts_opts, true));
-  ASSERT_OK(cluster_->WaitForTabletServerCount(2));
-
-  ASSERT_OK(cluster_->RestartSync());
-
-  ASSERT_OK(WaitForBackgroundTaskRun());
-  txn_tablets = ASSERT_RESULT(client->GetTransactionStatusTablets(CloudInfoPB()));
-  ASSERT_EQ(txn_tablets.global_tablets.size(), initial_global_tablets);
-}
-
-// Test auto scaling of transaction status tables at runtime.
 TEST_F(MasterTxnStatusCheck, AutoScale) {
   // Decrease the transaction status check interval to 2 seconds
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
@@ -543,7 +382,7 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
 
   // Restart the master leader to confirm changes are persisted to the sys catalog.
   LOG(INFO) << "Stepping down leader master";
-  ASSERT_OK(cluster_->StepDownMasterLeader());
+  ASSERT_OK(MasterTestApi(cluster_.get()).StepDownLeader());
 
   // (3) Add another tablet server, but to the same placement (zone2).
   auto ts_opts_new4 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());

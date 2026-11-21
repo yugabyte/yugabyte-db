@@ -27,8 +27,6 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/cluster_verifier.h"
 
-#include "yb/master/encryption_manager.h"
-
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"

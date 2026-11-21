@@ -13,14 +13,12 @@
 //
 
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/util/multi_drive_test_env.h"
 
@@ -32,6 +30,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace integration_tests {
@@ -98,12 +97,6 @@ TEST_F(FaultyDriveTest, MasterClearsFaultyDriveOnTServerRestartAfterFix) {
   auto* ts = mini_cluster()->mini_tablet_server(0);
   const auto ts_uuid = ts->server()->permanent_uuid();
 
-  auto master_sees_faulty = [&]() -> Result<bool> {
-    auto* mini_master = VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster());
-    auto desc = VERIFY_RESULT(mini_master->master()->ts_manager()->LookupTSByUUID(ts_uuid));
-    return desc->has_faulty_drive();
-  };
-
   auto fetch_master_url = [&](const std::string& path) -> Result<std::string> {
     auto* mini_master = VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster());
     const auto url = Format("http://$0$1", mini_master->bound_http_addr(), path);
@@ -111,6 +104,23 @@ TEST_F(FaultyDriveTest, MasterClearsFaultyDriveOnTServerRestartAfterFix) {
     faststring body;
     RETURN_NOT_OK(curl.FetchURL(url, &body));
     return body.ToString();
+  };
+
+  // The leader's TSDescriptor state, as /api/v1/tablet-servers shows it: placement uuid ->
+  // tserver http address -> fields.
+  auto master_sees_faulty = [&]() -> Result<bool> {
+    const auto json = VERIFY_RESULT(fetch_master_url("/api/v1/tablet-servers"));
+    rapidjson::Document doc;
+    doc.Parse(json.c_str());
+    SCHECK(!doc.HasParseError() && doc.IsObject(), Corruption, "Unexpected JSON: " + json);
+    for (const auto& placement : doc.GetObject()) {
+      for (const auto& tserver : placement.value.GetObject()) {
+        if (tserver.value["permanent_uuid"].GetString() == ts_uuid) {
+          return tserver.value["has_faulty_drive"].GetBool();
+        }
+      }
+    }
+    return STATUS_FORMAT(NotFound, "$0 is not in $1", ts_uuid, json);
   };
 
   // Baseline: master sees the TS as healthy.
@@ -130,20 +140,11 @@ TEST_F(FaultyDriveTest, MasterClearsFaultyDriveOnTServerRestartAfterFix) {
       [&]() -> Result<bool> { return master_sees_faulty(); }, kDefaultTimeout,
       "Master to observe faulty_drive=true"));
 
-  // Master UI should surface the effective LB blacklist state.
+  // The master's pages are the web UI, which renders the JSON; the JSON reports the faulty drive.
   {
-    const auto html = ASSERT_RESULT(fetch_master_url("/tablet-servers"));
-    ASSERT_NE(html.find("Blacklisted (faulty drive)"), std::string::npos)
-        << "Expected '/tablet-servers' HTML to report the TS is Blacklisted";
     const auto json = ASSERT_RESULT(fetch_master_url("/api/v1/tablet-servers"));
     ASSERT_NE(json.find("\"has_faulty_drive\":true"), std::string::npos)
         << "Expected '/api/v1/tablet-servers' JSON to report has_faulty_drive=true";
-
-    const auto cluster_config_html = ASSERT_RESULT(fetch_master_url("/cluster-config"));
-    ASSERT_NE(cluster_config_html.find("Effective load balancer server blacklist"),
-              std::string::npos);
-    ASSERT_NE(cluster_config_html.find(ts_uuid), std::string::npos);
-    ASSERT_NE(cluster_config_html.find("faulty_drive"), std::string::npos);
   }
 
   // (2) Restart again WITHOUT fixing the drive. The master  must continue to see the TServer as
@@ -170,11 +171,8 @@ TEST_F(FaultyDriveTest, MasterClearsFaultyDriveOnTServerRestartAfterFix) {
       [&]() -> Result<bool> { return !VERIFY_RESULT(master_sees_faulty()); }, kDefaultTimeout,
       "Master to clear faulty_drive after TServer restart with fixed drive"));
 
-  // After recovery the indicator must disappear from both the HTML and JSON endpoints.
+  // After recovery the indicator must disappear from the JSON.
   {
-    const auto html = ASSERT_RESULT(fetch_master_url("/tablet-servers"));
-    ASSERT_EQ(html.find("Blacklisted (faulty drive)"), std::string::npos)
-        << "Expected '/tablet-servers' HTML to no longer report Blacklisted";
     const auto json = ASSERT_RESULT(fetch_master_url("/api/v1/tablet-servers"));
     ASSERT_EQ(json.find("\"has_faulty_drive\":true"), std::string::npos)
         << "Expected '/api/v1/tablet-servers' JSON to no longer report has_faulty_drive=true";

@@ -15,7 +15,8 @@
 
 #include "yb/client/client.h"
 
-#include "yb/master/catalog_manager_if.h"
+#include "yb/integration-tests/master_test_api.h"
+
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -163,8 +164,11 @@ TEST_F(OidAllocationTest, CacheInvalidation) {
   ASSERT_LT(oid1, 100'000);
 
   // Invalidate the caches; now when allocating we should see OIDs beyond the previous reservation.
-  auto* catalog_manager_if = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(catalog_manager_if->InvalidateTserverOidCaches());
+  // Bumping the cluster config's invalidation count is what the master does to invalidate them.
+  MasterTestApi api(cluster_.get());
+  auto config = ASSERT_RESULT(api.GetClusterConfig());
+  config.set_oid_cache_invalidations_count(config.oid_cache_invalidations_count() + 1);
+  ASSERT_OK(api.ChangeClusterConfig(config));
   // We need to wait for each TServer to receive a heartbeat response from the master before their
   // caches will be effectively cleared.
   SleepFor(10s * kTimeMultiplier);

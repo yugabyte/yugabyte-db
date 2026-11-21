@@ -17,10 +17,8 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
 
 #include "yb/tablet/tablet_peer.h"
 

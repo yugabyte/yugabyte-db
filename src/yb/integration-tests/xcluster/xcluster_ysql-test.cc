@@ -42,12 +42,12 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
@@ -157,6 +157,22 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
 
   MonoDelta MaxAsyncTaskWaitDuration() {
     return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
+  }
+
+  // The table as the master leader has it now; null once its row is gone.
+  static Result<master::TableInfoPtr> MasterTable(MiniCluster* cluster, const TableId& table_id) {
+    return VERIFY_RESULT(MasterTestApi(cluster).Catalog()).FindTableOrNull(table_id);
+  }
+
+  static Result<bool> MasterTableStartedDeleting(MiniCluster* cluster, const TableId& table_id) {
+    auto table = VERIFY_RESULT(MasterTable(cluster, table_id));
+    return !table || table->LockForRead()->started_deleting();
+  }
+
+  static Result<bool> MasterTableHiddenButNotDeleting(
+      MiniCluster* cluster, const TableId& table_id) {
+    auto table = VERIFY_RESULT(MasterTable(cluster, table_id));
+    return table && table->IsHiddenButNotDeleting();
   }
 };
 
@@ -340,11 +356,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
       return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
     }
     auto tablet_id = tablets.front()->tablet_id();
-    auto catalog_manager =
-        &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
-    return catalog_manager->SplitTablet(
-        tablet_id, master::ManualSplit::kTrue, cluster->GetSplitFactor(),
-        catalog_manager->GetLeaderEpochInternal());
+    return MasterTestApi(cluster).SplitTablet(tablet_id, cluster->GetSplitFactor());
   }
 
   Status SetupReplicationAndWaitForValidSafeTime() {
@@ -3058,9 +3070,7 @@ void XClusterYsqlTest::TestDropTableOnConsumerThenProducer(bool restart_master) 
           .producer_table_id(),
       producer_table_->id());
 
-  auto consumer_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-  auto consumer_table_info = consumer_master->catalog_manager().GetTableInfo(consumer_table_->id());
-  ASSERT_TRUE(consumer_table_info);
+  ASSERT_TRUE(ASSERT_RESULT(MasterTable(consumer_cluster(), consumer_table_->id())));
 
   // Perform the drop on consumer cluster.
   if (restart_master) {
@@ -3100,7 +3110,7 @@ void XClusterYsqlTest::TestDropTableOnConsumerThenProducer(bool restart_master) 
     ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
   }
 
-  ASSERT_TRUE(consumer_table_info->LockForRead()->started_deleting());
+  ASSERT_TRUE(ASSERT_RESULT(MasterTableStartedDeleting(consumer_cluster(), consumer_table_->id())));
 
   // Make sure table is cleared from consumer universe_info.
   universe_info = ASSERT_RESULT(GetUniverseReplicationInfo(consumer_cluster_)).entry();
@@ -3127,8 +3137,7 @@ void XClusterYsqlTest::TestDropTableOnConsumerThenProducer(bool restart_master) 
   ASSERT_OK(DropYsqlTable(producer_cluster_, *producer_table_));
 
   // Make sure the table is completely dropped and not hidden.
-  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
-  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
+  auto producer_table_info = ASSERT_RESULT(MasterTable(producer_cluster(), producer_table_->id()));
   ASSERT_TRUE(!producer_table_info || producer_table_info->is_deleted());
 }
 
@@ -3188,25 +3197,21 @@ void XClusterYsqlTest::TestDropTableOnProducerThenConsumer(bool restart_master) 
   // Table should exist even after async tasks have run.
   SleepFor(MaxAsyncTaskWaitDuration());
 
-  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
-
   // Make sure the table is hidden.
-  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
-  ASSERT_TRUE(producer_table_info);
-  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+  ASSERT_TRUE(
+      ASSERT_RESULT(MasterTableHiddenButNotDeleting(producer_cluster(), producer_table_->id())));
 
   // Perform the drop on consumer cluster.
-  auto consumer_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
-  auto consumer_table_info = consumer_master->catalog_manager().GetTableInfo(consumer_table_->id());
-  ASSERT_TRUE(consumer_table_info);
+  ASSERT_TRUE(ASSERT_RESULT(MasterTable(consumer_cluster(), consumer_table_->id())));
   ASSERT_OK(DropYsqlTable(consumer_cluster_, *consumer_table_));
-  ASSERT_TRUE(consumer_table_info->is_deleted());
+  auto consumer_table_info = ASSERT_RESULT(MasterTable(consumer_cluster(), consumer_table_->id()));
+  ASSERT_TRUE(!consumer_table_info || consumer_table_info->is_deleted());
 
   // Make sure stream is deleted from producer.
   ASSERT_NOK(GetCDCStreamID(producer_table_->id()));
 
   ASSERT_OK(LoggedWaitFor(
-      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
+      [this]() { return MasterTableStartedDeleting(producer_cluster(), producer_table_->id()); },
       MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 }
 
@@ -3279,24 +3284,24 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   // Table should exist even after async tasks have run.
   SleepFor(MaxAsyncTaskWaitDuration());
 
-  auto producer_master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
-
   // Make sure the table is hidden.
-  auto producer_table_info = producer_master->catalog_manager().GetTableInfo(producer_table_->id());
-  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+  ASSERT_TRUE(
+      ASSERT_RESULT(MasterTableHiddenButNotDeleting(producer_cluster(), producer_table_->id())));
 
   // Table should remain hidden.
+  auto started_deleting = [this]() {
+    return MasterTableStartedDeleting(producer_cluster(), producer_table_->id());
+  };
   ASSERT_NOK(LoggedWaitFor(
-      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
-  ASSERT_TRUE(producer_table_info->IsHiddenButNotDeleting());
+      started_deleting, MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
+  ASSERT_TRUE(
+      ASSERT_RESULT(MasterTableHiddenButNotDeleting(producer_cluster(), producer_table_->id())));
 
   // Reduce retention and make sure table drops.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
 
   ASSERT_OK(LoggedWaitFor(
-      [&producer_table_info]() { return producer_table_info->LockForRead()->started_deleting(); },
-      MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
+      started_deleting, MaxAsyncTaskWaitDuration(), "Waiting for table to get delete"));
 
   // Make sure stream is deleted from producer.
   ASSERT_NOK(GetCDCStreamID(producer_table_->id()));

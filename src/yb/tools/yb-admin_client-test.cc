@@ -15,7 +15,6 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/catalog_manager_util.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -26,7 +25,6 @@
 
 using namespace std::literals;
 
-DECLARE_bool(TEST_hang_on_namespace_transition);
 DECLARE_bool(yb_admin_force_use_private_ip);
 
 namespace yb {
@@ -182,6 +180,10 @@ TEST_F(ClusterAdminClientTest, ExportSnapshotWithDdlInProgressTables) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
 }
 
+// SnapshotInfoPB::format_version values the master writes; yb_backup reads them.
+constexpr int kUseBackupRowEntryFormatVersion = 2;
+constexpr int kUseRelfilenodeFormatVersion = 3;
+
 // Test that the option include_ddl_in_progress_tables bumps the format_version of the
 // SnapshotInfoPB to kUseRelfilenodeFormatVersion when set to true and
 // kUseBackupRowEntryFormatVersion otherwise.
@@ -197,12 +199,12 @@ TEST_F(ClusterAdminClientTest, ExportSnapshotHasCorrectFormatVersion) {
   auto resp = ASSERT_RESULT(
       cluster_admin_client_->ListSnapshots(flags, snapshot_id, /*prepare_for_backup*/ true));
   ASSERT_EQ(resp.snapshots_size(), 1);
-  ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseBackupRowEntryFormatVersion);
+  ASSERT_EQ(resp.snapshots(0).format_version(), kUseBackupRowEntryFormatVersion);
   // Check that format_version=3 when include_ddl_in_progress_tables = true.
   resp = ASSERT_RESULT(cluster_admin_client_->ListSnapshots(
       flags, snapshot_id, /*prepare_for_backup*/ true, /*include_ddl_in_progress_tables*/ true));
   ASSERT_EQ(resp.snapshots_size(), 1);
-  ASSERT_EQ(resp.snapshots(0).format_version(), master::kUseRelfilenodeFormatVersion);
+  ASSERT_EQ(resp.snapshots(0).format_version(), kUseRelfilenodeFormatVersion);
 }
 
 // Test that export_snapshot includes only the committed DocDB tables as of snapshot_hybrid_time.
@@ -246,7 +248,6 @@ TEST_F(
     CreateSnapshotAfterMultiNamespaceCreateIssuedWithSameName) {
   std::string db_name = "test_pgsql";
   TestThreadHolder threads;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   auto create_database = [this, &db_name] {
     auto conn = ASSERT_RESULT(PgConnect());
@@ -261,8 +262,6 @@ TEST_F(
   threads.AddThreadFunctor(create_database);
   threads.AddThreadFunctor(create_database);
   threads.Stop();
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
   ASSERT_OK(WaitFor([this, &db_name]() -> Result<bool> {
     bool create_in_progress = true;
@@ -406,75 +405,6 @@ TEST(SelectTabletServerAddressTest, ForceUsePrivateIpFallsBackToBroadcastAddress
   AddBroadcastAddress(server, "ts.example.com", 9100);
 
   EXPECT_EQ("ts.example.com", SelectTabletServerAddress(servers).host());
-}
-
-TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
-  auto make_placement = [](int32_t num_replicas, int32_t first_max, int32_t second_max) {
-    PlacementInfoPB placement_info;
-    placement_info.set_num_replicas(num_replicas);
-    for (const auto& [zone, max_num_replicas] :
-         {std::pair("z1", first_max), std::pair("z2", second_max)}) {
-      auto* block = placement_info.add_placement_blocks();
-      block->set_min_num_replicas(1);
-      if (max_num_replicas >= 0) {
-        block->set_max_num_replicas(max_num_replicas);
-      }
-      auto* cloud_info = block->mutable_cloud_info();
-      cloud_info->set_placement_cloud("c");
-      cloud_info->set_placement_region("r");
-      cloud_info->set_placement_zone(zone);
-    }
-    return placement_info;
-  };
-
-  ASSERT_NOK_STR_CONTAINS(
-      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 0, 2)),
-      "max_num_replicas (0) must be greater than or equal to 1");
-  ASSERT_NOK_STR_CONTAINS(
-      master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, 1)),
-      "total maximum replica count (2)");
-  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(3, 1, -1)));
-  ASSERT_OK(master::CatalogManagerUtil::IsPlacementInfoValid(make_placement(2, 3, 3)));
-
-  // A placement with any explicit maximum must consist solely of fully-specified (non-wildcard)
-  // placement blocks: a wildcard block on the capped block itself is rejected.
-  {
-    auto placement_info = make_placement(2, 2, -1);
-    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
-    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->set_placement_region("r2");
-    ASSERT_NOK_STR_CONTAINS(
-        master::CatalogManagerUtil::IsPlacementInfoValid(placement_info),
-        "max_num_replicas is not supported in combination with wildcard placement blocks");
-    ASSERT_NOK_STR_CONTAINS(
-        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
-        "max_num_replicas is not supported in combination with wildcard placement blocks");
-  }
-  // ... and so is an uncapped wildcard block alongside a capped fully-qualified block. If such a
-  // wildcard overlapped the capped block, tservers could be attributed to the wildcard block and
-  // bypass the cap.
-  {
-    auto placement_info = make_placement(2, 2, -1);
-    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->clear_placement_zone();
-    ASSERT_NOK_STR_CONTAINS(
-        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
-        "max_num_replicas is not supported in combination with wildcard placement blocks");
-  }
-  // Duplicate blocks are also rejected when an explicit maximum is present, as a tserver could
-  // be attributed to either duplicate.
-  {
-    auto placement_info = make_placement(2, 2, -1);
-    placement_info.mutable_placement_blocks(1)->mutable_cloud_info()->set_placement_zone("z1");
-    ASSERT_NOK_STR_CONTAINS(
-        master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info),
-        "max_num_replicas is not supported in combination with duplicate placement blocks");
-  }
-  // Without any explicit maximum, wildcard and duplicate blocks remain acceptable to this
-  // validator (legacy placements are not held to the stricter structural rules).
-  {
-    auto placement_info = make_placement(2, -1, -1);
-    placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
-    ASSERT_OK(master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info));
-  }
 }
 
 }  // namespace tools

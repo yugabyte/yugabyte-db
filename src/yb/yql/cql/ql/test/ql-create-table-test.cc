@@ -18,8 +18,9 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/status_log.h"
@@ -37,10 +38,6 @@ DECLARE_string(metrics_snapshotter_tserver_metrics_whitelist);
 
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                         \
@@ -251,14 +248,17 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithTTL) {
                       "default_time_to_live = 1;");
 
   // Query the table schema.
-  auto *catalog_manager = &cluster_->mini_master()->catalog_manager();
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);
   request_pb.mutable_table()->set_table_name("table_with_ttl");
 
   // Verify ttl was stored in syscatalog table.
-  CHECK_OK(catalog_manager->GetTableSchema(&request_pb, &response_pb));
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30));
+  ASSERT_OK(proxy.GetTableSchema(request_pb, &response_pb, &rpc));
+  ASSERT_FALSE(response_pb.has_error()) << response_pb.error().ShortDebugString();
   const TablePropertiesPB& properties_pb = response_pb.schema().table_properties();
   EXPECT_TRUE(properties_pb.has_default_time_to_live());
   // We store ttl in milliseconds internally.

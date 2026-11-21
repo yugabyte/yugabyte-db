@@ -21,10 +21,12 @@
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
-#include "yb/master/catalog_manager.h"
+#include "yb/integration-tests/master_test_api.h"
+
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_status.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
@@ -222,22 +224,30 @@ TEST_F(XClusterAutomaticModeTest, GetXClusterStatusHasCorrectNamespace) {
   ASSERT_OK(BumpSequences(&producer_cluster_,  namespace_name));
   ASSERT_OK(WaitForSequencesReplicationDrain({ namespace_name}));
 
-  auto& catalog_manager =
-      ASSERT_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
-  const auto xcluster_status = ASSERT_RESULT(xcluster_manager->GetXClusterStatus());
-  const auto& inbound_replication_group_statuses =
-      xcluster_status.inbound_replication_group_statuses;
-  for (const auto& inbound_replication_group_status : inbound_replication_group_statuses) {
-    const auto table_statuses_by_namespace =
-        inbound_replication_group_status.table_statuses_by_namespace;
-    for (const auto& [inbound_namespace_name, _inbound_xcluster_replication_group_stable_status] :
-         table_statuses_by_namespace) {
-      // Every inbound replication group status should be for namespace namespace_name; this
-      // includes the sequences_data stream status.
-      EXPECT_EQ(inbound_namespace_name, namespace_name);
+  // The master reports each target table's replication status by table id; the sequences_data
+  // stream's status must be under the alias of namespace_name, not system_postgres.
+  const auto consumer_namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*consumer_client(), namespace_name));
+  auto master_proxy =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMasterProxy<master::MasterReplicationProxy>());
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy.GetReplicationStatus(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+  MasterTestApi api(consumer_cluster());
+  bool found_sequences_status = false;
+  for (const auto& status : resp.statuses()) {
+    const auto& table_id = status.table_id();
+    if (xcluster::IsSequencesDataAlias(table_id)) {
+      found_sequences_status = true;
+      EXPECT_EQ(table_id, xcluster::GetSequencesDataAliasForNamespace(consumer_namespace_id));
+    } else {
+      EXPECT_EQ(ASSERT_RESULT(api.GetTableInfo(table_id))->namespace_id(), consumer_namespace_id);
     }
   }
+  EXPECT_TRUE(found_sequences_status) << resp.ShortDebugString();
 }
 
 TEST_F(XClusterAutomaticModeTest, SequenceReplicationWithFiltering) {

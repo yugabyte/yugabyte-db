@@ -16,8 +16,9 @@
 #include "yb/common/ql_value.h"
 
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/status_log.h"
 
@@ -71,14 +72,17 @@ TEST_F(TestQLStaticColumn, TestCreateTable) {
   EXEC_VALID_STMT("create table static_table (h int, r int, s int static, PRIMARY KEY((h), r));");
 
   // Query the table schema.
-  auto &catalog_manager = cluster_->mini_master()->catalog_manager();
+  auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);
   request_pb.mutable_table()->set_table_name("static_table");
 
   // Verify the static column.
-  CHECK_OK(catalog_manager.GetTableSchema(&request_pb, &response_pb));
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30));
+  ASSERT_OK(proxy.GetTableSchema(request_pb, &response_pb, &rpc));
+  ASSERT_FALSE(response_pb.has_error()) << response_pb.error().ShortDebugString();
   for (const ColumnSchemaPB& column : response_pb.schema().columns()) {
     if (column.name() == "s") {
       EXPECT_TRUE(column.is_static());

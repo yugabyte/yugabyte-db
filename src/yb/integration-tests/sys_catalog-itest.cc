@@ -15,8 +15,8 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -42,7 +42,7 @@ class SysCatalogITest : public pgwrapper::PgMiniTestBase {
 TEST_F(SysCatalogITest, ReadHighestPreservableOidForNormalSpace) {
   auto conn = ASSERT_RESULT(ConnectToDB(namespace_name));
   auto database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id_));
-  auto sys_catalog = ASSERT_RESULT(catalog_manager())->sys_catalog();
+  auto* sys_catalog = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->sys_catalog();
 
   auto ReadHighestPreservableOidForNormalSpace = [&sys_catalog, database_oid]() -> uint32_t {
     auto maximum_oids = sys_catalog->ReadHighestPreservableOids(database_oid);
@@ -158,7 +158,7 @@ TEST_F(SysCatalogITest, ReadHighestPreservableOidForNormalSpace) {
 TEST_F(SysCatalogITest, ReadHighestPreservableOidForSecondarySpace) {
   auto conn = ASSERT_RESULT(ConnectToDB(namespace_name));
   auto database_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(namespace_id_));
-  auto sys_catalog = ASSERT_RESULT(catalog_manager())->sys_catalog();
+  auto* sys_catalog = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->sys_catalog();
 
   auto ReadHighestPreservableOidForSecondarySpace = [&sys_catalog, database_oid]() -> uint32_t {
     auto maximum_oids = sys_catalog->ReadHighestPreservableOids(database_oid);

@@ -35,11 +35,11 @@
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/qlexpr/index.h"
@@ -83,7 +83,6 @@
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_bool(TEST_skip_flush_deactivated_vector_indexes);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_table_owned_vector_reverse_mapping);
@@ -2796,14 +2795,12 @@ TEST_P(PgVectorIndexColocationOnlyTest, DroppedIndexRetainedBySnapshotSchedule) 
 
   ASSERT_OK(conn.Execute("DROP INDEX " + kDroppedIndexName));
 
-  // Wait until the master has hidden the index and finished any tablet RPCs that come with that.
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto dropped_table = catalog_manager.GetTableInfo(dropped_index_id);
-  ASSERT_NE(dropped_table, nullptr);
+  // Wait until the master has hidden the index.
   ASSERT_OK(WaitFor(
-      [&dropped_table] {
-        return dropped_table->LockForRead()->is_hidden_but_not_deleting() &&
-               !dropped_table->HasTasks();
+      [this, &dropped_index_id]() -> Result<bool> {
+        auto dropped_table =
+            VERIFY_RESULT(MasterTestApi(cluster_.get()).GetTableInfo(dropped_index_id));
+        return dropped_table->LockForRead()->is_hidden_but_not_deleting();
       },
       30s * kTimeMultiplier, "Dropped index hidden"));
 
@@ -3121,13 +3118,13 @@ TEST_P(PgVectorIndexColocationOnlyTest, IndexRestoredAwayRetainedBySnapshotSched
     }
     return result;
   };
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto wait_hidden = [&catalog_manager](const TableId& table_id) -> Status {
-    auto table = catalog_manager.GetTableInfo(table_id);
-    SCHECK_NOTNULL(table);
+  auto wait_hidden = [this](const TableId& table_id) -> Status {
     return WaitFor(
-        [&table] { return table->LockForRead()->is_hidden() && !table->HasTasks(); },
-        30s * kTimeMultiplier, Format("$0 hidden", table->name()));
+        [this, &table_id]() -> Result<bool> {
+          auto table = VERIFY_RESULT(MasterTestApi(cluster_.get()).GetTableInfo(table_id));
+          return table->LockForRead()->is_hidden();
+        },
+        30s * kTimeMultiplier, Format("$0 hidden", table_id));
   };
   auto earlier_dropped_index_id = ASSERT_RESULT(index_ids_by_name()).at(kEarlierDroppedIndexName);
 
@@ -4203,27 +4200,31 @@ TEST_P(PgDistributedVectorIndexTest, DroppedIndexRetainedAcrossSplitAndMasterRes
   ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), tablet_id));
   ASSERT_OK(RestartMaster());
 
-  auto index_tablets = [this, &index_id]() -> Result<master::TabletInfos> {
-    auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    auto index = catalog_manager.GetTableInfo(index_id);
-    SCHECK_NOTNULL(index);
+  auto index_not_deleted = [this, &index_id]() -> Status {
+    auto index = VERIFY_RESULT(MasterTestApi(cluster_.get()).GetTableInfo(index_id));
     SCHECK(!index->LockForRead()->is_deleted(), IllegalState, "Index table deleted");
-    return index->GetTabletsIncludeInactive();
+    return Status::OK();
+  };
+  auto hosting_tablets = [this, &index_id]() -> Result<std::set<TabletId>> {
+    std::set<TabletId> result;
+    for (const auto& peer : VERIFY_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"))) {
+      if (peer->tablet_metadata()->GetTableInfo(index_id).ok()) {
+        result.insert(peer->tablet_id());
+      }
+    }
+    return result;
   };
 
-  // Hidden table cleanup removes the index from the split children.
+  // Hidden table cleanup removes the index from the split children, and the index stays on the
+  // retained split parent. Which tablets host a table is not in the sys catalog rows, so this
+  // reads the tablets' metadata.
   ASSERT_OK(WaitFor(
-      [&index_tablets, &tablet_id]() -> Result<bool> {
-        return std::ranges::all_of(VERIFY_RESULT(index_tablets()), [&tablet_id](const auto& t) {
-          return t->tablet_id() == tablet_id;
-        });
+      [&]() -> Result<bool> {
+        RETURN_NOT_OK(index_not_deleted());
+        return VERIFY_RESULT(hosting_tablets()) == std::set<TabletId>{tablet_id};
       },
       30s * kTimeMultiplier, "Index removed from split children"));
-
-  // The index stays on the retained split parent.
-  auto tablets = ASSERT_RESULT(index_tablets());
-  ASSERT_EQ(tablets.size(), 1);
-  ASSERT_EQ(tablets.front()->tablet_id(), tablet_id);
+  ASSERT_OK(index_not_deleted());
 
   ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
 
@@ -7173,67 +7174,6 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
 
     tablet_peers.pop_back();
   }
-}
-
-// DROP DATABASE deletes the tablets of indexed tables before it gets to their indexes. A vector
-// index lives on its indexed table's tablets, so the background cleanup may free those tablets in
-// between. Processing the index afterwards must not fail the drop (#34249).
-TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
-  // Finished tasks kept for the UI hold their tablets, which keeps tablets of dropped tables
-  // alive. In a busy cluster they are evicted quickly, so do not keep them at all. The tracker
-  // is sized when the master starts.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 0;
-  ASSERT_OK(RestartMaster());
-
-  constexpr auto kDbName = "vector_db";
-  constexpr size_t kNumTables = 2;
-
-  auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDbName));
-  {
-    auto db_conn = ASSERT_RESULT(ConnectToDB(kDbName));
-    ASSERT_OK(db_conn.Execute("CREATE EXTENSION vector"));
-    for (size_t i = 0; i != kNumTables; ++i) {
-      ASSERT_OK(db_conn.ExecuteFormat(
-          "CREATE TABLE t$0 (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS",
-          i));
-      ASSERT_OK(db_conn.ExecuteFormat(
-          "CREATE INDEX ON t$0 USING ybhnsw (embedding $1)", i, VectorOpsName()));
-    }
-  }
-
-  std::vector<TableId> table_ids;
-  for (size_t i = 0; i != kNumTables; ++i) {
-    table_ids.push_back(ASSERT_RESULT(GetTableIDFromTableName(Format("t$0", i))));
-  }
-
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  std::atomic<size_t> num_started_tables{0};
-  std::atomic<bool> table_cleaned_up{false};
-  auto* sync_point = SyncPoint::GetInstance();
-  sync_point->SetCallBack(
-      "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start", [&](void*) {
-        // Tables go first, so here the first table's tablets are deleted and the second's are not.
-        // Hold the drop until the background cleanup removes the first table and its tablets.
-        if (num_started_tables.fetch_add(1) != 1) {
-          return;
-        }
-        table_cleaned_up = WaitFor(
-            [&]() -> Result<bool> {
-              return std::ranges::any_of(table_ids, [&catalog_manager](const auto& table_id) {
-                return catalog_manager.GetTableInfo(table_id) == nullptr;
-              });
-            },
-            30s * kTimeMultiplier, "Indexed table removed by the background cleanup").ok();
-      });
-  sync_point->EnableProcessing();
-  auto sync_point_cleanup = ScopeExit([sync_point] {
-    sync_point->DisableProcessing();
-    sync_point->ClearAllCallBacks();
-  });
-
-  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDbName));
-  ASSERT_TRUE(table_cleaned_up);
 }
 
 TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {

@@ -22,10 +22,9 @@
 #include "yb/gutil/dynamic_annotations.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/master_test_api.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/mini_master.h"
@@ -117,9 +116,7 @@ Result<TabletId> PgTabletSplitTestBase::GetOnlyTabletId(const TableId& table_id)
 }
 
 Status PgTabletSplitTestBase::SplitTablet(const TabletId& tablet_id) {
-  auto epoch = VERIFY_RESULT(catalog_manager())->GetLeaderEpochInternal();
-  return VERIFY_RESULT(catalog_manager())->SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, cluster_->GetSplitFactor(), epoch);
+  return MasterTestApi(cluster_.get()).SplitTablet(tablet_id, cluster_->GetSplitFactor());
 }
 
 Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
@@ -134,13 +131,12 @@ Status PgTabletSplitTestBase::SplitSingleTabletAndWaitForActiveChildTablets(
 
 Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
     const TableId& table_id, SelectTabletCallback select_tablet) {
-  // Get initial tables.
-  const auto catalog_mgr = VERIFY_RESULT(catalog_manager());
-  const auto table = catalog_mgr->GetTableInfo(table_id);
-
+  MasterTestApi api(cluster_.get());
   // Loop while a tablet can be picked.
   master::TabletInfoPtr parent;
   while (true) {
+    // A catalog snapshot never changes, so read the table again after each split.
+    const auto table = VERIFY_RESULT(api.GetTableInfo(table_id));
     const auto tablets = VERIFY_RESULT(GetTabletsByPartitionKey(table));
     const auto tablet  = VERIFY_RESULT(select_tablet(tablets));
     if (!tablet) {

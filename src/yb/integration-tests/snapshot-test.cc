@@ -27,19 +27,15 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 
@@ -59,7 +55,6 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/cast.h"
 #include "yb/util/format.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
@@ -76,6 +71,7 @@ DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint32(default_snapshot_retention_hours);
 DECLARE_bool(TEST_pause_after_tombstoning_snapshot);
+DECLARE_bool(TEST_pause_issuing_tserver_snapshot_requests);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
 DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 DECLARE_bool(TEST_fail_tserver_snapshot_op);
@@ -447,11 +443,21 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     }
   }
 
+  // The leader may finish hiding after the drop returns, so this waits for it.
   Status TableHidden(const TableId& table_id) {
+    Status status;
+    auto waited = WaitFor([&] {
+      status = TableHiddenNow(table_id);
+      return status.ok();
+    }, 30s * kTimeMultiplier, "Table hidden");
+    return status.ok() ? waited : status;
+  }
+
+  Status TableHiddenNow(const TableId& table_id) {
     LOG(INFO) << "Verifying table is hidden";
     // Check that the table is hidden on the master.
-    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    auto table = VERIFY_RESULT(catalog.GetTableInfo(table_id));
     LOG(INFO) << "Table info " << table->id();
     if (!VERIFY_RESULT(table->AreAllTabletsHidden())) {
       return STATUS_FORMAT(IllegalState, "Tablets of table $0 not hidden on master", table_id);
@@ -480,8 +486,8 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
   Result<bool> IsTableDropped(const TableId& table_id) {
     LOG(INFO) << "Verifying table is dropped";
     // Check that the table is dropped on the master.
-    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto result = master_leader->catalog_manager_impl().FindTableById(table_id);
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    auto result = catalog.GetTableInfo(table_id);
     if (result.ok()) {
       const auto& table = *result;
       LOG(INFO) << "Table info " << table;
@@ -508,15 +514,35 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     return true;
   }
 
+  // Whether the snapshot keeps every tablet of the table, deleted ones included, from being
+  // deleted: as the master's covering map, a complete snapshot with a retention, not imported and
+  // not of a schedule, covers its tablets.
   Status SnapshotCoversTablets(
       const TxnSnapshotId& snapshot_id, const TableId& table_id) {
-    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
-    auto tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
-    auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
-        &master_leader->master()->snapshot_coordinator());
-    for (const auto& tablet : tablets) {
-      if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
+    auto catalog = VERIFY_RESULT(MasterTestApi(cluster_.get()).Catalog());
+    std::unordered_set<TabletId> covered;
+    ListSnapshotsRequestPB list_req;
+    ListSnapshotsResponsePB list_resp;
+    list_req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+    RETURN_NOT_OK(proxy_backup_->ListSnapshots(list_req, &list_resp, ResetAndGetController()));
+    if (!list_resp.has_error() && list_resp.snapshots_size() == 1) {
+      const auto& entry = list_resp.snapshots(0).entry();
+      const bool covers =
+          entry.has_retention_duration_hours() && !entry.has_schedule_id() && !entry.imported() &&
+          std::all_of(
+              entry.tablet_snapshots().begin(), entry.tablet_snapshots().end(),
+              [](const auto& t) { return t.state() == SysSnapshotEntryPB::COMPLETE; });
+      if (covers) {
+        for (const auto& t : entry.tablet_snapshots()) {
+          covered.insert(t.id());
+        }
+      }
+    }
+    for (const auto& tablet : catalog.GetAllTablets()) {
+      if (tablet->table()->id() != table_id) {
+        continue;
+      }
+      if (!covered.contains(tablet->id())) {
         return STATUS_FORMAT(
             IllegalState, "Snapshot $0 does not cover tablet $1", snapshot_id, tablet->id());
       }
@@ -664,10 +690,7 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   auto workload = SetupWorkload(); // Used to create table
 
   // Get the table id.
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
-      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
-      workload.table_name().table_name());
+  auto table = ASSERT_RESULT(MasterTestApi(cluster_.get()).FindTable(workload.table_name()));
 
   // Create Snapshot.
   const auto snapshot_id = CreateSnapshot();
@@ -713,11 +736,9 @@ TEST_F(SnapshotTest, CleanupHiddenTabletsInTabletIdOrder) {
     TabletId tablet_id;
   };
   vector<TableData> tables;
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto catalog = ASSERT_RESULT(MasterTestApi(cluster_.get()).Catalog());
   for (const auto& table_name : table_names) {
-    auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
-        table_name.namespace_type(), table_name.namespace_name(), table_name.table_name());
-    ASSERT_NE(table, nullptr);
+    auto table = ASSERT_RESULT(catalog.FindTable(table_name));
     auto tablets = ASSERT_RESULT(table->GetTabletsIncludeInactive());
     ASSERT_EQ(tablets.size(), 1);
     tables.push_back({table_name, table->id(), tablets.front()->tablet_id()});
@@ -748,10 +769,7 @@ TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
   auto workload = SetupWorkload(); // Used to create table.
 
   // Get the table id.
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
-      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
-      workload.table_name().table_name());
+  auto table = ASSERT_RESULT(MasterTestApi(cluster_.get()).FindTable(workload.table_name()));
 
   // Create imported snapshot.
   const auto snapshot_id = CreateSnapshot(-1 /* retention_duration_hours */, true /* imported */);
@@ -860,10 +878,7 @@ TEST_F(SnapshotTest, EventuallyDeleteTablesCoveredBySnapshot) {
   auto workload = SetupWorkload(); // Used to create table
 
   // Get the table id.
-  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
-      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
-      workload.table_name().table_name());
+  auto table = ASSERT_RESULT(MasterTestApi(cluster_.get()).FindTable(workload.table_name()));
 
   // This will actually be treated as 1000 ms instead of 1000 hours due to the flag.
   CreateSnapshot(1000 /* retention_duration_hours */);
@@ -1086,15 +1101,16 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       LOG(INFO) << "Keyspace: " << ns_pair.old_id() << " -> " << ns_pair.new_id();
       ASSERT_NE(ns_pair.old_id(), ns_pair.new_id());
 
-      const string new_namespace_name = cluster_->mini_master()->catalog_manager().
-          GetNamespaceName(ns_pair.new_id());
+      auto catalog = ASSERT_RESULT(MasterTestApi(cluster_.get()).Catalog());
+      auto new_namespace = catalog.FindNamespaceOrNull(ns_pair.new_id());
+      ASSERT_NE(new_namespace, nullptr);
+      const string new_namespace_name = new_namespace->name();
       ASSERT_EQ(old_namespace_name, new_namespace_name);
 
       const IdPairPB& table_pair = table_meta.table_ids();
       LOG(INFO) << "Table: " << table_pair.old_id() << " -> " << table_pair.new_id();
       ASSERT_NE(table_pair.old_id(), table_pair.new_id());
-      scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
-          GetTableInfo(table_pair.new_id());
+      auto info = ASSERT_RESULT(catalog.GetTableInfo(table_pair.new_id()));
       ASSERT_EQ(old_table_name, info->name());
       auto tablets = ASSERT_RESULT(info->GetTablets());
       ASSERT_EQ(old_table_num_tablets, tablets.size());

@@ -22,7 +22,6 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet.h"

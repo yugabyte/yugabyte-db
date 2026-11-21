@@ -19,7 +19,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/test_tablespace_util.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/integration-tests/master_test_api.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/consensus/consensus.pb.h"
@@ -711,11 +712,11 @@ TEST_F(PgTablespacesTest, CreateTablePersistsTablespace) {
 
   // The periodic tablespace refresh writes these same values. If it runs before the checks below,
   // it can mask a wrong value from CREATE on that run; it can never cause a spurious failure.
-  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  const auto catalog = ASSERT_RESULT(MasterTestApi(cluster_.get()).Catalog());
   auto find_table = [&](const std::string& name) -> Result<master::TableInfoPtr> {
     for (const auto& table : VERIFY_RESULT(client_->ListTables(name))) {
       if (table.table_name() == name) {
-        auto info = catalog_manager.GetTableInfo(table.table_id());
+        auto info = catalog.FindTableOrNull(table.table_id());
         SCHECK(info, NotFound, Format("No TableInfo for $0", name));
         return info;
       }
@@ -734,7 +735,7 @@ TEST_F(PgTablespacesTest, CreateTablePersistsTablespace) {
   }
 
   size_t num_tablegroup_parents = 0;
-  for (const auto& table : catalog_manager.GetTables(master::GetTablesMode::kAll)) {
+  for (const auto& table : catalog.GetTables()) {
     if (!table->IsTablegroupParentTable() ||
         table->namespace_id() != t_default->namespace_id()) {
       continue;

@@ -19,10 +19,10 @@
 #include "yb/common/xcluster_util.h"
 #include "yb/consensus/log.h"
 
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
@@ -52,10 +52,6 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     ASSERT_OK(InitProducerClusterOnly(opts));
     client_ = producer_client();
 
-    catalog_manager_ =
-        &ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager_impl();
-    epoch_ = catalog_manager_->GetLeaderEpochInternal();
-
     namespace_id_ = ASSERT_RESULT(CreateYsqlNamespace(kNamespaceName));
   }
 
@@ -71,11 +67,10 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     RETURN_NOT_OK(XClusterYsqlTestBase::CreateYsqlTable(
         &producer_cluster_, namespace_name, schema_name, table_name,
         std::nullopt /* tablegroup_name */, 1 /* num_tablets */));
-    auto table_info = catalog_manager_->GetTableInfoFromNamespaceNameAndTableName(
-        YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, table_name, schema_name);
-    SCHECK(table_info, NotFound, "Table create failed", table_name);
-
-    return table_info->id();
+    return VERIFY_RESULT(GetYsqlTable(
+                             &producer_cluster_, namespace_name, schema_name, table_name,
+                             /*verify_table_name=*/true, /*verify_schema_name=*/true))
+        .table_id();
   }
 
   // Create a new OutboundReplicationGroup. Use GetXClusterStreams, or IsBootstrapRequired to wait
@@ -114,15 +109,9 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return promise.get_future().get();
   }
 
-  // Cleanup streams marked for deletion and get the list of non-anchor xCluster streams.
-  Result<std::unordered_set<xrepl::StreamId>> CleanupAndGetAllXClusterStreams() {
-    catalog_manager_->RunXReplBgTasks(epoch_);
-    ListCDCStreamsRequestPB req;
-    ListCDCStreamsResponsePB resp;
-    RETURN_NOT_OK(catalog_manager_->ListCDCStreams(&req, &resp));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
+  // The non-anchor xCluster streams. ListCDCStreams leaves out streams marked for deletion.
+  Result<std::unordered_set<xrepl::StreamId>> GetAllXClusterStreams() {
+    auto resp = VERIFY_RESULT(MasterTestApi(producer_cluster()).ListCDCStreams({}));
 
     std::unordered_set<xrepl::StreamId> result;
     for (const auto& stream : resp.streams()) {
@@ -140,7 +129,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     ASSERT_EQ(resp.initial_bootstrap_required(), UseAutomaticMode());
     ASSERT_EQ(resp.table_infos_size(), 2 + (all_tables_included ? OverheadStreamsCount() : 0));
 
-    auto all_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+    auto all_xcluster_streams = ASSERT_RESULT(GetAllXClusterStreams());
     ASSERT_EQ(all_xcluster_streams.size(), all_xcluster_streams_count);
 
     std::set<TableId> table_ids;
@@ -232,16 +221,11 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
 
   Status RestartMaster() {
     auto master = VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster());
-    RETURN_NOT_OK(master->Restart());
-    catalog_manager_ = &master->catalog_manager_impl();
-    epoch_ = catalog_manager_->GetLeaderEpochInternal();
-    return Status::OK();
+    return master->Restart();
   }
 
   client::XClusterClient XClusterClient() { return client::XClusterClient(*client_); }
 
-  CatalogManager* catalog_manager_;
-  LeaderEpoch epoch_;
   YBClient* client_;
   NamespaceId namespace_id_;
 };
@@ -283,7 +267,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
 
   if (UseAutomaticMode()) {
     // In automatic mode, sequences_data should have been created.
-    ASSERT_TRUE(catalog_manager_->GetTableInfo(kPgSequencesDataTableId));
+    ASSERT_OK(MasterTestApi(producer_cluster()).GetTableInfo(kPgSequencesDataTableId));
   }
 
   // We should have 2 normal streams now.
@@ -313,7 +297,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, TestMultipleTable) {
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
 
   // We should have 0 streams now.
-  auto all_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+  auto all_xcluster_streams = ASSERT_RESULT(GetAllXClusterStreams());
   ASSERT_TRUE(all_xcluster_streams.empty());
 }
 
@@ -333,7 +317,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
 
   // We should have 2 normal streams now.
   size_t stream_count = 2 + OverheadStreamsCount();
-  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+  auto all_xcluster_streams_initial = ASSERT_RESULT(GetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), 2 + OverheadStreamsCount());
 
   // Make sure invalid namespace id is handled correctly.
@@ -367,7 +351,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
 
   // We should only have only the streams from second namespace.
   {
-    auto new_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+    auto new_xcluster_streams = ASSERT_RESULT(GetAllXClusterStreams());
     ASSERT_EQ(new_xcluster_streams.size(), 2 + OverheadStreamsCount());
 
     // new_xcluster_streams and all_xcluster_streams should not overlap.
@@ -379,7 +363,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddDeleteNamespaces) {
   ASSERT_OK(XClusterClient().DeleteOutboundReplicationGroup(
       kReplicationGroupId, /*target_master_addresses=*/{}));
   ASSERT_NOK(GetXClusterStreams(kReplicationGroupId, namespace_id_));
-  auto final_xcluster_streams = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+  auto final_xcluster_streams = ASSERT_RESULT(GetAllXClusterStreams());
   ASSERT_TRUE(final_xcluster_streams.empty());
 }
 
@@ -391,7 +375,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, AddTable) {
 
   ASSERT_OK(CreateOutboundReplicationGroupSync());
 
-  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+  auto all_xcluster_streams_initial = ASSERT_RESULT(GetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), 1 + OverheadStreamsCount());
 
   ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
@@ -480,7 +464,7 @@ TEST_P(
   size_t stream_count = 2 + OverheadStreamsCount();
   ASSERT_NO_FATALS(VerifyNamespaceCheckpointInfo(table_id_1, table_id_2, stream_count, resp));
 
-  auto all_xcluster_streams_initial = ASSERT_RESULT(CleanupAndGetAllXClusterStreams());
+  auto all_xcluster_streams_initial = ASSERT_RESULT(GetAllXClusterStreams());
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
 }
 

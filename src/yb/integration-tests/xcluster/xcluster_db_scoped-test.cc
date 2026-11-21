@@ -23,10 +23,12 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/xcluster_util.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -92,6 +94,19 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   Result<master::GetXClusterStreamsResponsePB> GetAllXClusterStreams(
       const NamespaceId& namespace_id) {
     return GetXClusterStreams(namespace_id, /*table_names=*/{}, /*pg_schema_names=*/{});
+  }
+
+  // The target's sys catalog row of the replication group, if it has one.
+  Result<std::optional<master::SysUniverseReplicationEntryPB>> GetTargetUniverseReplication() {
+    auto rows = VERIFY_RESULT(MasterTestApi(consumer_cluster())
+                                  .DumpRows(master::SysRowEntryType::UNIVERSE_REPLICATION,
+                                            kReplicationGroupId.ToString()));
+    if (rows.empty()) {
+      return std::nullopt;
+    }
+    auto row = VERIFY_RESULT(master::DebugStringToCatalogEntityPB(
+        master::SysRowEntryType::UNIVERSE_REPLICATION, rows.front().second));
+    return *static_cast<master::SysUniverseReplicationEntryPB*>(row.get());
   }
 
   // Stops apply and returns the safe time the target settled at, which stays the safe time
@@ -317,9 +332,7 @@ TEST_F(XClusterDBScopedTest, TestCreateWithCheckpoint) {
 
   if (UseAutomaticMode()) {
     // In automatic mode, sequences_data should have been created on the target universe.
-    ASSERT_TRUE(ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
-                    ->catalog_manager_impl()
-                    .GetTableInfo(kPgSequencesDataTableId));
+    ASSERT_OK(MasterTestApi(consumer_cluster()).GetTableInfo(kPgSequencesDataTableId));
   }
 
   ASSERT_OK(InsertRowsInProducer(50, 100));
@@ -1526,12 +1539,9 @@ void XClusterDBScopedTestWithTwoDBs::TestAddRemoveNamespace() {
   ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
   EXPECT_EQ(resp.entry().tables_size(), 2 + 2 * OverheadStreamsCount());
 
-  auto replication_info = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
-                              ->catalog_manager_impl()
-                              .GetUniverseReplication(kReplicationGroupId);
+  auto replication_info = ASSERT_RESULT(GetTargetUniverseReplication());
   ASSERT_TRUE(replication_info);
-  ASSERT_TRUE(replication_info->IsDbScoped());
-  ASSERT_EQ(replication_info->LockForRead()->pb.db_scoped_info().namespace_infos_size(), 2);
+  ASSERT_EQ(replication_info->db_scoped_info().namespace_infos_size(), 2);
 
   ASSERT_OK(InsertRowsInProducer(0, 100, source_namespace2_table_));
   ASSERT_OK(VerifyWrittenRecords(source_namespace2_table_, target_namespace2_table_));
@@ -1548,11 +1558,9 @@ void XClusterDBScopedTestWithTwoDBs::TestAddRemoveNamespace() {
   // Only the first table should be left.
   ASSERT_THAT(ExtractTableIds(resp), testing::Contains(producer_table_->id()));
 
-  replication_info = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
-                         ->catalog_manager_impl()
-                         .GetUniverseReplication(kReplicationGroupId);
+  replication_info = ASSERT_RESULT(GetTargetUniverseReplication());
   ASSERT_TRUE(replication_info);
-  ASSERT_EQ(replication_info->LockForRead()->pb.db_scoped_info().namespace_infos_size(), 1);
+  ASSERT_EQ(replication_info->db_scoped_info().namespace_infos_size(), 1);
 
   // Check the source side.
   auto streams_result = GetAllXClusterStreams(source_namespace2_id_);
@@ -1714,10 +1722,7 @@ TEST_F(XClusterDBScopedTest, Delete) {
   ASSERT_NOK_STR_CONTAINS(
       VerifyUniverseReplication(&resp), "Could not find xCluster replication group");
 
-  auto replication_info = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())
-                              ->catalog_manager_impl()
-                              .GetUniverseReplication(kReplicationGroupId);
-  ASSERT_FALSE(replication_info);
+  ASSERT_FALSE(ASSERT_RESULT(GetTargetUniverseReplication()));
 }
 
 // Delete replication when the target side is down.
@@ -1953,17 +1958,17 @@ TEST_F(XClusterDBScopedTest, CreateReplicationWithHiddenTables) {
   ASSERT_OK(producer_client()->OpenTable(table_name, &new_table));
   const auto hidden_table_id = new_table->id();
 
-  auto& catalog_mgr = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->catalog_manager();
-  auto table = catalog_mgr.GetTableInfo(hidden_table_id);
-  ASSERT_TRUE(table);
-  ASSERT_TRUE(table->LockForRead()->visible_to_client());
+  MasterTestApi producer_api(producer_cluster());
+  ASSERT_TRUE(
+      ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))->LockForRead()->visible_to_client());
 
   ASSERT_OK(DropYsqlTable(
       &producer_cluster_, table_name.namespace_name(), table_name.pgschema_name(),
       table_name.table_name()));
   ASSERT_NOK(producer_client()->OpenTable(table_name, &new_table));
 
-  ASSERT_FALSE(table->LockForRead()->visible_to_client());
+  ASSERT_FALSE(
+      ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))->LockForRead()->visible_to_client());
 
   // Setup replication and make sure it is healthy.
   ASSERT_OK(CheckpointReplicationGroup());
@@ -1978,7 +1983,9 @@ TEST_F(XClusterDBScopedTest, CreateReplicationWithHiddenTables) {
   ASSERT_OK(VerifyWrittenRecords());
 
   // Make sure the hidden table is still there.
-  ASSERT_TRUE(table->LockForRead()->is_hidden_but_not_deleting());
+  ASSERT_TRUE(ASSERT_RESULT(producer_api.GetTableInfo(hidden_table_id))
+                  ->LockForRead()
+                  ->is_hidden_but_not_deleting());
 }
 
 // Create and drop tables in a loop with PITR which will keep the dropped tables in hidden state.

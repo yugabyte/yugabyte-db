@@ -16,7 +16,6 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
-#include "yb/master/catalog_manager.h"
 
 #include "yb/tablet/tablet_peer.h"
 

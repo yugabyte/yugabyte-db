@@ -19,7 +19,6 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 
-#include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/mini_master.h"
 

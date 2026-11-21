@@ -19,8 +19,15 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/transaction_error.h"
+#include "yb/common/wire_protocol.h"
 
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/mini_master.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -56,6 +63,43 @@ namespace client {
 
 using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
     master::ImportSnapshotMetaResponsePB::TableMetaPB>;
+
+namespace {
+
+// FlushSysCatalog and CompactSysCatalog act on the master they are sent to, leader or not.
+Status FlushSysCatalog(MiniCluster* cluster, size_t master_idx) {
+  master::MasterAdminProxy proxy(
+      &cluster->proxy_cache(), cluster->mini_master(master_idx)->bound_rpc_addr());
+  master::FlushSysCatalogRequestPB req;
+  master::FlushSysCatalogResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  RETURN_NOT_OK(proxy.FlushSysCatalog(req, &resp, &controller));
+  return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+}
+
+Status CompactSysCatalog(MiniCluster* cluster, size_t master_idx) {
+  master::MasterAdminProxy proxy(
+      &cluster->proxy_cache(), cluster->mini_master(master_idx)->bound_rpc_addr());
+  master::CompactSysCatalogRequestPB req;
+  master::CompactSysCatalogResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(30s);
+  RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
+  return resp.has_error() ? StatusFromPB(resp.error().status()) : Status::OK();
+}
+
+Result<size_t> LeaderMasterIdx(MiniCluster* cluster) {
+  auto* leader = VERIFY_RESULT(cluster->GetLeaderMiniMaster());
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
+    if (cluster->mini_master(i) == leader) {
+      return i;
+    }
+  }
+  return STATUS(NotFound, "No leader master");
+}
+
+} // namespace
 
 class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
@@ -266,9 +310,7 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Flush";
 
-  auto tablet_peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
-  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  ASSERT_OK(FlushSysCatalog(cluster_.get(), ASSERT_RESULT(LeaderMasterIdx(cluster_.get()))));
 
   LOG(INFO) << "Second restart";
 
@@ -288,8 +330,7 @@ void BackupTxnTest::TestDeleteSnapshot(bool compact_and_restart) {
   ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
   if (compact_and_restart) {
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-      ASSERT_OK(ASSERT_RESULT(cluster_->mini_master(i)->tablet_peer()->shared_tablet())
-                    ->ForceManualRocksDBCompact());
+      ASSERT_OK(CompactSysCatalog(cluster_.get(), i));
     }
     ASSERT_OK(cluster_->RestartSync());
   }
@@ -451,9 +492,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
-    auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
-    auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
-    ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+    ASSERT_OK(FlushSysCatalog(cluster_.get(), i));
   }
 
   ShutdownAllTServers(cluster_.get());
