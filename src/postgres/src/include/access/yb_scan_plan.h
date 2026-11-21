@@ -34,8 +34,11 @@
 
 #include "postgres.h"
 
+#include "access/stratnum.h"
+
 extern int64 YbDatumGetInt64(Datum value, Oid value_typid);
 extern bool YbShouldRecheckEquality(Oid column_typid, Oid value_typid);
 extern bool YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val);
 extern bool YbIsScanCompatible(Oid column_typid, Oid value_typid,
 							   bool is_value_scalar, Datum value);
+extern bool YbCanBindSearchArray(StrategyNumber strategy);
