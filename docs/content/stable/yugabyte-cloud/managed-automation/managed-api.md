@@ -33,6 +33,8 @@ npx skills add yugabyte/yugabytedb-skills -s aeon-api
 
 For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
+To manage Serverless Postgres clusters, branches, and endpoints without writing API calls, connect the [AMP MCP Server](../../serverless/mcp-server-amp/). The server calls the Serverless Postgres APIs for you.
+
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Get Started"

@@ -47,6 +47,12 @@ This allowance is shared by every cluster in the account. To use larger sizes, c
     href="manage/"
     icon="fa-thin fa-sliders">}}
 
+  {{<index/item
+    title="AMP MCP Server"
+    body="Manage clusters from an AI client such as Claude Code."
+    href="mcp-server-amp/"
+    icon="fa-thin fa-robot">}}
+
 {{</index/block>}}
 
 ## Tasks
