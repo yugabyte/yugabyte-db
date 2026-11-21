@@ -235,6 +235,57 @@ public class ShellProcessHandlerTest extends TestCase {
   }
 
   @Test
+  public void testSensitiveOutputLeavesNoOutputFiles() {
+    File logsDir = new File(TMP_STORAGE_PATH, "shell_logs");
+    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath)))
+        .thenReturn(logsDir.getAbsolutePath());
+    when(mockConfig.hasPath(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
+        .thenReturn(true);
+    when(mockConfig.getInt(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
+        .thenReturn(1);
+
+    shellProcessHandler.run(
+        List.of("echo", "logged"), ShellProcessContext.builder().logCmdOutput(true).build());
+    assertEquals(2, logsDir.list().length);
+
+    shellProcessHandler.run(
+        List.of("echo", "not logged"), ShellProcessContext.builder().logCmdOutput(false).build());
+    assertEquals(4, logsDir.list().length);
+
+    shellProcessHandler.run(
+        List.of("echo", "sensitive"), ShellProcessContext.builder().sensitiveOutput(true).build());
+    assertEquals(4, logsDir.list().length);
+  }
+
+  @Test
+  public void testAppLinesOfSensitiveOutputAreNotLogged() throws IOException {
+    // The output, not the command line, holds the marker, as with query text read by ysqlsh.
+    List<String> command = List.of(createTestShellScript("echo '[app] sentinel_''output'"));
+    ShellProcessContext unlogged = ShellProcessContext.builder().logCmdOutput(false).build();
+    ShellProcessContext sensitive = ShellProcessContext.builder().sensitiveOutput(true).build();
+    assertTrue(loggedRun(command, unlogged).contains("[app] sentinel_output"));
+    assertFalse(loggedRun(command, sensitive).contains("sentinel_output"));
+  }
+
+  private String loggedRun(List<String> command, ShellProcessContext context) {
+    Logger logger = (Logger) LoggerFactory.getLogger(ShellProcessHandler.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+    try {
+      shellProcessHandler.run(command, context);
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    return appender.list.stream()
+        .map(ILoggingEvent::getFormattedMessage)
+        .collect(Collectors.joining("\n"));
+  }
+
+  @Test
   public void testGetPythonErrMsg() {
     String errMsg =
         "<yb-python-error>{\"type\": \"YBOpsRuntimeError\","

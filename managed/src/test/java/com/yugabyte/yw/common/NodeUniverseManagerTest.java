@@ -82,6 +82,7 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     ShellProcessContext context = shellProcessContextCaptor.getValue();
     assertFalse(context.isLogCmdOutput());
+    assertTrue(context.isSensitiveOutput());
     assertTrue(context.getRedactedVals().containsValue(Util.REDACTED_YSQL_QUERY));
     assertTrue(
         context.getRedactedVals().keySet().stream()
@@ -104,7 +105,26 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
     ShellProcessContext context = shellProcessContextCaptor.getValue();
     assertTrue(context.isLogCmdOutput());
+    assertFalse(context.isSensitiveOutput());
     assertTrue(context.getRedactedVals().isEmpty());
+  }
+
+  @Test
+  public void testRunYsqlBatchCommandsWithPasswordIsNotSensitiveOutput() {
+    Universe universe =
+        ModelFactory.createFromConfig(defaultProvider, "slow-query-test-3", "r1-az1-1-1");
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    nodeUniverseManager.runYsqlBatchCommands(
+        node, universe, "postgres", List.of("ALTER USER u PASSWORD 'p'"), 180L, false, false, true);
+
+    verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
+    ShellProcessContext context = shellProcessContextCaptor.getValue();
+    assertFalse(context.isLogCmdOutput());
+    assertFalse(context.isSensitiveOutput());
   }
 
   @Test
