@@ -52,7 +52,7 @@ To get started quickly, you can use one of the appropriate readily available [pr
 
 If the Codespaces feature is enabled for your GitHub organization, you can initialize your environment at [GitHub Codespaces](https://github.com/codespaces).
 
-![Initalize the Codespaces environment](/images/develop/gitdev/codespace/init-codespace.png)
+![Initialize the Codespaces environment](/images/develop/gitdev/codespace/init-codespace.png)
 
 If you don't have any codespace-specific files in the source repository, click `Create codespace` to initialize a default [development environment](https://github.com/microsoft/vscode-dev-containers/tree/main/containers/codespaces-linux) provisioned with a `codespaces-linux` container. This is a universal image with prebuilt language-specific libraries and commonly used utilities; you'll need to customize it to install YugabyteDB. If the default conventions are not enough, you can provide your own configuration.
 
