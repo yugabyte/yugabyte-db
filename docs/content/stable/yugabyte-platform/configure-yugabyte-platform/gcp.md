@@ -136,6 +136,8 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
     Set **Credential Type** to **Use service account from this YBA host's instance**.
 
+**Access to other clouds**. To let nodes on this provider back up to Amazon S3 with the node's GCP service account, turn on **Amazon S3** under **Access to other clouds**. Refer to [Federated IAM backups](../../back-up-restore-universes/federated-iam-backups/).
+
 #### VPC Setup
 
 Specify the VPC to use for deploying YugabyteDB nodes.
