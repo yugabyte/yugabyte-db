@@ -26,12 +26,21 @@
 from pathlib import Path
 import csv
 import os
+import socket
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 CSV_FILEPATH = f"{SCRIPT_PATH}/upstream_repositories.csv"
+
+# A remote fetch that fails with a transient error is tried up to this many times.
+FETCH_ATTEMPTS = 3
+# Seconds to wait before the second attempt.  The wait doubles before each later attempt.
+FETCH_BACKOFF_S = 1.0
+FETCH_TIMEOUT_S = 10
 
 
 class NotFoundError(Exception):
@@ -105,32 +114,63 @@ def fetch(filepath):
     else:
         assert repository.startswith("https://gitlab.com"), repository
         url = f"https://gitlab.com/{repo_name}/-/raw/{commit}/{upstream_filepath}"
-    try:
-        req = urllib.request.urlopen(url, timeout=10)
-    except Exception as e:
-        # Examples:
-        # - urllib.error.HTTPError: HTTP Error 403: Forbidden
-        # - urllib.error.HTTPError: HTTP Error 404: Not Found
-        # - urllib.error.HTTPError: HTTP Error 503: Service Unavailable
-        # - urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
-        # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
-        # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
-        # - urllib.error.URLError: <urlopen error timed out>
-        # - (older python version) socket.timeout: The read operation timed out
-        # - (newer python version) TimeoutError: The read operation timed out
+    return fetch_url(url)
 
-        # Only 404 should be considered expected.  That happens if the file path or commit does not
-        # exist.  403 happens for gitlab when the repository does not exist (github gives 404), and
-        # that should be considered a fatal issue.
-        if isinstance(e, urllib.error.HTTPError) and e.code == 404:
-            raise NotFoundError(url) from e
 
-        # The rest should rethrow.  Also print the error message to stdout so that it shows in arc
-        # lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc lint truncates
-        # it so that it's not seen).
-        print(f"{type(e).__name__}: {e}")
-        raise
-    return req.read()
+def fetch_url(url):
+    """Return the body at url, trying again after a transient error.
+
+    Raise NotFoundError on a 404.  Any other error is printed to stdout and raised: at once if it
+    is not transient, otherwise once FETCH_ATTEMPTS attempts have failed.
+    """
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            # The body is read inside the try, so a timeout while reading it is caught too.
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as req:
+                return req.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise NotFoundError(url) from e
+            error = e
+        except Exception as e:
+            # Examples:
+            # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name
+            #   resolution>
+            # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
+            # - urllib.error.URLError: <urlopen error timed out>
+            # - (older python version) socket.timeout: The read operation timed out
+            # - (newer python version) TimeoutError: The read operation timed out
+            error = e
+
+        if _is_transient(error) and attempt < FETCH_ATTEMPTS - 1:
+            time.sleep(FETCH_BACKOFF_S * 2 ** attempt)
+            continue
+
+        # Print the error message to stdout so that it shows in arc lint stdout (otherwise, it
+        # gets buried under stacktrace in stderr, and arc lint truncates it so that it's not seen).
+        print(f"{type(error).__name__}: {error}")
+        raise error
+    raise AssertionError("unreachable")
+
+
+def _is_transient(e):
+    """Whether e is an error that the same request may not hit if it is sent again later.
+
+    Transient: a 5xx response, a timeout, a DNS failure, or a refused or reset connection.
+
+    Not transient: any 4xx, a TLS certificate error, an invalid URL, or a proxy that refuses the
+    tunnel.  That includes 429: GitHub asks clients to wait at least a minute before trying again
+    when it sends no Retry-After, and GitLab's Retry-After counts the seconds until its quota
+    resets, so waiting it out is not worth it in a lint run.  It also includes the 403 that gitlab
+    returns for a missing repository (github returns 404).
+    """
+    if isinstance(e, urllib.error.HTTPError):
+        return e.code >= 500
+    # urlopen wraps a failure to connect in a URLError; a failure while reading the body is
+    # raised as it is.
+    reason = e.reason if isinstance(e, urllib.error.URLError) else e
+    # socket.timeout is TimeoutError from Python 3.10 on.
+    return isinstance(reason, (TimeoutError, socket.timeout, socket.gaierror, ConnectionError))
 
 
 def main(filepath, output_filepath):
