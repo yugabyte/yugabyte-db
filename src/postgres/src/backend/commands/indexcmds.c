@@ -2403,14 +2403,13 @@ DefineIndex(Oid relationId,
 				CommitTransactionCommand();
 				StartTransactionCommand();
 
+				/* YB: Short wait for backends on older catalog versions. */
+				YbWaitForBackendsCatalogVersion(false);
+
 				if (yb_should_run_in_autonomous_transaction)
 					YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 				else
-					YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
-
-				/* YB: Short wait for backends on older catalog versions. */
-				YbWaitForBackendsCatalogVersion(false);
-				YbLockDatabaseForDdlAfterWait();
+					YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 				/*
 				 * YB: Acquire ShareUpdateExclusiveLock on the parent table to
@@ -2504,13 +2503,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
-
-	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
-	YbLockDatabaseForDdlAfterWait();
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
 
@@ -2540,13 +2538,12 @@ YbDefineIndexHelper(Oid relationId,
 
 	StartTransactionCommand();
 
+	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
+
 	if (yb_should_run_in_autonomous_transaction)
 		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 	else
-		YbAddDdlTxnStateWithoutDatabaseLock(YB_DDL_MODE_VERSION_INCREMENT);
-
-	YbWaitForLockersOrBackendsCatalogVersion(&heaplocktag, ShareLock);
-	YbLockDatabaseForDdlAfterWait();
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 								 YB_PROGRESS_CREATEIDX_BACKFILLING);
@@ -4353,7 +4350,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		 * new one and set the stored ddl state.
 		 */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate(true /* lock_database */ );
+			YbCommitTransactionCommandIntermediate(true /* serialize */ );
 		else
 			StartTransactionCommand();
 
@@ -4469,7 +4466,7 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 	}
 
 	if (IsYugaByteEnabled())
-		YbCommitTransactionCommandIntermediate(true /* lock_database */ );
+		YbCommitTransactionCommandIntermediate(true /* serialize */ );
 	else
 		StartTransactionCommand();
 }

@@ -1199,11 +1199,11 @@ typedef enum YbDdlMode
 } YbDdlMode;
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
-extern void YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode);
-extern void YbLockDatabaseForDdlAfterWait(void);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);
+extern void YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize);
+extern void YbLockDatabaseToSerializeDdl(YbDdlMode mode);
 extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 

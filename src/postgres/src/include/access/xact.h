@@ -560,7 +560,7 @@ extern void YbBeginInternalSubTransactionForReadCommittedStatement();
  */
 extern bool YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch);
 extern void YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint);
-extern void YbCommitTransactionCommandIntermediate(bool lock_database);
+extern void YbCommitTransactionCommandIntermediate(bool serialize);
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
 extern void YBMarkDataNotSentForCurrQuery(void);

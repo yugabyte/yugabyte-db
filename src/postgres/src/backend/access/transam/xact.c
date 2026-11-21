@@ -3399,13 +3399,10 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 }
 
 /*
- * lock_database is false for a caller that waits for lockers right after the
- * new transaction starts and must not hold the database DDL lock during that
- * wait (see YbAddDdlTxnStateWithoutDatabaseLock); it takes the lock after the
- * wait with YbLockDatabaseForDdlAfterWait.
+ * serialize is passed to YBAddDdlTxnStateExtended for the new transaction.
  */
 void
-YbCommitTransactionCommandIntermediate(bool lock_database)
+YbCommitTransactionCommandIntermediate(bool serialize)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
@@ -3450,10 +3447,7 @@ YbCommitTransactionCommandIntermediate(bool lock_database)
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		if (lock_database)
-			YBAddDdlTxnState(ddl_mode);
-		else
-			YbAddDdlTxnStateWithoutDatabaseLock(ddl_mode);
+		YBAddDdlTxnStateExtended(ddl_mode, serialize);
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }
