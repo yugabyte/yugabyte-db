@@ -20,6 +20,8 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
@@ -28,6 +30,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
 
@@ -371,6 +374,17 @@ Status XClusterDDLReplicationSwitchoverTest::Switchover() {
   SetReplicationDirection(ReplicationDirection::BToA);
   RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
       VERIFY_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+  // DMLs are also refused while the role is AUTOMATIC_TARGET, which master changes only after
+  // the namespace has left the safe time map.
+  const auto namespace_id = VERIFY_RESULT(GetNamespaceId(producer_client()));
+  for (auto& tserver : cluster_B_->mini_cluster_->mini_tablet_servers()) {
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id) !=
+                 XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET;
+        },
+        propagation_timeout_, "Wait for B to no longer be an automatic mode target"));
+  }
   LOG(INFO) << "===== Switchover done";
 
   return Status::OK();
