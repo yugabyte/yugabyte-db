@@ -51,8 +51,6 @@ These parse but change nothing, because the Rust master has no such mechanism:
   catalog tables in one batch.
 - `ysql_ddl_post_processing_failed_verification_retry_secs`: a failed DDL verification is retried
   on the verifier's next pass (about a second) instead of waiting in `kDdlPostProcessingFailed`.
-- `sys_catalog_respect_affinity_task`: the sys catalog leader does not move to a master in a
-  preferred zone or off the leader blacklist.
 - `master_enable_deleted_tablet_cleanup`: there are no in-memory tablet maps to prune; DELETED
   tablets are read from the catalog.
 - `hide_pg_catalog_table_creation_logs`, `master_bg_task_long_operation_warning_ms`,

@@ -180,6 +180,7 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(skip_tserver_version_checks);
+DECLARE_bool(TEST_crash_server_on_sys_catalog_leader_affinity_move);
 DECLARE_bool(TEST_fail_yugabyte_namespace_creation_on_second_attempt);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(master_consensus_svc_queue_length);
@@ -2304,6 +2305,30 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
               // CatalogManagerBgTasks' cleanup on losing leadership.
               load_balancer_duration_metric_->Reset();
             }
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "SysCatalogLeaderStepDown") {
+    return HandleRequest<master::SysCatalogLeaderStepDownRequestPB,
+                         master::SysCatalogLeaderStepDownResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          if (PREDICT_FALSE(FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move)) {
+            LOG(FATAL) << "For test: Crashing the server instead of performing sys catalog leader "
+                          "affinity move.";
+          }
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          consensus::LeaderStepDownRequestPB step_down;
+          step_down.set_tablet_id(sys_catalog_->tablet_id());
+          step_down.set_dest_uuid(peer->permanent_uuid());
+          step_down.set_new_leader_uuid(req.new_leader_uuid());
+          consensus::LeaderStepDownResponsePB step_down_resp;
+          RETURN_NOT_OK(VERIFY_RESULT(peer->GetConsensus())->StepDown(&step_down, &step_down_resp));
+          if (step_down_resp.has_error()) {
+            *resp->mutable_refusal() = step_down_resp.error().status();
+          } else {
+            LOG(INFO) << "Successfully stepped down to new master";
           }
           return Status::OK();
         });

@@ -266,10 +266,22 @@ pub fn leader_blacklist_addresses(config: &SysClusterConfigEntryPB) -> HashSet<(
 /// Whether any of the tserver's addresses is blacklisted.
 pub fn is_blacklisted(descriptor: &TsDescriptor, blacklist: &HashSet<(String, u32)>) -> bool {
     let reg = &descriptor.pb.registration;
-    reg.private_rpc_addresses
-        .iter()
-        .chain(reg.broadcast_addresses.iter())
-        .any(|hp: &HostPortPB| blacklist.contains(&(hp.host().to_string(), hp.port())))
+    any_blacklisted(
+        reg.private_rpc_addresses
+            .iter()
+            .chain(reg.broadcast_addresses.iter()),
+        blacklist,
+    )
+}
+
+/// Whether any of `addresses` is blacklisted.
+pub fn any_blacklisted<'a>(
+    addresses: impl IntoIterator<Item = &'a HostPortPB>,
+    blacklist: &HashSet<(String, u32)>,
+) -> bool {
+    addresses
+        .into_iter()
+        .any(|hp| blacklist.contains(&(hp.host().to_string(), hp.port())))
 }
 
 /// `UsePublicIp`: whether a server at `to` is called at its broadcast address from `from`, under

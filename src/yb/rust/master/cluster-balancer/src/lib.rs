@@ -22,6 +22,7 @@
 
 pub mod controller;
 mod distribution;
+pub mod master_affinity;
 mod planner;
 mod state;
 

@@ -22,6 +22,9 @@ use master_catalog_state::defaults::{
 };
 use master_catalog_state::{run_materializer, self_check, Catalog, CatalogWriter, WriterOptions};
 use master_cluster_balancer::controller::{BalancerController, BalancerFlags, BalancerStatus};
+use master_cluster_balancer::master_affinity::{
+    MasterAffinityController, StepDown, SysCatalogRaft,
+};
 use master_cluster_balancer::Options as BalancerOptions;
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
@@ -63,7 +66,8 @@ use yb_host_api::StatusCode;
 use yb_proto::pb::master_client::ReservePgsqlOidsRequestPB;
 use yb_proto::pb::master_rust_peer::{
     HighestPreservableOidsRequestPB, HighestPreservableOidsResponsePB, SetClusterMetricsRequestPB,
-    SetLeaderReadyTermRequestPB,
+    SetLeaderReadyTermRequestPB, SysCatalogLeaderStepDownRequestPB,
+    SysCatalogLeaderStepDownResponsePB,
 };
 
 yb_flag!(
@@ -581,6 +585,8 @@ static STEPDOWN_TO_PREFERRED_LEADER_ON_REMOVE: FlagRef<bool> =
 static LB_UNDER_REPLICATED_ONLY: FlagRef<bool> =
     FlagRef::new("TEST_load_balancer_handle_under_replicated_tablets_only");
 static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
+static SYS_CATALOG_RESPECT_AFFINITY: FlagRef<bool> =
+    FlagRef::new("sys_catalog_respect_affinity_task");
 static ENABLE_DB_HISTORY_RETENTION_PINS: FlagRef<bool> =
     FlagRef::new("enable_db_history_retention_pins");
 static INITIAL_TSERVER_REGISTRATION_DURATION_SECS: FlagRef<u32> =
@@ -1930,6 +1936,21 @@ fn start_term(
 
     run_controller(
         scope,
+        MasterAffinityController::new(
+            leader.catalog.clone(),
+            leader.leadership.clone(),
+            Arc::new(HostSysCatalogRaft {
+                info: info.clone(),
+                host: host.clone(),
+            }),
+            || SYS_CATALOG_RESPECT_AFFINITY.get(),
+            || millis(BG_TASK_WAIT_MS.get()),
+        ),
+        watch::channel(0).1,
+    );
+
+    run_controller(
+        scope,
         SplitController::new(leader.splits.clone()),
         leader.catalog.subscribe(),
     );
@@ -2309,6 +2330,53 @@ impl Controller for LivenessController {
             if let Err(status) = result {
                 tracing::warn!("Persisting tserver registrations failed, will retry: {status}");
             }
+        })
+    }
+}
+
+/// The sys catalog's registration and committed config from the host, and its
+/// `SysCatalogLeaderStepDown`.
+struct HostSysCatalogRaft {
+    info: Arc<dyn MasterInfo>,
+    host: Arc<dyn SchemaHost>,
+}
+
+impl SysCatalogRaft for HostSysCatalogRaft {
+    fn registration(
+        &self,
+    ) -> Result<yb_proto::pb::wire_protocol::ServerRegistrationPB, yb_host_api::Status> {
+        self.info.registration()
+    }
+
+    fn committed_peers(
+        &self,
+    ) -> Result<Vec<yb_proto::pb::consensus_metadata::RaftPeerPB>, yb_host_api::Status> {
+        Ok(self
+            .info
+            .committed_consensus_state()?
+            .config
+            .unwrap_or_default()
+            .peers)
+    }
+
+    fn step_down_to(&self, new_leader: &[u8]) -> Result<StepDown, yb_host_api::Status> {
+        let mut req = SysCatalogLeaderStepDownRequestPB::new();
+        req.set_new_leader_uuid(new_leader.to_vec());
+        let bytes = req
+            .write_to_bytes()
+            .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))?;
+        let resp = self.host.call("SysCatalogLeaderStepDown", &bytes)?;
+        let resp = SysCatalogLeaderStepDownResponsePB::parse_from_bytes(&resp)
+            .map_err(|e| yb_host_api::Status::new(StatusCode::Corruption, e.to_string()))?;
+        if let Some(error) = resp.error.as_ref() {
+            return Err(status_of(error));
+        }
+        Ok(match resp.refusal.as_ref() {
+            Some(refusal) => StepDown::Refused(yb_host_api::Status::new(
+                StatusCode::from_i32(protobuf::Enum::value(&refusal.code())),
+                refusal.message().to_string(),
+            )),
+            None => StepDown::Done,
         })
     }
 }

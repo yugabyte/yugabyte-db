@@ -954,3 +954,15 @@ message SetLiveYsqlHistoryPinRequestPB {
 message SetLiveYsqlHistoryPinResponsePB {
   optional MasterErrorPB error = 1;
 }
+
+// CatalogManager::SysCatalogLeaderStepDown: the sys catalog leader steps down to
+// `new_leader_uuid`. `refusal` is Raft's reason when it did not (the new leader is not caught up,
+// or this master no longer leads); `error` is set when the step-down could not be asked.
+message SysCatalogLeaderStepDownRequestPB {
+  optional bytes new_leader_uuid = 1;
+}
+
+message SysCatalogLeaderStepDownResponsePB {
+  optional MasterErrorPB error = 1;
+  optional AppStatusPB refusal = 2;
+}

@@ -76,6 +76,20 @@ leaders, each marked tserver's next heartbeat response lists the leader-blacklis
 `leader_blacklisted_tservers_with_no_leaders` (with `send_leader_blacklisted_tservers_on_heartbeat`),
 once, so it can stop sending them leader traffic.
 
+## Master leader affinity
+
+`master_affinity::MasterAffinityController` moves the sys catalog leader as
+`CatalogManager::SysCatalogRespectLeaderAffinity` does, each `catalog_manager_bg_task_wait_ms`
+while `sys_catalog_respect_affinity_task` is set (the default). It acts only with preferred zones
+(`affinitized_leaders` or `multi_affinitized_leaders`) or when the leader is on the leader
+blacklist. A master ranks by the first priority set with a zone, wildcards included, that covers
+its cloud info in the committed Raft config; one in no set ranks after them all, and a master on
+the leader blacklist (by its last known private or broadcast address) last. The leader asks Raft
+to step down to each master ranked above it, best first, and stops at the first that accepts;
+Raft refuses a master that is not caught up, so a down preferred master is skipped. The step-down
+is the host's `SysCatalogLeaderStepDown` (`LeaderStepDown` on the sys catalog's consensus, with
+`TEST_crash_server_on_sys_catalog_leader_affinity_move` honored there).
+
 ## Order of a run
 
 As `RunClusterBalancerWithOptions`: every table is analyzed first, since one table's adds change
