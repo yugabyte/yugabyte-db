@@ -84,7 +84,7 @@ FROM pg_replication_slots;
 
 `restart_lag` is the age of the oldest change the slot may still need. YugabyteDB LSNs are not byte offsets, so `pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)` does not measure lag. [`pg_current_wal_lsn`](../#limitations) and [`pg_wal_lsn_diff`](../#limitations) are unsupported.
 
-`restart_lag` is measured from the wall clock. It keeps growing until `yb_restart_time` advances, including while the database is idle. [`cdcsdk_flush_lag`](#cdc-service-metrics) is the gap between the newest committed WAL record and the slot restart time, so it falls toward zero on an idle database.
+While a caught-up client stays connected, the [restart time](../key-concepts/#restart-time) of an idle slot advances about every 60 seconds, so `restart_lag` stays near that interval. `restart_lag` grows steadily while the client is disconnected or is not acknowledging. [`cdcsdk_flush_lag`](#cdc-service-metrics) is the gap between the newest committed WAL record and the restart time. It falls toward zero while the restart time is advancing, and it holds steady when the client is disconnected or not acknowledging.
 
 ### pg_stat_replication
 
