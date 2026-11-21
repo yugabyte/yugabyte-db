@@ -143,6 +143,7 @@ YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
 YbMergeScanStreamColInfo
+YbModifiedRowKey
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry

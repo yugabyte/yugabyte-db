@@ -1645,6 +1645,9 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		if (!row_found)
 			return TM_Invisible;
 
+		YbRememberModifiedRow(context->mtstate, resultRelationDesc,
+							  YBCGetYBTupleIdFromSlot(context->planSlot));
+
 		return TM_Ok;
 	}
 
@@ -2587,6 +2590,9 @@ lreplace:
 		 */
 		if (!row_found)
 			return TM_Invisible;
+
+		YbRememberModifiedRow(context->mtstate, resultRelationDesc,
+							  YBCGetYBTupleIdFromSlot(context->planSlot));
 
 		updateCxt->updated = true;
 		return TM_Ok;
@@ -4494,6 +4500,14 @@ ExecModifyTable(PlanState *pstate)
 					elog(ERROR, "ybctid is NULL");
 				TABLETUPLE_YBCTID(context.planSlot) = datum;
 
+				/*
+				 * A later join match for a row this command already updated
+				 * or deleted.  Like PostgreSQL on TM_SelfModified, ignore it,
+				 * before any BEFORE ROW trigger fires.
+				 */
+				if (YbIsRowModified(node, relation, datum))
+					continue;
+
 				if (AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
 				{
 					/* Extract the old row from wholerow junk attribute. */
@@ -4846,6 +4860,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	mtstate->yb_skip_fetch_target_tuple =
 		ybCanSkipFetchingTargetTuple(node,
 									 mtstate->rootResultRelInfo->ri_RelationDesc);
+
+	if (node->ybTargetRowMayRepeat && !mtstate->yb_skip_fetch_target_tuple)
+		mtstate->yb_modified_rows = YbCreateModifiedRows(estate->es_query_cxt);
 
 	/*
 	 * YB: Check if the planner has passed down any optimization info for
