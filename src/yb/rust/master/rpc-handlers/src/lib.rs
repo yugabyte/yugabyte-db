@@ -251,7 +251,13 @@ pub struct HandlerOptions {
     /// `emergency_repair_mode`: no leader term ever becomes ready, and the sys-catalog leader
     /// still reports LEADER so that yb-admin finds it for the host's sys-catalog RPCs.
     pub emergency_repair_mode: fn() -> bool,
+    /// `master_slow_get_registration_probability`: the chance that `GetMasterRegistration` waits
+    /// 20s before it answers.
+    pub slow_get_registration_probability: fn() -> f64,
 }
+
+/// How long a `GetMasterRegistration` slowed by `master_slow_get_registration_probability` waits.
+const SLOW_GET_REGISTRATION_DELAY: Duration = Duration::from_secs(20);
 
 /// Handles every method of one master service.
 pub struct MasterServiceHandler {
@@ -308,8 +314,18 @@ impl RpcHandler for MasterServiceHandler {
         let shared = self.shared.clone();
         match method.name {
             "GetMasterRegistration" => {
-                let response = shared.get_master_registration();
-                respond(call, &response);
+                let probability = (shared.options.slow_get_registration_probability)();
+                if probability > 0.0 && rand::random::<f64>() < probability {
+                    let runtime = shared.runtime.clone();
+                    runtime.spawn(async move {
+                        tokio::time::sleep(SLOW_GET_REGISTRATION_DELAY).await;
+                        let response = shared.get_master_registration();
+                        respond(call, &response);
+                    });
+                } else {
+                    let response = shared.get_master_registration();
+                    respond(call, &response);
+                }
             }
             "ListMasterRaftPeers" => {
                 let response = shared.list_master_raft_peers();

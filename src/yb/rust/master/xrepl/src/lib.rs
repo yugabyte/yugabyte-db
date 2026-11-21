@@ -138,6 +138,14 @@ pub struct XreplOptions {
     /// `TEST_cdc_add_dynamic_index_to_state_table`: every new tablet gets barriers and rows for
     /// every CDCSDK stream, eligible or not.
     pub add_dynamic_index_to_state_table: fn() -> bool,
+    /// `cdc_parent_tablet_deletion_task_retry_secs`: how often hidden split parents are checked
+    /// for release; 0 or less never.
+    pub parent_tablet_deletion_interval_secs: fn() -> i32,
+    /// `max_concurrent_alter_table_rpcs`: retention barrier `AlterSchema` calls in flight; 0 for
+    /// no limit, negative for `max_concurrent_alter_table_rpcs_per_tserver` per live tserver.
+    pub max_concurrent_alter_table_rpcs: fn() -> i32,
+    /// `max_concurrent_alter_table_rpcs_per_tserver`.
+    pub max_concurrent_alter_table_rpcs_per_tserver: fn() -> i32,
 }
 
 impl Default for XreplOptions {
@@ -177,7 +185,33 @@ impl Default for XreplOptions {
             intent_retention: || Duration::from_secs(8 * 3600),
             table_rewrite_retention: || true,
             add_dynamic_index_to_state_table: || false,
+            parent_tablet_deletion_interval_secs: || 30,
+            max_concurrent_alter_table_rpcs: || 0,
+            max_concurrent_alter_table_rpcs_per_tserver: || 1,
         }
+    }
+}
+
+/// `ScheduleXReplParentTabletDeletionTask`'s timing for a background step that runs every
+/// `interval_secs`: the first call of a term starts the clock, so the step first runs one interval
+/// into the term, as the C++ task does; 0 or less stops it.
+pub fn periodic_step_due(last: &Mutex<Option<tokio::time::Instant>>, interval_secs: i32) -> bool {
+    let mut last = last.lock().unwrap();
+    if interval_secs <= 0 {
+        *last = None;
+        return false;
+    }
+    let now = tokio::time::Instant::now();
+    match *last {
+        None => {
+            *last = Some(now);
+            false
+        }
+        Some(t) if now.duration_since(t) >= Duration::from_secs(interval_secs as u64) => {
+            *last = Some(now);
+            true
+        }
+        Some(_) => false,
     }
 }
 
@@ -273,8 +307,63 @@ pub struct Xrepl {
     /// The host's CDC service serves GetChanges on the sys catalog tablet; enabled once, as C++
     /// never disables it.
     pub(crate) cdc_service_enabled: std::sync::atomic::AtomicBool,
+    /// `cdc_stream_alter_table_throttler_`: shared by every stream creation.
+    pub(crate) alter_throttle: AlterThrottle,
     /// master-xcluster's part of the hooks, held weakly: master-xcluster holds this service.
     extension: OnceLock<Weak<dyn XreplExtension>>,
+}
+
+/// 0 is no limit, a positive total the limit, and a negative one `per_tserver` per live tserver
+/// (just `per_tserver` while none is live).
+pub(crate) fn alter_rpc_limit(total: i32, per_tserver: i32, live_tservers: usize) -> usize {
+    if total == 0 {
+        return usize::MAX;
+    }
+    if total > 0 {
+        return total as usize;
+    }
+    let per_tserver = per_tserver.max(1) as usize;
+    match live_tservers {
+        0 => per_tserver,
+        n => n * per_tserver,
+    }
+}
+
+/// Holds the calls in flight under a limit read for each call, so a changed flag applies to the
+/// next one.
+#[derive(Default)]
+pub(crate) struct AlterThrottle {
+    in_flight: Mutex<usize>,
+    released: tokio::sync::Notify,
+}
+
+/// A slot of an [`AlterThrottle`], released on drop.
+pub(crate) struct AlterPermit<'a>(&'a AlterThrottle);
+
+impl AlterThrottle {
+    pub(crate) async fn acquire(&self, limit: impl Fn() -> usize) -> AlterPermit<'_> {
+        loop {
+            // Registered before the check, so a release between the check and the wait is seen.
+            let released = self.released.notified();
+            tokio::pin!(released);
+            released.as_mut().enable();
+            {
+                let mut in_flight = self.in_flight.lock().unwrap();
+                if *in_flight < limit().max(1) {
+                    *in_flight += 1;
+                    return AlterPermit(self);
+                }
+            }
+            released.await;
+        }
+    }
+}
+
+impl Drop for AlterPermit<'_> {
+    fn drop(&mut self) {
+        *self.0.in_flight.lock().unwrap() -= 1;
+        self.0.released.notify_waiters();
+    }
 }
 
 impl Xrepl {
@@ -304,6 +393,7 @@ impl Xrepl {
             released_split_parents: Mutex::default(),
             non_eligible_tables: Mutex::default(),
             cdc_service_enabled: Default::default(),
+            alter_throttle: AlterThrottle::default(),
             extension: OnceLock::new(),
         })
     }
@@ -335,6 +425,15 @@ impl Xrepl {
     }
 
     /// `Clock::MaxGlobalNow` of the host.
+    /// `GetCDCStreamAlterTableRpcLimit`: as `GetRpcLimit` of the snapshot coordinator.
+    pub(crate) fn alter_rpc_limit(&self) -> usize {
+        alter_rpc_limit(
+            (self.options.max_concurrent_alter_table_rpcs)(),
+            (self.options.max_concurrent_alter_table_rpcs_per_tserver)(),
+            self.ts_manager.live().len(),
+        )
+    }
+
     pub(crate) async fn max_global_now(&self) -> Result<u64, Status> {
         let host = self.host.clone();
         tokio::task::spawn_blocking(move || hybrid_time_now(&*host, true))
@@ -461,4 +560,49 @@ pub(crate) fn host_error(resp: &dyn protobuf::MessageDyn) -> Option<MasterErrorP
     let message = value.to_message()?;
     let message: &dyn protobuf::MessageDyn = &*message;
     message.downcast_ref::<MasterErrorPB>().cloned()
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::*;
+
+    /// `cdc_parent_tablet_deletion_task_retry_secs`: first due one interval into the term, then
+    /// every interval; 0 or less never.
+    #[tokio::test(start_paused = true)]
+    async fn a_periodic_step_runs_every_interval() {
+        let last = Mutex::new(None);
+        assert!(!periodic_step_due(&last, 2));
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(!periodic_step_due(&last, 2));
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(periodic_step_due(&last, 2));
+        assert!(!periodic_step_due(&last, 2));
+        tokio::time::advance(Duration::from_secs(5)).await;
+        assert!(!periodic_step_due(&last, 0));
+        assert!(!periodic_step_due(&last, 2));
+    }
+
+    /// `max_concurrent_alter_table_rpcs` and `_per_tserver`, as `GetCDCStreamAlterTableRpcLimit`.
+    #[test]
+    fn the_alter_limit_follows_cpp() {
+        assert_eq!(alter_rpc_limit(0, 1, 3), usize::MAX);
+        assert_eq!(alter_rpc_limit(5, 1, 3), 5);
+        assert_eq!(alter_rpc_limit(-1, 2, 3), 6);
+        assert_eq!(alter_rpc_limit(-1, 2, 0), 2);
+        assert_eq!(alter_rpc_limit(-1, 0, 3), 3);
+    }
+
+    #[tokio::test]
+    async fn the_throttle_holds_calls_at_its_limit() {
+        let throttle = AlterThrottle::default();
+        let first = throttle.acquire(|| 1).await;
+        let waiting = tokio::time::timeout(Duration::from_millis(50), throttle.acquire(|| 1)).await;
+        assert!(waiting.is_err());
+        let second = throttle.acquire(|| 2).await;
+        drop(first);
+        drop(second);
+        let _third = tokio::time::timeout(Duration::from_secs(5), throttle.acquire(|| 1))
+            .await
+            .unwrap();
+    }
 }

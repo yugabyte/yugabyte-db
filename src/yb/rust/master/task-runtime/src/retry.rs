@@ -30,6 +30,8 @@ pub struct RetryPolicy {
     pub max_attempts: u32,
     /// `unresponsive_ts_rpc_timeout_ms`.
     pub deadline: Duration,
+    /// `retrying_rpc_max_jitter_ms`: up to this much more, at random, on top of each delay.
+    pub max_jitter: Duration,
 }
 
 impl Default for RetryPolicy {
@@ -39,6 +41,7 @@ impl Default for RetryPolicy {
             max_delay: Duration::from_secs(60),
             max_attempts: 20,
             deadline: Duration::from_secs(15 * 60),
+            max_jitter: Duration::ZERO,
         }
     }
 }
@@ -53,14 +56,17 @@ pub enum Attempt {
 }
 
 impl RetryPolicy {
-    /// The delay before retry number `attempt` (0-based): uniform in [0, min(max, base * 2^n)].
+    /// The delay before retry number `attempt` (0-based): uniform in [0, min(max, base * 2^n)],
+    /// plus up to `max_jitter`.
     pub fn delay(&self, attempt: u32) -> Duration {
         let cap = self
             .base_delay
             .saturating_mul(1u32.checked_shl(attempt.min(31)).unwrap_or(u32::MAX))
             .min(self.max_delay);
         let millis = cap.as_millis() as u64;
-        Duration::from_millis(rand::rng().random_range(0..=millis))
+        let jitter = self.max_jitter.as_millis() as u64;
+        let mut rng = rand::rng();
+        Duration::from_millis(rng.random_range(0..=millis) + rng.random_range(0..=jitter))
     }
 
     /// Calls `attempt` until it succeeds, fails for good, or the attempts or deadline run out.
@@ -136,6 +142,25 @@ mod tests {
         assert!(seen.len() > 10);
         assert!(policy.delay(0) <= Duration::from_millis(10));
         assert!(policy.delay(1000) <= Duration::from_millis(100));
+    }
+
+    #[test]
+    fn jitter_adds_up_to_its_maximum() {
+        let policy = RetryPolicy {
+            base_delay: Duration::ZERO,
+            max_delay: Duration::ZERO,
+            max_jitter: Duration::from_millis(50),
+            ..Default::default()
+        };
+        let delays: std::collections::BTreeSet<Duration> =
+            (0..200).map(|_| policy.delay(3)).collect();
+        assert!(delays.iter().all(|d| *d <= Duration::from_millis(50)));
+        assert!(delays.len() > 10);
+        let none = RetryPolicy {
+            base_delay: Duration::ZERO,
+            ..Default::default()
+        };
+        assert_eq!(none.delay(3), Duration::ZERO);
     }
 
     #[tokio::test(start_paused = true)]

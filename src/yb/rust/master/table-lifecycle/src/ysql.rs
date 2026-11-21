@@ -410,7 +410,9 @@ impl TableLifecycle {
                 .set_DEPRECATED_pgschema_name(String::new());
         }
         // A DDL transaction's table is rolled back unless the transaction commits.
-        if req.transaction.is_some() {
+        if req.transaction.is_some()
+            && ((self.options.enable_transactional_ddl_gc)() || req.ysql_yb_ddl_rollback_enabled())
+        {
             table.transaction = req.transaction.clone();
             if req.ysql_yb_ddl_rollback_enabled() {
                 let mut state = YsqlDdlTxnVerifierStatePB::new();
@@ -1300,6 +1302,26 @@ pub fn pg_table_oid(id: &[u8]) -> Option<u32> {
     pg_oid(id, 24)
 }
 
+/// The YSQL databases `qos_max_db_count` limits: all but the templates, the sequences database,
+/// and DELETED or FAILED ones.
+pub(crate) fn qos_counted_databases(snapshot: &CatalogSnapshot) -> usize {
+    use sys_namespace_entry_pb::State;
+    const SEQUENCES_DATA_NAMESPACE_ID: &[u8] = b"0000ffff000030008000000000000000";
+    snapshot
+        .iter(SysRowEntryType::NAMESPACE)
+        .filter(|e| &*e.key.id != SEQUENCES_DATA_NAMESPACE_ID)
+        .filter(|e| {
+            e.namespace().is_some_and(|n| {
+                n.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
+                    && n.name != "template0"
+                    && n.name != "template1"
+                    && n.state != State::DELETED as i32
+                    && n.state != State::FAILED as i32
+            })
+        })
+        .count()
+}
+
 /// initdb is not done: the YSQL catalog config row says so (`YsqlCatalogConfig::IsInitDbDone`).
 pub(crate) fn initdb_pending(snapshot: &CatalogSnapshot) -> bool {
     !snapshot
@@ -1379,32 +1401,48 @@ impl TableLifecycle {
                 } else {
                     None
                 };
+                // Any row with the id, a DELETED tombstone too: the dropped database's PG
+                // catalog tables may still use its OID. PG retries with the next OID on the error
+                // code.
                 if reused.is_none() && !req.namespace_id().is_empty() {
-                    if let Some(found) = snapshot
-                        .get(SysRowEntryType::NAMESPACE, req.namespace_id())
-                        .filter(|e| {
-                            e.namespace().is_some_and(|n| {
-                                n.state != sys_namespace_entry_pb::State::DELETED as i32
-                            })
-                        })
+                    if let Some(found) =
+                        snapshot.get(SysRowEntryType::NAMESPACE, req.namespace_id())
                     {
-                        return existing(
-                            &found.key.id,
-                            format!(
-                                "Keyspace with id '{}' already exists",
-                                String::from_utf8_lossy(req.namespace_id())
-                            ),
-                        );
+                        let e = duplicate_database_error(format!(
+                            "Keyspace with id '{}' already exists",
+                            String::from_utf8_lossy(req.namespace_id())
+                        ));
+                        return Ok((Mutation::new(), Err((found.key.id.to_vec(), e))));
                     }
                 }
+                let named = self.named_databases.lock().unwrap().clone();
                 if let Some(found) =
-                    crate::lookup::find_namespace_by_name(snapshot, req.name(), pgsql as i32)
+                    crate::lookup::namespaces_named(snapshot, req.name(), pgsql as i32)
+                        .find(|e| {
+                            !crate::lookup::is_releasable_database(e)
+                                || named.contains(&(token.term(), e.key.id.to_vec()))
+                        })
                         .filter(|_| reused.is_none())
                 {
                     return existing(
                         &found.key.id,
                         format!("Keyspace '{}' already exists", req.name()),
                     );
+                }
+                let qos_limit = (self.options.qos_max_db_count)();
+                if !upgrading && (self.options.enable_qos)() && qos_limit > 0 {
+                    let count = qos_counted_databases(snapshot);
+                    if count >= qos_limit as usize {
+                        return Err(error(
+                            Code::INVALID_REQUEST,
+                            StatusCode::InvalidArgument,
+                            format!(
+                                "Too many databases: {count} non-template databases already \
+                                 exist, limit is {qos_limit} (qos_max_db_count). Drop unused \
+                                 databases or increase the limit."
+                            ),
+                        ));
+                    }
                 }
                 let next_oid = match source_oid {
                     None => req.next_pg_oid(),
@@ -1458,7 +1496,7 @@ impl TableLifecycle {
                 ns.set_next_normal_pg_oid(
                     next_oid.max(previous.as_ref().map_or(0, |p| p.next_normal_pg_oid())),
                 );
-                if req.transaction.is_some() {
+                if req.transaction.is_some() && (self.options.enable_transactional_ddl_gc)() {
                     ns.transaction = req.transaction.clone();
                 }
                 let mutation = match snapshot.get(SysRowEntryType::NAMESPACE, &id) {
@@ -1488,6 +1526,7 @@ impl TableLifecycle {
                 .await
             {
                 tracing::warn!("Keyspace creation failed: {}", e.status.message());
+                self.keep_database_name(token, &id);
                 let _ = self.set_namespace_state(token, &id, false).await;
                 return Err(e);
             }
@@ -1514,7 +1553,12 @@ impl TableLifecycle {
         let lifecycle = self.clone();
         let token = *token;
         let name = req.name().to_string();
-        let transaction = req.transaction.clone();
+        // The copied tables carry the transaction only if the database does.
+        let transaction = if (self.options.enable_transactional_ddl_gc)() {
+            req.transaction.clone()
+        } else {
+            Default::default()
+        };
         tokio::spawn(async move {
             if let Err(e) = lifecycle
                 .finish_ysql_namespace(&token, &id, &name, sources, transaction)
@@ -1749,6 +1793,14 @@ impl TableLifecycle {
         .await
     }
 
+    /// Keeps the name of the database while it is FAILED or DELETING in this term
+    /// (`named_databases`).
+    pub(crate) fn keep_database_name(&self, token: &LeaderToken, id: &[u8]) {
+        let mut named = self.named_databases.lock().unwrap();
+        named.retain(|(term, _)| *term == token.term());
+        named.insert((token.term(), id.to_vec()));
+    }
+
     /// Marks a PREPARING namespace RUNNING or FAILED.
     async fn set_namespace_state(
         &self,
@@ -1790,6 +1842,33 @@ pub(crate) struct SubTxnRollback {
     /// Tables it altered, until their tablets have the alter.
     altered: Vec<Vec<u8>>,
     failed: bool,
+}
+
+/// `STATUS(AlreadyPresent, .., PgsqlError(YB_PG_DUPLICATE_DATABASE))`, on which PG retries
+/// CREATE DATABASE with the next OID (`ysql_enable_create_database_oid_collision_retry`).
+fn duplicate_database_error(message: String) -> MasterErrorPB {
+    const PGSQL_ERROR_CATEGORY: u8 = 6;
+    // MAKE_SQLSTATE('4', '2', 'P', '0', '4').
+    const DUPLICATE_DATABASE: u32 = {
+        let s = *b"42P04";
+        let mut code = 0u32;
+        let mut i = 0;
+        while i < 5 {
+            code |= (((s[i] - b'0') & 0x3f) as u32) << (6 * i);
+            i += 1;
+        }
+        code
+    };
+    let mut e = error(
+        Code::NAMESPACE_ALREADY_PRESENT,
+        StatusCode::AlreadyPresent,
+        message,
+    );
+    let mut errors = vec![PGSQL_ERROR_CATEGORY];
+    errors.extend_from_slice(&DUPLICATE_DATABASE.to_le_bytes());
+    errors.push(0);
+    e.status.mut_or_insert_default().set_errors(errors);
+    e
 }
 
 /// `kSysCatalogTabletId`.

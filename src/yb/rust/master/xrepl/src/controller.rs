@@ -25,6 +25,8 @@ pub struct XreplController {
     xrepl: Arc<Xrepl>,
     /// Whether this term's first pass has run its load-time steps.
     loaded: AtomicBool,
+    /// When the hidden split parents were last checked for release.
+    parent_deletion: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl XreplController {
@@ -33,6 +35,7 @@ impl XreplController {
         Arc::new(XreplController {
             xrepl,
             loaded: AtomicBool::new(false),
+            parent_deletion: Default::default(),
         })
     }
 }
@@ -85,8 +88,13 @@ impl Controller for XreplController {
                 tracing::warn!("Failed to add new tables to CDCSDK streams: {status}");
             }
             xrepl.prune_released(&xrepl.catalog.snapshot());
-            if let Err(status) = xrepl.process_cdcsdk_hidden_tablets().await {
-                tracing::warn!("Failed to run DoProcessCDCSDKTabletDeletion: {status}");
+            if crate::periodic_step_due(
+                &self.parent_deletion,
+                (xrepl.options.parent_tablet_deletion_interval_secs)(),
+            ) {
+                if let Err(status) = xrepl.process_cdcsdk_hidden_tablets().await {
+                    tracing::warn!("Failed to run DoProcessCDCSDKTabletDeletion: {status}");
+                }
             }
             if let Err(status) = xrepl.process_table_removals(&token).await {
                 tracing::warn!("Failed to remove tables from CDCSDK streams: {status}");

@@ -51,6 +51,9 @@ pub struct BackendsOptions {
     pub tserver_rpc_timeout: fn() -> Duration,
     /// `wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms`.
     pub client_margin: fn() -> Duration,
+    /// `ysql_backends_catalog_version_job_expiration_sec`: a job no client waited on for this
+    /// long is aborted.
+    pub job_expiration: fn() -> Duration,
 }
 
 impl Default for BackendsOptions {
@@ -58,6 +61,7 @@ impl Default for BackendsOptions {
         BackendsOptions {
             tserver_rpc_timeout: || Duration::from_secs(60),
             client_margin: || Duration::from_secs(5),
+            job_expiration: || Duration::from_secs(120),
         }
     }
 }
@@ -76,15 +80,24 @@ enum JobState {
     Running,
     Complete,
     Failed(String),
+    /// Expired with no client waiting; a client asking again starts a new job.
+    Aborted,
 }
 
 struct Job {
     /// Lagging backends per tserver; -1 until it answers.
     lagging: Mutex<BTreeMap<Vec<u8>, i32>>,
     state: watch::Sender<JobState>,
+    /// When a client last waited on it (`Touch`).
+    last_access: Mutex<Instant>,
 }
 
 impl Job {
+    /// `IsInactive`.
+    fn is_inactive(&self, expiration: Duration) -> bool {
+        self.last_access.lock().unwrap().elapsed() > expiration
+    }
+
     fn total(&self) -> i32 {
         let lagging = self.lagging.lock().unwrap();
         if lagging.is_empty() || lagging.values().any(|n| *n < 0) {
@@ -198,11 +211,15 @@ impl YsqlBackends {
                 return Ok(0);
             }
             match jobs.running.get(&(db, version)) {
-                Some(job) => job.clone(),
+                Some(job) => {
+                    *job.last_access.lock().unwrap() = Instant::now();
+                    job.clone()
+                }
                 None => {
                     let job = Arc::new(Job {
                         lagging: Mutex::default(),
                         state: watch::channel(JobState::Running).0,
+                        last_access: Mutex::new(Instant::now()),
                     });
                     jobs.running.insert((db, version), job.clone());
                     self.launch(token, &job, req);
@@ -227,6 +244,8 @@ impl YsqlBackends {
                 ))
             }
             JobState::Running => Ok(job.total()),
+            // Retryable, as C++'s client takes it.
+            JobState::Aborted => Err(Status::new(StatusCode::RemoteError, "job is aborted")),
         }
     }
 
@@ -288,6 +307,27 @@ impl YsqlBackends {
         }
     }
 
+    /// `AbortInactiveJobs` of one job.
+    fn abort(&self, job: &Job, db: u32, version: u64) {
+        if job.state.send_if_modified(|s| {
+            let running = *s == JobState::Running;
+            if running {
+                *s = JobState::Aborted;
+            }
+            running
+        }) {
+            tracing::info!("Aborting the inactive backends catalog version job of database {db}, version {version}");
+            let mut jobs = self.jobs.lock().unwrap();
+            if jobs
+                .running
+                .get(&(db, version))
+                .is_some_and(|j| std::ptr::eq(Arc::as_ptr(j), job))
+            {
+                jobs.running.remove(&(db, version));
+            }
+        }
+    }
+
     fn reached(&self, db: u32, version: u64) {
         let mut jobs = self.jobs.lock().unwrap();
         let reached = jobs.reached.entry(db).or_default();
@@ -312,6 +352,13 @@ impl YsqlBackends {
         let mut prev = -1;
         loop {
             self.leadership.check(token)?;
+            if *job.state.borrow() != JobState::Running {
+                return Ok(());
+            }
+            if job.is_inactive((self.options.job_expiration)()) {
+                self.abort(job, req.database_oid(), req.catalog_version());
+                return Ok(());
+            }
             if !live_leases(&self.catalog).contains(&uuid.to_vec()) {
                 job.lagging.lock().unwrap().insert(uuid.to_vec(), 0);
                 return Ok(());
@@ -395,4 +442,23 @@ fn live_leases(catalog: &Catalog) -> Vec<Vec<u8>> {
         })
         .map(|row| row.key.id.to_vec())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `ysql_backends_catalog_version_job_expiration_sec`.
+    #[tokio::test(start_paused = true)]
+    async fn a_job_no_client_waits_on_expires() {
+        let job = Job {
+            lagging: Mutex::default(),
+            state: watch::channel(JobState::Running).0,
+            last_access: Mutex::new(Instant::now()),
+        };
+        tokio::time::advance(Duration::from_secs(100)).await;
+        assert!(!job.is_inactive(Duration::from_secs(120)));
+        tokio::time::advance(Duration::from_secs(21)).await;
+        assert!(job.is_inactive(Duration::from_secs(120)));
+    }
 }

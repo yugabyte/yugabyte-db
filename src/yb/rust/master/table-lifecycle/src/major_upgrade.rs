@@ -243,7 +243,10 @@ impl TableLifecycle {
         }
         let row = response.table.into_option().unwrap_or_default();
         let table_id = row.id().to_vec();
-        let table: SysTablesEntryPB = row.table.into_option().unwrap_or_default();
+        let mut table: SysTablesEntryPB = row.table.into_option().unwrap_or_default();
+        if !(self.options.enable_transactional_ddl_gc)() {
+            table.transaction = Default::default();
+        }
         self.pause_before_upsert_ysql_sys_table().await;
         self.write(token, deadline, |snapshot| {
             let mut mutation = match snapshot.get(SysRowEntryType::TABLE, &table_id) {

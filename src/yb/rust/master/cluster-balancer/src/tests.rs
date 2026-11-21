@@ -1573,3 +1573,5 @@ fn a_read_replica_run_sees_the_live_runs_tasks() {
     assert_eq!(result.activities[1].pending_tasks, 1);
     assert!(!result.activities[1].is_idle());
 }
+
+mod affinity;

@@ -31,10 +31,10 @@ snapshot and restoration ids; a request's id must have exactly 32.
 5. Retention barriers: each table's `wal_retention_secs` is written (no new schema version) and every
    tablet's leader gets `AlterSchema` with it, in batches of
    `cdc_create_stream_alter_table_dispatch_batch_size` tables with
-   `cdc_create_stream_alter_table_dispatch_delay_ms` between them (`max_concurrent_alter_table_rpcs`
-   is not applied). With a consistent snapshot option the request names
-   the stream as retention requester, and the tablet answers with the op id the snapshot is safe
-   from, which becomes its `cdc_state` checkpoint. Catalog tables live on the sys catalog tablet;
+   `cdc_create_stream_alter_table_dispatch_delay_ms` between them, and at most
+   `max_concurrent_alter_table_rpcs` in flight across all stream creations. With a consistent
+   snapshot option the request names the stream as retention requester, and the tablet answers
+   with the op id the snapshot is safe from, which becomes its `cdc_state` checkpoint. Catalog tables live on the sys catalog tablet;
    the host submits their `CHANGE_METADATA_OP` and writes the row when it applies, which is waited
    for. A tablet's row is written before its alter returns, so step 6 finds a row still invalid only
    when writing it failed, and fails the create.

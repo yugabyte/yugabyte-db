@@ -191,6 +191,9 @@ pub struct XClusterOptions {
     pub auto_add_index_to_bidirectional: fn() -> bool,
     /// `add_new_index_to_bidirectional_xcluster_timeout_secs`.
     pub bidirectional_index_timeout: fn() -> Duration,
+    /// `cdc_parent_tablet_deletion_task_retry_secs`: how often hidden split parents are checked
+    /// for release; 0 or less never.
+    pub parent_tablet_deletion_interval_secs: fn() -> i32,
 }
 
 impl Default for XClusterOptions {
@@ -250,6 +253,7 @@ impl Default for XClusterOptions {
             wal_anchor_deletion_skip_marker_clear: || false,
             auto_add_index_to_bidirectional: || true,
             bidirectional_index_timeout: || Duration::from_secs(600),
+            parent_tablet_deletion_interval_secs: || 30,
         }
     }
 }

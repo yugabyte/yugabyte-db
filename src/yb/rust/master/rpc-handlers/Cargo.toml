@@ -20,6 +20,7 @@ master-tablet-split-manager.workspace = true
 master-ysql-manager.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true
+rand.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 yb-host-api.workspace = true

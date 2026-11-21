@@ -198,6 +198,7 @@ pub struct XClusterController {
     last_safe_time: std::sync::Mutex<Option<tokio::time::Instant>>,
     last_auto_flags_check: std::sync::Mutex<Option<tokio::time::Instant>>,
     last_ddl_tables_cleanup: std::sync::Mutex<Option<tokio::time::Instant>>,
+    last_parent_deletion: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl XClusterController {
@@ -208,6 +209,7 @@ impl XClusterController {
             last_safe_time: Default::default(),
             last_auto_flags_check: Default::default(),
             last_ddl_tables_cleanup: Default::default(),
+            last_parent_deletion: Default::default(),
         })
     }
 }
@@ -261,8 +263,13 @@ impl Controller for XClusterController {
                     x.clean_up_ddl_tables();
                 }
             }
-            if let Err(status) = x.process_split_parents().await {
-                tracing::warn!("Failed to process xCluster hidden split parents: {status}");
+            if master_xrepl::periodic_step_due(
+                &self.last_parent_deletion,
+                (x.options.parent_tablet_deletion_interval_secs)(),
+            ) {
+                if let Err(status) = x.process_split_parents().await {
+                    tracing::warn!("Failed to process xCluster hidden split parents: {status}");
+                }
             }
             let due = self
                 .last_safe_time

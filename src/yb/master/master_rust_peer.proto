@@ -322,6 +322,9 @@ message SetClusterMetricsRequestPB {
   optional uint32 num_tablet_servers_dead = 7;
   // The run's duration, for the server's load_balancer_duration.
   optional uint64 balancer_run_duration_ms = 8;
+  // Index backfills aborted (BackfillTable::Abort) since the last report; added to the
+  // backfill_aborted counter.
+  optional uint32 backfills_aborted = 9;
 }
 
 message SetClusterMetricsResponsePB {

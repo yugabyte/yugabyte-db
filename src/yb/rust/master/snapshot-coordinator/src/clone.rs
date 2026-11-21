@@ -27,6 +27,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use master_catalog_state::defaults::YSQL_CATALOG_CONFIG_ID;
 use master_catalog_state::{CatalogSnapshot, Mutation, WriteOptions};
 use master_leadership::LeaderToken;
 use master_table_lifecycle::lookup::{find_namespace, is_colocation_parent_table_id};
@@ -71,7 +72,6 @@ use crate::{corrupt, error, ids, internal, status_of, unknown, SnapshotCoordinat
 
 const ADMIN_SERVICE: &str = "yb.tserver.TabletServerAdminService";
 const TSERVER_SERVICE: &str = "yb.tserver.TabletServerService";
-const YSQL_CATALOG_CONFIG_ID: &[u8] = b"ysql_catalog_config";
 
 /// Flags of the clone flow, read when used.
 #[derive(Clone, Copy, Debug)]
@@ -1458,3 +1458,6 @@ fn clone_tablet_request(
     req.colocated_tables = tablet.colocated.clone();
     Ok(req)
 }
+
+#[cfg(test)]
+mod tests;

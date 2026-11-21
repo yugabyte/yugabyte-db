@@ -1924,8 +1924,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
     ASSERT_FALSE(FindNamespace(std::make_tuple(test_name, nsid), namespaces));
 
-    // The new leader marks it DELETING to clean up any partial apply. Unlike C++, the Rust
-    // master keeps its name taken until it is DELETED.
+    // The new leader marks it DELETING to clean up any partial apply, and frees its name.
     ASSERT_TRUE(ASSERT_RESULT(NamespaceInState(nsid, SysNamespaceEntryPB::DELETING)));
   }
 
@@ -1942,6 +1941,31 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     return !VERIFY_RESULT(NamespaceRow(nsid));
   }, MonoDelta::FromSeconds(10), "Verify Namespace was completely removed"));
+}
+
+TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
+  NamespaceName test_name = "test_pgsql";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
+
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failure_nsid = resp.id();
+
+  // The restarted leader fails the interrupted creation and frees its name; the flag holds back
+  // its deletion.
+  ASSERT_OK(mini_master_->Restart(true));
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId success_nsid = resp.id();
+  ASSERT_NE(success_nsid, failure_nsid);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(NamespaceInState(failure_nsid, SysNamespaceEntryPB::DELETED)) &&
+           VERIFY_RESULT(NamespaceInState(success_nsid, SysNamespaceEntryPB::RUNNING));
+  }, MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  ASSERT_EQ(ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name)),
+            success_nsid);
 }
 
 TEST_F(MasterTest, TestFullTableName) {

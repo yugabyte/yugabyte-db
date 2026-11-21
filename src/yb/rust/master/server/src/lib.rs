@@ -50,6 +50,10 @@ static TIMEOUT_NON_LEADER_MASTER_RPCS_MS: FlagRef<i32> =
 static INJECT_LATENCY_ON_TABLET_LOOKUPS_MS: FlagRef<i32> =
     FlagRef::new("master_inject_latency_on_tablet_lookups_ms");
 static EMERGENCY_REPAIR_MODE: FlagRef<bool> = FlagRef::new("emergency_repair_mode");
+static MASTER_FAILOVER_CATCHUP_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("master_failover_catchup_timeout_ms");
+static MASTER_SLOW_GET_REGISTRATION_PROBABILITY: FlagRef<f64> =
+    FlagRef::new("master_slow_get_registration_probability");
 
 /// Registers the Rust-declared flags with gflags. The binary calls it before flag parsing; an
 /// embedded master (MiniCluster) calls it on its first start, after parsing, where the flags then
@@ -160,6 +164,9 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         )),
         registry.clone(),
     );
+    leadership.set_catchup_timeout(|| {
+        Duration::from_millis(MASTER_FAILOVER_CATCHUP_TIMEOUT_MS.get().max(0) as u64)
+    });
     host.pin_mut().set_apply_sink(Box::new(store::ApplySink {
         sender: apply_sender.clone(),
         leadership: leadership.clone(),
@@ -212,6 +219,7 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             Duration::from_millis(INJECT_LATENCY_ON_TABLET_LOOKUPS_MS.get().max(0) as u64)
         },
         emergency_repair_mode: || EMERGENCY_REPAIR_MODE.get(),
+        slow_get_registration_probability: || MASTER_SLOW_GET_REGISTRATION_PROBABILITY.get(),
     };
     for service in yb_proto::SERVICES
         .iter()

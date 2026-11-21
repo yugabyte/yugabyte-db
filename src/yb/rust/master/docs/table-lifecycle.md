@@ -17,7 +17,7 @@ YCQL keyspaces, tables and indexes:
 | `CreateTable`, `IsCreateTableDone` | Below. |
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. A table a snapshot schedule or snapshot retains is hidden rather than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects)). |
-| `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
+| `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. A tserver's `FlushTablets` is not retried (`NoRetryTaskType`): its first failed RPC or error fails the request. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is truncated only as `CDCSDKAllowTableRewrite` allows. |
 
 YSQL databases, tables and indexes (below), in a tablegroup or not, in any tablespace.
@@ -37,6 +37,14 @@ as C++'s namespace loader does, so the drop pass removes it; PG never committed 
 can see it. A live database whose next major version catalog was being made
 (`NEXT_VER_PREPARING`) is kept, with that copy `NEXT_VER_FAILED`. The creating transaction is not
 verified yet.
+
+A failed or dropping database gives up its name as C++'s by-name map does, so CREATE DATABASE can
+be retried at once: a failed copy (FAILED), a failed creating transaction (DELETING), and whatever
+a new leader finds FAILED or DELETING free their name; a database whose drop, or whose colocated
+parent table, failed or started in this term keeps it (`named_databases`, in memory per term). By
+name, a live database is found before a failed one of the same name. Its id stays taken, even by
+a DELETED tombstone, since the dropped database's catalog tables may still use the OID; that
+collision carries `PgsqlError(YB_PG_DUPLICATE_DATABASE)`, on which PG retries with the next OID.
 
 A YSQL `CreateTable` names its table id (from the database and relation OIDs); it is unique by id,
 not by name, since names are pg_class's. The host builds the row (`PrepareTableSchema` with the
@@ -356,13 +364,16 @@ every tablet has that version the alterer runs the backfill instead of returning
 RUNNING:
 
 1. A backfill job is recorded on the indexed table (one index at a time, as C++ does for YSQL).
+   The job keeps new splits away; the children of an earlier split must be RUNNING within
+   `index_backfill_tablet_split_completion_timeout_sec`, or the backfill fails.
 2. The read time is the latest `GetSafeTime` of the tablets, each at least the master's hybrid
    time now, persisted in the job so a new leader reuses it.
 3. Each tablet's leader backfills in `BackfillIndex` chunks; each chunk's end is persisted in the
    tablet's `backfilled_until`, so a new leader resumes there.
 4. On success each index stops retaining delete markers, records its birth time, and its tablets
    get `BackfillDone`; the index moves to READ_WRITE_AND_DELETE. On failure the index gets
-   `backfill_error_message` and moves to WRITE_AND_DELETE_WHILE_REMOVING. Either way the job and
+   `backfill_error_message` and moves to WRITE_AND_DELETE_WHILE_REMOVING, and the host's
+   `backfill_aborted` counter goes up, as `BackfillTable::Abort` counts it. Either way the job and
    the tablets' progress are cleared.
 
 PG learns the outcome from the indexed table's schema or `GetBackfillStatus`. Dropping an index

@@ -321,6 +321,7 @@ static SPLIT_XCLUSTER_REPLICATED_TABLES: FlagRef<bool> =
     FlagRef::new("enable_tablet_split_of_xcluster_replicated_tables");
 static SPLIT_XCLUSTER_BOOTSTRAPPING_TABLES: FlagRef<bool> =
     FlagRef::new("enable_tablet_split_of_xcluster_bootstrapping_tables");
+static SPLIT_PITR_TABLES: FlagRef<bool> = FlagRef::new("enable_tablet_split_of_pitr_tables");
 static SPLIT_CDCSDK_STREAMED_TABLES: FlagRef<bool> =
     FlagRef::new("enable_tablet_split_of_cdcsdk_streamed_tables");
 static SPLIT_REPLICATION_SLOT_STREAMED_TABLES: FlagRef<bool> =
@@ -500,6 +501,30 @@ static DEFER_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("defer_index_backfill"
 static ALLOW_BATCHING_NON_DEFERRED_INDEXES: FlagRef<bool> =
     FlagRef::new("allow_batching_non_deferred_indexes");
 static INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("index_backfill_rpc_timeout_ms");
+static RETRYING_RPC_MAX_JITTER_MS: FlagRef<i32> = FlagRef::new("retrying_rpc_max_jitter_ms");
+static BACKENDS_JOB_EXPIRATION_SECS: FlagRef<u32> =
+    FlagRef::new("ysql_backends_catalog_version_job_expiration_sec");
+static CDC_PARENT_TABLET_DELETION_SECS: FlagRef<i32> =
+    FlagRef::new("cdc_parent_tablet_deletion_task_retry_secs");
+static MAX_CONCURRENT_ALTER_TABLE_RPCS: FlagRef<i32> =
+    FlagRef::new("max_concurrent_alter_table_rpcs");
+static MAX_CONCURRENT_ALTER_TABLE_RPCS_PER_TS: FlagRef<i32> =
+    FlagRef::new("max_concurrent_alter_table_rpcs_per_tserver");
+static INJECT_LATENCY_IN_DELETE_TABLE_MS: FlagRef<i32> =
+    FlagRef::new("catalog_manager_inject_latency_in_delete_table_ms");
+static ENABLE_QOS: FlagRef<bool> = FlagRef::new("enable_qos");
+static QOS_MAX_DB_COUNT: FlagRef<i32> = FlagRef::new("qos_max_db_count");
+static ENABLE_TRANSACTIONAL_DDL_GC: FlagRef<bool> = FlagRef::new("enable_transactional_ddl_gc");
+static INDEX_BACKFILL_RPC_MAX_RETRIES: FlagRef<i32> =
+    FlagRef::new("index_backfill_rpc_max_retries");
+static INDEX_BACKFILL_RPC_MAX_DELAY_MS: FlagRef<i32> =
+    FlagRef::new("index_backfill_rpc_max_delay_ms");
+static INDEX_BACKFILL_WAIT_FOR_ALTER_TABLE_MS: FlagRef<i32> =
+    FlagRef::new("index_backfill_wait_for_alter_table_completion_ms");
+static INDEX_BACKFILL_SPLIT_TIMEOUT_SEC: FlagRef<i32> =
+    FlagRef::new("index_backfill_tablet_split_completion_timeout_sec");
+static INDEX_BACKFILL_SPLIT_POLL_MS: FlagRef<i32> =
+    FlagRef::new("index_backfill_tablet_split_completion_poll_freq_ms");
 static DDL_REQUESTER_LIVENESS_CHECK_INTERVAL_SECS: FlagRef<i32> =
     FlagRef::new("ddl_requester_liveness_check_interval_secs");
 static SKIP_DDL_REQUESTER_LIVENESS_CHECK: FlagRef<bool> =
@@ -662,6 +687,7 @@ fn retry_policy(limit_attempts: bool) -> RetryPolicy {
             u32::MAX
         },
         deadline: millis(RETRY_TIMEOUT_MS.get()),
+        max_jitter: millis(RETRYING_RPC_MAX_JITTER_MS.get()),
         ..Default::default()
     }
 }
@@ -1231,6 +1257,7 @@ impl Core {
                     split_replication_slot_streamed_tables: || {
                         SPLIT_REPLICATION_SLOT_STREAMED_TABLES.get()
                     },
+                    split_pitr_tables: || SPLIT_PITR_TABLES.get(),
                     enabled: || AUTO_SPLIT.get(),
                     interval: || millis(SPLIT_CANDIDATES_INTERVAL_MS.get().max(0)),
                     outstanding_limit: || OUTSTANDING_SPLIT_LIMIT.get(),
@@ -1357,6 +1384,21 @@ impl Core {
                     ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get()
                 },
                 cdc_enable_dynamic_schema_changes: || CDC_DYNAMIC_SCHEMA_CHANGES.get(),
+                inject_latency_in_delete_table: || millis(INJECT_LATENCY_IN_DELETE_TABLE_MS.get()),
+                enable_qos: || ENABLE_QOS.get(),
+                qos_max_db_count: || QOS_MAX_DB_COUNT.get(),
+                enable_transactional_ddl_gc: || ENABLE_TRANSACTIONAL_DDL_GC.get(),
+                index_backfill_rpc_max_retries: || INDEX_BACKFILL_RPC_MAX_RETRIES.get(),
+                index_backfill_rpc_max_delay: || millis(INDEX_BACKFILL_RPC_MAX_DELAY_MS.get()),
+                index_backfill_wait_for_alter_table_completion: || {
+                    millis(INDEX_BACKFILL_WAIT_FOR_ALTER_TABLE_MS.get().max(1))
+                },
+                index_backfill_tablet_split_completion_timeout: || {
+                    Duration::from_secs(INDEX_BACKFILL_SPLIT_TIMEOUT_SEC.get().max(0) as u64)
+                },
+                index_backfill_tablet_split_completion_poll_freq: || {
+                    millis(INDEX_BACKFILL_SPLIT_POLL_MS.get().max(1))
+                },
             },
         );
         splits.set_tablespaces(tables.tablespaces());
@@ -1395,6 +1437,7 @@ impl Core {
             BackendsOptions {
                 tserver_rpc_timeout: || millis(BACKENDS_TS_RPC_TIMEOUT_MS.get()),
                 client_margin: || Duration::from_millis(BACKENDS_CLIENT_MARGIN_MS.get().into()),
+                job_expiration: || Duration::from_secs(BACKENDS_JOB_EXPIRATION_SECS.get().into()),
             },
         );
         let truncates = Truncates::new(
@@ -1521,6 +1564,11 @@ impl Core {
                 intent_retention: || Duration::from_millis(CDC_INTENT_RETENTION_MS.get()),
                 table_rewrite_retention: || ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get(),
                 add_dynamic_index_to_state_table: || CDC_ADD_DYNAMIC_INDEX.get(),
+                parent_tablet_deletion_interval_secs: || CDC_PARENT_TABLET_DELETION_SECS.get(),
+                max_concurrent_alter_table_rpcs: || MAX_CONCURRENT_ALTER_TABLE_RPCS.get(),
+                max_concurrent_alter_table_rpcs_per_tserver: || {
+                    MAX_CONCURRENT_ALTER_TABLE_RPCS_PER_TS.get()
+                },
                 table_cleanup: || CDCSDK_TABLE_CLEANUP.get(),
                 table_processing_limit: || CDCSDK_TABLE_PROCESSING_LIMIT.get(),
                 skip_state_entries_on_table_removal: || CDCSDK_SKIP_STATE_ON_REMOVAL.get(),
@@ -1621,6 +1669,7 @@ impl Core {
                 bidirectional_index_timeout: || {
                     Duration::from_secs(BIDIRECTIONAL_INDEX_TIMEOUT_SECS.get().into())
                 },
+                parent_tablet_deletion_interval_secs: || CDC_PARENT_TABLET_DELETION_SECS.get(),
             },
         );
         xcluster.set_hooks(Arc::new(XClusterOidHooks {
@@ -1823,6 +1872,7 @@ impl Core {
         leader.xrepl.set_rpc(rpc.clone());
         leader.xcluster.set_rpc(rpc.clone());
         leader.tables.set_xrepl_hooks(leader.xrepl.clone());
+        leader.tables.set_splits_in_flight(leader.splits.clone());
         leader.splits.set_xrepl_hooks(leader.xrepl.clone());
         leader.snapshots.set_xrepl_hooks(leader.xrepl.clone());
         leader.locks.set_rpc(rpc.clone());

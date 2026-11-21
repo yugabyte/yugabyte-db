@@ -10,7 +10,8 @@ any phase -> Follower when the term changes or the peer is no longer leader
 ```
 
 - **CatchingUp.** Elected in term t. Waits for `LEADER_AND_READY` (the term's NoOp committed and
-  the lease held), then runs the ready hooks in order, retrying a failed hook. A hook that keeps
+  the lease held), ending the process if that takes over `master_failover_catchup_timeout_ms`, as
+  C++ does; then it runs the ready hooks in order, retrying a failed hook. A hook that keeps
   failing for 60 s ends the process, as C++ does with `LOG(FATAL)` when `VisitSysCatalog` fails, so
   another master can lead. `master-server` registers one: a catalog barrier, so the catalog
   reflects everything committed before the election; the missing default rows

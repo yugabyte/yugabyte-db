@@ -48,6 +48,8 @@ use crate::lookup::{database_type, is_colocation_parent_table_id};
 use crate::placement::{check_placement, select_replicas, Load};
 use crate::{generate_object_id, LifecycleOptions, SchemaHost, TableLifecycle};
 
+mod flags;
+
 /// The host's schema steps, simplified: the request's schema as is, and `num_tablets` (default
 /// one per tserver) equal partitions of a one-byte key.
 struct FakeSchemaHost;
@@ -123,6 +125,11 @@ impl SchemaHost for FakeSchemaHost {
                 }
                 resp.schema = MessageField::some(schema);
                 resp.set_next_column_id(next);
+                Ok(resp.write_to_bytes().unwrap())
+            }
+            "HybridTimeNow" => {
+                let mut resp = yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::new();
+                resp.set_hybrid_time(1 << 12);
                 Ok(resp.write_to_bytes().unwrap())
             }
             "NewDdlLogEntry" => {
@@ -442,6 +449,76 @@ async fn keyspaces_are_created_listed_and_dropped() {
         .await
         .unwrap_err();
     assert_eq!(e.code(), Code::NAMESPACE_NOT_FOUND);
+}
+
+/// A tserver's `FlushTablets` is not retried: the first failed RPC fails the flush, as C++'s
+/// `AsyncFlushTablets` (`NoRetryTaskType`) does, rather than leaving it running to the client's
+/// deadline.
+#[tokio::test]
+async fn a_flush_fails_on_the_first_failed_tserver_rpc() {
+    use crate::{FlushOptions, Flushes};
+    use master_tablet_locations::Replica;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use yb_proto::pb::common_types::PeerRole;
+    use yb_proto::pb::consensus_metadata::PeerMemberType;
+    use yb_proto::pb::master_admin::{
+        FlushTablesRequestPB, FlushTablesResponsePB, IsFlushTablesDoneRequestPB,
+        IsFlushTablesDoneResponsePB,
+    };
+    use yb_proto::pb::tserver_admin::{FlushTabletsRequestPB, FlushTabletsResponsePB};
+    let h = Harness::new(2).await;
+    h.create_namespace("ks").await.unwrap();
+    let (result, resp) = h.create_table("ks", "t", Some(1)).await;
+    result.unwrap();
+    let tablet = h.snapshot().tablets_of(resp.table_id())[0].key.id.to_vec();
+    for (ts, role) in [("ts0", PeerRole::LEADER), ("ts1", PeerRole::FOLLOWER)] {
+        h.ts_manager.locations.update_replica(
+            &tablet,
+            Replica::new(ts.as_bytes().into(), role, PeerMemberType::VOTER),
+        );
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let flushes = Flushes::new(
+        h.lifecycle.clone(),
+        master_task_runtime::TsRpcExecutor::new(|_| 1),
+        FlushOptions {
+            rpc_timeout: || Duration::from_secs(1),
+            retry: Default::default,
+        },
+    );
+    flushes.set_rpc(Arc::new(yb_host_api::rpc::FakeRpcClient::new(
+        move |_, _, _, _, request| {
+            let req = FlushTabletsRequestPB::parse_from_bytes(request).unwrap();
+            if req.dest_uuid() == b"ts0" {
+                counted.fetch_add(1, Ordering::SeqCst);
+                return Err(Status::new(StatusCode::NetworkError, "connection refused"));
+            }
+            Ok(FlushTabletsResponsePB::new().write_to_bytes().unwrap())
+        },
+    )));
+    let mut req = FlushTablesRequestPB::new();
+    let mut table = yb_proto::pb::master_types::TableIdentifierPB::new();
+    table.set_table_id(resp.table_id().to_vec());
+    req.tables.push(table);
+    let mut flush = FlushTablesResponsePB::new();
+    flushes
+        .flush_tables(&h.token, Harness::deadline(), &req, &mut flush)
+        .await
+        .unwrap();
+    let mut done = IsFlushTablesDoneRequestPB::new();
+    done.set_flush_request_id(flush.flush_request_id().to_vec());
+    let mut status = IsFlushTablesDoneResponsePB::new();
+    for _ in 0..500 {
+        flushes.is_flush_tables_done(&done, &mut status).unwrap();
+        if status.done() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(status.done());
+    assert!(!status.success());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -1772,6 +1849,123 @@ mod ysql {
             .snapshot()
             .get(SysRowEntryType::NAMESPACE, dropped)
             .is_none());
+    }
+
+    /// As C++ releases the name of a database whose creation failed (`ProcessPendingNamespace`),
+    /// CREATE DATABASE can be retried with the name at once. The failed id stays taken, with the
+    /// error code on which PG retries with the next OID. A database being dropped keeps its name.
+    #[tokio::test]
+    async fn a_failed_database_releases_its_name_but_not_its_id() {
+        use yb_proto::pb::master_ddl::{
+            DeleteNamespaceRequestPB, IsCreateNamespaceDoneRequestPB,
+            IsCreateNamespaceDoneResponsePB,
+        };
+        let h = ysql_harness().await;
+        // A PG catalog table to copy, which the fake host fails to copy.
+        h.create_ysql(None).await.unwrap();
+        let create = |id: &[u8], source: Option<&[u8]>| {
+            let mut req = CreateNamespaceRequestPB::new();
+            req.set_name("db".into());
+            req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+            req.set_namespace_id(id.to_vec());
+            if let Some(source) = source {
+                req.set_source_namespace_id(source.to_vec());
+            }
+            let lifecycle = h.lifecycle.clone();
+            let token = h.token;
+            async move {
+                let mut resp = CreateNamespaceResponsePB::new();
+                lifecycle
+                    .create_namespace(&token, Harness::deadline(), &req, &mut resp)
+                    .await
+            }
+        };
+        let done = |id: &[u8]| {
+            let mut req = IsCreateNamespaceDoneRequestPB::new();
+            req.namespace.mut_or_insert_default().set_id(id.to_vec());
+            let mut resp = IsCreateNamespaceDoneResponsePB::new();
+            let result = h
+                .lifecycle
+                .is_create_namespace_done(&h.snapshot(), &req, &mut resp);
+            resp.done().then_some(result.is_ok())
+        };
+        let wait_done = |id: &'static [u8]| async move {
+            for _ in 0..500 {
+                if let Some(ok) = done(id) {
+                    return ok;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            panic!("the creation did not finish");
+        };
+        let failed: &'static [u8] = b"000033f0000030008000000000000000";
+        let retried: &'static [u8] = b"000033f1000030008000000000000000";
+        create(failed, Some(DB_ID)).await.unwrap();
+        assert!(!wait_done(failed).await);
+
+        let err = create(failed, None).await.unwrap_err();
+        assert_eq!(err.code(), Code::NAMESPACE_ALREADY_PRESENT);
+        // `PgsqlError(YB_PG_DUPLICATE_DATABASE)`.
+        assert_eq!(
+            err.status.errors(),
+            [6, 0x84, 0x00, 0x02, 0x04, 0].as_slice()
+        );
+
+        create(retried, None).await.unwrap();
+        assert!(wait_done(retried).await);
+        let found = crate::lookup::find_namespace_by_name(
+            &h.snapshot(),
+            "db",
+            YQLDatabase::YQL_DATABASE_PGSQL as i32,
+        )
+        .unwrap();
+        assert_eq!(&*found.key.id, retried);
+
+        let mut drop = DeleteNamespaceRequestPB::new();
+        drop.namespace
+            .mut_or_insert_default()
+            .set_id(retried.to_vec());
+        h.lifecycle
+            .delete_namespace(&h.token, Harness::deadline(), &drop)
+            .await
+            .unwrap();
+        let err = create(b"000033f2000030008000000000000000", None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), Code::NAMESPACE_ALREADY_PRESENT);
+        assert!(err
+            .status
+            .message()
+            .contains("Keyspace 'db' already exists"));
+
+        // DELETING but not dropped in this term: a failed creating transaction
+        // (`VerifyNamespacePgLayer`), or a database a new leader loads so.
+        let aborted: &[u8] = b"000033f3000030008000000000000000";
+        h.lifecycle
+            .write(&h.token, Harness::deadline(), |_| {
+                let mut ns = SysNamespaceEntryPB::new();
+                ns.set_name(b"other".to_vec());
+                ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+                ns.set_state(sys_namespace_entry_pb::State::DELETING);
+                let mutation = master_catalog_state::Mutation::new()
+                    .upsert_message(SysRowEntryType::NAMESPACE, aborted, &ns)
+                    .unwrap();
+                Ok((mutation, ()))
+            })
+            .await
+            .unwrap();
+        let mut req = CreateNamespaceRequestPB::new();
+        req.set_name("other".into());
+        req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+        h.lifecycle
+            .create_namespace(
+                &h.token,
+                Harness::deadline(),
+                &req,
+                &mut CreateNamespaceResponsePB::new(),
+            )
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

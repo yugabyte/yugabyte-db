@@ -104,21 +104,47 @@ pub fn find_namespace(
     ))
 }
 
-/// The namespace named `name` of `database_type`, exactly as C++ `namespace_names_mapper_` holds
-/// it: case-sensitive, in any state but DELETED.
+/// The namespace named `name` of `database_type`, as C++ `namespace_names_mapper_` holds it:
+/// case-sensitive, in any state but DELETED. A failed or dropping YSQL database may have lost its
+/// name to a new database (see `TableLifecycle::named_databases`), so the other one comes first.
 pub fn find_namespace_by_name(
     snapshot: &CatalogSnapshot,
     name: &str,
     database_type: i32,
 ) -> Option<Arc<Entity>> {
-    snapshot
-        .iter(SysRowEntryType::NAMESPACE)
-        .find(|e| {
-            e.namespace()
-                .is_some_and(|n| n.name == name && n.database_type == database_type)
-                && !is_deleted_namespace(e)
-        })
-        .cloned()
+    let mut named = namespaces_named(snapshot, name, database_type);
+    let first = named.next()?;
+    if !is_releasable_database(first) {
+        return Some(first.clone());
+    }
+    Some(
+        named
+            .find(|e| !is_releasable_database(e))
+            .unwrap_or(first)
+            .clone(),
+    )
+}
+
+/// The namespaces named `name` of `database_type` that are not DELETED.
+pub(crate) fn namespaces_named<'a>(
+    snapshot: &'a CatalogSnapshot,
+    name: &'a str,
+    database_type: i32,
+) -> impl Iterator<Item = &'a Arc<Entity>> + 'a {
+    snapshot.iter(SysRowEntryType::NAMESPACE).filter(move |e| {
+        e.namespace()
+            .is_some_and(|n| n.name == name && n.database_type == database_type)
+            && !is_deleted_namespace(e)
+    })
+}
+
+/// A YSQL database that is FAILED or DELETING, whose name C++ may have released.
+pub(crate) fn is_releasable_database(entity: &Entity) -> bool {
+    entity.namespace().is_some_and(|n| {
+        n.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
+            && (n.state == sys_namespace_entry_pb::State::FAILED as i32
+                || n.state == sys_namespace_entry_pb::State::DELETING as i32)
+    })
 }
 
 fn table_state(entity: &Entity) -> i32 {

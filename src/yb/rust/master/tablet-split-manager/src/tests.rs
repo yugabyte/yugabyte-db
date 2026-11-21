@@ -360,6 +360,54 @@ impl master_table_lifecycle::XreplHooks for RetainingStreams {
     }
 }
 
+/// A split still getting its key is in flight for the backfill of its table, though the catalog
+/// shows nothing yet (`IsTabletSplittingComplete(table)` counts the table's split tasks).
+#[tokio::test]
+async fn a_split_being_started_is_in_flight_for_its_table() {
+    use master_table_lifecycle::SplitsInFlight;
+    let h = Harness::new().await;
+    let snapshot = h.snapshot();
+    assert!(!h.splits.splitting(&snapshot, b"t1"));
+    h.splits.starting.lock().unwrap().insert(b"parent".to_vec());
+    assert!(h.splits.splitting(&snapshot, b"t1"));
+    assert!(!h.splits.splitting(&snapshot, b"other"));
+}
+
+/// `enable_tablet_split_of_pitr_tables`: off, a table a snapshot schedule covers is not split.
+#[tokio::test]
+async fn a_pitr_table_splits_unless_its_flag_says_not() {
+    let h = Harness::new().await;
+    let mut options = yb_proto::pb::master_backup::SnapshotScheduleOptionsPB::new();
+    let mut ident = yb_proto::pb::master_types::TableIdentifierPB::new();
+    ident.set_table_id(b"t1".to_vec());
+    options
+        .filter
+        .mut_or_insert_default()
+        .mut_tables()
+        .tables
+        .push(ident);
+    h.writer
+        .submit(
+            &h.token,
+            Mutation::new().upsert(
+                SysRowEntryType::SNAPSHOT_SCHEDULE,
+                &[0x12u8; 16],
+                options.write_to_bytes().unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    let snapshot = h.snapshot();
+    let tablet = snapshot.get(SysRowEntryType::TABLET, b"parent").unwrap();
+    validate_split_candidate(&snapshot, tablet, true, &AutoSplitOptions::default()).unwrap();
+    let options = AutoSplitOptions {
+        split_pitr_tables: || false,
+        ..AutoSplitOptions::default()
+    };
+    let e = validate_split_candidate(&snapshot, tablet, true, &options).unwrap_err();
+    assert!(e.status.message().contains("active PITR schedule"), "{e:?}");
+}
+
 #[tokio::test]
 async fn a_split_informs_the_streams_and_a_parent_they_retain_is_hidden() {
     let h = Harness::new().await;

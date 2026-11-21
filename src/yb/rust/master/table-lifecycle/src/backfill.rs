@@ -43,7 +43,9 @@ use yb_proto::pb::master_ddl::{
     GetBackfillJobsResponsePB, GetBackfillStatusRequestPB, GetBackfillStatusResponsePB,
     IndexStatusPB, LaunchBackfillIndexForTableRequestPB,
 };
-use yb_proto::pb::master_rust_peer::{HybridTimeNowRequestPB, HybridTimeNowResponsePB};
+use yb_proto::pb::master_rust_peer::{
+    HybridTimeNowRequestPB, HybridTimeNowResponsePB, SetClusterMetricsRequestPB,
+};
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 use yb_proto::pb::operations::ChangeMetadataRequestPB;
 use yb_proto::pb::transaction::TransactionStatus;
@@ -446,6 +448,11 @@ pub(crate) async fn run(
         return Ok(());
     };
     let index_ids: HashSet<Vec<u8>> = job.indexes.iter().map(|i| i.table_id().to_vec()).collect();
+    // `WaitForTabletSplitting`: the job keeps new splits away (`IsBackfilling`), but children of
+    // a split registered before it must be running before their parent's rows are read.
+    if let Err(status) = wait_for_splits(ctx, table_id).await {
+        return fail(ctx, &token, table_id, &index_ids, &status).await;
+    }
     tracing::info!(
         "Backfilling indexes {:?} of table {}",
         index_ids
@@ -607,6 +614,44 @@ pub(crate) async fn run(
         None => succeed(ctx, &token, table_id, &index_ids, read_time).await,
         Some(status) => fail(ctx, &token, table_id, &index_ids, &status).await,
     }
+}
+
+/// Waits, polling every `index_backfill_tablet_split_completion_poll_freq_ms`, until the table
+/// has no outstanding split, or fails after `index_backfill_tablet_split_completion_timeout_sec`.
+async fn wait_for_splits(ctx: &BackfillContext, table_id: &[u8]) -> Result<(), Status> {
+    let options = &ctx.lifecycle.options;
+    let deadline = Instant::now() + (options.index_backfill_tablet_split_completion_timeout)();
+    let splitting = |snapshot: &CatalogSnapshot| {
+        ctx.lifecycle
+            .splits_in_flight
+            .get()
+            .is_some_and(|s| s.splitting(snapshot, table_id))
+            || has_outstanding_splits(snapshot, table_id)
+    };
+    while splitting(&ctx.lifecycle.catalog.snapshot()) {
+        if Instant::now() > deadline {
+            return Err(Status::new(
+                StatusCode::TimedOut,
+                "Tablet splitting did not complete after being disabled; cannot safely backfill \
+                 the index.",
+            ));
+        }
+        tokio::time::sleep((options.index_backfill_tablet_split_completion_poll_freq)()).await;
+    }
+    Ok(())
+}
+
+/// `TableInfo::HasOutstandingSplits(false)`: a split child among the table's partitions is not
+/// RUNNING yet.
+pub(crate) fn has_outstanding_splits(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    snapshot.active_tablets_of(table_id).iter().any(|tablet| {
+        tablet.tablet().is_some_and(|t| {
+            t.state
+                != yb_proto::pb::catalog_entity_info::sys_tablets_entry_pb::State::RUNNING as i32
+        }) && tablet
+            .parse::<SysTabletsEntryPB>()
+            .is_ok_and(|pb| pb.has_split_parent_tablet_id())
+    })
 }
 
 /// `DdlRequesterLivenessTask`: returns once the requester's transaction is ABORTED, polling its
@@ -960,8 +1005,9 @@ async fn backfill_tablet(
                 })
             },
             RetryPolicy {
-                max_attempts: 150,
-                max_delay: Duration::from_secs(600),
+                max_attempts: (ctx.lifecycle.options.index_backfill_rpc_max_retries)().max(1)
+                    as u32,
+                max_delay: (ctx.lifecycle.options.index_backfill_rpc_max_delay)(),
                 deadline: Duration::from_secs(24 * 3600),
                 ..RetryPolicy::default()
             },
@@ -1059,7 +1105,18 @@ async fn fail(
         "Backfill of table {} failed: {status}",
         String::from_utf8_lossy(table_id)
     );
-    finish(ctx, token, table_id, index_ids, Some(status)).await
+    finish(ctx, token, table_id, index_ids, Some(status)).await?;
+    // `BackfillTable::Abort` counts it in backfill_aborted once the indexes are failed.
+    let mut req = SetClusterMetricsRequestPB::new();
+    req.set_backfills_aborted(1);
+    let reported = req
+        .write_to_bytes()
+        .map_err(corrupt)
+        .and_then(|bytes| ctx.lifecycle.host.call("SetClusterMetrics", &bytes));
+    if let Err(status) = reported {
+        tracing::warn!("Failed to count the aborted backfill: {status}");
+    }
+    Ok(())
 }
 
 /// A test flag's wait; none when it is zero.
@@ -1203,7 +1260,12 @@ async fn allow_gc_of_delete_markers(
         if state != TableState::ALTERING as i32 && state != TableState::PREPARING as i32 {
             return Ok(());
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep((ctx
+            .lifecycle
+            .options
+            .index_backfill_wait_for_alter_table_completion)(
+        ))
+        .await;
     }
     persist(ctx, token, index_id, |pb| {
         if let Some(props) = pb.schema.as_mut().and_then(|s| s.table_properties.as_mut()) {

@@ -407,6 +407,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_live_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_dead_metric_;
   scoped_refptr<AtomicGauge<uint64_t>> max_follower_heartbeat_delay_metric_;
+  scoped_refptr<Counter> backfill_aborted_metric_;
   // On the server entity, as CatalogManagerBgTasks keeps it; reset when leadership is lost.
   scoped_refptr<EventStats> load_balancer_duration_metric_;
   // The YCQL virtual tables: their input from Rust, and their tablets by id, created on the

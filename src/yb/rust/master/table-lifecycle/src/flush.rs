@@ -51,7 +51,7 @@ const ADMIN_SERVICE: &str = "yb.tserver.TabletServerAdminService";
 pub struct FlushOptions {
     /// `master_ts_rpc_timeout_ms`.
     pub rpc_timeout: fn() -> Duration,
-    /// How a tserver's `FlushTablets` is retried (`RetryingTSRpcTask`).
+    /// A tserver's `FlushTablets` deadline (`RetryingTSRpcTask`); it is never retried.
     pub retry: fn() -> RetryPolicy,
 }
 
@@ -164,6 +164,9 @@ impl Flushes {
             Operation::FLUSH
         };
         let mut policy = (self.options.retry)();
+        // C++ never retries `FlushTablets` (`NoRetryTaskType`): the first failed RPC or error
+        // response fails the flush, so the client sees InternalError instead of its deadline.
+        policy.max_attempts = 1;
         policy.deadline = policy
             .deadline
             .min(deadline.saturating_duration_since(Instant::now()));

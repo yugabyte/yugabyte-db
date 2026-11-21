@@ -34,6 +34,34 @@ non-deprecated gflags of the last C++ master. To retire one, make it a `DEPRECAT
 it from the baseline. There is no lint against including the C++ master's headers
 (`catalog_manager.h`, `master.h`, ...): they no longer exist, so the compiler rejects it.
 
+### Flags without effect
+
+These parse but change nothing, because the Rust master has no such mechanism:
+
+- `balancer_load_max_standard_deviation`, `retry_if_ddl_txn_verification_pending`,
+  `wait_for_ysql_ddl_verification_timeout_ms`, `master_backup_svc_queue_length`: the C++ master
+  did not read them either (the first only in a unit-test helper; the backup service used
+  `master_svc_queue_length`).
+- `use_cache_for_partitions_vtable`, `generate_partitions_vtable_on_changes`,
+  `partitions_vtable_cache_refresh_secs`, `invalidate_yql_partitions_cache_on_create_table`:
+  `system.partitions` is built on every read; there is no cache to refresh or invalidate.
+- `list_snapshot_backoff_increment_ms`, `list_snapshot_max_backoff_sec`: only
+  `SetupNamespaceReplicationWithBootstrap` polled snapshots with them, and it is not served.
+- `batch_ysql_system_tables_metadata`: `CopyPgsqlSysTables` always writes a new database's
+  catalog tables in one batch.
+- `ysql_ddl_post_processing_failed_verification_retry_secs`: a failed DDL verification is retried
+  on the verifier's next pass (about a second) instead of waiting in `kDdlPostProcessingFailed`.
+- `sys_catalog_respect_affinity_task`: the sys catalog leader does not move to a master in a
+  preferred zone or off the leader blacklist.
+- `master_enable_deleted_tablet_cleanup`: there are no in-memory tablet maps to prune; DELETED
+  tablets are read from the catalog.
+- `hide_pg_catalog_table_creation_logs`, `master_bg_task_long_operation_warning_ms`,
+  `master_ts_heartbeat_long_operation_warning_ms`, `master_log_lock_warning_ms`,
+  `master_leader_lock_stack_trace_ms`, `tablet_split_rejected_candidates_log_interval_secs`,
+  `xcluster_safe_time_log_outliers_interval_secs`, `xcluster_safe_time_slow_tablet_delta_secs`:
+  they tune logs the Rust master does not write (`CreateTable` request dumps, long-operation and
+  leader-lock warnings, rejected split candidates, safe-time outliers).
+
 ## MasterHost
 
 `MasterHost` is a `DbServerBase` without a `CatalogManager`. It runs the parts of the C++ master

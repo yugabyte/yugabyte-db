@@ -160,6 +160,7 @@
 #include "master/server/src/ffi.rs.h"
 
 METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_counter(backfill_aborted);
 METRIC_DECLARE_gauge_int64(is_load_balancing_enabled);
 METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
@@ -817,6 +818,7 @@ Status MasterHost::DoInit() {
       METRIC_num_tablet_servers_dead.Instantiate(metric_entity_cluster_, 0);
   max_follower_heartbeat_delay_metric_ =
       METRIC_max_follower_heartbeat_delay.Instantiate(metric_entity_cluster_, 0);
+  backfill_aborted_metric_ = METRIC_backfill_aborted.Instantiate(metric_entity_cluster_);
   load_balancer_duration_metric_ = METRIC_load_balancer_duration.Instantiate(metric_entity());
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
@@ -2271,6 +2273,9 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           }
           if (req.has_balancer_run_duration_ms()) {
             load_balancer_duration_metric_->Increment(req.balancer_run_duration_ms());
+          }
+          if (req.has_backfills_aborted()) {
+            backfill_aborted_metric_->IncrementBy(req.backfills_aborted());
           }
           // CatalogManager::ReportMetrics: how long ago the leader last heard from its least
           // recently heard follower master.

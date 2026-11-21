@@ -1215,7 +1215,7 @@ impl Xrepl {
                 continue;
             }
             for tablet in tablets {
-                sends.push(self.alter_tablet(
+                let alter = self.alter_tablet(
                     *token,
                     deadline,
                     table_id.clone(),
@@ -1223,7 +1223,11 @@ impl Xrepl {
                     tablet.key.id.to_vec(),
                     consistent_option.then(|| stream_id.to_string()),
                     require_history_cutoff,
-                ));
+                );
+                sends.push(async move {
+                    let _permit = self.alter_throttle.acquire(|| self.alter_rpc_limit()).await;
+                    alter.await
+                });
             }
         }
         // `AlterTableBatchTracker::Wait(deadline)`: a late tablet fails the create, which rolls

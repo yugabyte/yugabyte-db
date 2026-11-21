@@ -575,6 +575,18 @@ impl TabletSplitManager {
         self.auto.lock().unwrap().disabled.features.remove(feature);
     }
 
+    /// The table's tablets whose split is being started.
+    fn splitting_table(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+        // Held while a pass picks splits (`WaitUntilIdle`), as below.
+        let _pass = self.auto.lock().unwrap();
+        self.starting.lock().unwrap().iter().any(|tablet_id| {
+            snapshot
+                .get(SysRowEntryType::TABLET, tablet_id)
+                .and_then(|t| t.tablet())
+                .is_some_and(|t| t.table_id == table_id)
+        })
+    }
+
     /// `IsTabletSplittingComplete`: no split being started, no split child not yet running, and,
     /// if asked, no split parent left.
     pub fn is_tablet_splitting_complete(&self, wait_for_parent_deletion: bool) -> bool {
@@ -1297,6 +1309,20 @@ pub(crate) fn validate_table(
             name()
         )));
     }
+    if !(options.split_pitr_tables)()
+        && !master_table_lifecycle::covering_schedules(
+            snapshot,
+            SysRowEntryType::TABLE,
+            &table.key.id,
+        )
+        .is_empty()
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for tables that are a part of some active PITR \
+             schedule, table_id: {}",
+            String::from_utf8_lossy(&table.key.id)
+        )));
+    }
     if table_pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
         return Err(not_supported(format!(
             "Tablet splitting is not supported for transaction status tables, table: {}",
@@ -1822,5 +1848,12 @@ impl Controller for SplitController {
 
     fn reconcile<'a>(&'a self, scope: &'a TermScope) -> BoxFuture<'a, ()> {
         Box::pin(async move { self.pass(scope) })
+    }
+}
+
+/// `TabletSplitManager::IsTabletSplittingComplete(table)`'s split tasks, for the backfill.
+impl master_table_lifecycle::SplitsInFlight for TabletSplitManager {
+    fn splitting(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+        self.splitting_table(snapshot, table_id)
     }
 }

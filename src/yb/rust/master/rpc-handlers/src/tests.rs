@@ -202,6 +202,7 @@ impl Harness {
                 } else {
                     || false
                 },
+                slow_get_registration_probability: || 0.0,
             },
             self.leader.clone(),
         );
@@ -249,6 +250,34 @@ fn registration_reports_the_raft_leader_in_emergency_repair_mode() {
     ))
     .unwrap();
     assert_eq!(resp.role(), PeerRole::LEADER);
+}
+
+/// `master_slow_get_registration_probability`: a slowed `GetMasterRegistration` answers 20s
+/// later.
+#[test]
+fn registration_is_slowed_with_its_probability() {
+    let h = Harness::new();
+    let (service, index, _) =
+        find_method("yb.master.MasterService", "GetMasterRegistration").unwrap();
+    let handler = MasterServiceHandler::new(
+        service,
+        h.info.clone(),
+        h.rpc.clone(),
+        h.runtime.handle().clone(),
+        HandlerOptions {
+            master_rpc_timeout: || Duration::from_secs(1),
+            list_raft_peers_check_is_leader: || false,
+            timeout_non_leader_master_rpcs: || Duration::ZERO,
+            inject_latency_on_tablet_lookups: || Duration::ZERO,
+            emergency_repair_mode: || false,
+            slow_get_registration_probability: || 1.0,
+        },
+        None,
+    );
+    let (call, outcome) = FakeInboundCall::new(index, vec![]);
+    handler.handle(call.with_timeout(Duration::from_secs(60)));
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(outcome.lock().unwrap().is_none());
 }
 
 #[test]

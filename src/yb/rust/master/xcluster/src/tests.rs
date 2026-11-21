@@ -47,10 +47,13 @@ use yb_proto::pb::master_heartbeat::{
 use yb_proto::pb::master_replication::*;
 use yb_proto::pb::master_rust_peer::{
     CdcStateEntryPB, CdcStateUpsertRequestPB, HybridTimeNowResponsePB,
+    XClusterSafeTimeDeleteRequestPB, XClusterSafeTimeReadResponsePB, XClusterSafeTimeRowPB,
 };
 use yb_proto::pb::master_types::{MasterErrorPB, SysRowEntryType};
 
 use crate::{RemoteMasters, XCluster, XClusterOptions};
+
+mod safe_time;
 
 const DB: &str = "00004000000030008000000000000000";
 const TABLE: &str = "00004000000030008000000000004000";
@@ -168,6 +171,10 @@ fn tserver(uuid: &str) -> (TSInformationPB, bool) {
 #[derive(Default)]
 struct FakeHost {
     cdc_state: Mutex<Vec<CdcStateEntryPB>>,
+    /// `system.xcluster_safe_time`.
+    safe_time_rows: Mutex<Vec<XClusterSafeTimeRowPB>>,
+    /// The rows each `XClusterSafeTimeDelete` named.
+    safe_time_deletes: Mutex<Vec<XClusterSafeTimeRowPB>>,
 }
 
 impl SchemaHost for FakeHost {
@@ -182,6 +189,27 @@ impl SchemaHost for FakeHost {
                 let mut resp = HybridTimeNowResponsePB::new();
                 resp.set_hybrid_time(100_000_000_000 << 12);
                 Ok(resp.write_to_bytes().unwrap())
+            }
+            "XClusterSafeTimeRead" => {
+                let mut resp = XClusterSafeTimeReadResponsePB::new();
+                resp.rows = self.safe_time_rows.lock().unwrap().clone();
+                Ok(resp.write_to_bytes().unwrap())
+            }
+            "XClusterSafeTimeDelete" => {
+                let req = XClusterSafeTimeDeleteRequestPB::parse_from_bytes(request).unwrap();
+                let key = |r: &XClusterSafeTimeRowPB| {
+                    (
+                        r.replication_group_id().to_string(),
+                        r.tablet_id().to_string(),
+                    )
+                };
+                let deleted: Vec<_> = req.rows.iter().map(key).collect();
+                self.safe_time_rows
+                    .lock()
+                    .unwrap()
+                    .retain(|r| !deleted.contains(&key(r)));
+                self.safe_time_deletes.lock().unwrap().extend(req.rows);
+                Ok(Vec::new())
             }
             _ => Ok(Vec::new()),
         }
@@ -289,6 +317,10 @@ impl Harness {
     }
 
     async fn with_options(options: XClusterOptions) -> Harness {
+        Harness::with_tables(options, Arc::new(NoTables)).await
+    }
+
+    async fn with_tables(options: XClusterOptions, tables: Arc<dyn CreatesTables>) -> Harness {
         let (fake, events) = FakeSysCatalog::new();
         fake.apply(rows());
         fake.set_term(3);
@@ -357,7 +389,7 @@ impl Harness {
             leadership,
             ts_manager,
             xrepl.clone(),
-            Arc::new(NoTables),
+            tables,
             target.clone(),
             options,
         );

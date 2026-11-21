@@ -56,11 +56,16 @@ use crate::state::{aggregated_state, Outcome};
 use crate::tablet_ops::{error_codes, outcome, OpError};
 use crate::{ids, SnapshotCoordinator, SnapshotHost, SnapshotOptions};
 
+/// The answer to a host call, or None for `NotSupported`.
+pub(crate) type HostCallHandler =
+    dyn Fn(&str, &[u8]) -> Option<Result<Vec<u8>, Status>> + Send + Sync;
+
 /// Applies snapshot operations as the C++ coordinator's apply half writes their rows.
-struct FakeHost {
+pub(crate) struct FakeHost {
     fake: Arc<FakeSysCatalog>,
     now: AtomicU64,
     submitted: Mutex<Vec<TabletSnapshotOpRequestPB>>,
+    pub(crate) calls: Mutex<Option<Box<HostCallHandler>>>,
 }
 
 impl FakeHost {
@@ -181,23 +186,32 @@ impl SnapshotHost for FakeHost {
             .collect())
     }
 
-    fn call(&self, method: &'static str, _: &[u8]) -> Result<Vec<u8>, Status> {
-        Err(Status::new(StatusCode::NotSupported, method))
+    fn call(&self, method: &'static str, req: &[u8]) -> Result<Vec<u8>, Status> {
+        self.calls
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|h| h(method, req))
+            .unwrap_or_else(|| Err(Status::new(StatusCode::NotSupported, method)))
     }
 }
 
 type TabletHandler = dyn Fn(&TabletSnapshotOpRequestPB) -> TabletSnapshotOpResponsePB + Send + Sync;
 
-struct Harness {
-    coordinator: Arc<SnapshotCoordinator>,
-    catalog: Arc<Catalog>,
-    writer: Arc<CatalogWriter>,
-    host: Arc<FakeHost>,
-    token: LeaderToken,
-    scope: TermScope,
+/// Answers a tserver call other than `TabletSnapshotOp`: (tserver host, method, request).
+pub(crate) type TserverHandler = dyn Fn(&str, &str, &[u8]) -> Result<Vec<u8>, Status> + Send + Sync;
+
+pub(crate) struct Harness {
+    pub(crate) coordinator: Arc<SnapshotCoordinator>,
+    pub(crate) catalog: Arc<Catalog>,
+    pub(crate) writer: Arc<CatalogWriter>,
+    pub(crate) host: Arc<FakeHost>,
+    pub(crate) token: LeaderToken,
+    pub(crate) scope: TermScope,
     /// TabletSnapshotOp requests, by operation.
     calls: Arc<Mutex<Vec<TabletSnapshotOpRequestPB>>>,
     handler: Arc<Mutex<Arc<TabletHandler>>>,
+    pub(crate) tserver_handler: Arc<Mutex<Option<Arc<TserverHandler>>>>,
 }
 
 fn tserver(uuid: &str) -> (TSInformationPB, bool) {
@@ -244,7 +258,7 @@ fn ok_response(_: &TabletSnapshotOpRequestPB) -> TabletSnapshotOpResponsePB {
 }
 
 impl Harness {
-    async fn new() -> Harness {
+    pub(crate) async fn new() -> Harness {
         Self::with_options(SnapshotOptions {
             cleanup_delay: || Duration::ZERO,
             ..Default::default()
@@ -320,6 +334,7 @@ impl Harness {
             fake: fake.clone(),
             now: AtomicU64::new(1_000_000 << 12),
             submitted: Mutex::default(),
+            calls: Mutex::default(),
         });
         let coordinator = SnapshotCoordinator::new(
             catalog.clone(),
@@ -336,10 +351,14 @@ impl Harness {
         );
         let calls = Arc::new(Mutex::new(Vec::new()));
         let handler: Arc<Mutex<Arc<TabletHandler>>> = Arc::new(Mutex::new(Arc::new(ok_response)));
-        let (record, answer) = (calls.clone(), handler.clone());
+        let tserver_handler: Arc<Mutex<Option<Arc<TserverHandler>>>> = Arc::default();
+        let (record, answer, other) = (calls.clone(), handler.clone(), tserver_handler.clone());
         coordinator.set_rpc(Arc::new(FakeRpcClient::new(
-            move |_, _, service, method, req| {
-                assert_eq!(service, "yb.tserver.TabletServerBackupService");
+            move |host, _, service, method, req| {
+                if service != "yb.tserver.TabletServerBackupService" {
+                    let other = other.lock().unwrap().clone().expect("no tserver handler");
+                    return other(host, method, req);
+                }
                 assert_eq!(method, "TabletSnapshotOp");
                 let req = TabletSnapshotOpRequestPB::parse_from_bytes(req).unwrap();
                 record.lock().unwrap().push(req.clone());
@@ -356,15 +375,16 @@ impl Harness {
             scope: TermScope::new(3, Arc::new(TaskRegistry::default())),
             calls,
             handler,
+            tserver_handler,
         }
     }
 
-    fn deadline(&self) -> Instant {
+    pub(crate) fn deadline(&self) -> Instant {
         Instant::now() + Duration::from_secs(30)
     }
 
     /// Runs passes until `done` holds.
-    async fn settle(&self, done: impl Fn(&Harness) -> bool) {
+    pub(crate) async fn settle(&self, done: impl Fn(&Harness) -> bool) {
         for _ in 0..200 {
             self.coordinator.poll(&self.scope);
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -393,7 +413,7 @@ impl Harness {
             .collect()
     }
 
-    async fn create_keyspace_snapshot(&self) -> Vec<u8> {
+    pub(crate) async fn create_keyspace_snapshot(&self) -> Vec<u8> {
         let mut req = CreateSnapshotRequestPB::new();
         let mut ident = TableIdentifierPB::new();
         ident
@@ -409,7 +429,7 @@ impl Harness {
         resp.snapshot_id().to_vec()
     }
 
-    fn list(&self, id: &[u8]) -> ListSnapshotsResponsePB {
+    pub(crate) fn list(&self, id: &[u8]) -> ListSnapshotsResponsePB {
         let mut req = ListSnapshotsRequestPB::new();
         req.set_snapshot_id(id.to_vec());
         let mut resp = ListSnapshotsResponsePB::new();

@@ -297,7 +297,7 @@ impl TableLifecycle {
                 ));
             }
             if self.ysql_major_upgrade_in_progress(snapshot) {
-                return crate::ysql::start_next_version_drop(&namespace).map(|m| (m, ()));
+                return crate::ysql::start_next_version_drop(&namespace).map(|m| (m, None));
             }
             match State::from_i32(ns.state) {
                 Some(State::RUNNING) | Some(State::FAILED) => {}
@@ -323,13 +323,16 @@ impl TableLifecycle {
                 .filter(|t| *t != YQLDatabase::YQL_DATABASE_CQL)
             {
                 if db_type == YQLDatabase::YQL_DATABASE_PGSQL {
+                    // A FAILED database keeps its name only if it had it.
+                    let named =
+                        (ns.state == State::RUNNING as i32).then(|| namespace.key.id.to_vec());
                     return crate::ysql::start_database_drop(
                         snapshot,
                         &namespace,
                         req,
                         drop_streams,
                     )
-                    .map(|m| (m, ()));
+                    .map(|m| (m, named));
                 }
                 return Err(unsupported_database(db_type));
             }
@@ -394,9 +397,14 @@ impl TableLifecycle {
                 mutation,
                 &crate::roles::canonical_keyspace(req.namespace.name()),
             )?;
-            Ok((mutation, ()))
+            Ok((mutation, None))
         })
         .await
+        .map(|dropping| {
+            if let Some(id) = dropping {
+                self.keep_database_name(token, &id);
+            }
+        })
     }
 
     /// `IsDeleteNamespaceDone`. A YCQL keyspace's row is gone once it is deleted.

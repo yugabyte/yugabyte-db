@@ -175,6 +175,8 @@ pub struct Leadership {
     phase: watch::Sender<Phase>,
     nudge: Notify,
     hooks: Mutex<Vec<Arc<ReadyHook>>>,
+    /// `master_failover_catchup_timeout_ms`.
+    catchup_timeout: Mutex<fn() -> Duration>,
 }
 
 struct Inner {
@@ -197,7 +199,14 @@ impl Leadership {
             phase: watch::channel(Phase::Follower).0,
             nudge: Notify::new(),
             hooks: Mutex::new(Vec::new()),
+            catchup_timeout: Mutex::new(|| Duration::MAX),
         })
+    }
+
+    /// How long a new leader may wait for its NoOp and its lease before the process exits, as
+    /// C++ does (`master_failover_catchup_timeout_ms`); no limit until set.
+    pub fn set_catchup_timeout(&self, timeout: fn() -> Duration) {
+        *self.catchup_timeout.lock().unwrap() = timeout;
     }
 
     /// Registers a hook that runs on every election before Ready.
@@ -393,11 +402,31 @@ impl Leadership {
         self.phase.send_replace(phase);
     }
 
+    /// `WaitUntilCaughtUpAsLeader`: until the term's NoOp is committed and the lease is held, or
+    /// the term is over; TimedOut after `master_failover_catchup_timeout_ms`.
+    async fn wait_until_caught_up(&self, term: i64) -> Result<(), Status> {
+        let timeout = (*self.catchup_timeout.lock().unwrap())();
+        let started = tokio::time::Instant::now();
+        while self.phase() == (Phase::CatchingUp { term })
+            && self.source.leader_state().status != LeaderStatus::Ready
+        {
+            if started.elapsed() > timeout {
+                return Err(Status::new(
+                    StatusCode::TimedOut,
+                    format!("Not caught up as leader of term {term} after {timeout:?}"),
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        Ok(())
+    }
+
     async fn catch_up(self: Arc<Self>, term: i64) {
         let still_catching_up = || self.phase() == Phase::CatchingUp { term };
-        // The NoOp of the term is committed and the lease is held.
-        while still_catching_up() && self.source.leader_state().status != LeaderStatus::Ready {
-            tokio::time::sleep(Duration::from_millis(20)).await;
+        if let Err(status) = self.wait_until_caught_up(term).await {
+            // As C++ does: a partitioned-away leader that cannot get a lease must not keep the
+            // other masters from electing one that can.
+            panic!("Shutting down due to unavailability of other masters after election: {status}");
         }
         let hooks = self.hooks.lock().unwrap().clone();
         for hook in hooks {
@@ -507,6 +536,26 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    /// `master_failover_catchup_timeout_ms`: a leader that never gets its lease gives up.
+    #[tokio::test(start_paused = true)]
+    async fn catching_up_times_out() {
+        let source = FakeLeaderState::new();
+        let leadership = Leadership::new(source.clone(), Arc::default());
+        leadership.set_catchup_timeout(|| Duration::from_secs(30));
+        source.set(PeerRole::LEADER, 2, LeaderStatus::NoOpNotCommitted);
+        leadership.set_phase(
+            &mut leadership.inner.lock().unwrap(),
+            Phase::CatchingUp { term: 2 },
+        );
+        let e = leadership.wait_until_caught_up(2).await.unwrap_err();
+        assert_eq!(e.code, StatusCode::TimedOut);
+        // Ready in time, or no longer the term's leader, is no failure.
+        source.set(PeerRole::LEADER, 2, LeaderStatus::Ready);
+        leadership.wait_until_caught_up(2).await.unwrap();
+        source.set(PeerRole::LEADER, 2, LeaderStatus::NoOpNotCommitted);
+        leadership.wait_until_caught_up(3).await.unwrap();
     }
 
     #[tokio::test]

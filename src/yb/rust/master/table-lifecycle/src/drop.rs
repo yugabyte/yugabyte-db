@@ -74,6 +74,17 @@ impl TableLifecycle {
     ) -> Result<(), MasterErrorPB> {
         self.delete_table_internal(token, deadline, req, resp)
             .await?;
+        // C++ sleeps in `DeleteTableInternal`, which a YSQL drop in a DDL transaction does not
+        // reach: the verifier drops the table once the transaction commits.
+        let latency = (self.options.inject_latency_in_delete_table)();
+        let deferred = req.ysql_yb_ddl_rollback_enabled() && req.transaction.is_some();
+        if !latency.is_zero() && !deferred {
+            tracing::info!(
+                "Sleeping in CatalogManager::DeleteTable for {} ms",
+                latency.as_millis()
+            );
+            tokio::time::sleep(latency).await;
+        }
         self.sync_point("DeleteTableInternal::End").await;
         Ok(())
     }

@@ -218,6 +218,28 @@ pub struct LifecycleOptions {
     /// This build's YSQL major version; None when YSQL is off. A catalog on another version is
     /// mid major upgrade.
     pub ysql_major_version: Option<u32>,
+    /// `catalog_manager_inject_latency_in_delete_table_ms`: `DeleteTable` waits this long after
+    /// its write before it answers.
+    pub inject_latency_in_delete_table: fn() -> std::time::Duration,
+    /// `enable_qos`.
+    pub enable_qos: fn() -> bool,
+    /// `qos_max_db_count`: with QoS on, most non-template YSQL databases; 0 for no limit.
+    pub qos_max_db_count: fn() -> i32,
+    /// `enable_transactional_ddl_gc`: tables and databases created in a DDL transaction without
+    /// DDL atomicity record it, so the verifier drops them if it aborts.
+    pub enable_transactional_ddl_gc: fn() -> bool,
+    /// `index_backfill_rpc_max_retries`: retries of one `BackfillIndex` chunk.
+    pub index_backfill_rpc_max_retries: fn() -> i32,
+    /// `index_backfill_rpc_max_delay_ms`: the most a `BackfillIndex` chunk waits between retries.
+    pub index_backfill_rpc_max_delay: fn() -> std::time::Duration,
+    /// `index_backfill_wait_for_alter_table_completion_ms`: how often a finished backfill checks
+    /// whether its index is out of its alter.
+    pub index_backfill_wait_for_alter_table_completion: fn() -> std::time::Duration,
+    /// `index_backfill_tablet_split_completion_timeout_sec`: how long a backfill waits for
+    /// splits of the indexed table to finish before it fails.
+    pub index_backfill_tablet_split_completion_timeout: fn() -> std::time::Duration,
+    /// `index_backfill_tablet_split_completion_poll_freq_ms`.
+    pub index_backfill_tablet_split_completion_poll_freq: fn() -> std::time::Duration,
 }
 
 impl Default for LifecycleOptions {
@@ -283,6 +305,17 @@ impl Default for LifecycleOptions {
             disable_stream_drop_during_db_drop: || false,
             create_table_with_empty_pgschema_name: || false,
             ysql_major_version: None,
+            inject_latency_in_delete_table: || std::time::Duration::ZERO,
+            enable_qos: || false,
+            qos_max_db_count: || 0,
+            enable_transactional_ddl_gc: || true,
+            index_backfill_rpc_max_retries: || 150,
+            index_backfill_rpc_max_delay: || std::time::Duration::from_secs(600),
+            index_backfill_wait_for_alter_table_completion: || {
+                std::time::Duration::from_millis(100)
+            },
+            index_backfill_tablet_split_completion_timeout: || std::time::Duration::from_secs(30),
+            index_backfill_tablet_split_completion_poll_freq: || std::time::Duration::from_secs(2),
         }
     }
 }
@@ -296,6 +329,13 @@ pub enum BackfillDecision {
     RunLocalAt(u64),
     /// No backfill: the source's backfill writes, made at this hybrid time, are replicated.
     DeferToReplicated(u64),
+}
+
+/// The tablet split manager's splits being started (its `GetSplitKey` and `SplitTablet` tasks),
+/// which leave no trace in the catalog until the children are registered.
+pub trait SplitsInFlight: Send + Sync {
+    /// Whether a split of one of the table's tablets is being started.
+    fn splitting(&self, snapshot: &master_catalog_state::CatalogSnapshot, table_id: &[u8]) -> bool;
 }
 
 /// What CDC streams need from tablet creation, splits and hidden-tablet cleanup, which
@@ -428,6 +468,11 @@ pub struct TableLifecycle {
     /// The YSQL databases being created, by term and id: the rest of the PREPARING ones were
     /// interrupted by a leader change.
     pub(crate) creating_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
+    /// The FAILED or DELETING YSQL databases that keep their name, by term and id: those whose
+    /// drop started, or whose colocated parent table failed, in this term. C++ releases the name
+    /// of every other one (a failed creation, a failed creating transaction, and whatever a new
+    /// leader loads FAILED or DELETING), so CREATE DATABASE can be retried at once.
+    pub(crate) named_databases: std::sync::Mutex<std::collections::HashSet<(i64, Vec<u8>)>>,
     /// The tablespace placement the leader knows.
     pub(crate) tablespaces: Arc<Tablespaces>,
     /// Rollbacks to a sub-transaction, by transaction id.
@@ -440,6 +485,8 @@ pub struct TableLifecycle {
     pub(crate) retention: std::sync::OnceLock<Arc<dyn Retention>>,
     /// What CDC streams need from DDL; set once the CDC streams service exists.
     pub(crate) xrepl_hooks: std::sync::OnceLock<Arc<dyn XreplHooks>>,
+    /// Splits being started, which a backfill waits for; set once the split manager exists.
+    pub(crate) splits_in_flight: std::sync::OnceLock<Arc<dyn SplitsInFlight>>,
     /// Tables whose post tablet creation work failed, with the error `IsCreateTableDone` reports
     /// (`SetCreateTableErrorStatus`). Kept in memory, as C++ keeps it on the TableInfo.
     pub(crate) create_errors: std::sync::Mutex<std::collections::HashMap<Vec<u8>, Status>>,
@@ -543,6 +590,11 @@ impl TableLifecycle {
             }
             Err(_) => false,
         }
+    }
+
+    /// Lets a backfill see the splits being started.
+    pub fn set_splits_in_flight(&self, splits: Arc<dyn SplitsInFlight>) {
+        let _ = self.splits_in_flight.set(splits);
     }
 
     /// Gives DDL what CDC streams need from it.
@@ -681,6 +733,7 @@ impl TableLifecycle {
             names: tokio::sync::Mutex::new(()),
             ddl_alters: Default::default(),
             creating_databases: Default::default(),
+            named_databases: Default::default(),
             tablespaces: Tablespaces::new(options.tablespaces),
             subtxn_rollbacks: Default::default(),
             local_transaction_tables: tokio::sync::Mutex::new(()),
@@ -689,6 +742,7 @@ impl TableLifecycle {
             tablet_rpc: std::sync::OnceLock::new(),
             retention: std::sync::OnceLock::new(),
             xrepl_hooks: std::sync::OnceLock::new(),
+            splits_in_flight: std::sync::OnceLock::new(),
             create_errors: Default::default(),
             table_tasks: Default::default(),
         })
