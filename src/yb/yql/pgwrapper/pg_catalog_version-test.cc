@@ -2513,6 +2513,49 @@ TEST_F(PgCatalogVersionTest, InvalMessageExpirationFlooredByHeartbeat) {
   ASSERT_EQ(first_message_present, 1);
 }
 
+// A DDL deletes the pg_yb_invalidation_messages row exactly 4096 versions behind its new
+// version even if that row has not expired: no later DDL scans that far back.
+TEST_F(PgCatalogVersionTest, InvalMessageDeleteRowLeavingWindow) {
+  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  ASSERT_OK(conn.Execute("CREATE TABLE inval_window_test (k INT)"));
+
+  // The next DDL makes the version kVersion + 1, so its cutoff row is kCutoff.
+  constexpr uint64_t kVersion = 100000;
+  constexpr uint64_t kCutoff = kVersion + 1 - 4096;
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = 1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_yb_catalog_version SET current_version = $0 WHERE db_oid = $1",
+      kVersion, yugabyte_db_oid));
+  // Unexpired rows at kCutoff and kCutoff + 1, an expired row at kCutoff + 2.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO pg_yb_invalidation_messages VALUES "
+      "($0, $1, extract(epoch from now())::bigint + 3600, NULL), "
+      "($0, $2, extract(epoch from now())::bigint + 3600, NULL), "
+      "($0, $3, 0, NULL)",
+      yugabyte_db_oid, kCutoff, kCutoff + 1, kCutoff + 2));
+  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = 0"));
+  WaitForCatalogVersionToPropagate();
+
+  const auto seeded_rows_query = Format(
+      "SELECT current_version FROM pg_yb_invalidation_messages "
+      "WHERE db_oid = $0 AND current_version BETWEEN $1 AND $2 ORDER BY current_version",
+      yugabyte_db_oid, kCutoff, kVersion);
+
+  ASSERT_OK(conn.Execute("ALTER TABLE inval_window_test ADD COLUMN v1 TEXT"));
+  const auto new_version = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format(
+      "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = $0", yugabyte_db_oid)));
+  ASSERT_EQ(new_version, kVersion + 1);
+  // The cutoff row and the expired row are gone, the unexpired row above the cutoff stays.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<PGUint64>(seeded_rows_query)),
+            std::vector<uint64_t>{kCutoff + 1});
+
+  // One more DDL moves the cutoff onto the remaining row.
+  ASSERT_OK(conn.Execute("ALTER TABLE inval_window_test ADD COLUMN v2 TEXT"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRows<PGUint64>(seeded_rows_query)).empty());
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
   RestartClusterWithInvalMessageEnabled();
   auto conn1 = ASSERT_RESULT(EnableCacheEventLog(Connect()));
