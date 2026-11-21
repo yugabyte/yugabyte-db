@@ -647,7 +647,7 @@ public class PlatformReplicationHelper {
     String ybaVersion = Util.getYbaVersion();
     Set<String> liveNodeAgentUuids = new HashSet<>();
     for (NodeAgent nodeAgent : getLiveNodeAgents()) {
-      if (!Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true)) {
+      if (!nodeAgent.isOnYbaVersion()) {
         log.warn(
             "Node agent {} version {} does not match with YBA software version {}",
             nodeAgent,
