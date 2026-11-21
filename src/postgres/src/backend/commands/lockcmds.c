@@ -182,7 +182,7 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait)
 						 errmsg("could not obtain lock on relation \"%s\"",
 								relname)));
 			}
-		}
+		}						/* YB: !yb_children_locked */
 
 		/*
 		 * Even if we got the lock, child might have been concurrently
