@@ -28,7 +28,12 @@ static inline void test_notify_after_wait(void *arg)
 {
 	(void)arg;
 
-	machine_wait_list_t *wl = machine_wait_list_create();
+	/*
+	 * YB: NULL because machine_wait_list_create() now takes the futex word
+	 * (odyssey 00be9a8). odyssey_test is not run in YB CI; this only keeps
+	 * it compiling.
+	 */
+	machine_wait_list_t *wl = machine_wait_list_create(NULL);
 
 	int consumer_id;
 	consumer_id = machine_coroutine_create(consumer_coroutine, wl);

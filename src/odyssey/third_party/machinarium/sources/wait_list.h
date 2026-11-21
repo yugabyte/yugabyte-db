@@ -23,12 +23,20 @@ typedef struct mm_wait_list {
 	mm_sleeplock_t lock;
 	mm_list_t sleepies;
 	uint64_t sleepies_count;
+
+	/*
+	This field is analogous to a futex word.
+	See futex(2) and futex(7) for details.
+	*/
+	atomic_uint_fast64_t *word;
 } mm_wait_list_t;
 
-mm_wait_list_t *mm_wait_list_create();
+mm_wait_list_t *mm_wait_list_create(atomic_uint_fast64_t *word);
 void mm_wait_list_destroy(mm_wait_list_t *wait_list);
 
 int mm_wait_list_wait(mm_wait_list_t *wait_list, uint32_t timeout_ms);
+int mm_wait_list_compare_wait(mm_wait_list_t *wait_list, uint64_t value,
+			      uint32_t timeout_ms);
 void mm_wait_list_notify(mm_wait_list_t *wait_list);
 
 #endif /* MM_WAIT_LIST_H */
