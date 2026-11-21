@@ -530,7 +530,17 @@ Result<IsOperationDoneResult> XClusterTestBase::WaitForSetupUniverseReplication(
 
 Status XClusterTestBase::GetCDCStreamForTable(
     const TableId& table_id, master::ListCDCStreamsResponsePB* resp) {
-  return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {
+  return WaitForCDCStreamCount(table_id, /* expected_count = */ 1, resp);
+}
+
+Status XClusterTestBase::WaitForCDCStreamDeleted(const TableId& table_id) {
+  master::ListCDCStreamsResponsePB resp;
+  return WaitForCDCStreamCount(table_id, /* expected_count = */ 0, &resp);
+}
+
+Status XClusterTestBase::WaitForCDCStreamCount(
+    const TableId& table_id, int expected_count, master::ListCDCStreamsResponsePB* resp) {
+  return LoggedWaitFor([this, table_id, expected_count, resp]() -> Result<bool> {
     master::ListCDCStreamsRequestPB req;
     req.set_table_id(table_id);
     resp->Clear();
@@ -551,8 +561,8 @@ Status XClusterTestBase::GetCDCStreamForTable(
       }
     }
 
-    return resp->streams_size() == 1;
-  }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
+    return resp->streams_size() == expected_count;
+  }, MonoDelta::FromSeconds(kRpcTimeout), Format("Wait for $0 CDC streams", expected_count));
 }
 
 Status XClusterTestBase::WaitForConsumerPollersToSleep(
