@@ -2295,9 +2295,9 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   ASSERT_OK(ddl_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"));
 }
 
-// With ysql_enable_concurrent_ddl off, transaction A writes t and then runs a DDL, which waits on the
-// database DDL lock that transaction B holds, while B's DDL on t waits for A's write. The deadlock
-// detector must end the cycle well before the statement timeout.
+// With ysql_enable_concurrent_ddl off, transaction A writes t and then runs a DDL, which waits on
+// the database DDL lock that transaction B holds, while B's DDL on t waits for A's write. The
+// deadlock detector must end the cycle well before the statement timeout.
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, WriterThenDdlDeadlockIsDetected) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
