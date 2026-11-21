@@ -31,7 +31,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/mem_tracker_fwd.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
