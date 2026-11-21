@@ -1444,6 +1444,15 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         if (curlevel <= maxlevelcopy)
             templock.unlock();
 
+        // A point above the level of the tenant entry point replaces it, so like a point above
+        // maxlevel_ it keeps a lock until it is linked, but one that only points of the tenant wait
+        // for. Otherwise concurrent replacements would all link from the old entry point, and all
+        // but one keep their upper levels unlinked. Like global, it is taken before lock_el, since
+        // a point linked under it takes the link list locks of other points.
+        std::unique_lock<std::mutex> tenant_lock;
+        if (tenant)
+            tenant_lock = std::unique_lock<std::mutex>(getTenantEntryMutex(*tenant));
+
         std::unique_lock <std::mutex> lock_el(link_list_locks_[cur_c]);
         element_levels_[cur_c] = curlevel;
 
@@ -1459,15 +1468,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         // Level of currObj, the point to start linking from.
         int entry_level = maxlevelcopy;
         std::optional<tableint> tenant_entry;
-        std::unique_lock<std::mutex> tenant_lock;
         if (tenant) {
-            // A point above the level of the tenant entry point replaces it, so like a point above
-            // maxlevel_ it keeps a lock until it is linked, but one that only points of the tenant
-            // wait for. Otherwise concurrent replacements would all link from the old entry point,
-            // and all but one keep their upper levels unlinked. It is taken under lock_el, which no
-            // other insert waits for yet: the point is not reachable before it is linked or added
-            // as the tenant entry point below.
-            tenant_lock = std::unique_lock<std::mutex>(getTenantEntryMutex(*tenant));
             tenant_entry = findOrAddTenantEntry(*tenant, cur_c);
             // Nothing to link the first point of a tenant to.
             currObj = tenant_entry ? *tenant_entry : -1;
@@ -1564,15 +1565,10 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return searchKnnFrom(query_data, k, isIdAllowed, ef, entry);
     }
 
-    // Returns the entry points of all tenants, see addTenantPoint.
-    std::vector<tableint> getTenantEntries() const {
+    // Returns tenants with their entry points, see addTenantPoint.
+    std::vector<std::pair<std::string_view, tableint>> getTenantEntries() const {
         std::shared_lock<std::shared_mutex> lock(tenant_entries_mutex_);
-        std::vector<tableint> result;
-        result.reserve(tenant_entries_.size());
-        for (const auto& [tenant, entry] : tenant_entries_) {
-            result.push_back(entry);
-        }
-        return result;
+        return {tenant_entries_.begin(), tenant_entries_.end()};
     }
 
     // Searches starting from entry_node at its level. Results are (distance, label, internal id)

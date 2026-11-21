@@ -62,6 +62,7 @@ using namespace std::chrono_literals;
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
+DECLARE_bool(TEST_skip_marking_ysql_leases_lost);
 DECLARE_int32(heartbeat_max_failures_before_backoff);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(retrying_rpc_max_jitter_ms);
@@ -71,6 +72,7 @@ DECLARE_double(TEST_tserver_ysql_lease_refresh_failure_prob);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
+DECLARE_bool(TEST_pause_obj_lock_acquire_before_persist);
 DECLARE_bool(TEST_pause_obj_lock_release_before_persist);
 DECLARE_bool(TEST_pause_ysql_lease_refresh_after_epoch_update);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
@@ -1166,6 +1168,76 @@ TEST_F(ObjectLockTest, TServerLeaseExpiresBeforeExclusiveLockRequest) {
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(1), kTxn2, kDatabaseID, kRelationId));
   ASSERT_OK(cluster_->mini_tablet_server(idx_to_take_down)->Start());
+}
+
+// A global lock waiting on a dead tserver must go ahead soon after the master marks the tserver's
+// lease lost, not at the next step of the fan-out task's retry backoff. Between the lease deadline
+// and the master marking the lease lost, the task must not send the tserver more RPCs.
+TEST_F(ObjectLockTest, AcquireSkipsDeadTServerSoonAfterLeaseLoss) {
+  // The test base caps the retry delay at 1s, which would exhaust the 20 attempts before the
+  // lease expires. With the production 60s cap, the fan-out task to the dead tserver starts its
+  // 11th attempt about 16.4s in and, unless capped by the lease, waits another 16.4s after it. The
+  // lease expires in between.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 60 * 1000;
+  const auto kLeaseTTL = MonoDelta::FromSeconds(18);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) =
+      kLeaseTTL.ToMilliseconds();
+
+  const auto dead_ts_uuid = TSUuid(0);
+  auto* object_lock_info_manager =
+      cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  // Isolating TS 0 before it refreshes under the new TTL would lose its lease before the backoff
+  // grows, and the test would pass without the fix.
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto lease_infos = object_lock_info_manager->GetLeaseInfos();
+        auto it = lease_infos.find(dead_ts_uuid);
+        return it != lease_infos.end() &&
+               it->second.time_to_lease_deadline >
+                   MonoDelta::FromMilliseconds(kDefaultMasterYSQLLeaseTTLMilli);
+      },
+      kTimeout, "Waiting for TS 0 to refresh its lease under the new TTL"));
+
+  // Hold the lease as live past its deadline, as a slow cleanup poll would.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = false;
+  });
+  StringWaiterLogSink past_deadline_waiter("Lease deadline passed but the lease isn't marked lost");
+  // Only TS 0 is sent lock RPCs that fail.
+  StringWaiterLogSink rpc_failed_counter("Object Lock RPC failed");
+  // Not Shutdown(): that relinquishes the lease, and the master drops the tserver right away.
+  LOG(INFO) << "Isolating tablet server " << dead_ts_uuid;
+  cluster_->mini_tablet_server(0)->Isolate();
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  auto future = AcquireLockGloballyAsync(
+      &master_proxy, TSUuid(1), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      /* clock */ nullptr, /* deadline */ std::nullopt, 60s * kTimeMultiplier);
+
+  // Without the cap on the retry delay, the task would still be in its 16.4s backoff here.
+  const auto lease_timeout = kLeaseTTL + MonoDelta(10s * kTimeMultiplier);
+  ASSERT_OK(past_deadline_waiter.WaitFor(lease_timeout));
+  const auto rpc_failures_at_deadline = rpc_failed_counter.GetEventCount();
+  // Retries are 1s apart once the deadline has passed.
+  ASSERT_OK(WaitFor(
+      [&] { return past_deadline_waiter.GetEventCount() >= 3; }, kTimeout,
+      "Waiting for more retries past the lease deadline"));
+  ASSERT_EQ(rpc_failed_counter.GetEventCount(), rpc_failures_at_deadline)
+      << "No lock RPC should be sent to TS 0 after its lease deadline";
+  ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
+      << "TS 0 must not be dropped before its lease is marked lost";
+
+  StringWaiterLogSink lease_lost_waiter("has just lost its lease");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_marking_ysql_leases_lost) = false;
+  ASSERT_OK(lease_lost_waiter.WaitFor(kTimeout));
+  ASSERT_EQ(future.wait_for(5s * kTimeMultiplier), std::future_status::ready)
+      << "The global lock should not wait on the dead tserver once its lease is lost";
+  ASSERT_OK(future.get());
+
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Reconnect());
+  ASSERT_OK(
+      WaitForTabletServersToAcquireYSQLLeases({cluster_->mini_tablet_server(0)}, lease_timeout));
 }
 
 // A tserver that keeps refreshing its lease but fails every release must lose its lease, so that
@@ -2535,6 +2607,62 @@ INSTANTIATE_TEST_CASE_P(
     TestLeaseReacquisitionRace,
     ExternalObjectLockTestLeaseLost,
     ::testing::Values(DisableLeaseMode::DisablePoller, DisableLeaseMode::DisablePollerAndChecker));
+
+// An acquire granted inline by the master leader's local lock manager runs the master's callback,
+// which persists the lock and launches the fanout, on the acquiring thread. A catalog load on that
+// master resets the local lock manager and must not wait for such a callback (#34341). Once the
+// load is done, the paused callback fails its epoch check and the client retries the acquire.
+TEST_F_EX(
+    ObjectLockTest, CatalogLoadDoesNotWaitForInlineAcquireCallback, MultiMasterObjectLockTest) {
+  ASSERT_OK(EnsureClientCreated());
+  auto* leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  const auto leader_uuid = leader->permanent_uuid();
+  auto* catalog_manager = leader->master()->catalog_manager_impl();
+  const auto loaded_term = catalog_manager->catalog_loaded_term();
+  auto local_lock_manager =
+      catalog_manager->object_lock_info_manager()->TEST_ts_local_lock_manager();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = true;
+  auto unpause = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = false;
+  });
+  auto ddl_future = AcquireLockGloballyAsync(
+      client_.get(), TSUuid(0), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, std::nullopt,
+      kTimeout * 5 * kTimeMultiplier);
+  // Nothing conflicts, so the lock is granted inline and the callback pauses before persisting.
+  ASSERT_OK(WaitFor(
+      [&local_lock_manager] { return local_lock_manager->TEST_GrantedLocksSize() > 0; },
+      kTimeout, "wait for the lock to be granted by the master leader"));
+
+  // Move leadership away and back, so that the same master reloads its catalog.
+  std::string other_uuid;
+  for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+    if (cluster_->mini_master(i)->permanent_uuid() != leader_uuid) {
+      other_uuid = cluster_->mini_master(i)->permanent_uuid();
+      break;
+    }
+  }
+  for (const auto& new_leader_uuid : {other_uuid, leader_uuid}) {
+    ASSERT_OK(ResultToStatus(cluster_->StepDownMasterLeader(new_leader_uuid)));
+    ASSERT_OK(LoggedWaitFor(
+        [this, &new_leader_uuid]() -> Result<bool> {
+          auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+          return master->permanent_uuid() == new_leader_uuid;
+        },
+        kTimeout, Format("wait for $0 to become the master leader", new_leader_uuid)));
+  }
+  ASSERT_OK(LoggedWaitFor(
+      [catalog_manager, loaded_term] {
+        return catalog_manager->catalog_loaded_term() > loaded_term;
+      },
+      kTimeout, "wait for the catalog load with the acquire callback still paused"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_acquire_before_persist) = false;
+  // The client's first attempt has the whole request deadline, so it can't time out and retry on
+  // its own. Succeeding requires the paused callback's epoch-changed error to be retryable.
+  ASSERT_OK(ResolveFutureStatus(ddl_future));
+  ASSERT_OK(ReleaseLockGlobally(client_.get(), TSUuid(0), kTxn1, kLeaseEpoch));
+}
 
 class MultiMasterObjectLockTestWithFailover : public MultiMasterObjectLockTest,
                                               public ::testing::WithParamInterface<bool> {

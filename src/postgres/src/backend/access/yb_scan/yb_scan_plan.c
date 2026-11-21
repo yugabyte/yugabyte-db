@@ -1,10 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * yb_scan_plan.c
- *	  Plan-time YB scan analysis.
+ *	  YB scan logic shared with the planner.
  *
- *	  Implements the binding rules declared in yb_scan_plan.h.  See
- *	  that header for what belongs here.
+ *	  Implements the functions declared in yb_scan_plan.h.  See that
+ *	  header for what belongs here.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -148,6 +148,9 @@ YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
 
 /*
  * Return true if a scan key column type is compatible with value type.
+ *
+ * Single row UPDATE and DELETE also use this (yb_single_row_key_value): a pair
+ * marked compatible by mistake makes them change or delete the wrong row.
  */
 bool
 YbIsScanCompatible(Oid column_typid,
@@ -192,4 +195,16 @@ YbIsScanCompatible(Oid column_typid,
 			/* Conservatively return false. */
 			return false;
 	}
+}
+
+/*
+ * Whether a YB index scan binds a search array condition, indexkey op ANY
+ * (array), of the given strategy.  DocDB binds an array only as an IN list,
+ * so only the equality strategy qualifies.
+ * TODO(#37239): bind an inequality on a range column as a range bound.
+ */
+bool
+YbCanBindSearchArray(StrategyNumber strategy)
+{
+	return strategy == BTEqualStrategyNumber;
 }

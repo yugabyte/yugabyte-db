@@ -133,13 +133,17 @@ typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  struct IndexInfo *indexInfo,
 									  bool shared_insert);
 
-/* delete this tuple for YugaByte-based index */
+/*
+ * delete this tuple for YugaByte-based index; 'persist_missing_row' writes the
+ * tombstone even if the entry does not exist
+ */
 typedef void (*yb_amdelete_function) (Relation indexRelation,
 									  Datum *values,
 									  bool *isnull,
 									  Datum ybctid,
 									  Relation heapRelation,
-									  struct IndexInfo *indexInfo);
+									  struct IndexInfo *indexInfo,
+									  bool persist_missing_row);
 
 /* update the tuple identified by 'oldYbctid' for a Yugabyte-based index */
 typedef void (*yb_amupdate_function) (Relation indexRelation,

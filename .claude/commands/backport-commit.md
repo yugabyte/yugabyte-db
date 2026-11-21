@@ -7,7 +7,7 @@ model: sonnet
 
 Backport a merged commit to one or more YugabyteDB release branches using the bundled `backport-commit.sh` at `.agents/scripts/backport-commit.sh`. The script handles cherry-picking, message rewriting, fork detection, push, and PR creation. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.
 
-**This command produces GitHub PRs.** A backport should go through the same review system the original went through, so if the original landed via Phorge — the argument is a `Dxxxxx` revision ID, or `git log -n1 --format=%b <commit>` shows a `Differential Revision:` line — stop and use `/backport-diff` instead. If neither pattern matches cleanly, ask the user rather than guessing.
+**This command produces GitHub PRs, and is the default for every backport** — including commits that landed via Phorge, since Phorge is being retired (no new diffs from 2026-11-23). The script records a Phorge original as `Original commit: <sha> / D<id>`. Given a `Dxxxxx` revision ID instead of a SHA, find the landed commit with `git log origin/master -n1 --format=%H --grep='^Differential Revision: .*/Dxxxxx$'` and pass that. Use `/backport-diff` only if the user explicitly asks for a Phorge backport.
 
 **Always pass the full branch list in a single invocation.** After each successful branch, the script chains the next branch's cherry-pick from the previous branch's task branch — so a conflict you resolve on `b2` carries forward, and `b3+` typically apply cleanly without re-resolving the same conflict.
 
@@ -75,15 +75,11 @@ Once **all** conflicts are resolved (and only then):
 
 2. `git cherry-pick --continue --no-edit` to land the resolved commit. Use `--no-edit` so the original commit message is preserved verbatim — the script re-derives the subject/body from `$commitid` on rerun, so anything you type here gets discarded anyway. If the resolved diff is empty, run `git cherry-pick --skip` instead.
 
-3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record `<path>:<line>` and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Also remember **which branch** the resolution was on. Example:
+3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record each one as an entry for Step 4: `<path>:<line>`, a short reason code such as `adjacent-lines` (only the surrounding lines differ on the branch) or `missing-prerequisite` (something the change depends on is not on the branch), and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Group the entries by step: the branch the cherry-pick came from (check the script output for the source) and the branch it went to. Example:
    ```
-   2024.2 (non-trivial):
-     src/yb/master/catalog_manager.cc:1843 — kept master's call signature; release branch lost the `epoch` arg
-     src/yb/master/catalog_manager.cc:2017 — re-applied the cherry-picked guard around the older AddTask path
-     src/yb/master/catalog_manager.h:412 — moved the new method below the existing private block
-
-   2025.2 (trivial):
-     src/yb/master/master-path-handlers.cc:1015 — accepted cherry-pick's added block; branch had no code at that location
+   ### master --> 2025.2
+   - `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+   - `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
    ```
 
 4. **Run the linter** from the repo root and confirm it is clean before re-running:
@@ -104,11 +100,11 @@ If a *later* branch in the same run also hits conflicts, repeat this step for th
 
 Extract every `https://github.com/...` URL printed by `gh pr create` from the (possibly multi-run) script output. Each successfully backported branch produces one PR.
 
-### Step 4: Annotate the PR body for every branch where a conflict was resolved by hand
+### Step 4: Annotate the PR body with its merge conflicts
 
-Any branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly) needs an annotation, **regardless of whether the resolution was trivial or non-trivial**. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
+Annotate the PR of every branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly), **regardless of whether the resolution was trivial or non-trivial**, and of every branch chained from another branch's backport. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
 
-Branches that picked up a resolved diff via chaining don't need annotation — that's already implicit in the upstream branch they chained from.
+A chained branch lists every cherry-pick step, starting with the one onto this branch and ending with the one from `master`; a step that applied cleanly gets `No conflicts.` The script rebuilds each PR body from the original commit, so copy the earlier steps in yourself.
 
 For each such PR:
 
@@ -116,14 +112,17 @@ For each such PR:
 gh pr view <pr-number> -R yugabyte/yugabyte-db --json body -q .body > /tmp/claude/pr-body-<pr-number>.md
 ```
 
-Append a `## Merge conflicts` section using the entries you recorded in Step 2 (substep 3) for that branch. For example:
+Append a `## Merge conflicts` section listing those steps. For example, a 2024.2 PR chained cleanly from the 2025.2 backport, which needed resolution:
 
 ```
 ## Merge conflicts
 
-- `src/yb/master/catalog_manager.cc:1843` — kept master's call signature; release branch lost the `epoch` arg
-- `src/yb/master/catalog_manager.cc:2017` — re-applied the cherry-picked guard around the older AddTask path
-- `src/yb/master/catalog_manager.h:412` — moved the new method below the existing private block
+### 2025.2 --> 2024.2
+No conflicts.
+
+### master --> 2025.2
+- `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+- `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
 ```
 
 Then push the new body via the REST API. **Do not use `gh pr edit --body-file`** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)` on this repo:
@@ -143,8 +142,10 @@ Output a single summary listing, per branch:
 ## Notes
 
 - The script auto-detects reviewers from the originating PR (union of pending review requests and actual reviewers, minus bots and self) — do not pass `-r` unless the user asks for a different list.
+- For a Phorge-landed original, the script maps the `Reviewers:` / `Reviewed By:` names in the commit body to GitHub logins through the internal roster (`yugabyte/eng-team`, `scripts/lib/yb-eng.json`). If it warns that it could not read the roster, or that it skipped people who are missing from it, tell the user which names were not requested and ask whether to pass `-r`.
 - The script auto-links the originating PR in the backport body via the `/repos/<repo>/commits/<sha>/pulls` API; do not duplicate that link manually.
 - `master` is silently skipped by the script if passed as a branch — that's expected.
 - If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.
 - Do **not** bypass the script's dirty-workspace check by stashing or `git checkout -- .` without confirming with the user — those changes may be the user's in-progress work.
 - Do **not** pass `-n` (preview mode) unless the user explicitly asks for a dry run; the command is meant to actually publish PRs.
+- For a security fix (`src/AGENTS.md` § Security and customer-sensitive changes), run the backports as soon as the master PR is approved so every branch can merge the same day, and keep the original's plain wording: never add which releases still lack the fix.

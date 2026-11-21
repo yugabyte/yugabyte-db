@@ -18,6 +18,7 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
@@ -755,7 +756,9 @@ TEST_P(SkipIntentsMatViewTest, TestRefreshMetrics) {
   auto interim_writes = ASSERT_RESULT(GetSkipIntentsCount());
 
   ASSERT_GT(initial_writes, 0);
-  ASSERT_GT(interim_writes, initial_writes);
+  // The index is on a relation that existed before its transaction, so it is not built on the
+  // fastpath.
+  ASSERT_EQ(interim_writes, initial_writes);
 
   // 5. Refresh the View
   std::string cmd = "REFRESH MATERIALIZED VIEW ";
@@ -1572,7 +1575,7 @@ TEST_F(SkipIntentsMetricTest, TestGucCannotBeChangedInImplicitTxn) {
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(
       result.ToString(),
-      "cannot be changed inside a transaction block or after any query has been run");
+      "cannot be changed after any query has been run in the transaction");
 }
 
 TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
@@ -1581,8 +1584,6 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   ASSERT_OK(conn.Execute("CREATE USER normal_user"));
   ASSERT_OK(conn.Execute("SET ROLE normal_user"));
 
-  // yb_enable_new_relation_fastpath_write must be on to enable
-  // yb_enable_new_relation_fastpath_write_in_txn_blocks
   ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write = on"));
   ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on"));
 
@@ -1605,6 +1606,261 @@ TEST_F(SkipIntentsMetricTest, TestGucCanBeChangedByNormalUser) {
   auto val4 = ASSERT_RESULT(conn.FetchRow<std::string>(
       "SHOW yb_enable_new_relation_fastpath_write_in_txn_blocks"));
   ASSERT_EQ(val4, "off");
+}
+
+// The GUCs can be set per role, per database and in connection options, not only with SET. The
+// validation pass of ALTER ROLE/DATABASE ... SET runs inside the ALTER's transaction, and
+// per-role, per-database and connection option values are applied during backend startup after a
+// snapshot has been taken, so a check that refuses any change once a snapshot exists makes ALTER
+// fail, drops a per-role or per-database value with a WARNING, and refuses a connection that sets
+// one of the GUCs in its options.
+TEST_F(SkipIntentsMetricTest, TestGucSetThroughRoleDatabaseAndConnectionOptions) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE fastpath_role LOGIN"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE fastpath_db"));
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE fastpath_role SET $0 = off", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("ALTER DATABASE fastpath_db SET $0 = off", kParentGuc));
+  {
+    auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "fastpath_role"));
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "off");
+    auto db_conn = ASSERT_RESULT(ConnectToDB("fastpath_db"));
+    ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  }
+
+  // yb_enable_new_relation_fastpath_write being off in the session running ALTER ROLE says
+  // nothing about its value in the role's sessions.
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE fastpath_role SET $0 = on", kInTxnBlocksGuc));
+  {
+    auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "fastpath_role"));
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+    ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "on");
+  }
+
+  {
+    auto options_conn = ASSERT_RESULT(ConnectUsingString(Format(
+        "host=$0 port=$1 user=$2 options='-c $3=off -c $4=off'",
+        pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
+        kParentGuc)));
+    ASSERT_EQ(ASSERT_RESULT(options_conn.FetchRow<std::string>(
+        Format("SHOW $0", kParentGuc))), "off");
+    ASSERT_EQ(ASSERT_RESULT(options_conn.FetchRow<std::string>(
+        Format("SHOW $0", kInTxnBlocksGuc))), "off");
+  }
+
+  // SET keeps the transaction-state restriction.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+  auto status = conn.ExecuteFormat("SET $0 = on", kParentGuc);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "cannot be changed after any query has been run");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  // SET ... TO DEFAULT, like RESET, assigns the reset value without the check hook.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 TO DEFAULT", kParentGuc));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// RESET assigns a GUC its reset value without calling the check hook, so it can change
+// yb_enable_new_relation_fastpath_write inside a transaction block. The transaction must keep the
+// value it had when it first used the optimization, here at the CREATE TABLE. A per-role setting
+// makes the reset value off, and RESET turns the optimization off after a write has skipped the
+// intents db.
+TEST_F(SkipIntentsMetricTest, TestGucResetToOffInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE reset_role LOGIN"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO reset_role"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER ROLE reset_role SET $0 = off", kParentGuc));
+
+  auto role_conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "reset_role"));
+  ASSERT_OK(role_conn.ExecuteFormat("SET $0 = on", kParentGuc));
+  ASSERT_OK(role_conn.Execute("BEGIN"));
+  ASSERT_OK(role_conn.Execute("CREATE TABLE reset_to_off (k INT PRIMARY KEY, v INT)"));
+  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(role_conn.Execute(
+      "INSERT INTO reset_to_off SELECT g, g FROM generate_series(1, 10) g"));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The insert must skip the intents db for the test to cover anything";
+  ASSERT_OK(role_conn.ExecuteFormat("RESET $0", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_off")), 10)
+      << "A read after the RESET missed the rows written to the regular db";
+  ASSERT_OK(role_conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(role_conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_off")), 10);
+}
+
+// The other direction: the reset value is the default, on, and RESET turns the optimization on
+// after writes have gone to the intents db.
+TEST_F(SkipIntentsMetricTest, TestGucResetToOnInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE reset_to_on (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO reset_to_on SELECT g, g FROM generate_series(1, 10) g"));
+  ASSERT_OK(conn.ExecuteFormat("RESET $0", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("UPDATE reset_to_on SET v = v + 100"));
+  ASSERT_OK(conn.Execute("INSERT INTO reset_to_on SELECT g, g FROM generate_series(11, 20) g"));
+  const auto writes_after = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("COMMIT"));
+  // Checked before the write count so that a run without the fix also reports what it did to the
+  // data.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM reset_to_on")), 20);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM reset_to_on WHERE k <= 10 AND v = k + 100")), 10)
+      << "Rows written to the intents db before the RESET overtook the updates made after it";
+  ASSERT_EQ(writes_after, writes_before)
+      << "A transaction that first used the optimization with it off must not skip the intents db";
+}
+
+// In an extended-protocol pipeline, statements before the Sync share one transaction that is not a
+// transaction block, and SET takes no snapshot, so the check hook accepts a SET there. The value
+// must then apply to the rest of that transaction, so the transaction may not fix the GUC values
+// before it first uses the optimization.
+TEST_F(SkipIntentsMetricTest, TestGucSetEarlierInPipeline) {
+  // PQconnectdb does not retry, so wait for the server to accept connections first.
+  ASSERT_RESULT(Connect());
+  const auto conn_str = Format(
+      "host=$0 port=$1 user=$2", pg_ts->bind_host(), pg_ts->ysql_port(),
+      PGConnSettings::kDefaultUser);
+  PGConnPtr conn(PQconnectdb(conn_str.c_str()));
+  ASSERT_EQ(PQstatus(conn.get()), CONNECTION_OK) << PQerrorMessage(conn.get());
+
+  auto run_pipeline = [&conn](const std::vector<std::string>& queries) -> Status {
+    SCHECK_EQ(PQenterPipelineMode(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    for (const auto& query : queries) {
+      SCHECK_EQ(PQsendQueryParams(conn.get(), query.c_str(), 0, nullptr, nullptr, nullptr,
+                                  nullptr, 0),
+                1, IllegalState, PQerrorMessage(conn.get()));
+    }
+    SCHECK_EQ(PQpipelineSync(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    // A NULL result only separates one command's results from the next; read on to the sync.
+    for (;;) {
+      PGResultPtr res(PQgetResult(conn.get()));
+      if (!res) {
+        SCHECK_NE(PQstatus(conn.get()), CONNECTION_BAD, IllegalState, PQerrorMessage(conn.get()));
+        continue;
+      }
+      const auto status = PQresultStatus(res.get());
+      if (status == PGRES_PIPELINE_SYNC) {
+        break;
+      }
+      SCHECK(status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK, IllegalState,
+             PQresultErrorMessage(res.get()));
+    }
+    SCHECK_EQ(PQexitPipelineMode(conn.get()), 1, IllegalState, PQerrorMessage(conn.get()));
+    return Status::OK();
+  };
+
+  // Premise: the same statement in a pipeline takes the fastpath when the GUC is left on.
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(run_pipeline(
+      {"CREATE TABLE pipeline_on AS SELECT g AS k FROM generate_series(1, 100) g"}));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS must take the fastpath for the test to cover anything";
+
+  writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(run_pipeline({
+      "SET yb_enable_new_relation_fastpath_write = off",
+      "CREATE TABLE pipeline_off AS SELECT g AS k FROM generate_series(1, 100) g"}));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS ignored the SET earlier in its pipeline";
+}
+
+// A SET inside a transaction block, before the transaction's first query, applies to that
+// transaction. Connection Manager replays a client's SETs as one multi-statement query, which runs
+// in an implicit transaction block, so the check hook must accept a SET there.
+TEST_F(SkipIntentsMetricTest, TestGucSetInsideTxnBlockBeforeFirstQuery) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off; SET search_path = public", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on; SET search_path = public", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+
+  // Premise: the same statement in a transaction block takes the fastpath when the GUC is left on.
+  auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE block_on AS SELECT g AS k FROM generate_series(1, 100) g"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS must take the fastpath for the test to cover anything";
+
+  writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.Execute("CREATE TABLE block_off AS SELECT g AS k FROM generate_series(1, 100) g"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), writes_before)
+      << "The CTAS ignored the SET earlier in its transaction block";
+}
+
+// A configuration file reload must not be lost when it reaches a session that is idle in a
+// transaction block: it is applied once and never retried. Runtime PG flags such as the kill switch
+// ysql_yb_enable_new_relation_fastpath_write are delivered this way.
+TEST_F(SkipIntentsMetricTest, TestConfigReloadInsideTxnBlock) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  auto conn = ASSERT_RESULT(Connect());
+  auto observer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_new_relation_fastpath_write", "false"));
+  // The flag reaches a backend as a SIGHUP that it applies before running its next command. Wait
+  // for another backend on this tserver to have applied it, which means the signal was delivered.
+  ASSERT_OK(LoggedWaitFor(
+      [&observer]() -> Result<bool> {
+        return VERIFY_RESULT(observer.FetchRow<std::string>(
+                   "SHOW yb_enable_new_relation_fastpath_write")) == "off";
+      },
+      MonoDelta::FromSeconds(kTimeMultiplier * 60), "the reload to reach the backends"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off")
+      << "The reload that arrived inside the transaction block was lost";
+}
+
+// A function's SET clause is applied inside the calling statement, where the GUCs cannot change,
+// so CREATE/ALTER FUNCTION must refuse it rather than leave a function that cannot be called. The
+// value is validated with the same source as ALTER ROLE ... SET, which the check hooks accept, and
+// only CREATE FUNCTION with check_function_bodies on also applies the clause while validating.
+TEST_F(SkipIntentsMetricTest, TestGucRejectedInFunctionSetClause) {
+  constexpr auto kError = "cannot be set in a function's SET clause";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE FUNCTION fastpath_f() RETURNS INT AS 'SELECT 1' LANGUAGE sql"));
+
+  for (const auto* guc : {"yb_enable_new_relation_fastpath_write",
+                          "yb_enable_new_relation_fastpath_write_in_txn_blocks"}) {
+    SCOPED_TRACE(guc);
+    for (const auto* clause : {"= off", "FROM CURRENT"}) {
+      SCOPED_TRACE(clause);
+      auto status = conn.ExecuteFormat("ALTER FUNCTION fastpath_f() SET $0 $1", guc, clause);
+      ASSERT_NOK(status);
+      ASSERT_STR_CONTAINS(status.ToString(), kError);
+    }
+    // check_function_bodies = off, as in a dump restore, skips the run of the function's SET
+    // clause that would otherwise reject it at CREATE time.
+    for (const auto* check_function_bodies : {"on", "off"}) {
+      SCOPED_TRACE(Format("check_function_bodies = $0", check_function_bodies));
+      ASSERT_OK(conn.ExecuteFormat("SET check_function_bodies = $0", check_function_bodies));
+      auto status = conn.ExecuteFormat(
+          "CREATE FUNCTION fastpath_g() RETURNS INT AS 'SELECT 1' LANGUAGE sql SET $0 = off", guc);
+      ASSERT_NOK(status);
+      ASSERT_STR_CONTAINS(status.ToString(), kError);
+    }
+    ASSERT_OK(conn.ExecuteFormat("ALTER FUNCTION fastpath_f() RESET $0", guc));
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT fastpath_f()")), 1);
 }
 
 // Startup must not depend on where the GUC and yb_ddl_transaction_block_enabled land in
@@ -1662,8 +1918,9 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
   ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
 
-  // The index is a relation this transaction created, so its backfill takes the fastpath and sets
-  // the skipped-intents state before the catalog update conflicts.
+  // TODO(#38494): the build of an index on a table that existed before the transaction no longer
+  // takes the fastpath, so the skipped-intents state is not set here and its lower precedence is
+  // not exercised. No other statement was found that skips intents before it conflicts.
   auto result = index_conn.Execute(
       "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
   ASSERT_NOK(result);
@@ -1674,9 +1931,7 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
 // ysql_yb_enable_new_relation_fastpath_write is the kill switch for the optimization as a whole,
 // so turning it off has to be enough on its own: the cluster comes up with
 // ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks left on, and nothing takes the
-// fastpath. Both parameters land in ysql_pg.conf and postgres assigns them in the order they
-// appear there, so the dependency check between them must not reject this pair or the postmaster
-// refuses to start.
+// fastpath.
 class SkipIntentsFastpathDisabledTest : public SkipIntentsMetricTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1702,11 +1957,39 @@ TEST_F(SkipIntentsFastpathDisabledTest, TestKillSwitchDisablesFastpath) {
   ASSERT_OK(conn.Execute("CREATE TABLE parent_off_tb AS SELECT generate_series(1, 100) AS id"));
   ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
 
-  // Enabling it explicitly is still rejected, since that value comes from the user.
-  auto set_conn = ASSERT_RESULT(Connect());
-  auto result = set_conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on");
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.ToString(), "yb_enable_new_relation_fastpath_write is disabled");
+  // Inside a transaction block too, even with this GUC set explicitly.
+  ASSERT_OK(conn.Execute("SET yb_enable_new_relation_fastpath_write_in_txn_blocks = on"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE parent_off_block_tb AS SELECT generate_series(1, 100) AS id"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(GetSkipIntentsCount()), initial_writes);
+}
+
+// Connection options are applied in the order the client lists them. With the cluster's
+// yb_enable_new_relation_fastpath_write off, listing
+// yb_enable_new_relation_fastpath_write_in_txn_blocks first must not refuse the connection, since
+// the final values are valid. The same holds for SET, which Connection Manager replays in an order
+// of its own.
+TEST_F(SkipIntentsFastpathDisabledTest, TestConnectionOptionsOrder) {
+  constexpr auto kParentGuc = "yb_enable_new_relation_fastpath_write";
+  constexpr auto kInTxnBlocksGuc = "yb_enable_new_relation_fastpath_write_in_txn_blocks";
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "off");
+  }
+  auto conn = ASSERT_RESULT(ConnectUsingString(Format(
+      "host=$0 port=$1 user=$2 options='-c $3=on -c $4=on'",
+      pg_ts->bind_host(), pg_ts->ysql_port(), PGConnSettings::kDefaultUser, kInTxnBlocksGuc,
+      kParentGuc)));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kParentGuc))), "on");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
+
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = off", kParentGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kInTxnBlocksGuc));
+  ASSERT_OK(conn.ExecuteFormat("SET $0 = on", kParentGuc));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format("SHOW $0", kInTxnBlocksGuc))), "on");
 }
 
 // Cluster without transactional DDL, where the in-txn-block fastpath cannot apply.
@@ -2193,6 +2476,140 @@ TEST_P(SkipIntentsIsolationTest, DuplicateKeyCheckCrossesFastpathBoundary) {
   // The row written before the savepoint is in the regular db and survives the rollback of the
   // aborted statement; the transaction as a whole is rolled back, so the table is gone.
   ASSERT_NOK(conn.Fetch("SELECT k FROM dup_key_t"));
+}
+
+// An index created in a transaction block on a table that existed before it is written like the
+// table, through the intents db: a read through the index is not at in_txn_limit, so it would
+// not see rows written on the fastpath when the transaction's snapshot is older than the build
+// (#36505).
+class SkipIntentsNewIndexOnExistingTableTest : public SkipIntentsIsolationTest {
+ protected:
+  static constexpr auto kNumRows = 1000;
+  static constexpr auto kNumDistinct = 100;
+  static constexpr auto kRowsPerValue = kNumRows / kNumDistinct;
+
+  void SetUp() override {
+    SkipIntentsIsolationTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, c INT, u INT)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t SELECT g, g % $0, g FROM generate_series(1, $1) g",
+        kNumDistinct, kNumRows));
+  }
+
+  // Starts a transaction and makes it pick its snapshot. The sleep that follows puts anything
+  // the transaction would write on the fastpath outside the clock skew window of that snapshot,
+  // where a read at the snapshot silently misses it instead of asking for a restart.
+  Result<PGConn> BeginWithOldSnapshot() {
+    auto conn = VERIFY_RESULT(ConnectAtIsolation());
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    SCHECK_EQ(
+        VERIFY_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), kNumRows,
+        IllegalState, "Unexpected row count");
+    SleepFor(1s * kTimeMultiplier);
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_seqscan = off"));
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_bitmapscan = off"));
+    return conn;
+  }
+
+  Status BuildWithoutFastpath(PGConn& conn, const std::string& ddl) {
+    const auto writes_before = VERIFY_RESULT(GetSkipIntentsCount());
+    RETURN_NOT_OK(conn.Execute(ddl));
+    SCHECK_EQ(
+        VERIFY_RESULT(GetSkipIntentsCount()), writes_before, IllegalState,
+        "The index was built on the fastpath");
+    return Status::OK();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, SkipIntentsNewIndexOnExistingTableTest,
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ"), IsolationSuffix);
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, ScanAndModifyThroughIndex) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX t_c ON t (c)"));
+
+  const auto index_only_query = "SELECT count(*) FROM t WHERE c = 5";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(index_only_query, "Index Only")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), kRowsPerValue);
+
+  const auto index_query = "SELECT k FROM t WHERE c = 5 ORDER BY k";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(index_query, "Index")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(index_query)).size(), kRowsPerValue);
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRows<int32_t>("UPDATE t SET c = -1 WHERE c = 5 RETURNING k")).size(),
+      kRowsPerValue);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRows<int32_t>("DELETE FROM t WHERE c = 6 RETURNING k")).size(),
+      kRowsPerValue);
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, 777, $0)", kNumRows + 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 777")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), 0);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = -1")),
+      kRowsPerValue);
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 6")), 0);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = -1")),
+      kRowsPerValue);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 777")), 1);
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, UniqueConstraintArbiter) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "ALTER TABLE t ADD CONSTRAINT t_u_key UNIQUE (u)"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t VALUES ($0, 1, 5) ON CONFLICT (u) DO NOTHING", kNumRows + 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), kNumRows);
+  auto status = conn.ExecuteFormat("INSERT INTO t VALUES ($0, 1, 5)", kNumRows + 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, UniqueConstraintForeignKey) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "ALTER TABLE t ADD CONSTRAINT t_u_key UNIQUE (u)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE ch (id INT PRIMARY KEY, u INT REFERENCES t (u))"));
+  ASSERT_OK(conn.Execute("INSERT INTO ch VALUES (1, 5)"));
+  auto status = conn.ExecuteFormat("INSERT INTO ch VALUES (2, $0)", kNumRows + 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "violates foreign key constraint");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// A top-level statement is not always the last one of its transaction: an event trigger, or the
+// next statement of a pipeline, can read the index after it.
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, TopLevelBuild) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX NONCONCURRENTLY t_c ON t (c)"));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 5")), kRowsPerValue);
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, PartitionedTable) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pt (k INT, c INT, PRIMARY KEY (k)) PARTITION BY RANGE (k)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE pt_1 PARTITION OF pt FOR VALUES FROM (1) TO (501)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pt_2 PARTITION OF pt FOR VALUES FROM (501) TO (1001)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO pt SELECT g, g % $0 FROM generate_series(1, $1) g", kNumDistinct, kNumRows));
+
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX pt_c ON pt (c)"));
+  const auto query = "SELECT count(*) FROM pt WHERE c = 5";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(query, "Index Only")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(query)), kRowsPerValue);
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 } // namespace pgwrapper

@@ -453,6 +453,11 @@ void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
   tablet_->ListenNumSSTFilesChanged(std::move(listener));
 }
 
+bool TabletPeer::PendingPostSplitCompaction() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->ShouldDisableLbMove();
+}
+
 Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }

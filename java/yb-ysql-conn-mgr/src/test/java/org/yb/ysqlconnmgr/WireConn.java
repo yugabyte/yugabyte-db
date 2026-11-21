@@ -20,8 +20,13 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.security.cert.X509Certificate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +40,7 @@ public class WireConn implements AutoCloseable {
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30000;
   private static final String USER = "yugabyte";
   private static final String DATABASE = "yugabyte";
+  private static final int SSL_REQUEST_CODE = 80877103;
 
   private final Socket socket;
   private final DataOutputStream out;
@@ -103,6 +109,7 @@ public class WireConn implements AutoCloseable {
     private final Map<String, String> startupParams = new LinkedHashMap<>();
     private int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
     private ConnectionEndpoint endpoint = ConnectionEndpoint.YSQL_CONN_MGR;
+    private boolean ssl;
 
     Builder(MiniYBCluster cluster) {
       this.cluster = cluster;
@@ -121,6 +128,13 @@ public class WireConn implements AutoCloseable {
 
     public Builder socketTimeoutMs(int socketTimeoutMs) {
       this.socketTimeoutMs = socketTimeoutMs;
+      return this;
+    }
+
+    // Sends an SSLRequest and runs the TLS handshake before the startup message.
+    // The server certificate is not verified.
+    public Builder ssl() {
+      this.ssl = true;
       return this;
     }
 
@@ -159,6 +173,9 @@ public class WireConn implements AutoCloseable {
         socket.setTcpNoDelay(true);
         socket.setSoTimeout(socketTimeoutMs);
         socket.connect(target);
+        if (ssl) {
+          socket = startTls(socket, target);
+        }
         WireConn conn = new WireConn(socket);
         conn.sendRaw(PgWireProtocol.buildStartupMessage(USER, DATABASE, startupParams));
         return conn;
@@ -170,6 +187,35 @@ public class WireConn implements AutoCloseable {
         }
         throw e;
       }
+    }
+
+    private static SSLSocket startTls(Socket plain, InetSocketAddress target) throws Exception {
+      DataOutputStream plainOut = new DataOutputStream(plain.getOutputStream());
+      plainOut.writeInt(8);
+      plainOut.writeInt(SSL_REQUEST_CODE);
+      plainOut.flush();
+      int reply = plain.getInputStream().read();
+      if (reply != 'S') {
+        throw new IOException("Server refused SSL, replied " + reply);
+      }
+
+      SSLContext context = SSLContext.getInstance("TLS");
+      context.init(null, new TrustManager[] {new X509TrustManager() {
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+          return new X509Certificate[0];
+        }
+      }}, null);
+      SSLSocket socket = (SSLSocket) context.getSocketFactory().createSocket(
+          plain, target.getHostString(), target.getPort(), true);
+      socket.startHandshake();
+      return socket;
     }
   }
 }

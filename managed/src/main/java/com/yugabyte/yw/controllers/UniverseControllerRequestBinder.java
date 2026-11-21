@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -167,10 +169,18 @@ public class UniverseControllerRequestBinder {
     return merged;
   }
 
-  /** Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. */
+  /**
+   * Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. The merge
+   * sets the universe's current version, so the request's expectedUniverseVersion is put back:
+   * otherwise a request built from a stale copy of the universe would pass the task's version check
+   * and overwrite the changes made since.
+   */
   public static <T extends UniverseDefinitionTaskParams> T mergeBoundTaskParamsWithUniverse(
       T taskParams, Universe universe, Class<T> paramType) {
     T merged = mergeWithUniverse(taskParams, universe, paramType);
+    if (taskParams.expectedUniverseVersion != null) {
+      merged.expectedUniverseVersion = taskParams.expectedUniverseVersion;
+    }
     copyGFlagsFromUniverseDetails(merged, universe);
     return merged;
   }
@@ -205,21 +215,11 @@ public class UniverseControllerRequestBinder {
       UniverseDefinitionTaskParams.Cluster universeCluster =
           universeClustersByUuid.get(paramCluster.uuid);
       if (universeCluster == null || universeCluster.userIntent == null) {
-        // New cluster - no stored counterpart to merge from. Reject any REDACTED gflags so the
-        // sentinel is never written into universe metadata (the real value is unrecoverable).
-        UserIntent newIntent = paramCluster.userIntent;
-        if (mapContainsRedactedPlaceholder(newIntent.masterGFlags)
-            || mapContainsRedactedPlaceholder(newIntent.tserverGFlags)
-            || specificGFlagsContainsRedactedPlaceholder(newIntent.specificGFlags)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "New cluster (type="
-                  + paramCluster.clusterType
-                  + ") cannot be created with "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in gflags: there is no prior universe value to restore the real password"
-                  + " from. Submit the full gflags with the actual values.");
-        }
+        // A new cluster has nothing stored to restore REDACTED from, as on universe create.
+        GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+            paramCluster.userIntent,
+            universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion,
+            StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class));
         continue;
       }
       UserIntent src = universeCluster.userIntent;

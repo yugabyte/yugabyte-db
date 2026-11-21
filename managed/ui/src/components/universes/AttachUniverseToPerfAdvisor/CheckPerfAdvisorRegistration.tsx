@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
@@ -10,6 +10,7 @@ import {
 } from '../../../redesign/features/PerfAdvisor/api';
 import { AppName } from '../../../redesign/helpers/dtos';
 import { isNonEmptyString } from '@app/utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 
 interface CheckPerfAdvisorRegistrationProps {
   universeUuid: string;
@@ -17,6 +18,9 @@ interface CheckPerfAdvisorRegistrationProps {
   timezone: string;
   apiUrl: string;
   paUuid: string;
+  // From UniverseDetail's redux registration status, which is per universe and refetched when a
+  // PA task completes. The react-query entry below can hold another universe's or a pre-task mode.
+  registrationMode?: PaRegistrationMode;
 }
 
 export const CheckPerfAdvisorRegistration = ({
@@ -24,25 +28,27 @@ export const CheckPerfAdvisorRegistration = ({
   appName,
   timezone,
   apiUrl,
-  paUuid
+  paUuid,
+  registrationMode
 }: CheckPerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
-  const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
-  const [registrationMode, setRegistrationMode] = useState<PaRegistrationMode | undefined>();
+  // The universe page has already loaded this universe's registration into redux; start from it
+  // so this view doesn't show its own loader while fetching the same thing again.
+  const reduxRegistration = useSelector(
+    (state: any) => state.universe.universePaRegistrationStatus
+  );
+  const initialRegistration = getPromiseState(reduxRegistration).isSuccess()
+    ? reduxRegistration.data
+    : undefined;
   const getUniversePaRegistrationStatus = useQuery(
-    PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
+    [PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails, universeUuid],
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeUuid),
     {
-      onSuccess: (data) => {
-        setRegistrationStatus(data.success);
-        setRegistrationMode(data.mode);
-      },
-      onError: (error: any) => {
-        error.request.status === 404 && setRegistrationStatus(false);
-      },
+      initialData: initialRegistration,
       enabled: isNonEmptyString(paUuid) && isNonEmptyString(universeUuid)
     }
   );
+  const registrationStatus = !!getUniversePaRegistrationStatus.data?.success;
 
   if (
     getUniversePaRegistrationStatus.isLoading ||

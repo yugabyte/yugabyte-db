@@ -90,6 +90,7 @@
 #include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "commands/prepare.h"
 #include "commands/trigger.h"
 #include "commands/variable.h"
 #include "commands/yb_cmds.h"
@@ -187,8 +188,31 @@ static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALI
 static bool yb_need_invalidate_all_table_cache = false;
 
 static Oid	yb_system_db_oid_cache = InvalidOid;
+
+/*
+ * gucs_fixed, enabled and in_txn_blocks: the transaction copies
+ * yb_enable_new_relation_fastpath_write and
+ * yb_enable_new_relation_fastpath_write_in_txn_blocks the first time it may use
+ * the optimization: when it creates a table, or first touches a relation it
+ * created or rewrote, and it uses the copies from then on rather than the GUCs.
+ * A change to either GUC after that point could otherwise turn the optimization
+ * on after writes have gone to the intents db, so that those writes, applied at
+ * commit, overtake later writes to the same rows that went straight to the
+ * regular db, or turn it off after writes have skipped the intents db, so that
+ * later reads are no longer pointed at in_txn_limit.  The check hooks of the
+ * GUCs refuse SET once the transaction has taken a snapshot, which it always
+ * has by that point, but RESET, SET ... TO DEFAULT, RESET ALL and DISCARD ALL
+ * assign the reset value without calling a check hook, and a configuration
+ * file reload is accepted at any time.  The copy is not taken when the
+ * transaction starts, so that a SET that the check hooks accept before the
+ * first use, for example earlier in an extended-protocol pipeline that shares
+ * the transaction, still applies to it.
+ */
 typedef struct YbSkipIntentsTxnState
 {
+	bool		gucs_fixed;
+	bool		enabled;
+	bool		in_txn_blocks;
 	bool		disabled;
 	bool		has_skipped_write;
 	bool		has_seen_non_top_level;
@@ -213,13 +237,16 @@ static bool YBIsCurrentStmtCreateFunction();
 static uint64_t function_cache_generation = 0;
 
 /*
- * Set while YBCommitTransactionContainingDDL commits a transaction block that
- * ran DDL. The DDL transaction state is cleared before the commit RPC, so this
- * is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block). A DDL statement sets that state,
+ * and so does YBAddDdlTxnState for a catalog change made without one, such as
+ * by the statistics restore functions or the pg_hint_plan hint table trigger.
+ * The DDL transaction state is cleared before the commit RPC, so this is what
+ * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
-static void yb_maybe_test_fail_ddl(void);
+static void yb_maybe_test_fail_ddl(bool before_commit_rpc);
 static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
@@ -402,6 +429,53 @@ YbResetCatalogCacheVersion()
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
+static bool yb_is_historical_catalog_read = false;
+
+/*
+ * A transaction that starts with yb_read_time set runs without object locks:
+ * it reads the catalog and the data as of yb_read_time, so locks taken as of
+ * now protect nothing and only make it wait on, and block, concurrent DDLs.
+ * Since it skips object locking, it uses the legacy catalog read path, and
+ * the tserver keeps the catalog version check for its requests, which is what
+ * rejects reads across a breaking catalog change made after yb_read_time.
+ *
+ * yb_read_time_skip_catalog sessions read the current catalog, so they keep
+ * object locks.
+ */
+void
+YbSetObjectLockingForCurrTxn()
+{
+	yb_is_historical_catalog_read = (yb_read_time != 0 &&
+									 !yb_read_time_skip_catalog);
+	YBCSetGlobalObjectLockingForCurrTxn(yb_enable_global_object_locking_infra &&
+										!yb_is_historical_catalog_read);
+	YBCSetHistoricalCatalogReadForCurrTxn(yb_is_historical_catalog_read);
+}
+
+bool
+YbIsHistoricalCatalogRead()
+{
+	return yb_is_historical_catalog_read;
+}
+
+/*
+ * Whether the catalog caches and the local catalog version were loaded as of
+ * yb_read_time and must stay that way: until yb_read_time is reset, catalog
+ * changes are neither refreshed nor applied from invalidation messages. Keeping
+ * the version as of yb_read_time is what lets the tserver catalog version check
+ * reject reads across a breaking catalog change made after yb_read_time.
+ *
+ * Changing yb_read_time resets the local catalog version, so the first refresh
+ * after it loads the catalog as of the new value.
+ */
+bool
+YbIsCatalogPinnedToReadTime()
+{
+	return (yb_read_time != 0 &&
+			!yb_read_time_skip_catalog &&
+			yb_catalog_cache_version != YB_CATCACHE_VERSION_UNINITIALIZED);
+}
+
 /* These values are lazily initialized based on corresponding environment variables. */
 int			ybc_pg_double_write = -1;
 int			ybc_disable_pg_locking = -1;
@@ -415,6 +489,12 @@ bool		yb_read_from_followers = false;
 bool		yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t		yb_follower_read_staleness_ms = 0;
 bool		yb_default_collation_resolved = false;
+
+uint64_t	yb_backfill_timestamp = 0;
+char	   *yb_osc_backfill_partition_key = NULL;
+char	   *yb_osc_backfill_bfinstr = NULL;
+struct YbPgExecOutParam *yb_osc_backfill_out_param = NULL;
+bool		yb_osc_backfill_outer_started = false;
 
 bool
 IsYugaByteEnabled()
@@ -1100,6 +1180,12 @@ YbGetSessionReplicationOriginTimestamp(void)
 	return (int64_t) yb_timestamptz_to_micros_time_t(ts);
 }
 
+bool
+YbHasReplicationOriginSetup(void)
+{
+	return replorigin_session_origin != InvalidRepOriginId;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1309,13 +1395,15 @@ typedef struct YbCatalogMessageList
 } YbCatalogMessageList;
 
 /*
- * Some SQL statements require to switch to other userid (e.g. table owner's
- * userid) and lock down security-restricted operations during execution.
- * PG saves and restores userid and SecurityRestrictionContext properly during
- * normal execution. They aren't restored when an exception happens so that the
- * normal execution is aborted. This struct is used to record userid and
- * SecurityRestrictionContextwe so that we can properly restore the saved values
- * during query retries when the normal execution is aborted.
+ * ANALYZE analyzes each table as its owner under
+ * SECURITY_RESTRICTED_OPERATION, and an error leaves that context in place
+ * until AbortTransaction restores the caller's. The query layer never retries
+ * an ANALYZE, but it does retry an enclosing statement, e.g. SELECT f() where
+ * f runs ANALYZE, and yb_restart_transaction does not abort the PG
+ * transaction. In legacy DDL mode (!YBIsDdlTransactionBlockEnabled()), the
+ * PG_CATCH in YBTxnDdlProcessUtility calls YBResetDdlState before the error
+ * reaches that retry, and restores the context recorded here.
+ * TODO(#32073): Handle such retries with transactional DDL.
  */
 typedef struct YbUserIdAndSecContext
 {
@@ -1344,6 +1432,13 @@ typedef struct
 	 * increment the catalog version. See YbDdlCannotIncrementCatalogVersion.
 	 */
 	bool		stmt_cannot_increment_version;
+	/*
+	 * Whether the statement named by current_stmt_node_tag is an ANALYZE.
+	 * Kept apart from current_stmt_ddl_command_tag because YbGetDdlMode
+	 * clears that tag for a DDL that does not increment the catalog version,
+	 * such as an ANALYZE of only temporary tables.
+	 */
+	bool		current_stmt_is_analyze;
 	CommandTag	current_stmt_ddl_command_tag;
 	CommandTag	last_stmt_ddl_command_tag;
 	/*
@@ -1555,12 +1650,24 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	 * handling this failure end up trying to abort the transaction which
 	 * would anyway terminate the backend on failure. Revisit this approach in
 	 * case the behavior of YBCAbortTransaction changes.
+	 *
+	 * During proc_exit, log the error instead, as YBCAbortTransaction does:
+	 * a FATAL here would skip the rest of the transaction abort.
 	 */
 	YbcStatus	status = YBCPgRollbackToSubTransaction(id);
 
 	if (unlikely(status))
-		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
-			 id, YBCMessageAsCString(status));
+	{
+		if (!proc_exit_inprogress)
+			elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
+				 id, YBCMessageAsCString(status));
+		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
+		ereport(LOG,
+				(errmsg("failed to rollback to subtransaction %" PRId32
+						" during shutdown: %s",
+						id, YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
+	}
 
 	YbInvalidateTableCacheForAlteredTables();
 
@@ -2319,6 +2426,7 @@ bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
 bool		yb_enable_xcluster_analyze_replication = false;
+bool		yb_enable_colocated_tables_with_tablespaces = true;
 
 /* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
 bool		yb_silence_advisory_locks_not_supported_error = false;
@@ -2443,6 +2551,8 @@ bool		yb_enable_replication_origin_shared = true;
 bool		yb_use_hash_splitting_by_default = true;
 
 bool		yb_xcluster_automatic_mode_target_ddl = false;
+
+bool		yb_xcluster_invalid_index_ddl_check = true;
 
 bool		yb_enable_extended_sql_codes = false;
 
@@ -2751,11 +2861,38 @@ YBGetDdlUseRegularTransactionBlock()
 	return ddl_transaction_state.use_regular_txn_block;
 }
 
+/*
+ * True while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block), which a DDL statement or a
+ * catalog change registered through YBAddDdlTxnState sets: from just before it
+ * clears that state and sends the commit RPC, until that RPC succeeds or the
+ * transaction is aborted.
+ */
+bool
+YBIsDdlTxnBlockCommitInProgress()
+{
+	return ddl_txn_block_commit_in_progress;
+}
+
+/*
+ * Whether the current transaction takes object locks. pggate decides it, for
+ * the locks it sends and for this. A transaction without locks does not refresh
+ * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
+ * one, reads the catalog at its own read time, so a refresh would record the
+ * new catalog version with entries from before it.
+ */
+bool
+YbUsingObjectLocksLocally(void)
+{
+	return YBCPgUsingObjectLocksLocally();
+}
+
 void
 YBGetDdlOriginalStmtState(YbDdlOriginalStmtState *state)
 {
 	state->node_tag = ddl_transaction_state.current_stmt_node_tag;
 	state->command_tag = ddl_transaction_state.current_stmt_ddl_command_tag;
+	state->is_analyze = ddl_transaction_state.current_stmt_is_analyze;
 	state->is_top_level_ddl_active = ddl_transaction_state.is_top_level_ddl_active;
 }
 
@@ -2764,6 +2901,7 @@ YBSetDdlOriginalStmtState(const YbDdlOriginalStmtState *state)
 {
 	ddl_transaction_state.current_stmt_node_tag = state->node_tag;
 	ddl_transaction_state.current_stmt_ddl_command_tag = state->command_tag;
+	ddl_transaction_state.current_stmt_is_analyze = state->is_analyze;
 	ddl_transaction_state.is_top_level_ddl_active = state->is_top_level_ddl_active;
 }
 
@@ -2784,14 +2922,7 @@ YbSetIsGlobalDDL()
 static bool
 CheckIsAnalyzeDDL()
 {
-	if (ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
-	{
-		CommandTag	cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
-
-		Assert(cmdtag);
-		return cmdtag == CMDTAG_ANALYZE;
-	}
-	return false;
+	return ddl_transaction_state.current_stmt_is_analyze;
 }
 
 void
@@ -3386,7 +3517,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	yb_maybe_test_fail_ddl();
+	yb_maybe_test_fail_ddl(false /* before_commit_rpc */ );
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -3596,6 +3727,7 @@ YBCommitTransactionContainingDDL()
 
 	if (use_regular_txn_block)
 	{
+		yb_maybe_test_fail_ddl(true /* before_commit_rpc */ );
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
 		ddl_txn_block_commit_in_progress = false;
 		/*
@@ -3855,8 +3987,23 @@ static bool
 YbIsTopLevelOrAtomicStatement(ProcessUtilityContext context)
 {
 	return context == PROCESS_UTILITY_TOPLEVEL ||
-		(context == PROCESS_UTILITY_QUERY &&
-		 ddl_transaction_state.current_stmt_node_tag != T_RefreshMatViewStmt);
+		context == PROCESS_UTILITY_QUERY;
+}
+
+/*
+ * Undo YbGetDdlMode's write of is_top_level_ddl_active once the statement is
+ * done. A top-level statement clears it: not all statements (for eg. DMLs)
+ * call YBTxnDdlProcessUtility and hence YbGetDdlMode, so it cannot wait to be
+ * unset upon receiving the next statement. An atomic statement runs inside
+ * an enclosing one and restores the value that statement had.
+ */
+static void
+YbRestoreIsTopLevelDdlActive(ProcessUtilityContext context, bool prev_value)
+{
+	if (context == PROCESS_UTILITY_TOPLEVEL)
+		ddl_transaction_state.is_top_level_ddl_active = false;
+	else if (YbIsTopLevelOrAtomicStatement(context))
+		ddl_transaction_state.is_top_level_ddl_active = prev_value;
 }
 
 /*
@@ -3946,12 +4093,6 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		};
 	}
 
-	/*
-	 * Note: REFRESH MATVIEW (CONCURRENTLY) executes subcommands using SPI.
-	 * So, if the context is PROCESS_UTILITY_QUERY (command triggered using
-	 * SPI), and the current original node tag is T_RefreshMatViewStmt, do
-	 * not update the original node tag.
-	 */
 	if (YbIsTopLevelOrAtomicStatement(context))
 	{
 		/*
@@ -3968,7 +4109,19 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
-		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
+		ddl_transaction_state.current_stmt_is_analyze =
+			(node_tag == T_VacuumStmt &&
+			 ddl_transaction_state.current_stmt_ddl_command_tag == CMDTAG_ANALYZE);
+		/*
+		 * See YbUserIdAndSecContext. With transactional DDL, YBResetDdlState
+		 * runs from YBCAbortTransaction, after AbortTransaction has restored
+		 * the session's own context, so a saved context would replace it:
+		 * a rolled-back SET ROLE, or the matview owner and
+		 * SECURITY_RESTRICTED_OPERATION of the ANALYZE that REFRESH
+		 * MATERIALIZED VIEW CONCURRENTLY runs through SPI.
+		 */
+		if (!YBIsDdlTransactionBlockEnabled() && CheckIsAnalyzeDDL() &&
+			!ddl_transaction_state.userid_and_sec_context.is_set)
 		{
 			Oid			save_userid;
 			int			save_sec_context;
@@ -3982,10 +4135,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	else
 	{
 		Assert(context == PROCESS_UTILITY_SUBCOMMAND ||
-			   context == PROCESS_UTILITY_QUERY_NONATOMIC ||
-			   (context == PROCESS_UTILITY_QUERY &&
-				ddl_transaction_state.current_stmt_node_tag ==
-				T_RefreshMatViewStmt));
+			   context == PROCESS_UTILITY_QUERY_NONATOMIC);
 
 		is_version_increment = false;
 		is_breaking_change = false;
@@ -4261,19 +4411,10 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		case T_DropStmt:
 			{
 				/*
-				 * If this is a DROP statement that is being executed as part of
-				 * REFRESH MATVIEW (CONCURRENTLY), we are only dropping temporary
-				 * tables, and do not need to increment catalog version.
+				 * If all dropped objects are temporary, we do not need to
+				 * bump the catalog version.
 				 */
-				if (ddl_transaction_state.current_stmt_node_tag == T_RefreshMatViewStmt)
-					is_version_increment = false;
-				else
-				{
-					/*
-					 * If all dropped objects are temporary, we do not need to
-					 * bump the catalog version.
-					 */
-					DropStmt   *stmt = castNode(DropStmt, parsetree);
+				DropStmt   *stmt = castNode(DropStmt, parsetree);
 
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
@@ -4284,24 +4425,23 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					is_version_increment = false;
 					bool		marked_temp = false;
 
-						foreach(cell, stmt->objects)
+					foreach(cell, stmt->objects)
+					{
+						RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
+
+						if (!YbIsRangeVarTempRelation(rel))
+							is_version_increment = true;
+						else if (!marked_temp)
 						{
-							RangeVar   *rel = makeRangeVarFromNameList((List *) lfirst(cell));
-
-							if (!YbIsRangeVarTempRelation(rel))
-								is_version_increment = true;
-							else if (!marked_temp)
-							{
-								marked_temp = true;
-								YBMarkTxnUsesTempRelAndSetTxnId();
-							}
-							if (is_version_increment && marked_temp)
-								break;
+							marked_temp = true;
+							YBMarkTxnUsesTempRelAndSetTxnId();
 						}
-
-						if (!is_version_increment)
-							is_altering_existing_data = true;
+						if (is_version_increment && marked_temp)
+							break;
 					}
+
+					if (!is_version_increment)
+						is_altering_existing_data = true;
 				}
 				is_breaking_change = false;
 				break;
@@ -4484,7 +4624,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
-						YBCIsLegacyModeForCatalogOps();
+						!YBCUsingObjectLocksGloballyForCurrentTxn();
 				break;
 			}
 
@@ -4495,13 +4635,26 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				 * 1. VACUUM: No-op in YugabyteDB, no catalog version increment.
 				 * 2. ANALYZE: Increment catalog version.
 				 * 3. VACUUM ANALYZE: Same as ANALYZE, increment catalog version.
-				 * 4. ANALYZE via SPI (as part of concurrent MV refresh): No catalog
-				 *    version increment.
+				 * 4. ANALYZE of only temporary tables (e.g. the ones REFRESH
+				 *    MATERIALIZED VIEW CONCURRENTLY creates): No catalog version
+				 *    increment.
 				 */
 				VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
 				bool		is_analyze = false;
-				bool		is_from_spi =
-					(ddl_transaction_state.current_stmt_node_tag != T_VacuumStmt);
+				bool		all_temp = vacuum_stmt->rels != NIL;
+				ListCell   *rel_cell;
+
+				foreach(rel_cell, vacuum_stmt->rels)
+				{
+					VacuumRelation *vrel = lfirst_node(VacuumRelation, rel_cell);
+
+					if (!vrel->relation ||
+						!YbIsRangeVarTempRelation(vrel->relation))
+					{
+						all_temp = false;
+						break;
+					}
+				}
 
 				is_breaking_change = false;
 				is_version_increment = false;
@@ -4529,11 +4682,16 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				/*
 				 * Cases 2 & 3: Increment catalog version for ANALYZE to force
 				 * catalog cache refresh for updated table statistics.
-				 * Case 4: Skip increment if ANALYZE is being executed as part of
-				 * concurrent MV refresh.
+				 * Case 4: Temporary tables are session-local, so only the local
+				 * tserver response cache needs to be cleared.
 				 */
-				if (is_analyze && !is_from_spi)
-					is_version_increment = true;
+				if (is_analyze)
+				{
+					if (all_temp)
+						is_altering_existing_data = true;
+					else
+						is_version_increment = true;
+				}
 
 				break;
 			}
@@ -4837,6 +4995,16 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		ddl_transaction_state.global_ddl_command_tag;
 	const CommandTag prev_breaking_ddl_command_tag =
 		ddl_transaction_state.breaking_ddl_command_tag;
+	/*
+	 * A statement run through SPI, e.g. by REFRESH MATERIALIZED VIEW
+	 * CONCURRENTLY or an event trigger, must hand back the enclosing
+	 * statement's value when it finishes. Clearing it would let the query
+	 * layer retry the enclosing DDL in READ COMMITTED, see postgres.c. It is
+	 * not restored on error: postgres.c reads it to decide whether the failed
+	 * statement can be retried.
+	 */
+	const bool	prev_is_top_level_ddl_active =
+		ddl_transaction_state.is_top_level_ddl_active;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4877,8 +5045,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 		}
 		PG_CATCH();
 		{
-			if (YbIsTopLevelOrAtomicStatement(context))
-				ddl_transaction_state.is_top_level_ddl_active = false;
+			YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 			ddl_transaction_state.is_global_ddl = prev_is_global_ddl;
 			ddl_transaction_state.global_ddl_command_tag = prev_global_ddl_command_tag;
 			ddl_transaction_state.breaking_ddl_command_tag = prev_breaking_ddl_command_tag;
@@ -4970,18 +5137,9 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				YBDecrementDdlNestingLevel();
 			else
 				YBMergeDdlTxnState();
-
-			/*
-			 * Reset the is_top_level_ddl_active for this statement as it is
-			 * done executing. This field is set in YbGetDdlMode when we detect
-			 * a DDL statement. We need to the unset it after the DDL statement
-			 * is done and cannot wait for it to be unset upon receiving the
-			 * next statement. This is because not all statements (for eg. DMLs)
-			 * call YBTxnDdlProcessUtility and hence YbGetDdlMode.
-			 */
-			if (YbIsTopLevelOrAtomicStatement(context))
-				ddl_transaction_state.is_top_level_ddl_active = false;
 		}
+
+		YbRestoreIsTopLevelDdlActive(context, prev_is_top_level_ddl_active);
 	}
 	PG_CATCH();
 	{
@@ -7532,6 +7690,44 @@ YbCanResetCatalogVersion(void)
 			!IsTransactionBlock());
 }
 
+#define YB_READ_TIME_FIXED_IN_TXN_ERRMSG \
+	"yb_read_time cannot be changed inside a transaction block that started " \
+	"with it set"
+
+/*
+ * A transaction that started with yb_read_time set took no object locks
+ * (YbSetObjectLockingForCurrTxn); the rest of it must not run as of now
+ * without them.
+ */
+static bool
+YbCanChangeYbReadTimeInTxn(unsigned long long value_ull, bool is_ht_unit)
+{
+	return !(YbIsHistoricalCatalogRead() && IsTransactionBlock() &&
+			 (value_ull != yb_read_time || is_ht_unit != yb_is_read_time_ht));
+}
+
+/*
+ * guc.c restores a GUC's reset value without calling its check hook (RESET,
+ * SET ... TO DEFAULT, set_config() with a NULL value, RESET ALL), so those
+ * paths call this for yb_read_time instead.
+ */
+bool
+YbCanResetYbReadTime(const char *reset_val, int elevel)
+{
+	unsigned long long value_ull;
+	bool		is_ht_unit;
+
+	if (reset_val == NULL ||
+		!parse_yb_read_time(reset_val, &value_ull, &is_ht_unit) ||
+		YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
+		return true;
+
+	ereport(elevel,
+			(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+			 errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG)));
+	return false;
+}
+
 bool
 check_yb_read_time(char **newval, void **extra, GucSource source)
 {
@@ -7585,6 +7781,13 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 
 	if (!parse_yb_read_time(*newval, &value_ull, &is_ht_unit))
 	{
+		return false;
+	}
+
+	if (!YbCanChangeYbReadTimeInTxn(value_ull, is_ht_unit))
+	{
+		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+		GUC_check_errmsg(YB_READ_TIME_FIXED_IN_TXN_ERRMSG);
 		return false;
 	}
 
@@ -7893,7 +8096,8 @@ yb_assign_max_replication_slots(int newval, void *extra)
 {
 	ereport(NOTICE,
 			(errmsg("max_replication_slots should be controlled using the Gflag"
-					" \"max_replication_slots\" on the YB-Master process"),
+					" \"max_replication_slots\" on the YB-Master and YB-TServer"
+					" processes"),
 			 errdetail("In Yugabyte clusters, the replication slots are managed by"
 					   " the YB-Master globally. Hence limits on the number of"
 					   " replication slots should be controlled using Gflags and"
@@ -8866,6 +9070,20 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
+
+bool		yb_ysql_conn_mgr_sticky_prepare = false;
+
+bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
+
+bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
+
+bool		yb_conn_mgr_prepare_permanent_sticky = false;
+
 bool		yb_enable_mage = false;
 
 bool
@@ -8913,7 +9131,12 @@ YbIsStickyConnection(int *change)
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
 		YbIsConnectionMadeStickyUsingGUC() ||
-		yb_ysql_conn_mgr_sticky_locks;
+		yb_ysql_conn_mgr_sticky_locks ||
+		yb_ysql_conn_mgr_sticky_nontxn_object ||
+		yb_ysql_conn_mgr_sticky_replication_origin ||
+		YbHasReplicationOriginSetup() ||
+		yb_ysql_conn_mgr_sticky_prepare ||
+		YbHasSqlPreparedStatement();
 }
 
 void	  **
@@ -9538,19 +9761,10 @@ YbResetTransactionReadPoint(bool is_catalog_snapshot)
 	};
 
 	/*
-	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
-	 *
-	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
-	 * are multiple snapshots being used by Pg.
+	 * Flush all earlier operations so that they complete on the previous snapshot.
 	 */
-	if (!YBCIsRestartReadPointRequested())
-	{
-		/*
-		 * Flush all earlier operations so that they complete on the previous snapshot.
-		 */
-		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
-		HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
-	}
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
+	HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
 
 	if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot)
 		return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
@@ -10593,14 +10807,21 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 
 /*
  * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
- * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash, 5 = conflict,
+ * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
+ * 7 = conflict and 8 = deadlock are raised just before the commit RPC
+ * (before_commit_rpc), standing in for an error from that RPC.  That point is
+ * reached only when a transaction with DDL transaction state commits through a
+ * regular transaction block (transactional DDL); until then they stay set.
  * Resets to 0 after triggering.
  */
 static void
-yb_maybe_test_fail_ddl(void)
+yb_maybe_test_fail_ddl(bool before_commit_rpc)
 {
 	int fail_mode = yb_test_fail_next_ddl;
-	if (fail_mode == 0)
+	bool		commit_rpc_mode = (fail_mode == 7 || fail_mode == 8);
+
+	if (fail_mode == 0 || commit_rpc_mode != before_commit_rpc)
 		return;
 	yb_test_fail_next_ddl = 0;
 	if (YbIsClientYsqlConnMgr())
@@ -10628,6 +10849,21 @@ yb_maybe_test_fail_ddl(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_YB_TXN_CONFLICT),
 					 errmsg("failed DDL operation with conflict as requested")));
+			break;
+		case 6:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL operation with deadlock as requested")));
+			break;
+		case 7:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL commit with conflict as requested")));
+			break;
+		case 8:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL commit with deadlock as requested")));
 			break;
 		default:
 			break;
@@ -10785,10 +11021,48 @@ YbEnableSkipIntentsForNewTransaction()
 	skip_intents_txn_state = (YbSkipIntentsTxnState){};
 }
 
+/* Copies the skip intents GUCs on first use; see YbSkipIntentsTxnState. */
+static void
+YbFixSkipIntentsGucs()
+{
+	if (skip_intents_txn_state.gucs_fixed)
+		return;
+	skip_intents_txn_state.gucs_fixed = true;
+	skip_intents_txn_state.enabled = yb_enable_new_relation_fastpath_write;
+	skip_intents_txn_state.in_txn_blocks =
+		yb_enable_new_relation_fastpath_write_in_txn_blocks;
+}
+
 bool
 YBHasSkippedIntentsWrite()
 {
 	return skip_intents_txn_state.has_skipped_write;
+}
+
+/*
+ * Whether the relation is new in this transaction:
+ * 1. rd_createSubid: The logical table was created in this txn.
+ * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
+ * in this txn (typical for ALTER TABLE / REINDEX).
+ */
+static bool
+YbIsRelationNewInTxn(Relation rel)
+{
+	return rel->rd_createSubid != InvalidSubTransactionId ||
+		rel->rd_newRelfilenodeSubid != InvalidSubTransactionId;
+}
+
+static bool
+YbIsIndexedTableNewInTxn(Relation index)
+{
+	Relation	table = RelationIdGetRelation(index->rd_index->indrelid);
+	bool		result;
+
+	if (!RelationIsValid(table))
+		return false;
+	result = YbIsRelationNewInTxn(table);
+	RelationClose(table);
+	return result;
 }
 
 /*
@@ -10803,16 +11077,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	if (!yb_enable_new_relation_fastpath_write)
-		return info;
-
-	/*
-	 * 1. rd_createSubid: The logical table was created in this txn.
-	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
-	 * in this txn (typical for ALTER TABLE / REINDEX).
-	 */
-	if (rel->rd_createSubid == InvalidSubTransactionId &&
-		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
+	if (!YbIsRelationNewInTxn(rel))
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
@@ -10824,6 +11089,14 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 		return info;
 	}
 
+	/*
+	 * Only now, so that catalog reads and other relations earlier in the
+	 * transaction do not fix the GUC values before a SET that may still apply.
+	 */
+	YbFixSkipIntentsGucs();
+	if (!skip_intents_txn_state.enabled)
+		return info;
+
 	if (YbIsTempRelation(rel))
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is a temporary relation", rel->rd_id);
@@ -10833,6 +11106,20 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	if (YbGetTableDistribution(rel) == YB_COLOCATED)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
+		return info;
+	}
+
+	/*
+	 * A read through an index takes its decision from the table (see YbNewSelect), so an index
+	 * must not be written past the intents db unless its table is read at in_txn_limit too.
+	 * Otherwise the rows of an index built on a table that existed before the transaction
+	 * would be above the read time of the transaction's later statements.
+	 *
+	 * TODO(#38494): decide every read of an index from the index relation too, and drop this.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsIndexedTableNewInTxn(rel))
+	{
+		elog(DEBUG2, "Skip intents not applicable: the table of index %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
 	}
 
@@ -10855,7 +11142,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 * run inside a transaction block.
 	 */
 	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
-	bool top_level_only = !yb_enable_new_relation_fastpath_write_in_txn_blocks || is_serializable;
+	bool top_level_only = !skip_intents_txn_state.in_txn_blocks || is_serializable;
 	bool is_top_level = !IsTransactionBlock() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0 &&
@@ -10921,6 +11208,35 @@ YbGetSkipIntentsOptimizationInfoWrite(Relation rel)
 	return YbGetSkipIntentsOptimizationInfo(rel, true /* is_write */ );
 }
 
+/*
+ * Rejects a function SET clause for the skip intents GUCs. The clause is
+ * applied with PGC_S_SESSION each time the function is called, inside the
+ * calling statement, where their check hooks refuse any change, so the function
+ * could never be called. CREATE/ALTER FUNCTION ... SET validates each value
+ * with PGC_S_TEST (GUCArrayAdd), which the hooks accept because ALTER
+ * ROLE/DATABASE ... SET shares it. CREATE FUNCTION with check_function_bodies
+ * on also applies the clause with PGC_S_SESSION while validating the body, but
+ * not with it off, and ALTER FUNCTION never does, so the clause has to be
+ * refused here instead.
+ */
+void
+YbValidateFunctionSetItem(const VariableSetStmt *sstmt)
+{
+	if (sstmt->kind == VAR_SET_DEFAULT || sstmt->kind == VAR_RESET ||
+		sstmt->kind == VAR_RESET_ALL)
+		return;
+
+	if (pg_strcasecmp(sstmt->name, "yb_enable_new_relation_fastpath_write") == 0 ||
+		pg_strcasecmp(sstmt->name,
+					  "yb_enable_new_relation_fastpath_write_in_txn_blocks") == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
+				 errmsg("parameter \"%s\" cannot be set in a function's SET clause",
+						sstmt->name),
+				 errdetail("The SET clause is applied inside the calling statement, "
+						   "where %s cannot be changed.", sstmt->name)));
+}
+
 static YbcPgSkipIntentsOptimizationInfo
 YbGetSkipIntentsOptimizationInfoRead(Relation rel)
 {
@@ -10975,7 +11291,8 @@ YbDatabaseHasPublications(void)
 void
 YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid)
 {
-	if (!yb_enable_new_relation_fastpath_write)
+	YbFixSkipIntentsGucs();
+	if (!skip_intents_txn_state.enabled)
 		return;
 
 	if (skip_intents_txn_state.disabled)

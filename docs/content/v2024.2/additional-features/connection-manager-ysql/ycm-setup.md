@@ -83,7 +83,7 @@ Using the socket directory along with [`-p`](../../../api/ysqlsh/#p-port-port-po
 
 {{<tags/feature/ea idea="1368">}}You can enable built-in connection pooling on YugabyteDB Aeon clusters in the following ways:
 
-- When [creating a cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/), turn on the **Connection Pooling** option. (Connection Pooling is enabled by default for [Sandbox clusters](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).)
+- When [creating a cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/), turn on the **Connection Pooling** option.
 - For clusters that are already created, navigate to the cluster **Settings>Connection Pooling** tab.
 
 Enabling connection pooling on an Aeon cluster gives 10 client connections for every server connection by default.
@@ -252,6 +252,10 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - Attempting to use DEALLOCATE/DEALLOCATE ALL queries can result in unexpected behavior. {{<issue 24653>}}
 - Currently, you can't apply custom configurations to individual pools. The YSQL Connection Manager configuration applies to all pools.
 - When YSQL Connection Manager is enabled, the backend PID stored using JDBC drivers may not be accurate. This does not affect backend-specific functionalities (for example, cancel queries), but this PID should not be used to identify the backend process.
+- `pg_terminate_backend` terminates a backend process, not a client connection. {{<issue 23154>}}
+  - A client that is idle between transactions doesn't hold a backend. A script that terminates idle sessions found in `pg_stat_activity` therefore closes pooled backends, which Connection Manager reopens as needed. It doesn't reduce the number of client connections.
+  - Terminating a backend that is running a client's transaction, or that serves a sticky connection, disconnects that client. As in PostgreSQL, the client is disconnected, but with a `remote server read/write error ... Broken pipe` error (SQLSTATE `08006`) instead of the PostgreSQL `terminating connection due to administrator command` error.
+  - The next client that is given a backend terminated this way can fail with the same error and is disconnected.
 - By default, `currval` and `lastval` functions do not work when YSQL Connection Manager is enabled. To use them, set `ysql_conn_mgr_sequence_support_mode` to `session`, subject to the `session` limitation described in this list.
 - With `ysql_conn_mgr_sequence_support_mode` set to `pooled_with_curval_lastval`, `currval` and `lastval` return values from the backend that runs the query, not from your session. A client can see a value that another client's `nextval` generated on that backend, and DISCARD SEQUENCES clears these values only on the backend that runs it. {{<issue 36294>}}
 - With `ysql_conn_mgr_sequence_support_mode` set to `pooled_with_curval_lastval`, after your queries move to a different backend, `currval` and `lastval` fail with a "not yet defined in this session" error, even if you called `nextval` earlier in the session. {{<issue 36294>}}

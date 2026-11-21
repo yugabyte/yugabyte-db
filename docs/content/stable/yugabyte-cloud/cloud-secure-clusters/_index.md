@@ -1,18 +1,18 @@
 ---
-title: Secure clusters
-headerTitle: Secure clusters in YugabyteDB Aeon
+title: Secure distributed clusters in YugabyteDB Aeon
+headerTitle: Secure distributed clusters
 linkTitle: Secure clusters
 description: Secure clusters in YugabyteDB Aeon.
-headcontent: Configure the security features of your YugabyteDB Aeon clusters
+headcontent: Configure security features of your distributed clusters
 menu:
   stable_yugabyte-cloud:
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     identifier: cloud-secure-clusters
     weight: 30
 type: indexpage
 ---
 
-YugabyteDB Aeon clusters include the following security features:
+YugabyteDB Aeon distributed clusters include the following security features:
 
 | Feature | Description |
 | :--- | :--- |

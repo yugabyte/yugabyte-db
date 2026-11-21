@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, useWatch, Controller } from 'react-hook-form';
@@ -113,6 +113,12 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
   useUpdateEffect(() => {
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
+
+  // DB version is chosen on an earlier step, so this field remounts with the
+  // stored value. Clear it on mount, not only on a later version change.
+  useEffect(() => {
+    if (!isVersionConnectionPoolSupported(dbVersion)) setValue(CONNECTION_POOLING_FIELD, false);
+  }, [dbVersion]);
 
   // K8s never supports port overrides — keep defaults and clear the toggle.
   // Turning CP off resets Internal YSQL only; YSQL stays in sync with Advanced.

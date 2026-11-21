@@ -1005,16 +1005,17 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               })
           .setSubTaskGroupType(subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
-      Map<String, String> gflags = new HashMap<>();
-      gflags.put(
-          "allow_insecure_connections",
-          upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
+      Universe universe = getUniverse();
       createSetFlagInMemoryTasks(
               nodes,
               processType,
               (node, params) -> {
                 params.force = true;
-                params.gflags = gflags;
+                params.gflags = new HashMap<>();
+                params.gflags.put(
+                    "allow_insecure_connections",
+                    upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
+                addUserYsqlPgConfCsv(params.gflags, universe, node, processType);
               })
           .setSubTaskGroupType(subGroupType);
     }

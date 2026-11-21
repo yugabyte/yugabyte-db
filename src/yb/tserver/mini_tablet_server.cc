@@ -36,11 +36,15 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/dockv/partition.h"
+
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -74,11 +78,40 @@ DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_nodes_per_cloud);
 DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_bool(TEST_use_custom_varz);
 
 DEFINE_test_flag(bool, private_broadcast_address, false,
                  "Use private address for broadcast address in tests.");
 
 namespace yb::tserver {
+
+namespace {
+
+// Sets the address the RPC server binds to. With TEST_use_custom_varz, /varz shows the startup
+// value of --rpc_bind_addresses, which all servers of the process share, so also put this server's
+// own address there for tools that read it, such as yb-controller.
+void SetRpcBindAddresses(TabletServerOptions* opts, const std::string& addresses) {
+  opts->rpc_opts.rpc_bind_addresses = addresses;
+  if (!FLAGS_TEST_use_custom_varz) {
+    return;
+  }
+  static const std::string kFlagName = "rpc_bind_addresses";
+  // Alternating flag name and value lines.
+  std::vector<std::string> lines = strings::Split(opts->webserver_opts.TEST_custom_varz, "\n");
+  for (size_t i = 0; i + 1 < lines.size(); i += 2) {
+    if (lines[i] == kFlagName) {
+      lines[i + 1] = addresses;
+      opts->webserver_opts.TEST_custom_varz = JoinStrings(lines, "\n");
+      return;
+    }
+  }
+  if (!opts->webserver_opts.TEST_custom_varz.empty()) {
+    opts->webserver_opts.TEST_custom_varz += "\n";
+  }
+  opts->webserver_opts.TEST_custom_varz += kFlagName + "\n" + addresses;
+}
+
+}  // namespace
 
 MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
                                    const std::vector<std::string>& data_paths,
@@ -91,7 +124,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   // Start RPC server on loopback.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_server_allow_ephemeral_ports) = true;
   const std::string rpc_host = server::TEST_RpcAddress(index_, server::Private::kTrue);
-  opts_.rpc_opts.rpc_bind_addresses = HostPortToString(rpc_host, rpc_port);
+  SetRpcBindAddresses(&opts_, HostPortToString(rpc_host, rpc_port));
   // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
   opts_.broadcast_addresses = {
     HostPort(server::TEST_RpcAddress(index_,
@@ -209,8 +242,7 @@ void MiniTabletServer::Shutdown() {
       shutdown_pg_();
     }
     // Save bind address and port so we can later restart the server.
-    opts_.rpc_opts.rpc_bind_addresses = server::TEST_RpcBindEndpoint(
-        index_, bound_rpc_addr().port());
+    SetRpcBindAddresses(&opts_, server::TEST_RpcBindEndpoint(index_, bound_rpc_addr().port()));
     opts_.webserver_opts.port = bound_http_addr().port();
     server_->Shutdown();
     tunnel_.reset();

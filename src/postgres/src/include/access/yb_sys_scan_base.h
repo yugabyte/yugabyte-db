@@ -1,6 +1,14 @@
 /*-----------------------------------------------------------------------------
  *
  * yb_sys_scan_base.h
+ *	  Dispatch for YB's implementation of genam's systable scans.
+ *
+ *	  SysScanDescData.ybscan points to a YbSysScanBaseData, through
+ *	  whose vtable systable_getnext() and systable_endscan()
+ *	  continue a scan of a YB relation.  relscan.h includes this
+ *	  header only to declare that field.  Nothing above the access
+ *	  methods uses the type.  #36174 investigates replacing this
+ *	  dispatch.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

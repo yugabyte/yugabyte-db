@@ -109,9 +109,8 @@ class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
 
  private:
   static DistanceResult DistFunc(const void* lhs, const void* rhs, const void* arg) {
-    auto& metric = *static_cast<const unum::usearch::metric_punned_t*>(arg);
-    return metric(pointer_cast<const unum::usearch::byte_t*>(lhs),
-                  pointer_cast<const unum::usearch::byte_t*>(rhs));
+    return vector_index::MetricDistance(
+        *static_cast<const unum::usearch::metric_punned_t*>(arg), lhs, rhs);
   }
 
   unum::usearch::metric_punned_t metric_;
@@ -209,16 +208,9 @@ class HnswlibIndex :
     });
   }
 
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> BeginImpl()
-      const override {
+  std::unique_ptr<vector_index::VectorIndexIterator<Vector>> CreateIterator() const override {
     return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_begin(), options_.dimensions, this->payloads());
-  }
-
-  std::unique_ptr<AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>>> EndImpl()
-      const override {
-    return std::make_unique<HnswlibVectorIterator<Vector, DistanceResult>>(
-        hnsw_->vectors_end(), options_.dimensions, this->payloads());
+        *hnsw_, options_.dimensions, this->payloads());
   }
 
   Status DoReserve(
@@ -344,10 +336,12 @@ class HnswlibIndex :
       const Vector& query_vector, const SearchOptions& options) const {
     SCHECK(tenant_extractor_ || options.tenant.empty(), InvalidArgument,
            "Tenant search of a vector index without tenants");
+    SCHECK(!tenant_extractor_ || !options.tenant.empty(), InvalidArgument,
+           "Search of a vector index with tenants without a tenant");
     std::vector<VectorWithDistance<DistanceResult>> result;
     HnswlibVectorFilter filter(options.filter, this->payloads());
     auto tmp_result = tenant_extractor_
-        ? SearchTenants(query_vector, options, &filter)
+        ? SearchTenant(query_vector, options, &filter)
         : hnsw_->searchKnnCloserFirst(
               query_vector.data(), options.max_num_results, &filter, options.ef);
     RETURN_NOT_OK(filter.status());
@@ -369,31 +363,14 @@ class HnswlibIndex :
         NotSupported, "Hnswlib wrapper currently does not allow retriving vectors by id");
   }
 
-  // Tenants are separate graph clusters, so a search without a tenant searches every cluster.
-  // TODO(#36087): DocDB passes no tenant yet, so a search of an index with tenants searches every
-  // tenant cluster, one at a time.
   // Returns results closer first.
-  std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> SearchTenants(
+  std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> SearchTenant(
       const Vector& query_vector, const SearchOptions& options,
       HnswlibVectorFilter* filter) const {
     // Further first.
-    std::priority_queue<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> top;
-    if (!options.tenant.empty()) {
-      top = hnsw_->searchTenantKnn(
-          query_vector.data(), options.max_num_results, options.tenant.AsStringView(), filter,
-          options.ef);
-    } else {
-      for (auto entry : hnsw_->getTenantEntries()) {
-        auto tenant_top = hnsw_->searchKnnFrom(
-            query_vector.data(), options.max_num_results, filter, options.ef, entry);
-        for (; !tenant_top.empty(); tenant_top.pop()) {
-          top.push(tenant_top.top());
-          if (top.size() > options.max_num_results) {
-            top.pop();
-          }
-        }
-      }
-    }
+    auto top = hnsw_->searchTenantKnn(
+        query_vector.data(), options.max_num_results, options.tenant.AsStringView(), filter,
+        options.ef);
     std::vector<std::tuple<DistanceResult, VectorId, hnswlib::tableint>> result(top.size());
     for (auto it = result.rbegin(); it != result.rend(); ++it, top.pop()) {
       *it = top.top();
@@ -475,42 +452,41 @@ class HnswlibIndex :
 
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class HnswlibVectorIterator
-    : public AbstractIterator<vector_index::VectorIndexIteratorEntry<Vector>> {
+class HnswlibVectorIterator : public vector_index::VectorIndexIterator<Vector> {
  public:
-  using VectorIndex = HnswlibIndex<Vector, DistanceResult>;
-  using HNSWIterator = hnswlib::VectorIterator<DistanceResult, VectorId>;
+  using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
   using IteratorEntry = vector_index::VectorIndexIteratorEntry<Vector>;
 
   HnswlibVectorIterator(
-      HNSWIterator position, int dimensions, const vector_index::VectorPayloadMap* payloads)
-      : internal_iterator_(position), dimensions_(dimensions), payloads_(payloads) {}
+      const HNSWImpl& hnsw, int dimensions, const vector_index::VectorPayloadMap* payloads)
+      : hnsw_(hnsw), size_(hnsw.getCurrentElementCount()), dimensions_(dimensions),
+        payloads_(payloads) {}
 
- protected:
-  IteratorEntry Dereference() const override {
-    auto pair_data = *internal_iterator_;
+  IteratorEntry Entry() const override {
     IteratorEntry result;
-    result.vector_id = pair_data.second;
+    result.vector_id = hnsw_.getExternalLabel(internal_id_);
     result.vector.resize(dimensions_);
-    std::memcpy(result.vector.data(), pair_data.first,
+    std::memcpy(result.vector.data(), hnsw_.getDataByInternalId(internal_id_),
                 dimensions_ * sizeof(typename Vector::value_type));
     if (payloads_) {
-      result.payload = CHECK_RESULT(payloads_->Get(internal_iterator_.internal_id()));
+      result.payload = CHECK_RESULT(payloads_->Get(internal_id_));
     }
     return result;
   }
 
-  void Next() override { ++internal_iterator_; }
+  void Next() override { ++internal_id_; }
 
-  bool NotEquals(const AbstractIterator<IteratorEntry>& other) const override {
-    const auto& other_casted = down_cast<const HnswlibVectorIterator&>(other);
-    return internal_iterator_ != other_casted.internal_iterator_;
+ protected:
+  bool DoValid() const override {
+    return internal_id_ < size_;
   }
 
  private:
-  HNSWIterator internal_iterator_;
-  int dimensions_;
+  const HNSWImpl& hnsw_;
+  const size_t size_;
+  const int dimensions_;
   const vector_index::VectorPayloadMap* payloads_;
+  hnswlib::tableint internal_id_ = 0;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -538,6 +514,10 @@ class HnswlibIndexTraits :
     return HNSWImpl::estimateNumVectorsForBytes(
         bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
         options_.dimensions * sizeof(Scalar));
+  }
+
+  const vector_index::VectorTenantExtractor& tenant_extractor() const override {
+    return tenant_extractor_;
   }
 
  private:
