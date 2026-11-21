@@ -5369,6 +5369,20 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_isvalid = true;
 }
 
+/*
+ * YB: A transaction without global object locks refreshes its catalog cache
+ * mid-transaction, but a DDL that took no object locks (an autonomous DDL) did
+ * not wait for its locks. If such a DDL rewrote a table the transaction holds
+ * locked, the new table is empty at the transaction snapshot, where PG would
+ * have blocked the DDL. So when a refresh drops or rebuilds the entry of a
+ * table locked before the refresh, remember its relfilenode, and fail if it
+ * differs when the entry is pinned again. A table first locked after the
+ * rewrite is not checked: as in PG, a rewrite is not MVCC-safe, and the table
+ * appears empty to an older snapshot. Pairs of relid and relfilenode in
+ * TopTransactionContext.
+ */
+static List *yb_check_rels = NIL;
+
 
 /* ----------------------------------------------------------------
  *				 Relation Descriptor Lookup Interface
@@ -5482,6 +5496,21 @@ RelationIncrementReferenceCount(Relation rel)
 	rel->rd_refcnt += 1;
 	if (!IsBootstrapProcessingMode())
 		ResourceOwnerRememberRelationRef(CurrentResourceOwner, rel);
+
+	/*
+	 * YB: see yb_check_rels. Entries stay so a retry after a savepoint fails.
+	 * Skip a relfilenode this transaction assigned itself. Only the first pin
+	 * is checked: a reader opens the table with no pin left, while a pin of an
+	 * open table reads no data, such as the EXPLAIN that query plan management
+	 * runs in ExecutorEnd of a portal that scanned the table before the rewrite.
+	 */
+	for (int i = 0; !yb_refresh_cache_in_progress && i < list_length(yb_check_rels); i += 2)
+		if (list_nth_oid(yb_check_rels, i) == RelationGetRelid(rel) &&
+			rel->rd_refcnt == 1 && rel->rd_firstRelfilenodeSubid == InvalidSubTransactionId &&
+			rel->rd_rel->relfilenode != list_nth_oid(yb_check_rels, i + 1))
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+					 errmsg("could not serialize access due to concurrent table rewrite")));
 }
 
 /*
@@ -5888,6 +5917,26 @@ RelationClearRelation(Relation relation, bool rebuild)
 	/* See RelationForgetRelation(). */
 	if (relation->rd_droppedSubid != InvalidSubTransactionId)
 		return;
+
+	/*
+	 * YB: see yb_check_rels. Covers inval-message and full refreshes. Only a
+	 * transaction-wide snapshot is checked: that includes READ COMMITTED run as
+	 * REPEATABLE READ, but not YSQL SERIALIZABLE, which reads the latest data. A
+	 * lock not yet cleared is the one that triggered this refresh. Catalogs are
+	 * skipped: a cold-started entry may show a different relfilenode once
+	 * rebuilt, and no DDL rewrites them.
+	 */
+	if (yb_refresh_cache_in_progress && FirstSnapshotSet && !IsCatalogRelation(relation) &&
+		YBGetEffectivePggateIsolationLevel() == XACT_REPEATABLE_READ &&
+		!YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		YbRelationLockClearedByMe(RelationGetRelid(relation)))
+	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+
+		yb_check_rels = lappend_oid(lappend_oid(yb_check_rels, RelationGetRelid(relation)),
+									relation->rd_rel->relfilenode);
+		MemoryContextSwitchTo(oldcxt);
+	}
 
 	/*
 	 * Even non-system indexes should not be blown away if they are open and
@@ -6629,6 +6678,8 @@ AtEOXact_RelationCache(bool isCommit)
 	 */
 	Assert(in_progress_list_len == 0 || !isCommit);
 	in_progress_list_len = 0;
+	/* YB: these were in TopTransactionContext */
+	yb_check_rels = NIL;
 
 	/*
 	 * Unless the eoxact_list[] overflowed, we only need to examine the rels
