@@ -149,6 +149,14 @@ SELECT * FROM check_all_indexes_in_db();
 COMMIT;
 ```
 
+## Row-level security
+
+Row-level security enforcement in `yb_index_check()` is available in v2024.2.12.0 and later.
+
+`yb_index_check()` reads every physical row of the base table. If row-level security is enabled on that table and the caller cannot bypass it, the function fails before scanning.
+
+The check is allowed for superusers, table owners (unless `FORCE ROW LEVEL SECURITY` is set), and roles with `BYPASSRLS`. Tables without RLS are unaffected. On a partitioned index, the same requirement applies to each partition: the caller must be allowed to read every row of that partition's base table.
+
 ## Reporting issues
 
 An error with the `ERRCODE_INDEX_CORRUPTED` error code is thrown if an index consistency issue is encountered. If no issues are found, the function returns void.
