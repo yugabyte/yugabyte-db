@@ -26,8 +26,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.context.session.SessionStore;
@@ -52,9 +50,6 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   private final JWTVerifier jwtVerifier;
   private final TokenAuthenticator tokenAuthenticator;
 
-  private static final String UUID_PATTERN =
-      "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/.*)?";
-
   @Inject
   public AuthorizationHandler(
       Config config,
@@ -76,20 +71,12 @@ public class AuthorizationHandler extends Action<AuthzPath> {
       return delegate.call(request);
     }
 
-    String endpoint = request.uri();
-    UUID customerUUID = null;
-    Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, Util.CUSTOMERS));
-    Matcher custMatcher = custPattern.matcher(endpoint);
-    if (custMatcher.find()) {
-      customerUUID = UUID.fromString(custMatcher.group(1));
-    }
+    String requestPath = request.path();
+    UUID customerUUID = RequestPaths.uuidAfter(requestPath, Util.CUSTOMERS);
 
     // Allow for disabling authentication on proxy endpoint so that
     // Prometheus can scrape database nodes.
-    if (Pattern.matches(
-            String.format(
-                "^.*/universes/%s/proxy/%s/(.*)$", Util.PATTERN_FOR_UUID, Util.PATTERN_FOR_HOST),
-            endpoint)
+    if (RequestPaths.isMetricsProxy(requestPath)
         && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
       return delegate.call(request);
     }
@@ -146,22 +133,14 @@ public class AuthorizationHandler extends Action<AuthzPath> {
       boolean isPermissionPresentOnResource;
 
       switch (resource.sourceType()) {
-          // Identify the resourceUUID from the API endpoint. A typical endpoint follows the format
-          // http://<platform_endpoint>/api/v1/<other_details>/<resource_identifier>/<resource_uuid>
-          // or
-          // http://<platform_endpoint>/api/v1/<other_details>?<resource_identifier>=<resource_uuid>
+          // Identify the resourceUUID from the request path, which follows the format
+          // /api/v1/<other_details>/<resource_identifier>/<resource_uuid>
           // If the UUID can not be identified we check for the required permission of a resource
-          // type by
-          // using allowAll=true
+          // type by using allowAll=true
         case ENDPOINT:
           {
-            Pattern pattern =
-                Pattern.compile(
-                    String.format("(.*\\/|\\?)%s(\\/|=)" + UUID_PATTERN, resource.path()));
-            Matcher matcher = pattern.matcher(endpoint);
-            if (matcher.find()) {
-              resourceUUID = UUID.fromString(matcher.group(3));
-            } else if (resource.path().equals(Util.CUSTOMERS)) {
+            resourceUUID = RequestPaths.uuidAfter(requestPath, resource.path());
+            if (resourceUUID == null && resource.path().equals(Util.CUSTOMERS)) {
               resourceUUID = user.getCustomerUUID();
             }
             isPermissionPresentOnResource =
@@ -203,13 +182,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
           }
         case DB:
           {
-            Pattern pattern =
-                Pattern.compile(
-                    String.format("(.*\\/|\\?)%s(\\/|=)" + UUID_PATTERN, resource.identifier()));
-            Matcher matcher = pattern.matcher(request.path());
-            if (matcher.find()) {
-              resourceUUID = UUID.fromString(matcher.group(3));
-            }
+            resourceUUID = RequestPaths.uuidAfter(requestPath, resource.identifier());
             Class<? extends Model> modelClass = resource.dbClass();
             Finder<UUID, Model> find = new Finder(modelClass);
 
