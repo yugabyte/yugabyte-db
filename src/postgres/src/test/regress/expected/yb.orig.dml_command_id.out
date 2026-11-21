@@ -248,7 +248,20 @@ SELECT * FROM cid_mk_2;
 (1 row)
 
 DROP TABLE cid_mk_1, cid_mk_2;
+-- So does a GIN index scan.
+CREATE TABLE cid_gin (k int PRIMARY KEY, a int[]);
+CREATE INDEX ON cid_gin USING gin (a);
+INSERT INTO cid_gin VALUES (1, '{1}');
+SET enable_seqscan = off;
+WITH i AS (INSERT INTO cid_gin VALUES (2, '{1}') RETURNING k)
+SELECT (SELECT count(*) FROM cid_gin WHERE a @> '{1}') AS scan, i.* FROM i;
+ scan | k 
+------+---
+    1 | 2
+(1 row)
+
+RESET enable_seqscan;
 DROP TABLE cid_t, cid_t2, cid_no_pk, cid_t3, cid_k, cid_s, cid_h, cid_mvt,
-  cid_m, cid_m_seen;
+  cid_m, cid_m_seen, cid_gin;
 DROP FUNCTION cid_zeros(), cid_count3(), cid_count3_volatile(), cid_f(int),
   cid_m_peek(int), cid_mk(int);
