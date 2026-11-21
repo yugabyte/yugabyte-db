@@ -8,7 +8,7 @@
  */
 
 import { cloneElement } from 'react';
-import { find } from 'lodash';
+import { find, isEmpty } from 'lodash';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TaskStatus } from '@app/redesign/helpers/api';
 import {
@@ -18,7 +18,14 @@ import {
   showTaskInDrawer
 } from '../../../actions/tasks';
 import { TargetType, Task, TaskState, TaskType } from './dtos';
-import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
+import { AuditLogProps, DiffApiResp, GFlagsDiffProps } from './components/diffComp/dtos';
+import {
+  getTaskDiffValue,
+  withDefaultClusterType,
+  withUnchangedIntentFromPayload,
+  withoutDeletedClusters,
+  withIdentityFromPayload
+} from './components/diffComp/taskDiffUtils';
 import {
   SoftwareUpgradeState,
   SoftwareUpgradeTaskType
@@ -79,7 +86,8 @@ export const getOriginalTaskTypeColumnLabel = (
  */
 export const doesTaskSupportsDiffData = (task: Task): boolean => {
   if (task.type === TaskType.EDIT) {
-    return task.target === 'Universe';
+    // A read replica edit is a Cluster target task.
+    return task.target === 'Universe' || task.target === 'Cluster';
   }
   return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(
     task.type
@@ -99,9 +107,34 @@ export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
   if (!auditLog) return undefined;
+  const gflagsAudit = (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags;
+  // Without a taskDiff there is nothing to show, except the gflag entries the upgrade wrote itself.
+  if (isEmpty(auditLog.taskDiff)) {
+    return gflagsAudit
+      ? {
+          afterData: {},
+          beforeData: {},
+          gflagsAudit,
+          parentUuid: auditLog.taskUUID,
+          uuid: auditLog.auditID.toString()
+        }
+      : undefined;
+  }
+  const taskDiff = withUnchangedIntentFromPayload(
+    withDefaultClusterType(
+      withIdentityFromPayload(
+        withoutDeletedClusters(auditLog.taskDiff),
+        auditLog.payload,
+        (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
+      ),
+      auditLog.payload
+    ),
+    auditLog.payload
+  );
   return {
-    afterData: auditLog.payload,
-    beforeData: auditLog.additionalDetails,
+    afterData: getTaskDiffValue(taskDiff, 'new'),
+    beforeData: getTaskDiffValue(taskDiff, 'old'),
+    gflagsAudit,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };
