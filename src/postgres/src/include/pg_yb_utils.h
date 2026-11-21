@@ -1202,7 +1202,7 @@ void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);
-extern void YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize);
+extern void YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database);
 extern void YbLockDatabaseToSerializeDdl(YbDdlMode mode);
 extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();

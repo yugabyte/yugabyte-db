@@ -3007,24 +3007,24 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	YBAddDdlTxnStateExtended(mode, true /* serialize */ );
+	YBAddDdlTxnStateExtended(mode, true /* serialize_ddl_in_database */ );
 }
 
 /*
- * serialize is false for a DDL transaction that waits for lockers right after
- * it enters DDL state: the second transaction of DETACH PARTITION
- * CONCURRENTLY. The wait is registered under the session's transaction, while
- * the lock belongs to the DDL's transaction, so a writer the wait waits for,
- * running a DDL that queues on a lock the DDL already held, would block with
- * it until a timeout, with no deadlock reported. Such a caller takes the lock
- * with YbLockDatabaseToSerializeDdl after its wait.
+ * serialize_ddl_in_database is false for a DDL transaction that waits for
+ * lockers right after it enters DDL state: the second transaction of DETACH
+ * PARTITION CONCURRENTLY. The wait is registered under the session's
+ * transaction, while the lock belongs to the DDL's transaction, so a writer
+ * the wait waits for, running a DDL that queues on a lock the DDL already
+ * held, would block with it until a timeout, with no deadlock reported. Such
+ * a caller takes the lock with YbLockDatabaseToSerializeDdl after its wait.
  */
 void
-YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize)
+YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
 
-	if (serialize)
+	if (serialize_ddl_in_database)
 		YbLockDatabaseToSerializeDdl(mode);
 
 	/*

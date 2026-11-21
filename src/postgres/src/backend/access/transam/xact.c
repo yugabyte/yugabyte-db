@@ -3399,10 +3399,11 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 }
 
 /*
- * serialize is passed to YBAddDdlTxnStateExtended for the new transaction.
+ * serialize_ddl_in_database is passed to YBAddDdlTxnStateExtended for the new
+ * transaction.
  */
 void
-YbCommitTransactionCommandIntermediate(bool serialize)
+YbCommitTransactionCommandIntermediate(bool serialize_ddl_in_database)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
@@ -3447,7 +3448,7 @@ YbCommitTransactionCommandIntermediate(bool serialize)
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		YBAddDdlTxnStateExtended(ddl_mode, serialize);
+		YBAddDdlTxnStateExtended(ddl_mode, serialize_ddl_in_database);
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
 	}
 }

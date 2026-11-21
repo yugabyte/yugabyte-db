@@ -524,7 +524,8 @@ vacuum(List *relations, VacuumParams *params,
 					 * state, start a new one and set the stored ddl state.
 					 */
 					if (IsYugaByteEnabled())
-						YbCommitTransactionCommandIntermediate(true /* serialize */ );
+						YbCommitTransactionCommandIntermediate(
+							true /* serialize_ddl_in_database */ );
 					else
 						StartTransactionCommand();
 
@@ -565,7 +566,7 @@ vacuum(List *relations, VacuumParams *params,
 	if (use_own_xacts)
 	{
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate(true /* serialize */ );
+			YbCommitTransactionCommandIntermediate(true /* serialize_ddl_in_database */ );
 		else
 		{
 			/* here, we are not in a transaction */
