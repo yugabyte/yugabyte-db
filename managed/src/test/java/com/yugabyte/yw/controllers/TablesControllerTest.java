@@ -1827,6 +1827,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertEquals(OK, r.status());
     Set<String> tableNames = new HashSet<>();
     json.elements().forEachRemaining(table -> tableNames.add(table.get("tableName").asText()));
+    // Neither the materialized view nor the index on it is listed.
     assertEquals(Set.of("main_table"), tableNames);
   }
 
@@ -1852,7 +1853,9 @@ public class TablesControllerTest extends FakeDBApplication {
             table ->
                 tableNameToRelationType.put(
                     table.get("tableName").asText(), table.get("relationType").asText()));
-    assertEquals(Set.of("main_table", "main_table_mv"), tableNameToRelationType.keySet());
+    assertEquals(
+        Set.of("main_table", "main_table_mv", "main_table_mv_idx"),
+        tableNameToRelationType.keySet());
     assertEquals(
         RelationType.MATVIEW_TABLE_RELATION.toString(),
         tableNameToRelationType.get("main_table_mv"));
@@ -1865,6 +1868,13 @@ public class TablesControllerTest extends FakeDBApplication {
             .setName("main_table_mv")
             .setId(ByteString.copyFromUtf8("000033c0000030008000000000004004"))
             .setRelationType(RelationType.MATVIEW_TABLE_RELATION)
+            .build());
+    mockTableInfoList.add(
+        TableInfo.newBuilder()
+            .setName("main_table_mv_idx")
+            .setId(ByteString.copyFromUtf8("000033c0000030008000000000004005"))
+            .setRelationType(RelationType.INDEX_TABLE_RELATION)
+            .setIndexedTableId("000033c0000030008000000000004004")
             .build());
     when(mockListTablesResponse.getTableInfoList()).thenReturn(mockTableInfoList);
     when(mockClient.getTablesList(null, false, null)).thenReturn(mockListTablesResponse);

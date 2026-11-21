@@ -10,6 +10,7 @@ import static org.junit.Assert.fail;
 
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.PlatformServiceException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -78,6 +79,24 @@ public class XClusterConfigTaskBaseTest {
   private static final String INDEX_TABLE_ID = "000030af000030008000000000004001";
   private static final String MATVIEW_TABLE_ID = "000030af000030008000000000004002";
   private static final String DB2_MATVIEW_TABLE_ID = "000030af000030008000000000004003";
+  private static final String MATVIEW_INDEX_TABLE_ID = "000030af000030008000000000004004";
+
+  private static MasterDdlOuterClass.ListTablesResponsePB.TableInfo buildIndexTableInfo(
+      String tableId, String tableName, String indexedTableId, String namespaceId) {
+    return buildTableInfo(tableId, tableName, RelationType.INDEX_TABLE_RELATION, namespaceId)
+        .toBuilder()
+        .setIndexedTableId(indexedTableId)
+        .build();
+  }
+
+  private static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+      sourceTableInfoListWithMatviewIndex() {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+        new ArrayList<>(sourceTableInfoList());
+    tableInfoList.add(
+        buildIndexTableInfo(MATVIEW_INDEX_TABLE_ID, "matview_1_idx", MATVIEW_TABLE_ID, DB1_ID));
+    return tableInfoList;
+  }
 
   private static MasterDdlOuterClass.ListTablesResponsePB.TableInfo buildTableInfo(
       String tableId, String tableName, RelationType relationType, String namespaceId) {
@@ -97,7 +116,7 @@ public class XClusterConfigTaskBaseTest {
   private static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList() {
     return List.of(
         buildTableInfo(TABLE_ID, "table_1", RelationType.USER_TABLE_RELATION, DB1_ID),
-        buildTableInfo(INDEX_TABLE_ID, "index_1", RelationType.INDEX_TABLE_RELATION, DB1_ID),
+        buildIndexTableInfo(INDEX_TABLE_ID, "index_1", TABLE_ID, DB1_ID),
         buildTableInfo(MATVIEW_TABLE_ID, "matview_1", RelationType.MATVIEW_TABLE_RELATION, DB1_ID),
         buildTableInfo(
             DB2_MATVIEW_TABLE_ID, "matview_2", RelationType.MATVIEW_TABLE_RELATION, DB2_ID));
@@ -123,10 +142,73 @@ public class XClusterConfigTaskBaseTest {
   public void isXClusterSupportedMatview() {
     MasterDdlOuterClass.ListTablesResponsePB.TableInfo matview =
         buildTableInfo(MATVIEW_TABLE_ID, "matview_1", RelationType.MATVIEW_TABLE_RELATION, DB1_ID);
-    assertFalse(XClusterConfigTaskBase.isXClusterSupported(matview, false /* matviewSupported */));
-    assertTrue(XClusterConfigTaskBase.isXClusterSupported(matview, true /* matviewSupported */));
-    // The single argument overload keeps rejecting matviews.
-    assertFalse(XClusterConfigTaskBase.isXClusterSupported(matview));
+    Set<String> matviewTableIds = Set.of(MATVIEW_TABLE_ID);
+    assertFalse(
+        XClusterConfigTaskBase.isXClusterSupported(
+            matview, false /* matviewSupported */, matviewTableIds));
+    assertTrue(
+        XClusterConfigTaskBase.isXClusterSupported(
+            matview, true /* matviewSupported */, matviewTableIds));
+  }
+
+  @Test
+  public void isXClusterSupportedIndexOnMatview() {
+    // An index on a materialized view is supported only when materialized views are.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo matviewIndex =
+        buildIndexTableInfo(MATVIEW_INDEX_TABLE_ID, "matview_1_idx", MATVIEW_TABLE_ID, DB1_ID);
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableIndex =
+        buildIndexTableInfo(INDEX_TABLE_ID, "index_1", TABLE_ID, DB1_ID);
+    Set<String> matviewTableIds =
+        XClusterConfigTaskBase.getMatviewTableIds(sourceTableInfoListWithMatviewIndex());
+    assertEquals(Set.of(MATVIEW_TABLE_ID, DB2_MATVIEW_TABLE_ID), matviewTableIds);
+
+    assertFalse(
+        XClusterConfigTaskBase.isXClusterSupported(
+            matviewIndex, false /* matviewSupported */, matviewTableIds));
+    assertTrue(
+        XClusterConfigTaskBase.isXClusterSupported(
+            matviewIndex, true /* matviewSupported */, matviewTableIds));
+    assertTrue(
+        XClusterConfigTaskBase.isXClusterSupported(
+            tableIndex, false /* matviewSupported */, matviewTableIds));
+  }
+
+  @Test
+  public void getTableIdsPartitionedByIsXClusterSupportedIndexOnMatview() {
+    // The requested tables do not include the materialized view itself, as in a request that
+    // picks only the base table and the index on the view.
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> universeTableInfoList =
+        sourceTableInfoListWithMatviewIndex();
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        XClusterConfigTaskBase.filterTableInfoListByTableIds(
+            universeTableInfoList, Set.of(TABLE_ID, MATVIEW_INDEX_TABLE_ID));
+
+    Map<Boolean, List<String>> notSupported =
+        XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
+            requestedTableInfoList, universeTableInfoList, false /* matviewSupported */);
+    assertEquals(List.of(TABLE_ID), notSupported.get(true));
+    assertEquals(List.of(MATVIEW_INDEX_TABLE_ID), notSupported.get(false));
+
+    Map<Boolean, List<String>> supported =
+        XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
+            requestedTableInfoList, universeTableInfoList, true /* matviewSupported */);
+    assertTrue(supported.get(false).isEmpty());
+  }
+
+  @Test
+  public void getRequestedTableInfoListIndexOnMatview() {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> universeTableInfoList =
+        sourceTableInfoListWithMatviewIndex();
+    assertEquals(
+        Set.of(TABLE_ID, INDEX_TABLE_ID),
+        XClusterConfigTaskBase.getTableIds(
+            XClusterConfigTaskBase.getRequestedTableInfoList(
+                Set.of(DB1_ID), universeTableInfoList, false /* matviewSupported */)));
+    assertEquals(
+        Set.of(TABLE_ID, INDEX_TABLE_ID, MATVIEW_TABLE_ID, MATVIEW_INDEX_TABLE_ID),
+        XClusterConfigTaskBase.getTableIds(
+            XClusterConfigTaskBase.getRequestedTableInfoList(
+                Set.of(DB1_ID), universeTableInfoList, true /* matviewSupported */)));
   }
 
   @Test
@@ -143,9 +225,11 @@ public class XClusterConfigTaskBaseTest {
             DB1_ID);
 
     for (boolean matviewSupported : new boolean[] {true, false}) {
-      assertTrue(XClusterConfigTaskBase.isXClusterSupported(mainTable, matviewSupported));
-      assertTrue(XClusterConfigTaskBase.isXClusterSupported(indexTable, matviewSupported));
-      assertFalse(XClusterConfigTaskBase.isXClusterSupported(systemTable, matviewSupported));
+      assertTrue(XClusterConfigTaskBase.isXClusterSupported(mainTable, matviewSupported, Set.of()));
+      assertTrue(
+          XClusterConfigTaskBase.isXClusterSupported(indexTable, matviewSupported, Set.of()));
+      assertFalse(
+          XClusterConfigTaskBase.isXClusterSupported(systemTable, matviewSupported, Set.of()));
     }
   }
 
@@ -159,13 +243,13 @@ public class XClusterConfigTaskBaseTest {
 
     Map<Boolean, List<String>> notSupported =
         XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-            tableInfoList, false /* matviewSupported */);
+            tableInfoList, tableInfoList, false /* matviewSupported */);
     assertEquals(List.of(TABLE_ID), notSupported.get(true));
     assertEquals(List.of(MATVIEW_TABLE_ID), notSupported.get(false));
 
     Map<Boolean, List<String>> supported =
         XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-            tableInfoList, true /* matviewSupported */);
+            tableInfoList, tableInfoList, true /* matviewSupported */);
     assertEquals(
         new HashSet<>(List.of(TABLE_ID, MATVIEW_TABLE_ID)), new HashSet<>(supported.get(true)));
     assertTrue(supported.get(false).isEmpty());

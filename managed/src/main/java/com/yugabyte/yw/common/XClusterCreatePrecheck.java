@@ -138,14 +138,14 @@ public class XClusterCreatePrecheck {
     // Make sure only supported relations types are passed in by the user.
     Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
         XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
-            requestedTableInfoList, matviewSupported);
+            requestedTableInfoList, sourceTableInfoList, matviewSupported);
     if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Only the following relation types are supported for xCluster replication: %s; The"
-                  + " following tables have different relation types or is a colocated child table:"
-                  + " %s",
+                  + " following tables have different relation types, are indexes on a"
+                  + " materialized view, or are colocated child tables: %s",
               XClusterConfigTaskBase.getSupportedTableRelationTypes(matviewSupported),
               tableIdsPartitionedByIsXClusterSupported.get(false)));
     }

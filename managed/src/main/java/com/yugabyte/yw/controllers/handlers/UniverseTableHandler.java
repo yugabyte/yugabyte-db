@@ -339,11 +339,21 @@ public class UniverseTableHandler {
       }
     }
 
+    // An index on a materialized view is xCluster supported only when materialized views are.
+    Set<String> matviewTableIds =
+        xClusterSupportedOnly && !matviewSupported
+            ? XClusterConfigTaskBase.getMatviewTableIds(tableInfoList)
+            : Collections.emptySet();
+
     Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
       if (excludedKeyspaces.contains(table.getNamespace().getName())) {
+        continue;
+      }
+      String mainTableId = indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table));
+      if (mainTableId != null && matviewTableIds.contains(mainTableId)) {
         continue;
       }
       if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
