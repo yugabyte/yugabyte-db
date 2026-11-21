@@ -70,6 +70,7 @@ class ConsensusServiceProxy;
 }
 
 namespace tserver {
+class LocalCatalogServiceProxy;
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
 class TabletServerBackupServiceProxy;
@@ -99,7 +100,8 @@ using ProxyTuple = util::SharedPtrTuple<
   tserver::TabletServerServiceProxy,
   tserver::TabletServerBackupServiceProxy,
   cdc::CDCServiceProxy,
-  consensus::ConsensusServiceProxy>;
+  consensus::ConsensusServiceProxy,
+  tserver::LocalCatalogServiceProxy>;
 
 struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
   bool IsLive() const;
