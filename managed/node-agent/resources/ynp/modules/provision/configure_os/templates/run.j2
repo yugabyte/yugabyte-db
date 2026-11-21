@@ -260,6 +260,8 @@ systemctl restart systemd-journald
 echo "systemd-journald restarted successfully."
 
 # For earlyoom MEMLOCK requirement
+# The hard cap comes from pam_limits.
+# this default is what the user manager sets on the service once it is allowed to.
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/system.conf; then
     echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/system.conf
 fi
@@ -267,6 +269,18 @@ if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
     echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/user.conf
 fi
 chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
+
+restart_yb_user_manager() {
+  local yb_uid
+  yb_uid=$(id -u {{ yb_user }})
+  if systemctl is-active --quiet "user@${yb_uid}.service"; then
+    # The running manager keeps the memlock pam gave it at start.
+    if ! systemctl restart "user@${yb_uid}.service"; then
+      echo "Failed to restart user@${yb_uid}.service to apply memlock"
+      exit 1
+    fi
+  fi
+}
 
 # Enable linger for user-level systemd services
 {% if use_system_level_systemd == 'False' %}
@@ -320,6 +334,8 @@ else
         echo "Failed to enable linger for user {{ yb_user }}"
         exit 1
     fi
+    # An already-running manager keeps the memlock from when it started.
+    restart_yb_user_manager
 fi
 
 if [ ! -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
@@ -327,6 +343,9 @@ if [ ! -f "/var/lib/systemd/linger/{{ yb_user }}" ]; then
     exit 1
 fi
 
+{% else %}
+# DB units are system services, but earlyoom still runs in the user manager.
+restart_yb_user_manager
 {% endif %}
 
 echo "Kernel settings configured."
