@@ -85,7 +85,7 @@ namespace {
 
 // Check the leadership:
 // - initialization of catalog
-// - lease period elapsed since leadership
+// - lease period elapsed since leadership, unless this term created the universe
 // Return ok if those conditions are satisfied.  If not satisfied, fill the response error code and
 // return status.
 Status CheckLeadership(
@@ -96,6 +96,15 @@ Status CheckLeadership(
     // MasterServiceBase::HandleOnLeader.
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
+  }
+  // The wait gives tservers that an earlier master leader leased time to heartbeat to this one,
+  // since they may be running backends.  A leader grants YSQL leases only after loading the sys
+  // catalog, and that load persists the cluster config.  So if this leader's load found no cluster
+  // config, no earlier leader granted a lease and there is nothing to wait for.  The catalog lease
+  // does not stop backends from running, so it always waits.
+  if (FLAGS_enable_ysql_operation_lease &&
+      catalog_manager->IsUniverseCreatedInTerm(l->epoch().leader_term)) {
+    return Status::OK();
   }
   const auto lease_ms = FLAGS_enable_ysql_operation_lease ?
       FLAGS_master_ysql_operation_lease_ttl_ms :
