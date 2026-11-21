@@ -249,6 +249,8 @@ extern bool IsYBRelation(Relation relation);
  */
 extern bool IsYBBackedRelation(Relation relation);
 
+extern void YbRejectPageAccess(Relation relation);
+
 /*
  * Returns whether a relation is TEMP table
  */

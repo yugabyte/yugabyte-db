@@ -25,6 +25,9 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 typedef struct vbits
@@ -800,4 +803,7 @@ check_relation_relkind(Relation rel)
 				 errmsg("relation \"%s\" is of wrong relation kind",
 						RelationGetRelationName(rel)),
 				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
+
+	/* YB: YB relations have no heap pages or visibility map. */
+	YbRejectPageAccess(rel);
 }
