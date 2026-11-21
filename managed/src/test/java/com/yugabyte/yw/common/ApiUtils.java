@@ -710,7 +710,7 @@ public class ApiUtils {
     return getDummyNodeDetails(idx, state, false /* isMaster */, false);
   }
 
-  private static NodeDetails getDummyNodeDetails(
+  public static NodeDetails getDummyNodeDetails(
       int idx, NodeDetails.NodeState state, boolean isMaster) {
     return getDummyNodeDetails(idx, state, isMaster, false);
   }
