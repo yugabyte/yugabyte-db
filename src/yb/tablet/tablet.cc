@@ -7272,6 +7272,16 @@ void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
 }
 
 void Tablet::UnregisterOperationFilterUnlocked(OperationFilter* filter) {
+  // OperationDriver::HandleFailure infers was_pending from OpId validity, and the driver assigns
+  // the OpId before Operation::AddedToLeader runs, so any failure in AddedToLeader before
+  // AddedAsPending (e.g. TEST_fail_operation_added_to_leader) reaches RemovedFromPending for a
+  // filter that was never registered; iterator_to on an unlinked hook would corrupt the list.
+  // The hook is safe_link (the list_base_hook<> default), so it answers "linked" exactly for
+  // filters pushed and not yet erased, and it is read under the same mutex every link and
+  // unlink takes.
+  if (!filter->is_linked()) {
+    return;
+  }
   operation_filters_.erase(operation_filters_.iterator_to(*filter));
 }
 
