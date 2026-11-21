@@ -6,6 +6,7 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -47,6 +48,8 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -161,16 +164,17 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.ActionType.Configure);
     Util.convertSingleProviderSpecsToOldSchema(confGetter, taskParams);
     if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
-      redactStoredGFlags(taskParams);
+      redactStoredSecrets(taskParams);
     }
     return PlatformResults.withData(taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
   }
 
-  // The response can hold the universe's stored gflags, such as after a reset of its
-  // configuration. An edit replaces masterGFlags, tserverGFlags or specificGFlags with the stored
-  // one as a whole when any of its values is REDACTED, so only those equal to the stored ones are
+  // The response can hold the universe's stored gflags and Kubernetes overrides, such as after a
+  // reset of its configuration. An edit replaces masterGFlags, tserverGFlags or specificGFlags with
+  // the stored one as a whole when any of its values is REDACTED, and restores each REDACTED
+  // override secret from the stored overrides, so only values equal to the stored ones are
   // redacted. The others hold the client's own values, which a redaction would drop.
-  private void redactStoredGFlags(UniverseConfigureTaskParams taskParams) {
+  private void redactStoredSecrets(UniverseConfigureTaskParams taskParams) {
     Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
     if (universe == null || taskParams.clusters == null) {
       return;
@@ -198,6 +202,21 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         userIntent.specificGFlags =
             GFlagsUtil.redactSensitiveSpecificGFlags(
                 userIntent.specificGFlags, gFlagsValidation, stored.ybSoftwareVersion);
+      }
+      if (userIntent.universeOverrides != null
+          && userIntent.universeOverrides.equals(stored.universeOverrides)) {
+        userIntent.universeOverrides =
+            KubernetesOverridesRedactor.redact(userIntent.universeOverrides);
+      }
+      if (userIntent.azOverrides != null && stored.azOverrides != null) {
+        // An edit restores each AZ's overrides from the stored overrides of the same AZ.
+        Map<String, String> azOverrides = new LinkedHashMap<>(userIntent.azOverrides);
+        azOverrides.replaceAll(
+            (az, overrides) ->
+                Objects.equals(overrides, stored.azOverrides.get(az))
+                    ? KubernetesOverridesRedactor.redact(overrides)
+                    : overrides);
+        userIntent.azOverrides = azOverrides;
       }
     }
   }

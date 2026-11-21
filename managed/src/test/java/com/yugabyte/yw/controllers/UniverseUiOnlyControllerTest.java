@@ -78,6 +78,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -406,6 +407,42 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertEquals(
         storedPrimaryIntent(u).specificGFlags,
         bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testConfigureEditResetRedactsStoredKubernetesOverrides() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithK8sOverrides();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    taskParams.getPrimaryCluster().userIntent.universeOverrides = null;
+    taskParams.getPrimaryCluster().userIntent.azOverrides = null;
+    taskParams.resetAZConfig = true;
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-ovr-pass"));
+    assertFalse(body, body.contains("dummy-az-pass"));
+    UserIntent stored = storedPrimaryIntent(u);
+    UserIntent bound = bindConfigureResponse(body, u).getPrimaryCluster().userIntent;
+    assertEquals(stored.universeOverrides, bound.universeOverrides);
+    assertEquals(stored.azOverrides, bound.azOverrides);
+  }
+
+  @Test
+  public void testConfigureEditReturnsChangedAzOverridesAsSent() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithK8sOverrides();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    String changed = K8S_AZ_OVERRIDES.replace("dummy-az-pass", "dummy-new-pass");
+    taskParams.getPrimaryCluster().userIntent.azOverrides.put("az-2", changed);
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-ovr-pass"));
+    assertFalse(body, body.contains("dummy-az-pass"));
+    assertEquals(changed, Json.parse(body).at("/clusters/0/userIntent/azOverrides/az-2").asText());
+    UserIntent bound = bindConfigureResponse(body, u).getPrimaryCluster().userIntent;
+    assertEquals(Map.of("az-1", K8S_AZ_OVERRIDES, "az-2", changed), bound.azOverrides);
   }
 
   @Test
@@ -2435,6 +2472,23 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                         "dummy-bind-pass",
                         GFlagsUtil.YSQL_HBA_CONF_CSV,
                         LDAP_HBA)));
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-ovr-pass\n";
+  private static final String K8S_AZ_OVERRIDES =
+      "gflags:\n  master:\n    ycql_ldap_bind_passwd: dummy-az-pass\n";
+
+  private Universe setUpUniverseWithK8sOverrides() {
+    Universe u = setUpUniverse();
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.universeOverrides = K8S_OVERRIDES;
+          intent.azOverrides =
+              new HashMap<>(Map.of("az-1", K8S_AZ_OVERRIDES, "az-2", K8S_AZ_OVERRIDES));
+        });
   }
 
   private void enableGFlagsSensitiveDataApiRedaction() {
