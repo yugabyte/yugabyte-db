@@ -226,6 +226,10 @@ Obtain the client's operating system user name from the operating system and che
 
 Use LDAP for password authentication. For more information, refer to [LDAP authentication](../ldap-authentication-ysql/).
 
+#### jwt
+
+Use a JSON Web Token from an OpenID Connect identity provider as the password. For more information, refer to [OIDC authentication](../oidc-authentication-ysql/).
+
 #### cert
 
 Specify that any user requires a TLS certificate to connect. For more information, refer to [Encryption in transit](../../tls-encryption/).

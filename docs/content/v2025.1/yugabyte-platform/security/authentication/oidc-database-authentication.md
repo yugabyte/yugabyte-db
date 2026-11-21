@@ -284,6 +284,8 @@ host all all 0.0.0.0/0 jwt map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""
 
 For more information on host authentication in YugabyteDB using `ysql_hba_conf_csv`, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).
 
+To configure these flags on a cluster that is not managed by YugabyteDB Anywhere, refer to [OIDC authentication in YSQL](../../../../secure/authentication/oidc-authentication-ysql/).
+
 #### ysql_ident_conf_csv
 
 This flag is used to add translation regex rules that map token claim values to PostgreSQL roles. The flag settings are used as records in the `yb_ident.conf` file as user-name maps. This file is used identically to `pg_ident.conf` to map external identities to database users. For more information, refer to [User name maps](https://www.postgresql.org/docs/15/auth-username-maps.html) in the PostgreSQL documentation.

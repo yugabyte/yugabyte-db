@@ -37,7 +37,7 @@ YugabyteDB supports the following methods for authenticating users.
   {{<index/item
     title="OIDC"
     body="Authenticate using JSON Web Tokens from an OpenID Connect identity provider."
-    href="oidc-authentication-ycql/"
+    href="oidc-authentication-ysql/"
     icon="fa-thin fa-id-card">}}
 
   {{<index/item
