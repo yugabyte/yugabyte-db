@@ -19,9 +19,8 @@
  * IDENTIFICATION
  *        src/postgres/src/backend/replication/logical/yb_virtual_wal_table_reader.c
  *
- * The table is written by the CDC table poller of the tservers (see CdcTableOutputClient) and is
- * assumed to hold the changes of every committed transaction. This file only reads it. Of its
- * columns the reader uses:
+ * The table is written by the CDC table poller of the tservers (see CdcTableOutputClient). This
+ * file only reads it. Of its columns the reader uses:
  *
  *   commit_time         bigint   commit hybrid time of the transaction
  *   record_time         bigint   hybrid time of the record's write
@@ -42,10 +41,13 @@
  * streamed as one transaction whatever their transaction_id, and the LSN of every record of it is
  * that commit_time.
  *
- * A row must not become visible in the table with a key lower than one that is already visible,
- * otherwise a transaction can be streamed before a row that belongs to it, or skipped. In
- * particular all rows of one commit_time must become visible together: a row that shows up after
- * its commit_time has been read is never streamed. The pollers do not guarantee that yet.
+ * The pollers write the rows of different tablets at different times, so a row can show up after
+ * rows with a later commit_time, and a row that shows up after its commit_time has been read is
+ * never streamed. So only commit times below the stream's safe time are read: every change that
+ * commits before it is in the table. Each poller publishes the safe time of its tablet once its
+ * changes are written, and the master's xCluster safe time service keeps the minimum over the
+ * tablets of the stream under the stream id. The safe time is fetched before the snapshot of a
+ * query is taken, so that the query sees the rows that the safe time covers.
  *
  * TODO: The table has no schema changes in it, so records are decoded against the current catalog
  * rather than the one at their commit time. A row written before an ALTER TABLE and streamed after
@@ -135,7 +137,9 @@ static uint64 yb_reader_window_micros = 100000;
 /* Queries over a window of commit times, with $1 and $2 as its bounds. */
 static char *yb_reader_window_query = NULL;
 static char *yb_reader_group_query = NULL;
-static char *yb_reader_probe_query = NULL;
+
+/* The key of the stream's safe time. */
+static char *yb_reader_stream_id = NULL;
 
 static int
 YbOidCmp(const void *a, const void *b)
@@ -147,10 +151,12 @@ YbOidCmp(const void *a, const void *b)
 }
 
 void
-YbTableReaderInit(const Oid *table_oids, int num_tables,
+YbTableReaderInit(const char *stream_id, const Oid *table_oids, int num_tables,
 				  XLogRecPtr resume_commit_time)
 {
 	StringInfoData buckets;
+
+	yb_reader_stream_id = pstrdup(stream_id);
 
 	yb_reader_num_tables = num_tables;
 	yb_reader_table_oids = palloc(sizeof(Oid) * Max(num_tables, 1));
@@ -171,10 +177,6 @@ YbTableReaderInit(const Oid *table_oids, int num_tables,
 	yb_reader_window_query =
 		psprintf("%s LIMIT %d", yb_reader_group_query,
 				 YB_TABLE_READER_BATCH_ROWS);
-	yb_reader_probe_query =
-		psprintf("SELECT 1 FROM public.pg_yb_cdc_changes "
-				 "WHERE bucket_id IN (%s) AND commit_time >= $1 LIMIT 1",
-				 buckets.data);
 	pfree(buckets.data);
 }
 
@@ -184,7 +186,8 @@ YbTableReaderDestroy(void)
 	/* Allocated in the virtual WAL context, which the caller deletes. */
 	yb_reader_table_oids = NULL;
 	yb_reader_num_tables = 0;
-	yb_reader_window_query = yb_reader_group_query = yb_reader_probe_query = NULL;
+	yb_reader_window_query = yb_reader_group_query = NULL;
+	yb_reader_stream_id = NULL;
 }
 
 /* Returns the PostgreSQL OID in a DocDB table id. */
@@ -365,11 +368,11 @@ YbFillDmlRow(YbcPgRowMessage *row, HeapTuple tuple, TupleDesc tupdesc,
 
 /*
  * Reads one query's worth of commit groups into batch. Returns false if the
- * table has nothing at or after the next commit_time.
+ * table has nothing complete at or after the next commit_time.
  *
- * A query reads the commit times in a window starting at the next commit_time.
- * A window with no rows is skipped, if the table has rows after it, with a
- * larger window next time.
+ * A query reads the commit times in a window starting at the next commit_time
+ * and ending at the safe time at the latest. A window with no rows is skipped,
+ * with a larger window next time.
  */
 static bool
 YbReadBatch(YbcPgChangeRecordBatch *batch)
@@ -386,6 +389,11 @@ YbReadBatch(YbcPgChangeRecordBatch *batch)
 	bool		group_open = false;
 	int			nrows = 0;
 	uint32		xid = 0;
+	uint64		safe_time = 0;
+
+	HandleYBStatus(YBCGetXClusterSafeTime(yb_reader_stream_id, &safe_time));
+	if (safe_time <= yb_reader_next_commit_time)
+		return false;
 
 	if (!is_in_txn)
 		StartTransactionCommand();
@@ -399,8 +407,9 @@ YbReadBatch(YbcPgChangeRecordBatch *batch)
 
 	for (;;)
 	{
-		uint64		window_end = yb_reader_next_commit_time +
-		(yb_reader_window_micros << YB_HYBRID_TIME_LOGICAL_BITS);
+		uint64		window_end = Min(yb_reader_next_commit_time +
+									 (yb_reader_window_micros << YB_HYBRID_TIME_LOGICAL_BITS),
+									 safe_time);
 
 
 		args[0] = Int64GetDatum((int64) yb_reader_next_commit_time);
@@ -419,14 +428,9 @@ YbReadBatch(YbcPgChangeRecordBatch *batch)
 		if (SPI_processed > 0)
 			break;
 
-		/* An empty window: skip it if something comes after it. */
-		args[0] = Int64GetDatum((int64) window_end);
-		ret = SPI_execute_with_args(yb_reader_probe_query, 1, arg_types, args,
-									NULL, true /* read_only */ , 0);
-		if (ret != SPI_OK_SELECT)
-			elog(ERROR, "querying pg_yb_cdc_changes failed: %d", ret);
-		MemoryContextSwitchTo(caller_context);
-		if (SPI_processed == 0)
+		/* An empty window is complete, so skip it. */
+		yb_reader_next_commit_time = window_end;
+		if (window_end == safe_time)
 		{
 			SPI_finish();
 			PopActiveSnapshot();
@@ -435,7 +439,6 @@ YbReadBatch(YbcPgChangeRecordBatch *batch)
 			MemoryContextSwitchTo(caller_context);
 			return false;
 		}
-		yb_reader_next_commit_time = window_end;
 		yb_reader_window_micros = Min(yb_reader_window_micros * 2,
 									  YB_TABLE_READER_MAX_WINDOW_MICROS);
 	}

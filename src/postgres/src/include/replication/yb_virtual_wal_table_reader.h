@@ -31,10 +31,11 @@
 
 /*
  * Start reading at the first commit group whose commit hybrid time is at least
- * resume_commit_time. Only rows of the tables in table_oids are returned.
+ * resume_commit_time. Only rows of the tables in table_oids are returned. The
+ * pollers of the stream stream_id write the table.
  */
-extern void YbTableReaderInit(const Oid *table_oids, int num_tables,
-							  XLogRecPtr resume_commit_time);
+extern void YbTableReaderInit(const char *stream_id, const Oid *table_oids,
+							  int num_tables, XLogRecPtr resume_commit_time);
 
 extern void YbTableReaderDestroy(void);
 

@@ -602,7 +602,8 @@ InitVirtualWal(List *publication_names,
 		 * is streamed. The decoder skips what the client has already
 		 * received, so reading a little too much is harmless.
 		 */
-		YbTableReaderInit(table_oids, list_length(tables),
+		YbTableReaderInit(MyReplicationSlot->data.yb_stream_id, table_oids,
+						  list_length(tables),
 						  Max(Max(MyReplicationSlot->data.restart_lsn,
 								  MyReplicationSlot->data.confirmed_flush),
 							  MyReplicationSlot->data.yb_initial_record_commit_time_ht));
