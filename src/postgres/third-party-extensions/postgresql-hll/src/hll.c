@@ -69,6 +69,8 @@
 #include "MurmurHash3.h"
 
 /* YB includes */
+#include "utils/inval.h"
+#include "utils/syscache.h"
 #include <stddef.h>
 
 #ifdef PG_MODULE_MAGIC
@@ -149,6 +151,8 @@ static Oid get_extension_schema(Oid ext_oid);
 static Oid FunctionOid(const char *schemaName, const char *functionName, int argumentCount, bool missingOk);
 static void InitializeHllAggregateOids(void);
 static bool HllAggregateOid(Oid aggregateOid);
+static void YbHllInvalidateAggregateOids(Datum arg, int cacheid,
+										 uint32 hashvalue);
 
 void _PG_init(void);
 void _PG_fini(void);
@@ -163,6 +167,19 @@ void _PG_init(void)
 
 	previous_upper_path_hook = create_upper_paths_hook;
 	create_upper_paths_hook = hll_aggregation_restriction_hook;
+
+	/*
+	 * YB: ALTER EXTENSION UPDATE recreates the aggregates, so drop cached
+	 * OIDs on pg_proc invalidation (also fired by YB catalog cache refresh).
+	 */
+	CacheRegisterSyscacheCallback(PROCOID, YbHllInvalidateAggregateOids,
+								  (Datum) 0);
+}
+
+static void
+YbHllInvalidateAggregateOids(Datum arg, int cacheid, uint32 hashvalue)
+{
+	aggregateValuesInitialized = false;
 }
 
 /*
