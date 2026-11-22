@@ -2773,10 +2773,10 @@ class NodeChecker():
           - yb_node_maintenance_service_status{service=...}
               2 = unit definition missing on the node
               1 = last run succeeded
-              0 = last run failed, never executed, or still running after a 30s wait
+              0 = last run failed or never executed
           - yb_node_maintenance_service_last_run_seconds{service=...}
-              Unix timestamp (seconds) of the last completed run, 0 if never. While a run
-              is in progress, the time it started.
+              Unix timestamp (seconds) of the last completed run, 0 if never.
+        While a run is in progress, both come from the last completed run this check saw.
         """
         logging.info("Checking YB node maintenance services on node {}".format(self.node))
         e = self._new_metric_entry("YB node maintenance services")
@@ -2784,8 +2784,11 @@ class NodeChecker():
         status_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_STATUS)
         last_run_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_LAST_RUN_SECONDS)
         msgs = []
-        running_states = ("activating", "active", "deactivating", "reloading")
-        wait_deadline = time.time() + 30
+        # systemd resets Result and clears ExecMainExitTimestamp when a run starts, so a run in
+        # progress says nothing about the previous one. Keep the last completed run on disk.
+        state_path = os.path.join(self.yb_home_dir, MAINTENANCE_SERVICES_STATE_FILE)
+        state = load_json_file(state_path)
+        new_state = dict(state)
         for unit in services:
             service_label = Label("service", unit)
             user_scope = self._discover_systemd_unit_scope(unit)
@@ -2808,13 +2811,12 @@ class NodeChecker():
                    "--property=LoadState,Result,ExecMainExitTimestamp,"
                    "InactiveExitTimestamp,ActiveState,SubState 2>&1").format(
                        scope=scope_flag, unit=unit)
-            props = self._parse_systemctl_show(self._check_output(cmd))
-            # The timers fire in the same second as this check. systemd resets Result to
-            # success when a run starts, so wait for the run to end to learn its outcome.
-            while (props.get("ActiveState", "") in running_states
-                   and time.time() < wait_deadline):
-                time.sleep(1)
-                props = self._parse_systemctl_show(self._check_output(cmd))
+            output = self._check_output(cmd)
+            props = {}
+            for line in output.splitlines():
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    props[k.strip()] = v.strip()
 
             load_state = props.get("LoadState", "")
             scope_label = "user" if user_scope else "system"
@@ -2825,51 +2827,52 @@ class NodeChecker():
                     unit, scope_label, load_state))
                 continue
 
+            active_state = props.get("ActiveState", "")
+            if active_state in ("activating", "active", "deactivating", "reloading"):
+                # The timers fire in the same second as this check, so this is common.
+                last = state.get(unit)
+                if isinstance(last, dict) and {"status", "last_run"} <= set(last):
+                    status_metric.add_value(last["status"], [service_label])
+                    last_run_metric.add_value(last["last_run"], [service_label])
+                    msgs.append("{}: running in {} scope; last completed run at {} {}".format(
+                        unit, scope_label, last["last_run"],
+                        "succeeded" if last["status"] == 1 else "failed"))
+                else:
+                    # No completed run seen yet: report when this one started, not "never ran".
+                    start_ts_raw = props.get("InactiveExitTimestamp", "")
+                    start_epoch = (parse_systemctl_timestamp(start_ts_raw) if start_ts_raw
+                                   else int(time.time()))
+                    status_metric.add_value(0, [service_label])
+                    last_run_metric.add_value(start_epoch, [service_label])
+                    msgs.append("{}: running in {} scope, no completed run recorded".format(
+                        unit, scope_label))
+                continue
+
             exit_ts_raw = props.get("ExecMainExitTimestamp", "")
             last_run_epoch = parse_systemctl_timestamp(exit_ts_raw)
-            # A run in progress has no ExecMainExitTimestamp yet; report when it started, not 0.
-            active_state = props.get("ActiveState", "")
-            running = active_state in running_states
-            if last_run_epoch == 0 and running:
-                start_ts_raw = props.get("InactiveExitTimestamp", "")
-                if start_ts_raw:
-                    last_run_epoch = parse_systemctl_timestamp(start_ts_raw)
-                else:
-                    last_run_epoch = int(time.time())
             last_run_metric.add_value(last_run_epoch, [service_label])
 
             result = props.get("Result", "")
-            if running:
-                # Still running after the wait, outcome unknown. Reporting success could hide a
-                # service that fails on every run.
-                status_metric.add_value(0, [service_label])
-                msgs.append("{}: still running in {} scope (ActiveState={})".format(
-                    unit, scope_label, active_state))
-            elif last_run_epoch == 0:
+            if last_run_epoch == 0:
                 # Service is defined but has never been executed yet.
                 status_metric.add_value(0, [service_label])
                 msgs.append("{}: never executed in {} scope (Result={})".format(
                     unit, scope_label, result))
-            elif result == "success":
-                status_metric.add_value(1, [service_label])
+                continue
+            status = 1 if result == "success" else 0
+            status_metric.add_value(status, [service_label])
+            new_state[unit] = {"status": status, "last_run": last_run_epoch}
+            if status == 1:
                 msgs.append("{}: ok in {} scope (last run at {})".format(
                     unit, scope_label, exit_ts_raw))
             else:
-                status_metric.add_value(0, [service_label])
                 msgs.append("{}: failed in {} scope (Result={}, last run at {})".format(
                     unit, scope_label, result, exit_ts_raw))
 
+        if new_state != state:
+            write_json_file(state_path, new_state)
         return e.fill_and_return_entry(msgs, has_error=False,
                                        metrics=[status_metric, last_run_metric])
-
-    @staticmethod
-    def _parse_systemctl_show(output):
-        props = {}
-        for line in output.splitlines():
-            if "=" in line:
-                k, _, v = line.partition("=")
-                props[k.strip()] = v.strip()
-        return props
 
     def verbose_log(self, message):
         if self.verbose:
@@ -2916,6 +2919,30 @@ def parse_rfc3339_utc(value):
     else:
         fmt = "%Y-%m-%dT%H:%M:%S"
     return int(datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).timestamp())
+
+
+def load_json_file(path):
+    """Returns the dict stored at path, or an empty one if it is missing or unreadable."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError) as ex:
+        if not isinstance(ex, FileNotFoundError):
+            logging.warning("Ignoring unreadable %s: %s", path, ex)
+        return {}
+
+
+def write_json_file(path, data):
+    # The health check and yb-collect_metrics can run at once: write a private file, then swap.
+    tmp_path = "{}.{}.tmp".format(path, os.getpid())
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(tmp_path, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)
+    except OSError as ex:
+        logging.warning("Could not write %s: %s", path, ex)
 
 
 def parse_systemctl_timestamp(value):
@@ -3323,6 +3350,8 @@ class NodeInfo:
 # postgres logs. That script gzips every plain log in a directory except the newest, so the date
 # in the name is what lets it work at all.
 HEALTH_LOG_DIR = "metrics/logs"
+# Last completed run of each maintenance service, relative to the YB home dir.
+MAINTENANCE_SERVICES_STATE_FILE = "metrics/maintenance_services_state.json"
 HEALTH_LOG_FILE_FORMAT = "node_health-%Y%m%d.log"
 
 
