@@ -2624,6 +2624,16 @@ asyncQueueProcessPageEntries(volatile QueuePosition *current,
 			}
 
 			/*
+			 * Page-filler entries must not count toward duplicate detection:
+			 * a replayed transaction is written at the queue head, so its
+			 * fillers fall at different positions than the first write's.
+			 * This must follow the BEGIN check, since markers share the
+			 * InvalidOid dboid.
+			 */
+			if (qe->dboid == InvalidOid)
+				continue;
+
+			/*
 			 * Skip if we haven't seen a BEGIN marker yet (listener started
 			 * scanning mid-transaction).
 			 */
