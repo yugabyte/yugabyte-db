@@ -392,6 +392,14 @@ class SysCatalogTable {
 
   Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
 
+  // The relations that the publications of a database name explicitly (pg_publication_rel), and
+  // whether any of its publications is FOR ALL TABLES.
+  struct PgPublicationTables {
+    bool all_tables = false;
+    std::unordered_set<PgOid> rel_oids;
+  };
+  Result<PgPublicationTables> ReadPgPublicationTables(PgOid database_oid);
+
  private:
   friend class CatalogManager;
   friend class ScopedLeaderSharedLock;

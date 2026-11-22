@@ -167,4 +167,7 @@ extern List *yb_pg_get_publications_tables(List *publications,
 extern bool yb_is_publishable_relation(Relation rel);
 extern void yb_log_unsupported_publication_relations();
 
+/* Must match kPgYbCdcChangesTableName in yb/master/master_defaults.h. */
+#define YB_CDC_CHANGES_TABLE_NAME "pg_yb_cdc_changes"
+
 #endif							/* PG_PUBLICATION_H */

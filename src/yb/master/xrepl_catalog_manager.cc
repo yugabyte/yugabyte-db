@@ -34,6 +34,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
@@ -770,6 +772,45 @@ bool IsPublicationsBoundStreamCreationRequest(
          !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
+// Creates the table that the CDC table pollers populate, in the database the slot is created in.
+// Blocks on a DDL run by a tserver's postgres, which calls back into this master, so the caller
+// must not hold any catalog lock.
+Status CreateCdcChangesTableIfNotExists(
+    CatalogManagerIf& catalog_manager, const std::string& namespace_name,
+    CoarseTimePoint deadline) {
+  // transaction_id is the nil UUID for single shard transactions, which have no transaction id.
+  // row_ybctid is the ybctid of the changed row. A column cannot be named ybctid, which is a
+  // system column.
+  auto statement = Format(
+      R"(CREATE TABLE IF NOT EXISTS public.$0 (
+           bucket_id INT NOT NULL,
+           commit_time BIGINT NOT NULL,
+           transaction_id UUID NOT NULL,
+           record_time BIGINT NOT NULL,
+           write_id BIGINT NOT NULL,
+           table_id UUID NOT NULL,
+           row_ybctid BYTEA NOT NULL,
+           origin_id INT,
+           op CHAR(1) NOT NULL,
+           before JSONB,
+           after JSONB,
+           primary_key_values JSONB,
+           PRIMARY KEY (bucket_id HASH, commit_time ASC, transaction_id ASC, record_time ASC,
+                        write_id ASC, table_id ASC, row_ybctid ASC)
+         ))",
+      kPgYbCdcChangesTableName);
+
+  // The callback can run after we give up waiting, so it must not reference the stack.
+  auto sync = std::make_shared<Synchronizer>();
+  RETURN_NOT_OK(ExecutePgsqlStatements(
+      namespace_name, {statement}, catalog_manager, deadline,
+      Synchronizer::AsStdStatusCallback(sync)));
+  RETURN_NOT_OK_PREPEND(
+      sync->WaitUntil(ToSteady(deadline)),
+      Format("Failed to create table $0 in database $1", kPgYbCdcChangesTableName, namespace_name));
+  return Status::OK();
+}
+
 }  // namespace
 
 Status CatalogManager::DropXClusterStreamsOfTables(const std::unordered_set<TableId>& table_ids) {
@@ -1193,6 +1234,19 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // A slot created without a publication is a regular stream.
   bool is_publications_bound_stream_req;
   bool has_bound_publication;
+
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+    auto namespace_name = VERIFY_RESULT(FindNamespaceById(namespace_id))->name();
+    if (namespace_name != kYbSystemDbName &&
+        IsLogicalReplicationStreamCreationRequest(req, namespace_name)) {
+      // Created before the tables of the stream are collected, so that the exclusion in
+      // IsInternalTableToBeExcludedFromCDCSDKStream applies to it.
+      RETURN_NOT_OK(CreateCdcChangesTableIfNotExists(
+          *this, namespace_name,
+          rpc ? rpc->GetClientDeadline()
+              : CoarseMonoClock::now() + FLAGS_master_rpc_timeout_ms * 1ms));
+    }
+  }
 
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
@@ -2985,6 +3039,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
 
 bool CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream(
     const TableInfo::ReadLock& lock) const {
+  // The CDC table holds the changes that the CDC table pollers read from the streams. Streaming
+  // it would make the pollers capture their own writes.
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table && lock->table_type() == PGSQL_TABLE_TYPE &&
+      lock->name() == kPgYbCdcChangesTableName) {
+    return true;
+  }
+
   // xCluster DDL replication tables (yb_xcluster_ddl_replication.ddl_queue and .replicated_ddls)
   // drive xCluster DDL replication.
   return lock->IsXClusterDDLReplicationTable();
@@ -7167,6 +7228,8 @@ Status CatalogManager::FillHeartbeatResponseCDC(
   }
 
   RETURN_NOT_OK(xcluster_manager_->FillHeartbeatResponse(req, resp));
+
+  cdcsdk_manager_->FillHeartbeatResponse(req, resp);
 
   return Status::OK();
 }

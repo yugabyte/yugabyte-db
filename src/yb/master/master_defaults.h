@@ -100,5 +100,8 @@ static const char* const kYbSystemDbName = "yb_system";
 static const char* const kPgYbNotificationsTableName = "pg_yb_notifications";
 static const char* const kPgYbNotificationsPublicationName = "pg_yb_notifications_publication";
 
+// Must match YB_CDC_CHANGES_TABLE_NAME in src/postgres/src/include/catalog/pg_publication.h.
+static const char* const kPgYbCdcChangesTableName = "pg_yb_cdc_changes";
+
 } // namespace master
 } // namespace yb

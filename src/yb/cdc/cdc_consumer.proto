@@ -91,6 +91,28 @@ message ProducerEntryPB {
   bool automatic_ddl_mode = 7;
 }
 
+// One CDCSDK stream whose changes the CDC table pollers write into the CDC table of its database.
+message CdcTableStreamEntryPB {
+  string stream_id = 1;
+  string namespace_id = 2;
+  // DocDB table id of pg_yb_cdc_changes in this database.
+  string cdc_table_id = 3;
+  // Tables of the stream that belong to a publication. Changes of other tables are not written.
+  repeated string published_table_ids = 4;
+  // Tablets of the published tables. Each is polled by the tserver hosting its leader.
+  repeated string tablet_ids = 5;
+  // Whether the sys catalog tablet is polled for this stream.
+  bool poll_sys_catalog = 6;
+}
+
+// Sent by the master to the tservers in the heartbeat response.
+message CdcTablePollerRegistryPB {
+  uint64 version = 1;
+  repeated CdcTableStreamEntryPB streams = 2;
+  // The sys catalog tablet has no leader on a tserver, so the master picks the tserver polling it.
+  string sys_catalog_poller_ts_uuid = 3;
+}
+
 // NOTE: Deprecated
 enum XClusterRole {
   ACTIVE = 0;
