@@ -47,6 +47,7 @@ using namespace std::literals;
 
 DECLARE_bool(enable_quiescent_tablets);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
+DECLARE_bool(master_tombstone_evicted_tablet_replicas);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(quiescent_tablet_idle_sec);
 DECLARE_string(time_source);
@@ -62,6 +63,9 @@ class DataPatcherTest : public CqlTestBase<MiniCluster> {
   void SetUp() override {
     server::SkewedClock::Register();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
+    // apply-patch --revert needs the live dirs of every patched replica, so the master must not
+    // tombstone a replica whose ADD_SERVER was not committed before a shutdown.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_tombstone_evicted_tablet_replicas) = false;
     CqlTestBase<MiniCluster>::SetUp();
   }
 
@@ -199,6 +203,9 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
       "CREATE TABLE t (i INT PRIMARY KEY, j INT) WITH transactions = { 'enabled' : true }"));
+  // System tablets created before ts-3 registered get their ts-3 replicas from the balancer.
+  // Wait here rather than before patching, to keep the live sub-time step close to the writes.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(60s * kTimeMultiplier));
   size_t last_value = 0;
 
   ASSERT_OK(InsertValues(&session, NextValueRange(kValueGroupSize, &last_value)));
@@ -242,10 +249,6 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
   for (size_t k = 0; k < write_times_after_jump.size(); ++k) {
     LOG(INFO) << "Write time after clock jump for " << k << ": " << write_times_after_jump[k];
   }
-
-  // A replica still being added at shutdown is deleted after restart, so revert would not find
-  // its live dirs.
-  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(60s * kTimeMultiplier));
 
   std::vector<FsManager*> fs_managers;
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
