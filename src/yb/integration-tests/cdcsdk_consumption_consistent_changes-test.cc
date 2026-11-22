@@ -1470,7 +1470,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   // Without transactional DDL, 2 DDL / tablet. With it, the ADD and DROP ship 2 and 1 synthetic
   // DDL records.
   int expected_ddl_records =
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 2 * 3;
   auto get_all_pending_changes_resp = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
@@ -1552,7 +1552,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   // DDLs to the cdc_service. With transactional DDL support, the DDLs come in their own
   // transactions instead, checked below.
   int expected_ddl_records =
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 0 : 2 * 3;
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 0 : 2 * 3;
   auto resp_after_restart = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, true));
 
@@ -1571,7 +1571,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
   // With transactional DDL support, like the inserts, a DDL transaction received before the restart
   // doesn't come again, so the ADD and DROP's 2 and 1 synthetic DDL records arrive once, before or
   // after the restart.
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     ASSERT_EQ(
         get_all_pending_changes_resp.record_count[0] + resp_after_restart.record_count[0], 3);
   }
@@ -1618,7 +1618,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAl
   // Without transactional DDL, 13 DDL / tablet. With it, each ADD COLUMN ships 2 synthetic DDL
   // records.
   int expected_ddl_records =
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 13 * 2 : 13 * 3;
   expected_dml_records = 13 * 10;     /* number of add columns 'times' insert per batch */
   auto consistent_change_resp_after_alter = ASSERT_RESULT(
       GetAllPendingTxnsFromVirtualWAL(stream_id, {table.table_id()}, expected_dml_records, false));
@@ -2592,7 +2592,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   // record carrying the schema of test1.
   ASSERT_EQ(
       change_resp.cdc_sdk_proto_records_size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 7);
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 7);
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     last_record_lsn = record.row_message().pg_lsn();
     restart_lsn = last_record_lsn + 1;
@@ -3782,7 +3782,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // With transactional DDL support, the replication slot stream also ships the BEGIN and COMMIT of
   // the 2 catalog transactions before the insert, which touch no published table.
   const int num_txns_new_model =
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 1;
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 3 : 1;
   int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, num_txns_new_model, num_txns_new_model};
   int actual_count_old_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
   int actual_count_new_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -3882,7 +3882,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // 1 BEGIN + 1 INSERT + 1 COMMIT, plus 2 empty catalog transactions with transactional DDL.
   ASSERT_EQ(
       change_resp_2.records.size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 3);
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 3);
   for (auto record : change_resp_2.records) {
     UpdateRecordCount(record, actual_count_new_model);
   }
@@ -5099,7 +5099,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfter
         false /* allow_sending_feedback */));
     ASSERT_EQ(
         change_resp.records.size(),
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
 
     // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
     // the state table should not move.
@@ -5168,7 +5168,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       false /* allow_sending_feedback */));
   ASSERT_EQ(
       change_resp.records.size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record = change_resp.records.back();
   ASSERT_EQ(record.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_1 = record.row_message().pg_lsn();
@@ -5184,7 +5184,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
       false /* allow_sending_feedback */));
   ASSERT_EQ(
       change_resp.records.size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 7 : 4);
   auto record_2 = change_resp.records.back();
   ASSERT_EQ(record_2.row_message().op(), RowMessage_Op_COMMIT);
   auto commit_lsn_2 = record_2.row_message().pg_lsn();
@@ -5999,7 +5999,7 @@ TEST_F(
   // With transactional DDL support, the TRUNCATE's catalog transaction also ships, as an empty
   // transaction.
   ASSERT_EQ(
-      resp.records.size(), FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 62 : 60);
+      resp.records.size(), FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 62 : 60);
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -6082,7 +6082,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Any DDL which causes table rewrite should send the pub refresh signal to the walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN serial_col SERIAL"));
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     ASSERT_TRUE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
   } else {
     // Consume the DDL record.
@@ -6108,7 +6108,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // walsender.
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN text_col text"));
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     ASSERT_FALSE(ASSERT_RESULT(ConsumeDDLTxn(stream_id)));
   } else {
     // No pub refresh, since no table rewrite. This empty response is due to sys catalog tablet
@@ -7330,7 +7330,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentSt
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -7447,7 +7447,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 
-// A stream created without TEST_ysql_yb_enable_replication_slot_transactional_ddl lacks the
+// A stream created without ysql_yb_enable_replication_slot_transactional_ddl lacks the
 // catalog tables that transactional DDLs are decoded from. The master keeps serving the sys catalog
 // from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
 // tables and invalidates it on every master.
@@ -7470,7 +7470,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDd
       stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
   ASSERT_OK(DestroyVirtualWAL());
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_NOK_STR_CONTAINS(
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId2, nullptr /* slot_hash_range */,
@@ -7587,7 +7587,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
   ASSERT_OK(WriteRows(4, 4 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {kUnpausedSlotName}),
       "transactional DDL replication is enabled");
@@ -7665,7 +7665,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
 
   ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 3));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
           test_cluster()->GetMasterAddresses(), kSlotName)),
@@ -7701,7 +7701,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
   // the stream has no catalog tables yet.
   ASSERT_OK(ExecuteYBAdminCommand(
       "validate_and_sync_cdc_state_table_entries_on_change_data_stream", {stream_id.ToString()}));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
           test_cluster()->GetMasterAddresses(), kSlotName)),
@@ -7812,7 +7812,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAnd
   SleepFor(initial_retention + 2s * kTimeMultiplier);
   ASSERT_OK(collect_garbage());
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
           test_cluster()->GetMasterAddresses(), kSlotName)),
@@ -7871,7 +7871,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStoppedImplicitSlotRetention)
 // subtransaction rolled back to a savepoint are still in the intents DB, so the response carries
 // the aborted subtransactions of such a transaction for the walsender to skip them (#36047).
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
@@ -7950,7 +7950,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTran
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectColumnRenameAndTypeChangeFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -8010,7 +8010,7 @@ TEST_F(
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectTableRenameAndSchemaChangeFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -8069,7 +8069,7 @@ TEST_F(
 // Verifies that an ALTER PUBLICATION ADD TABLE mid-txn ends the GetConsistentChanges response at
 // the publication refresh signal, without shipping DMLs that follow the alter in the same txn.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnAlterPublication) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -8175,7 +8175,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnA
 // publication refresh signal, without shipping DMLs that follow the create in the same txn.
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnCreateTableAllTables) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;

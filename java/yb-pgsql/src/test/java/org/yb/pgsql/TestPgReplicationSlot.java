@@ -120,11 +120,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
   }
 
+  // TODO(#38782): Remove this and the test paths for the flag off, now that it is a default-on
+  // AutoFlag.
   // With transactional DDL, catalog transactions such as DDLs also take LSNs and transaction ids.
   private boolean isTransactionalDdlEnabled() throws Exception {
     return "true".equals(miniCluster.getClient().getFlag(
         miniCluster.getTabletServers().keySet().iterator().next(),
-        "TEST_ysql_yb_enable_replication_slot_transactional_ddl"));
+        "ysql_yb_enable_replication_slot_transactional_ddl"));
   }
 
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)

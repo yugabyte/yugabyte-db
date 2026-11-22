@@ -212,7 +212,7 @@ DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -668,7 +668,7 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
 bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           (table_oid == kPgAttributeTableOid ||
            table_oid == kPgPublicationRelPrpubidIndexOid));
 }
@@ -698,7 +698,7 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   std::vector<TableId> table_ids;
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
   }
@@ -1312,7 +1312,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
-                      << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
+                      << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
                               ? ", pg_attribute, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
@@ -5733,7 +5733,7 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
       IllegalState,
       "Replication slots can't detect publication changes implicitly on this universe");
   SCHECK(
-      !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Replication slots can't be prepared for conversion once transactional DDL replication is "
       "enabled");
 
@@ -5811,7 +5811,7 @@ Status CatalogManager::PauseReplicationSlot(
             << req->ShortDebugString();
   const auto& slot_name = req->replication_slot_name();
   SCHECK(
-      !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Replication slots can't be paused for conversion once transactional DDL replication is "
       "enabled");
 
@@ -6490,7 +6490,7 @@ Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   SCHECK(
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Transactional DDL replication isn't enabled");
   SCHECK(
       FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
