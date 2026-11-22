@@ -294,8 +294,9 @@ class SysCatalogTable {
 
   // Read read all 'column_name' (e.g. relnamespace) OIDs from the pg_class catalog table.
   // Return map: oid -> 'column_name' oid.
-  Result<PgOidToOidMap> ReadPgClassColumnWithOidValueMap(const PgOid database_oid,
-                                                         const std::string& column_name);
+  Result<PgOidToOidMap> ReadPgClassColumnWithOidValueMap(
+      const PgOid database_oid, const std::string& column_name,
+      const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read 'column_name' (e.g. relnamespace) OID from the pg_class catalog table.
   Result<PgOid> ReadPgClassColumnWithOidValue(const PgOid database_oid,
@@ -398,7 +399,8 @@ class SysCatalogTable {
     bool all_tables = false;
     std::unordered_set<PgOid> rel_oids;
   };
-  Result<PgPublicationTables> ReadPgPublicationTables(PgOid database_oid);
+  Result<PgPublicationTables> ReadPgPublicationTables(
+      PgOid database_oid, const ReadHybridTime& read_time = ReadHybridTime());
 
  private:
   friend class CatalogManager;

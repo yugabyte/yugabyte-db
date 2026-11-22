@@ -14,13 +14,18 @@
 #include "yb/master/cdcsdk_manager.h"
 
 #include <algorithm>
+#include <array>
 #include <list>
 #include <set>
 #include <vector>
 
+#include "yb/cdc/cdc_service.pb.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -29,6 +34,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -121,42 +127,255 @@ Result<std::optional<cdc::CdcTableStreamEntryPB>> CdcsdkManager::ComputeCdcTable
       cdc_table, NotFound, "Table $0 not found in database $1", kPgYbCdcChangesTableName,
       namespace_name);
 
-  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-  const auto publication_tables =
-      VERIFY_RESULT(sys_catalog_.ReadPgPublicationTables(database_oid));
-  std::unordered_set<TableId> explicitly_published;
-  if (!publication_tables.all_tables) {
-    const auto relfilenodes =
-        VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValueMap(database_oid, "relfilenode"));
-    for (const auto rel_oid : publication_tables.rel_oids) {
-      auto it = relfilenodes.find(rel_oid);
-      if (it != relfilenodes.end() && it->second != kPgInvalidOid) {
-        explicitly_published.insert(GetPgsqlTableId(database_oid, it->second));
-      }
-    }
-  }
-
   cdc::CdcTableStreamEntryPB entry;
   entry.set_stream_id(stream.id());
   entry.set_namespace_id(namespace_id);
   entry.set_cdc_table_id(cdc_table->id());
   for (const auto& table_id : stream.table_id()) {
     auto table = catalog_manager_.GetTableInfo(table_id);
-    if (!table) {
-      continue;
-    }
-    if (!table->IsUserTable()) {
-      // The stream holds catalog tables only when the sys catalog tablet is to be polled.
+    // The stream holds catalog tables only when the sys catalog tablet is to be polled. Without
+    // them, changes to the publications go unnoticed, and the polled tables stay those that were
+    // published when the stream was created.
+    if (table && !table->IsUserTable()) {
       entry.set_poll_sys_catalog(true);
-    } else if (publication_tables.all_tables || explicitly_published.contains(table_id)) {
-      entry.add_published_table_ids(table_id);
+      break;
     }
   }
   return entry;
 }
 
+Result<std::set<TableId>> CdcsdkManager::ReadPublishedTables(
+    const CDCStreamInfo& stream, HybridTime time) {
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream.namespace_id()));
+  const auto read_time = ReadHybridTime::SingleTime(time);
+  const auto publication_tables =
+      VERIFY_RESULT(sys_catalog_.ReadPgPublicationTables(database_oid, read_time));
+  const auto relfilenodes = VERIFY_RESULT(
+      sys_catalog_.ReadPgClassColumnWithOidValueMap(database_oid, "relfilenode", read_time));
+
+  std::set<TableId> result;
+  const bool allow_tables_without_primary_key = stream.IsTablesWithoutPrimaryKeyAllowed();
+  auto add_if_eligible = [&](PgOid relfilenode) {
+    if (relfilenode == kPgInvalidOid) {
+      return;
+    }
+    // A relation without a table of its own, such as a view, is not found. Nor is a table that has
+    // been dropped since and is gone: there is nothing left to poll.
+    auto table = catalog_manager_.GetTableInfo(GetPgsqlTableId(database_oid, relfilenode));
+    // What decides whether a table is part of a stream. Not the table list of the stream: the CDC
+    // bg task adds a new table to it only some time after the table's row in pg_class commits.
+    if (table && catalog_manager_.IsTableEligibleForCDCSDKStream(
+                     table, table->LockForRead(), /* check_schema= */ true,
+                     allow_tables_without_primary_key,
+                     /* allow_cdc_used_syscatalog_tables= */ false)) {
+      result.insert(table->id());
+    }
+  };
+  if (publication_tables.all_tables) {
+    for (const auto& [_, relfilenode] : relfilenodes) {
+      add_if_eligible(relfilenode);
+    }
+  } else {
+    for (const auto rel_oid : publication_tables.rel_oids) {
+      auto it = relfilenodes.find(rel_oid);
+      if (it != relfilenodes.end()) {
+        add_if_eligible(it->second);
+      }
+    }
+  }
+  return result;
+}
+
+Result<bool> CdcsdkManager::UpdatePolledTablesAsOf(
+    const CDCStreamInfo& stream, HybridTime time, CdcTablePolledTablesPB* polled_tables) {
+  const auto published = VERIFY_RESULT(ReadPublishedTables(stream, time));
+  bool changed = false;
+  std::set<TableId> polled;
+  for (auto& table : *polled_tables->mutable_tables()) {
+    polled.insert(table.table_id());
+    const bool is_published = published.contains(table.table_id());
+    if (is_published && table.has_stop_time()) {
+      // Published again before it left. Its pollers never stopped, so nothing is to be done for
+      // the changes from now on. Those from in between are in the CDC table without being wanted,
+      // like the ones a poller writes before it gets to know that its table is no longer
+      // published: a reader has to go by the publications as of the commit time of a change.
+      LOG(INFO) << "Table " << table.table_id() << " of stream " << stream.id()
+                << " is published again as of " << time << ", and stays polled";
+      table.clear_stop_time();
+      changed = true;
+    } else if (!is_published && !table.has_stop_time()) {
+      // Its pollers may not have read the changes up to now yet. The table stays until they have,
+      // see RemoveStoppedTables.
+      LOG(INFO) << "Table " << table.table_id() << " of stream " << stream.id()
+                << " is no longer published as of " << time
+                << ". It is polled until the CDC safe time reaches that";
+      table.set_stop_time(time.ToUint64());
+      changed = true;
+    }
+  }
+  for (const auto& table_id : published) {
+    if (polled.contains(table_id)) {
+      continue;
+    }
+    // One tick before, so that the changes that commit at this very time are polled: a
+    // transaction can publish a table and then write to it. A poller asks for the changes that
+    // commit after its safe time.
+    const auto start_time = time.ToUint64() - 1;
+    LOG(INFO) << "Table " << table_id << " of stream " << stream.id() << " is published as of "
+              << time << ", and is polled for the changes that commit after " << start_time;
+    auto* table = polled_tables->add_tables();
+    table->set_table_id(table_id);
+    table->set_start_time(start_time);
+    changed = true;
+  }
+  if (changed) {
+    polled_tables->set_catalog_time(time.ToUint64());
+  }
+  return changed;
+}
+
+Result<CdcTablePolledTablesPB> CdcsdkManager::GetOrInitPolledTables(
+    const CDCStreamInfoPtr& stream, const LeaderEpoch& epoch) {
+  {
+    auto l = stream->LockForRead();
+    if (l->pb.has_cdc_table_polled_tables()) {
+      return l->pb.cdc_table_polled_tables();
+    }
+  }
+
+  // As of the time the stream starts from, not as of now: the poller of the sys catalog tablet
+  // starts from that time too, so every later change to the publications gets to
+  // ProcessSysCatalogChanges, and is applied on top of this.
+  SCHECK_FORMAT(
+      stream->IsConsistentSnapshotStream(), IllegalState,
+      "Stream $0 has no consistent snapshot time", stream->id());
+  const auto start_time = stream->GetConsistentSnapshotHybridTime();
+  CdcTablePolledTablesPB polled_tables;
+  polled_tables.set_catalog_time(start_time.ToUint64());
+  for (const auto& table_id : VERIFY_RESULT(ReadPublishedTables(*stream, start_time))) {
+    polled_tables.add_tables()->set_table_id(table_id);
+  }
+  LOG(INFO) << "Tables polled for stream " << stream->id()
+            << " from its start: " << polled_tables.ShortDebugString();
+  RETURN_NOT_OK(PersistPolledTables(stream, polled_tables, epoch));
+  return polled_tables;
+}
+
+bool CdcsdkManager::RemoveStoppedTables(
+    const CDCStreamInfo& stream, CdcTablePolledTablesPB* polled_tables) {
+  if (std::ranges::none_of(
+          polled_tables->tables(), [](const auto& table) { return table.has_stop_time(); })) {
+    return false;
+  }
+  // The safe time of the database is the minimum over the tablets in the registry, and the
+  // tablets of these tables have been in it all along. Once it is at stop_time, their pollers
+  // have written every change up to stop_time to the CDC table.
+  const auto safe_times =
+      catalog_manager_.GetXClusterManagerImpl()->GetXClusterNamespaceToSafeTimeMap();
+  const auto it = safe_times.find(stream.namespace_id());
+  if (it == safe_times.end() || !it->second.is_valid() || it->second.is_special()) {
+    return false;
+  }
+  const auto safe_time = it->second.ToUint64();
+
+  bool changed = false;
+  auto* tables = polled_tables->mutable_tables();
+  for (auto table_it = tables->begin(); table_it != tables->end();) {
+    if (table_it->has_stop_time() && table_it->stop_time() <= safe_time) {
+      LOG(INFO) << "Table " << table_it->table_id() << " of stream " << stream.id()
+                << " is no longer polled: the CDC safe time " << it->second
+                << " has reached the time it was last published, " << table_it->stop_time();
+      table_it = tables->erase(table_it);
+      changed = true;
+    } else {
+      ++table_it;
+    }
+  }
+  return changed;
+}
+
+Status CdcsdkManager::PersistPolledTables(
+    const CDCStreamInfoPtr& stream, const CdcTablePolledTablesPB& polled_tables,
+    const LeaderEpoch& epoch) {
+  auto l = stream->LockForWrite();
+  SCHECK_FORMAT(
+      l->pb.state() == SysCDCStreamEntryPB::ACTIVE, IllegalState, "Stream $0 is not active",
+      stream->id());
+  *l.mutable_data()->pb.mutable_cdc_table_polled_tables() = polled_tables;
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_.Upsert(epoch, stream),
+      Format("Failed to persist the polled tables of stream $0", stream->id()));
+  l.Commit();
+  return Status::OK();
+}
+
+Status CdcsdkManager::ProcessSysCatalogChanges(
+    const xrepl::StreamId& stream_id, const cdc::GetChangesResponsePB& resp) {
+  if (!FLAGS_TEST_cdcsdk_enable_cdc_table || resp.cdc_sdk_proto_records().empty()) {
+    return Status::OK();
+  }
+  SCOPED_LEADER_SHARED_LOCK(leader_lock, &catalog_manager_);
+  RETURN_NOT_OK(leader_lock.first_failed_status());
+  const auto& epoch = leader_lock.epoch();
+
+  std::lock_guard l(cdc_table_mutex_);
+  auto stream = VERIFY_RESULT(catalog_manager_.GetXReplStreamInfo(stream_id));
+  CdcTablePolledTablesPB polled_tables;
+  {
+    auto stream_lock = stream->LockForRead();
+    // The CDC bg task sets them before the tservers get to know about the stream, so a CDC table
+    // poller is not what asked.
+    if (!stream_lock->pb.has_cdc_table_polled_tables()) {
+      return Status::OK();
+    }
+    polled_tables = stream_lock->pb.cdc_table_polled_tables();
+  }
+
+  // Which tables are published follows from these catalog tables. Any change to one of them is
+  // taken as a possible change to that, and the published tables are read again as of its commit
+  // time. A change is not interpreted: that would need the publications each table is in.
+  const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->namespace_id()));
+  const std::array<TableId, 3> catalog_table_ids = {
+      GetPgsqlTableId(database_oid, kPgPublicationOid),
+      GetPgsqlTableId(database_oid, kPgPublicationRelOid),
+      GetPgsqlTableId(database_oid, kPgClassTableOid)};
+  std::set<uint64_t> commit_times;
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    const auto& row = record.row_message();
+    const bool is_dml = row.op() == cdc::RowMessage::INSERT ||
+                        row.op() == cdc::RowMessage::UPDATE ||
+                        row.op() == cdc::RowMessage::DELETE;
+    if (is_dml && std::ranges::find(catalog_table_ids, row.table_id()) != catalog_table_ids.end()) {
+      commit_times.insert(row.commit_time());
+    }
+  }
+  if (commit_times.empty()) {
+    return Status::OK();
+  }
+
+  // In commit order, and each as of its own commit time. The catalog as of now would do for a
+  // single change, but not for a table that was published and unpublished again since: its
+  // changes from in between have to be polled.
+  bool changed = false;
+  for (const auto commit_time : commit_times) {
+    // Applied before: the response is a repeat, or came from a second poller of the sys catalog
+    // tablet. Applying an older change again would undo the later ones.
+    if (commit_time <= polled_tables.catalog_time()) {
+      continue;
+    }
+    changed |= VERIFY_RESULT(
+        UpdatePolledTablesAsOf(*stream, HybridTime(commit_time), &polled_tables));
+  }
+  if (changed) {
+    RETURN_NOT_OK(PersistPolledTables(stream, polled_tables, epoch));
+  }
+  // Also when nothing changed here. An earlier call can have failed after it persisted the
+  // tables, and this one must not return before the registry has them either.
+  return DoRefreshCdcTableRegistry(epoch);
+}
+
 Status CdcsdkManager::UpdateCdcTablePolledTablets(
-    const xrepl::StreamId& stream_id, const cdc::CdcTableStreamEntryPB& entry,
+    const xrepl::StreamId& stream_id, const CdcTablePolledTablesPB& polled_tables,
     const CdcTableSplitReports& split_reports, CdcTablePolledTablets* polled) {
   if (polled->initialized) {
     // A polled tablet that no longer exists was not handed over to its children, for example
@@ -173,23 +392,58 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
   }
 
   if (!polled->initialized) {
-    // The current tablets of the tables, each polled from its own row in cdc_state. For a tablet
+    // The tablets are added again below, each polled from its own row in cdc_state. For a tablet
     // whose parent was polled, that row is a copy the master made of the parent's row when the
     // split was registered, so nothing is skipped. The parent may have been polled further since,
     // and those changes are read again.
     polled->tablets.clear();
-    for (const auto& table_id : entry.published_table_ids()) {
-      auto table = catalog_manager_.GetTableInfo(table_id);
-      if (!table) {
-        continue;
-      }
-      for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
-        polled->tablets.emplace(tablet->id(), std::nullopt);
-      }
-    }
+    polled->tables.clear();
     polled->initialized = true;
-    return Status::OK();
   }
+
+  std::set<TableId> polled_table_ids;
+  for (const auto& polled_table : polled_tables.tables()) {
+    const auto& table_id = polled_table.table_id();
+    polled_table_ids.insert(table_id);
+    if (polled->tables.contains(table_id)) {
+      continue;
+    }
+    // The tablets of a table that was published after the stream was created have rows in
+    // cdc_state from when the table was added to the stream, with a checkpoint from before the
+    // table was published. Their pollers read from there, and leave out the changes that
+    // committed before it was.
+    std::optional<cdc::CdcTablePollerPositionPB> start_position;
+    if (polled_table.has_start_time()) {
+      start_position.emplace();
+      start_position->set_term(OpId::Invalid().term);
+      start_position->set_index(OpId::Invalid().index);
+      start_position->set_safe_hybrid_time(polled_table.start_time());
+    }
+    auto table = catalog_manager_.GetTableInfo(table_id);
+    if (table) {
+      for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
+        if (tablet->LockForRead()->is_deleted()) {
+          continue;
+        }
+        polled->tablets.emplace(
+            tablet->id(),
+            CdcTablePolledTablets::Tablet{.table_id = table_id, .start_position = start_position});
+      }
+    } else {
+      // Dropped, and nothing of it is left to poll. It leaves once the CDC safe time, which it
+      // does not hold back, reaches the time of the drop.
+      LOG(WARNING) << "Polled table " << table_id << " of stream " << stream_id << " is gone";
+    }
+    // Only now: if the tablets could not be had, the next pass tries again.
+    polled->tables.insert(table_id);
+  }
+  // The tables that left. Their pollers have read what was wanted, see RemoveStoppedTables.
+  std::erase_if(polled->tables, [&polled_table_ids](const auto& table_id) {
+    return !polled_table_ids.contains(table_id);
+  });
+  std::erase_if(polled->tablets, [&polled_table_ids](const auto& tablet) {
+    return !polled_table_ids.contains(tablet.second.table_id);
+  });
 
   for (const auto& [stream_and_tablet, position] : split_reports) {
     const auto& tablet_id = stream_and_tablet.second;
@@ -223,15 +477,22 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
     LOG(INFO) << "Tablet " << tablet_id << " of stream " << stream_id
               << " has been split. Its children " << AsString(children)
               << " are polled from where its poller stopped: " << position.ShortDebugString();
+    const auto table_id = polled->tablets[tablet_id].table_id;
     polled->tablets.erase(tablet_id);
     for (const auto& child : children) {
-      polled->tablets[child] = position;
+      polled->tablets[child] =
+          CdcTablePolledTablets::Tablet{.table_id = table_id, .start_position = position};
     }
   }
   return Status::OK();
 }
 
 Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
+  std::lock_guard l(cdc_table_mutex_);
+  return DoRefreshCdcTableRegistry(epoch);
+}
+
+Status CdcsdkManager::DoRefreshCdcTableRegistry(const LeaderEpoch& epoch) {
   cdc::CdcTablePollerRegistryPB registry;
 
   // Sorted, so that the same stream is picked on every pass.
@@ -257,19 +518,23 @@ Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
   }
 
   for (const auto& stream_id : stream_ids) {
+    auto stream_result = catalog_manager_.GetXReplStreamInfo(stream_id);
+    if (!stream_result.ok()) {
+      continue;
+    }
+    const auto& stream = *stream_result;
     auto it = cdc_table_stream_entries_.find(stream_id);
     if (it == cdc_table_stream_entries_.end()) {
-      auto stream = catalog_manager_.GetXReplStreamInfo(stream_id);
-      if (!stream.ok()) {
-        continue;
-      }
-      auto entry = VERIFY_RESULT(ComputeCdcTableStreamEntry(**stream));
+      auto entry = VERIFY_RESULT(ComputeCdcTableStreamEntry(*stream));
       if (!entry) {
         continue;
       }
       LOG(INFO) << "CDC table poller registry entry for stream " << stream_id << ": "
                 << entry->ShortDebugString();
       it = cdc_table_stream_entries_.emplace(stream_id, std::move(*entry)).first;
+    }
+    if (stream->LockForRead()->pb.state() != SysCDCStreamEntryPB::ACTIVE) {
+      continue;
     }
     if (registry.streams_size() > 0) {
       // TODO: support more than one stream.
@@ -278,16 +543,24 @@ Status CdcsdkManager::RefreshCdcTableRegistry(const LeaderEpoch& epoch) {
       continue;
     }
 
+    auto polled_tables = VERIFY_RESULT(GetOrInitPolledTables(stream, epoch));
+    if (RemoveStoppedTables(*stream, &polled_tables)) {
+      RETURN_NOT_OK(PersistPolledTables(stream, polled_tables, epoch));
+    }
+
     auto* entry = registry.add_streams();
     *entry = it->second;
+    for (const auto& polled_table : polled_tables.tables()) {
+      entry->add_published_table_ids(polled_table.table_id());
+    }
     auto& polled = cdc_table_polled_tablets_[stream_id];
-    RETURN_NOT_OK(UpdateCdcTablePolledTablets(stream_id, *entry, split_reports, &polled));
-    for (const auto& [tablet_id, start_position] : polled.tablets) {
+    RETURN_NOT_OK(UpdateCdcTablePolledTablets(stream_id, polled_tables, split_reports, &polled));
+    for (const auto& [tablet_id, tablet] : polled.tablets) {
       entry->add_tablet_ids(tablet_id);
-      if (start_position) {
+      if (tablet.start_position) {
         auto* tablet_start = entry->add_tablet_starts();
         tablet_start->set_tablet_id(tablet_id);
-        *tablet_start->mutable_position() = *start_position;
+        *tablet_start->mutable_position() = *tablet.start_position;
       }
     }
   }

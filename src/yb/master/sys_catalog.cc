@@ -1459,10 +1459,10 @@ Status SysCatalogTable::ReadPgClassInfo(
 }
 
 Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
-    const PgOid database_oid, const string& column_name) {
+    const PgOid database_oid, const string& column_name, const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", "ReadPgClassColumnWithOidValueMap");
 
-  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
@@ -2428,16 +2428,16 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
 }
 
 Result<SysCatalogTable::PgPublicationTables> SysCatalogTable::ReadPgPublicationTables(
-    PgOid database_oid) {
+    PgOid database_oid, const ReadHybridTime& read_time) {
   TRACE_EVENT0("master", __func__);
   PgPublicationTables result;
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
 
   // Calls 'row_func' with the value of 'column_name' for every row of the catalog table.
-  auto scan_column = [this, database_oid](
+  auto scan_column = [this, database_oid, &read_time](
                          PgOid table_oid, const std::string& column_name,
                          const std::function<void(const QLValuePB&)>& row_func) -> Status {
-    auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, ReadHybridTime()));
+    auto read_data = VERIFY_RESULT(TableReadData(database_oid, table_oid, read_time));
     const auto& schema = read_data.schema();
     const auto col_id = VERIFY_RESULT(schema.ColumnIdByName(column_name)).rep();
     dockv::ReaderProjection projection(schema, {col_id});

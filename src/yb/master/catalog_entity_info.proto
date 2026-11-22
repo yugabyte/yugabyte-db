@@ -795,6 +795,32 @@ message SysCDCStreamEntryPB {
   // stream is INITIATED, so a recorded checkpoint is never redone. Streams that are checkpointed
   // again on purpose (indexes after their backfill) are only recorded by that later checkpoint.
   optional XClusterStreamBootstrapInfoPB xcluster_bootstrap_info = 23;
+
+  // Set once the changes of the stream are written to the CDC table of its database.
+  optional CdcTablePolledTablesPB cdc_table_polled_tables = 24;
+}
+
+// A table that the CDC table pollers poll, because some publication has it.
+message CdcTablePolledTablePB {
+  optional bytes table_id = 1;
+  // Hybrid time. Changes that commit at or before it are not polled: the table was not published
+  // then. Not set for a table that was published when the stream was created.
+  optional fixed64 start_time = 2;
+  // Hybrid time of the catalog change after which no publication has the table. Set until the
+  // changes up to it are in the CDC table, which is when the table leaves.
+  optional fixed64 stop_time = 3;
+}
+
+// The tables that are polled for a stream. Persisted, since it cannot be derived from the catalog
+// as of any one time: a table that is no longer published stays until its changes up to
+// stop_time have been read, and a table that was published only for a while has to be polled for
+// that while.
+message CdcTablePolledTablesPB {
+  // Hybrid time of the last change to the publications of the database that changed 'tables'.
+  // Changes to the publications are applied in commit order, each as of its own commit time, and
+  // one at or before this time has been applied.
+  optional fixed64 catalog_time = 1;
+  repeated CdcTablePolledTablePB tables = 2;
 }
 
 message XClusterStreamBootstrapInfoPB {

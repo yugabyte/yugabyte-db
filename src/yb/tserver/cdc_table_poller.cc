@@ -81,11 +81,15 @@ Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
     // Blocks, on a thread of the consumer's pool. Done once per poller.
     auto next = VERIFY_RESULT(ReadCheckpointFromCdcState());
     if (start_position_) {
-      // The tablet came out of a split. Its row in cdc_state is a copy of the parent's row from
-      // when the split was registered, and the parent's poller has got further since. The tablet
-      // has a copy of the parent's WAL, so this poller continues from where that one stopped, or
-      // from its own row once that is ahead. Starting any later would skip the changes that the
-      // parent's poller had not read yet when it was told about the split.
+      // Either the tablet came out of a split. Its row in cdc_state is a copy of the parent's row
+      // from when the split was registered, and the parent's poller has got further since. The
+      // tablet has a copy of the parent's WAL, so this poller continues from where that one
+      // stopped, or from its own row once that is ahead. Starting any later would skip the changes
+      // that the parent's poller had not read yet when it was told about the split.
+      //
+      // Or its table was added to a publication, and the position is only a safe time, just below
+      // the commit time of that change. The row in cdc_state is from before it, and the CDC service
+      // leaves out the changes that commit up to the safe time of the request.
       const OpId start_op_id(start_position_->term(), start_position_->index());
       if (start_op_id > OpId(next.checkpoint.term(), next.checkpoint.index())) {
         next.checkpoint.set_term(start_op_id.term);
@@ -97,7 +101,10 @@ Status CdcTablePoller::PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) {
     LOG_WITH_PREFIX(INFO) << "Polling from checkpoint "
                           << next_request_->checkpoint.ShortDebugString() << ", safe time "
                           << next_request_->safe_hybrid_time
-                          << (start_position_ ? ", after the split of its parent" : "");
+                          << (start_position_
+                                  ? Format(", given the start position $0",
+                                           start_position_->ShortDebugString())
+                                  : "");
   }
 
   req->set_stream_id(producer_tablet_info_.stream_id.ToString());

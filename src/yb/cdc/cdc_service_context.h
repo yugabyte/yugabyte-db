@@ -13,15 +13,20 @@
 
 #pragma once
 
+#include "yb/cdc/xrepl_types.h"
+
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Cgroup;
 namespace cdc {
+
+class GetChangesResponsePB;
 
 class CDCServiceContext {
  public:
@@ -50,6 +55,15 @@ class CDCServiceContext {
   // Whether each local peer should update its own retention barriers independently.
   // When false, the leader propagates retention barriers to all peers.
   virtual bool ShouldLocalPeerUpdateOwnBarriers() const = 0;
+
+  // Called with a GetChanges response for the sys catalog tablet before it is sent, when the
+  // changes of streams are written to CDC tables. The master acts on the changes to the
+  // publications in it, see master::CdcsdkManager::ProcessSysCatalogChanges. A failure fails the
+  // GetChanges call.
+  virtual Status ProcessCdcTableSysCatalogChanges(
+      const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp) {
+    return Status::OK();
+  }
 
 #ifdef __linux__
   // Returns the system-high cgroup for moving latency-sensitive threads into.

@@ -30,7 +30,9 @@
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -70,8 +72,8 @@ using consensus::StartRemoteBootstrapRequestPB;
 
 class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
-  explicit MasterCDCServiceContextImpl(MasterTabletServer* master_tablet_server)
-      : master_tablet_server_(*master_tablet_server) {}
+  MasterCDCServiceContextImpl(MasterTabletServer* master_tablet_server, Master* master)
+      : master_tablet_server_(*master_tablet_server), master_(*master) {}
 
   tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const override {
     auto serving_tablet_res = master_tablet_server_.GetServingTablet(tablet_id);
@@ -106,8 +108,15 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
     return FLAGS_enable_update_local_peer_min_index_master;
   }
 
+  Status ProcessCdcTableSysCatalogChanges(
+      const xrepl::StreamId& stream_id, const cdc::GetChangesResponsePB& resp) override {
+    return master_.catalog_manager_impl()->GetCdcsdkManagerImpl().ProcessSysCatalogChanges(
+        stream_id, resp);
+  }
+
  private:
   MasterTabletServer& master_tablet_server_;
+  Master& master_;
 };
 
 MasterTabletServer::MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity)
@@ -343,7 +352,8 @@ rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_future<client::YBClient*>& client_future, MetricRegistry* metric_registry) {
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
-      std::make_unique<MasterCDCServiceContextImpl>(this), metric_entity, metric_registry,
+      std::make_unique<MasterCDCServiceContextImpl>(this, master_), metric_entity,
+      metric_registry,
       FLAGS_master_xrepl_get_changes_concurrency, client_future,
       []() { return FLAGS_update_min_cdc_indices_master_interval_secs; }, true /* is_master */);
 

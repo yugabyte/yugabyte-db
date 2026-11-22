@@ -43,6 +43,7 @@ DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 
 using namespace std::literals;
@@ -241,15 +242,87 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
         kTimeout, Format("Wait for the pollers of the current tablets of $0", table_name));
   }
 
-  // Stops the poller of the tablet from sending GetChanges, or lets it go on.
-  void PausePollerOf(const TabletId& tablet_id) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = tablet_id;
+  // Stops the pollers of the tablets from sending GetChanges, or lets them go on. A poller that
+  // is only created later is stopped from the start.
+  void PausePollersOf(const std::vector<TabletId>& tablet_ids) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
+        JoinStrings(tablet_ids, ",");
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
     // For a GetChanges that was already under way.
     SleepFor(1s * kTimeMultiplier);
   }
 
+  void PausePollerOf(const TabletId& tablet_id) { PausePollersOf({tablet_id}); }
+
   void ResumePollers() { ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0; }
+
+  // Waits until every one of the tablets has a poller, or until none of them has.
+  Status WaitForPollers(const std::vector<TabletId>& tablet_ids, bool polled) {
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          const auto polled_tablets = PolledTablets();
+          return std::ranges::all_of(tablet_ids, [&](const auto& tablet_id) {
+            return polled_tablets.contains(tablet_id) == polled;
+          });
+        },
+        kTimeout,
+        Format("Wait for tablets $0 to be $1", AsString(tablet_ids),
+               polled ? "polled" : "no longer polled"));
+  }
+
+  // Whether the table is one of those that the master has polled for the stream.
+  Result<bool> IsTablePolled(const TableId& table_id) {
+    auto stream = VERIFY_RESULT(
+        test_cluster()->mini_master()->catalog_manager_impl().GetXReplStreamInfo(stream_id_));
+    auto l = stream->LockForRead();
+    return std::ranges::any_of(
+        l->pb.cdc_table_polled_tables().tables(),
+        [&table_id](const auto& table) { return table.table_id() == table_id; });
+  }
+
+  // A table as the tests refer to it once it may have been dropped.
+  struct TestTable {
+    TableId table_id;
+    std::vector<TabletId> tablet_ids;
+    // Selects the changes of the table in the CDC table.
+    std::string filter;
+  };
+
+  Result<TestTable> GetTestTable(const std::string& table_name) {
+    auto table = VERIFY_RESULT(GetTable(&test_cluster_, test_namespace_name, table_name));
+    return TestTable{
+        .table_id = table.table_id(),
+        .tablet_ids = VERIFY_RESULT(TabletIds(table_name)),
+        .filter = VERIFY_RESULT(TableFilter(table_name))};
+  }
+
+  // Waits until the master has the table polled and each of its tablets has a poller, or until
+  // the master no longer has it polled and none of its tablets has a poller.
+  Status WaitForPolling(const TestTable& table, bool polled) {
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> { return VERIFY_RESULT(IsTablePolled(table.table_id)) == polled; },
+        kTimeout,
+        Format("Wait for table $0 to be $1", table.table_id,
+               polled ? "polled" : "no longer polled")));
+    return WaitForPollers(table.tablet_ids, polled);
+  }
+
+  // The number of rows with an id in [first_id, last_id] whose insert is in the CDC table, for the
+  // table that table_filter selects.
+  Result<int64_t> CountInserts(
+      pgwrapper::PGConn& conn, const std::string& table_filter, int first_id, int last_id) {
+    return CountChanges(
+        conn, Format(
+                  "$0 AND op = 'I' AND ($1)::int BETWEEN $2 AND $3", table_filter,
+                  Int32Value("after", kIdAttnum), first_id, last_id));
+  }
+
+  Status InsertRows(
+      pgwrapper::PGConn& conn, const std::string& table_name, int first_id, int last_id) {
+    return conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i, 'a' FROM generate_series($1, $2) i", table_name, first_id,
+        last_id);
+  }
 
   // Inserts rows until stopped, some on their own and some in transactions that span tablets. An
   // id is inserted once, so every row of the table is one change.
@@ -333,11 +406,30 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
             Int32Value("after", kIdAttnum), master::kPgYbCdcChangesTableName))),
         0);
 
+    VerifySampledSafeTimes(conn, changes_up_to);
+  }
+
+  // To be called once the sampling thread has stopped.
+  void VerifySampledSafeTimes(
+      pgwrapper::PGConn& conn, const std::map<HybridTime, int64_t>& changes_up_to) {
+    ASSERT_FALSE(changes_up_to.empty());
     for (const auto& [sampled_safe_time, changes] : changes_up_to) {
       ASSERT_EQ(ASSERT_RESULT(CountChangesUpTo(conn, sampled_safe_time)), changes)
           << "Changes up to safe time " << sampled_safe_time << " arrived late";
     }
   }
+
+  // Two tables with one tablet each, a publication for the given tables, and a slot.
+  void SetUpTwoTables(pgwrapper::PGConn& conn, const std::string& published_tables) {
+    ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+    ASSERT_OK(CreateTestTable(conn, "t2", 1 /* num_tablets */));
+    ASSERT_OK(conn.ExecuteFormat("CREATE PUBLICATION pub FOR $0", published_tables));
+    stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+    ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(ASSERT_RESULT(DatabaseOid(conn))));
+  }
+
+  // Of the slot, in the tests that ask the master about it.
+  xrepl::StreamId stream_id_ = xrepl::StreamId::Nil();
 };
 
 TEST_F(CDCSDKCdcTableTest, TablePublication) {
@@ -1074,6 +1166,632 @@ TEST_F(CDCSDKCdcTableTest, TabletSplitAcrossMasterRestart) {
   thread_holder.Stop();
   VerifyInsertsAndSampledSafeTimes(conn, database_oid, "t1", changes_up_to);
   ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 100);
+}
+
+// A table that is added to a publication is polled for the changes that commit after that, and
+// the CDC safe time does not get past them before they are in the CDC table.
+TEST_F(CDCSDKCdcTableTest, PublicationAddTable) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(CreateTestTable(conn, "t2"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+  ASSERT_OK(WaitForPolling(t1, true /* polled */));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+  // Only what committed after the table was published.
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 20)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t2.filter, safe_time.ToUint64()))),
+      10);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The poller of an added table's tablet does nothing for a while. The CDC safe time must wait
+// for it, at a time before the table was published. The master only gets to compute the polled
+// tablets in the background long after the change: they have to be in place by the time the
+// poller of the sys catalog tablet has the change.
+TEST_F(CDCSDKCdcTableTest, SafeTimeHeldUntilAddedTableIsPolled) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 15000 * kTimeMultiplier;
+  // For a pass of the background task that is under way.
+  SleepFor(2s * kTimeMultiplier);
+  PausePollersOf(t2.tablet_ids);
+
+  const auto before_publishing = Now();
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  const auto after_publishing = Now();
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() < deadline) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+      ASSERT_TRUE(safe_time.is_valid());
+      ASSERT_LT(safe_time, after_publishing);
+    }
+    SleepFor(200ms);
+  }
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+
+  ResumePollers();
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_GT(safe_time, before_publishing);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t2.filter, safe_time.ToUint64()))),
+      10);
+}
+
+// A table that is removed from its publication is polled until the changes from before that are
+// in the CDC table, however far behind its pollers are, and not after.
+TEST_F(CDCSDKCdcTableTest, PublicationDropTable) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // Written while the table is published, and not read before it no longer is.
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  const auto after_unpublishing = Now();
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+
+  // The table stays polled, and holds the safe time back.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_unpublishing);
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  ResumePollers();
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+
+  ASSERT_OK(InsertRows(conn, "t2", 31, 40));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table goes in and out of the publication. What is written to it while it is in is in the CDC
+// table. What is written while it is out, and not polled, is not: when the table comes back in,
+// its pollers read from where they stopped, and leave those changes out.
+TEST_F(CDCSDKCdcTableTest, PublicationDropAndAddTableRepeatedly) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  constexpr int kNumRounds = 3;
+  for (int round = 0; round < kNumRounds; ++round) {
+    const int first_id = 100 * round;
+    ASSERT_OK(WaitForPolling(t2, true /* polled */));
+    ASSERT_OK(InsertRows(conn, "t2", first_id + 1, first_id + 10));
+    ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+    ASSERT_OK(WaitForPolling(t2, false /* polled */));
+    ASSERT_OK(InsertRows(conn, "t2", first_id + 11, first_id + 20));
+    ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  }
+  ASSERT_OK(InsertRows(conn, "t2", 100 * kNumRounds + 1, 100 * kNumRounds + 10));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+  thread_holder.Stop();
+
+  for (int round = 0; round < kNumRounds; ++round) {
+    const int first_id = 100 * round;
+    ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, first_id + 1, first_id + 10)), 10)
+        << "Round " << round;
+    ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, first_id + 11, first_id + 20)), 0)
+        << "Round " << round;
+  }
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10 * (kNumRounds + 1));
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The master gets to see several changes to the publication at once, some time after they
+// committed. The table is not published any more by then, and the changes from the times it was
+// are still wanted: each change to the publication counts as of the time it committed.
+TEST_F(CDCSDKCdcTableTest, PublicationChangesSeenLate) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  PausePollerOf(master::kSysCatalogTabletId);
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 30));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  const auto after_changes = Now();
+  ASSERT_OK(InsertRows(conn, "t2", 31, 40));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+
+  // The poller of the sys catalog tablet has not read the changes to the publication. The CDC
+  // safe time waits for it.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_changes);
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 10)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 21, 30)), 10);
+  // The rest was written while the table was not published. Its pollers may have read some of it
+  // before they stopped.
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// Publications are created and dropped. A table is polled while any publication has it.
+TEST_F(CDCSDKCdcTableTest, CreateAndDropPublications) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub2 FOR TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  // In two publications, then only in the one for all tables.
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub3 FOR ALL TABLES"));
+  ASSERT_OK(conn.Execute("DROP PUBLICATION pub2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 30));
+  ASSERT_OK(WaitForChanges(conn, 20, t2.filter));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  ASSERT_OK(conn.Execute("DROP PUBLICATION pub3"));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(InsertRows(conn, "t2", 31, 40));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 30)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 10);
+  ASSERT_OK(WaitForPolling(t1, true /* polled */));
+}
+
+// With a publication for all tables, a table is polled from the time it is created.
+TEST_F(CDCSDKCdcTableTest, AllTablesPublicationCreateTable) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (id INT PRIMARY KEY, v TEXT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(InsertRows(conn, "t3", 1, 30));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+  const auto t3 = ASSERT_RESULT(GetTestTable("t3"));
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t3.filter, safe_time.ToUint64()))),
+      30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t3.filter, 1, 30)), 30);
+  ASSERT_OK(WaitForPolling(t3, true /* polled */));
+  // The CDC table is a table of the database too, and is not polled.
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(
+      ASSERT_RESULT(GetTestTable(master::kPgYbCdcChangesTableName)).table_id)));
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table that a publication for all tables publishes is dropped, with changes that its poller
+// has not read. They still get to the CDC table, and the table does not hold the CDC safe time
+// back after that.
+TEST_F(CDCSDKCdcTableTest, DropTableOfAllTablesPublication) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t1.filter, safe_time.ToUint64()))),
+      20);
+}
+
+// A table of a publication cannot be dropped before it is removed from the publication. It is
+// removed and dropped here before its poller has read its last changes.
+TEST_F(CDCSDKCdcTableTest, DropTableRemovedFromPublication) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  ASSERT_NOK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+}
+
+// The tables that are polled, and the times that go with them, survive a master restart: a table
+// that was added stays, and one that was removed is still polled for its unread changes.
+TEST_F(CDCSDKCdcTableTest, PublicationChangesAcrossMasterRestart) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(InsertRows(conn, "t2", 21, 30));
+  ASSERT_OK(WaitForChanges(conn, 20, t2.filter));
+
+  // Removed, with changes from before that not read yet.
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 31, 50));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  // For the master to get to see the change.
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 20);
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 20);
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  ResumePollers();
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(InsertRows(conn, "t2", 51, 60));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 50)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 40);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The tablet of a table that was added to the publication is split before it is polled. Its
+// children are polled for the changes that their parent was to be polled for: those from after
+// the table was published.
+TEST_F(CDCSDKCdcTableTest, PublicationAddTableThenSplit) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+  ASSERT_EQ(t2.tablet_ids.size(), 1);
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 20));
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 50));
+  SplitTablet("t2", t2.tablet_ids[0], 2);
+  ASSERT_OK(InsertRows(conn, "t2", 51, 80));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+
+  ResumePollers();
+  ASSERT_OK(WaitForPollers(ASSERT_RESULT(TabletIds("t2")), true /* polled */));
+  ASSERT_OK(WaitForPollers(t2.tablet_ids, false /* polled */));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 21, 80)), 60);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 60);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The master is restarted after a table is added, before the pollers of the table have done
+// anything. They still leave out the changes from before the table was published.
+TEST_F(CDCSDKCdcTableTest, PublicationAddTableAcrossMasterRestart) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 20));
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 40));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(InsertRows(conn, "t2", 41, 60));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 21, 60)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 40);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The leader of an added table's tablet changes before its poller has done anything. The poller
+// on the new leader starts from the same place: after the table was published.
+TEST_F(CDCSDKCdcTableTest, PublicationAddTableThenLeaderChange) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 20));
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 40));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t2"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablets[0].tablet_id()));
+  ASSERT_OK(InsertRows(conn, "t2", 41, 60));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 21, 60)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 40);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A publication is changed in a transaction that also writes to the table, and by replacing its
+// list of tables.
+TEST_F(CDCSDKCdcTableTest, PublicationChangeInTransactionAndSetTable) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // The table is written to in the transaction that publishes it. Whether the change to the
+  // publication commits with the transaction or on its own, these rows commit no earlier.
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 30));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  // And in the transaction that removes it from the publication.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(InsertRows(conn, "t2", 31, 40));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(InsertRows(conn, "t2", 41, 50));
+
+  // One table replaces the other in the publication.
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub SET TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 51, 60));
+  ASSERT_OK(WaitForPolling(t1, false /* polled */));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub SET TABLE t1, t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(InsertRows(conn, "t2", 61, 70));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t1, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 10)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 30)), 20);
+  if (FLAGS_ysql_yb_ddl_transaction_block_enabled) {
+    // The rows commit with the change to the publication, and were written before it.
+    ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 31, 40)), 10);
+  }
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 41, 50)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 51, 70)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t1.filter, 1, 10)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t1.filter, 11, 20)), 10);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// Rows are inserted into two tables all along, while one of them goes in and out of the
+// publication. The rows that were inserted while it was in are in the CDC table.
+TEST_F(CDCSDKCdcTableTest, PublicationChangesUnderLoad) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(CreateTestTable(conn, "t2"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder sampling_thread;
+  StartSafeTimeSampling(&sampling_thread, database_oid, &changes_up_to);
+  TestThreadHolder insert_threads;
+  StartInserts(&insert_threads, "t1");
+  StartInserts(&insert_threads, "t2");
+
+  const auto max_id = [&conn]() {
+    return conn.FetchRow<int32_t>("SELECT coalesce(max(id), 0) FROM t2");
+  };
+  // The ids between which every row was inserted while the table was published: after the
+  // statement that added it returned, and before the one that removed it was sent.
+  std::vector<std::pair<int, int>> published_ids;
+  constexpr int kNumRounds = 4;
+  for (int round = 0; round < kNumRounds; ++round) {
+    ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+    const auto first_id = ASSERT_RESULT(max_id()) + 1;
+    SleepFor(2s * kTimeMultiplier);
+    const auto last_id = ASSERT_RESULT(max_id());
+    // The last round leaves the table published.
+    if (round < kNumRounds - 1) {
+      ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+      // In some rounds the table is added again while it is still polled.
+      SleepFor((round % 2 == 0 ? 100ms : 4000ms) * kTimeMultiplier);
+    }
+    published_ids.emplace_back(first_id, last_id);
+  }
+  insert_threads.Stop();
+  published_ids.back().second = ASSERT_RESULT(max_id());
+
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+  sampling_thread.Stop();
+
+  for (const auto& [first_id, last_id] : published_ids) {
+    const auto num_rows = ASSERT_RESULT(conn.FetchRow<int64_t>(
+        Format("SELECT count(*) FROM t2 WHERE id BETWEEN $0 AND $1", first_id, last_id)));
+    ASSERT_GT(num_rows, 0);
+    ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, first_id, last_id)), num_rows)
+        << "Rows " << first_id << " to " << last_id;
+  }
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t1.filter, safe_time.ToUint64()))),
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")));
+  VerifySampledSafeTimes(conn, changes_up_to);
 }
 
 TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {

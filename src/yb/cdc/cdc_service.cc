@@ -2026,6 +2026,15 @@ void CDCServiceImpl::GetChanges(
       STATUS_FORMAT(NotFound, "Not leader for $0", req->tablet_id()), resp->mutable_error(),
       CDCErrorPB::TABLET_NOT_FOUND, context);
 
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table && record.GetSourceType() == CDCSDK &&
+      req->tablet_id() == master::kSysCatalogTabletId) {
+    // Before the caller gets the response: see CdcsdkManager::ProcessSysCatalogChanges for why
+    // the order matters. If this fails, the caller asks for the same changes again.
+    RPC_STATUS_RETURN_ERROR(
+        context_->ProcessCdcTableSysCatalogChanges(stream_id, *resp), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   // Store information about the last server read & remote client ACK.
   uint64_t last_record_hybrid_time =
       resp->records_size() > 0
