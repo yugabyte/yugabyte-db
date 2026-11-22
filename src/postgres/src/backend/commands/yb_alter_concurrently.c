@@ -25,16 +25,16 @@
  *      ordinary ALTER TABLE instead.  The job's copy runs in other backends,
  *      which must see the shadow and the transform, so this commits first.
  *   2. Begin the job (YbOscBegin), retrying transient lock conflicts.
- *   3. Wait for the copy in a plain transaction.  A failed copy rolls the
- *      job back.
+ *   3. Wait for the copy in a plain transaction.
  *   4. Cut over (YbOscFinish), in the transaction the utility layer commits.
  *
  * Nothing before step 4 changes the source, and step 4 is one transaction.
- * An error anywhere else leaves at most an active job, which re-issuing the
- * same statement resumes and yb_abort_mirror_table rolls back, or, after a
- * failed step 2, a shadow without a job, which the next statement on the
- * table drops.  This is how CREATE INDEX CONCURRENTLY leaves an invalid index
- * behind rather than cleaning up from an error path.
+ * An error in step 1 rolls back with its transaction.  An error in step 2 or
+ * 3, a cancel or a failed copy included, goes through RollBackAndRethrow,
+ * which drops what the statement created.  An error in step 4 leaves the job
+ * active, with its copy complete: re-issuing the same statement retries the
+ * cutover.  So does re-issuing a statement whose backend died; a shadow left
+ * without a job is dropped by the next statement on the table.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -1313,6 +1313,58 @@ RelockSession(LockRelId *lockrelid, LOCKMODE lockmode)
 	LockRelationIdForSession(lockrelid, lockmode);
 }
 
+/*
+ * Undo the statement after an error in step 2 or 3 (see the file header):
+ * abort the failed transaction, roll back job jobId (YbOscAbort, which also
+ * drops the shadow and the transform), or, before the job began, drop the
+ * shadow, in a DDL transaction of its own, and re-raise edata.  If the
+ * rollback itself fails, it is reported as a WARNING and edata's hint names
+ * the manual way out.
+ */
+static void
+pg_attribute_noreturn()
+RollBackAndRethrow(int64 jobId, Oid shadowOid, const YbOscTxnState *txn,
+				   ErrorData *edata)
+{
+	AbortCurrentTransaction();
+	StartTransactionCommand();
+
+	PG_TRY();
+	{
+		YbOscTxnState scratch;
+
+		ResumeDdlTransaction(txn);
+		PushActiveSnapshot(GetTransactionSnapshot());
+		if (jobId != 0)
+			YbOscAbort(jobId);
+		else
+			DropShadow(shadowOid);
+		CommitAndStartPlainTransaction(&scratch);
+	}
+	PG_CATCH();
+	{
+		ErrorData  *cleanupError;
+
+		MemoryContextSwitchTo(PortalContext);
+		cleanupError = CopyErrorData();
+		FlushErrorState();
+		AbortCurrentTransaction();
+		StartTransactionCommand();
+
+		ereport(WARNING,
+				(errmsg("could not roll back ALTER TABLE ... CONCURRENTLY"),
+				 errdetail("%s", cleanupError->message)));
+		if (edata->hint == NULL)
+			edata->hint = jobId != 0 ?
+				psprintf("Roll the job back with yb_abort_mirror_table(%lld).",
+						 (long long) jobId) :
+				pstrdup("The next ALTER TABLE ... CONCURRENTLY on the table drops the shadow table left behind.");
+	}
+	PG_END_TRY();
+
+	ReThrowError(edata);
+}
+
 /* Each retry re-runs only the begin, not the copy, so the cap is generous. */
 #define YB_OSC_BEGIN_MAX_ATTEMPTS 20
 
@@ -1332,8 +1384,7 @@ IsRetryableBeginError(int sqlerrcode)
  * YbOscBegin takes ExclusiveLock on the source to fence DML, and under a
  * write workload the deadlock detector may pick it as the victim.  The begin
  * has made nothing durable by then, so it is retried in a fresh transaction.
- * Anything else, or running out of attempts, is raised with the shadow left
- * behind for the next statement to drop (DropOrphanShadow).
+ * Anything else, or running out of attempts, rolls the statement back.
  */
 static int64
 BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
@@ -1365,17 +1416,13 @@ BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
 			return jobId;
 		}
 
+		if (!IsRetryableBeginError(edata->sqlerrcode) ||
+			attempt >= YB_OSC_BEGIN_MAX_ATTEMPTS)
+			RollBackAndRethrow(0 /* jobId */ , shadowOid, txn, edata);
+
 		/* The abort also drops the snapshot and the session lock. */
 		AbortCurrentTransaction();
 		StartTransactionCommand();
-
-		if (!IsRetryableBeginError(edata->sqlerrcode) ||
-			attempt >= YB_OSC_BEGIN_MAX_ATTEMPTS)
-		{
-			if (edata->hint == NULL)
-				edata->hint = pstrdup("Re-issue the statement.");
-			ReThrowError(edata);
-		}
 
 		ereport(LOG,
 				(errmsg("retrying the begin of ALTER TABLE ... CONCURRENTLY on table \"%s\" after a transient conflict (attempt %d): %s",
@@ -1444,17 +1491,16 @@ PrepareShadow(Relation rel, AlterTableStmt *stmt,
 }
 
 /*
- * Error context while an active job is left behind by the error: the copy
- * runs on, and its capture triggers keep the shadow in step, until the job
- * is resumed or rolled back.
+ * Error context of a failed cutover, which leaves the job active with its
+ * copy complete.
  */
 static void
-ActiveJobErrorCallback(void *arg)
+CutoverErrorCallback(void *arg)
 {
 	int64		jobId = *(int64 *) arg;
 
-	errcontext("online schema change job %lld stays active: re-issue the same ALTER TABLE ... CONCURRENTLY statement to resume it, or roll it back with yb_abort_mirror_table(%lld)",
-			   (long long) jobId, (long long) jobId);
+	errcontext("cutover of online schema change job %lld, which stays active: re-issue the same ALTER TABLE ... CONCURRENTLY statement to retry it",
+			   (long long) jobId);
 }
 
 void
@@ -1466,8 +1512,7 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 	YbOscBeginOptions opts;
 	YbOscTxnState txn;
 	int64		jobId;
-	YbcPgTableBackfillState state;
-	char	   *errorMessage;
+	ErrorData  *edata = NULL;
 	ErrorContextCallback errcallback;
 
 	YbOscCheckTransactionalDdl();
@@ -1508,40 +1553,42 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 	else
 		table_close(rel, NoLock);
 
-	/* Wait in a plain transaction: it conflicts with no other DDL. */
+	/*
+	 * Wait in a plain transaction: it conflicts with no other DDL.  A cancel
+	 * or a failed copy rolls the job back.
+	 */
 	CommitAndStartPlainTransaction(&txn);
-
-	errcallback.callback = ActiveJobErrorCallback;
-	errcallback.arg = &jobId;
-	errcallback.previous = error_context_stack;
-	error_context_stack = &errcallback;
-
-	state = WaitForCopy(relid, jobId, &errorMessage);
-	if (state != YB_TABLE_BACKFILL_SUCCEEDED)
+	PG_TRY();
 	{
-		YbOscTxnState scratch;
+		char	   *errorMessage;
 
-		error_context_stack = errcallback.previous;
-
-		/* Roll the job back, committed before the error is raised. */
-		ResumeDdlTransaction(&txn);
-		PushActiveSnapshot(GetTransactionSnapshot());
-		YbOscAbort(jobId);
-		PopActiveSnapshot();
-		CommitAndStartPlainTransaction(&scratch);
-
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("ALTER TABLE ... CONCURRENTLY failed while copying table \"%s\"",
-						get_rel_name(relid)),
-				 errdetail("%s", errorMessage ? errorMessage : "The copy was aborted.")));
+		if (WaitForCopy(relid, jobId, &errorMessage) != YB_TABLE_BACKFILL_SUCCEEDED)
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("ALTER TABLE ... CONCURRENTLY failed while copying table \"%s\"",
+							get_rel_name(relid)),
+					 errdetail("%s", errorMessage ? errorMessage : "The copy was aborted.")));
 	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(PortalContext);
+		edata = CopyErrorData();
+		FlushErrorState();
+	}
+	PG_END_TRY();
+	if (edata != NULL)
+		RollBackAndRethrow(jobId, InvalidOid, &txn, edata);
 
 	/*
 	 * Cut over in the transaction the utility layer commits.  A failure rolls
 	 * the cutover back as a whole and leaves the job active.  The snapshot
 	 * stands in for the portal's, popped at the first commit.
 	 */
+	errcallback.callback = CutoverErrorCallback;
+	errcallback.arg = &jobId;
+	errcallback.previous = error_context_stack;
+	error_context_stack = &errcallback;
+
 	ResumeDdlTransaction(&txn);
 	PushActiveSnapshot(GetTransactionSnapshot());
 	YbOscFinish(jobId);
