@@ -81,6 +81,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
+  private static final String DEFAULT_POLLER_RETRY_TIMEOUT_MS = "300000";
+  private static final String SHORT_POLLER_RETRY_TIMEOUT_MS = "5000";
   // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
   private static final String RETRIED_UPDATE =
       "UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1) WHERE k = 1"
@@ -2033,11 +2035,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * An ERROR the poller raises while holding NotifyQueueLock must not leave it waiting on that
-   * lock in its error handler: it must still terminate the listeners and exit.
+   * lock in its error handler. The error repeats on every restart, as each one replays the same
+   * transaction, so once yb_notifications_poller_retry_timeout_ms passes the poller must terminate
+   * the listeners and exit.
    */
   @Test
   public void testPollerErrorHoldingQueueLock() throws Exception {
     Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2053,12 +2058,108 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       waitForPollerAndSlotCleanup(nonListener);
       assertConnectionDead(listener, "listener");
     } finally {
-      for (Map.Entry<HostAndPort, String> e : originalPgConf.entrySet()) {
-        setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
-      }
+      restorePgConfOnAllTServers(originalPgConf);
+      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
     }
 
     verifyListenNotifyWorks();
+  }
+
+  /**
+   * A poller error that goes away restarts the poller instead of terminating the listeners. The
+   * listener stays connected and receives the notification the poller failed on, once.
+   */
+  @Test
+  public void testPollerRestartsAfterTransientError() throws Exception {
+    final String channel = "transient_error";
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN " + channel);
+      int pollerPid = getPollerPid(stmt);
+
+      try {
+        appendToPgConfOnAllTServers(
+            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+        stmt.execute("NOTIFY " + channel + ", 'x'");
+        waitForPollerRestart(stmt, pollerPid);
+      } finally {
+        restorePgConfOnAllTServers(originalPgConf);
+      }
+
+      List<PGNotification> received = waitForNotification(listener, channel, "x");
+      assertEquals("Expected the notification exactly once", 1, received.size());
+      waitAndAssertNoNotifications(listener, "The notification should not be re-delivered");
+    }
+  }
+
+  /**
+   * A restarted poller that fails to initialize retries without failing new LISTENs, and once it
+   * initializes, both the listener from before and the one that joined meanwhile receive
+   * notifications.
+   */
+  @Test
+  public void testRestartedPollerRecoversFromInitFailure() throws Exception {
+    final String channel = "restart_init_failure";
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listener.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+      int pollerPid = getPollerPid(listenerStmt);
+
+      try (Connection joiner = getConnectionBuilder().withTServer(0).connect();
+           Statement joinerStmt = joiner.createStatement()) {
+        try {
+          setVirtualWalLimit("0");
+          ProcessUtil.signalProcess(pollerPid, "TERM");
+          waitForPollerRestart(listenerStmt, pollerPid);
+          joinerStmt.execute("LISTEN " + channel);
+        } finally {
+          setVirtualWalLimit("5");
+        }
+
+        try (Connection notifier = getConnectionBuilder().withTServer(0).connect();
+             Statement notifierStmt = notifier.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", 'after_init'");
+        }
+        waitForNotification(listener, channel, "after_init");
+        waitForNotification(joiner, channel, "after_init");
+      }
+    }
+  }
+
+  /**
+   * A restarted poller that keeps failing to initialize terminates the listeners once
+   * yb_notifications_poller_retry_timeout_ms passes, instead of leaving them connected and
+   * receiving nothing.
+   */
+  @Test
+  public void testRestartedPollerInitFailureTerminatesListeners() throws Exception {
+    setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN ch1");
+      int pollerPid = getPollerPid(stmt);
+
+      setVirtualWalLimit("0");
+      ProcessUtil.signalProcess(pollerPid, "TERM");
+
+      waitForPollerAndSlotCleanup(nonListener);
+      assertConnectionDead(listener, "listener");
+    } finally {
+      setVirtualWalLimit("5");
+      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  private void setPollerRetryTimeoutMs(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_notifications_poller_retry_timeout_ms", value);
+    }
   }
 
   private void setCdcIntentRetentionMs(String value) throws Exception {
@@ -2180,6 +2281,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
       original.put(tserver, current);
       setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
+    }
+  }
+
+  private void restorePgConfOnAllTServers(Map<HostAndPort, String> original) throws Exception {
+    for (Map.Entry<HostAndPort, String> e : original.entrySet()) {
+      setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
     }
   }
 
