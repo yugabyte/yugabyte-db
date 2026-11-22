@@ -71,6 +71,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("use_client_to_server_encryption", "true");
     flagMap.put("certs_for_client_dir", certsDir());
+    // YSQL-only test; the fixed CQL port 9042 can collide with concurrent runs on the same IP.
+    flagMap.put("start_cql_proxy", "false");
     return flagMap;
   }
 
