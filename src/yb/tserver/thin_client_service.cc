@@ -214,7 +214,7 @@ class ThinSession : public ClientSessionBase,
       // one before fanning out, since the session forces consistent reads (client/batcher.cc, the
       // force_consistent_read_ && groups.size() > 1 case). Writes take this path too, letting the
       // storage layer pick their read time for conflict resolution.
-      session->SetReadPoint(ReadHybridTime());
+      session->ResetReadPoint();
     }
 
     const auto& tables = query->tables();

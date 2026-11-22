@@ -2778,12 +2778,11 @@ class PgClientSession::Impl {
     }
 
     auto arena = ObtainArena(&context, *resp);
-    // kLegacyCatalog, not kPlain: every catalog read sets or resets its read time, so resetting it
-    // here affects no other request. A leftover read point can predate the scanned index's birth
-    // time; key ranges need no snapshot, so let the tablet pick the read time.
-    auto session = EnsureSession(
+    // Every request on the catalog session sets its own read time, so resetting it here doesn't
+    // affect other requests.
+    auto& session = EnsureSession(
         PgClientSessionKind::kLegacyCatalog, context.GetClientDeadline(), arena);
-    session->SetReadPoint({});
+    session->ResetReadPoint();
 
     // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
     // instead of passing through YBSession.
@@ -4237,7 +4236,7 @@ class PgClientSession::Impl {
     DCHECK(is_plain_session || kind == PgClientSessionKind::kLegacyCatalog);
     const auto& data = GetSessionData(kind);
     auto& session = *data.session;
-    session.SetReadPoint({});
+    session.ResetReadPoint();
     VLOG_WITH_PREFIX(3) << "Reset read time: " << session.read_point()->GetReadTime();
 
     if (!is_plain_session || data.transaction || !plain_session_used_read_time_.pending_update) {
@@ -4490,7 +4489,7 @@ class PgClientSession::Impl {
       // Reset the read_time for sequence queries to read recent data. This is required in case the
       // user reset yb_read_time to 0 in a session.
       if (kind == PgClientSessionKind::kSequence) {
-        session->SetReadPoint({});
+        session->ResetReadPoint();
       }
     }
     return session;
