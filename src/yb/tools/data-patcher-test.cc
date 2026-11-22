@@ -243,6 +243,10 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
     LOG(INFO) << "Write time after clock jump for " << k << ": " << write_times_after_jump[k];
   }
 
+  // A replica still being added at shutdown is deleted after restart, so revert would not find
+  // its live dirs.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(60s * kTimeMultiplier));
+
   std::vector<FsManager*> fs_managers;
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     fs_managers.push_back(&cluster_->mini_master(i)->fs_manager());
