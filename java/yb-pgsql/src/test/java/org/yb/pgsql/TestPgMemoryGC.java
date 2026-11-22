@@ -80,7 +80,15 @@ public class TestPgMemoryGC extends BasePgSQLTest {
     for (int i = 0; i < (TestUtils.isReleaseBuild() ? 50 : 5); i++) {
       accessStatementsEndpoint();
 
-      final long rssAfter = getRssForPid(webserverPid);
+      // The webserver frees the response and runs tcmalloc GC only after sending the response,
+      // so the client may observe RSS before that completes.
+      long rssAfter = getRssForPid(webserverPid);
+      for (int retry = 0;
+           retry < 50 && rssAfter - rssBefore >= RSS_ACCEPTED_DIFF_AFTER_GC_KILOBYTES;
+           retry++) {
+        Thread.sleep(100);
+        rssAfter = getRssForPid(webserverPid);
+      }
       logRss("YSQL webserver", webserverPid, rssBefore, rssAfter);
       assertLessThan(
           "Freed bytes should be recycled when GC threshold is reached",
