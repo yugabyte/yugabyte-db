@@ -79,8 +79,9 @@ if [ "$output" = "file" ]; then
   metrics_dir="$(dirname "$filename")"
   mkdir -p "$metrics_dir"
   temp_output_file="$metrics_dir/process_stats.json"
+  maintenance_state_file="$metrics_dir/maintenance_services_state.json"
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True --metrics_file "$filename" \
-  --temp_output_file "$temp_output_file"
+  --temp_output_file "$temp_output_file" --maintenance_state_file "$maintenance_state_file"
   chmod o+r "$filename" || true
 else
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True
