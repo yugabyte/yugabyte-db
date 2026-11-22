@@ -16500,10 +16500,23 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	/* Get the orig and new tablespace OIDs */
 	orig_tablespaceoid = get_tablespace_oid(stmt->orig_tablespacename, false);
 	new_tablespaceoid = get_tablespace_oid(stmt->new_tablespacename, false);
-	yb_orig_tablegroup_name = get_implicit_tablegroup_name(orig_tablespaceoid);
+
+yb_lookup_tablegroups:
 	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
-	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
-	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+	/* YB: Found by tablespace, since the name need not be colocation_<oid>. */
+	if (MyDatabaseColocated)
+	{
+		/* Relations with no tablespace are in the default tablegroup. */
+		if (orig_tablespaceoid == MyDatabaseTableSpace)
+			yb_orig_tablegroup_oid =
+				get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+		else
+			shdepFindImplicitTablegroup(orig_tablespaceoid,
+										&yb_orig_tablegroup_oid);
+		shdepFindImplicitTablegroup(new_tablespaceoid,
+									&yb_new_tablegroup_oid);
+	}
+	yb_orig_tablegroup_name = get_tablegroup_name(yb_orig_tablegroup_oid);
 	/*
 	 * YB: If a relation name is passed with the ALTER TABLE ALL ... COLOCATED
 	 * WITH ... SET TABLESPACE ... CASCADE command then we get the relation
@@ -16531,6 +16544,22 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 				 errmsg("cannot move colocated relations to tablespace %s,"
 						" as it contains existing colocated relation",
 						stmt->new_tablespacename)));
+
+	/* YB: A move renames the tablegroup, and the default is found by name. */
+	if (MyDatabaseColocated && yb_orig_tablegroup_name != NULL &&
+		strcmp(yb_orig_tablegroup_name, DEFAULT_TABLEGROUP_NAME) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move the default tablegroup"
+						" to another tablespace")));
+
+	/* YB: The tablegroup would have to become or join the default one. */
+	if (MyDatabaseColocated && OidIsValid(yb_orig_tablegroup_oid) &&
+		new_tablespaceoid == MyDatabaseTableSpace)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move colocated relations to the database"
+						" default tablespace")));
 
 	/*
 	 * YB: If CASCADE is not specified and the original tablespace contains
@@ -16582,6 +16611,16 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(new_tablespaceoid));
 	}
+
+	/*
+	 * YB: The checks passed, so lock the tablegroup that moves and the
+	 * tablespace it moves to. If that took a lock, look up and check again.
+	 */
+	if (yb_cascade && MyDatabaseColocated &&
+		OidIsValid(yb_orig_tablegroup_oid) &&
+		YbLockImplicitTablegroupForMove(yb_orig_tablegroup_oid,
+										new_tablespaceoid))
+		goto yb_lookup_tablegroups;
 
 	/*
 	 * Now that the checks are done, check if we should set either to
