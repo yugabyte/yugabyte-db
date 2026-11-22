@@ -1482,8 +1482,8 @@ Exec_ListenPreCommit(void)
 			LWLockRelease(NotifyQueueLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller encountered a non-retryable "
-							"error, LISTEN is unavailable until existing "
+					 errmsg("notifications poller stopped after an error, "
+							"LISTEN is unavailable until existing "
 							"listeners terminate. Please re-try in some time"),
 					 errdetail("%s", poller_data->error_message)));
 		}
@@ -3329,10 +3329,12 @@ ybStartNotifsPollerBgWorker(void)
  * Wait for the node's notifications poller to initialize, and fail if it does
  * not. The poller reports how its initialization went in init_status, and so
  * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller that fails to initialize is
- * restarted until ybCleanupListenState terminates it as the last listener
- * unregisters. On a first startup that is right away, as every listener is
- * waiting here and fails with it.
+ * unregisters before the poller reports. A poller that fails its first
+ * initialization is restarted until ybCleanupListenState terminates it as the
+ * last listener unregisters, which is right away, as every listener is
+ * waiting here and fails with it. A poller restarted after initializing once
+ * handles its failures in ybNotifsPollerExitOnError, and never reports them
+ * here.
  */
 static void
 ybWaitForNotifsPollerInit(void)
@@ -3523,6 +3525,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	bool		permanent = ybIsPermanentNotifsPollerError(edata);
 	TimestampTz now = GetCurrentTimestamp();
 	bool		ran_healthy;
+	char		message[sizeof(poller_data->error_message)];
 
 	ran_healthy = ybNotifsPollerAcked ||
 		(ybNotifsPollerUpSince != 0 &&
@@ -3542,19 +3545,23 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	strlcpy(poller_data->error_message, edata->message,
+	/* Listeners and refused LISTENs report error_message. */
+	if (permanent)
+		strlcpy(message, edata->message, sizeof(message));
+	else
+		snprintf(message, sizeof(message),
+				 "%s (restarts kept failing for "
+				 "yb_notifications_poller_retry_timeout_ms = %d ms)",
+				 edata->message, yb_notifications_poller_retry_timeout_ms);
+	strlcpy(poller_data->error_message, message,
 			sizeof(poller_data->error_message));
 	poller_data->has_runtime_error = true;
 	LWLockRelease(NotifyQueueLock);
 
 	ereport(WARNING,
-			(errmsg("notifications poller encountered a non-retryable "
-					"error, terminating all listening backends in this node"),
-			 errdetail("%s", edata->message),
-			 (permanent ? 0 :
-			  errhint("Restarts of the poller kept failing for %d ms, see "
-					  "yb_notifications_poller_retry_timeout_ms.",
-					  yb_notifications_poller_retry_timeout_ms))));
+			(errmsg("notifications poller stopped after an error, "
+					"terminating all listening backends in this node"),
+			 errdetail("%s", message)));
 
 	ybSignalAllListeners();
 

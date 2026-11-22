@@ -2024,8 +2024,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         fail("LISTEN should have failed because poller has a runtime error");
       } catch (SQLException e) {
         LOG.info("listenerB LISTEN failed (expected): {}", e.getMessage());
-        assertTrue("Error should mention non-retryable error",
-            e.getMessage().contains("non-retryable error"));
+        assertTrue("Error should say the poller stopped",
+            e.getMessage().contains("poller stopped after an error"));
       }
 
       sleepThread.join(Timeouts.adjustTimeoutSecForBuildType(120000));
