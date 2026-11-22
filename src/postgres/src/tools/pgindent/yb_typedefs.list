@@ -149,6 +149,7 @@ YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
 YbNotifsPollerInitStatus
+YbNotifsPollerPendingEntry
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry

@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
+import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -914,6 +915,173 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * Splits pg_yb_notifications into two tablets. The table is created with one tablet, so splitting
+   * needs data: insert dummy rows (db_oid 0, so no listener receives them), flush, split, and
+   * delete the rows again.
+   */
+  private void splitNotificationsTable() throws Exception {
+    final String table = "pg_yb_notifications";
+    try (Connection ybSystemConn = getConnectionBuilder().withDatabase("yb_system").connect();
+         Statement stmt = ybSystemConn.createStatement()) {
+      stmt.execute("INSERT INTO " + table
+          + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data)"
+          + " SELECT gen_random_uuid(), gen_random_uuid(), 0, 0, false, '\\x00'"
+          + " FROM generate_series(1, 1000)");
+
+      runYbAdmin("flush_table", "ysql.yb_system", table);
+      List<String> tablets = getTabletsForYsqlTable("yb_system", table);
+      assertEquals(1, tablets.size());
+      miniCluster.getClient().splitTablet(tablets.get(0));
+      TestUtils.waitFor(() -> getTabletsForYsqlTable("yb_system", table).size() == 2,
+          Timeouts.adjustTimeoutSecForBuildType(60 * 1000));
+
+      stmt.execute("DELETE FROM " + table + " WHERE db_oid = 0");
+    }
+  }
+
+  private static String notifySeriesSql(String prefix, int count) {
+    return "SELECT pg_notify('" + CHANNEL + "', '" + prefix + "' || lpad(g::text, 5, '0'))"
+        + " FROM generate_series(0, " + (count - 1) + ") g";
+  }
+
+  /** Waits for the last of count notifications with the given prefix and checks their order. */
+  private static void assertNotificationsInOrder(
+      Connection listenerConn, String prefix, int count) throws Exception {
+    List<String> payloads = new ArrayList<>();
+    for (PGNotification n : waitForNotification(
+        listenerConn, CHANNEL, String.format("%s%05d", prefix, count - 1))) {
+      if (n.getParameter().startsWith(prefix)) {
+        payloads.add(n.getParameter());
+      }
+    }
+    List<String> expected = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      expected.add(String.format("%s%05d", prefix, i));
+    }
+    assertEquals(expected, payloads);
+  }
+
+  /**
+   * The virtual WAL streams transactions that commit at the same hybrid time as one transaction.
+   * Each transaction's notifications must still be delivered together and in send order (#38398).
+   * Such commit times collide only across tservers' clocks, so the test makes the virtual WAL
+   * treat commits within one window as simultaneous.
+   *
+   * A tablet streams transactions with equal commit times in DocDB transaction id order, so the
+   * test commits in that order too; the virtual WAL rejects rows that arrive out of it.
+   */
+  @Test
+  public void testNotifyOrderOfTransactionsWithSameCommitTime() throws Exception {
+    final int n = 50;
+    final long windowMs = 5000;
+    setVirtualWalCommitTimeRoundUp(windowMs * 1000);
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection connA = getConnectionBuilder().connect();
+         Connection connB = getConnectionBuilder().connect();
+         Statement stmtA = connA.createStatement();
+         Statement stmtB = connB.createStatement()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      // The notification rows are written at commit; the INSERT starts the DocDB transaction
+      // earlier so that its id can be read.
+      stmtA.execute("CREATE TABLE same_commit_time_t (v int)");
+      String txnIdSql = "SELECT yb_get_current_transaction()::text";
+      stmtA.execute("BEGIN");
+      stmtA.execute("INSERT INTO same_commit_time_t VALUES (1)");
+      stmtA.execute(notifySeriesSql("a_", n));
+      String txnA = getSingleRow(stmtA, txnIdSql).getString(0);
+      stmtB.execute("BEGIN");
+      stmtB.execute("INSERT INTO same_commit_time_t VALUES (2)");
+      stmtB.execute(notifySeriesSql("b_", n));
+      String txnB = getSingleRow(stmtB, txnIdSql).getString(0);
+      boolean aFirst = txnA.compareTo(txnB) < 0;
+
+      // Commit both early in a window so that they don't straddle its end.
+      Thread.sleep(windowMs - System.currentTimeMillis() % windowMs + windowMs / 10);
+      (aFirst ? stmtA : stmtB).execute("COMMIT");
+      (aFirst ? stmtB : stmtA).execute("COMMIT");
+
+      List<String> payloads = new ArrayList<>();
+      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+      try (Statement stmt = listenerConn.createStatement()) {
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (payloads.size() < 2 * n && System.currentTimeMillis() < deadline) {
+          stmt.execute("SELECT 1");
+          PGNotification[] notifs = pgConn.getNotifications();
+          if (notifs != null) {
+            for (PGNotification notif : notifs) {
+              payloads.add(notif.getParameter());
+            }
+          }
+          Thread.sleep(200);
+        }
+      }
+
+      List<String> expectedA = new ArrayList<>();
+      List<String> expectedB = new ArrayList<>();
+      for (int i = 0; i < n; i++) {
+        expectedA.add(String.format("a_%05d", i));
+        expectedB.add(String.format("b_%05d", i));
+      }
+      List<String> expected = new ArrayList<>(aFirst ? expectedA : expectedB);
+      expected.addAll(aFirst ? expectedB : expectedA);
+      assertEquals(expected, payloads);
+    } finally {
+      // The virtual WAL can ship a window before the clock reaches its end, moving its safe time
+      // there. Keep rounding until the end of every window committed into, so that no later commit
+      // falls below that safe time and gets dropped.
+      Thread.sleep(windowMs - System.currentTimeMillis() % windowMs + windowMs / 10);
+      setVirtualWalCommitTimeRoundUp(0);
+    }
+  }
+
+  private void setVirtualWalCommitTimeRoundUp(long usec) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "TEST_cdcsdk_vwal_round_up_commit_time_usec", String.valueOf(usec));
+    }
+  }
+
+  /**
+   * A transaction's notifications must be delivered in the order they were sent even when their
+   * rows land on different tablets of pg_yb_notifications (#35444).
+   */
+  @Test
+  public void testNotifyOrderAfterNotificationsTableSplit() throws Exception {
+    final int n = 200;
+    splitNotificationsTable();
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      try (Statement stmt = notifierConn.createStatement()) {
+        // One statement in a transaction block.
+        stmt.execute("BEGIN");
+        stmt.execute(notifySeriesSql("stmt_", n));
+        stmt.execute("COMMIT");
+        assertNotificationsInOrder(listenerConn, "stmt_", n);
+
+        // Separate NOTIFY statements in a transaction block.
+        stmt.execute("BEGIN");
+        for (int i = 0; i < n; i++) {
+          stmt.execute(String.format("NOTIFY %s, 'multi_%05d'", CHANNEL, i));
+        }
+        stmt.execute("COMMIT");
+        assertNotificationsInOrder(listenerConn, "multi_", n);
+
+        // One autocommit statement. Its notifications are written in one transaction too (#37444).
+        stmt.execute(notifySeriesSql("auto_", n));
+        assertNotificationsInOrder(listenerConn, "auto_", n);
+      }
+    }
+  }
+
+  /**
    * Verifies that a committed notification is still delivered to an active
    * listener even after the notifier's backend is killed with SIGKILL.
    */
@@ -1731,6 +1899,39 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
       waitForNotification(listenerConn, channel, "after_update");
       LOG.info("Received notification after UPDATE on pg_yb_notifications");
+    }
+  }
+
+  /**
+   * pg_yb_notifications also takes plain SQL writes. A malformed extra_options value must not
+   * break the poller (an error there terminates every listener on the node).
+   */
+  @Test
+  public void testPollerToleratesMalformedExtraOptions() throws Exception {
+    final String channel = "malformed_test";
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+      }
+
+      try (Connection ybSystemConn =
+               getConnectionBuilder().withDatabase("yb_system").connect();
+           Statement stmt = ybSystemConn.createStatement()) {
+        for (String opts : Arrays.asList("'[1, 2]'", "'5'", "'{\"seq\": 1e30}'",
+                                         "'{\"seq\": -1}'", "'{\"seq\": \"x\"}'")) {
+          stmt.execute("INSERT INTO pg_yb_notifications"
+              + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data,"
+              + " extra_options) VALUES (gen_random_uuid(), gen_random_uuid(), 0, 0, false,"
+              + " '\\x00', " + opts + ")");
+        }
+      }
+
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'after_malformed'");
+      }
+      waitForNotification(listenerConn, channel, "after_malformed");
     }
   }
 
