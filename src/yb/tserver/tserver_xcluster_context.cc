@@ -36,6 +36,11 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
   return safe_time_map_.GetSafeTime(namespace_id);
 }
 
+HybridTime TserverXClusterContext::GetCdcSafeTime(NamespaceIdView namespace_id) const {
+  auto safe_time = cdc_safe_time_map_.GetSafeTime(namespace_id);
+  return safe_time.ok() && *safe_time ? **safe_time : HybridTime::kInvalid;
+}
+
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
     NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
@@ -139,6 +144,11 @@ bool TserverXClusterContext::IsTargetAndInAutomaticMode(const NamespaceId& names
 void TserverXClusterContext::UpdateSafeTimeMap(
     const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   safe_time_map_.Update(safe_time_map);
+}
+
+void TserverXClusterContext::UpdateCdcSafeTimeMap(
+    const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
+  cdc_safe_time_map_.Update(safe_time_map);
 }
 
 void TserverXClusterContext::UpdateXClusterGuardedLease(MonoTime lease_expiration_time) {

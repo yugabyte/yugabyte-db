@@ -3318,6 +3318,10 @@ YbcStatus YBCPgUpdateAndPersistLSN(
   return YBCStatusOK();
 }
 
+YbcStatus YBCPgGetCdcSafeTime(YbcPgOid db_oid, uint64_t* safe_time) {
+  return ExtractValueFromResult(pgapi->GetCdcSafeTime(db_oid), safe_time);
+}
+
 YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count) {
   const auto result = pgapi->TabletsMetadata(/* local_only= */ true);
   if (!result.ok()) {

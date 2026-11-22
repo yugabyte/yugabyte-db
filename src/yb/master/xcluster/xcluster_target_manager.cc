@@ -20,6 +20,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
 
@@ -333,7 +334,15 @@ Status XClusterTargetManager::FillHeartbeatResponse(
     const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
   auto l = safe_time_info_.LockForRead();
   if (!l->pb.safe_time_map().empty()) {
-    *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
+    // With the CDC table, the map holds the CDC safe times of this universe's own databases, see
+    // XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap. They go in a field of their
+    // own: a tserver makes the databases of xcluster_namespace_to_safe_time read only, and reads
+    // them at their safe time.
+    if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+      *resp->mutable_cdc_namespace_to_safe_time() = l->pb.safe_time_map();
+    } else {
+      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
+    }
   }
 
   return Status::OK();

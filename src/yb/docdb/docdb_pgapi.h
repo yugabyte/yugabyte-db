@@ -88,6 +88,10 @@ Status SetValueFromQLBinaryHelper(
 
 std::string DatumMessageValueToString(const DatumMessagePB& datum_message);
 
+// Converts JSON text to the bytes DocDB stores in a YSQL jsonb column. Allocates in the thread's
+// ybgate memory context; call DeleteMemoryContextIfSet once the thread is done converting.
+Result<std::string> JsonTextToPgJsonb(const std::string& json);
+
 void DeleteMemoryContextIfSet();
 
 } // namespace yb::docdb

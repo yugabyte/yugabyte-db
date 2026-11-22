@@ -38,6 +38,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   Result<std::optional<HybridTime>> GetSafeTime(NamespaceIdView namespace_id) const override;
 
+  HybridTime GetCdcSafeTime(NamespaceIdView namespace_id) const override;
+
   XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
       NamespaceIdView namespace_id) const override EXCLUDES(mutex_);
 
@@ -62,6 +64,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   bool SafeTimeComputationRequired(const NamespaceId& namespace_id) const override;
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
+
+  void UpdateCdcSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
 
@@ -104,6 +108,10 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   bool HasUnexpiredLeaseUnlocked() const REQUIRES_SHARED(mutex_);
 
   XClusterSafeTimeMap safe_time_map_;
+
+  // Kept apart from safe_time_map_, whose databases are xCluster targets: read only, and read at
+  // their safe time.
+  XClusterSafeTimeMap cdc_safe_time_map_;
 
   mutable std::shared_mutex mutex_;
 

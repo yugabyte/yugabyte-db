@@ -30,6 +30,10 @@ static const char* const kDDLQueueYbDataColumn = "yb_data";
 
 YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
+// Not an xCluster replication group: what the CDC table pollers of this universe use in its place,
+// in ProducerTabletInfo and in the keys of the xCluster safe time table.
+inline const ReplicationGroupId kCdcTableReplicationGroupId("cdc_table");
+
 struct TabletReplicationError {
   int64_t consumer_term = 0;
   ReplicationErrorPb error;
@@ -68,6 +72,10 @@ struct XClusterTabletInfo {
   bool disable_stream;
   // Whether or not we are using automatic DDL replication for this tablet.
   bool automatic_ddl_mode;
+  // Not xCluster: a tablet of this universe whose CDCSDK changes are written to the CDC table.
+  // consumer_tablet_info then names the polled tablet itself, so that the poller runs on that
+  // tablet's leader, and the CDC table.
+  bool is_cdc_table = false;
 
   const std::string& producer_tablet_id() const { return producer_tablet_info.tablet_id; }
 };

@@ -2706,6 +2706,10 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgApiImpl::UpdateAndPersistLSN(
   return pg_client_.UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 
+Result<uint64_t> PgApiImpl::GetCdcSafeTime(PgOid db_oid) {
+  return pg_client_.GetCdcSafeTime(db_oid);
+}
+
 Status PgApiImpl::NewDropReplicationSlot(const char* slot_name, PgStatement** handle) {
   return AddToCurrentPgMemctx(
       std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name), handle);

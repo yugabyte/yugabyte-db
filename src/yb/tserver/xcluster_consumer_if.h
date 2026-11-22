@@ -60,6 +60,15 @@ class XClusterConsumerIf {
   virtual SchemaVersion GetMinXClusterSchemaVersion(
       const TableId& table_id, const ColocationId& colocation_id) = 0;
   virtual int32_t cluster_config_version() const = 0;
+
+  // Replaces the set of tablets that are polled into CDC tables.
+  virtual void HandleCdcTableRegistry(const cdc::CdcTablePollerRegistryPB& registry) = 0;
+  // Version of the last registry applied by HandleCdcTableRegistry. 0 if none.
+  virtual uint64_t cdc_table_registry_version() const = 0;
+  // Adds a report for each CDC table poller whose tablet has been split.
+  virtual void FillCdcTableSplitReports(
+      google::protobuf::RepeatedPtrField<cdc::CdcTableSplitReportPB>* reports) = 0;
+
   virtual Status ReloadCertificates() = 0;
   virtual void PopulateMasterHeartbeatRequest(
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) = 0;

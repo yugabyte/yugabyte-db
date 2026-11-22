@@ -1182,6 +1182,18 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return Status::OK();
   }
 
+  Status GetCdcSafeTime(
+      const PgGetCdcSafeTimeRequestPB& req, PgGetCdcSafeTimeResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto* xcluster_context = session_context_.xcluster_context;
+    auto safe_time = HybridTime::kInvalid;
+    if (xcluster_context) {
+      safe_time = xcluster_context->GetCdcSafeTime(GetPgsqlNamespaceId(req.db_oid()));
+    }
+    resp->set_safe_time(safe_time.is_valid() ? safe_time.ToUint64() : 0);
+    return Status::OK();
+  }
+
   Status CreateSequencesDataTable(
       const PgCreateSequencesDataTableRequestPB& req,
       PgCreateSequencesDataTableResponsePB* resp,

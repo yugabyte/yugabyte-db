@@ -2739,6 +2739,7 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
+  xcluster_context_->UpdateCdcSafeTimeMap(resp.cdc_namespace_to_safe_time());
   // A master with auto flag skip_fields_moved_to_xcluster_guarded_info off sends both the
   // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
   if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
@@ -2778,6 +2779,14 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     }
 
     xcluster_consumer->HandleMasterHeartbeatResponse(consumer_registry, cluster_config_version);
+  }
+
+  if (resp.has_cdc_table_registry()) {
+    if (!xcluster_consumer) {
+      RETURN_NOT_OK(CreateXClusterConsumer());
+      xcluster_consumer = GetXClusterConsumer();
+    }
+    xcluster_consumer->HandleCdcTableRegistry(resp.cdc_table_registry());
   }
 
   // Check whether the cluster is a producer of a CDC stream.
@@ -2836,6 +2845,20 @@ ReplicationInfoPB TabletServer::GetClusterReplicationInfo() const {
 
 int32_t TabletServer::cluster_config_version() const {
   return cluster_config_.version.load(std::memory_order_acquire);
+}
+
+uint64_t TabletServer::cdc_table_registry_version() const {
+  // The version the consumer has applied, not the last one received, so that the master resends
+  // a registry that did not reach the consumer.
+  auto* xcluster_consumer = GetXClusterConsumer();
+  return xcluster_consumer ? xcluster_consumer->cdc_table_registry_version() : 0;
+}
+
+void TabletServer::FillCdcTableSplitReports(master::TSHeartbeatRequestPB* req) const {
+  req->clear_cdc_table_split_reports();
+  if (auto* xcluster_consumer = GetXClusterConsumer()) {
+    xcluster_consumer->FillCdcTableSplitReports(req->mutable_cdc_table_split_reports());
+  }
 }
 
 Result<uint32_t> TabletServer::XClusterConfigVersion() const {

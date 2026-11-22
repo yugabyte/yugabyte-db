@@ -37,6 +37,11 @@ class TserverXClusterContextIf {
 
   virtual Result<std::optional<HybridTime>> GetSafeTime(NamespaceIdView namespace_id) const = 0;
 
+  // Not xCluster: the CDC safe time of a database of this universe. Every change that committed
+  // at or before it, in any tablet polled into the CDC table of the database, is in that table.
+  // Invalid while the database has none: no such tablets, or not all of them have reported yet.
+  virtual HybridTime GetCdcSafeTime(NamespaceIdView namespace_id) const = 0;
+
   virtual XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
       NamespaceIdView namespace_id) const = 0;
 
