@@ -43,7 +43,10 @@ class InterprocessSemaphore {
   }
 
   Status Wait() {
-    return ResToStatus(sem_wait(&impl_), "Wait");
+    int res;
+    // sem_wait fails with EINTR if interrupted by a signal handler; retry.
+    while ((res = sem_wait(&impl_)) == -1 && errno == EINTR) {}
+    return ResToStatus(res, "Wait");
   }
 
   template<class TimePoint>

@@ -556,6 +556,20 @@ Status Subprocess::DoWait(int* ret, int options) {
   do {
     waitpid_ret_val = waitpid(child_pid, ret, options);
   } while (waitpid_ret_val == -1 && errno == EINTR);
+  if (waitpid_ret_val == -1 && errno == ECHILD) {
+    UniqueLock l(state_lock_);
+    // A concurrent DoWait on this object may have reaped the child already.
+    if (state_ != SubprocessState::kExited) {
+      // The kernel auto-reaped the child while SIGCHLD was SIG_IGN (e.g. during webserver
+      // start); the exit status is lost, so report a generic failure.
+      LOG(WARNING) << "Child " << child_pid << " of " << program_ << " was reaped elsewhere";
+      child_pid_ = 0;
+      cached_rc_ = W_EXITCODE(255, 0);
+      state_ = SubprocessState::kExited;
+    }
+    *ret = cached_rc_;
+    return Status::OK();
+  }
   if (waitpid_ret_val == -1) {
     return STATUS(RuntimeError, "Unable to wait on child", Errno(errno));
   }
@@ -564,7 +578,9 @@ Status Subprocess::DoWait(int* ret, int options) {
   }
 
   UniqueLock l(state_lock_);
-  CHECK_EQ(waitpid_ret_val, child_pid_);
+  // Compare with the local pid: a concurrent DoWait may have hit ECHILD and cleared child_pid_.
+  // The real status overrides the synthetic one it stored.
+  CHECK_EQ(waitpid_ret_val, child_pid);
   child_pid_ = 0;
   cached_rc_ = *ret;
   state_ = SubprocessState::kExited;
