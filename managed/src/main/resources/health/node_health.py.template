@@ -658,8 +658,9 @@ class NodeChecker():
                  ssl_protocol, enable_connection_pooling, enable_ysql, enable_ysql_auth,
                  master_http_port, tserver_http_port, ysql_server_http_port, node_version,
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
-                 otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
+                 otel_enabled, temp_output_file, maintenance_state_file, ddl_atomicity_check,
+                 master_leader_url, master_rpc_port, tserver_rpc_port, verbose,
+                 clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
                  ybdb_inbuilt_ybc, yba_ynp_version):
         self.node = node
@@ -696,6 +697,7 @@ class NodeChecker():
         self.additional_info = {}
         self.otel_enabled = otel_enabled
         self.temp_output_file = temp_output_file
+        self.maintenance_state_file = maintenance_state_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
         self.enable_earlyoom = enable_earlyoom
@@ -2745,8 +2747,7 @@ class NodeChecker():
         msgs = []
         # systemd resets Result and clears ExecMainExitTimestamp when a run starts, so a run in
         # progress says nothing about the previous one. Keep the last completed run on disk.
-        state_path = os.path.join(self.yb_home_dir, MAINTENANCE_SERVICES_STATE_FILE)
-        state = load_json_file(state_path)
+        state = load_json_file(self.maintenance_state_file)
         new_state = dict(state)
         for unit in services:
             service_label = Label("service", unit)
@@ -2829,7 +2830,7 @@ class NodeChecker():
                     unit, scope_label, result, exit_ts_raw))
 
         if new_state != state:
-            write_json_file(state_path, new_state)
+            write_json_file(self.maintenance_state_file, new_state)
         return e.fill_and_return_entry(msgs, has_error=False,
                                        metrics=[status_metric, last_run_metric])
 
@@ -2893,7 +2894,7 @@ def load_json_file(path):
 
 
 def write_json_file(path, data):
-    # The health check and yb-collect_metrics can run at once: write a private file, then swap.
+    # Two health checks can overlap: write a private file, then swap it in.
     tmp_path = "{}.{}.tmp".format(path, os.getpid())
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -3309,8 +3310,6 @@ class NodeInfo:
 # postgres logs. That script gzips every plain log in a directory except the newest, so the date
 # in the name is what lets it work at all.
 HEALTH_LOG_DIR = "metrics/logs"
-# Last completed run of each maintenance service, relative to the YB home dir.
-MAINTENANCE_SERVICES_STATE_FILE = "metrics/maintenance_services_state.json"
 HEALTH_LOG_FILE_FORMAT = "node_health-%Y%m%d.log"
 
 
@@ -3427,6 +3426,10 @@ def main():
     parser.add_argument('--temp_output_file', type=str, default="{{TMP_DIR}}/process_stats.json",
                         required=False, help='Temporary output file to which the process '
                                              'stats will be written to.')
+    parser.add_argument('--maintenance_state_file', type=str,
+                        default="{{TMP_DIR}}/maintenance_services_state.json", required=False,
+                        help='File that keeps the last completed run of each node maintenance '
+                             'service.')
     parser.add_argument('--ddl_atomicity_check', type=bool, default=False, required=False,
                         help='In case we want to get only metrics as an output.')
     parser.add_argument('--master_leader_url', type=str, default="", required=False,
@@ -3460,7 +3463,8 @@ def main():
         n.ssl_protocol, n.enable_connection_pooling, n.enable_ysql, n.enable_ysql_auth,
         n.master_http_port, n.tserver_http_port, n.ysql_server_http_port, n.yb_version,
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
-        n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.otel_enabled, args.temp_output_file, args.maintenance_state_file,
+        args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
         n.ybdb_inbuilt_ybc, args.yba_ynp_version)
