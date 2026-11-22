@@ -13138,7 +13138,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
 
   for (int i = 0; i < 8; i++) {
     const int extra_count =
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
       ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
@@ -13187,7 +13187,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // get 12 records of pg_attribute and pg_publication_rel_prpubid_index: a DDL for each, 9 inserts
   // to pg_attribute for the CREATE TABLE and 1 insert to pg_publication_rel_prpubid_index.
   const int expected_records =
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11;
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11;
   auto change_resp =
       ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id_1, expected_records));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), expected_records);
@@ -13242,7 +13242,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   int expected_total = 0;
   for (int i = 0; i < 8; i++) {
     expected_total += expected_count[i] +
-        (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0);
+        (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0);
   }
   auto change_resp =
       ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id, expected_total));
@@ -13259,7 +13259,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   for (int i = 0; i < 8; i++) {
     const int extra_count =
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
       ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
