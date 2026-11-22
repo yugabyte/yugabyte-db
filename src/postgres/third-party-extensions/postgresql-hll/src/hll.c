@@ -151,11 +151,15 @@ static Oid get_extension_schema(Oid ext_oid);
 static Oid FunctionOid(const char *schemaName, const char *functionName, int argumentCount, bool missingOk);
 static void InitializeHllAggregateOids(void);
 static bool HllAggregateOid(Oid aggregateOid);
-static void YbHllInvalidateAggregateOids(Datum arg, int cacheid,
-										 uint32 hashvalue);
 
 void _PG_init(void);
 void _PG_fini(void);
+
+/* YB declarations */
+static void YbHllInvalidateAggOids(Datum arg, int cacheid, uint32 hashvalue);
+
+/* Bumped by every pg_proc invalidation */
+static uint64 yb_hll_inval_count = 0;
 
 /* _PG_init is the shared library initialization function */
 void _PG_init(void)
@@ -172,14 +176,7 @@ void _PG_init(void)
 	 * YB: ALTER EXTENSION UPDATE recreates the aggregates, so drop cached
 	 * OIDs on pg_proc invalidation (also fired by YB catalog cache refresh).
 	 */
-	CacheRegisterSyscacheCallback(PROCOID, YbHllInvalidateAggregateOids,
-								  (Datum) 0);
-}
-
-static void
-YbHllInvalidateAggregateOids(Datum arg, int cacheid, uint32 hashvalue)
-{
-	aggregateValuesInitialized = false;
+	CacheRegisterSyscacheCallback(PROCOID, YbHllInvalidateAggOids, (Datum) 0);
 }
 
 /*
@@ -254,6 +251,8 @@ hll_aggregation_restriction_hook(PlannerInfo *root, UpperRelationKind stage,
 static void
 InitializeHllAggregateOids()
 {
+	/* YB: snapshot before any catalog lookup, which may accept invalidations */
+	uint64 yb_inval_count = yb_hll_inval_count;
 	Oid extensionId = get_extension_oid(EXTENSION_NAME, false);
 	Oid hllSchemaOid = get_extension_schema(extensionId);
 	const char *hllSchemaName = get_namespace_name(hllSchemaOid);
@@ -274,7 +273,8 @@ InitializeHllAggregateOids()
 		hllAggregateArray[addAggArgumentCounter] = aggregateOid;
 	}
 
-	aggregateValuesInitialized = true;
+	/* YB: stay uninitialized if pg_proc was invalidated during the lookups */
+	aggregateValuesInitialized = (yb_inval_count == yb_hll_inval_count);
 }
 
 /*
@@ -448,6 +448,13 @@ RegisterConfigVariables(void)
 void _PG_fini(void)
 {
 	create_upper_paths_hook = previous_upper_path_hook;
+}
+
+static void
+YbHllInvalidateAggOids(Datum arg, int cacheid, uint32 hashvalue)
+{
+	aggregateValuesInitialized = false;
+	yb_hll_inval_count++;
 }
 #endif
 

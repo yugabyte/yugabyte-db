@@ -15,6 +15,7 @@ package org.yb.pgsql;
 import java.io.File;
 import java.util.Map;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
@@ -38,9 +39,15 @@ public class TestPgRegressThirdPartyExtensionsHll extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    File regress_schedule = new File(
+    File buildDir = new File(
       TestUtils.getBuildRootDir(),
       "postgres_build/third-party-extensions/postgresql-hll");
+    // psql runs in the pg_regress input dir, where copy_binary writes binary.dat.  Use a private
+    // copy so concurrent runs against one build dir do not overwrite each other's file.
+    File regress_schedule = new File(TestUtils.getBaseTmpDir(), "postgresql-hll");
+    for (String name : new String[] {"sql", "expected", "yb_schedule"}) {
+      FileUtils.copyToDirectory(new File(buildDir, name), regress_schedule);
+    }
     runPgRegressTest(regress_schedule, "yb_schedule");
   }
 }
