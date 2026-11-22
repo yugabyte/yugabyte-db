@@ -163,6 +163,7 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 
@@ -641,8 +642,11 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 };
 
 /*
- * Shared memory state used to communicate the initialization status of the
- * 'notifications poller' background worker back to the process that started it.
+ * Shared memory state reporting how the node's 'notifications poller' bg
+ * worker last initialized; a poller restarted after a crash initializes
+ * again. Every LISTEN waits on it. The poller sets SUCCESS or FAILED, and
+ * ybCleanupListenState sets FAILED if the LISTEN that started the poller
+ * ends before the poller reports.
  */
 typedef enum
 {
@@ -659,11 +663,12 @@ typedef struct
 
 	/*
 	 * Identifies the poller started for the node's current listeners; zero
-	 * when there are none. Protected by NotifyQueueLock. The postmaster
-	 * restarts a poller after a crash even if nothing tracks it any more, so
-	 * a poller whose id no longer matches exits instead of running. A poller
-	 * writes the fields above, and to the queue, only while it holds
-	 * NotifyQueueLock exclusively and its id matches.
+	 * when there are none, or once the LISTEN that started it has
+	 * unregistered before it reported. Protected by NotifyQueueLock.
+	 * The postmaster restarts a poller after a crash even if nothing tracks
+	 * it any more, so a poller whose id no longer matches exits instead of
+	 * running. A poller writes the fields above, and to the queue, only
+	 * while it holds NotifyQueueLock exclusively and its id matches.
 	 */
 	TimestampTz poller_id;
 
@@ -672,6 +677,16 @@ typedef struct
 	 * NotifyQueueLock.
 	 */
 	bool		has_bgw_handle;
+
+	/*
+	 * The first listener, which started the poller. Protected by
+	 * NotifyQueueLock. If it unregisters while init_status is still
+	 * NOT_STARTED, the poller will not come up, and the LISTENs that joined
+	 * meanwhile, waiting on init_status, must fail. Not reset when it leaves:
+	 * init_status is NOT_STARTED only until the poller reports, and it is
+	 * reset to NOT_STARTED only together with this field.
+	 */
+	BackendId	starter;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -711,7 +726,9 @@ static void ybInsertPendingNotifiesToTable(void);
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
 static void ybStartNotifsPollerBgWorker(void);
-static void ybCleanupListenState(void);
+static void ybWaitForNotifsPollerInit(void);
+static void ybCleanupListenState(BackendId unregisteredBackend);
+static void ybStopNotifsPoller(void);
 static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
@@ -1450,6 +1467,7 @@ Exec_ListenPreCommit(void)
 		poller_data->error_message[0] = '\0';
 		poller_data->has_runtime_error = false;
 		poller_data->poller_id = GetCurrentTimestamp();
+		poller_data->starter = MyBackendId;
 	}
 
 	for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
@@ -1512,6 +1530,13 @@ Exec_ListenPreCommit(void)
 		ybCreateNotifsReplicationSlot();
 		ybStartNotifsPollerBgWorker();
 	}
+
+	/*
+	 * YB: Wait for the poller to initialize, and fail if it does not, even
+	 * when another LISTEN is starting it. A LISTEN must not commit without a
+	 * poller to deliver its notifications.
+	 */
+	ybWaitForNotifsPollerInit();
 
 	/*
 	 * Try to move our pointer forward as far as possible.  This will skip
@@ -1673,7 +1698,7 @@ asyncQueueUnregister(void)
 	/*
 	 * YB: YB-speicific LISTEN state cleanup.
 	 */
-	ybCleanupListenState();
+	ybCleanupListenState(MyBackendId);
 
 	LWLockRelease(NotifyQueueLock);
 
@@ -1728,16 +1753,18 @@ YbCleanupListenStateForProc(PGPROC *proc)
 	/*
 	 * YB: YB-speicific LISTEN state cleanup.
 	 */
-	ybCleanupListenState();
+	ybCleanupListenState(backendId);
 
 	LWLockRelease(NotifyQueueLock);
 }
 
 /*
- * Perform YB-specific LISTEN state clean up.
+ * Perform YB-specific LISTEN state clean up after a backend has unregistered.
  *
  * If there are no listening backends left on the node, terminate the
- * 'notifications poller' bg worker and replication slot.
+ * 'notifications poller' bg worker and replication slot. If the unregistered
+ * backend started the poller, which has not yet reported, and others remain,
+ * terminate the poller and fail the LISTENs waiting for it.
  *
  * Caller must hold exclusive NotifyQueueLock.
  *
@@ -1746,45 +1773,77 @@ YbCleanupListenStateForProc(PGPROC *proc)
  * needs to be explicity called (postmaster cannot signal itself).
  */
 static void
-ybCleanupListenState(void)
+ybCleanupListenState(BackendId unregisteredBackend)
 {
-	/* Nothing to do if there are listening backends on this node.  */
-	if (QUEUE_FIRST_LISTENER != InvalidBackendId)
-		return;
-
-	bool		amPostmaster = MyProcPid == PostmasterPid;
 	bool		found;
-	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	bool		noListenersRemain = QUEUE_FIRST_LISTENER == InvalidBackendId;
 
 	/*
-	 * Any poller still around is now stale. It is terminated here if its
-	 * handle is in shared memory; one left over from before a postmaster
-	 * restart exits when it next checks its id.
+	 * The unregistered backend started the poller, which has not reported
+	 * yet, so nobody will see its startup through.
 	 */
-	yb_poller_data->poller_id = 0;
+	bool		startupAbandoned =
+		poller_data->starter == unregisteredBackend &&
+		poller_data->init_status == YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 
-	if (found && yb_poller_data->has_bgw_handle)
+	if (noListenersRemain)
+	{
+		ybStopNotifsPoller();
+
+		/*
+		 * The replication slot may also not exist if startup failed
+		 * partway through, so use yb_if_exists for the slot drop.
+		 */
+		if (MyProcPid != PostmasterPid)
+			ReplicationSlotDrop(ybNotifsReplicationSlotName(),
+								 /* nowait = */ true,
+								 /* yb_force = */ true,
+								 /* yb_if_exists = */ true);
+	}
+	else if (startupAbandoned)
+	{
+		/* Fail the remaining listeners, waiting in ybWaitForNotifsPollerInit. */
+		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
+		strlcpy(poller_data->error_message,
+				"The LISTEN in another session that was starting it did not complete.",
+				sizeof(poller_data->error_message));
+
+		/*
+		 * Stop the poller now, as it may be blocked acquiring the slot. The
+		 * slot itself is dropped when the last of these listeners leaves.
+		 */
+		ybStopNotifsPoller();
+	}
+}
+
+/*
+ * Make any poller still around stale, and terminate it if its handle is in
+ * shared memory; one left over from before a postmaster restart exits when it
+ * next checks its id.
+ *
+ * Caller must hold exclusive NotifyQueueLock.
+ */
+static void
+ybStopNotifsPoller(void)
+{
+	bool		found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+
+	poller_data->poller_id = 0;
+
+	if (found && poller_data->has_bgw_handle)
 	{
 		BackgroundWorkerHandle *shm_handle =
 			ybShmemNotifsPollerBgwHandle(&found);
 
 		Assert(found);
 		TerminateBackgroundWorker(shm_handle);
-		if (amPostmaster)
+		if (MyProcPid == PostmasterPid)
 			BackgroundWorkerStateChange(false);
 		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
-		yb_poller_data->has_bgw_handle = false;
+		poller_data->has_bgw_handle = false;
 	}
-
-	/*
-	 * The replication slot may also not exist if startup failed
-	 * partway through, so use yb_if_exists for the slot drop.
-	 */
-	if (!amPostmaster)
-		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
-							 /* nowait = */ true,
-							 /* yb_force = */ true,
-							 /* yb_if_exists = */ true);
 }
 
 /*
@@ -3206,34 +3265,64 @@ ybStartNotifsPollerBgWorker(void)
 				 errmsg("could not start background process"),
 				 errhint("More details may be available in the server log.")));
 
-	/*
-	 * Wait for the bg worker to complete initialization. The worker signals
-	 * success or failure via shared memory before entering its main loop.
-	 */
+	pfree(local_handle);
+}
+
+/*
+ * Wait for the node's notifications poller to initialize, and fail if it does
+ * not. The poller reports how its initialization went in init_status, and so
+ * does ybCleanupListenState if the listener that started the poller
+ * unregisters before the poller reports. A poller that fails to initialize is
+ * restarted until ybCleanupListenState terminates it as the last listener
+ * unregisters. On a first startup that is right away, as every listener is
+ * waiting here and fails with it.
+ */
+static void
+ybWaitForNotifsPollerInit(void)
+{
+	static YbNotifsPollerShmemData *poller_data = NULL;
+	char		error_message[sizeof(poller_data->error_message)];
+
+	if (poller_data == NULL)
+	{
+		bool		found;
+
+		poller_data = ybShmemNotifsPollerData(&found);
+	}
+
 	for (;;)
 	{
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
-			break;
+			return;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_FAILED)
 		{
-			TerminateBackgroundWorker(local_handle);
-			pfree(local_handle);
+			/* FAILED and error_message are set under the lock. */
+			LWLockAcquire(NotifyQueueLock, LW_SHARED);
+			strlcpy(error_message, poller_data->error_message,
+					sizeof(error_message));
+			LWLockRelease(NotifyQueueLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("notifications poller background worker "
 							"failed to initialize"),
-					 (poller_data->error_message[0] ?
-					  errdetail("%s", poller_data->error_message) : 0)));
+					 (error_message[0] ? errdetail("%s", error_message) : 0),
+					 errhint("Retry the LISTEN. If it keeps failing, check the "
+							 "server log.")));
 		}
 
+		/*
+		 * Poll: the poller can exit without reporting, and cleanup may run in
+		 * the postmaster, so nothing reliably wakes this backend. Tests look
+		 * for this wait event to tell that a LISTEN has joined.
+		 */
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						 10L, WAIT_EVENT_BGWORKER_STARTUP);
+		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
-		pg_usleep(10000L);
 	}
-
-	pfree(local_handle);
 }
 
 static BackgroundWorkerHandle *
