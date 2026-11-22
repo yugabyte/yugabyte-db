@@ -37,6 +37,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -72,6 +73,14 @@ DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
 using namespace std::chrono_literals;
 
@@ -181,8 +190,9 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     return GetProducerStreamBootstrapTablets(producer_table_->id());
   }
 
-  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints() {
-    const auto stream_id = VERIFY_RESULT(GetProducerStreamId(producer_table_->id()));
+  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints(
+      const TableId& table_id) {
+    const auto stream_id = VERIFY_RESULT(GetProducerStreamId(table_id));
     auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
     Status iteration_status;
     std::unordered_map<TabletId, OpId> result;
@@ -195,6 +205,10 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
     }
     RETURN_NOT_OK(iteration_status);
     return result;
+  }
+
+  Result<std::unordered_map<TabletId, OpId>> GetProducerStreamCheckpoints() {
+    return GetProducerStreamCheckpoints(producer_table_->id());
   }
 
   std::vector<TabletId> ProducerActiveTabletIds(const TableId& table_id) {
@@ -302,6 +316,7 @@ class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
   bool UseAutomaticMode() override { return true; }
 
   void TestVectorIndexUpdatesWithDifferentTabletLayouts();
+  void TestVectorIndexChangeOfUnappliedInsert(const std::string& statement, bool split_target);
   void TestOldLeaderCheckpointFinishesAfterSplit(const std::string& pause_point);
 };
 
@@ -1353,6 +1368,132 @@ TEST_F(XClusterDBScopedTest, VectorIndexNonTransactionalUpdates) {
 TEST_F(XClusterDBScopedTest, VectorIndexStoredPayloadNonTransactionalUpdates) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   TestNonTransactionalVectorUpdates();
+}
+
+// The source deletes a row or updates its vector while the transaction that inserted it is
+// committed but not applied (GH#38070), so the target receives the reverse mapping tombstone of
+// the old vector first. The target applies a replicated transaction, and writes its reverse
+// mapping entries, only when the apply record arrives. If the target tablet is split in between,
+// its post-split compaction must keep the tombstone.
+void XClusterDBScopedAutomaticModeTest::TestVectorIndexChangeOfUnappliedInsert(
+    const std::string& statement, bool split_target) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  ASSERT_OK(SetUpClusters(SetupParams{.create_vector_extension = true}));
+  // The poller recreated for the split children resumes from the cdc_state checkpoint. Keep it
+  // current, so the statement is not replicated again after the split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  constexpr auto kCreateTable =
+      "CREATE TABLE vec_tbl (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS";
+  ASSERT_OK(p_conn.Execute(kCreateTable));
+  ASSERT_OK(c_conn.Execute(kCreateTable));
+
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_OK(p_conn.Execute(
+      "CREATE INDEX vec_idx ON vec_tbl USING ybhnsw (embedding vector_l2_ops)"));
+  constexpr int kNumRows = 10;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO vec_tbl SELECT i, ARRAY[i, i, i]::vector FROM generate_series(1, $0) i",
+      kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  const auto producer_table_id = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_tbl")).table_id();
+  auto producer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(producer_cluster(), "vec_tbl", ListPeersFilter::kLeaders));
+  ASSERT_EQ(producer_peers.size(), 1);
+  auto producer_tablet = ASSERT_RESULT(producer_peers.front()->shared_tablet());
+  auto consumer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(consumer_cluster(), "vec_tbl", ListPeersFilter::kLeaders));
+  ASSERT_EQ(consumer_peers.size(), 1);
+  const auto consumer_tablet_id = consumer_peers.front()->tablet_id();
+
+  // A refresh of the source's apply safe time waits for the committed insert to be applied, which
+  // holds back the replication of the statement. Refresh it only when no transaction is running.
+  const auto safe_time_frequency_ms = FLAGS_xcluster_consistent_wal_safe_time_frequency_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms) =
+      std::numeric_limits<uint32_t>::max();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin. The flag
+  // holds the applies of the target cluster too, which runs no transactions of its own here.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.Execute("INSERT INTO vec_tbl VALUES (100, '[0.5, 0.5, 0.5]')"));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents, and is applied on both sides.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(p_conn.Execute(statement));
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 1;
+  }, 10s * kTimeMultiplier, "Statement applied on the source"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto statement_op_id = producer_peers.front()->GetLatestLogEntryOpId();
+  ASSERT_OK(WaitFor([this, &producer_table_id, &producer_tablet, statement_op_id]()
+                        -> Result<bool> {
+    auto checkpoints = VERIFY_RESULT(GetProducerStreamCheckpoints(producer_table_id));
+    auto it = checkpoints.find(producer_tablet->tablet_id());
+    return it != checkpoints.end() && it->second.index >= statement_op_id.index;
+  }, kTimeout, "Statement applied on the target"));
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  if (split_target) {
+    ASSERT_OK(consumer_cluster()->FlushTablets());
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(consumer_cluster(), consumer_tablet_id));
+  }
+  // Still not applied, so the target has not received the apply record.
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 0;
+  }, MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier, "Insert applied"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_consistent_wal_safe_time_frequency_ms) =
+      safe_time_frequency_ms;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // A deleted row is back with a far vector, an updated one has it already. Either way, the old
+  // vector of the row would come first if its reverse mapping were live.
+  ASSERT_OK(p_conn.Execute(
+      "INSERT INTO vec_tbl VALUES (100, '[100, 100, 100]') ON CONFLICT DO NOTHING"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  constexpr auto kSearch = "SELECT id FROM vec_tbl ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5";
+  ASSERT_EQ(AsString(ASSERT_RESULT(p_conn.FetchRows<int32_t>(kSearch))), "[1, 2, 3, 4, 5]");
+  ASSERT_EQ(AsString(ASSERT_RESULT(c_conn.FetchRows<int32_t>(kSearch))), "[1, 2, 3, 4, 5]");
+}
+
+constexpr auto kDeleteUnappliedRow = "DELETE FROM vec_tbl WHERE id = 100";
+constexpr auto kUpdateUnappliedRow =
+    "UPDATE vec_tbl SET embedding = '[100, 100, 100]' WHERE id = 100";
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexDeleteOfUnappliedInsert) {
+  TestVectorIndexChangeOfUnappliedInsert(kDeleteUnappliedRow, /* split_target= */ false);
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexDeleteOfUnappliedInsertTargetSplit) {
+  TestVectorIndexChangeOfUnappliedInsert(kDeleteUnappliedRow, /* split_target= */ true);
+}
+
+TEST_F(XClusterDBScopedAutomaticModeTest, VectorIndexUpdateOfUnappliedInsertTargetSplit) {
+  TestVectorIndexChangeOfUnappliedInsert(kUpdateUnappliedRow, /* split_target= */ true);
 }
 
 // yb_xcluster_ddl_replication.replicated_ddls records the DDL each universe executed locally, and

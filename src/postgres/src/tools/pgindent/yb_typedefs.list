@@ -401,7 +401,6 @@ YbcTableProperties
 YbcTablePropertiesData
 YbcTcmallocStats
 YbcTxnPriorityRequirement
-YbcTypeEntityProvider
 YbcUpdateInitPostgresMetricsFn
 YbcWaitEventDescriptor
 YbcWaitEventInfo
