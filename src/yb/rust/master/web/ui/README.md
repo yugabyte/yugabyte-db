@@ -1,10 +1,15 @@
 # yb-master web UI
 
 The Rust master's HTML pages: one React + TypeScript app built with Vite. The master serves its
-`index.html` at every old C++ page URL (`/`, `/tables`, `/table?id=...`, ...; `PAGES` in
-`../src/ui.rs`) and the other built files under `/ui/`. The app picks the page from the URL and
-reads only the master's JSON pages, `/api/v1/*`. Pages that stay server-rendered (`/masters`,
-`/varz`, `/logs`, ...) are plain links.
+`index.html` at every old C++ page URL (`/`, `/tables`, `/table?id=...`, `/masters`, ...; `PAGES`
+and `HOST_PAGES` in `../src/ui.rs`) and the other built files under `/ui/`. The app picks the page
+from the URL and reads only the master's JSON pages, `/api/v1/*`. Pages that stay server-rendered
+(`/varz`, `/logs`, `/ObjectLockManager`, ...) are plain links.
+
+It looks like yugabyted's UI: `src/styles.css` takes its palette, sizes and layout (a white sidebar
+and header, white cards on a light grey page) from `yugabyted-ui/ui/src/theme`, without Material
+UI, and `index.html` loads its font, Inter, from Google Fonts (offline, the system font is used).
+The logo is `yugabyted-ui/ui/src/assets/yugabyteDB-logo.svg`.
 
 ## Build
 
@@ -40,6 +45,7 @@ The dev server serves the app at the page URLs and proxies `/api` and the server
 | `/tablet-server-clocks` | `/api/v1/tablet-server-clocks`, `/api/v1/tablet-servers` |
 | `/tables`, `/table` | `/api/v1/tables`, `/api/v1/table` |
 | `/namespaces` | `/api/v1/namespaces` |
+| `/masters` | `/api/v1/masters` (any master answers it itself) |
 | `/cluster-config`, `/xcluster` | `/api/v1/cluster-config`, `/api/v1/xcluster` |
 | `/tasks` | `/api/v1/tasks` |
 | `/tablet-replication` | `/api/v1/tablet-replication`, `/api/v1/tablet-under-replication` |

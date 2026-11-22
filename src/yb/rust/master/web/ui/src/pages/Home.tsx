@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { useJson } from '../api';
 import { Badge, KeyValues, Load, Mono, Section } from '../components/Common';
 import { DataTable } from '../components/DataTable';
-import { formatNumber, formatTimeUs, serverUrl } from '../format';
+import { formatNumber, formatSeconds, formatTimeUs, serverUrl, thisServerIndex } from '../format';
 import { Link } from '../router';
 import { HostPort, MasterEntry, MastersJson, OverviewJson, VersionJson } from '../types';
 
@@ -90,6 +90,7 @@ function addrs(hps: HostPort[] | undefined): string {
 }
 
 export function MastersTable({ masters }: { masters: MasterEntry[] }) {
+  const self = masters[thisServerIndex(masters.map((m) => m.registration?.http_addresses))];
   return (
     <DataTable
       rows={masters}
@@ -101,12 +102,20 @@ export function MastersTable({ masters }: { masters: MasterEntry[] }) {
           render: (m) => {
             const http = m.registration?.http_addresses?.[0];
             const uuid = m.instance_id?.permanent_uuid ?? '';
-            return http ? (
-              <>
-                <a href={serverUrl(`${http.host}:${http.port}`)}>{uuid || addrs([http])}</a>
-              </>
-            ) : (
-              <Mono>{uuid}</Mono>
+            return (
+              <span className={m === self ? 'this-server' : undefined}>
+                {http ? (
+                  <a href={serverUrl(`${http.host}:${http.port}`)}>{uuid || addrs([http])}</a>
+                ) : (
+                  <Mono>{uuid}</Mono>
+                )}
+                {m === self && (
+                  <>
+                    {' '}
+                    <Badge kind="neutral">this master</Badge>
+                  </>
+                )}
+              </span>
             );
           },
         },
@@ -138,12 +147,23 @@ export function MastersTable({ masters }: { masters: MasterEntry[] }) {
           render: (m) => formatTimeUs(m.instance_id?.start_time_us),
         },
         {
+          key: 'uptime',
+          header: 'Uptime',
+          numeric: true,
+          render: (m) => {
+            const us = m.instance_id?.start_time_us;
+            return us ? formatSeconds(Math.max(0, Date.now() / 1000 - us / 1e6)) : '';
+          },
+        },
+        {
           key: 'hb',
           header: 'Heartbeat delay',
           numeric: true,
           render: (m) => (m.heartbeat_delay_ms !== undefined ? `${m.heartbeat_delay_ms} ms` : ''),
         },
-        { key: 'error', header: 'Error', render: (m) => m.error?.message },
+        ...(masters.some((m) => m.error)
+          ? [{ key: 'error', header: 'Error', render: (m: MasterEntry) => m.error?.message }]
+          : []),
       ]}
     />
   );

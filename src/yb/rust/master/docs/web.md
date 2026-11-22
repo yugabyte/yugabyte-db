@@ -25,7 +25,8 @@ host, whose `MasterHost::RegisterWebPages` fetches the page from the leader with
 | `/api/v1/overview`, `/api/v1/load-distribution`, `/api/v1/tasks`, `/api/v1/tablet-server-clocks` | `master-web`; only a Rust leader has them (the UI's data for pages C++ renders as HTML) |
 | `/`, `/tablet-servers`, `/tablet-server-clocks`, `/tables`, `/namespaces`, `/table`, `/cluster-config`, `/xcluster`, `/tasks`, `/tablet-replication`, `/load-distribution`, `/stateful-services` | The web UI's `index.html`, on every master |
 | `/ObjectLockManager` | The host: the leader's lock manager is the host's |
-| `/masters`, `/api/v1/masters` | `master::RenderMastersPage` / `RenderMastersJson` over the master list |
+| `/masters` | The web UI's `index.html` on every master; without the UI, the host's `master::RenderMastersPage` over the master list |
+| `/api/v1/masters` | The host: `master::RenderMastersJson` over the master list |
 | `/api/v1/is-leader` | The host: `{"STATUS":"OK"}` on the leader, 503 elsewhere |
 | `/api/v1/version`, `/api/v1/meta-cache` | The host |
 

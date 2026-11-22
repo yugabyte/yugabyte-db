@@ -44,6 +44,10 @@ pub const PAGES: &[&str] = &[
     "/stateful-services",
 ];
 
+/// Pages the UI replaces that every master's host still renders, for a binary built without the
+/// UI.
+pub const HOST_PAGES: &[&str] = &["/masters"];
+
 /// The built UI's files by path, `index.html` among them.
 #[derive(Clone, Copy)]
 pub struct UiAssets {
@@ -125,6 +129,13 @@ async fn page(web: Arc<MasterWeb>) -> Response {
     }
 }
 
+async fn host_page(web: Arc<MasterWeb>) -> Response {
+    match web.ui {
+        Some(_) => page(web).await,
+        None => pass_to_host(),
+    }
+}
+
 async fn asset(web: Arc<MasterWeb>, request: Request) -> Response {
     let path = request
         .uri()
@@ -161,6 +172,10 @@ pub(crate) fn routes(mut router: Router, web: Arc<MasterWeb>) -> Router {
     for path in PAGES {
         let web = web.clone();
         router = router.route(path, get(move || page(web.clone())));
+    }
+    for path in HOST_PAGES {
+        let web = web.clone();
+        router = router.route(path, get(move || host_page(web.clone())));
     }
     router.route(
         "/ui/{*path}",

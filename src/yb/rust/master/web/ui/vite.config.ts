@@ -3,7 +3,6 @@ import { defineConfig, loadEnv } from 'vite';
 // The C++ pages the master still serves itself; `npm run dev` proxies them with /api.
 const MASTER_PATHS = [
   '/api',
-  '/masters',
   '/ObjectLockManager',
   '/varz',
   '/logs',

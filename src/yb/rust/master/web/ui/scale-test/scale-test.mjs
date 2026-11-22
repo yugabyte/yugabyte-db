@@ -344,6 +344,7 @@ const PAGES = [
   ['/tables', '.pager'],
   ['/table?id=' + tableId(0), 'tbody tr'],
   ['/namespaces', 'tbody tr'],
+  ['/masters', 'tbody tr'],
   ['/load-distribution', 'tbody tr'],
   ['/tablet-replication', 'section'],
   ['/tasks', 'tbody tr'],

@@ -67,7 +67,10 @@ export function KeyValues({ rows }: { rows: [ReactNode, ReactNode][] }) {
   );
 }
 
-export function Badge({ kind, children }: { kind: 'ok' | 'bad' | 'warn' | 'info'; children: ReactNode }) {
+export function Badge({ kind, children }: {
+  kind: 'ok' | 'bad' | 'warn' | 'info' | 'neutral';
+  children: ReactNode;
+}) {
   return <span className={`badge ${kind}`}>{children}</span>;
 }
 

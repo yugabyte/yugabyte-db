@@ -13,6 +13,8 @@ import { TasksPage } from './pages/Tasks';
 import { TabletReplicationPage } from './pages/TabletReplication';
 import { LoadDistributionPage } from './pages/LoadDistribution';
 import { StatefulServicesPage } from './pages/StatefulServices';
+import { MastersPage } from './pages/Masters';
+import logo from './assets/yugabyteDB-logo.svg';
 
 interface NavItem {
   href: string;
@@ -38,7 +40,7 @@ const MORE_NAV: NavItem[] = [
   { href: '/ObjectLockManager', label: 'Object Lock Manager' },
 ];
 
-// Server pages: plain links, full page loads.
+// Server pages: full page loads (Link sends any path outside APP_PATHS to the server).
 const UTILITIES_NAV: NavItem[] = [
   { href: '/varz', label: 'Flags' },
   { href: '/logs', label: 'Logs' },
@@ -58,6 +60,7 @@ const PAGES: Record<string, { title: string; render: () => JSX.Element }> = {
   '/tables': { title: 'Tables', render: () => <TablesPage /> },
   '/table': { title: 'Table', render: () => <TablePage /> },
   '/namespaces': { title: 'Namespaces', render: () => <NamespacesPage /> },
+  '/masters': { title: 'Masters', render: () => <MastersPage /> },
   '/cluster-config': { title: 'Cluster Config', render: () => <ClusterConfigPage /> },
   '/xcluster': { title: 'xCluster', render: () => <XClusterPage /> },
   '/tasks': { title: 'Tasks', render: () => <TasksPage /> },
@@ -69,42 +72,57 @@ const PAGES: Record<string, { title: string; render: () => JSX.Element }> = {
   '/stateful-services': { title: 'Stateful Services', render: () => <StatefulServicesPage /> },
 };
 
-function Menu({ label, groups, active }: {
-  label: string;
-  groups: { title?: string; items: NavItem[] }[];
-  active: boolean;
-}) {
-  const [open, setOpen] = useState(false);
+function NavLinks({ items, path }: { items: NavItem[]; path: string }) {
+  return (
+    <>
+      {items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={'nav-link' + (path === item.href ? ' active' : '')}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </>
+  );
+}
+
+// On a narrow screen the nav is one row and a group's items drop down over the page.
+const NARROW = '(max-width: 800px)';
+
+// A collapsible group of nav links: inline in the sidebar, a dropdown on a narrow screen. It
+// starts open in the sidebar when it holds the current page.
+function NavGroup({ label, items, path }: { label: string; items: NavItem[]; path: string }) {
+  const holdsPage = items.some((i) => i.href === path);
+  const [open, setOpen] = useState(() => holdsPage && !window.matchMedia(NARROW).matches);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      if (window.matchMedia(NARROW).matches && !ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
   return (
-    <div className="menu" ref={ref}>
+    <div className={'nav-group' + (open ? ' open' : '')} ref={ref}>
       <button
-        className={'nav-link' + (active ? ' active' : '')}
+        className={'nav-link nav-group-toggle' + (holdsPage && !open ? ' active' : '')}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        {label} ▾
+        {label}
+        <span className="chevron">{open ? '\u25b4' : '\u25be'}</span>
       </button>
       {open && (
-        <div className="menu-items" onClick={() => setOpen(false)}>
-          {groups.map((g, i) => (
-            <div key={i} className="menu-group">
-              {g.title && <div className="menu-title">{g.title}</div>}
-              {g.items.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          ))}
+        <div
+          className="nav-group-items"
+          onClick={() => window.matchMedia(NARROW).matches && setOpen(false)}
+        >
+          <NavLinks items={items} path={path} />
         </div>
       )}
     </div>
@@ -124,51 +142,41 @@ export function App() {
 
   return (
     <RefreshContext.Provider value={refresh}>
-      <header className="topbar">
-        <Link href="/" className="brand">
-          YugabyteDB Master
-        </Link>
-        <nav>
-          {MAIN_NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={'nav-link' + (loc.path === item.href ? ' active' : '')}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <Menu
-            label="More"
-            active={MORE_NAV.some((i) => i.href === loc.path)}
-            groups={[{ items: MORE_NAV }]}
-          />
-          <Menu label="Utilities" active={false} groups={[{ items: UTILITIES_NAV }]} />
-        </nav>
-        <div className="refresh">
-          <span className="muted" title="When this page's data was last requested">
-            {loadedAt.toLocaleTimeString()}
-          </span>
-          <button onClick={() => setRefresh(refresh + 1)} title="Fetch this page's data again">
-            ⟳ Refresh
-          </button>
+      <div className="shell">
+        <aside className="sidebar">
+          <Link href="/" className="logo" title="Home">
+            <img src={logo} alt="YugabyteDB" />
+            <span>Master</span>
+          </Link>
+          <nav>
+            <NavLinks items={MAIN_NAV} path={loc.path} />
+            <NavGroup label="More" items={MORE_NAV} path={loc.path} />
+            <NavGroup label="Utilities" items={UTILITIES_NAV} path={loc.path} />
+          </nav>
+        </aside>
+        <div className="content">
+          <header className="header">
+            <h1>{page?.title ?? 'Not found'}</h1>
+            <div className="refresh">
+              <span className="muted" title="When this page's data was last requested">
+                {loadedAt.toLocaleTimeString()}
+              </span>
+              <button onClick={() => setRefresh(refresh + 1)} title="Fetch this page's data again">
+                Refresh
+              </button>
+            </div>
+          </header>
+          <main key={loc.path}>
+            {page ? (
+              page.render()
+            ) : (
+              <p>
+                No page at <code>{loc.path}</code>. <Link href="/">Home</Link>
+              </p>
+            )}
+          </main>
         </div>
-      </header>
-      <main key={loc.path}>
-        {page ? (
-          <>
-            <h1>{page.title}</h1>
-            {page.render()}
-          </>
-        ) : (
-          <>
-            <h1>Not found</h1>
-            <p>
-              No page at <code>{loc.path}</code>. <Link href="/">Home</Link>
-            </p>
-          </>
-        )}
-      </main>
+      </div>
     </RefreshContext.Provider>
   );
 }

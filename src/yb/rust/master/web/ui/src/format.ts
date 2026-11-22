@@ -57,3 +57,22 @@ export function plural(n: number, word: string): string {
 export function serverUrl(hostPort: string, path = ''): string {
   return `${window.location.protocol}//${hostPort}${path}`;
 }
+
+const LOOPBACK = /^(localhost|127(\.\d+){3}|\[::1\])$/;
+
+type Addrs = { host: string; port: number }[] | undefined;
+
+// Which of `servers` (each a list of addresses) this page was loaded from, or -1. The JSON does
+// not say which master answered, so match the browser's address; through a loopback name that is
+// no server's address, a port only one server uses decides.
+export function thisServerIndex(servers: Addrs[]): number {
+  const { hostname, port, protocol } = window.location;
+  const ownPort = port || (protocol === 'https:' ? '443' : '80');
+  const find = (match: (hp: { host: string; port: number }) => boolean) =>
+    servers.flatMap((addrs, i) => ((addrs ?? []).some(match) ? [i] : []));
+  const exact = find((hp) => hp.host === hostname && String(hp.port) === ownPort);
+  if (exact.length > 0) return exact[0];
+  if (!LOOPBACK.test(hostname)) return -1;
+  const byPort = find((hp) => String(hp.port) === ownPort);
+  return byPort.length === 1 ? byPort[0] : -1;
+}

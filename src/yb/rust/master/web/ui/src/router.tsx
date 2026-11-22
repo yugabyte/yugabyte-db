@@ -1,6 +1,6 @@
 import { AnchorHTMLAttributes, MouseEvent, useEffect, useState } from 'react';
 
-// The app's own pages. The master serves index.html at each of them (`PAGES` in
+// The app's own pages. The master serves index.html at each of them (`PAGES` and `HOST_PAGES` in
 // master/web/src/ui.rs); any other path is a server page and gets a full load.
 export const APP_PATHS = new Set([
   '/',
@@ -8,6 +8,7 @@ export const APP_PATHS = new Set([
   '/tablet-server-clocks',
   '/tables',
   '/namespaces',
+  '/masters',
   '/table',
   '/cluster-config',
   '/xcluster',
