@@ -757,7 +757,7 @@ static int	ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
-static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
+static bool ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe, int32 *seq);
 static void ybSignalAllListeners(void);
 
@@ -3594,7 +3594,8 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 	MemoryContext oldcontext;
 	YbNotifsPollerPendingEntry *entry;
 
-	ybRecordToAsyncQueueEntry(record, &qe, &seq);
+	if (!ybRecordToAsyncQueueEntry(record, &qe, &seq))
+		return;
 
 	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
@@ -3865,9 +3866,10 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 
 /*
  * Fill the AsyncQueueEntry at *qe using the record received from the
- * replication slot.
+ * replication slot.  Returns false, leaving *qe unfilled, for a row whose data
+ * is not a NUL-terminated channel followed by a NUL-terminated payload.
  */
-static void
+static bool
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 						  AsyncQueueEntry *qe, int32 *seq)
 {
@@ -3876,7 +3878,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
 	{
 		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
-		return;
+		return true;
 	}
 
 	HeapTuple	tuple = YBGetHeapTuplesForRecord(record);
@@ -3901,9 +3903,26 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	const void *data = DatumGetPointer(data_datum);
 	size_t		datalen = VARSIZE_ANY_EXHDR(data);
 
-	/* Only NOTIFY writes this table, and it bounds the channel and payload. */
-	Assert(datalen >= 2 && datalen <= NAMEDATALEN + NOTIFY_PAYLOAD_MAX_LENGTH);
-	memcpy(qe->data, VARDATA_ANY(data), datalen);
+	const char *bytes = VARDATA_ANY(data);
+
+	/*
+	 * The table also takes plain SQL writes.  Listeners read the channel and
+	 * payload with strlen, so both must end inside the entry.
+	 */
+	if (datalen < 2 || datalen > NAMEDATALEN + NOTIFY_PAYLOAD_MAX_LENGTH ||
+		bytes[datalen - 1] != '\0' ||
+		memchr(bytes, '\0', datalen - 1) == NULL)
+	{
+		ereport(WARNING,
+				(errmsg("notifications poller skipped a malformed row of "
+						"pg_yb_notifications (xid %u, data length %zu)",
+						(TransactionId) record->xid, datalen)));
+		pfree(desc);
+		pfree(tuple);
+		return false;
+	}
+
+	memcpy(qe->data, bytes, datalen);
 
 	/*
 	 * Both AsyncQueueEntryEmptySize and datalen count the two null terminators
@@ -3918,10 +3937,10 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 											 desc, &isnull);
 
 	/*
-	 * Writers of other versions may run during an upgrade, so don't assume the
-	 * value's shape: an ERROR here would terminate every listener on the node.
-	 * A value that isn't an object with a non-negative int32 seq falls back to
-	 * arrival order; a fractional seq is rounded.
+	 * The table also takes plain SQL writes, so don't trust the value's shape:
+	 * an ERROR here would terminate every listener on the node. A value that
+	 * isn't an object with a non-negative int32 seq falls back to arrival
+	 * order; a fractional seq is rounded.
 	 */
 	if (!isnull)
 	{
@@ -3943,6 +3962,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	pfree(desc);
 	pfree(tuple);
+	return true;
 }
 
 /* Build the extra_options value of a pg_yb_notifications row. */
