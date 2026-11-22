@@ -1927,6 +1927,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     setPubRefreshIntervalSecs("1");
     try (Connection listenerConn = getConnectionBuilder().connect();
          Connection notifierConn = getConnectionBuilder().connect()) {
+      // The interval is read only when the next refresh is scheduled, and the schedule lives with
+      // the slot. A slot left by an earlier test would keep its next refresh ~900s away, so make
+      // the LISTEN create a new slot.
+      waitForPollerAndSlotCleanup(listenerConn);
       try (Statement stmt = listenerConn.createStatement()) {
         stmt.execute("LISTEN " + CHANNEL);
       }
