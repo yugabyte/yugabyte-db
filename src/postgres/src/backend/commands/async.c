@@ -1984,10 +1984,10 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	{
 		if (IsYugaByteEnabled())
 		{
-			AsyncQueueEntry *pending =
-				&((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
+			YbNotifsPollerPendingEntry *entry = lfirst(nextNotify);
 
-			memcpy(&qe, pending, pending->length);
+			Assert(entry->qe.length <= sizeof(AsyncQueueEntry));
+			memcpy(&qe, &entry->qe, entry->qe.length);
 		}
 		else
 		{
@@ -3901,6 +3901,8 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	const void *data = DatumGetPointer(data_datum);
 	size_t		datalen = VARSIZE_ANY_EXHDR(data);
 
+	/* Only NOTIFY writes this table, and it bounds the channel and payload. */
+	Assert(datalen >= 2 && datalen <= NAMEDATALEN + NOTIFY_PAYLOAD_MAX_LENGTH);
 	memcpy(qe->data, VARDATA_ANY(data), datalen);
 
 	/*
@@ -3916,10 +3918,10 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 											 desc, &isnull);
 
 	/*
-	 * The table also takes plain SQL writes, so don't trust the value's shape:
-	 * an ERROR here would terminate every listener on the node. A value that
-	 * isn't an object with a non-negative int32 seq falls back to arrival
-	 * order; a fractional seq is rounded.
+	 * Writers of other versions may run during an upgrade, so don't assume the
+	 * value's shape: an ERROR here would terminate every listener on the node.
+	 * A value that isn't an object with a non-negative int32 seq falls back to
+	 * arrival order; a fractional seq is rounded.
 	 */
 	if (!isnull)
 	{
