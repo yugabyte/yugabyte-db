@@ -42,8 +42,10 @@
 
 #include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/pg_catalog_versions_cache.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
@@ -66,6 +68,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -5265,6 +5268,55 @@ TEST_F_EX(
   ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
   ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
   ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
+}
+
+// The master's catalog versions cache refresh runs on a pool of its own, so it keeps refreshing
+// while every worker of the catalog manager's shared background pool is busy. Before, its body
+// was submitted to that shared pool and queued behind whatever held the workers.
+TEST_F(PgMiniTest, CatalogVersionsCacheRefreshesWhileBackgroundPoolIsBusy) {
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto cached_read_time = [&catalog_manager] {
+    master::DbOidToCatalogVersionMap versions;
+    uint64_t fingerprint = 0;
+    HybridTime read_ht;
+    catalog_manager.pg_catalog_versions_cache().GetAll(&versions, &fingerprint, &read_ht);
+    return read_ht;
+  };
+  ASSERT_OK(WaitFor(
+      [&cached_read_time] { return cached_read_time().is_valid(); }, 30s * kTimeMultiplier,
+      "First catalog versions cache refresh"));
+
+  // The shared pool is built with the default worker count, NumEffectiveCPUs(). Hold every worker,
+  // and wait until each holder runs, so nothing queued behind them can be running.
+  //
+  // Each holder shares the latches rather than reaching them on this stack: the test can return
+  // while holders are still running or, after the ASSERT below fails, still queued in the pool,
+  // and the master outlives the test body.
+  struct Holders {
+    explicit Holders(int num_workers) : started(num_workers) {}
+    CountDownLatch started;
+    CountDownLatch release{1};
+  };
+  const auto num_workers = NumEffectiveCPUs();
+  auto holders = std::make_shared<Holders>(num_workers);
+  auto release_workers = ScopeExit([holders] { holders->release.CountDown(); });
+  for (int i = 0; i != num_workers; ++i) {
+    ASSERT_OK(catalog_manager.SubmitBackgroundTask([holders] {
+      holders->started.CountDown();
+      holders->release.Wait();
+    }));
+  }
+  ASSERT_TRUE(holders->started.WaitFor(30s * kTimeMultiplier))
+      << holders->started.count() << " of " << num_workers
+      << " background workers never started";
+
+  // The refresh runs every heartbeat_interval_ms / 2. Allow many periods, so only a refresh that
+  // cannot run at all fails this.
+  const auto before = cached_read_time();
+  ASSERT_OK(WaitFor(
+      [&cached_read_time, before] { return cached_read_time() > before; },
+      MonoDelta::FromMilliseconds(20 * FLAGS_heartbeat_interval_ms) * kTimeMultiplier,
+      "Catalog versions cache refresh while the background pool is busy"));
 }
 
 }  // namespace yb::pgwrapper
