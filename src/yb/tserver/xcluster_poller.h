@@ -161,8 +161,6 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void DoPoll() EXCLUDES(data_mutex_);
 
   Status DoPausePoller();
-  void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
-      EXCLUDES(data_mutex_);
   void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
       EXCLUDES(data_mutex_);
@@ -187,7 +185,31 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   virtual Status PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) REQUIRES(data_mutex_);
 
+  // Sends the GetChanges request. The response must reach HandleGetChangesResponse, on a thread
+  // that does not hold data_mutex_.
+  virtual void SendGetChangesRequest(client::YBClient* client, cdc::GetChangesRequestPB* req)
+      REQUIRES(data_mutex_);
+
+  // When true, DoPoll releases data_mutex_ and sends with SendGetChangesRequestWithoutLock
+  // instead, which may then handle the response in the current thread.
+  virtual bool ShouldSendGetChangesWithoutLock() REQUIRES(data_mutex_) { return false; }
+
+  virtual void SendGetChangesRequestWithoutLock(
+      client::YBClient* client, cdc::GetChangesRequestPB* req) EXCLUDES(data_mutex_);
+
+  // Runs DoPoll after delay_ms, or right away when it is not positive.
+  virtual void SchedulePollAfter(int64_t delay_ms);
+
+  void SchedulePollNow();
+
+  void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
+      EXCLUDES(data_mutex_);
+
   virtual Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
+
+  // Whether the response has nothing to apply, so that ChangesApplied can be called for it
+  // without going through the output client.
+  virtual bool CanSkipApply(const cdc::GetChangesResponsePB& resp) const { return false; }
 
   // Called once the changes of a GetChanges response have been applied, to record where the next
   // GetChanges request continues from.

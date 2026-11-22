@@ -23,6 +23,7 @@
 namespace yb {
 
 namespace cdc {
+class CDCServiceProxy;
 class CDCStateTable;
 }  // namespace cdc
 
@@ -55,12 +56,32 @@ class CdcTablePoller : public XClusterPoller {
   void StoreReplicationError(
       ReplicationErrorPb error, const std::string& error_detail = {}) override {}
 
+  // Called by the idle poll timer once the backoff of this poller has passed.
+  void PollAfterIdleDelay() { SchedulePollNow(); }
+
  protected:
   client::YBClient* GetChangesClient() override { return &local_client_; }
 
   Status PrepareGetChangesRequest(cdc::GetChangesRequestPB* req) override REQUIRES(data_mutex_);
 
+  // Calls the CDC service of this tserver directly, without the tablet lookup of a GetChangesRpc.
+  void SendGetChangesRequest(client::YBClient* client, cdc::GetChangesRequestPB* req) override
+      REQUIRES(data_mutex_);
+
+  // GetChanges then runs in this thread, a thread of the consumer's pool, instead of on the CDC
+  // service's pool, and so does the handling of its response.
+  bool ShouldSendGetChangesWithoutLock() override REQUIRES(data_mutex_);
+
+  void SendGetChangesRequestWithoutLock(
+      client::YBClient* client, cdc::GetChangesRequestPB* req) override EXCLUDES(data_mutex_);
+
+  void SchedulePollAfter(int64_t delay_ms) override;
+
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp) override;
+
+  // True when the response has no row change for the CDC table, which is the case for every poll
+  // of an idle tablet.
+  bool CanSkipApply(const cdc::GetChangesResponsePB& resp) const override;
 
   void ChangesApplied(const XClusterOutputClientResponse& response) override
       REQUIRES(data_mutex_);
@@ -80,6 +101,11 @@ class CdcTablePoller : public XClusterPoller {
   Result<NextRequest> ReadCheckpointFromCdcState();
 
   cdc::CDCStateTable& cdc_state_table_;
+
+  const std::string stream_id_str_;
+
+  // Calls the CDC service of this tserver in process.
+  const std::shared_ptr<cdc::CDCServiceProxy> local_cdc_proxy_;
 
   // Unset until read from cdc_state by the first poll.
   std::optional<NextRequest> next_request_ GUARDED_BY(data_mutex_);
