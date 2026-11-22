@@ -221,7 +221,14 @@ hll_aggregation_restriction_hook(PlannerInfo *root, UpperRelationKind stage,
 	/* If we have the extension, that means we also have aggregations */
 	if (!aggregateValuesInitialized)
 	{
+		/* YB: snapshot before any catalog lookup, which may accept invalidations */
+		uint64		yb_inval_count = yb_hll_inval_count;
+
 		InitializeHllAggregateOids();
+
+		/* YB: stay uninitialized if pg_proc was invalidated during the lookups */
+		if (yb_inval_count != yb_hll_inval_count)
+			aggregateValuesInitialized = false;
 	}
 
 	/*
@@ -251,8 +258,6 @@ hll_aggregation_restriction_hook(PlannerInfo *root, UpperRelationKind stage,
 static void
 InitializeHllAggregateOids()
 {
-	/* YB: snapshot before any catalog lookup, which may accept invalidations */
-	uint64 yb_inval_count = yb_hll_inval_count;
 	Oid extensionId = get_extension_oid(EXTENSION_NAME, false);
 	Oid hllSchemaOid = get_extension_schema(extensionId);
 	const char *hllSchemaName = get_namespace_name(hllSchemaOid);
@@ -273,8 +278,7 @@ InitializeHllAggregateOids()
 		hllAggregateArray[addAggArgumentCounter] = aggregateOid;
 	}
 
-	/* YB: stay uninitialized if pg_proc was invalidated during the lookups */
-	aggregateValuesInitialized = (yb_inval_count == yb_hll_inval_count);
+	aggregateValuesInitialized = true;
 }
 
 /*
