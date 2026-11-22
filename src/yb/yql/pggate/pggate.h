@@ -190,6 +190,7 @@ class PgApiImpl {
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
   Result<int> GetXClusterRole(uint32_t db_oid);
+  Result<uint64_t> GetXClusterSafeTime(const std::string& key);
 
   Status NewTupleExpr(
     YbcPgStatement stmt, const YbcPgTypeEntity *tuple_type_entity,

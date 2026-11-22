@@ -30,6 +30,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
@@ -450,6 +451,12 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
   WARN_NOT_OK(
       DeletePendingWalAnchorStreams(epoch),
       "Failed to delete pending xCluster WAL_ANCHOR streams on source");
+
+  // The safe time service idles when it has nothing to compute, and only a change to the xCluster
+  // config wakes it up.
+  if (catalog_manager_.cdcsdk_manager().GetCdcTableRegistry().streams_size() > 0) {
+    safe_time_service_->ScheduleTaskIfNeeded();
+  }
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {

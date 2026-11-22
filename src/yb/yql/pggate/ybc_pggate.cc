@@ -3517,6 +3517,10 @@ int YBCGetXClusterRole(uint32_t db_oid) {
   return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
 }
 
+YbcStatus YBCGetXClusterSafeTime(const char *key, uint64_t *safe_time_ht) {
+  return ExtractValueFromResult(pgapi->GetXClusterSafeTime(key), safe_time_ht);
+}
+
 YbcStatus YBCSetCronLastMinute(int64_t last_minute) {
   return ToYBCStatus(pgapi->SetCronLastMinute(last_minute));
 }
