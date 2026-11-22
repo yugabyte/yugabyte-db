@@ -550,6 +550,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         index_info->set_birth_time(index_birth_time);
       }
       index_info->clear_birth_time_state();
+      index_info->clear_birth_time_pending_txn_id();
     }
     RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
     // Propagate birth time related information so that the index starts accepting reads.
@@ -1215,8 +1216,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
-    if (!verifier_state || verifier_state->state != YsqlDdlVerificationState::kDdlInProgress ||
-        verifier_state->txn_state != TxnState::kUnknown) {
+    if (!verifier_state || verifier_state->txn_state != TxnState::kUnknown) {
       VLOG(3) << "Rolling back to sub-transaction for an already completed "
               << " transaction: " << txn
               << ", verifier_state: "

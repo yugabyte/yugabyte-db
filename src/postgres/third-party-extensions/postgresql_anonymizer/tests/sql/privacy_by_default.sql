@@ -36,18 +36,25 @@ SELECT bool_and(browser = 'unkown') AS test2b FROM public.access_logs;
 -- 3: NOT MASKED
 SELECT bool_or(operating_system = 'Linux') AS test3 FROM public.access_logs;
 
--- 4: not_null_violation
 ROLLBACK TO initial_state;
+
+-- 4: not_null_violation
 
 ALTER TABLE public.access_logs
   ALTER COLUMN date_open
   SET NOT NULL;
 
-SELECT 'test4 must fail';
-
--- Hide the CONTEXT message
-\set VERBOSITY terse
-SELECT anon.anonymize_table('public.access_logs') as test4;
+DO $$
+BEGIN
+  SELECT anon.anonymize_table('public.access_logs') as test4;
+EXCEPTION
+  WHEN not_null_violation THEN
+    RAISE NOTICE 'OK : not_null_violation error catched';
+  WHEN others THEN
+    RAISE NOTICE 'KO : unkown error catched';
+    RAISE NOTICE '% %', SQLERRM, SQLSTATE;
+END; $$
+LANGUAGE 'plpgsql';
 
 ROLLBACK TO initial_state;
 
@@ -86,10 +93,47 @@ ROLLBACK TO initial_state;
 -- 10: security
 CREATE ROLE ursula;
 SET ROLE ursula;
-SELECT 'test10 must fail';
-SET anon.privacy_by_default = off;
+
+DO $$
+BEGIN
+  SET anon.privacy_by_default = off;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'OK : insufficient_privilege error catched';
+  WHEN others THEN
+    RAISE NOTICE 'KO : unkown error catched';
+    RAISE NOTICE '% %', SQLERRM, SQLSTATE;
+END; $$
+LANGUAGE 'plpgsql';
 
 ROLLBACK TO initial_state;
+
+-- 11: anonymous dumps
+-- see https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/479
+
+SET anon.transparent_dynamic_masking = True;
+SELECT anon.init();
+
+CREATE ROLE dump_anon;
+
+SECURITY LABEL FOR anon ON ROLE dump_anon IS 'MASKED';
+
+GRANT USAGE ON SCHEMA anon TO dump_anon;
+GRANT SELECT ON ALL TABLES IN SCHEMA anon TO dump_anon;
+
+
+SET ROLE dump_anon;
+
+SELECT TRUE AS catalog_relations_are_not_masked
+FROM (SELECT tableoid FROM pg_extension) AS x
+LIMIT 1;
+
+SELECT TRUE AS anon_relations_are_not_masked
+FROM (SELECT val FROM anon.last_name ) AS x
+LIMIT 1;
+
+ROLLBACK TO initial_state;
+
 
 
 -- Clean up

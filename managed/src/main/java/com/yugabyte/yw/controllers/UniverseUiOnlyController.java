@@ -79,7 +79,14 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             customerUUID.toString(),
             Audit.ActionType.GetUniverseResources,
             Json.toJson(taskParams));
-    return PlatformResults.withData(universeInfoHandler.getUniverseResources(customer, taskParams));
+    // Keeping the current logic.
+    UniverseDefinitionTaskParams.ClusterType clusterType = taskParams.currentClusterType;
+    if (clusterType == null) {
+      clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+    }
+
+    return PlatformResults.withData(
+        universeInfoHandler.getUniverseResources(customer, taskParams, clusterType, true));
   }
 
   /**

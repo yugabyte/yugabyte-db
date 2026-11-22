@@ -329,6 +329,8 @@ Result<bool> IsPayloadWithinKeyBounds(const KeyBounds& key_bounds, Slice payload
 
 class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
+  // reverse_mapping_reader is null when the index has no reverse mapping, see
+  // DocVectorIndex::HasReverseMapping.
   VectorMergeFilter(
       const std::string& log_prefix, const KeyBounds& key_bounds,
       DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
@@ -345,22 +347,31 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
       return rocksdb::FilterDecision::kKeep;
     }
 
-    // Let's not filter the vector in case of error.
-    auto decision = rocksdb::FilterDecision::kKeep;
+    auto decision = DoFilter(vector_id, payload);
+    VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
+    return decision;
+  }
 
+ private:
+  // Keeps the vector in case of error.
+  rocksdb::FilterDecision DoFilter(vector_index::VectorId vector_id, Slice payload) {
     if (!payload.empty()) {
-      // The index stores payloads, so it has no reverse mapping entries at all and compaction
-      // cannot tell whether the row the payload points to still exists.
       // Vectors of the sibling tablet left by a split are dropped by the key bounds.
       auto within_bounds = IsPayloadWithinKeyBounds(key_bounds_, payload);
       if (!within_bounds.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Failed to decode payload of " << vector_id << ": " << within_bounds.status();
-      } else if (!*within_bounds) {
-        decision = rocksdb::FilterDecision::kDiscard;
+        return rocksdb::FilterDecision::kKeep;
       }
-      VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
-      return decision;
+      if (!*within_bounds) {
+        return rocksdb::FilterDecision::kDiscard;
+      }
+    }
+
+    // Without the reverse mapping compaction cannot tell whether the row of the vector still
+    // exists.
+    if (!reverse_mapping_reader_) {
+      return rocksdb::FilterDecision::kKeep;
     }
 
     // Use Fetch (raw value), not FetchYbctid: we only care whether a reverse-mapping entry
@@ -370,17 +381,13 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
     auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
     if (!ybctid.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
-    } else if ((*ybctid).empty()) {
-      // Simple filtering by VectorId <=> ybctid presence in the regular db. No need to check if
-      // a vector is tombstoned as regular compactions take care of obsolete entries cleanup.
-      decision = rocksdb::FilterDecision::kDiscard;
+      return rocksdb::FilterDecision::kKeep;
     }
-
-    VLOG_WITH_PREFIX(4) << "Filtering " << vector_id << " => " << decision;
-    return decision;
+    // Simple filtering by VectorId <=> ybctid presence in the regular db. No need to check if
+    // a vector is tombstoned as regular compactions take care of obsolete entries cleanup.
+    return ybctid->empty() ? rocksdb::FilterDecision::kDiscard : rocksdb::FilterDecision::kKeep;
   }
 
- private:
   const std::string& log_prefix_;
   const KeyBounds& key_bounds_;
   DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
@@ -464,8 +471,11 @@ class DocVectorIndexImpl : public DocVectorIndex {
               uint64_t split_generation,
               const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
-      auto reader =
-          VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
+      DocVectorIndexReverseMappingReaderPtr reader;
+      if (HasReverseMapping()) {
+        reader =
+            VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
+      }
       return std::make_unique<VectorMergeFilter>(
           lsm_.LogPrefix(), context_->key_bounds(), std::move(reader));
     };
@@ -548,7 +558,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     const auto limit = options.max_num_results;
     const size_t max_search_limit = limit == 0 ? 0 : limit + std::min<size_t>(
         FLAGS_vector_index_max_extra_tied_results, std::numeric_limits<size_t>::max() - limit);
-    auto search_options = options;
+    auto search_options = VERIFY_RESULT(LsmSearchOptions(options));
     search_options.max_num_results = limit < max_search_limit ? limit + 1 : limit;
     typename LSM::SearchResults entries;
     for (;;) {
@@ -735,6 +745,27 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const std::string& LogPrefix() const {
     return lsm_.LogPrefix();
+  }
+
+  // Checks that the query has a tenant of the index, see PgVectorReadOptionsPB::tenant.
+  Result<vector_index::SearchOptions> LsmSearchOptions(vector_index::SearchOptions options) const {
+    const auto num_components = options_.tenant_hash_group_and_range_components();
+    if (!num_components) {
+      options.tenant = Slice();
+      return options;
+    }
+    SCHECK(
+        !options.tenant.empty(), InvalidArgument,
+        Format("Search of a vector index with tenants got no tenant. Postgres passes it from "
+               "pushed down conditions that compare each of the first $0 primary key components, "
+               "all hash columns counting as one, with a single value", num_components));
+    auto tenant_size = VERIFY_RESULT(dockv::DocKey::EncodedHashGroupAndRangeComponentsSize(
+        options.tenant, num_components));
+    SCHECK(
+        tenant_size == options.tenant.size(), InvalidArgument,
+        Format("Tenant $0 does not have $1 hash group and range components",
+               options.tenant.ToDebugHexString(), num_components));
+    return options;
   }
 
   Result<typename LSM::SearchResults> SearchWithinKeyBounds(
@@ -989,8 +1020,8 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
 DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
     : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
       filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_accepted.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_removed.Instantiate(metric_entity)),
       read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),

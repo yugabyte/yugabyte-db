@@ -907,6 +907,15 @@ public class UniverseCRUDHandler {
                 + nodeDetails.nodeIdx);
       }
     }
+    for (Cluster c : taskParams.clusters) {
+      String version = c.userIntent.ybSoftwareVersion;
+      if (StringUtils.isNotBlank(version)) {
+        ReleaseContainer release = releaseManager.getReleaseByVersion(version);
+        if (release != null) {
+          release.raiseIfDisabledOrDeleted();
+        }
+      }
+    }
     List<GroupName> gflagGroups = new ArrayList<>();
     if (taskParams.getPrimaryCluster().userIntent.specificGFlags != null) {
       gflagGroups = taskParams.getPrimaryCluster().userIntent.specificGFlags.getGflagGroups();
@@ -953,7 +962,7 @@ public class UniverseCRUDHandler {
           taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
           gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
-          c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
+          c, taskParams.clusters, confGetter, cloudAPIFactory);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
 
@@ -1548,6 +1557,16 @@ public class UniverseCRUDHandler {
     // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
     taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
 
+    // Only the cross-cloud federation API changes it on an existing cluster, and clients such as
+    // the CLI omit it. The edit would then clear it, and with it federation on the nodes later
+    // edits add, so keep each existing cluster's stored value.
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster stored = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      if (stored != null) {
+        cluster.userIntent.setFederationConfigured(stored.userIntent.isFederationConfigured());
+      }
+    }
+
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
@@ -2057,8 +2076,10 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<Cluster> clustersAfterCreate = new ArrayList<>(universe.getUniverseDetails().clusters);
+    clustersAfterCreate.add(readOnlyCluster);
     ManagedLoadBalancerUtil.validateNewCluster(
-        readOnlyCluster, primaryCluster, confGetter, cloudAPIFactory);
+        readOnlyCluster, clustersAfterCreate, confGetter, cloudAPIFactory);
     List<GroupName> primaryGflagGroups = new ArrayList<>();
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
@@ -2094,13 +2115,13 @@ public class UniverseCRUDHandler {
         }
         readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
       }
-      List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
-      clusters.add(readOnlyCluster);
       readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
       readOnlyCluster.userIntent.masterGFlags =
-          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clustersAfterCreate);
       readOnlyCluster.userIntent.tserverGFlags =
-          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clusters);
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clustersAfterCreate);
     } else {
       // nothing needed here since we don't have specific gflags
       readOnlyCluster.userIntent.specificGFlags = SpecificGFlags.constructInherited();

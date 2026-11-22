@@ -40,6 +40,7 @@ step s2_begin_rr { BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step s2_alter_table_test_alter_col_v { ALTER TABLE test ALTER COLUMN v TYPE SMALLINT; }
 step s2_alter_table_test_alter_col_a { ALTER TABLE test ALTER COLUMN a TYPE SMALLINT; }
 step s2_commit { COMMIT; }
+step s2_noop { ; }
 
 session s3
 step s3_select_test_atts { SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0; }
@@ -50,8 +51,8 @@ step s3_select_test_atts { SELECT attname FROM pg_attribute WHERE attrelid = 'te
 
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_v s1_commit s2_commit s3_select_test_atts
 # Test ALTER outside a transaction block in S2.
-permutation s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_v s1_commit s3_select_test_atts
+permutation s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_v s1_commit s2_noop s3_select_test_atts
 
 # Tests with an alter of the newly added column.
 permutation s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s1_commit s2_commit s3_select_test_atts
-permutation s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s1_commit s3_select_test_atts
+permutation s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s1_commit s2_noop s3_select_test_atts

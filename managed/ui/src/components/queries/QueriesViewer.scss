@@ -1,0 +1,335 @@
+/* Copyright (c) YugabyteDB, Inc. */
+
+// Scoped to .queries-viewer: aligns the Slow/Live/Recommendations headers with the other
+// Monitoring views.
+
+$title-color: #0b1117;
+$muted-color: #6d7c88;
+$card-border: #d7dee4;
+$control-height: 32px;
+
+.queries-viewer {
+  .queries-viewer__content {
+    position: relative;
+    padding-top: 20px;
+
+    h2.content-title {
+      position: static;
+      height: auto;
+      margin: 0;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 20px;
+      color: $title-color;
+      display: flex;
+      align-items: center;
+    }
+
+    .content-panel > .header {
+      height: auto;
+      min-height: 0;
+      margin-bottom: 16px;
+    }
+
+    // Header controls, including Recommendations' title row, share the other views' 32px height.
+    .content-panel > .header .btn,
+    .content-panel > .header .dropdown-toggle,
+    .perfAdvisor__containerTitleFlex .btn {
+      height: $control-height;
+      margin: 0;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .content-panel .container > .body {
+      margin: 0;
+      padding: 16px;
+      border: 1px solid $card-border;
+      border-radius: 8px;
+      box-shadow: none;
+    }
+
+    .alert {
+      position: relative;
+      order: 3;
+      flex: 0 0 100%;
+      margin: 0;
+      padding: 10px 32px 10px 16px;
+      font-size: 13px;
+
+      .alert-close {
+        position: absolute;
+        top: 8px;
+        right: 12px;
+        cursor: pointer;
+      }
+    }
+
+    .react-bs-table-no-data {
+      padding: 40px 0 !important;
+      color: $muted-color;
+    }
+
+    // Global table styles collapse the toolbar to 0px; show the search bar above the table.
+    .react-bs-table-tool-bar {
+      margin-bottom: 12px;
+
+      div,
+      span {
+        height: auto;
+      }
+
+      .autocomplete-wrapper {
+        position: absolute;
+        top: 100%;
+      }
+    }
+
+    .search-bar-container {
+      margin-right: 0;
+
+      .search-bar {
+        height: $control-height !important;
+        padding: 0 40px 0 12px;
+        align-items: center;
+        border-radius: 8px;
+      }
+
+      .fa-times {
+        padding-top: 7px;
+        padding-bottom: 7px;
+      }
+    }
+  }
+
+  // Slow Queries
+  .queries-viewer__content .slow-queries {
+    .slow-queries__container-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 16px;
+
+      &::before,
+      &::after {
+        display: none;
+      }
+    }
+
+    .slow-queries__title-container {
+      display: flex;
+      align-items: center;
+    }
+
+    .slow-queries__loading-indicator > .yb-loader-circle {
+      margin: 0 0 0 8px;
+    }
+
+    .slow-queries__actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+
+      .btn-default {
+        height: $control-height;
+        margin: 0;
+      }
+
+      .form-group,
+      .yb-field-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 0 8px;
+      }
+
+      .form-item-label,
+      label {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 400;
+        color: $title-color;
+      }
+
+      .yb-field-group,
+      .description-item,
+      .description-item-text {
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        line-height: 0;
+      }
+
+      .description-item-sub-text {
+        display: none;
+      }
+
+      .yb-field-group,
+      .description-item-text {
+        display: flex;
+        align-items: center;
+        height: $control-height;
+      }
+
+      .react-toggle {
+        display: block;
+        margin: 0;
+      }
+    }
+
+    .content-panel > .container {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+
+      // Bootstrap's clearfix would become flex items and take a gap each.
+      &::before,
+      &::after {
+        display: none;
+      }
+
+      > .body {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    .left-panel {
+      float: none;
+      flex-shrink: 0;
+      background-color: #fff;
+      border: 1px solid $card-border;
+      border-radius: 8px;
+      box-shadow: none;
+
+      &.minimized {
+        position: absolute;
+      }
+    }
+
+    .content-panel .container > .body.show-table {
+      width: auto;
+      padding: 16px;
+
+      &.expand,
+      &.shrink {
+        animation: none;
+      }
+    }
+
+    .toolbar-container {
+      margin-top: 0;
+    }
+
+    .slow-queries__empty {
+      padding: 40px 0;
+      text-align: center;
+      font-size: 13px;
+      color: $muted-color;
+    }
+  }
+
+  // Live Queries
+  .queries-viewer__content .live-queries {
+    .live-queries__container-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 16px;
+      margin-bottom: 0;
+
+      &::before,
+      &::after {
+        display: none;
+      }
+
+      > .pull-left,
+      .content-title.pull-left {
+        float: none;
+      }
+
+      > .pull-right {
+        float: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+
+        > div {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0;
+        }
+
+        > .refresh-btn {
+          order: 2;
+        }
+      }
+    }
+
+    .live-queries__loading-indicator > .yb-loader-circle {
+      margin: 0 0 0 8px;
+    }
+
+    .live-queries__dropdown-label {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 400;
+      color: $title-color;
+    }
+
+    .live-queries__table {
+      .toolbar-container {
+        margin-top: 0;
+      }
+
+      .react-bs-table {
+        overflow-x: auto;
+      }
+    }
+  }
+
+  // Recommendations
+  .queries-viewer__content .parentPerfAdvisor {
+    margin: 0;
+
+    .perfAdvisor__containerTitleFlex {
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .numRecommendations {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 20px;
+      color: $title-color;
+    }
+
+    .scanTime {
+      margin-top: 0;
+      margin-bottom: 0;
+      color: $muted-color;
+    }
+
+    .perfAdvisor__containerRecommendationFlex {
+      padding: 0 0 16px;
+
+      .filterDropdowns [class*='MuiInputBase-root'] {
+        height: $control-height;
+        font-size: 13px;
+      }
+    }
+
+    .perfAdvisor__loading {
+      display: flex;
+      justify-content: center;
+    }
+  }
+}

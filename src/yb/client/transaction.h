@@ -241,6 +241,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   const ash::WaitStateInfoPtr wait_state();
 
+  // Fixed on the first call, so that the transaction doesn't switch modes.
+  bool UseAsyncWrites() const;
+
   // Records the Async Write OpId. Returns true if the query was recorded, false if it already
   // existed.
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
