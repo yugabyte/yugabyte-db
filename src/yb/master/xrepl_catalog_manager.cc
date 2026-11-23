@@ -2461,11 +2461,9 @@ bool CatalogManager::WillCDCSDKStreamAcceptTable(
     return false;
   }
 
-  // A newly created table is a member of a publication only if the publication is FOR ALL
-  // TABLES. Other publication bound streams take a new table only if it is a rewrite of one of
-  // their tables.
-  const bool takes_only_rewritten_tables = stream_info->IsCdcsdkYsqlPublicationsBoundStream() &&
-                                           !stream_info->CdcsdkYsqlIncludesNewTables();
+  if (!CDCSDKStreamTakesNewTable(*stream_info, *table)) {
+    return false;
+  }
 
   auto ltm = stream_info->LockForRead();
   if (ltm->pb.state() != SysCDCStreamEntryPB::ACTIVE &&
@@ -2477,11 +2475,6 @@ bool CatalogManager::WillCDCSDKStreamAcceptTable(
           table, table->LockForRead(), /*check_schema=*/true,
           stream_info->IsTablesWithoutPrimaryKeyAllowed(),
           stream_info->DetectPublicationChangesImplicitly())) {
-    return false;
-  }
-
-  if (takes_only_rewritten_tables &&
-      !IsRewriteOfStreamTable(GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id()), *table)) {
     return false;
   }
 
@@ -2500,7 +2493,6 @@ bool CatalogManager::WillCDCSDKStreamAcceptTable(
   return true;
 }
 
-// The per-stream acceptance checks below are mirrored in WillCDCSDKStreamAcceptTable.
 Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     TableStreamIdsMap* table_to_unprocessed_streams_map) {
   std::unordered_map<NamespaceId, std::unordered_set<TableId>> namespace_to_unprocessed_table_map;
@@ -2521,71 +2513,37 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
   }
 
   SharedLock lock(mutex_);
+
+  // Resolved once, so a table deleted before processing is warned about once, not per stream.
+  std::unordered_map<TableId, TableInfoPtr> unprocessed_table_infos;
+  for (const auto& [ns_id, table_ids] : namespace_to_unprocessed_table_map) {
+    for (const auto& table_id : table_ids) {
+      auto table = tables_->FindTableOrNull(table_id);
+      if (!table) {
+        LOG_WITH_FUNC(WARNING) << "Table " << table_id << " deleted before it could be processed";
+        continue;
+      }
+      unprocessed_table_infos.emplace(table_id, std::move(table));
+    }
+  }
+
   for (const auto& [stream_id, stream_info] : cdc_stream_map_) {
-    if (stream_info->namespace_id().empty()) {
-      continue;
-    }
-
-    // skip streams on which dynamic table addition is disabled.
-    if(stream_info->IsDynamicTableAdditionDisabled()) {
-      continue;
-    }
-
-    // A newly created table is a member of a publication only if the publication is FOR ALL
-    // TABLES. Other publication bound streams take a new table only if it is a rewrite of one of
-    // their tables.
-    const bool takes_only_rewritten_tables = stream_info->IsCdcsdkYsqlPublicationsBoundStream() &&
-                                             !stream_info->CdcsdkYsqlIncludesNewTables();
-
     auto const unprocessed_tables =
         FindOrNull(namespace_to_unprocessed_table_map, stream_info->namespace_id());
     if (!unprocessed_tables) {
       continue;
     }
 
-    auto ltm = stream_info->LockForRead();
-    if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
-        ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
-      std::unordered_set<uint32_t> stream_pg_table_oids;
-      if (takes_only_rewritten_tables) {
-        stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
+    for (const auto& unprocessed_table_id : *unprocessed_tables) {
+      const auto* table = FindOrNull(unprocessed_table_infos, unprocessed_table_id);
+      if (!table) {
+        continue;
       }
-      for (const auto& unprocessed_table_id : *unprocessed_tables) {
-        auto table = tables_->FindTableOrNull(unprocessed_table_id);
-        if (!table) {
-          LOG_WITH_FUNC(WARNING) << "Table " << unprocessed_table_id
-                                 << " deleted before it could be processed";
-          continue;
-        }
 
-        if (!IsTableEligibleForCDCSDKStream(
-                table, table->LockForRead(), /*check_schema=*/true,
-                stream_info->IsTablesWithoutPrimaryKeyAllowed(),
-                stream_info->DetectPublicationChangesImplicitly())) {
-          continue;
-        }
-
-        if (takes_only_rewritten_tables &&
-            !IsRewriteOfStreamTable(stream_pg_table_oids, *table)) {
-          continue;
-        }
-
-        bool present_in_qualified_table_list =
-            std::find(ltm->table_id().begin(), ltm->table_id().end(), unprocessed_table_id) !=
-            ltm->table_id().end();
-        bool present_in_unqualified_table_list = false;
-        if (ltm->pb.unqualified_table_id_size() > 0) {
-          present_in_unqualified_table_list =
-              std::find(
-                  ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end(),
-                  unprocessed_table_id) != ltm->unqualified_table_id().end();
-        }
-
-        if (!present_in_qualified_table_list && !present_in_unqualified_table_list) {
-          (*table_to_unprocessed_streams_map)[unprocessed_table_id].push_back(stream_info);
-          VLOG(1) << "Will try and add table: " << unprocessed_table_id
-                  << ", to stream: " << stream_info->id();
-        }
+      if (WillCDCSDKStreamAcceptTable(stream_info, *table)) {
+        (*table_to_unprocessed_streams_map)[unprocessed_table_id].push_back(stream_info);
+        VLOG(1) << "Will try and add table: " << unprocessed_table_id
+                << ", to stream: " << stream_info->id();
       }
     }
   }
