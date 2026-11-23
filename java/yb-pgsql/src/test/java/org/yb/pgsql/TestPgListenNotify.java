@@ -426,6 +426,40 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * pg_cancel_backend() on the notifications poller must not stop notification delivery. The
+   * poller ignores SIGINT: it has no query to cancel, and exiting with code 0 would make the
+   * postmaster unregister it, leaving every listener on the node without notifications.
+   */
+  @Test
+  public void testCancelPollerKeepsDeliveringNotifications() throws Exception {
+    final String channel = "poller_cancel";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+
+      int pollerPid = getPollerPid(listenerStmt);
+      LOG.info("Notifications poller PID: " + pollerPid);
+
+      Row cancelled = getSingleRow(listenerStmt,
+          "SELECT pg_cancel_backend(" + pollerPid + ")");
+      assertTrue("pg_cancel_backend should signal the poller", cancelled.getBoolean(0));
+
+      // Give a poller that wrongly reacted to SIGINT time to exit.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      assertEquals("The poller should keep running after pg_cancel_backend",
+          pollerPid, getPollerPid(listenerStmt));
+
+      try (Connection notifierConn = getConnectionBuilder().connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", 'after_cancel'");
+      }
+
+      waitForNotification(listenerConn, channel, "after_cancel");
+    }
+  }
+
   private int getPollerPid(Statement stmt) throws Exception {
     Row row = getSingleRow(stmt,
         "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");

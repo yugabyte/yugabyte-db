@@ -3389,7 +3389,16 @@ YbNotifsPollerMain(Datum main_arg)
 {
 	/* Set up signal handlers */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+
+	/*
+	 * Ignore SIGINT (e.g. pg_cancel_backend()). The poller has no query to
+	 * cancel, and it can't skip the transaction it is processing without
+	 * losing notifications. Treating SIGINT as a shutdown request made it exit
+	 * with code 0, which makes the postmaster unregister it, so delivery
+	 * stopped on the node with no error. Like the bgwriter and walreceiver,
+	 * which also ignore SIGINT, it is stopped with SIGTERM.
+	 */
+	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, die);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
 
@@ -3547,9 +3556,6 @@ ybNotifsPollerLoop()
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
-
-		if (ShutdownRequestPending)
-			proc_exit(0);
 
 		/*
 		 * YBCReadRecord sleeps using yb_walsender_poll_sleep_duration_*_ms.
