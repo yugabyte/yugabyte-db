@@ -27,11 +27,9 @@ import java.util.List;
 import java.util.Set;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
-import org.yb.util.RequiresLinux;
 import com.google.common.net.HostAndPort;
 import com.google.gson.JsonObject;
 
@@ -40,8 +38,7 @@ import com.google.gson.JsonObject;
 // backends between clients, without making connections sticky. Audit lines are read from client
 // NOTICEs; STATEMENT_ID is ignored since it is a per-backend counter.
 // TODO(#38683): Check STATEMENT_ID once pgaudit counts it per logical session.
-@RequiresLinux
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestPgauditBackendSharing extends BaseYsqlConnMgr {
 
   private static final String AUDITED_QUERY = "SELECT pg_backend_pid() FROM audit_t";
