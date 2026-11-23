@@ -65,6 +65,8 @@ typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
 class MultiRaftHeartbeatBatcher;
 using MultiRaftHeartbeatBatcherPtr = std::shared_ptr<MultiRaftHeartbeatBatcher>;
 
+using RaftConsensusPtr = std::shared_ptr<RaftConsensus>;
+
 struct LeaderElectionData;
 
 // The elected Leader (this peer) can be in not-ready state because it's not yet synced.

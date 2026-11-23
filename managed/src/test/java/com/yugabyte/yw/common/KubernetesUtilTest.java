@@ -14,6 +14,10 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -50,6 +54,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
@@ -437,6 +442,48 @@ public class KubernetesUtilTest extends FakeDBApplication {
           node.isTserver ? 0.5 : defaultCores,
           KubernetesUtil.getCoreCountForUniverseForServer(userIntent, milliCoreOverrides, node),
           0.001);
+    }
+  }
+
+  @Test
+  public void testCoreCountFailureLogsNoOverrideSecrets() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    UniverseDefinitionTaskParams universeParams = pair.getFirst();
+    UserIntent userIntent = universeParams.getPrimaryCluster().userIntent;
+    userIntent.tserverK8SNodeResourceSpec = null;
+    Map<UUID, Map<String, Object>> overrides =
+        KubernetesUtil.getFinalOverrides(
+            universeParams.getPrimaryCluster(),
+            "resource:\n  tserver:\n    requests:\n      cpu: not-a-quantity\n"
+                + "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n",
+            userIntent.azOverrides);
+    double defaultCores = new UserIntent.K8SNodeResourceSpec().cpuCoreCount;
+    Logger logger = (Logger) LoggerFactory.getLogger(KubernetesUtil.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.WARN);
+    try {
+      for (NodeDetails node : universeParams.nodeDetailsSet) {
+        if (node.isTserver) {
+          assertEquals(
+              defaultCores,
+              KubernetesUtil.getCoreCountForUniverseForServer(userIntent, overrides, node),
+              0);
+        }
+      }
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    assertTrue(
+        appender.list.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Failed to get core count")));
+    for (ILoggingEvent event : appender.list) {
+      assertFalse(
+          event.getFormattedMessage(), event.getFormattedMessage().contains("dummy-bind-pass"));
     }
   }
 
