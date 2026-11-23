@@ -2073,22 +2073,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Test
   public void testPollerRestartsAfterTransientError() throws Exception {
     final String channel = "transient_error";
-    Map<HostAndPort, String> originalPgConf = new HashMap<>();
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
       listener.createStatement().execute("LISTEN " + channel);
       int pollerPid = getPollerPid(stmt);
 
-      try {
-        appendToPgConfOnAllTServers(
-            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-        stmt.execute("NOTIFY " + channel + ", 'x'");
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-      } finally {
-        restorePgConfOnAllTServers(originalPgConf);
-      }
+      notifyWhilePollerFails(stmt, channel, "x");
 
       List<PGNotification> received = waitForNotification(listener, channel, "x");
       assertEquals("Expected the notification exactly once", 1, received.size());
@@ -2169,7 +2160,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testAckEndsFailedRestartRun() throws Exception {
     final String channel = "ack_ends_run";
     final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
-    Map<HostAndPort, String> originalPgConf = new HashMap<>();
     setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
@@ -2178,17 +2168,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       int pollerPid = getPollerPid(stmt);
 
       // First error; the replay after the hook is cleared delivers and acks 'a'.
-      long firstErrorMs;
-      try {
-        appendToPgConfOnAllTServers(
-            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-        firstErrorMs = System.currentTimeMillis();
-        stmt.execute("NOTIFY " + channel + ", 'a'");
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-      } finally {
-        restorePgConfOnAllTServers(originalPgConf);
-      }
+      long firstErrorMs = notifyWhilePollerFails(stmt, channel, "a");
       waitForNotification(listener, channel, "a");
       int restartedPid = getPollerPid(stmt);
       assertNotEquals("Expected the poller to have restarted", pollerPid, restartedPid);
@@ -2204,22 +2184,35 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       waitForNotification(listener, channel, "b");
 
       // Second error, before this poller has been up for the timeout.
-      originalPgConf.clear();
-      try {
-        appendToPgConfOnAllTServers(
-            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-        stmt.execute("NOTIFY " + channel + ", 'c'");
-        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-      } finally {
-        restorePgConfOnAllTServers(originalPgConf);
-      }
+      notifyWhilePollerFails(stmt, channel, "c");
 
       List<PGNotification> received = waitForNotification(listener, channel, "c");
       assertEquals("Expected the notification exactly once", 1, received.size());
       assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
     } finally {
       setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+    }
+  }
+
+  /**
+   * Sends a NOTIFY while the poller errors on every queue write, then clears the error so the
+   * restarted poller delivers it. The poller is left failing for a fixed time rather than until its
+   * pid changes: a crash-looping poller lives ~50 ms per restart, so polling pg_stat_activity can
+   * miss it. Returns the time just before the NOTIFY.
+   */
+  private long notifyWhilePollerFails(Statement stmt, String channel, String payload)
+      throws Exception {
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    try {
+      appendToPgConfOnAllTServers(
+          "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      long notifyMs = System.currentTimeMillis();
+      stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      return notifyMs;
+    } finally {
+      restorePgConfOnAllTServers(originalPgConf);
     }
   }
 
