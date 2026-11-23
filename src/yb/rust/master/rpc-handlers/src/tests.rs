@@ -18,6 +18,8 @@ use protobuf::{Enum, Message};
 use yb_host_api::rpc::{FakeInboundCall, FakeResponse, FakeRpcClient};
 use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
+use yb_proto::pb::master_admin::get_master_heartbeat_delays_response_pb::MasterHeartbeatDelay;
+use yb_proto::pb::master_admin::GetMasterHeartbeatDelaysResponsePB;
 use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
 use yb_proto::pb::master_replication::SetupNamespaceReplicationWithBootstrapResponsePB;
@@ -105,6 +107,16 @@ impl MasterInfo for FakeInfo {
     fn handle_on_host(&self, method: &str, request: &[u8]) -> Result<Vec<u8>, Status> {
         self.host_calls.lock().unwrap().push(method.to_string());
         *self.last_host_request.lock().unwrap() = request.to_vec();
+        if method == "GetMasterHeartbeatDelays" {
+            let mut resp = GetMasterHeartbeatDelaysResponsePB::new();
+            for (uuid, ms) in [("peer-a", -3), ("peer-b", 1500)] {
+                let mut delay = MasterHeartbeatDelay::new();
+                delay.set_master_uuid(uuid.as_bytes().to_vec());
+                delay.set_last_heartbeat_delta_ms(ms);
+                resp.heartbeat_delay.push(delay);
+            }
+            return Ok(resp.write_to_bytes().unwrap());
+        }
         Ok(b"host".to_vec())
     }
 }
@@ -460,6 +472,24 @@ fn list_masters_mixes_answers_and_errors() {
     assert!(unreachable.error.message().contains("connection refused"));
     assert_eq!(unreachable.instance_id.permanent_uuid(), b"peer-b");
     assert_eq!(unreachable.registration.private_rpc_addresses.len(), 1);
+    // Only a Raft leader knows its followers' heartbeat delays.
+    assert!(!resp.masters.iter().any(|m| m.has_heartbeat_delay_ms()));
+    assert!(h.info.host_calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn list_masters_on_the_leader_gives_heartbeat_delays() {
+    let h = Harness::with_rpc(FakeRpcClient::new(|_, _, _, _, _| {
+        Ok(GetMasterRegistrationResponsePB::new()
+            .write_to_bytes()
+            .unwrap())
+    }));
+    h.info.role.store(PeerRole::LEADER as i32, Ordering::SeqCst);
+    let resp =
+        ListMastersResponsePB::parse_from_bytes(&success(h.call("ListMasters", vec![]))).unwrap();
+    assert_eq!(resp.masters.len(), 2);
+    assert_eq!(resp.masters[0].heartbeat_delay_ms(), 0);
+    assert_eq!(resp.masters[1].heartbeat_delay_ms(), 1500);
 }
 
 #[test]

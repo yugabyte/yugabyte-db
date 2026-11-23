@@ -100,6 +100,9 @@ pub(crate) mod bridge {
         /// A serialized `ListMastersResponsePB`. Blocks; called on web server threads.
         #[cxx_name = "ListMasters"]
         fn list_masters(self: &WebMasterList) -> Vec<u8>;
+        /// Whether `ListMasters` would name this master the leader. Does not block.
+        #[cxx_name = "IsLeader"]
+        fn is_leader(self: &WebMasterList) -> bool;
     }
 
     unsafe extern "C++" {

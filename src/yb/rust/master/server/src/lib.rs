@@ -264,6 +264,8 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         web_addrs[0].port(),
         Box::new(web::WebMasterList {
             info: info.clone(),
+            leader: core.leader.clone(),
+            emergency_repair_mode: || EMERGENCY_REPAIR_MODE.get(),
             rpc: rpc.clone(),
             runtime: runtime.handle().clone(),
             master_rpc_timeout: options.master_rpc_timeout,

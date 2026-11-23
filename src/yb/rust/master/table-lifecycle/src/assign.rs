@@ -325,7 +325,9 @@ impl TabletAssigner {
             .get(&tablet_id)
             .filter(|p| possible.contains(p))
             .cloned()
-            .unwrap_or_else(|| possible[0].clone());
+            // As C++ `RandomElement`: a fixed choice would pile the leaders of every tablet left
+            // leaderless by one tserver's restart onto the same tserver.
+            .unwrap_or_else(|| possible[rand::random_range(0..possible.len())].clone());
         tracing::info!(
             "Starting election at {} in favor of {}",
             String::from_utf8_lossy(&tablet_id),

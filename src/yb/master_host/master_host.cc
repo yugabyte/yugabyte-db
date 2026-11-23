@@ -881,8 +881,7 @@ void MasterHost::RegisterWebPages() {
         page.path, page.alias,
         [this, render = page.render_on_leader](
             const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-          auto masters = ListMastersForWeb();
-          if (IsLeaderInList(masters)) {
+          if (IsLeaderForWeb()) {
             if (render) {
               (this->*render)(&resp->output);
               return;
@@ -897,7 +896,7 @@ void MasterHost::RegisterWebPages() {
           ServerRegistrationPB local_reg;
           auto status = GetMasterRegistration(&local_reg);
           master::RedirectToLeader(
-              masters,
+              ListMastersForWeb(),
               status.ok() ? Result<ServerRegistrationPB>(std::move(local_reg))
                           : Result<ServerRegistrationPB>(status),
               req, resp);
@@ -917,7 +916,9 @@ void MasterHost::RegisterWebPages() {
         // MasterPathHandlers::HandleCheckIfLeader.
         JsonWriter jw(&resp->output, JsonWriter::COMPACT);
         jw.StartObject();
-        if (!IsLeaderInList(ListMastersForWeb())) {
+        // Answered locally, as C++ did: load balancers poll every master, and the master list
+        // waits on unreachable peers.
+        if (!IsLeaderForWeb()) {
           resp->code = 503;
           return;
         }
@@ -950,16 +951,10 @@ void MasterHost::RegisterWebPages() {
       /* is_styled= */ false, /* is_on_nav_bar= */ false);
 }
 
-// Whether the master list, built from GetMasterRegistration, names this master the leader: Rust
-// reports LEADER only for a ready leader.
-bool MasterHost::IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const {
-  if (!masters.ok()) {
-    return false;
-  }
-  return std::ranges::any_of(*masters, [this](const ServerEntryPB& master) {
-    return !master.has_error() && master.role() == PeerRole::LEADER &&
-           master.instance_id().permanent_uuid() == permanent_uuid();
-  });
+// Whether the master list would name this master the leader: Rust reports LEADER only for a ready
+// leader.
+bool MasterHost::IsLeaderForWeb() const {
+  return web_master_list_ && (*web_master_list_)->IsLeader();
 }
 
 Result<std::vector<ServerEntryPB>> MasterHost::ListMastersForWeb() const {

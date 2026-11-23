@@ -12,19 +12,23 @@
 
 //! `ListMasters`, as `Master::ListMasters` and `GetMasterEntryForHosts` do it in C++: ask every
 //! Raft peer for its registration, each over all of its addresses at once, and take the first
-//! answer per peer.
+//! answer per peer. A Raft leader also gives each follower's heartbeat delay.
 
 use protobuf::{Enum, Message};
 use tokio::task::JoinSet;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::RaftPeerPB;
+use yb_proto::pb::master_admin::{
+    GetMasterHeartbeatDelaysRequestPB, GetMasterHeartbeatDelaysResponsePB,
+};
 use yb_proto::pb::master_cluster::{
     GetMasterRegistrationRequestPB, GetMasterRegistrationResponsePB, ListMastersResponsePB,
 };
 use yb_proto::pb::master_types::master_error_pb;
 use yb_proto::pb::wire_protocol::{app_status_pb, AppStatusPB, NodeInstancePB, ServerEntryPB};
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,7 +38,7 @@ use crate::{master_error_from, MasterInfo, Shared};
 
 pub(crate) async fn list_masters(shared: &Shared) -> ListMastersResponsePB {
     list_masters_response(
-        shared.info.as_ref(),
+        shared.info.clone(),
         shared.rpc.clone(),
         (shared.options.master_rpc_timeout)(),
     )
@@ -43,7 +47,7 @@ pub(crate) async fn list_masters(shared: &Shared) -> ListMastersResponsePB {
 
 /// The `ListMasters` response. Also what the host's web pages show.
 pub async fn list_masters_response(
-    info: &dyn MasterInfo,
+    info: Arc<dyn MasterInfo>,
     rpc: Arc<dyn RpcClient>,
     timeout: Duration,
 ) -> ListMastersResponsePB {
@@ -64,7 +68,7 @@ pub async fn list_masters_response(
 /// The masters of the sys-catalog Raft config, each with its registration and role as it reports
 /// them, or with an error when it cannot be reached. In shell mode, only this master.
 async fn list_master_entries(
-    info: &dyn MasterInfo,
+    info: Arc<dyn MasterInfo>,
     rpc: Arc<dyn RpcClient>,
     timeout: Duration,
 ) -> Result<Vec<ServerEntryPB>, Status> {
@@ -85,9 +89,48 @@ async fn list_master_entries(
         let rpc = rpc.clone();
         peers.spawn(async move { (index, peer_entry(rpc, peer, timeout).await) });
     }
+    let delays = follower_heartbeat_delays_ms(info).await;
     let mut entries: Vec<(usize, ServerEntryPB)> = peers.join_all().await;
     entries.sort_by_key(|(index, _)| *index);
+    for (index, entry) in &mut entries {
+        if let Some(delay) = delays.get(state.config.peers[*index].permanent_uuid()) {
+            entry.set_heartbeat_delay_ms(*delay);
+        }
+    }
     Ok(entries.into_iter().map(|(_, entry)| entry).collect())
+}
+
+/// `CatalogManager::GetMasterFollowerHeartbeatDelaysMs`: how long ago this master, as the
+/// sys-catalog Raft leader, last heard from each follower, by uuid. Empty on a follower.
+async fn follower_heartbeat_delays_ms(info: Arc<dyn MasterInfo>) -> HashMap<Vec<u8>, i64> {
+    if info.raft_role() != PeerRole::LEADER {
+        return HashMap::new();
+    }
+    let request = GetMasterHeartbeatDelaysRequestPB::new()
+        .write_to_bytes()
+        .expect("empty request serializes");
+    let response = tokio::task::spawn_blocking(move || {
+        info.handle_on_host("GetMasterHeartbeatDelays", &request)
+    })
+    .await;
+    let resp = match response {
+        Ok(Ok(bytes)) => {
+            GetMasterHeartbeatDelaysResponsePB::parse_from_bytes(&bytes).map_err(|e| e.to_string())
+        }
+        Ok(Err(status)) => Err(status.message),
+        Err(e) => Err(e.to_string()),
+    };
+    match resp {
+        Ok(resp) => resp
+            .heartbeat_delay
+            .into_iter()
+            .map(|d| (d.master_uuid().to_vec(), d.last_heartbeat_delta_ms().max(0)))
+            .collect(),
+        Err(e) => {
+            tracing::warn!("ListMasters: no follower heartbeat delays: {e}");
+            HashMap::new()
+        }
+    }
 }
 
 fn addresses(peer: &RaftPeerPB) -> Vec<(String, u16)> {

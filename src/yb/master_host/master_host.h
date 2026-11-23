@@ -283,7 +283,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Result<std::shared_ptr<tablet::AbstractTablet>> VirtualTableTablet(const TabletId& tablet_id);
   Result<master::YcqlVirtualTableInputPB> VirtualTableInput(const TabletId& tablet_id);
   void RegisterWebPages();
-  bool IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const;
+  bool IsLeaderForWeb() const;
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
   Status InformRemovedMaster(const HostPortPB& hp_pb);

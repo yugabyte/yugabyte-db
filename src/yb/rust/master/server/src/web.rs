@@ -16,10 +16,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use master_rpc_handlers::{list_masters_response, MasterInfo};
+use master_rpc_handlers::{list_masters_response, reported_role, LeaderServices, MasterInfo};
 use protobuf::Message;
 use yb_flags::FlagRef;
 use yb_host_api::rpc::RpcClient;
+use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::master_cluster::ListMastersResponsePB;
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
 use yb_proto::pb::wire_protocol::{app_status_pb, AppStatusPB};
@@ -32,12 +33,24 @@ static WEBSERVER_STRICT_TRANSPORT_SECURITY: FlagRef<bool> =
 
 pub(crate) struct WebMasterList {
     pub(crate) info: Arc<dyn MasterInfo>,
+    pub(crate) leader: Arc<LeaderServices>,
+    pub(crate) emergency_repair_mode: fn() -> bool,
     pub(crate) rpc: Arc<dyn RpcClient>,
     pub(crate) runtime: tokio::runtime::Handle,
     pub(crate) master_rpc_timeout: fn() -> Duration,
 }
 
 impl WebMasterList {
+    /// Whether the master list would name this master the leader, without asking the others.
+    pub(crate) fn is_leader(&self) -> bool {
+        self.info.is_initialized()
+            && reported_role(
+                self.info.as_ref(),
+                Some(&self.leader),
+                (self.emergency_repair_mode)(),
+            ) == PeerRole::LEADER
+    }
+
     pub(crate) fn list_masters(&self) -> Vec<u8> {
         // Spawned rather than `block_on`: the runtime stops before the host's web server does,
         // and a task spawned then is dropped, where `block_on` would panic on its timers.
@@ -48,7 +61,7 @@ impl WebMasterList {
             (self.master_rpc_timeout)(),
         );
         self.runtime.spawn(async move {
-            let _ = sender.send(list_masters_response(info.as_ref(), rpc, timeout).await);
+            let _ = sender.send(list_masters_response(info, rpc, timeout).await);
         });
         let resp = match receiver.recv() {
             Ok(resp) => resp,

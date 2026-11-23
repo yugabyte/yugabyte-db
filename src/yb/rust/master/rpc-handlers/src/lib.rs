@@ -235,6 +235,21 @@ pub trait MasterInfo: Send + Sync + 'static {
     fn handle_on_host(&self, method: &str, request: &[u8]) -> Result<Vec<u8>, Status>;
 }
 
+/// The role `GetMasterRegistration` reports for this master: a leader that is not ready reports
+/// FOLLOWER so clients do not lock onto it.
+pub fn reported_role(
+    info: &dyn MasterInfo,
+    leader: Option<&LeaderServices>,
+    emergency_repair_mode: bool,
+) -> PeerRole {
+    match info.raft_role() {
+        PeerRole::LEADER if !emergency_repair_mode && leader.is_none_or(|l| l.ready().is_err()) => {
+            PeerRole::FOLLOWER
+        }
+        role => role,
+    }
+}
+
 /// Settings, read when used so runtime flag changes take effect.
 #[derive(Clone, Copy, Debug)]
 pub struct HandlerOptions {
@@ -502,15 +517,11 @@ impl Shared {
                 .into()
             }
         }
-        // A leader that is not ready reports FOLLOWER so clients do not lock onto it.
-        let ready = self.leader.as_ref().is_some_and(|l| l.ready().is_ok());
-        let role = match self.info.raft_role() {
-            PeerRole::LEADER if !ready && !(self.options.emergency_repair_mode)() => {
-                PeerRole::FOLLOWER
-            }
-            role => role,
-        };
-        resp.set_role(role);
+        resp.set_role(reported_role(
+            self.info.as_ref(),
+            self.leader.as_deref(),
+            (self.options.emergency_repair_mode)(),
+        ));
         resp
     }
 
