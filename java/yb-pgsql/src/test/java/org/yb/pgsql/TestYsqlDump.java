@@ -27,6 +27,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -444,6 +445,110 @@ public class TestYsqlDump extends BasePgSQLTest {
     // The skip must not hide user databases from dropDBs() or dumpDatabases().
     assertTrue("missing DROP of " + userDb, dump.contains("DROP DATABASE " + userDb + ";"));
     assertTrue("missing CREATE of " + userDb, dump.contains("CREATE DATABASE " + userDb + " "));
+  }
+
+  private static String roleStmt(String dump, String verb, String role) {
+    String prefix = verb + " \"" + role + "\"";
+    for (String line : dump.split("\n", -1)) {
+      String trimmed = line.trim();
+      if (trimmed.startsWith(prefix))
+        return trimmed;
+    }
+    return null;
+  }
+
+  @Test
+  public void ysqlDumpAllBinaryUpgradeBuiltinYbRoles() throws Exception {
+    // Binary upgrade restores globals with ON_ERROR_STOP. Built-in yb_* roles
+    // already exist, so the dump must alter them in place. yb_superuser is
+    // created outside initdb and is dumped in full.
+    restartCluster();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER ROLE yb_db_admin INHERIT CONNECTION LIMIT 5 VALID UNTIL '2030-01-01'");
+      stmt.execute("COMMENT ON ROLE yb_db_admin IS 'hardened by DBA'");
+      stmt.execute("ALTER ROLE yb_extension NOINHERIT");
+      stmt.execute("ALTER ROLE yb_fdw LOGIN PASSWORD 'dummy_password'");
+      stmt.execute("CREATE ROLE yb_superuser INHERIT CREATEROLE CREATEDB BYPASSRLS");
+      stmt.execute("CREATE ROLE yb_superuser_extra NOINHERIT CONNECTION LIMIT 7");
+      stmt.execute("CREATE ROLE app_admin NOINHERIT CONNECTION LIMIT 5");
+    }
+
+    File ysqlDumpAllExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dumpall");
+    File dumpFile = new File(TestUtils.getClassResourceDir(getClass()),
+        "results/yb.orig.ysql_dumpall_binary_upgrade_roles.out");
+    dumpFile.getParentFile().mkdirs();
+    ProcessUtil.executeSimple(Arrays.asList(
+        ysqlDumpAllExec.toString(),
+        "-h", getPgHost(0),
+        "-p", Integer.toString(getPgPort(0)),
+        "-U", DEFAULT_PG_USER,
+        "--globals-only",
+        "--quote-all-identifiers",
+        "--binary-upgrade",
+        "-f", dumpFile.toString()
+    ), "ysql_dumpall");
+
+    String dump = FileUtils.readFileToString(dumpFile, StandardCharsets.UTF_8);
+    Map<String, String> roleOids = new HashMap<>();
+    try (Statement stmt = connection.createStatement()) {
+      for (Row row : getRowList(stmt,
+          "SELECT rolname, oid::text FROM pg_authid WHERE rolname LIKE 'yb\\_%' "
+              + "OR rolname IN ('app_admin', 'yugabyte', 'postgres')")) {
+        roleOids.put(row.getString(0), row.getString(1));
+      }
+    }
+
+    assertTrue(roleOids.containsKey("yb_superuser"));
+    assertTrue(roleOids.containsKey("yb_superuser_extra"));
+    assertTrue(roleOids.containsKey("yb_db_admin"));
+    assertTrue(roleOids.containsKey("yb_extension"));
+    assertTrue(roleOids.containsKey("yb_fdw"));
+    assertTrue(roleOids.containsKey("yugabyte"));
+    assertTrue(roleOids.containsKey("postgres"));
+    assertTrue(roleOids.containsKey("app_admin"));
+
+    for (Map.Entry<String, String> role : roleOids.entrySet()) {
+      String name = role.getKey();
+      String oid = role.getValue();
+      String setNextOid = "binary_upgrade_set_next_pg_authid_oid('" + oid + "'::pg_catalog.oid)";
+      if (name.equals("yugabyte") || name.equals("postgres") ||
+          (name.startsWith("yb_") && !name.equals("yb_superuser"))) {
+        assertNull("pre-created role must not be created: " + name,
+            roleStmt(dump, "CREATE ROLE", name));
+        assertNotNull("pre-created role must be altered: " + name,
+            roleStmt(dump, "ALTER ROLE", name));
+        assertFalse("pre-created role must not reserve an OID: " + name, dump.contains(setNextOid));
+      }
+    }
+
+    assertTrue(dump.contains("COMMENT ON ROLE \"yb_db_admin\" IS 'hardened by DBA';"));
+    String alterDbAdmin = roleStmt(dump, "ALTER ROLE", "yb_db_admin");
+    assertFalse(alterDbAdmin.contains(" NOINHERIT"));
+    assertTrue(alterDbAdmin.contains(" INHERIT"));
+    assertTrue(alterDbAdmin.contains(" CONNECTION LIMIT 5"));
+    assertTrue(alterDbAdmin.contains(" VALID UNTIL "));
+
+    String alterExtension = roleStmt(dump, "ALTER ROLE", "yb_extension");
+    assertTrue(alterExtension.contains(" NOINHERIT"));
+
+    String alterFdw = roleStmt(dump, "ALTER ROLE", "yb_fdw");
+    assertTrue(alterFdw.contains(" LOGIN"));
+    assertFalse(alterFdw.contains(" NOLOGIN"));
+    assertTrue(alterFdw.contains(" PASSWORD "));
+
+    String alterExtra = roleStmt(dump, "ALTER ROLE", "yb_superuser_extra");
+    assertTrue(alterExtra.contains(" NOINHERIT"));
+    assertTrue(alterExtra.contains(" CONNECTION LIMIT 7"));
+
+    assertNotNull(roleStmt(dump, "CREATE ROLE", "yb_superuser"));
+    assertTrue(dump.contains("binary_upgrade_set_next_pg_authid_oid('"
+        + roleOids.get("yb_superuser") + "'::pg_catalog.oid)"));
+
+    assertNotNull(roleStmt(dump, "CREATE ROLE", "app_admin"));
+    assertTrue(dump.contains("binary_upgrade_set_next_pg_authid_oid('"
+        + roleOids.get("app_admin") + "'::pg_catalog.oid)"));
+    String alterAppAdmin = roleStmt(dump, "ALTER ROLE", "app_admin");
+    assertTrue(alterAppAdmin.contains(" CONNECTION LIMIT 5"));
   }
 
   @Test
