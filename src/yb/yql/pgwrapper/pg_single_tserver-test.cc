@@ -61,6 +61,7 @@ DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_filter_before_decoding_columns);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
@@ -730,6 +731,52 @@ TEST_F(PgSingleTServerTest, ScanOneColumn) {
   SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, num_rows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
+}
+
+// Point lookups by a column without an index on a table with wide rows, as in #34546. Most of
+// the scan time goes to the rows that the pushed down filter rejects.
+TEST_F(PgSingleTServerTest, ScanWithFilterWideRows) {
+  constexpr int kNumRows = RegularBuildVsDebugVsSanitizers(10000, 10000, 1000);
+  constexpr int kNumReads = RegularBuildVsDebugVsSanitizers(200, 20, 5);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (id BIGINT PRIMARY KEY, non_indexed_id BIGINT NOT NULL, data TEXT) "
+      "SPLIT INTO 1 TABLETS"));
+  // About 2 KB of data per row.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, i * 10, repeat(md5(i::TEXT), 64) FROM generate_series(1, $0) i",
+      kNumRows));
+  FlushAndCompactTablets();
+
+  constexpr auto kQuery =
+      "SELECT id, non_indexed_id, length(data) FROM t WHERE non_indexed_id = $0";
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(conn.FetchAllAsString(Format(Format("EXPLAIN $0", kQuery), 10))),
+      "Storage Filter");
+
+  auto read_histogram =
+      cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
+          &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->underlying();
+  for (auto filter_before_decoding : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_filter_before_decoding_columns) =
+        filter_before_decoding;
+    // Warm up.
+    ASSERT_OK(conn.FetchAllAsString(Format(kQuery, 10)));
+    const auto metric_start = read_histogram->TotalSum();
+    const auto start = MonoTime::Now();
+    for (int i = 0; i != kNumReads; ++i) {
+      const int64_t id = RandomUniformInt(1, kNumRows);
+      const auto row = ASSERT_RESULT((conn.FetchRow<int64_t, int64_t, int32_t>(
+          Format(kQuery, id * 10))));
+      ASSERT_EQ(row, (decltype(row){id, id * 10, 2048}));
+    }
+    const auto finish = MonoTime::Now();
+    const auto metric_finish = read_histogram->TotalSum();
+    LOG(INFO) << "Filter before decoding: " << filter_before_decoding
+              << ", avg time: " << (finish - start).ToMicroseconds() / kNumReads << "us"
+              << ", avg tserver time: " << (metric_finish - metric_start) / kNumReads << "us";
+  }
 }
 
 TEST_F(PgSingleTServerTest, BigValue) {

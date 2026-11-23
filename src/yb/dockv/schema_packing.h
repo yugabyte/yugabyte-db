@@ -32,6 +32,7 @@
 #include "yb/dockv/dockv.fwd.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/dynamic_bitset.h"
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -452,10 +453,13 @@ class PackedRowDecoder {
     schema_packing_ = nullptr;
   }
 
+  // columns - projection columns to decode, a bit per projection column. Other columns are
+  // skipped, and the chain ends at the last decoded column. Null to decode all columns.
   void Init(
       PackedRowVersion version, const ReaderProjection& projection,
       const SchemaPacking& packing, const PackedRowDecoderFactory& factory,
-      const Schema& schema, PackedRowColumnUpdateTracker* tracker = nullptr);
+      const Schema& schema, PackedRowColumnUpdateTracker* tracker = nullptr,
+      const DynamicBitSet* columns = nullptr);
 
   Status Apply(Slice value, void* context);
   Status Apply(Slice value, void* context, const PackedRowScope& row_scope);
