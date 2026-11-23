@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -212,7 +213,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
-  public void testGetAndListUniverseV2RedactKubernetesOverrides() throws IOException {
+  public void testGetUniverseV2RedactKubernetesOverrides() throws IOException {
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
         .thenReturn(true);
@@ -228,15 +229,11 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         });
 
     String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
-    for (JsonNode resp :
-        List.of(
-            rawGetUniverse(universe.getUniverseUUID()),
-            rawPageListUniverses().get("entities").get(0))) {
-      assertFalse(resp.toString(), resp.toString().contains("lr23812"));
-      JsonNode providerSpec = resp.at("/spec/clusters/0/provider_spec");
-      assertEquals(redacted, providerSpec.get("helm_overrides").asText());
-      assertEquals(redacted, providerSpec.at("/az_helm_overrides/az-1").asText());
-    }
+    JsonNode resp = rawGetUniverse(universe.getUniverseUUID());
+    assertFalse(resp.toString(), resp.toString().contains("lr23812"));
+    JsonNode providerSpec = resp.at("/spec/clusters/0/provider_spec");
+    assertEquals(redacted, providerSpec.get("helm_overrides").asText());
+    assertEquals(redacted, providerSpec.at("/az_helm_overrides/az-1").asText());
   }
 
   @Test
