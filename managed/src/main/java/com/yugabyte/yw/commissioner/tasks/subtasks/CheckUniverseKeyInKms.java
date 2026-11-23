@@ -41,20 +41,20 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
   @Override
   public void run() {
     UUID universeUUID = taskParams().getUniverseUUID();
-    // The keys YBA pushes to restarted masters, the same rows the precheck gate counts.
+    // The same rows the precheck gate counts.
     List<KmsHistory> keys = KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
     if (keys.isEmpty()) {
       log.info("No universe key for universe {}, skipping KMS check", universeUUID);
       return;
     }
-    // Newest first, so use the newest key if no key is active.
+    // YBA pushes only the active key to masters. With no active key, check the newest one (rows
+    // are newest first), so a KMS outage still fails the task.
     KmsHistory key = keys.stream().filter(KmsHistory::isActive).findFirst().orElse(keys.get(0));
     KmsConfig kmsConfig = KmsConfig.get(key.getConfigUuid());
     if (kmsConfig == null) {
       throw new RuntimeException(
           String.format(
-              "YBA cannot get the active universe key: KMS config %s is missing.",
-              key.getConfigUuid()));
+              "YBA cannot get the universe key: KMS config %s is missing.", key.getConfigUuid()));
     }
     byte[] keyRef = Base64.getDecoder().decode(key.getUuid().keyRef);
     String cause = "KMS returned no key, see the YBA log";
@@ -78,7 +78,7 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
     if (keyVal == null) {
       throw new RuntimeException(
           String.format(
-              "YBA cannot get the active universe key from KMS config '%s': %s. Restore KMS"
+              "YBA cannot get the universe key from KMS config '%s': %s. Restore KMS"
                   + " access before running this task, or restarted masters will not get the key.",
               kmsConfig.getName(), cause),
           kmsError);

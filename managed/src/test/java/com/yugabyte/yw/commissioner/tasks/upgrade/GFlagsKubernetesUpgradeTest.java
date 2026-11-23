@@ -481,9 +481,9 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         ysqlWaitCount >= 1);
   }
 
-  // Master pods roll only when master gflags change, so a tserver-only change skips the KMS check.
+  // A tserver-only change still runs the master pass, which pushes the key, so it checks.
   @Test
-  public void testTserverOnlyGFlagsSkipKmsCheck() {
+  public void testTserverOnlyGFlagsRunsKmsCheck() {
     setupUniverseSingleAZ(true /* setMasters */, false);
     setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
     gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
@@ -491,10 +491,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     taskParams.masterGFlags = ImmutableMap.of();
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
-    assertTrue(
-        taskInfo.getSubTasks().stream()
-            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
   }
 
   @Test

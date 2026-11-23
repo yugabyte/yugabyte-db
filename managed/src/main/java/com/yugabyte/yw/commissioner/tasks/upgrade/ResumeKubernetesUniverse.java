@@ -44,7 +44,10 @@ public class ResumeKubernetesUniverse extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
-    createCheckUniverseKeyInKmsTask(universe);
+    // A retry finishes a resume that passed the check, and its key push can use the YBA cache.
+    if (isFirstTry()) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)

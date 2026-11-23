@@ -581,4 +581,30 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
+
+  // A retry finishes a resume that passed the check, so a KMS outage must not block it.
+  @Test
+  public void testResumeRetrySkipsKmsCheck() {
+    setupUniverse(false, 1);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    UUID previousTaskUUID = UUID.randomUUID();
+    TaskInfo previousTask = new TaskInfo(TaskType.ResumeUniverse, previousTaskUUID);
+    previousTask.setTaskParams(Json.newObject());
+    previousTask.setOwner("");
+    previousTask.setTaskState(Failure);
+    previousTask.save();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getUniverseDetails().updatingTaskUUID = previousTaskUUID);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.setPreviousTaskUUID(previousTaskUUID);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
 }

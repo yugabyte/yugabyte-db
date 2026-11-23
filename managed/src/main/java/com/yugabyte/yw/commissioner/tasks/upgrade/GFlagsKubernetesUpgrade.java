@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -24,12 +23,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
-import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -102,37 +98,6 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     return taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
         && confGetter.getConfForScope(
             getUniverse(), UniverseConfKeys.skipPrechecksForNonRollingGFlagsUpgrade);
-  }
-
-  // A rolling helm upgrade rolls master pods only when master gflags change, so a tserver-only
-  // change needs no KMS key check. A non-rolling upgrade deletes every pod, so it always checks.
-  @Override
-  protected boolean needsUniverseKeyCheck() {
-    if (!super.needsUniverseKeyCheck()) {
-      return false;
-    }
-    if (taskParams().upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      return true;
-    }
-    Universe universe = getUniverse();
-    List<Cluster> curClusters = universe.getUniverseDetails().clusters;
-    Map<UUID, Cluster> newClusters = taskParams().getNewVersionsOfClusters(universe);
-    for (NodeDetails master : universe.getMasters()) {
-      Cluster curCluster = universe.getUniverseDetails().getClusterByUuid(master.placementUuid);
-      Cluster newCluster = newClusters.get(master.placementUuid);
-      if (curCluster == null
-          || newCluster == null
-          || UpgradeWithGFlags.nodeHasGflagsChanges(
-              master,
-              ServerType.MASTER,
-              curCluster,
-              curClusters,
-              newCluster,
-              newClusters.values())) {
-        return true;
-      }
-    }
-    return false;
   }
 
   @Override
