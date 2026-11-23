@@ -1449,6 +1449,25 @@ HybridTime TabletVectorIndexes::MinRunningHybridTime() const {
   if (!participant) {
     return HybridTime::kMax;
   }
+
+  // The participant does not track the transactions replicated to an xCluster target. Such a
+  // transaction is applied from its external intents when its apply record arrives, and they are
+  // deleted after the regular DB write of the apply, so the iterator created after this check
+  // sees the records of the transactions whose external intents are gone. The external intents
+  // of a transaction aborted on the source are kept for at least external_intent_cleanup_secs,
+  // until an intents DB compaction removes them.
+  auto has_external_intents = tablet().HasExternalIntents();
+  if (!has_external_intents.ok()) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !has_external_intents.status().IsShutdownInProgress())
+        << "Failed to look for external intents: " << has_external_intents.status();
+    return HybridTime::kMin;
+  }
+
+  if (*has_external_intents) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "External intents present";
+    return HybridTime::kMin;
+  }
+
   // Invalid until the transactions are loaded, any of them could be applied later.
   return participant->MinRunningHybridTime().GetValueOr(HybridTime::kMin);
 }
