@@ -71,6 +71,7 @@
 #include "tcop/cmdtag.h"
 #include "tcop/pquery.h"
 #include "utils/backend_status.h"
+#include "utils/guc_hooks.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
