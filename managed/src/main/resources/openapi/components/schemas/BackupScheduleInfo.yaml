@@ -1,0 +1,48 @@
+title: BackupScheduleInfo
+description: |
+  BackupScheduleInfo
+
+  What YBA keeps about a backup schedule. Part of BackupSchedule.
+type: object
+readOnly: true
+required:
+  - uuid
+  - state
+properties:
+  uuid:
+    description: UUID of the schedule
+    type: string
+    format: uuid
+    readOnly: true
+  state:
+    $ref: "./BackupScheduleState.yaml"
+  backup_running:
+    description: Whether a backup of the schedule is running
+    type: boolean
+    readOnly: true
+  next_backup_time:
+    description: When the next full backup is due. Absent unless the schedule is ACTIVE.
+    type: string
+    format: date-time
+    readOnly: true
+  next_incremental_backup_time:
+    description: When the next incremental backup is due. Absent unless the schedule is ACTIVE and takes incremental backups.
+    type: string
+    format: date-time
+    readOnly: true
+  last_backup_time:
+    description: 'When the schedule last started a backup, full or incremental'
+    type: string
+    format: date-time
+    readOnly: true
+  failure_count:
+    description: Number of consecutive scheduled backups that failed
+    type: integer
+    format: int32
+    readOnly: true
+  is_kubernetes_operator_controlled:
+    description: Whether the YBA Kubernetes operator manages the schedule; edit it through its custom resource
+    type: boolean
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

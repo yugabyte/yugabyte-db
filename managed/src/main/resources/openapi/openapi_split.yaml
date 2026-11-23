@@ -24,6 +24,8 @@ servers:
 tags:
   - name: Authentication
     description: Authentication operations on YBA
+  - name: Backup Schedule
+    description: Scheduled universe backups
   - name: Backup and Restore
     description: Operations related to universe backup and restore
   - name: Certificate

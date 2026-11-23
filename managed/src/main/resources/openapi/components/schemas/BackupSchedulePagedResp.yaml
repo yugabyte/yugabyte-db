@@ -1,0 +1,8 @@
+title: BackupSchedulePagedResp
+description: Paged list response for backup schedules.
+type: object
+x-data-container: PaginationResp
+x-data-item: BackupSchedule
+x-data-entities-description: Backup schedules for this page.
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

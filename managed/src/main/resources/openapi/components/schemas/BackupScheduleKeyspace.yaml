@@ -1,0 +1,21 @@
+title: BackupScheduleKeyspace
+description: |
+  BackupScheduleKeyspace
+
+  A keyspace (YCQL) or database (YSQL) a backup schedule backs up. Part of BackupScheduleSpec.
+type: object
+required:
+  - keyspace
+properties:
+  keyspace:
+    description: Name of the keyspace or database
+    type: string
+    minLength: 1
+  table_uuids:
+    description: 'UUIDs of the tables to back up (YCQL). Empty or omitted: every table of the keyspace.'
+    type: array
+    items:
+      type: string
+      format: uuid
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -23,8 +23,8 @@ import java.util.stream.Collectors;
  * failed), and DR configs that use it. Any of these makes the config in use.
  *
  * <p>One query per kind for a whole set of configs: backups and DR configs by their indexed
- * storage_config_uuid, schedules among the customer's backup schedules, whose storage config is
- * only in their JSON task params.
+ * storage_config_uuid, schedules by the customer and the storage config UUID in their JSON task
+ * params.
  */
 final class StorageConfigUsages {
 
@@ -83,9 +83,10 @@ final class StorageConfigUsages {
               usage.inUse = true;
               usage.universes.addAll(universeUuids);
             });
-    for (Schedule schedule : Schedule.findBackupSchedulesUsingStorageConfig(customerUUID)) {
+    for (Schedule schedule :
+        Schedule.findBackupSchedulesUsingStorageConfigs(customerUUID, configUuids)) {
       UUID configUuid = uuidOrNull(schedule.getTaskParams().path("storageConfigUUID").asText());
-      if (configUuid == null || !configUuids.contains(configUuid)) {
+      if (configUuid == null) {
         continue;
       }
       Usage usage = usages.computeIfAbsent(configUuid, k -> new Usage());

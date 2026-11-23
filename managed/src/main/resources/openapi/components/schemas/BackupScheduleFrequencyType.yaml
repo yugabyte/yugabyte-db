@@ -1,0 +1,15 @@
+title: BackupScheduleFrequencyType
+description: |
+  BackupScheduleFrequencyType
+
+  How a backup schedule's full backups are timed: at a fixed interval, or on a cron expression.
+  Part of BackupScheduleIntervalFrequency and BackupScheduleCronFrequency.
+type: string
+enum:
+  - INTERVAL
+  - CRON
+x-enum-varnames:
+  - BackupScheduleFrequencyInterval
+  - BackupScheduleFrequencyCron
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

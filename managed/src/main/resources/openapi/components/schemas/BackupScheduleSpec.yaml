@@ -1,0 +1,69 @@
+title: BackupScheduleSpec
+description: |
+  BackupScheduleSpec
+
+  The client-settable part of a backup schedule: what it backs up, where, how often and for how
+  long the backups are kept. incremental_interval is the interval between incremental backups,
+  taken between the full backups; without it the schedule takes only full backups. retention is how
+  long YBA keeps each backup before it deletes it; without it backups are kept until deleted. Part
+  of BackupSchedule.
+type: object
+required:
+  - name
+  - universe_uuid
+  - storage_config_uuid
+  - backup_type
+  - frequency
+properties:
+  name:
+    description: 'Name of the schedule, unique among the universe''s schedules'
+    type: string
+    maxLength: 255
+    minLength: 1
+  universe_uuid:
+    description: UUID of the universe the schedule backs up
+    type: string
+    format: uuid
+  storage_config_uuid:
+    description: UUID of the storage configuration the backups are stored with
+    type: string
+    format: uuid
+  backup_type:
+    $ref: "./BackupScheduleTableType.yaml"
+  keyspaces:
+    description: 'Keyspaces (YCQL) or databases (YSQL) to back up, optionally limited to some tables. Empty or omitted: every keyspace or database of backup_type.'
+    type: array
+    items:
+      $ref: "./BackupScheduleKeyspace.yaml"
+  frequency:
+    $ref: "./BackupScheduleFrequency.yaml"
+  incremental_interval:
+    $ref: "./BackupScheduleDuration.yaml"
+  retention:
+    $ref: "./BackupScheduleDuration.yaml"
+  min_backups_to_retain:
+    description: Number of the schedule's most recent backups that are kept even after their retention expires
+    type: integer
+    format: int32
+    minimum: 0
+  kms_config_uuid:
+    description: 'UUID of the KMS configuration that encrypts the backups, for a universe with encryption at rest'
+    type: string
+    format: uuid
+  sse:
+    description: Whether S3 server-side encryption is requested for the backup files
+    type: boolean
+  table_by_table_backup:
+    description: Whether tables are backed up one at a time instead of together (YCQL)
+    type: boolean
+  point_in_time_restore:
+    description: Whether the backups can be restored to a point in time within the interval between backups
+    type: boolean
+  use_tablespaces:
+    description: Whether the backups include tablespace information (YSQL)
+    type: boolean
+  use_roles:
+    description: Whether the backups include the global YSQL roles (YSQL)
+    type: boolean
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

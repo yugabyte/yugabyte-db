@@ -1,0 +1,14 @@
+title: BackupScheduleTableType
+description: |
+  BackupScheduleTableType
+
+  API whose tables a backup schedule backs up: YSQL or YCQL. Part of BackupScheduleSpec.
+type: string
+enum:
+  - YSQL
+  - YCQL
+x-enum-varnames:
+  - BackupScheduleTableTypeYSQL
+  - BackupScheduleTableTypeYCQL
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
