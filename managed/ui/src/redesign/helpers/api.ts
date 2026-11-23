@@ -157,6 +157,12 @@ export const supportBundleQueryKey = {
     'estimate',
     universeUuid,
     spec
+  ],
+  detail: (universeUuid: string, bundleUuid: string) => [
+    ...supportBundleQueryKey.ALL,
+    'detail',
+    universeUuid,
+    bundleUuid
   ]
 };
 

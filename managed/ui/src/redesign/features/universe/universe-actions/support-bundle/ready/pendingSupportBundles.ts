@@ -1,42 +1,72 @@
 import { useEffect, useState } from 'react';
 
+import { SupportBundle } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+
+interface TrackedSupportBundles {
+  /** Created in this browser session and still being collected. */
+  pending: string[];
+  /** Collected, and not yet shared or dismissed. */
+  ready: SupportBundle[];
+}
+
 /**
- * Bundles created in this browser session that are still being collected, by universe.
+ * Bundles created in this browser session, by universe.
  *
- * The ready banner must outlive the Support Bundles modal (users are told they can close it), so
- * this lives at module scope rather than in the modal's state.
+ * The ready banner must outlive the Support Bundles modal and the universe page's own remounts
+ * (it shows a loader while the universe reloads), so this lives at module scope.
  */
-const pendingByUniverse = new Map<string, Set<string>>();
+const trackedByUniverse = new Map<string, TrackedSupportBundles>();
 const listeners = new Set<() => void>();
 
-const notify = () => listeners.forEach((listener) => listener());
+const read = (universeUuid: string): TrackedSupportBundles =>
+  trackedByUniverse.get(universeUuid) ?? { pending: [], ready: [] };
 
-export const addPendingSupportBundle = (universeUuid: string, bundleUuid: string) => {
-  pendingByUniverse.set(
-    universeUuid,
-    new Set([...(pendingByUniverse.get(universeUuid) ?? []), bundleUuid])
-  );
-  notify();
+const update = (
+  universeUuid: string,
+  change: (tracked: TrackedSupportBundles) => TrackedSupportBundles
+) => {
+  trackedByUniverse.set(universeUuid, change(read(universeUuid)));
+  listeners.forEach((listener) => listener());
 };
 
-export const removePendingSupportBundle = (universeUuid: string, bundleUuid: string) => {
-  const pending = new Set(pendingByUniverse.get(universeUuid));
-  pending.delete(bundleUuid);
-  pendingByUniverse.set(universeUuid, pending);
-  notify();
+export const addPendingSupportBundle = (universeUuid: string, bundleUuid: string) =>
+  update(universeUuid, ({ pending, ready }) => ({
+    pending: [...pending.filter((uuid) => uuid !== bundleUuid), bundleUuid],
+    ready
+  }));
+
+export const markSupportBundleReady = (
+  universeUuid: string,
+  bundleUuid: string,
+  bundle: SupportBundle
+) =>
+  update(universeUuid, ({ pending, ready }) => ({
+    pending: pending.filter((uuid) => uuid !== bundleUuid),
+    ready: [...ready.filter((current) => current.info?.uuid !== bundle.info?.uuid), bundle]
+  }));
+
+/** Stops tracking a bundle: it failed, is gone, or was shared or dismissed. */
+export const forgetSupportBundle = (universeUuid: string, bundleUuid: string) =>
+  update(universeUuid, ({ pending, ready }) => ({
+    pending: pending.filter((uuid) => uuid !== bundleUuid),
+    ready: ready.filter((bundle) => bundle.info?.uuid !== bundleUuid)
+  }));
+
+/** Tests only: the store is module state, so it outlives each test's render. */
+export const resetTrackedSupportBundles = () => {
+  trackedByUniverse.clear();
+  listeners.forEach((listener) => listener());
 };
 
-export const usePendingSupportBundles = (universeUuid: string): string[] => {
-  const read = () => Array.from(pendingByUniverse.get(universeUuid) ?? []);
-  const [pending, setPending] = useState(read);
+export const useTrackedSupportBundles = (universeUuid: string): TrackedSupportBundles => {
+  const [tracked, setTracked] = useState(() => read(universeUuid));
   useEffect(() => {
-    const listener = () => setPending(read());
+    const listener = () => setTracked(read(universeUuid));
     listeners.add(listener);
     listener();
     return () => {
       listeners.delete(listener);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [universeUuid]);
-  return pending;
+  return tracked;
 };

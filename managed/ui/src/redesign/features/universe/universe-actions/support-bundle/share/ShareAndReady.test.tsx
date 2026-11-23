@@ -12,7 +12,10 @@ import {
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import en from '@app/translations/en.json';
 
-import { addPendingSupportBundle } from '../ready/pendingSupportBundles';
+import {
+  addPendingSupportBundle,
+  resetTrackedSupportBundles
+} from '../ready/pendingSupportBundles';
 import { SupportBundleReadyWatcher } from '../ready/SupportBundleReadyWatcher';
 import { ShareBundleModal } from './ShareBundleModal';
 
@@ -108,7 +111,42 @@ describe('ShareBundleModal', () => {
 });
 
 describe('SupportBundleReadyWatcher', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetTrackedSupportBundles();
+  });
+
+  it('keeps announcing a ready bundle after the universe page remounts', async () => {
+    api.getSupportBundle.mockResolvedValue(bundle([SupportBundleComponentType.GFlags]));
+    const { unmount } = wrap(
+      <SupportBundleReadyWatcher universeUuid="universe-7" universeNodeCount={30} />
+    );
+    act(() => addPendingSupportBundle('universe-7', 'sb-1'));
+    expect(await screen.findByTestId('SupportBundleReadyBanner')).toBeInTheDocument();
+
+    unmount();
+    wrap(<SupportBundleReadyWatcher universeUuid="universe-7" universeNodeCount={30} />);
+
+    expect(screen.getByTestId('SupportBundleReadyBanner')).toBeInTheDocument();
+  });
+
+  it('stops following a bundle that no longer exists', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.getSupportBundle.mockRejectedValue({ response: { status: 404 } });
+      wrap(<SupportBundleReadyWatcher universeUuid="universe-8" universeNodeCount={30} />);
+
+      act(() => addPendingSupportBundle('universe-8', 'sb-1'));
+      await waitFor(() => expect(api.getSupportBundle).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+
+      expect(api.getSupportBundle).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('announces a bundle created in this session once it is ready', async () => {
     api.getSupportBundle.mockResolvedValue(bundle([SupportBundleComponentType.GFlags]));
@@ -118,7 +156,7 @@ describe('SupportBundleReadyWatcher', () => {
     act(() => addPendingSupportBundle('universe-2', 'sb-1'));
 
     expect(await screen.findByText('Support bundle ready')).toBeInTheDocument();
-    expect(screen.getByText(/63 GB · collected from 30 nodes/)).toBeInTheDocument();
+    expect(screen.getByText(/63 GB \u00b7 collected from 30 nodes/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('SupportBundleReadyBanner-Share'));
     expect(await screen.findByText('Share Bundle')).toBeInTheDocument();

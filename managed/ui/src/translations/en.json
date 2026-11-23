@@ -942,11 +942,12 @@
         },
         "ready": {
           "title": "Support bundle ready",
-          "body_one": "{{size}} · collected from {{count}} node. Share it with support or download it from Support Bundles.",
-          "body_other": "{{size}} · collected from {{count}} nodes. Share it with support or download it from Support Bundles.",
+          "body_one": "{{size}} \u00b7 collected from {{count}} node. Share it with support or download it from Support Bundles.",
+          "body_other": "{{size}} \u00b7 collected from {{count}} nodes. Share it with support or download it from Support Bundles.",
           "share": "Share Bundle",
           "dismiss": "Dismiss",
-          "failed": "Support bundle {{bundleName}} could not be created."
+          "failed": "Support bundle {{bundleName}} could not be created.",
+          "statusUnavailable": "Couldn't check on a support bundle you created. See Support Bundles for its status."
         }
       }
     },

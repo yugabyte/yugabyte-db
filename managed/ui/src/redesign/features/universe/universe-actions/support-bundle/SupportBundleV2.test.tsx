@@ -12,6 +12,7 @@ import {
 import { SupportBundleStatus } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import en from '@app/translations/en.json';
 
+import { resetTrackedSupportBundles } from './ready/pendingSupportBundles';
 import { SupportBundleReadyWatcher } from './ready/SupportBundleReadyWatcher';
 import { SupportBundleV2 } from './SupportBundleV2';
 
@@ -54,6 +55,7 @@ const renderFlow = () => {
 describe('SupportBundleV2', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetTrackedSupportBundles();
     Element.prototype.scrollIntoView = vi.fn();
     api.pageListSupportBundles.mockResolvedValue({ entities: [], total_count: 0 });
     api.estimateSupportBundleSize.mockResolvedValue({ data: {} });
