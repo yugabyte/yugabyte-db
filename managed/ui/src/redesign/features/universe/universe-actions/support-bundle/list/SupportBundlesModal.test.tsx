@@ -25,11 +25,6 @@ vi.mock('@app/v2/api/support-bundle/support-bundle', () => api);
 vi.mock('@app/redesign/features/rbac/common/RbacApiPermValidator', () => ({
   RbacValidator: ({ children }: { children: ReactNode }) => <>{children}</>
 }));
-// The real formatter reads the user's timezone from the redux store.
-vi.mock('@app/redesign/helpers/DateUtils', () => ({
-  YBTimeFormats: { YB_LONG_DATETIME: 'long' },
-  ybFormatDate: (date: string) => date
-}));
 
 const bundle = (uuid: string, status: SupportBundleStatus): SupportBundle => ({
   info: {
@@ -85,7 +80,7 @@ describe('SupportBundlesModal', () => {
 
     expect(await screen.findByText('2 bundles')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getByText('Creating…')).toBeInTheDocument();
+    expect(screen.getByText('Creating\u2026')).toBeInTheDocument();
     expect(screen.getByText('4.1 GB')).toBeInTheDocument();
 
     expect(screen.getByTestId('SupportBundleRow-Share-running-1')).toBeDisabled();
@@ -148,6 +143,26 @@ describe('SupportBundlesModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to page 2' }));
 
     expect(await screen.findByTestId('SupportBundleRow-second-page')).toBeInTheDocument();
+  });
+
+  it('goes back to the last page when the page shown empties', async () => {
+    // 30 bundles until the second page's bundles are deleted; then 25, which fit on one page.
+    api.pageListSupportBundles.mockImplementation((_universeUuid, { offset }) =>
+      Promise.resolve(
+        offset === 0
+          ? { entities: [bundle('first-page', SupportBundleStatus.Success)], total_count: 30 }
+          : { entities: [], total_count: 25 }
+      )
+    );
+    renderModal();
+    await screen.findByTestId('SupportBundleRow-first-page');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to page 2' }));
+
+    const firstPageRequests = () =>
+      api.pageListSupportBundles.mock.calls.filter(([, { offset }]) => offset === 0).length;
+    await waitFor(() => expect(firstPageRequests()).toBe(2));
+    expect(await screen.findByTestId('SupportBundleRow-first-page')).toBeInTheDocument();
   });
 
   it('says so when the bundles fail to load', async () => {

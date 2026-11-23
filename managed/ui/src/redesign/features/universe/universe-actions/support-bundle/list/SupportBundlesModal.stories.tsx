@@ -7,7 +7,6 @@ import {
   createSupportBundleMock,
   supportBundleListMswHandlers
 } from '@app/mocks/mock-data/supportBundleMocks';
-import { withStorybookTasksReduxProvider } from '@app/mocks/storybook/storybookTasksRedux';
 import { SupportBundleStatus } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 import { SupportBundlesModal } from './SupportBundlesModal';
@@ -36,8 +35,7 @@ const manyBundles = Array.from({ length: 60 }, (_, index) =>
 const meta = {
   title: 'Universe/Support Bundle/SupportBundlesModal',
   component: SupportBundlesModal,
-  // Dates are formatted through the redux store's user timezone.
-  decorators: [withCustomerId, withToastContainer, withStorybookTasksReduxProvider],
+  decorators: [withCustomerId, withToastContainer],
   args: {
     universeUuid: 'universe-uuid'
   },
@@ -57,7 +55,7 @@ export const Empty: Story = {
   }
 };
 
-/** One bundle per status. The running bundle shows the "tasks keep running" note. */
+/** One bundle per status. */
 export const WithBundles: Story = {
   parameters: {
     msw: { handlers: supportBundleListMswHandlers({ bundles: createSupportBundleListMock() }) }

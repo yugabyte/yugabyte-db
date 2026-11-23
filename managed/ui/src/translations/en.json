@@ -774,7 +774,7 @@
           "share": "Share",
           "delete": "Delete bundle",
           "deleteDisabledRunning": "A bundle can't be deleted while it is being created.",
-          "expiryNote": "Bundles expire 10 days after creation. Expired bundles are removed from the YBA filesystem automatically.",
+          "expiryNote": "Bundles expire after the retention period. Expired bundles are removed from the YBA filesystem automatically.",
           "expiresInDays_one": "in {{count}} day",
           "expiresInDays_other": "in {{count}} days",
           "column": {
@@ -792,7 +792,7 @@
         },
         "status": {
           "ready": "Ready",
-          "creating": "Creating…",
+          "creating": "Creating\u2026",
           "failed": "Failed to Create",
           "aborted": "Aborted"
         },

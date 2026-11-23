@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, yba, YBPagination } from '@yugabyte-ui-library/core';
 
@@ -47,6 +47,13 @@ export const SupportBundlesModal = ({
   const bundles = listQuery.data?.entities ?? [];
   const totalCount = listQuery.data?.total_count ?? 0;
   const pageCount = Math.ceil(totalCount / SUPPORT_BUNDLE_PAGE_SIZE);
+  // Deletes and expiry shrink the list under the user, possibly past the page they were on.
+  const lastPage = Math.max(0, pageCount - 1);
+  useEffect(() => {
+    if (listQuery.data && page > lastPage) {
+      setPage(lastPage);
+    }
+  }, [listQuery.data, page, lastPage]);
   const now = new Date();
 
   const renderBody = () => {

@@ -24,8 +24,8 @@ const RECOMMENDED_COMPONENTS = [
 ];
 
 /**
- * A bundle collected over the day before `createdAt`. Only successful bundles have a creation
- * date, expiry and size, as with the real API.
+ * A bundle collected over the day before `createdAt`. As with the real API, every bundle has a
+ * creation date, and only successful ones have an expiry and size.
  */
 export const createSupportBundleMock = (
   uuid: string,
@@ -48,7 +48,7 @@ export const createSupportBundleMock = (
       uuid,
       status,
       scope_uuid: 'universe-uuid',
-      creation_date: isSuccess ? createdAt.toISOString() : undefined,
+      creation_date: createdAt.toISOString(),
       expiration_date: isSuccess
         ? new Date(createdAt.getTime() + 10 * DAY_IN_MS).toISOString()
         : undefined,
