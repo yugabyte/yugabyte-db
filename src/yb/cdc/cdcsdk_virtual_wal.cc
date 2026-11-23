@@ -2063,8 +2063,9 @@ bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) con
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_id == pg_attribute_table_id_ || table_id == pg_namespace_table_id_ ||
-           table_id == pg_publication_rel_prpubid_index_table_id_));
+          std::ranges::any_of(kTxnDdlCatalogTableOids, [&](uint32_t table_oid) {
+            return table_id == GetPgsqlTableId(pg_database_oid_, table_oid);
+          }));
 }
 
 bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
