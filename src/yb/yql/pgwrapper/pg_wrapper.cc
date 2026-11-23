@@ -500,10 +500,10 @@ DEPRECATE_FLAG(bool, ysql_yb_conn_mgr_selective_deallocate, "07_2026");
 DEFINE_RUNTIME_string(ysql_yb_conn_mgr_reversible_stickiness_exclusions, "",
     "Comma-separated list of sticky sources that keep a Ysql Connection Manager connection "
     "sticky until disconnect instead of unsticking it once released. Valid values are "
-    "combinations of replication_origin.");
+    "combinations of replication_origin, prepare and listen.");
 
 static const std::vector<std::string> kConnMgrReversibleStickinessSources = {
-    "replication_origin"};
+    "replication_origin", "prepare", "listen"};
 
 static yb::Result<std::set<std::string>> ParseConnMgrReversibleStickinessExclusions(
     const std::string& value) {

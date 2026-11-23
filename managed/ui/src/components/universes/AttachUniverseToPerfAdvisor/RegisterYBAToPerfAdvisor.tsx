@@ -1,4 +1,5 @@
 import { useQuery } from 'react-query';
+import { useSelector } from 'react-redux';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
@@ -10,6 +11,7 @@ import {
 } from '../../../redesign/features/PerfAdvisor/api';
 import { AppName } from '../../../redesign/helpers/dtos';
 import { isEmptyArray } from '../../../utils/ObjectUtils';
+import { getPromiseState } from '../../../utils/PromiseUtils';
 import { ROOT_URL } from '../../../config';
 // Side-effect import: registers a CSRF header provider on PA UI's internal
 // axios instance so its XHRs pass Play's CSRFFilter. Must be imported by the
@@ -52,13 +54,18 @@ export const RegisterYBAToPerfAdvisor = ({
 }: RegisterYBAToPerfAdvisorProps) => {
   const helperClasses = useStyles();
 
+  const reduxPaList = useSelector((state: any) => state.customer.ybaToPaServiceDetails);
+  const initialPaList = getPromiseState(reduxPaList).isSuccess() ? reduxPaList.data : undefined;
+
   const {
     data: perfAdvisorListData,
     isLoading: isPaListFetchLoading,
     isError: isPaListFetchError,
     isIdle: isPaListFetchIdle
-  } = useQuery(PERF_ADVISOR_QUERY_KEY.fetchPerfAdvisorList, () =>
-    PerfAdvisorAPI.fetchPerfAdvisorList()
+  } = useQuery(
+    PERF_ADVISOR_QUERY_KEY.fetchPerfAdvisorList,
+    () => PerfAdvisorAPI.fetchPerfAdvisorList(),
+    { initialData: initialPaList }
   );
 
   if (isPaListFetchError) {

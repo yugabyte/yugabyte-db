@@ -858,7 +858,7 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(OnlineIndexBirthTimeFinalOn
     auto info = VERIFY_RESULT(client->GetYBTableInfoById(index_id, /* include_hidden = */ false));
     SCHECK(info.index_info, IllegalState, "index table has no index_info");
     return info.index_info->birth_time_state() == IndexInfoPB::BIRTH_TIME_FINAL &&
-           info.index_info->birth_time() != 0;
+           info.index_info->birth_time().is_valid();
   }, 30s * kTimeMultiplier, "Wait for the master to finalize the index birth time"));
 }
 
@@ -879,14 +879,21 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(PendingIndexRejectsStaleRea
   // Commit the index after the reader's uncertainty window (max_clock_skew_usec) closes.
   SleepFor(1s * kTimeMultiplier);
 
+  const auto query = "SELECT k, v FROM t WHERE v > 0 ORDER BY k";
   auto indexer = ASSERT_RESULT(Connect());
+  ASSERT_OK(indexer.Execute("SET statement_timeout = '30s'"));
   ASSERT_OK(indexer.Execute("BEGIN"));
   ASSERT_OK(indexer.Execute("CREATE INDEX ON t (v, k)"));
+  // The index is pending for everyone but the transaction that is creating it.
+  ASSERT_OK(indexer.Execute("SET LOCAL enable_seqscan = off"));
+  ASSERT_TRUE(ASSERT_RESULT(indexer.HasIndexScan(query)));
+  ASSERT_EQ(
+      ASSERT_RESULT((indexer.FetchRows<int32_t, int32_t>(query))),
+      (std::vector<std::tuple<int32_t, int32_t>>{{0, 13}, {1, 14}}));
   ASSERT_OK(indexer.Execute("COMMIT"));
 
   ASSERT_OK(reader.Execute("SET statement_timeout = '3s'"));
   ASSERT_OK(reader.Execute("SET enable_seqscan = off"));
-  const auto query = "SELECT k, v FROM t WHERE v > 0 ORDER BY k";
   ASSERT_TRUE(ASSERT_RESULT(reader.HasIndexScan(query)));
   // The tablets stay pending, so the guard keeps rejecting the read (with a retryable error) until
   // the statement times out. Without the guard, the read would return no rows.
@@ -970,4 +977,183 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(NonConcurrentIndexFinalizeA
   }
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT v FROM t WHERE k = 0")), 13);
 }
+
+// A transaction reads an index it created before it commits, i.e. while the index is still
+// BIRTH_TIME_PENDING_DDL_COMMIT (#37091). The parameters are:
+// - the isolation level;
+// - whether the new-relation fastpath applies in transaction blocks: with it, a table created in
+//   the transaction and its indexes are written to the regular db; without it, to the intents db;
+// - whether the reads are forced into a parallel plan. A read issued by a parallel worker has to
+//   carry the transaction's id too.
+//   TODO(#36825): until parallel workers are launched after a DDL in the transaction, these cases
+//   run their plans in the leader.
+// - whether the database is colocated. There the index is read through a request nested in the
+//   table's, and the new-relation fastpath never applies.
+using PgReadIndexInCreatingTxnTestParam = std::tuple<const char*, bool, bool, bool>;
+
+class PgReadIndexInCreatingTxnTest
+    : public PgConcurrentDDLsTest,
+      public ::testing::WithParamInterface<PgReadIndexInCreatingTxnTestParam> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgConcurrentDDLsTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--yb_enable_read_committed_isolation=true");
+    opts->extra_master_flags.emplace_back("--yb_enable_read_committed_isolation=true");
+  }
+
+  static constexpr auto kColocatedDbName = "colo";
+
+  void SetUp() override {
+    PgConcurrentDDLsTest::SetUp();
+    if (IsColocated()) {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE DATABASE $0 WITH colocation = true", kColocatedDbName));
+    }
+  }
+
+  bool IsColocated() const { return std::get<3>(GetParam()); }
+
+  Result<PGConn> ConnectToTestDb() {
+    return ConnectToDB(IsColocated() ? kColocatedDbName : "yugabyte");
+  }
+
+  // A hang on a pending index is retried until the RPC deadline; fail fast instead.
+  Result<PGConn> ConnectAndBegin() {
+    auto conn = VERIFY_RESULT(ConnectToTestDb());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET yb_enable_new_relation_fastpath_write_in_txn_blocks = $0",
+        std::get<1>(GetParam()) ? "on" : "off"));
+    if (std::get<2>(GetParam())) {
+      RETURN_NOT_OK(conn.Execute("SET force_parallel_mode = on"));
+    }
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", std::get<0>(GetParam())));
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_seqscan = off"));
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_bitmapscan = off"));
+    return conn;
+  }
+
+  static Status CheckCount(PGConn& conn, const std::string& query, uint64_t expected) {
+    SCHECK(VERIFY_RESULT(conn.HasIndexScan(query)), IllegalState, "Not an index scan: " + query);
+    SCHECK_EQ(VERIFY_RESULT(conn.FetchRow<PGUint64>(query)), expected, IllegalState, query);
+    return Status::OK();
+  }
+
+  Status TestNewIndexOnExistingTable() {
+    auto setup_conn = VERIFY_RESULT(ConnectToTestDb());
+    RETURN_NOT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT)"));
+    RETURN_NOT_OK(setup_conn.Execute(
+        "INSERT INTO t SELECT g, g % 10, g FROM generate_series(1, 100) g"));
+
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX t_v ON t (v)"));
+    // Index only scan and index scan.
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM t WHERE v = 5", 10));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(w) FROM t WHERE v = 5", 10));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t VALUES (101, 5, 101)"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(w) FROM t WHERE v = 5", 11));
+    RETURN_NOT_OK(conn.Fetch("SELECT yb_index_check('t_v'::regclass)"));
+    // A savepoint turns the fastpath off for the rest of the transaction.
+    RETURN_NOT_OK(conn.Execute("SAVEPOINT sp"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t VALUES (102, 5, 102)"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(w) FROM t WHERE v = 5", 12));
+    RETURN_NOT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM t WHERE v = 5", 11));
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return CheckCount(conn, "SELECT count(*) FROM t WHERE v = 5", 11);
+  }
+
+  Status TestNewTableWithUniqueConstraint() {
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE p (k INT PRIMARY KEY, u INT UNIQUE)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO p SELECT g, g FROM generate_series(1, 100) g"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO p VALUES (101, 5) ON CONFLICT (u) DO NOTHING"));
+    RETURN_NOT_OK(conn.Execute(
+        "INSERT INTO p VALUES (102, 6) ON CONFLICT (u) DO UPDATE SET u = 1000"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM p WHERE u = 1000", 1));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(k) FROM p WHERE u IN (1, 2, 3, 5, 6)", 4));
+
+    // Foreign keys to the new unique constraint, declared with the table and added afterwards.
+    // TODO(#38492): in REPEATABLE READ, the foreign key check conflicts with the rows of p that
+    // this transaction wrote on the fastpath. Colocated tables don't use the fastpath.
+    const auto [isolation, fastpath, parallel, colocated] = GetParam();
+    if (!(fastpath && isolation == "REPEATABLE READ"s && !colocated)) {
+      RETURN_NOT_OK(conn.Execute("CREATE TABLE c1 (k INT PRIMARY KEY, u INT REFERENCES p (u))"));
+      RETURN_NOT_OK(conn.Execute("INSERT INTO c1 VALUES (1, 5), (2, 1000)"));
+      RETURN_NOT_OK(conn.Execute("CREATE TABLE c2 (k INT PRIMARY KEY, u INT)"));
+      RETURN_NOT_OK(conn.Execute("INSERT INTO c2 VALUES (1, 7)"));
+      RETURN_NOT_OK(conn.Execute("ALTER TABLE c2 ADD FOREIGN KEY (u) REFERENCES p (u)"));
+      RETURN_NOT_OK(conn.Execute("INSERT INTO c2 VALUES (2, 8)"));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return CheckCount(conn, "SELECT count(*) FROM p WHERE u = 1000", 1);
+  }
+
+  // Statements that give an existing table new index storage in the transaction.
+  Status TestRewrites() {
+    auto setup_conn = VERIFY_RESULT(ConnectToTestDb());
+    RETURN_NOT_OK(setup_conn.Execute("CREATE TABLE r1 (k INT PRIMARY KEY, v INT)"));
+    RETURN_NOT_OK(setup_conn.Execute("CREATE INDEX r1_v ON r1 (v)"));
+    RETURN_NOT_OK(setup_conn.Execute("INSERT INTO r1 SELECT g, g FROM generate_series(1, 10) g"));
+    RETURN_NOT_OK(setup_conn.Execute("CREATE TABLE r2 (k INT, v INT)"));
+    RETURN_NOT_OK(setup_conn.Execute("CREATE INDEX r2_v ON r2 (v)"));
+    RETURN_NOT_OK(setup_conn.Execute("INSERT INTO r2 SELECT g, g FROM generate_series(1, 10) g"));
+
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
+    RETURN_NOT_OK(conn.Execute("TRUNCATE r1"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO r1 SELECT g, g FROM generate_series(1, 5) g"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM r1 WHERE v IN (1, 2, 30)", 2));
+    RETURN_NOT_OK(conn.Execute("ALTER TABLE r2 ADD PRIMARY KEY (k)"));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM r2 WHERE v IN (1, 2, 30)", 2));
+    RETURN_NOT_OK(CheckCount(conn, "SELECT count(v) FROM r2 WHERE k IN (1, 2, 30)", 2));
+    return conn.Execute("COMMIT");
+  }
+};
+
+namespace {
+
+const auto kIsolationLevels =
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE");
+
+std::string ReadIndexInCreatingTxnTestName(
+    const ::testing::TestParamInfo<PgReadIndexInCreatingTxnTestParam>& info) {
+  const auto& [isolation_level, fastpath, parallel, colocated] = info.param;
+  const std::string isolation = isolation_level;
+  return Format(
+      "$0_$1$2",
+      isolation == "READ COMMITTED" ? "RC" : isolation == "REPEATABLE READ" ? "RR" : "SR",
+      fastpath ? "Fastpath" : "NoFastpath", parallel ? "_Parallel" : "");
+}
+
+}  // namespace
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgReadIndexInCreatingTxnTest,
+    ::testing::Combine(
+        kIsolationLevels, ::testing::Bool(), ::testing::Bool(),
+        ::testing::Values(false)),
+    ReadIndexInCreatingTxnTestName);
+
+// The fastpath setting makes no difference in a colocated database, so it is left at its default.
+INSTANTIATE_TEST_SUITE_P(
+    Colocated, PgReadIndexInCreatingTxnTest,
+    ::testing::Combine(
+        kIsolationLevels, ::testing::Values(true), ::testing::Bool(),
+        ::testing::Values(true)),
+    ReadIndexInCreatingTxnTestName);
+
+TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(NewIndexOnExistingTable)) {
+  ASSERT_OK(TestNewIndexOnExistingTable());
+}
+
+TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(NewTableWithUniqueConstraint)) {
+  ASSERT_OK(TestNewTableWithUniqueConstraint());
+}
+
+TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(Rewrites)) {
+  ASSERT_OK(TestRewrites());
+}
+
 }  // namespace yb::pgwrapper

@@ -225,6 +225,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     log.info("Getting Universe with UUID: {}", uniUUID);
     api.v2.models.Universe v2Response =
         UniverseRespMapper.INSTANCE.toV2Universe(v1Response, universe);
+    setXClusterConfigUuids(
+        v2Response,
+        uniUUID,
+        XClusterConfig.findConfigUuidsByUniverseUuids(Collections.singleton(uniUUID)));
     if (log.isTraceEnabled()) {
       log.trace("Got Universe {}", prettyPrint(v2Response));
     }
@@ -266,14 +270,36 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Universe.loadUniverseDetails(pagedList.getList());
     List<UniverseResp> page = UniverseResp.create(customer, pagedList.getList(), confGetter);
 
+    List<UUID> universeUuids = new ArrayList<>(pagedList.getList().size());
+    for (Universe u : pagedList.getList()) {
+      universeUuids.add(u.getUniverseUUID());
+    }
+    XClusterConfig.ConfigUuidsByUniverse configUuids =
+        XClusterConfig.findConfigUuidsByUniverseUuids(universeUuids);
     List<api.v2.models.Universe> v2Universes = new ArrayList<>(page.size());
     for (int i = 0; i < page.size(); i++) {
       UniverseResp r = page.get(i);
       Universe u = pagedList.getList().get(i);
-      v2Universes.add(UniverseRespMapper.INSTANCE.toV2Universe(r, u));
+      api.v2.models.Universe v2Universe = UniverseRespMapper.INSTANCE.toV2Universe(r, u);
+      setXClusterConfigUuids(v2Universe, u.getUniverseUUID(), configUuids);
+      v2Universes.add(v2Universe);
     }
 
     return new UniversePagedResp(pagedList).setEntities(v2Universes);
+  }
+
+  private static void setXClusterConfigUuids(
+      api.v2.models.Universe v2Universe,
+      UUID universeUuid,
+      XClusterConfig.ConfigUuidsByUniverse configUuids) {
+    if (v2Universe.getInfo() == null || v2Universe.getInfo().getxClusterInfo() == null) {
+      return;
+    }
+    v2Universe
+        .getInfo()
+        .getxClusterInfo()
+        .sourceXClusterConfigs(new ArrayList<>(configUuids.sourceConfigUuids(universeUuid)))
+        .targetXClusterConfigs(new ArrayList<>(configUuids.targetConfigUuids(universeUuid)));
   }
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {
@@ -593,6 +619,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               newReadReplica.userIntent.specificGFlags,
               gFlagsValidation,
               primaryCluster.userIntent.ybSoftwareVersion);
+      // The primary may store the restored values untrimmed, and the line break check rejects a
+      // trailing newline.
+      GFlagsUtil.trimFlags(newReadReplica.userIntent.specificGFlags);
     }
     // Intent is cloned from primary. Omitted dedicated_nodes must default to false (schema),
     // not inherit dedicated mode from the primary cluster.
@@ -1140,6 +1169,40 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   public api.v2.models.UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws JsonProcessingException {
     Customer customer = Customer.getOrNotFound(cUUID);
+    UniverseDefinitionTaskParams v1DefnParams = configureUniverse(request, customer, universeSpec);
+    UniverseResourceDetails v1UniverseResourceDetails =
+        universeInfoHandler.getUniverseResources(customer, v1DefnParams);
+    // map to v2 UniverseResourceDetails
+    api.v2.models.UniverseResourceDetails v2Response =
+        UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(
+            v1UniverseResourceDetails);
+    if (log.isTraceEnabled()) {
+      log.trace("Got Universe resource details {}", prettyPrint(v2Response));
+    }
+    return v2Response;
+  }
+
+  public api.v2.models.UniverseResourcesPerProvider getUniverseResourcesPerProvider(
+      Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws JsonProcessingException {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    UniverseDefinitionTaskParams v1DefnParams = configureUniverse(request, customer, universeSpec);
+    Map<UUID, UniverseResourceDetails> perProvider =
+        universeInfoHandler.getUniverseResourcesPerProvider(customer, v1DefnParams, null);
+    api.v2.models.UniverseResourcesPerProvider response =
+        new api.v2.models.UniverseResourcesPerProvider();
+    perProvider.forEach(
+        (providerUUID, details) ->
+            response.putResourcesPerProviderItem(
+                providerUUID.toString(),
+                UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(details)));
+    if (log.isTraceEnabled()) {
+      log.trace("Got per-provider Universe resource details {}", prettyPrint(response));
+    }
+    return response;
+  }
+
+  private UniverseDefinitionTaskParams configureUniverse(
+      Request request, Customer customer, UniverseCreateSpec universeSpec) {
     log.info("Get Universe resource details with v2 spec: {}", prettyPrint(universeSpec));
     // map universeSpec to v1 universe details
     UniverseDefinitionTaskParams v1DefnParams =
@@ -1160,19 +1223,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       v1Params.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, v1Params);
     }
-
-    v1DefnParams.nodeDetailsSet = v1Params.nodeDetailsSet;
-
-    UniverseResourceDetails v1UniverseResourceDetails =
-        universeInfoHandler.getUniverseResources(customer, v1DefnParams);
-    // map to v2 UniverseResourceDetails
-    api.v2.models.UniverseResourceDetails v2Response =
-        UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(
-            v1UniverseResourceDetails);
-    if (log.isTraceEnabled()) {
-      log.trace("Got Universe resource details {}", prettyPrint(v2Response));
-    }
-    return v2Response;
+    return v1Params;
   }
 
   public void precheckOperatorImportUniverse(

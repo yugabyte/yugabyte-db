@@ -13,6 +13,13 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include <boost/multi_index/composite_key.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/tuple/tuple.hpp>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
@@ -68,6 +75,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(disable_global_object_locks);
 
 namespace {
 
@@ -152,10 +160,6 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
       return ensure_read_time
           ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET : manipulator;
 
-    case tserver::ReadTimeManipulation::RESTART:
-      DCHECK(!ensure_read_time);
-      return manipulator;
-
     case tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
       return manipulator;
 
@@ -236,7 +240,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!IsTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
+  if (!UsingObjectLocksLocally() || options.ddl_mode() ||
       options.use_legacy_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
       YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
@@ -248,21 +252,102 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 }
 #endif
 
+// Object locks acquired by the current transaction, so that a repeated request for a lock that is
+// already held can skip both the shared memory fastpath and the RPC. Postgres re-requests a lock
+// each time it re-opens a relation, since LockRelease drops postgres' local lock entry while DocDB
+// holds the lock until the transaction ends or the subtransaction is rolled back.
+//
+// Only weak (fastpath eligible) locks of the regular transaction are tracked. Each lock maps to the
+// first subtransaction that acquired it, which DocDB holds the lock under. DocDB only releases it
+// when that exact subtransaction is rolled back or the transaction ends. Rolling back a subtxn
+// erases the locks of all subtransactions with a greater or equal id, and all locks are cleared
+// when the transaction ends or the tserver is asked to restart it.
+//
+// If the transaction is aborted on the DocDB side, its lock owner registration is cleared, which
+// disables the shared state, and the locks are dropped the next time they are looked up. This
+// assumes the tserver doesn't register a new transaction for the session within the same postgres
+// transaction without pggate clearing the locks first, which holds for transaction restarts and
+// recreation (see RestartTransaction and ResetTxnAndSession).
+class PgTxnManager::HeldObjectLocks {
+ public:
+  [[nodiscard]] bool empty() const { return entries_.empty(); }
+  [[nodiscard]] size_t size() const { return entries_.size(); }
+
+  [[nodiscard]] bool Contains(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) const {
+    const auto& by_lock = entries_.get<ByLockTag>();
+    return by_lock.find(boost::make_tuple(
+               lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid,
+               lock_type)) != by_lock.end();
+  }
+
+  // Keeps the existing entry if the lock is already recorded.
+  void Add(const docdb::ObjectLockFastpathRequest& request) { entries_.insert(request); }
+
+  void EraseStartingFromSubTransaction(SubTransactionId subtxn_id) {
+    auto& by_subtxn = entries_.get<BySubTransactionTag>();
+    by_subtxn.erase(by_subtxn.lower_bound(subtxn_id), by_subtxn.end());
+  }
+
+  void Clear() { entries_.clear(); }
+
+ private:
+  using Request = docdb::ObjectLockFastpathRequest;
+
+  struct ByLockTag;
+  struct BySubTransactionTag;
+
+  boost::multi_index_container<
+      Request,
+      boost::multi_index::indexed_by<
+          // Unique on the lock, i.e. all fields except subtxn_id.
+          boost::multi_index::hashed_unique<
+              boost::multi_index::tag<ByLockTag>,
+              boost::multi_index::composite_key<
+                  Request,
+                  boost::multi_index::member<Request, uint32_t, &Request::database_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::relation_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::object_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::object_sub_oid>,
+                  boost::multi_index::member<
+                      Request, docdb::ObjectLockFastpathLockType, &Request::lock_type>>>,
+          boost::multi_index::ordered_non_unique<
+              boost::multi_index::tag<BySubTransactionTag>,
+              boost::multi_index::member<Request, SubTransactionId, &Request::subtxn_id>>>>
+      entries_;
+};
+
 PgTxnManager::PgTxnManager(
-    PgClient* client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+    PgClient* client, YbcPgCallbacks pg_callbacks, bool backend_should_take_object_locks,
     std::atomic<uint64_t>& next_read_time_serial_no)
     : client_(client),
       serial_no_(next_read_time_serial_no),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(enable_table_locking) {}
+      backend_should_take_object_locks_(backend_should_take_object_locks),
+      held_object_locks_(std::make_unique<HeldObjectLocks>()) {}
 
-bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
-  // Computed rather than latched: enable_table_locking_ is fixed for the session and
-  // YBCIsObjectLockingLatchedForCurrTxn() is a snapshot PG takes once per transaction, so the
-  // result cannot change under an open transaction.
-  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
-                    << " object locking for txn: " << YBCIsObjectLockingLatchedForCurrTxn();
-  return enable_table_locking_ && YBCIsObjectLockingLatchedForCurrTxn();
+bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
+  // Computed rather than latched. It cannot change under an open transaction: the gflags are fixed
+  // for the process, YBCIsObjectLockingLatchedForCurrTxn() is a snapshot PG takes once per
+  // transaction, and the one per-statement input, the autonomous DDL check in
+  // UsingObjectLocksLocally(), cannot change the result. With disable_global_object_locks true the
+  // result is false with or without it. Otherwise a transaction that latched the flag on runs its
+  // DDLs inside itself, so the check never fires.
+  VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
+                    << " global locks disabled: " << FLAGS_disable_global_object_locks
+                    << " latched: " << YBCIsObjectLockingLatchedForCurrTxn();
+  return UsingObjectLocksLocally() && !FLAGS_disable_global_object_locks &&
+         YBCIsObjectLockingLatchedForCurrTxn();
+}
+
+// An autonomous DDL, which a transaction without global object locks runs in a separate DDL
+// transaction, takes no object locks. It also does not refresh its catalog cache on a new lock: it
+// reads the catalog at its own DDL transaction's read time, so a refresh would record the new
+// catalog version with entries from before it.
+bool PgTxnManager::UsingObjectLocksLocally() const {
+  // A transaction that reads the catalog as of yb_read_time takes none either (#34349, #29466).
+  return backend_should_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
+         !IsDdlModeWithSeparateTransaction() && !YBCIsHistoricalCatalogReadForCurrTxn();
 }
 
 PgTxnManager::~PgTxnManager() = default;
@@ -294,9 +379,10 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
   return RecreateTransaction(SavePriority::kFalse);
 }
 
-Status PgTxnManager::RecreateTransaction() {
+Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
-  return RecreateTransaction(SavePriority::kTrue);
+  RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
+  return ResultToStatus(RestartTransactionForRetry(tag, RetryRequestPB::DEFAULT));
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -401,11 +487,11 @@ Status PgTxnManager::CalculateIsolation(
   }
 
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
-  // object locking feature is enabled (only for isolation != read committed case).
+  // the transaction takes object locks (only for isolation != read committed case).
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (IsTableLockingEnabledForCurrentTxn() &&
+  if (UsingObjectLocksLocally() &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -468,9 +554,46 @@ Status PgTxnManager::CalculateIsolation(
   return Status::OK();
 }
 
-Status PgTxnManager::RestartTransaction() {
-  need_restart_ = true;
+Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
+  // The tserver releases all object locks of the transaction when it restarts it.
+  ClearHeldObjectLocks();
+  CapRetryReadLimits(VERIFY_RESULT(
+      RestartTransactionForRetry(tag, RetryRequestPB::REPLACE_DIST_TRANSACTION_ONLY)));
   return Status::OK();
+}
+
+Result<tserver::PgRestartTransactionForRetryResponsePB> PgTxnManager::RestartTransactionForRetry(
+    SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind) {
+  tserver::PgPerformOptionsPB options;
+  if (kind == RetryRequestPB::DEFAULT) {
+    RETURN_NOT_OK(SetupPerformOptions(
+        tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
+        SkipReadTimeOptions::kTrue));
+  }
+  return client_->RestartTransactionForRetry(&options, kind);
+}
+
+void PgTxnManager::CapRetryReadLimits(const tserver::PgRestartTransactionForRetryResponsePB& resp) {
+  read_restart_retry_in_progress_ = true;
+  const auto global_limit = HybridTime::FromPB(resp.global_limit_ht());
+  if (!global_limit) {
+    return;
+  }
+  if (!retry_global_limit_cap_ || global_limit < retry_global_limit_cap_) {
+    retry_global_limit_cap_ = global_limit;
+  }
+  for (const auto& [tablet, local_limit] : resp.local_limits()) {
+    auto [it, inserted] = retry_local_limit_caps_.insert({tablet, local_limit});
+    if (!inserted) {
+      it->second = std::min(it->second, local_limit);
+    }
+  }
+}
+
+void PgTxnManager::ResetRetryReadLimitCaps() {
+  retry_global_limit_cap_ = HybridTime::kInvalid;
+  retry_local_limit_caps_.clear();
+  read_restart_retry_in_progress_ = false;
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -501,19 +624,14 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
 }
 
 Status PgTxnManager::EnsureReadPoint() {
-  DCHECK(read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART);
   read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   return Status::OK();
 }
 
-/* This is called when a read committed transaction wants to restart its read point */
-Status PgTxnManager::RestartReadPoint() {
-  read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
+Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
+  CapRetryReadLimits(VERIFY_RESULT(
+      RestartTransactionForRetry(tag, RetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY)));
   return Status::OK();
-}
-
-bool PgTxnManager::IsRestartReadPointRequested() {
-  return read_time_manipulation_ == tserver::ReadTimeManipulation::RESTART;
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
@@ -543,6 +661,9 @@ DdlMode PgTxnManager::GetDdlModeFromDdlState(
 
 Status PgTxnManager::FinishPlainTransaction(
     Commit commit, const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
+  // A query can end the transaction its retried statement ran in (a procedure's COMMIT) and start
+  // another, whose reads must get full uncertainty windows.
+  ResetRetryReadLimitCaps();
   if (PREDICT_FALSE(IsDdlMode() && IsDdlModeWithSeparateTransaction())) {
     // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
     // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this
@@ -551,6 +672,7 @@ Status PgTxnManager::FinishPlainTransaction(
     LOG(WARNING) << "Received DML txn commit with DDL txn state active";
   }
 
+  ClearHeldObjectLocks();
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to commit.";
     return Status::OK();
@@ -558,7 +680,7 @@ Status PgTxnManager::FinishPlainTransaction(
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
   if (is_read_only &&
-      (!IsTableLockingEnabledForCurrentTxn() ||
+      (!UsingObjectLocksLocally() ||
        client_->TryReleaseAllObjectLocksInSharedMemory())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
@@ -591,6 +713,7 @@ Status PgTxnManager::FinishPlainTransaction(
 }
 
 void PgTxnManager::ResetTxnAndSession() {
+  ClearHeldObjectLocks();
   txn_in_progress_ = false;
   isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   priority_ = std::nullopt;
@@ -723,23 +846,15 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
     std::optional<ReadTimeAction> read_time_action,
     tserver::ReadTimeManipulation manipulation,
-    NonTransactionalWrites ops_has_non_transactional_writes,
-    bool need_defer_read_point) const {
+    NonTransactionalWrites ops_has_non_transactional_writes) const {
   const auto has_read_time = read_time_options.has_read_time();
 
-  if (read_time_options.restart_transaction() ||
-      manipulation == tserver::ReadTimeManipulation::RESTART) {
+  if (read_restart_retry_in_progress_) {
     RSTATUS_DCHECK(
         !IsSerializableIsolation(), IllegalState,
         "Serializable transactions do not face read restart errors.");
     RSTATUS_DCHECK(
-        !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, IllegalState,
-        "Non transactional writes do not face read restart errors");
-    RSTATUS_DCHECK(
-        !need_defer_read_point, IllegalState, "Deferred reads do not face read restart errors.");
-    RSTATUS_DCHECK(
-        !has_read_time, IllegalState,
-        "Reads as of a time (e.g., backfill, yb_read_time) do not face read restart errors.");
+        !ShouldDeferReadPoint(), IllegalState, "Deferred reads do not face read restart errors.");
     RSTATUS_DCHECK(
         !UsesFollowerReads(), IllegalState, "Follower reads do not face read restart errors.");
   }
@@ -806,11 +921,6 @@ Status PgTxnManager::SetupReadTimeOptions(
     NonTransactionalWrites ops_has_non_transactional_writes,
     SkipReadTimeOptions skip_read_time_options,
     IsCatalogSnapshot is_catalog_snapshot) {
-  if (need_restart_) {
-    read_time_options.set_restart_transaction(true);
-    need_restart_ = false;
-  }
-
   read_time_options.set_read_time_serial_no_history_min(serial_no_.min_read_time());
 
   if (skip_read_time_options) {
@@ -822,6 +932,10 @@ Status PgTxnManager::SetupReadTimeOptions(
   }
 
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
+  if (retry_global_limit_cap_) {
+    read_time_options.set_global_limit_cap_ht(retry_global_limit_cap_.ToUint64());
+    *read_time_options.mutable_local_limit_caps() = retry_local_limit_caps_;
+  }
 
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.
@@ -829,8 +943,7 @@ Status PgTxnManager::SetupReadTimeOptions(
   // cross txn snapshot does not apply to catalog snapshot.
   if (crosstxn_snapshot_read_time_is_used_ && !is_catalog_snapshot) {
     RETURN_NOT_OK(CheckConflictWithCrossTxnSnapshotTime(
-        read_time_action, ops_has_non_transactional_writes, read_time_options.has_read_time(),
-        read_time_options.restart_transaction()));
+        read_time_action, ops_has_non_transactional_writes, read_time_options.has_read_time()));
   }
 
   const auto manipulation =
@@ -847,8 +960,7 @@ Status PgTxnManager::SetupReadTimeOptions(
   const auto need_defer_read_point = ShouldDeferReadPoint();
 
   RETURN_NOT_OK(CheckConflictsAcrossReadTimeOptions(
-      read_time_options, read_time_action, manipulation, ops_has_non_transactional_writes,
-      need_defer_read_point));
+      read_time_options, read_time_action, manipulation, ops_has_non_transactional_writes));
 
   if (ShouldResetReadTime(read_time_action)) {
     read_time_options.mutable_read_time()->Clear();
@@ -883,12 +995,6 @@ Status PgTxnManager::SetupReadTimeOptions(
   if (UsesFollowerReads()) {
     read_time_options.mutable_follower_read_staleness_ms()->set_value(
         static_cast<uint32_t>(*follower_read_staleness_ms_));
-    return Status::OK();
-  }
-
-  if (!IsDdlModeWithSeparateTransaction() &&
-      manipulation == tserver::ReadTimeManipulation::RESTART) {
-    read_time_options.set_read_time_manipulation(tserver::ReadTimeManipulation::RESTART);
     return Status::OK();
   }
 
@@ -942,7 +1048,8 @@ Status PgTxnManager::SetupPerformOptions(
   options.set_pg_txn_start_us(pg_txn_start_us_);
   options.set_connected_database_oid(connected_database_oid_);
   options.set_origination_ht(GetOriginationHt());
-  options.set_is_using_table_locks(IsTableLockingEnabledForCurrentTxn());
+  options.set_using_table_locks_globally(UsingObjectLocksGloballyForCurrentTxn());
+  options.set_using_table_locks_locally(UsingObjectLocksLocally());
   options.set_uses_catalog_snapshot(is_catalog_snapshot);
   // Follower reads are applicable on user tables and as such catalog ops bypass it.
   options.set_read_from_followers(UsesFollowerReads() && !is_catalog_snapshot);
@@ -1111,8 +1218,7 @@ Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(
 
 Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime(
     std::optional<ReadTimeAction> read_time_action,
-    NonTransactionalWrites ops_has_non_transactional_writes, bool has_read_time,
-    bool restart_transaction) const {
+    NonTransactionalWrites ops_has_non_transactional_writes, bool has_read_time) const {
   SCHECK(
       !UsesFollowerReads(), NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
@@ -1132,9 +1238,7 @@ Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime(
       !deferrable_,
       NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
   RSTATUS_DCHECK(
-      !need_restart_ && !restart_transaction &&
-          read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART,
-      IllegalState,
+      !read_restart_retry_in_progress_, IllegalState,
       "Exported/imported snapshots must not be retried at a different read point.");
   SCHECK(
       !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, NotSupported,
@@ -1155,12 +1259,13 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
 
 Status PgTxnManager::RollbackToSubTransaction(
     SetupPerformOptionsAccessorTag tag, SubTransactionId id) {
+  held_object_locks_->EraseStartingFromSubTransaction(id);
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to rollback.";
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !IsTableLockingEnabledForCurrentTxn()) {
+      !UsingObjectLocksLocally()) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }
@@ -1178,10 +1283,16 @@ bool PgTxnManager::TryAcquireObjectLock(
     return false;
   }
 
+  if (IsObjectLockHeld(lock_id, lock_type)) {
+    DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
+    return true;
+  }
+
   if (!client_->TryAcquireObjectLockInSharedMemory(
         active_sub_transaction_id_, lock_id, lock_type)) {
     return false;
   }
+  RecordObjectLockHeld(lock_id, lock_type);
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return true;
 }
@@ -1201,8 +1312,51 @@ Status PgTxnManager::AcquireObjectLock(
       SkipReadTimeOptions::kTrue));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
+  // Session locks are released individually, and locks of a separate DDL transaction are released
+  // when that transaction ends, so only track transaction locks of the regular transaction.
+  if (!is_session_lock && !(IsDdlMode() && !IsDdlModeWithRegularTransactionBlock())) {
+    if (auto lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode))) {
+      RecordObjectLockHeld(lock_id, *lock_type);
+    }
+  }
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();
+}
+
+bool PgTxnManager::IsObjectLockHeld(
+    const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  if (held_object_locks_->empty()) {
+    return false;
+  }
+  // If the transaction was aborted on the DocDB side, the shared state is disabled and the locks
+  // recorded so far are no longer held.
+  if (!client_->IsObjectLockSharedStateEnabled()) {
+    VLOG_WITH_FUNC(2) << "Object lock shared state disabled, dropping "
+                      << held_object_locks_->size() << " held locks";
+    ClearHeldObjectLocks();
+    return false;
+  }
+  return held_object_locks_->Contains(lock_id, lock_type);
+}
+
+void PgTxnManager::RecordObjectLockHeld(
+    const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+  if (!client_->IsObjectLockSharedStateEnabled()) {
+    return;
+  }
+  held_object_locks_->Add({
+      .subtxn_id = active_sub_transaction_id_,
+      .database_oid = lock_id.db_oid,
+      .relation_oid = lock_id.relation_oid,
+      .object_oid = lock_id.object_oid,
+      .object_sub_oid = lock_id.object_sub_oid,
+      .lock_type = lock_type});
+}
+
+void PgTxnManager::ClearHeldObjectLocks() {
+  VLOG_IF_WITH_FUNC(2, !held_object_locks_->empty())
+      << "Clearing " << held_object_locks_->size() << " held object locks";
+  held_object_locks_->Clear();
 }
 
 void PgTxnManager::SetTransactionHasWrites() {

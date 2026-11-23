@@ -4,7 +4,7 @@ exporters:
     auth: {authenticator: basicauth/00000000-0000-0000-0000-000000000000}
     compression: gzip
     endpoint: http://otlp:3100
-    headers: {header2: value2, header1: value1}
+    headers: {header1: '${env:YB_OTEL_00000000_0000_0000_0000_000000000000_OTLP_HEADER_0}', header2: '${env:YB_OTEL_00000000_0000_0000_0000_000000000000_OTLP_HEADER_1}'}
     retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m, max_interval: 1800m}
     sending_queue: {enabled: true, storage: file_storage/queue}
     timeout: 5s
@@ -14,7 +14,7 @@ extensions:
     compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true, rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
   basicauth/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BasicAuthExtension
-    client_auth: {password: password, username: username}
+    client_auth: {password: '${env:YB_OTEL_00000000_0000_0000_0000_000000000000_OTLP_PASSWORD}', username: username}
 processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:

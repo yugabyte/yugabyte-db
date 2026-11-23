@@ -240,6 +240,19 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListLeavesOutConfigsBeingValidated() {
+    ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
+    CustomerConfig validating = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
+    validating.setState(ConfigState.Validating);
+    validating.update();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs";
+    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    JsonNode node = Json.parse(contentAsString(result));
+    assertEquals(1, node.size());
+    assertEquals("TEST7", node.get(0).get("configName").asText());
+  }
+
+  @Test
   public void testListCustomerWithoutData() {
     String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs";
     Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
@@ -534,6 +547,37 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
                 doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Invalid StorageConfig UUID: " + configUUID);
     assertEquals(1, CustomerConfig.getAll(customer.getUuid()).size());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditConfigBeingValidated() {
+    // Created through the v2 API, whose storage check is still running.
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "validating");
+    config.setState(CustomerConfig.ConfigState.Validating);
+    config.update();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", "S3");
+    bodyJson.set("data", config.getData());
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", "renamed");
+    for (String suffix : List.of("", "/edit")) {
+      String url =
+          "/api/customers/"
+              + defaultCustomer.getUuid()
+              + "/configs/"
+              + config.getConfigUUID()
+              + suffix;
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "PUT", url, defaultUser.createAuthToken(), bodyJson));
+      assertBadRequest(result, "Cannot edit config while its storage check is running");
+    }
+    config.refresh();
+    assertEquals("validating", config.getConfigName());
+    assertEquals(CustomerConfig.ConfigState.Validating, config.getState());
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

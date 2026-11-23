@@ -1,4 +1,4 @@
-import { FC, useState } from 'react';
+import { FC, useState, useEffect } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -36,7 +36,7 @@ const StyledLinkText = styled(Link)({
 });
 
 export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, dbVersion }) => {
-  const { control } = useFormContext<DatabaseSettingsProps>();
+  const { control, setValue } = useFormContext<DatabaseSettingsProps>();
   const [openAnalyzeModal, setAnalyzeModal] = useState(false);
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings.pgCompatibility'
@@ -51,6 +51,10 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled, db
   useUpdateEffect(() => {
     if (pgValue) setAnalyzeModal(true);
   }, [pgValue]);
+
+  useEffect(() => {
+    if (!isVersionPGSupported(dbVersion)) setValue(PG_COMPATIBILITY_FIELD, false);
+  }, [dbVersion]);
 
   return (
     <FieldContainer>

@@ -62,7 +62,7 @@ DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb {
 using client::YBClient;

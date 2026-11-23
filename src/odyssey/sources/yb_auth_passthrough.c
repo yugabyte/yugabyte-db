@@ -120,7 +120,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
 		"starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
 
-	const int max_default_args = 16;
+	const int max_default_args = 22;
 	int num_startup_args = client->yb_startup_settings.size;
 	kiwi_var_t *startup_vars = client->yb_startup_settings.vars;
 
@@ -165,6 +165,18 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 				   yb_server_cert_hash_len);
 	}
 
+	/* send the logical client's addr/port to the control backend. */
+	if (client->yb_ycm_client_addr[0] != '\0') {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_ADDR));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_addr,
+				   strlen(client->yb_ycm_client_addr) + 1);
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_PORT));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_port,
+				   strlen(client->yb_ycm_client_port) + 1);
+	}
+
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("replication"));
@@ -175,6 +187,13 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("database"));
 	}
+
+	/*
+	 * Must follow every reserved parameter: Postgres rejects reserved names
+	 * after it, which is where the logical client's settings go.
+	 */
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
@@ -435,6 +454,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 					&instance->logger,
 					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
 					"failed to parse authentication message");
+				machine_msg_free(msg);
 				yb_control_connection_failed(server, instance);
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
@@ -471,10 +491,16 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 			continue;
 
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
+			machine_msg_free(msg);
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 
 			/* No need to wait for the Auth packet */
 			return YB_CLI_AUTH_FAILED;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
+			machine_msg_free(msg);
+			continue;
 
 		case KIWI_BE_ERROR_RESPONSE:
 		default:
@@ -658,6 +684,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 			rc_auth = -1;
+			machine_msg_free(msg);
+			continue;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
 			machine_msg_free(msg);
 			continue;
 
