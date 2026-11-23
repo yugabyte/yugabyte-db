@@ -3644,6 +3644,9 @@ YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data)
 }
 
 YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname) {
+  if (!dbname) {
+    return ToYBCStatus(STATUS(InvalidArgument, "Database name must not be null"));
+  }
   return ToYBCStatus(pgapi->TriggerRelcacheInitConnection(dbname));
 }
 
