@@ -3258,8 +3258,6 @@ ybStartNotifsPollerBgWorker(void)
 	BackgroundWorker worker;
 	BackgroundWorkerHandle *local_handle;
 	BackgroundWorkerHandle *shm_handle;
-	BgwHandleStatus status;
-	pid_t		pid;
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 
@@ -3293,13 +3291,11 @@ ybStartNotifsPollerBgWorker(void)
 	poller_data->has_bgw_handle = true;
 	LWLockRelease(NotifyQueueLock);
 
-	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
-	if (status != BGWH_STARTED)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("could not start background process"),
-				 errhint("More details may be available in the server log.")));
-
+	/*
+	 * Not WaitForBackgroundWorkerStartup: a poller that exits right away is
+	 * reported as stopped, which ybWaitForNotifsPollerInit, waiting next,
+	 * turns into a clearer error.
+	 */
 	pfree(local_handle);
 }
 
