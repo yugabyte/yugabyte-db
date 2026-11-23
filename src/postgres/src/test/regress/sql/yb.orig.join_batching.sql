@@ -728,6 +728,11 @@ WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
 /*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
 /*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
 
+-- #36711: a sorted BNL under LIMIT gets a bound, and the bound re-applies on
+-- every re-execution of the subquery. The sort must be created to allow it.
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 3) YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ explain (costs off) select o.a, (select ss1.a from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a > o.a order by ss1.a limit 1) from (values (0), (1), (2)) o(a);
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 3) YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select o.a, (select ss1.a from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a > o.a order by ss1.a limit 1) from (values (0), (1), (2)) o(a);
+
 -- The inner index orders its columns (b, a) against join clauses on (a, b):
 -- the batched index condition is built in index column order (#17115).
 /*+Leading((q1 q2)) IndexScan(q2 h_ba_idx)*/ explain (costs off) select * from p1 q1, h q2 where q1.a = q2.a and q1.b = q2.b order by q1.a;

@@ -1701,7 +1701,11 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 	{
 		YbBatchedNestLoopState *bnl_state = (YbBatchedNestLoopState *) child_node;
 
-		if (bnl_state->bnl_is_sorted)
+		/*
+		 * bnl_is_sorted is a runtime flag that each rescan clears. Test the
+		 * plan-level flag so the bound also applies to the first execution.
+		 */
+		if (bnl_state->bnl_needs_sorting)
 		{
 			if (tuples_needed < 0)
 				bnl_state->bound = 0;
