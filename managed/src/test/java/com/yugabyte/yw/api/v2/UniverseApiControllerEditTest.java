@@ -38,7 +38,6 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -295,8 +294,6 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
         .thenReturn(true);
-    // setupUniverse's create already cached the default.
-    app.injector().instanceOf(RuntimeConfigCache.class).invalidateCache();
     Universe.saveDetails(
         universeUuid,
         u ->

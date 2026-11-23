@@ -11,9 +11,7 @@ package com.yugabyte.yw.common.config;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import lombok.extern.slf4j.Slf4j;
 import play.cache.NamedCache;
 import play.cache.SyncCacheApi;
@@ -40,14 +38,7 @@ public class RuntimeConfigCache {
           GlobalConfKeys.useNewRbacAuthz.getKey(),
           GlobalConfKeys.ybaApiStrictMode.getKey(),
           GlobalConfKeys.ybaApiSafeMode.getKey(),
-          GlobalConfKeys.blockOperatorApiResources.getKey(),
-          GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey());
-
-  // The change listener clears a key inside the transaction that writes it, before the commit, so
-  // a read in between can cache the old value until the next change. An expiry bounds that for the
-  // gflags API redaction key, which turns API redaction and the REDACTED merge-back on or off.
-  private static final Map<String, Integer> EXPIRY_SECONDS =
-      Map.of(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), 60);
+          GlobalConfKeys.blockOperatorApiResources.getKey());
 
   @Inject
   public RuntimeConfigCache(RuntimeConfigChangeNotifier runtimeConfigChangeNotifier) {
@@ -88,15 +79,12 @@ public class RuntimeConfigCache {
     if (!cachedGlobalKeys.contains(key)) {
       throw new RuntimeException(key + " is not cached with RuntimeConfigCache");
     }
-    Callable<Boolean> fetch =
+    return cache.getOrElseUpdate(
+        key,
         () -> {
           log.info("Fetching {} from DB", key);
           return runtimeConfigFactory.globalRuntimeConf().getBoolean(key);
-        };
-    Integer expirySeconds = EXPIRY_SECONDS.get(key);
-    return expirySeconds == null
-        ? cache.getOrElseUpdate(key, fetch)
-        : cache.getOrElseUpdate(key, fetch, expirySeconds);
+        });
   }
 
   // Add more getters for other types here as needed

@@ -16,7 +16,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -206,7 +206,7 @@ public class RedactingService {
         target,
         ybSoftwareVersion,
         gFlagsValidation,
-        target == RedactionTarget.APIS && isGFlagsSensitiveDataApiRedactionEnabled());
+        isGFlagsSensitiveDataApiRedactionEnabled());
   }
 
   /**
@@ -225,9 +225,11 @@ public class RedactingService {
   }
 
   public static boolean isGFlagsSensitiveDataApiRedactionEnabled() {
-    return StaticInjectorHolder.injector()
-        .instanceOf(RuntimeConfigCache.class)
-        .getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey());
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    Boolean enabled =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction);
+    return !Boolean.FALSE.equals(enabled);
   }
 
   public static JsonNode filterSecretFields(
