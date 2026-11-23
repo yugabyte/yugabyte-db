@@ -650,8 +650,8 @@ Status CatalogManager::ListSnapshotsInternal(
 
 Status CatalogManager::RepackSnapshotsForBackup(
     ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables, bool skip_missing_tables) {
-  SharedLock lock(mutex_);
-  TRACE("Acquired catalog manager lock");
+  // Do not hold mutex_ across the loop: it reads the YSQL catalog from the sys catalog tablet for
+  // every YSQL table, which can be slow. mutex_ is only needed for the table lookup.
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
     auto format_version = FLAGS_enable_export_snapshot_using_relfilenode &&
@@ -680,7 +680,7 @@ Status CatalogManager::RepackSnapshotsForBackup(
           continue;
         }
         TRACE("Looking up table");
-        scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
+        scoped_refptr<TableInfo> table_info = GetTableInfo(entry.id());
         if (table_info == nullptr) {
           if (skip_missing_tables) {
             LOG(INFO) << Format(
