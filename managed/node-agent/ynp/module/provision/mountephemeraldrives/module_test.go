@@ -736,20 +736,9 @@ func TestResolveOCIDrives(t *testing.T) {
 			want:       "nvme0n1",
 		},
 		{
-			// The probe loop then fails the missing disk.
+			// The probe loop then skips the missing disk, and the mount fails.
 			name:       "missing requested disk is kept",
 			disks:      []ociDisk{ociBootDisk("sda"), ociDataDisk("sdc")},
-			requested:  "sdb",
-			mountPaths: "/mnt/d0",
-			want:       "sdb",
-		},
-		{
-			name: "partitioned requested disk is kept",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb \nsdb1 \n"},
-				ociDataDisk("sdc"),
-			},
 			requested:  "sdb",
 			mountPaths: "/mnt/d0",
 			want:       "sdb",
@@ -838,18 +827,47 @@ func TestResolveOCIDrives(t *testing.T) {
 	}
 }
 
-func TestResolveOCIDrivesFailsWhenLsblkFailsOnRequestedDisk(t *testing.T) {
-	_, stdout, stderr, err := runOCIDiskResolver(
-		t,
-		[]ociDisk{ociBootDisk("sda"), {name: "sdb", tree: "sdb \n", lsblkFails: true}},
-		"sdb",
-		"/mnt/d0",
-	)
-	if err == nil {
-		t.Fatalf("resolved OCI drives although lsblk failed\nstdout: %s", stdout)
+func TestResolveOCIDrivesRefusesRequestedDisk(t *testing.T) {
+	tests := []struct {
+		name      string
+		disks     []ociDisk
+		requested string
+		wantError string
+	}{
+		{
+			name:      "lsblk fails on the requested disk",
+			disks:     []ociDisk{ociBootDisk("sda"), {name: "sdb", tree: "sdb \n", lsblkFails: true}},
+			requested: "sdb",
+			wantError: "Cannot tell whether requested disk sdb is the boot volume",
+		},
+		{
+			// mount_drives would format it, partition table and all.
+			name: "requested disk has partitions",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				ociDataDisk("sdb"),
+				{name: "sdc", tree: "sdc \nsdc1 \n"},
+				ociDataDisk("sdd"),
+			},
+			requested: "sdb sdc",
+			wantError: "Requested disk sdc has partitions or holders. Refusing to format it.",
+		},
 	}
-	if !strings.Contains(stderr, "Cannot tell whether requested disk sdb is the boot volume") {
-		t.Fatalf("resolver output does not name the disk: stderr: %s", stderr)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, stdout, stderr, err := runOCIDiskResolver(
+				t,
+				test.disks,
+				test.requested,
+				"/mnt/d0 /mnt/d1",
+			)
+			if err == nil {
+				t.Fatalf("resolved OCI drives, want an error\nstdout: %s", stdout)
+			}
+			if !strings.Contains(stderr, test.wantError) {
+				t.Fatalf("stderr does not contain %q: %s", test.wantError, stderr)
+			}
+		})
 	}
 }
 
