@@ -43,6 +43,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -183,11 +184,14 @@ public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
   }
 
   /**
-   * Regression test: vmImageUpgrade built its params from scratch, so they had no universe UUID or
-   * clusters, and VMImageUpgrade.validateParams threw a NullPointerException at task submit.
+   * Regression test: vmImageUpgrade built its params from scratch, so they had no universe UUID,
+   * clusters or nodes, and VMImageUpgrade.validateParams threw a NullPointerException at task
+   * submit.
    */
   @Test
   public void testVmImageUpgradeStartsFromUniverseDetails() throws Exception {
+    // addNodesToUniverse gives the nodes private IPs 127.0.0.1 to 127.0.0.3, and no names.
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 3);
     UUID clusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     UUID providerUuid = UUID.randomUUID();
     UUID imageBundleUuid = UUID.randomUUID();
@@ -210,7 +214,10 @@ public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
     assertEquals(universe.getUniverseUUID(), submitted.getUniverseUUID());
     assertEquals(clusterUuid, submitted.getPrimaryCluster().uuid);
     assertEquals(
-        universe.getUniverseDetails().nodeDetailsSet.size(), submitted.nodeDetailsSet.size());
+        Set.of("127.0.0.1", "127.0.0.2", "127.0.0.3"),
+        submitted.nodeDetailsSet.stream()
+            .map(node -> node.cloudInfo.private_ip)
+            .collect(Collectors.toSet()));
     assertNotNull(submitted.creatingUser);
     assertTrue(submitted.forceVMImageUpgrade);
     assertEquals(
