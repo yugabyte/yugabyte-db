@@ -674,8 +674,11 @@ static inline bool yb_is_txn_priority_bound(const char *name)
  * ROLE/DATABASE ... SET and the config file set it too. Setting the lower
  * bound to 0 first makes the order safe: the upper bound then passes against
  * 0, and the client's lower bound passes against the client's upper bound.
- * When only one bound differs, the other holds the same value as in the
- * client's session, where the pair was valid, so it is sent alone.
+ * When only one bound differs, it is sent alone. That is safe when the other
+ * bound is tracked with the client's value. When the other bound is untracked
+ * and its default changed after the client set its bound (ALTER ROLE/DATABASE
+ * ... SET on a newer backend, or a config reload), the SET can still fail;
+ * that case is not handled.
  */
 static inline int yb_kiwi_add_txn_priority_bounds(
 	kiwi_vars_t *client_session_vars, kiwi_vars_t *server_session_vars,
