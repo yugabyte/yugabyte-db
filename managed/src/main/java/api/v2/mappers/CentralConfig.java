@@ -31,6 +31,9 @@ public interface CentralConfig {
   @Mapping(target = "readOnlyClusters", ignore = true)
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
+  // Next two fields are computable, so omitting them in mapper.
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
   @Mapping(target = "allowInsecure", constant = "false")
   @Mapping(target = "capability", constant = "EDITS_ALLOWED")
   @Mapping(

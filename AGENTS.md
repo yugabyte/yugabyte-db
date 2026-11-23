@@ -28,6 +28,11 @@ When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test gu
 
 When working on YBA (`managed/`), refer to `managed/AGENTS.md`
 
+Anything written to a public artifact from any part of this repo, `managed/` included, follows
+[`src/AGENTS.md` § Confidentiality](src/AGENTS.md#confidentiality--never-leak-customer-data-yugabytedb-secrets-or-pii).
+Security fixes and customer-driven changes also follow its
+[disclosure tiers](src/AGENTS.md#security-and-customer-sensitive-changes).
+
 ### Meko datapacks (`MEKO.md`)
 
 A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's
@@ -97,7 +102,7 @@ repo needs:
   invariant, a cross-component contract, a locking or ordering constraint, a workaround and
   the upstream bug behind it. Not a label for the block below it, not narration of the
   change you just made.
-- **PR / Phorge diff descriptions** — the motivation (a reviewer who doesn't know why is
+- **PR descriptions** — the motivation (a reviewer who doesn't know why is
   the expensive case), what changed, and whatever the reader must *act* on: new gflags,
   upgrade/rollback consequences, migration steps. Not a narration of the diff. The test
   plan is a separate section — keep it to what was run.
@@ -119,5 +124,4 @@ touch.
 This does **not** apply to the user-facing docs website (`docs/`), which follows its own
 editorial style guide and is written for readers who do *not* know this repo.
 
-Trim before you publish, not in review: the `create-pr` and `create-diff` skills re-check
-this as a step.
+Trim before you publish, not in review: the `create-pr` skill re-checks this as a step.

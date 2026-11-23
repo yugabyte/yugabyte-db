@@ -38,17 +38,19 @@ class PgSequenceCache {
     bool has_values_;
     int64_t curr_value_;
     int64_t last_value_;
+    // Epoch passed to SetRange when this range was stored.
+    uint64_t filled_epoch_ = 0;
 
-    void CheckNotAvailable();
+    void CheckNotAvailable() const;
 
    public:
     Entry();
 
-    // Get a single value if the entry has values.
-    std::optional<int64_t> GetValueIfCached(int64_t inc_by) EXCLUDES(mutex_);
+    // Get a single value if the entry has values still valid for epoch_now.
+    std::optional<int64_t> GetValueIfCached(int64_t inc_by, uint64_t epoch_now) EXCLUDES(mutex_);
 
-    // Update the cached range.
-    void SetRange(int64_t first_value, int64_t last_value) EXCLUDES(mutex_);
+    // Store the range and the epoch it was filled under.
+    void SetRange(int64_t first_value, int64_t last_value, uint64_t epoch_now) EXCLUDES(mutex_);
     // Notify a waiting thread that it can access this entry. Do not call any other entry functions
     // after calling this function, unless you get it again when it is available from the cache
     // itself.
@@ -89,9 +91,16 @@ class PgSequenceCache {
   // NotifyWaiter. No-op if no entry exists.
   Status Invalidate(const PgObjectId& sequence_id, const MonoTime& deadline) EXCLUDES(lock_);
 
+  // Increment the epoch for db_oid.
+  void BumpDatabaseEpoch(PgOid db_oid) EXCLUDES(lock_);
+
+  // Current epoch for db_oid.
+  uint64_t DatabaseEpoch(PgOid db_oid) EXCLUDES(lock_);
+
  private:
   simple_spinlock lock_;
   std::unordered_map<PgObjectId, std::shared_ptr<Entry>, PgObjectIdHash> cache_ GUARDED_BY(lock_);
+  std::unordered_map<PgOid, uint64_t> db_epochs_ GUARDED_BY(lock_);
 };
 
 }  // namespace yb::tserver
