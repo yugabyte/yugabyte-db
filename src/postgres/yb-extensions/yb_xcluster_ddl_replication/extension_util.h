@@ -24,10 +24,6 @@
 #include "tcop/deparse_utility.h"
 #include "utils/memutils.h"
 
-#define EXTENSION_NAME			   "yb_xcluster_ddl_replication"
-#define DDL_QUEUE_TABLE_NAME	   "ddl_queue"
-#define REPLICATED_DDLS_TABLE_NAME "replicated_ddls"
-
 #define INIT_MEM_CONTEXT_AND_SPI_CONNECT(desc) \
 	do \
 	{ \
