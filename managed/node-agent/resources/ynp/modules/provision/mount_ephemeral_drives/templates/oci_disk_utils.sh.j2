@@ -3,59 +3,168 @@
 # OCI data disk discovery helpers.
 #
 # YBA attaches OCI block volumes to the running instance without a device path,
-# so the kernel names the boot and data volumes in whatever order it finds
-# them. The boot volume is not always sda, and the data volume YBA requests as
-# sdb can be sda.
+# and asks for them as sdb, sdc, ..., assuming the boot volume is sda. The
+# kernel doesn't always name them in that order: the boot volume can take a
+# requested name, and a data volume a name YBA did not request.
 #
 # The caller defines:
 #   DEV_ROOT            (normally /dev)
 #   DEFAULT_SSD_DRIVES  the device names YBA requested, e.g. "sdb sdc"
-#   mounts              the mount paths YBA requested
+#   mounts              the mount paths YBA requested, in the same order
 
-# A free data disk is a whole disk without partitions, unlike the boot volume,
-# that is mounted, if at all, only at a YBA mount path.
-oci_disk_is_free_data_disk() {
-  local name=$1
-  local entry=""
-  local mount_point=""
-  local entries=0
-
-  while read -r entry mount_point; do
-    entries=$((entries + 1))
-    if [[ -n "$mount_point" && " ${mounts[*]} " != *" $mount_point "* ]]; then
-      return 1
-    fi
-  done < <(lsblk -nr -o NAME,MOUNTPOINT "$DEV_ROOT/$name" 2>/dev/null || true)
-  [[ $entries -eq 1 ]]
+# Sets oci_disk_tree_rv to the disk's lsblk tree, as "NAME MOUNTPOINT" lines.
+# Returns 1 when the disk does not exist, and 2 when lsblk fails otherwise.
+oci_disk_tree() {
+  local rc=0
+  oci_disk_tree_rv=$(lsblk -nr -o NAME,MOUNTPOINT "$DEV_ROOT/$1") || rc=$?
+  # lsblk exits 32 when none of the given devices exist.
+  if [[ $rc -eq 32 ]]; then
+    return 1
+  elif [[ $rc -ne 0 ]]; then
+    echo >&2 "lsblk failed on $DEV_ROOT/$1 with exit code $rc."
+    return 2
+  fi
 }
 
-# Resolve the requested device names to data disks. A requested name that is a
-# free data disk is kept, so the result is YBA's names whenever the boot volume
-# is sda. Any other requested sd name, such as the boot volume's, is replaced by
-# a free data disk that YBA did not request. Local NVMe names are kept.
-get_oci_drives() {
+# The boot volume is the disk that holds /, /boot or /boot/efi. lsblk lists an
+# LVM root under the partition that holds it. Returns 1 when the disk is not the
+# boot volume or does not exist, and 2 when lsblk fails on it.
+oci_disk_is_boot_volume() {
+  local entry=""
+  local mount_point=""
+  oci_disk_tree "$1" || return
+  while read -r entry mount_point; do
+    case "$mount_point" in
+      / | /boot | /boot/efi) return 0 ;;
+    esac
+  done <<< "$oci_disk_tree_rv"
+  return 1
+}
+
+# A blank disk has no filesystem, partition table, LVM or RAID signature: blkid
+# exits 2 and prints nothing. blkid also exits 2 when it can't open the disk,
+# but then says why on stderr.
+oci_disk_is_blank() {
+  local errors=""
+  local rc=0
+  errors=$(blkid -p "$DEV_ROOT/$1" 2>&1 >/dev/null) || rc=$?
+  if [[ $rc -eq 2 && -z "$errors" ]]; then
+    return 0
+  fi
+  if [[ -n "$errors" ]]; then
+    echo >&2 "$errors"
+  fi
+  return 1
+}
+
+# Sets oci_spares to the whole sd disks, other than the given requested names,
+# that may replace the boot volume, and oci_spare_mounts to where each is
+# mounted. A spare has no partitions, and is either unmounted and blank (an
+# empty mount), or mounted. The caller uses a mounted spare only at that same
+# mount path, which is where an earlier run mounted it.
+oci_list_spares() {
+  local requested=" $* "
+  local listing=""
   local name=""
   local device_type=""
+  local entry=""
+  local mount_point=""
+  local disk_mount=""
+  local rc=0
+  local -i entries=0
+
+  oci_spares=()
+  oci_spare_mounts=()
+  listing=$(lsblk -dnr -o NAME,TYPE) || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo >&2 "lsblk failed to list disks with exit code $rc."
+    return 1
+  fi
+  while read -r name device_type; do
+    if [[ "$device_type" != "disk" || ! "$name" =~ ^sd[a-z]+$ || \
+          "$requested" == *" $name "* ]]; then
+      continue
+    fi
+    rc=0
+    oci_disk_tree "$name" || rc=$?
+    if [[ $rc -eq 2 ]]; then
+      echo >&2 "Not using disk $name to replace the boot volume."
+    fi
+    if [[ $rc -ne 0 ]]; then
+      continue
+    fi
+    entries=0
+    while read -r entry mount_point; do
+      entries+=1
+      disk_mount=$mount_point
+    done <<< "$oci_disk_tree_rv"
+    if [[ $entries -ne 1 ]]; then
+      continue
+    fi
+    if [[ -n "$disk_mount" ]] || oci_disk_is_blank "$name"; then
+      oci_spares+=("$name")
+      oci_spare_mounts+=("$disk_mount")
+    fi
+  done <<< "$listing"
+}
+
+# Sets get_oci_drives_rv to the requested device names, with the boot volume's
+# name, if it was requested, replaced by a spare: the one already mounted at
+# that name's mount path, or else the first blank one. Every other requested
+# name is kept, and the probe loop fails it if it isn't a usable data disk.
+# Local NVMe names are kept. Returns 1 when lsblk fails on a requested disk.
+get_oci_drives() {
   local -a requested=()
-  local -a spare=()
   local -a drives=()
+  local name=""
+  local replacement=""
+  local listed=false
+  local rc=0
+  local i=0
+  local j=0
 
   read -r -a requested <<< "$DEFAULT_SSD_DRIVES"
-  while read -r name device_type; do
-    if [[ "$device_type" == "disk" && "$name" =~ ^sd[a-z]+$ && \
-          " ${requested[*]} " != *" $name "* ]] && oci_disk_is_free_data_disk "$name"; then
-      spare+=("$name")
+  drives=("${requested[@]}")
+  for i in "${!requested[@]}"; do
+    name=${requested[i]}
+    if ! [[ "$name" =~ ^sd[a-z]+$ ]]; then
+      continue
     fi
-  done < <(lsblk -dnr -o NAME,TYPE 2>/dev/null || true)
+    rc=0
+    oci_disk_is_boot_volume "$name" || rc=$?
+    if [[ $rc -eq 2 ]]; then
+      echo >&2 "Cannot tell whether requested disk $name is the boot volume."
+      return 1
+    elif [[ $rc -ne 0 ]]; then
+      continue
+    fi
 
-  for name in "${requested[@]}"; do
-    if [[ "$name" =~ ^sd[a-z]+$ && -n "${spare[0]:-}" ]] && \
-       ! oci_disk_is_free_data_disk "$name"; then
-      echo "Requested disk $name is not a free data disk. Using ${spare[0]} instead."
-      name=${spare[0]}
-      spare=("${spare[@]:1}")
+    if ! $listed; then
+      oci_list_spares "${requested[@]}" || return 1
+      listed=true
     fi
-    drives+=("$name")
+    replacement=""
+    for j in "${!oci_spares[@]}"; do
+      if [[ -n "${mounts[i]:-}" && "${oci_spare_mounts[j]}" == "${mounts[i]}" ]]; then
+        replacement=$j
+        break
+      fi
+    done
+    if [[ -z "$replacement" ]]; then
+      for j in "${!oci_spares[@]}"; do
+        if [[ -z "${oci_spare_mounts[j]}" ]]; then
+          replacement=$j
+          break
+        fi
+      done
+    fi
+    if [[ -z "$replacement" ]]; then
+      echo >&2 "Requested disk $name is the boot volume, and no blank disk can replace it."
+      continue
+    fi
+    echo "Requested disk $name is the boot volume. Using ${oci_spares[replacement]} instead."
+    drives[i]=${oci_spares[replacement]}
+    unset 'oci_spares[replacement]' 'oci_spare_mounts[replacement]'
   done
   get_oci_drives_rv="${drives[*]}"
 }

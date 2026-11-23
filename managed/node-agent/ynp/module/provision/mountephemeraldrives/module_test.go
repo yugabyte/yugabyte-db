@@ -546,10 +546,15 @@ func TestAzureLUNMismatchMessageIncludesLUN(t *testing.T) {
 	}
 }
 
-// ociDisk is a disk and its lsblk -nr -o NAME,MOUNTPOINT output.
+// ociDisk is a disk and its lsblk -nr -o NAME,MOUNTPOINT output. signature is what blkid -p
+// prints for it; a disk without one is blank. blkidError makes blkid fail to open the disk, and
+// lsblkFails makes lsblk fail on it.
 type ociDisk struct {
-	name string
-	tree string
+	name       string
+	tree       string
+	signature  string
+	blkidError bool
+	lsblkFails bool
 }
 
 func ociDataDisk(name string) ociDisk {
@@ -563,8 +568,16 @@ func ociBootDisk(name string) ociDisk {
 	}
 }
 
-// runOCIDiskResolver runs get_oci_drives with a fake lsblk that lists the given disks in order.
-// It returns the resolved drives, the full stdout and stderr.
+func writeTestExecutable(t *testing.T, path string, content string) {
+	t.Helper()
+	writeTestFile(t, path, content)
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("make %s executable: %v", path, err)
+	}
+}
+
+// runOCIDiskResolver runs get_oci_drives with a fake lsblk that lists the given disks in order,
+// and a fake blkid. It returns the resolved drives, the full stdout and stderr.
 func runOCIDiskResolver(
 	t *testing.T,
 	disks []ociDisk,
@@ -583,20 +596,41 @@ func runOCIDiskResolver(
 	for _, disk := range disks {
 		diskList += disk.name + " disk\n"
 		writeTestFile(t, filepath.Join(fixtures, "tree", disk.name), disk.tree)
+		if disk.lsblkFails {
+			writeTestFile(t, filepath.Join(fixtures, "lsblk-fails", disk.name), "")
+		}
+		if disk.signature != "" {
+			writeTestFile(t, filepath.Join(fixtures, "blkid", disk.name), disk.signature+"\n")
+		}
+		if disk.blkidError {
+			writeTestFile(t, filepath.Join(fixtures, "blkid-error", disk.name), "")
+		}
 	}
 	writeTestFile(t, filepath.Join(fixtures, "disks"), diskList)
-	fakeLsblk := filepath.Join(root, "bin", "lsblk")
-	writeTestFile(
+	binDir := filepath.Join(root, "bin")
+	writeTestExecutable(
 		t,
-		fakeLsblk,
+		filepath.Join(binDir, "lsblk"),
 		"#!/bin/bash\n"+
 			"if [[ $1 == -dnr ]]; then cat \"$LSBLK_FIXTURES/disks\"; exit; fi\n"+
 			"device=${!#}\n"+
-			"cat \"$LSBLK_FIXTURES/tree/${device##*/}\" 2>/dev/null || exit 32\n",
+			"name=${device##*/}\n"+
+			"if [[ -e $LSBLK_FIXTURES/lsblk-fails/$name ]]; then\n"+
+			"  echo >&2 \"lsblk: $device: failed\"; exit 1\n"+
+			"fi\n"+
+			"cat \"$LSBLK_FIXTURES/tree/$name\" 2>/dev/null || exit 32\n",
 	)
-	if err := os.Chmod(fakeLsblk, 0o755); err != nil {
-		t.Fatalf("make fake lsblk executable: %v", err)
-	}
+	writeTestExecutable(
+		t,
+		filepath.Join(binDir, "blkid"),
+		"#!/bin/bash\n"+
+			"[[ $1 == -p ]] || exit 4\n"+
+			"name=${2##*/}\n"+
+			"if [[ -e $LSBLK_FIXTURES/blkid-error/$name ]]; then\n"+
+			"  echo >&2 \"error: $2: Permission denied\"; exit 2\n"+
+			"fi\n"+
+			"cat \"$LSBLK_FIXTURES/blkid/$name\" 2>/dev/null || exit 2\n",
+	)
 	script := `
 set -euo pipefail
 DEV_ROOT=/dev
@@ -609,7 +643,7 @@ printf '%s\n' "$get_oci_drives_rv"
 	cmd := exec.Command("bash", "-c", script, "oci-disk-test", helperPath, requested, mountPaths)
 	cmd.Env = append(
 		os.Environ(),
-		"PATH="+filepath.Dir(fakeLsblk)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"LSBLK_FIXTURES="+fixtures,
 	)
 	var stdout bytes.Buffer
@@ -701,6 +735,90 @@ func TestResolveOCIDrives(t *testing.T) {
 			mountPaths: "/mnt/d0",
 			want:       "nvme0n1",
 		},
+		{
+			// The probe loop then fails the missing disk.
+			name:       "missing requested disk is kept",
+			disks:      []ociDisk{ociBootDisk("sda"), ociDataDisk("sdc")},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name: "partitioned requested disk is kept",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				{name: "sdb", tree: "sdb \nsdb1 \n"},
+				ociDataDisk("sdc"),
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name: "disk with data is not used",
+			disks: []ociDisk{
+				{name: "sda", tree: "sda \n", signature: `/dev/sda: TYPE="ext4"`},
+				ociBootDisk("sdb"),
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name: "blank disk is used over a disk with data",
+			disks: []ociDisk{
+				{name: "sda", tree: "sda \n", signature: `/dev/sda: TYPE="xfs"`},
+				ociBootDisk("sdb"),
+				ociDataDisk("sdc"),
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdc",
+		},
+		{
+			name: "disk blkid cannot open is not used",
+			disks: []ociDisk{
+				{name: "sda", tree: "sda \n", blkidError: true},
+				ociBootDisk("sdb"),
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdb",
+		},
+		{
+			name: "disk lsblk fails on is not used",
+			disks: []ociDisk{
+				{name: "sda", tree: "sda \n", lsblkFails: true},
+				ociBootDisk("sdb"),
+				ociDataDisk("sdc"),
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdc",
+		},
+		{
+			name: "disk mounted at another YBA mount path is not used",
+			disks: []ociDisk{
+				{name: "sda", tree: "sda /mnt/d1\n"},
+				ociBootDisk("sdb"),
+				ociDataDisk("sdc"),
+				ociDataDisk("sdd"),
+			},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			want:       "sdd sdc",
+		},
+		{
+			name: "disk an earlier run mounted is used over a blank disk",
+			disks: []ociDisk{
+				ociDataDisk("sda"),
+				ociBootDisk("sdb"),
+				{name: "sdc", tree: "sdc /mnt/d0\n"},
+			},
+			requested:  "sdb",
+			mountPaths: "/mnt/d0",
+			want:       "sdc",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -720,6 +838,21 @@ func TestResolveOCIDrives(t *testing.T) {
 	}
 }
 
+func TestResolveOCIDrivesFailsWhenLsblkFailsOnRequestedDisk(t *testing.T) {
+	_, stdout, stderr, err := runOCIDiskResolver(
+		t,
+		[]ociDisk{ociBootDisk("sda"), {name: "sdb", tree: "sdb \n", lsblkFails: true}},
+		"sdb",
+		"/mnt/d0",
+	)
+	if err == nil {
+		t.Fatalf("resolved OCI drives although lsblk failed\nstdout: %s", stdout)
+	}
+	if !strings.Contains(stderr, "Cannot tell whether requested disk sdb is the boot volume") {
+		t.Fatalf("resolver output does not name the disk: stderr: %s", stderr)
+	}
+}
+
 func TestRenderedScriptResolvesOCIDrives(t *testing.T) {
 	modulePath := mountEphemeralDrivesModulePath(t)
 	module := NewMountEphemeralDrive(filepath.Dir(modulePath))
@@ -736,7 +869,7 @@ func TestRenderedScriptResolvesOCIDrives(t *testing.T) {
 	}
 	script := rendered.RenderedContent("run")
 	for _, expected := range []string{
-		`oci_disk_is_free_data_disk() {`,
+		`get_oci_drives() {`,
 		`elif [[ $CLOUD_TYPE == "oci" ]]; then`,
 		`get_ephemeral_drives_rv=$get_oci_drives_rv`,
 	} {
