@@ -669,8 +669,7 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_oid == kPgAttributeTableOid || table_oid == kPgNamespaceTableOid ||
-           table_oid == kPgPublicationRelPrpubidIndexOid));
+          std::ranges::find(kTxnDdlCatalogTableOids, table_oid) != kTxnDdlCatalogTableOids.end());
 }
 
 const char* SkipReason(PrepareSlotForTxnDdlResult result) {
@@ -699,9 +698,9 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   std::vector<TableId> table_ids;
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgNamespaceTableOid));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
+    }
   }
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));

@@ -166,8 +166,7 @@ class CdcUpgradeTest : public UpgradeTestBase {
     std::unordered_map<std::string, std::string> options;
     cdc::StreamModeTransactional transactional(false);
     RETURN_NOT_OK(client->GetCDCStream(stream_id, &ns_id, &table_ids, &options, &transactional));
-    for (auto table_oid :
-         {kPgAttributeTableOid, kPgNamespaceTableOid, kPgPublicationRelPrpubidIndexOid}) {
+    for (auto table_oid : kTxnDdlCatalogTableOids) {
       if (std::ranges::find(table_ids, GetPgsqlTableId(db_oid, table_oid)) == table_ids.end()) {
         return false;
       }

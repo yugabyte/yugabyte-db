@@ -4961,9 +4961,9 @@ Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
   auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgAttributeTableOid));
-    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgNamespaceTableOid));
-    table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelPrpubidIndexOid));
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(pg_database_oid, table_oid));
+    }
   }
   table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));

@@ -294,8 +294,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
     const auto stream_table_ids = stream->GetTableIds();
-    for (const auto table_oid :
-         {kPgAttributeTableOid, kPgNamespaceTableOid, kPgPublicationRelPrpubidIndexOid}) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
       SCHECK_FORMAT(
           std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
               stream_table_ids.end(),
