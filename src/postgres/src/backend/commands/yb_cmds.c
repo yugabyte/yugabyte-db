@@ -771,7 +771,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			 * as later we might need to associate an existing implicit tablegroup to a tablespace
 			 */
 
-			shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+			tablegroupId = YbLockImplicitTablegroup(tablespaceId);
 
 			/*
 			 * If we do not find a tablegroup corresponding to the given tablespace, we
@@ -821,7 +821,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		else
 		{
 			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			tablegroupId = YbLockImplicitTablegroup(InvalidOid);
 		}
 
 		char	   *tablespace_name = (OidIsValid(tablespaceId) ?

@@ -429,7 +429,12 @@ DuckDBManager::GetConnection(bool force_transaction) {
 	auto &context = *instance.connection->context;
 
 	if (!context.transaction.HasActiveTransaction()) {
-		if (IsSubTransaction()) {
+		/*
+		 * YB: READ COMMITTED runs each statement of a transaction block in an internal subtransaction so
+		 * it can be retried; only a user SAVEPOINT or a PL/pgSQL EXCEPTION block counts here.
+		 */
+		if (IsSubTransaction() &&
+		    (!IsYBReadCommitted() || YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */))) {
 			throw duckdb::NotImplementedException("SAVEPOINT and subtransactions are not supported in DuckDB");
 		}
 

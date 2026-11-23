@@ -10,13 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
+
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/common/transaction.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
+#include "yb/consensus/raft_consensus.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/scope_exit.h"
@@ -25,11 +31,16 @@
 namespace yb {
 namespace cdc {
 
+YB_DEFINE_ENUM(SchemaChangeBelowSafeTime, (kRenameColumn)(kRolledBackAddColumn));
+
 class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {
  public:
   void TestCDCSDKConsistentStreamWithTabletSplit(CDCCheckpointType checkpoint_type);
 
   void TestCDCSDKMultipleAlter(CDCCheckpointType checkpoint_type);
+
+  void TestSchemaChangeBelowRequestSafeTime(
+      SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl);
 };
 
 TEST_F(CDCSDKConsistentStreamTest,
@@ -1284,6 +1295,183 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   // transactions.
   get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
   ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 12);
+}
+
+namespace {
+
+bool AllPeersHaveColumnC(const std::vector<tablet::TabletPeerPtr>& peers, bool expected) {
+  return std::all_of(peers.begin(), peers.end(), [expected](const auto& peer) {
+    return (peer->tablet_metadata()->schema()->find_column("c") != Schema::kColumnNotFound) ==
+           expected;
+  });
+}
+
+bool HasChangeMetadataOpInFlight(const tablet::TabletPeer& peer, int64_t after_index) {
+  std::vector<consensus::OperationStatusPB> ops;
+  peer.GetInFlightOperations(tablet::Operation::NO_TRACE_TXNS, &ops);
+  return std::any_of(ops.begin(), ops.end(), [after_index](const auto& op) {
+    return op.operation_type() == consensus::OperationType::CHANGE_METADATA_OP &&
+           op.op_id().index() > after_index;
+  });
+}
+
+void SetRejectMode(
+    const std::vector<consensus::RaftConsensusPtr>& consensuses, consensus::RejectMode mode) {
+  for (const auto& consensus : consensuses) {
+    consensus->TEST_RejectMode(mode);
+  }
+}
+
+}  // namespace
+
+// A CHANGE_METADATA_OP is not MVCC-tracked, so the leader's safe time can pass its hybrid time
+// before the op is majority replicated. A GetChanges call in that window returns that safe time,
+// and the next call must still apply the op to the cached schema. Followers that reject appends
+// but ack heartbeats hold the op uncommitted while the leader keeps its lease.
+void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
+    SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
+      transactional_ddl.get();
+  ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
+  // A leader move would let the old leader's followers commit the op without the window.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (a int PRIMARY KEY, b int, d int) SPLIT INTO 1 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+  const auto tablet_peers = ASSERT_RESULT(ListTabletPeers(test_cluster(), tablet_id));
+  ASSERT_EQ(tablet_peers.size(), 3);
+
+  // ALL makes the before image of an UPDATE carry every column of the cached schema.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+
+  const std::string ddl = change == SchemaChangeBelowSafeTime::kRenameColumn
+                              ? "ALTER TABLE t1 RENAME COLUMN b TO c"
+                              : "ALTER TABLE t1 ADD COLUMN c int";
+  // Without transactional DDL, a rename commits; the ADD COLUMN fails and DDL atomicity rolls it
+  // back. With transactional DDL, both run in a block that is rolled back.
+  const bool rolled_back =
+      transactional_ddl || change == SchemaChangeBelowSafeTime::kRolledBackAddColumn;
+  const std::string changed_column = rolled_back ? "b" : "c";
+
+  auto ddl_conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto* sync_point = SyncPoint::GetInstance();
+  std::vector<consensus::RaftConsensusPtr> followers;
+  CountDownLatch release_rollback_alter(1);
+  CountDownLatch release_resent_alter(1);
+  TestThreadHolder thread_holder;
+  auto cleanup = ScopeExit([&] {
+    SetRejectMode(followers, consensus::RejectMode::kNone);
+    release_rollback_alter.CountDown();
+    release_resent_alter.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  // Streaming a row caches the original schema in the producer.
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1, 1)"));
+  auto changes = GetAllPendingChangesFromCdc(
+      stream_id, tablets, /* cp = */ nullptr, /* tablet_idx = */ 0, /* safe_hybrid_time = */ -1,
+      /* wal_segment_index = */ 0, /* expected_records_count = */ 1);
+  ASSERT_EQ(changes.record_count[1], 1);
+
+  if (rolled_back) {
+    // The master resends a rollback alter that it still sees pending, which holding the followers
+    // makes likely. The resent op would land after the window and repair the cached schema.
+    sync_point->SetCallBack(
+        "CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable",
+        [&release_resent_alter](void*) { release_resent_alter.Wait(); });
+    if (!transactional_ddl) {
+      // The failed ALTER rolls back right away; hold the rollback alter until the window.
+      sync_point->SetCallBack(
+          "CatalogManager::YsqlDdlTxnAlterTableHelper:SendAlterTableRequestInternal",
+          [&release_rollback_alter](void*) { release_rollback_alter.Wait(); });
+    }
+    sync_point->EnableProcessing();
+    if (transactional_ddl) {
+      ASSERT_OK(ddl_conn.Execute("BEGIN"));
+      ASSERT_OK(ddl_conn.Execute(ddl));
+    } else {
+      thread_holder.AddThreadFunctor([&ddl_conn, &ddl] {
+        ASSERT_OK(ddl_conn.Execute("SET yb_test_fail_next_ddl = 1"));
+        ASSERT_NOK(ddl_conn.Execute(ddl));
+      });
+    }
+    // Polling while the forward op replicates could hit the same window and skip it.
+    ASSERT_OK(WaitFor(
+        [&] { return AllPeersHaveColumnC(tablet_peers, true); },
+        MonoDelta::FromSeconds(30 * kTimeMultiplier), "Forward schema change applied"));
+    changes = GetAllPendingChangesFromCdc(
+        stream_id, tablets, &changes.checkpoint, /* tablet_idx = */ 0, changes.safe_hybrid_time,
+        /* wal_segment_index = */ 0, /* expected_records_count = */ 1);
+    ASSERT_EQ(changes.record_count[0], 1);
+  }
+
+  auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet_id));
+  auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+  for (const auto& peer : tablet_peers) {
+    if (peer != leader_peer) {
+      followers.push_back(ASSERT_RESULT(peer->GetRaftConsensus()));
+    }
+  }
+  const auto last_index_before_window = leader_consensus->GetLastReceivedOpId().index;
+  SetRejectMode(followers, consensus::RejectMode::kNonEmpty);
+  if (!rolled_back) {
+    thread_holder.AddThreadFunctor([&ddl_conn, &ddl] { ASSERT_OK(ddl_conn.Execute(ddl)); });
+  } else if (transactional_ddl) {
+    thread_holder.AddThreadFunctor([&ddl_conn] { ASSERT_OK(ddl_conn.Execute("ROLLBACK")); });
+  } else {
+    release_rollback_alter.CountDown();
+  }
+  ASSERT_OK(WaitFor(
+      [&] { return HasChangeMetadataOpInFlight(*leader_peer, last_index_before_window); },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Schema change op appended on the leader"));
+
+  auto held_resp = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &changes.checkpoint, /* tablet_idx = */ 0, changes.safe_hybrid_time,
+      /* wal_segment_index = */ 0, /* populate_checkpoint = */ true, /* should_retry = */ false));
+  SetRejectMode(followers, consensus::RejectMode::kNone);
+  ASSERT_OK(WaitFor(
+      [&] { return AllPeersHaveColumnC(tablet_peers, !rolled_back); },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier), "Schema change applied"));
+
+  ASSERT_OK(conn.Execute("UPDATE t1 SET d = 2 WHERE a = 1"));
+  changes = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &held_resp.cdc_sdk_checkpoint(), /* tablet_idx = */ 0,
+      held_resp.safe_hybrid_time(), /* wal_segment_index = */ 0, /* expected_records_count = */ 1);
+  ASSERT_EQ(changes.record_count[2], 1);
+  for (const auto& record : changes.records) {
+    if (record.row_message().op() == RowMessage::UPDATE) {
+      ASSERT_NO_FATALS(CheckRecordTuples(
+          record, {"a", "d", changed_column}, {"a", changed_column, "d"}));
+    }
+  }
+}
+
+TEST_F(CDCSDKConsistentStreamTest, TestRenameColumnBelowRequestSafeTimeLegacyDdl) {
+  TestSchemaChangeBelowRequestSafeTime(
+      SchemaChangeBelowSafeTime::kRenameColumn, TransactionalDdl::kFalse);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, TestRenameColumnBelowRequestSafeTimeTransactionalDdl) {
+  TestSchemaChangeBelowRequestSafeTime(
+      SchemaChangeBelowSafeTime::kRenameColumn, TransactionalDdl::kTrue);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, TestRolledBackAddColumnBelowRequestSafeTimeLegacyDdl) {
+  TestSchemaChangeBelowRequestSafeTime(
+      SchemaChangeBelowSafeTime::kRolledBackAddColumn, TransactionalDdl::kFalse);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, TestRolledBackAddColumnBelowRequestSafeTimeTransactionalDdl) {
+  TestSchemaChangeBelowRequestSafeTime(
+      SchemaChangeBelowSafeTime::kRolledBackAddColumn, TransactionalDdl::kTrue);
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestPartialTxnResumeWithOutOfOrderApply) {

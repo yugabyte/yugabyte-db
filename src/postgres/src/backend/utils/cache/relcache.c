@@ -1654,12 +1654,18 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
  * YbAttrDefaultFetch performs same action as PG's AttrDefaultFetch
  * but with using in memory tuple cache instead of relation scan.
  * Most code is borrowed from PG's AttrDefaultFetch.
+ *
+ * attrdef holds an entry, with a NULL adbin, for each of the ndef columns
+ * with atthasdef.  Like AttrDefaultFetch, it only warns about a missing
+ * pg_attrdef record or a null adbin, and installs the array only once it is
+ * valid, with only the entries found: a NULL adbin left in it would crash
+ * FreeTupleDesc when the entry is freed, for example by the relcache preload
+ * retry or by the next catalog cache refresh (#37715).
  */
 static void
-YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
+YbAttrDefaultFetch(Relation relation, AttrDefault *attrdef, int ndef,
+				   const YbTupleCache *pg_attrdef_cache)
 {
-	AttrDefault *attrdef = relation->rd_att->constr->defval;
-	uint16		ndef = relation->rd_att->constr->num_defval;
 	Relation	adrel = pg_attrdef_cache->rel;
 
 	Oid			relid = RelationGetRelid(relation);
@@ -1676,7 +1682,7 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 		Form_pg_attribute attr = TupleDescAttr(relation->rd_att,
 											   adform->adnum - 1);
 
-		uint16		i = 0;
+		int			i = 0;
 
 		for (; i < ndef; ++i)
 		{
@@ -1710,26 +1716,55 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 				 "unexpected attrdef record found for attr %d of rel %s",
 				 adform->adnum, RelationGetRelationName(relation));
 	}
+
+	int			found = 0;
+
+	for (int i = 0; i < ndef; ++i)
+	{
+		if (attrdef[i].adbin != NULL)
+			attrdef[found++] = attrdef[i];
+	}
+
+	if (found != ndef)
+		elog(WARNING, "%d pg_attrdef record(s) missing for relation \"%s\"",
+			 ndef - found, RelationGetRelationName(relation));
+
+	/* Install array only after it's fully valid */
+	relation->rd_att->constr->defval = attrdef;
+	relation->rd_att->constr->num_defval = found;
 }
 
 /*
  * YbCheckConstraintFetch performs same actions as PG's CheckConstraintFetch
  * but with using in memory tuple cache instead of relation scan.
  * Most code is borrowed from PG's CheckConstraintFetch.
+ *
+ * Like CheckConstraintFetch, it only warns when the CHECK rows don't match
+ * relchecks, and installs the array only once it is fully valid, with
+ * num_check set to the number of entries found.  So, as with
+ * RelationBuildDesc, a mismatch fails neither a connection's relcache preload
+ * nor a catalog cache refresh.  When CHECK rows are missing, the executor
+ * refuses writes to the relation (ExecRelCheck); when there are more than
+ * relchecks, the ones that don't fit are not enforced, and writes succeed.
  */
 static void
 YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
 {
-	ConstrCheck *check = relation->rd_att->constr->check;
-	uint16		ncheck = relation->rd_att->constr->num_check;
+	ConstrCheck *check;
+	int			ncheck = relation->rd_rel->relchecks;
 	Relation	conrel = pg_constraint_cache->rel;
-	uint16		found = 0;
+	int			found = 0;
 
 	Oid			relid = RelationGetRelid(relation);
 	const YbTupleCacheEntry *entry = hash_search(pg_constraint_cache->data,
 												 &relid, HASH_FIND, NULL);
 
 	ListCell   *cell;
+
+	/* Allocate array with room for as many entries as expected */
+	check = (ConstrCheck *)
+		MemoryContextAllocZero(CacheMemoryContext,
+							   ncheck * sizeof(ConstrCheck));
 
 	foreach(cell, entry ? entry->tuples : NULL)
 	{
@@ -1740,14 +1775,13 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 		if (conform->contype != CONSTRAINT_CHECK)
 			continue;
 
+		/* protect limited size of array */
 		if (found >= ncheck)
-			elog(ERROR, "unexpected constraint record found for rel %s",
+		{
+			elog(WARNING, "unexpected pg_constraint record found for relation \"%s\"",
 				 RelationGetRelationName(relation));
-
-		check[found].ccvalid = conform->convalidated;
-		check[found].ccnoinherit = conform->connoinherit;
-		check[found].ccname =
-			MemoryContextStrdup(CacheMemoryContext, NameStr(conform->conname));
+			break;
+		}
 
 		bool		isnull = false;
 
@@ -1756,25 +1790,35 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 									  RelationGetDescr(conrel), &isnull);
 
 		if (isnull)
-			elog(ERROR, "null conbin for rel %s",
+			elog(WARNING, "null conbin for relation \"%s\"",
 				 RelationGetRelationName(relation));
+		else
+		{
+			/* detoast and convert to cstring in caller's context */
+			char	   *s = TextDatumGetCString(val);
 
-		/* detoast and convert to cstring in caller's context */
-		char	   *s = TextDatumGetCString(val);
-
-		check[found].ccbin = MemoryContextStrdup(CacheMemoryContext, s);
-		pfree(s);
-
-		++found;
+			/* Fill the slot only for a kept row, so nothing leaks */
+			check[found].ccvalid = conform->convalidated;
+			check[found].ccnoinherit = conform->connoinherit;
+			check[found].ccname =
+				MemoryContextStrdup(CacheMemoryContext, NameStr(conform->conname));
+			check[found].ccbin = MemoryContextStrdup(CacheMemoryContext, s);
+			pfree(s);
+			found++;
+		}
 	}
 
 	if (found != ncheck)
-		elog(ERROR, "%d constraint record(s) missing for rel %s",
+		elog(WARNING, "%d pg_constraint record(s) missing for relation \"%s\"",
 			 ncheck - found, RelationGetRelationName(relation));
 
 	/* Sort the records so that CHECKs are applied in a deterministic order */
-	if (ncheck > 1)
-		qsort(check, ncheck, sizeof(ConstrCheck), CheckConstraintCmp);
+	if (found > 1)
+		qsort(check, found, sizeof(ConstrCheck), CheckConstraintCmp);
+
+	/* Install array only after it's fully valid */
+	relation->rd_att->constr->check = check;
+	relation->rd_att->constr->num_check = found;
 }
 
 typedef struct YbRelationAttrsProcessingState
@@ -1970,11 +2014,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 		if (ndef > 0)			/* DEFAULTs */
 		{
 			if (ndef < RelationGetNumberOfAttributes(relation))
-				constr->defval = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
-			else
-				constr->defval = attrdef;
-			constr->num_defval = ndef;
-			YbAttrDefaultFetch(relation, state->pg_attrdef_cache);
+				attrdef = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
+			YbAttrDefaultFetch(relation, attrdef, ndef, state->pg_attrdef_cache);
 		}
 		else
 			constr->num_defval = 0;
@@ -1982,13 +2023,7 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 		constr->missing = attrmiss;
 
 		if (relation->rd_rel->relchecks > 0)	/* CHECKs */
-		{
-			constr->num_check = relation->rd_rel->relchecks;
-			constr->check = (ConstrCheck *)
-				MemoryContextAllocZero(CacheMemoryContext,
-									   constr->num_check * sizeof(ConstrCheck));
 			YbCheckConstraintFetch(relation, state->pg_constraint_cache);
-		}
 		else
 			constr->num_check = 0;
 	}

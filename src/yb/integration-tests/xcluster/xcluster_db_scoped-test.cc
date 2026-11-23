@@ -309,6 +309,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   }
 
   void TestNonTransactionalVectorUpdates();
+  void TestColocationParentCreatedAfterSetup();
 };
 
 class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
@@ -1873,6 +1874,50 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
+}
+
+// The first colocated table of a tablespace creates a colocation parent table. The target accepts
+// one only at setup, so the source refuses it once the database is replicated.
+void XClusterDBScopedTest::TestColocationParentCreatedAfterSetup() {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  ASSERT_OK(SetUpClusters(param));
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  for (auto* conn : {&p_conn, &c_conn}) {
+    ASSERT_OK(conn->Execute("CREATE TABLESPACE tsp1 LOCATION '/data'"));
+    ASSERT_OK(conn->Execute(
+        "CREATE TABLE coloc_tbl (k int PRIMARY KEY) WITH (colocation_id = 44444)"));
+  }
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.Execute("CREATE TABLE coloc_tsp_tbl (k int PRIMARY KEY) TABLESPACE tsp1"),
+      "Cannot create a new colocation tablegroup");
+  ASSERT_EQ(ASSERT_RESULT(p_conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 1);
+
+  // The database keeps replicating, and a tablegroup that was there at setup takes new tables.
+  constexpr auto kNewTable =
+      "CREATE TABLE coloc_tbl2 (k int PRIMARY KEY) WITH (colocation_id = 44445)";
+  ASSERT_OK(p_conn.Execute(kNewTable));
+  if (!UseAutomaticMode()) {
+    ASSERT_OK(c_conn.Execute(kNewTable));
+  }
+  ASSERT_OK(p_conn.Execute("INSERT INTO coloc_tbl2 SELECT generate_series(1, 10)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>("SELECT count(*) FROM coloc_tbl2")), 10);
+}
+
+TEST_F(XClusterDBScopedTest, ColocationParentCreatedAfterSetup) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
+}
+
+TEST_F_EX(XClusterDBScopedTest, ColocationParentCreatedAfterSetupAutomaticMode,
+          XClusterDBScopedAutomaticModeTest) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
 }
 
 // When disable_xcluster_db_scoped_new_table_processing is set make sure we do not checkpoint new
