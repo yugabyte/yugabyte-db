@@ -40,7 +40,7 @@ PA_BINARY_URL := https://releases.yugabyte.com/perf-advisor/$(PA_BINARY_NAME)
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.15.1
+PROMETHEUS_VERSION ?= 3.16.0
 
 # https://github.com/yugabyte/yba-pg-build/
 POSTGRES_VERSION ?= 18.7
