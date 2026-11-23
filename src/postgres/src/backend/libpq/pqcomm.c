@@ -87,6 +87,7 @@
 #include "common/pg_yb_common.h"
 #include "libpq/yb_pqcomm_extensions.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket
@@ -1283,6 +1284,11 @@ pq_getmessage(StringInfo s, int maxlen)
 		ereport(COMMERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid message length")));
+
+		/* YB: Conn Mgr sent the whole message; skip it to stay in sync */
+		if (len >= 4 && YbIsAuthPassthroughInProgress(MyProcPort) &&
+			pq_discardbytes(len - 4) != EOF)
+			PqCommReadingMsg = false;
 		return EOF;
 	}
 

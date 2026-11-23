@@ -70,7 +70,10 @@ function repairPexWheels {
                 echo "Skipping non-platform wheel $whl"
             fi
     else
-        auditwheel repair --plat manylinux_2_28_x86_64 $whl --no-update-tags
+        # libpcre2-8 is only pulled in through libpq -> krb5 -> libselinux. Leave it out so
+        # the wheels use the host's copy instead of shipping the build image's old pcre2.
+        auditwheel repair --plat manylinux_2_28_x86_64 $whl --no-update-tags \
+            --exclude libpcre2-8.so.0
     fi
 done
 }

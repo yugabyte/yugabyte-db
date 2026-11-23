@@ -9,7 +9,7 @@
 \i :filename
 \set _echo_parameterized_query :ECHO
 \set ECHO none
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
@@ -26,7 +26,7 @@ SET yb_fetch_row_limit = 16;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -49,14 +49,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Index Cond: (parent_5.r1 = ANY ('{0,1,2,3}'::integer[]))
 (18 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;
 (output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -92,7 +92,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Rows Scanned: 546
 (31 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -163,7 +163,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -199,7 +199,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Rows Scanned: 546
 (31 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -275,7 +275,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -295,14 +295,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Index Cond: (parent_4.p2 = ANY ('{0,1,2,3}'::double precision[]))
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;
 (output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -332,7 +332,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Rows Scanned: 393
 (25 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -402,7 +402,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -432,7 +432,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                      Storage Table Rows Scanned: 393
 (25 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;
                                                           QUERY PLAN                                                          
 ------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)

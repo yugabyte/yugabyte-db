@@ -16,6 +16,8 @@ struct od_io {
 	machine_cond_t *on_read;
 	machine_cond_t *on_write;
 	machine_io_t *io;
+	/* YB: Propagate non-IO error from any IO method */
+	char yb_error[64];
 };
 
 static inline void od_io_init(od_io_t *io)
@@ -23,6 +25,8 @@ static inline void od_io_init(od_io_t *io)
 	io->io = NULL;
 	io->on_read = NULL;
 	io->on_write = NULL;
+	/* YB */
+	io->yb_error[0] = '\0';
 	od_readahead_init(&io->readahead);
 }
 
@@ -37,6 +41,9 @@ static inline void od_io_free(od_io_t *io)
 
 static inline char *od_io_error(od_io_t *io)
 {
+	/* YB: If custom error is present, return that */
+	if (io->yb_error[0] != '\0')
+		return io->yb_error;
 	return machine_error(io->io);
 }
 
@@ -231,10 +238,13 @@ static inline machine_msg_t *od_read_startup(od_io_t *io, uint32_t time_ms)
 	return msg;
 }
 
-static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
+static inline machine_msg_t *yb_od_read_limited(od_io_t *io, uint32_t time_ms,
+						uint32_t max_size)
 {
 	kiwi_header_t header;
 	int rc;
+	/* YB: Reset custom error */
+	io->yb_error[0] = '\0';
 	rc = od_io_read(io, (char *)&header, sizeof(header), time_ms);
 	if (rc == -1)
 		return NULL;
@@ -242,8 +252,18 @@ static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
 	/* pre-validate packet header */
 	uint32_t size;
 	rc = kiwi_validate_header((char *)&header, sizeof(header), &size);
-	if (rc == -1)
+	/* YB: Return NULL with custom-error in case of message format issue */
+	if (rc == -1) {
+		snprintf(io->yb_error, sizeof(io->yb_error),
+			 "invalid message type 0x%02x or length %u",
+			 (unsigned char)header.type, size);
 		return NULL;
+	}
+	if (size > max_size) {
+		snprintf(io->yb_error, sizeof(io->yb_error),
+			 "message length %u exceeds limit %u", size, max_size);
+		return NULL;
+	}
 	size -= sizeof(uint32_t);
 
 	machine_msg_t *msg;
@@ -264,6 +284,17 @@ static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
 
 	return msg;
 }
+
+static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
+{
+	return yb_od_read_limited(io, time_ms, UINT32_MAX);
+}
+
+static inline machine_msg_t *yb_od_read_auth(od_io_t *io, uint32_t time_ms)
+{
+	return yb_od_read_limited(io, time_ms, PG_MAX_AUTH_TOKEN_LENGTH);
+}
+
 /*
  * YB: Since machine_write frees up the msg object, we have modified this
  * function to take pointer to pointer. This is to defend against potential

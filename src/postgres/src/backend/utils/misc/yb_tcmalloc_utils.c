@@ -39,6 +39,7 @@
 #include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/guc_hooks.h"
 #include "utils/tuplestore.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -46,6 +47,10 @@
 
 int			yb_log_heap_snapshot_on_exit_threshold = -1;
 int			yb_startup_free_memory_release_threshold = 0;
+int			yb_tcmalloc_skip_subrelease_short_interval = 0;
+int			yb_tcmalloc_skip_subrelease_long_interval = 0;
+bool		yb_tcmalloc_release_after_statement = true;
+bool		yb_tcmalloc_drain_cpu_caches_after_statement = false;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -352,4 +357,44 @@ YbReleaseFreeMemoryAfterStartup(void)
 	if (stats.pageheap_free_bytes >=
 		(int64) yb_startup_free_memory_release_threshold * 1024)
 		YBCTCMallocReleaseFreeMemory(PG_INT64_MAX);
+}
+
+const char *
+show_tcmalloc_sample_period(void)
+{
+	static char nbuf[32];
+
+	snprintf(nbuf, sizeof(nbuf), "%" PRId64, YBCGetTCMallocSamplingPeriod());
+	return nbuf;
+}
+
+void
+assign_tcmalloc_sample_period(int newval, void *extra)
+{
+	YBCSetTCMallocSamplingPeriod(newval);
+}
+
+/*
+ * Called once the reply to a statement has been flushed, so the client does
+ * not wait for it.  Without the release, a backend can keep the pages that a
+ * large statement freed for the rest of its lifetime.
+ *
+ * The lookback GUCs apply to this release only.  The TCMalloc GC that runs
+ * during statements keeps TCMalloc's own lookbacks, which hold on to the free
+ * pages that cover the statement's recent peak instead of subreleasing them.
+ *
+ * The drain must come first: it returns the objects held in the per-CPU
+ * caches to the central free lists, which can free whole spans for the
+ * release to return.  It visits every size class on every CPU that the
+ * backend ran on, which costs tens of microseconds per statement.
+ */
+void
+YbReleaseTCMallocMemoryAfterStatement(void)
+{
+	if (yb_tcmalloc_drain_cpu_caches_after_statement)
+		YBCTCMallocDrainCpuCaches();
+	if (yb_tcmalloc_release_after_statement)
+		YBCTCMallocReleaseMemoryToSystemWithLookbacks(PG_INT64_MAX,
+													  yb_tcmalloc_skip_subrelease_short_interval,
+													  yb_tcmalloc_skip_subrelease_long_interval);
 }

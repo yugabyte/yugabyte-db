@@ -104,7 +104,7 @@ You can rotate the new key as follows:
     yb-admin --master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id_2>
     ```
 
-    Because this key is only used for new data and can only eventually encrypt older data through compactions, it is best to ensure old keys remain secure.
+    The new universe key encrypts new data. Existing files stay under the previous universe key until compaction rewrites them. There is no indicator of how much data is still under an earlier universe key. Keep every rotated universe key; the cluster needs it to read that data.
 
 1. Verify the new key. To do this, check that the new key is encrypting the cluster, as follows:
 
@@ -147,6 +147,5 @@ You can disable cluster-wide encryption as follows:
 
 {{< note title="Keep your keys" >}}
 
-Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster,
-you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)
+Store your keys securely, including those that have been rotated. The cluster needs those keys to read data that has not yet been rewritten under the latest universe key. If you want to restore distributed snapshots of an encrypted cluster to a new cluster, you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)
 {{< /note >}}

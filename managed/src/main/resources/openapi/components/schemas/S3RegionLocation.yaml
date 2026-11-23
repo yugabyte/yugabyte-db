@@ -1,0 +1,32 @@
+title: S3RegionLocation
+description: |
+  S3RegionLocation
+
+  Backup location of one region of an S3 storage configuration. Part of S3StorageSpec.
+type: object
+required:
+  - region
+  - location
+properties:
+  region:
+    description: Region of the universe whose backups go to this location
+    type: string
+    example: us-west-2
+    minLength: 1
+  location:
+    description: 'Location of the region''s backups, as s3://<bucket>[/<path>]'
+    type: string
+    example: 's3://backups-us-west-2.example.com/yba'
+    minLength: 6
+  host_base:
+    description: Host of the S3 endpoint for this region. Defaults to the configuration's host_base.
+    type: string
+  signing_region:
+    description: AWS region to sign this region's requests for
+    type: string
+  global_bucket_access:
+    description: Whether this region's bucket is reachable from every region
+    type: boolean
+    default: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

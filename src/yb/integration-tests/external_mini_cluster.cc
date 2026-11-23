@@ -1448,7 +1448,8 @@ string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
     return Format("127.0.0.$0", index + 1); // Use default 127.0.0.x IPs.
 #else
     const pid_t p = getpid();
-    return Format("127.$0.$1.$2", (p >> 8) & 0xff, p & 0xff, index);
+    // Start the last octet at 1: 127.0.0.0 is unusable and is produced when pid % 65536 == 0.
+    return Format("127.$0.$1.$2", (p >> 8) & 0xff, p & 0xff, index + 1);
 #endif
   } else {
     return "127.0.0.1";

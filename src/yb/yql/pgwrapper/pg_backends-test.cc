@@ -14,17 +14,21 @@
 #include <cmath>
 #include <cstdlib>
 
+#include "yb/client/client-test-util.h"
+#include "yb/client/table_info.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -316,6 +320,59 @@ TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   }
 }
 
+// A backend whose catalog is pinned to yb_read_time never catches up and can't write, so it must
+// not be counted as lagging, even while it is idle in a transaction (as ysql_dump --read-time is).
+TEST_F(PgBackendsTest, IgnoreBackendPinnedToYbReadTime) {
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pinned_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pinned_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  // The first statement after the SET loads the catalog as of yb_read_time and pins it.
+  ASSERT_OK(pinned_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pinned_conn.Execute("BEGIN"));
+
+  auto normal_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(normal_conn.Execute("BEGIN"));
+
+  ASSERT_OK(BumpCatalogVersion(1));
+  const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
+
+  ASSERT_EQ(1, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(normal_conn.Execute("COMMIT"));
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(pinned_conn.Execute("COMMIT"));
+}
+
+// A real DDL that waits for backends to catch up doesn't wait on a backend pinned to yb_read_time.
+TEST_F(PgBackendsTest, CreateIndexDoesNotWaitOnPointInTimeSession) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO t SELECT g, g FROM generate_series(1, 100) g"));
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pit_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pit_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pit_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+
+  const auto start = CoarseMonoClock::Now();
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON t (v)"));
+  ASSERT_LT(CoarseMonoClock::Now() - start, 60s);
+  // The block's next read of t sends t's old DocDB schema version and can't be retried.
+  ASSERT_NOK_STR_CONTAINS(pit_conn.Fetch("SELECT count(*) FROM t"), "schema version mismatch");
+  ASSERT_OK(pit_conn.Execute("ROLLBACK"));
+  // TODO(#37408): the mismatch invalidated pggate's table descriptor for t, so this read sends t's
+  // current DocDB schema version and passes, though the session's catalog is still as of
+  // yb_read_time. It should keep failing until yb_read_time is reset.
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+
+  // TODO(#37408): same outside a transaction block, where the mismatch is retried right away.
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON t (k, v)"));
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+}
+
 // Test that multiple waiters immediately resolve.  This tests the condition variable broadcast in
 // the implementation.
 TEST_F(PgBackendsTest, MultipleWaiters) {
@@ -389,6 +446,11 @@ class PgBackendsTestNoWaitQueues : public PgBackendsTest {
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
+
+  // The tserver flag reaches a backend through a postmaster SIGHUP, and the backend applies it only
+  // between statements. Wait until conn sees the value, else its next UPDATE can run with the old
+  // threshold for the whole statement.
+  void SetRetryCountThreshold(PGConn& conn, int value);
 
   // Simulates a transaction conflict scenario to test retry counting
   void SimulateConflictRetries(PGConn& conn1, PGConn& conn2);
@@ -986,6 +1048,90 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
   // happens after kYsqlLeaseSec time has passed since disabling heartbeat.
 }
 
+// A writer whose retry refresh waits across CREATE INDEX's indislive commit must see the index.
+TEST_F_EX(PgBackendsTest, RetryRefreshAcrossIndexCreate, PgBackendsTestRf3TableLocksDisabled) {
+  static constexpr auto kTable = "table_3";
+  static constexpr auto kIndex = "index_3";
+  constexpr int kRowsAfterBackfill = 10;
+  const auto kWaitTimeout = 60s * kTimeMultiplier;
+  ExternalTabletServer* writer_ts = cluster_->tablet_server(0);
+  ExternalTabletServer* builder_ts = cluster_->tablet_server(1);
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (id bigint PRIMARY KEY, value int)", kTable));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT g, g % 97 FROM generate_series(1, 100) g", kTable));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), "yugabyte", kTable));
+
+  auto writer = ASSERT_RESULT(ConnectToTs(*writer_ts));
+  auto builder = ASSERT_RESULT(ConnectToTs(*builder_ts));
+  WaitForCatalogVersionToPropagate();
+  ASSERT_OK(writer.ExecuteFormat("INSERT INTO $0 VALUES (101, 1)", kTable));
+
+  LOG(INFO) << "Freeze the writer's tserver catalog version, then raise the master's";
+  ASSERT_OK(cluster_->SetFlag(writer_ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+                              "true"));
+  // Declared before cleanup, so cleanup unblocks the threads before the destructor joins them.
+  TestThreadHolder thread_holder;
+  auto cleanup = ScopeExit([this, writer_ts] {
+    WARN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+                "unblock index phase");
+    WARN_NOT_OK(cluster_->SetFlag(writer_ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+                                  "false"),
+                "unfreeze tserver");
+  });
+  const auto version_before = ASSERT_RESULT(GetCatalogVersion(&builder));
+  ASSERT_OK(builder.Execute("CREATE TABLE other (k int)"));
+  const auto version_raised = ASSERT_RESULT(GetCatalogVersion(&builder));
+  ASSERT_GT(version_raised, version_before);
+
+  LOG(INFO) << "Start CREATE INDEX and block it before the indislive commit";
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "indislive"));
+  LogWaiter indislive_waiter(builder_ts, "blocking index state change indislive=true");
+  thread_holder.AddThreadFunctor([&builder] {
+    ASSERT_OK(builder.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", kIndex, kTable));
+  });
+  ASSERT_OK(indislive_waiter.WaitFor(kWaitTimeout));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    RETURN_NOT_OK(client_->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    RETURN_NOT_OK(sync.Wait());
+    return !info->index_map.empty();
+  }, kWaitTimeout, "Wait for the index to reach the indexed table's schema"));
+
+  LOG(INFO) << "Writer's INSERT hits the schema change and waits in the retry refresh";
+  LogWaiter retry_waiter(writer_ts, "waiting for shared catalog version to reach");
+  thread_holder.AddThreadFunctor([&writer] {
+    ASSERT_OK(writer.ExecuteFormat("INSERT INTO $0 VALUES (102, 2)", kTable));
+  });
+  ASSERT_OK(retry_waiter.WaitFor(kWaitTimeout));
+
+  LOG(INFO) << "Let the indislive commit happen while the writer waits";
+  LogWaiter postbackfill_waiter(builder_ts, "blocking operations after concurrent index backfill");
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(GetCatalogVersion(conn_.get())) > version_raised;
+  }, kWaitTimeout, "Wait for the indislive commit"));
+
+  LOG(INFO) << "Unfreeze the writer's tserver so the retry applies both versions";
+  ASSERT_OK(cluster_->SetFlag(writer_ts, "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+                              "false"));
+  ASSERT_OK(postbackfill_waiter.WaitFor(kWaitTimeout));
+
+  LOG(INFO) << "Insert rows after the backfill read time";
+  for (int i = 0; i < kRowsAfterBackfill; ++i) {
+    ASSERT_OK(writer.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)", kTable, 1000 + i, 900 + i));
+  }
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  thread_holder.JoinAll();
+
+  ASSERT_OK(conn_->FetchFormat("SELECT yb_index_check('$0'::regclass)", kIndex));
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  const auto rows_via_index = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      Format("SELECT count(*) FROM $0 WHERE value >= 900", kTable)));
+  ASSERT_EQ(rows_via_index, kRowsAfterBackfill);
+}
+
 // An unresponsive tserver that expires lease should be considered resolved.
 // TODO(#13369): a lease expiration should cause that tserver to block its backends, but that is
 // currently not done, so the test asserts the opposite of correctness (the user whose permission
@@ -1333,6 +1479,16 @@ TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   thread_holder.Stop();
 }
 
+void PgBackendsTestNoWaitQueues::SetRetryCountThreshold(PGConn& conn, int value) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts", std::to_string(value)));
+  ASSERT_OK(WaitFor(
+      [&conn, value]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<std::string>("SHOW yb_test_reset_retry_counts")) ==
+               std::to_string(value);
+      },
+      10s * kTimeMultiplier, "backend sees yb_test_reset_retry_counts"));
+}
+
 void PgBackendsTestNoWaitQueues::SimulateConflictRetries(PGConn& conn1, PGConn& conn2) {
   constexpr auto kWaitTime = 5s;
 
@@ -1382,13 +1538,11 @@ TEST_F_EX(PgBackendsTest, VerifyResetRetryCounts, PgBackendsTestNoWaitQueues) {
   ASSERT_OK(conn1.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
   ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 1)"));
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
-                                        std::to_string(kFirstRetryCount)));
+  SetRetryCountThreshold(conn2, kFirstRetryCount);
   SimulateConflictRetries(conn1, conn2);
   CheckPgssConflictRetries(conn1, kFirstRetryCount);
 
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
-                                        std::to_string(kSecondRetryCount)));
+  SetRetryCountThreshold(conn2, kSecondRetryCount);
   SimulateConflictRetries(conn1, conn2);
 
   /*

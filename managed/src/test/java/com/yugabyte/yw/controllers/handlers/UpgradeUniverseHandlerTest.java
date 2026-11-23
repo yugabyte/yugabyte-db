@@ -19,6 +19,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,6 +95,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
+import org.slf4j.LoggerFactory;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -399,6 +403,68 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpgradeGFlagsOldSchemaLogsNoLdapPassword() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              userIntent.enableYSQLAuth = true;
+              universe.setUniverseDetails(details);
+            });
+    String ycqlSecret = "ycql-bind-secret-xyz";
+    String hbaSecret = "hba-bind-secret-xyz";
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.masterGFlags = ImmutableMap.of("asd", "10");
+    params.tserverGFlags =
+        ImmutableMap.of(
+            "ycql_ldap_bind_passwd",
+            ycqlSecret,
+            "ysql_hba_conf_csv",
+            "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=" + hbaSecret);
+
+    Logger handlerLogger = (Logger) LoggerFactory.getLogger(UpgradeUniverseHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    handlerLogger.addAppender(appender);
+    try {
+      handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    } finally {
+      handlerLogger.detachAppender(appender);
+    }
+
+    List<String> oldSchemaLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(message -> message.contains("specified in old manner"))
+            .toList();
+    assertEquals(1, oldSchemaLogs.size());
+    String logged = oldSchemaLogs.get(0);
+    assertFalse(logged, logged.contains(ycqlSecret));
+    assertFalse(logged, logged.contains(hbaSecret));
+    assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
+    assertTrue(logged, logged.contains("\"asd\":\"10\""));
+  }
+
+  @Test
   public void testUpgradeGFlagsOldSchemaWithRRInherited() throws IOException {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
@@ -542,6 +608,258 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             .value
             .get(ServerType.TSERVER)
             .get("log_min_messages"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaEditRestoresRedactedYcqlLdapBindPasswd()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String secret = "ycql-ldap-secret-xyz";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("m", "1"),
+                      ImmutableMap.of("t", "1", "ycql_ldap_bind_passwd", secret));
+              userIntent.masterGFlags =
+                  new HashMap<>(
+                      userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER));
+              userIntent.tserverGFlags =
+                  new HashMap<>(
+                      userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER));
+              universe.setUniverseDetails(details);
+            });
+
+    // The clusters as the universe API returns them, edited in the legacy gflag maps only.
+    JsonNode redactedClusters =
+        RedactingService.filterSecretFields(
+            Json.toJson(u.getUniverseDetails().clusters), RedactingService.RedactionTarget.APIS);
+    ObjectMapper mapper = Json.mapper();
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters =
+        mapper.readValue(
+            mapper.writeValueAsString(redactedClusters),
+            mapper
+                .getTypeFactory()
+                .constructCollectionType(List.class, UniverseDefinitionTaskParams.Cluster.class));
+    UniverseDefinitionTaskParams.UserIntent requestIntent = requestClusters.get(0).userIntent;
+    assertEquals(
+        RedactingService.SECRET_REPLACEMENT,
+        requestIntent.tserverGFlags.get("ycql_ldap_bind_passwd"));
+    requestIntent.tserverGFlags.put("log_max_seconds_to_retain", "86333");
+
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    Map<String, String> submittedTserver =
+        submitted
+            .getPrimaryCluster()
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertEquals("86333", submittedTserver.get("log_max_seconds_to_retain"));
+    assertEquals(secret, submittedTserver.get("ycql_ldap_bind_passwd"));
+    assertEquals(secret, submitted.tserverGFlags.get("ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsAcceptsRealValueWhenStoredLegacyMapIsRedacted() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createUniverseWithRedactedYcqlBindPasswd(c);
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    String realValue = "ycql-bind-secret-xyz";
+    requestClusters
+        .get(0)
+        .userIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("ycql_ldap_bind_passwd", realValue);
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    assertEquals(
+        realValue,
+        submitted
+            .getPrimaryCluster()
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER)
+            .get("ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsRejectsChangedLegacyMapWhenStoredIsRedacted() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createUniverseWithRedactedYcqlBindPasswd(c);
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    UniverseDefinitionTaskParams.UserIntent requestIntent = requestClusters.get(0).userIntent;
+    requestIntent
+        .specificGFlags
+        .getPerProcessFlags()
+        .value
+        .get(ServerType.TSERVER)
+        .put("ycql_ldap_bind_passwd", "ycql-bind-secret-xyz");
+    requestIntent.tserverGFlags.put("log_min_messages", "ERROR");
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertTrue(exception.getMessage().contains("ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaRejectsUnchangedLegacyMapWhenStoredIsRedacted()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createUniverseWithRedactedYcqlBindPasswd(c);
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    UniverseDefinitionTaskParams.UserIntent requestIntent = requestClusters.get(0).userIntent;
+    // An explicit null, which the binder keeps, sends the request down the old-schema path.
+    requestIntent.specificGFlags = null;
+    requestIntent.masterGFlags.put("m", "2");
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID())));
+    assertTrue(
+        exception.getMessage().contains("The stored value of ycql_ldap_bind_passwd is already"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaRestoresRedactedLegacyValueFromSpecificGFlags()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    String secret = "ycql-bind-secret-xyz";
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("m", "1"), ImmutableMap.of("ycql_ldap_bind_passwd", secret));
+              userIntent.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+              userIntent.tserverGFlags =
+                  new HashMap<>(
+                      ImmutableMap.of(
+                          "ycql_ldap_bind_passwd", RedactingService.SECRET_REPLACEMENT));
+              universe.setUniverseDetails(details);
+            });
+    // Unchanged specificGFlags fail verifyParams, so the old-schema path rebuilds them from the
+    // legacy maps, whose unchanged tserver map holds REDACTED.
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    requestClusters.get(0).userIntent.masterGFlags.put("m", "2");
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    SpecificGFlags submittedSpecificGFlags =
+        submitted.getPrimaryCluster().userIntent.specificGFlags;
+    assertEquals(
+        "2", submittedSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER).get("m"));
+    assertEquals(
+        secret,
+        submittedSpecificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER)
+            .get("ycql_ldap_bind_passwd"));
+  }
+
+  private Universe createUniverseWithRedactedYcqlBindPasswd(Customer c) {
+    Universe u = ModelFactory.createUniverse(c.getId());
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          UniverseDefinitionTaskParams.UserIntent userIntent =
+              details.getPrimaryCluster().userIntent;
+          userIntent.specificGFlags =
+              SpecificGFlags.construct(
+                  ImmutableMap.of("m", "1"),
+                  ImmutableMap.of("ycql_ldap_bind_passwd", RedactingService.SECRET_REPLACEMENT));
+          userIntent.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+          userIntent.tserverGFlags =
+              new HashMap<>(
+                  ImmutableMap.of("ycql_ldap_bind_passwd", RedactingService.SECRET_REPLACEMENT));
+          universe.setUniverseDetails(details);
+        });
+  }
+
+  // Legacy maps copied from the stored cluster, as UniverseControllerRequestBinder does when the
+  // request omits them.
+  private List<UniverseDefinitionTaskParams.Cluster> copyStoredClusters(Universe u)
+      throws IOException {
+    ObjectMapper mapper = Json.mapper();
+    JavaType clusterListType =
+        mapper
+            .getTypeFactory()
+            .constructCollectionType(List.class, UniverseDefinitionTaskParams.Cluster.class);
+    return mapper.readValue(
+        mapper.writeValueAsString(u.getUniverseDetails().clusters), clusterListType);
   }
 
   @Test

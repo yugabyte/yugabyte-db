@@ -16,6 +16,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -33,6 +34,9 @@ import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -55,6 +59,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
@@ -73,6 +78,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -139,6 +145,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -1861,6 +1868,64 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertNull(taskParams.sleepAfterMasterRestartMillis);
     assertNull(taskParams.sleepAfterTServerRestartMillis);
     assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
+  }
+
+  @Test
+  public void testCertsRotateByTlsConfigUpdateLogsNoSecrets()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForCertsRotate(false);
+    String ysqlPassword = "dummy-ysql-password";
+    String ycqlSecret = "dummy-ycql-bind-secret";
+    String hbaSecret = "dummy-hba-bind-secret";
+    Universe.saveDetails(
+        universeUUID,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ysqlPassword = ysqlPassword;
+          details.getPrimaryCluster().userIntent.specificGFlags =
+              SpecificGFlags.construct(
+                  new HashMap<>(),
+                  ImmutableMap.of(
+                      "ycql_ldap_bind_passwd",
+                      ycqlSecret,
+                      "ysql_hba_conf_csv",
+                      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd="
+                          + hbaSecret));
+          universe.setUniverseDetails(details);
+        });
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls";
+    ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
+    bodyJson.put("enableNodeToNodeEncrypt", "true");
+    bodyJson.put("enableClientToNodeEncrypt", "true");
+    bodyJson.put("rootAndClientRootCASame", "false");
+
+    Logger handlerLogger = (Logger) LoggerFactory.getLogger(UniverseCRUDHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    handlerLogger.addAppender(appender);
+    Result result;
+    try {
+      result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    } finally {
+      handlerLogger.detachAppender(appender);
+    }
+
+    assertOk(result);
+    List<String> paramLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.startsWith("tlsConfigUpdate: ") || m.startsWith("CertsRotateParams : "))
+            .toList();
+    assertEquals(2, paramLogs.size());
+    for (String logged : paramLogs) {
+      assertFalse(logged, logged.contains(ysqlPassword));
+      assertFalse(logged, logged.contains(ycqlSecret));
+      assertFalse(logged, logged.contains(hbaSecret));
+      assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
+    }
   }
 
   @Test

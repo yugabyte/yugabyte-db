@@ -76,11 +76,6 @@ class YBBackupTestColocatedTablesWithTablespaces : public YBBackupTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
     options->replication_factor = 3;
-    options->extra_master_flags.emplace_back(
-        "--ysql_enable_colocated_tables_with_tablespaces=true");
-
-    options->extra_tserver_flags.emplace_back(
-        "--ysql_enable_colocated_tables_with_tablespaces=true");
   }
   void SetupTablespaces() {
     const std::string placement_info_1 = R"#(
@@ -1182,8 +1177,6 @@ TEST_F_EX(YBBackupTest,
 }
 
 // Test backup/restore on a colocated database which has colocated tables with tablespaces.
-// (Colocated tables support tablespaces only if preview flag
-// ysql_enable_colocated_tables_with_tablespaces is enabled.)
 // Backup/Restore on such a database performed with --use_tablespaces option specified, will restore
 // the tables to the corresponding tablespaces.
 TEST_F(
@@ -1264,9 +1257,8 @@ TEST_F(
 }
 
 // Test backup/restore on a colocated database which has colocated tables with tablespaces.
-// If Backup & Restore is performed on a database with ysql_enable_colocated_tables_with_tablespaces
-// enabled without the --use-tablespaces flag then we restore the tables to the pg_default
-// tablespace.
+// If Backup & Restore is performed on such a database without the --use-tablespaces flag then we
+// restore the tables to the pg_default tablespace.
 TEST_F(
     YBBackupTestColocatedTablesWithTablespaces,
     YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithoutTablespaces)) {

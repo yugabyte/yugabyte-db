@@ -65,4 +65,20 @@ TEST(BackoffWaiterTest, TestRetryFunc) {
   ASSERT_LE(counter, 8);
 }
 
+TEST(BackoffWaiterTest, BusyWaitBackoff) {
+  const auto deadline = CoarseMonoClock::Now() + 300ms;
+  int checks = 0;
+  BusyWait(
+      make_lw_function([deadline, &checks] {
+        ++checks;
+        return CoarseMonoClock::Now() >= deadline;
+      }),
+      "test deadline", /* poll_interval= */ 1ms, /* warn_after= */ 10s,
+      /* max_poll_interval= */ 64ms);
+  LOG(INFO) << "checks: " << checks;
+  // Doubling from 1ms to 64ms reaches 300ms in about 11 checks; a fixed 1ms interval takes 300.
+  ASSERT_GE(checks, 2);
+  ASSERT_LE(checks, 20);
+}
+
 } // namespace yb

@@ -209,6 +209,21 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     }
   }
 
+  // The PRNG state is per backend, so a seeded session must keep its backend for later random()
+  // calls to follow the seed.
+  @Test
+  public void testSetseedMakesConnectionSticky() throws Exception {
+    try (Connection conn = getConnectionBuilder().withTServer(TSERVER_IDX)
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .connect();
+         Statement stmt = conn.createStatement()) {
+        stmt.execute("SELECT setseed(0.5)");
+
+        Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+        testStickyConnections("yugabyte", "yugabyte", 1);
+    }
+  }
+
   @Test
   public void testMultipleStickyConnections() throws Exception {
     // Create a few connections on the Ysql Connection Manager port

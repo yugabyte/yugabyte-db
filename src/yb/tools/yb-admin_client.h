@@ -89,6 +89,9 @@ namespace tools {
 YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
 using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
 
+// Why ForEachLiveTabletServer did not visit a tablet server.
+YB_DEFINE_ENUM(TabletServerSkipReason, (kMarkedDead)(kNoRpcAddress));
+
 // Constants for disabling tablet splitting during PITR restores.
 static constexpr double kPitrSplitDisableDurationSecs = 600;
 static constexpr double kPitrSplitDisableCheckFreqMs = 500;
@@ -230,6 +233,10 @@ class ClusterAdminClient {
 
   // List the log locations of all tablet servers, by uuid
   Status ListTabletServersLogLocations();
+
+  // Close open table readers and clear the RocksDB block cache on every tablet server in the
+  // cluster.
+  Status ClearRocksDBCache();
 
   // List all the tablets a certain tablet server is serving
   Status ListTabletsForTabletServer(const PeerId& ts_uuid);
@@ -453,6 +460,10 @@ class ClusterAdminClient {
   Status ListCDCSDKStreams(const std::string& namespace_name);
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
+
+  Status PrepareReplicationSlotsForTransactionalDDL(const std::string& slot_name);
+
+  Status InvalidateCDCStreamMetadataCaches();
 
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
 
@@ -767,6 +778,18 @@ class ClusterAdminClient {
   Status SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
 
   Result<HostPort> GetFirstRpcAddressForTS();
+
+  // Calls visit for every tablet server the master lists, alive ones first. Tablet servers the
+  // master marks DEAD or that have no RPC address are not visited; on_skip gets the entry and the
+  // reason instead, so one unreachable node does not abort the rest of the cluster. Failures inside
+  // visit are the caller's to report, and the loop continues past them. Fails only if the master
+  // cannot list the tablet servers.
+  Status ForEachLiveTabletServer(
+      const std::function<void(
+          const master::ListTabletServersResponsePB_Entry& server, const HostPort& ts_addr)>& visit,
+      const std::function<void(
+          const master::ListTabletServersResponsePB_Entry& server,
+          TabletServerSkipReason reason)>& on_skip);
 
   void CleanupEnvironmentOnSetupUniverseReplicationFailure(
     const std::string& replication_group_id, const Status& failure_status);

@@ -3804,6 +3804,9 @@ _jumbleIndexScan(YbJumbleState *jstate, Node *node)
 
 	_jumbleYbPushdownExprs(jstate, &(expr->yb_idx_pushdown));
 	_jumbleYbPushdownExprs(jstate, &(expr->yb_rel_pushdown));
+
+	if (expr->yb_merge_scan_info != NULL)
+		JUMBLE_NODE(yb_merge_scan_info);
 }
 
 static void
@@ -3849,6 +3852,37 @@ _jumbleIndexOnlyScan(YbJumbleState *jstate, Node *node)
 	JUMBLE_FIELD(indexorderdir);
 
 	_jumbleYbPushdownExprs(jstate, &(expr->yb_pushdown));
+
+	if (expr->yb_merge_scan_info != NULL)
+		JUMBLE_NODE(yb_merge_scan_info);
+}
+
+static void
+_jumbleYbMergeScanInfo(YbJumbleState *jstate, Node *node)
+{
+	YbMergeScanInfo *expr = (YbMergeScanInfo *) node;
+	JUMBLE_NODE(stream_cols);		/* List of YbMergeScanStreamColInfo */
+	JUMBLE_NODE(sort_cols);
+}
+
+static void
+_jumbleYbSortInfo(YbJumbleState *jstate, Node *node)
+{
+	YbSortInfo *expr = (YbSortInfo *) node;
+	JUMBLE_ARRAY(sortColIdx, expr->numCols);		/* List of YbMergeScanStreamColInfo */
+	JUMBLE_ARRAY(sortOperators, expr->numCols);
+	JUMBLE_ARRAY(collations, expr->numCols);
+	JUMBLE_ARRAY(nullsFirst, expr->numCols);
+}
+
+static void
+_jumbleYbMergeScanStreamColInfo(YbJumbleState *jstate, Node *node)
+{
+	YbMergeScanStreamColInfo *expr = (YbMergeScanStreamColInfo *) node;
+	JUMBLE_NODE(clause);
+	JUMBLE_FIELD(indexcol);
+	JUMBLE_FIELD(num_elems);
+	JUMBLE_FIELD(derived);
 }
 
 static void
@@ -5628,6 +5662,15 @@ YbJumbleNode(YbJumbleState *jstate, Node *node)
 			break;
 		case T_IndexOnlyScan:
 			_jumbleIndexOnlyScan(jstate, expr);
+			break;
+		case T_YbMergeScanInfo:
+			_jumbleYbMergeScanInfo(jstate, expr);
+			break;
+		case T_YbSortInfo:
+			_jumbleYbSortInfo(jstate, expr);
+			break;
+		case T_YbMergeScanStreamColInfo:
+			_jumbleYbMergeScanStreamColInfo(jstate, expr);
 			break;
 		case T_BitmapIndexScan:
 			_jumbleBitmapIndexScan(jstate, expr);

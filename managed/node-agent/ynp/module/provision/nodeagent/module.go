@@ -18,7 +18,12 @@ import (
 	"time"
 )
 
-const ModuleName = "InstallNodeAgent"
+const (
+	ModuleName = "InstallNodeAgent"
+	// Template value holding the payload directory, so that run.j2 reads the files from where
+	// they are written.
+	ybaPayloadDirKey = "yba_payload_dir"
+)
 
 type InstallNodeAgent struct {
 	*config.BaseModule
@@ -326,10 +331,10 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 		if err != nil {
 			return err
 		}
-		instancePayloadFile := filepath.Join(
-			values["tmp_directory"].(string),
-			"create_instance.json",
-		)
+		instancePayloadFile, err := m.ybaPayloadPath(values, "create_instance.json")
+		if err != nil {
+			return err
+		}
 		f, ferr := os.Create(instancePayloadFile)
 		if ferr != nil {
 			return ferr
@@ -451,6 +456,31 @@ func (m *InstallNodeAgent) verifyInstanceTypeMountPaths(
 	return nil
 }
 
+// ybaPayloadDir returns the staging directory for the YBA payload files read by run.j2.
+func (m *InstallNodeAgent) ybaPayloadDir(values map[string]any) string {
+	tmpDir, ok := values["tmp_directory"].(string)
+	if !ok {
+		tmpDir = "/tmp"
+	}
+	userID, ok := values["yb_user_id"].(string)
+	if !ok {
+		userID = "none"
+	}
+	return filepath.Join(tmpDir, "ynp-node-agent-"+userID)
+}
+
+// ybaPayloadPath returns the path of a payload file in the staging directory read by run.j2.
+func (m *InstallNodeAgent) ybaPayloadPath(
+	values map[string]any,
+	fileName string,
+) (string, error) {
+	stagingPath := m.ybaPayloadDir(values)
+	if err := os.MkdirAll(stagingPath, 0750); err != nil {
+		return "", fmt.Errorf("Node agent staging path %s cannot be created: %w", stagingPath, err)
+	}
+	return filepath.Join(stagingPath, fileName), nil
+}
+
 func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
 	filesToRemove := []string{
 		"create_provider.json",
@@ -458,16 +488,15 @@ func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
 		"create_instance.json",
 		"add_node_to_provider.json",
 	}
-	tmpDir, ok := values["tmp_directory"].(string)
-	if !ok {
-		util.ConsoleLogger().Info(ctx,
-			"Config ynp.tmp_directory is not set, skipping cleanup of previous payload files")
-		return
-	}
 	for _, fileName := range filesToRemove {
-		filePath := filepath.Join(tmpDir, fileName)
-		if _, err := os.Stat(filePath); err == nil {
-			os.Remove(filePath)
+		if filePath, err := m.ybaPayloadPath(values, fileName); err == nil {
+			if _, err := os.Stat(filePath); err == nil {
+				os.Remove(filePath)
+			}
+		} else {
+			util.ConsoleLogger().Errorf(ctx,
+				"Failed to clean up previous payload file %s: %v", fileName, err)
+			return
 		}
 	}
 }
@@ -480,6 +509,7 @@ func (m *InstallNodeAgent) RenderTemplates(
 		// Not implemented: call base module's RenderTemplates
 		return nil, nil
 	}
+	values[ybaPayloadDirKey] = m.ybaPayloadDir(values)
 	m.cleanup(ctx, values)
 	provider, err := m.getProvider(ctx, values)
 	if err != nil && err != util.ErrNotExist {
@@ -556,10 +586,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 			config.GetBool(values, "configure_cgroup", true)
 		if !regionExists || !zoneExists || multiTenancyDiff {
 			updateProviderData := m.generateProviderUpdatePayload(values, provider)
-			updateProviderDataFile := filepath.Join(
-				values["tmp_directory"].(string),
-				"update_provider.json",
-			)
+			updateProviderDataFile, err := m.ybaPayloadPath(values, "update_provider.json")
+			if err != nil {
+				return nil, err
+			}
 			f, ferr := os.Create(updateProviderDataFile)
 			if ferr != nil {
 				return nil, ferr
@@ -584,7 +614,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 		if err != nil {
 			return nil, err
 		}
-		providerPayloadFile := filepath.Join(values["tmp_directory"].(string), "create_provider.json")
+		providerPayloadFile, err := m.ybaPayloadPath(values, "create_provider.json")
+		if err != nil {
+			return nil, err
+		}
 		f, ferr := os.Create(providerPayloadFile)
 		if ferr != nil {
 			return nil, ferr
@@ -599,7 +632,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 		if err != nil {
 			return nil, err
 		}
-		instancePayloadFile := filepath.Join(values["tmp_directory"].(string), "create_instance.json")
+		instancePayloadFile, err := m.ybaPayloadPath(values, "create_instance.json")
+		if err != nil {
+			return nil, err
+		}
 		f2, ferr2 := os.Create(instancePayloadFile)
 		if ferr2 != nil {
 			return nil, ferr2
@@ -621,10 +657,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 		nodeAlreadyExists = exists
 	}
 	if !nodeAlreadyExists {
-		addNodePayloadFile := filepath.Join(
-			values["tmp_directory"].(string),
-			"add_node_to_provider.json",
-		)
+		addNodePayloadFile, err := m.ybaPayloadPath(values, "add_node_to_provider.json")
+		if err != nil {
+			return nil, err
+		}
 		f3, ferr3 := os.Create(addNodePayloadFile)
 		if ferr3 != nil {
 			return nil, ferr3

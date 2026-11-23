@@ -649,6 +649,29 @@ Status YBClient::BackfillIndex(const TableId& table_id,
       this, YBTableName(), table_id, deadline, std::move(requester_transaction), wait);
 }
 
+Status YBClient::StartTableBackfill(
+    const TableId& source_table_id, uint32_t target_table_oid,
+    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+    CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  }
+  master::StartTableBackfillRequestPB req;
+  req.mutable_source_table()->set_table_id(source_table_id);
+  req.set_target_table_oid(target_table_oid);
+  req.set_transform_fn_oid(transform_fn_oid);
+  req.set_backfill_timestamp(backfill_timestamp);
+  req.set_pg_job_id(pg_job_id);
+  master::StartTableBackfillResponsePB resp;
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "StartTableBackfill",
+      &MasterDdlProxy::StartTableBackfillAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Status YBClient::GetIndexBackfillProgress(
     const TableIds& index_ids,
     RepeatedField<google::protobuf::uint64>* num_rows_read_from_table_for_backfill,

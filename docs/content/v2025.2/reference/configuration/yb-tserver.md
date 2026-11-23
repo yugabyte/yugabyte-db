@@ -239,6 +239,15 @@ Default: `true`
 
 Disable callhome diagnostics.
 
+##### --stack_trace_symbolize
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+
 ### Metric export flags
 
 YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
@@ -397,6 +406,23 @@ PostgreSQL parameter that sets how often a backend checks whether its client is 
 In YugabyteDB (on Linux), the check also applies while a new connection starts up, including while the backend waits for catalog preload requests. If the client disconnects during startup, for example because its connect timeout expires, the backend exits with `FATAL: connection to client lost` instead of waiting for the preload to finish.
 
 During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
+
+##### yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+
+On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
+
+When set to `false`, every connection fetches the catalog from the YB-Master leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
+
+Set this parameter server-wide, for example using [ysql_pg_conf_csv](#ysql-pg-conf-csv). Changes take effect when the configuration is reloaded, and apply to connections that start after the reload.
+
+See also the [--ysql_yb_enable_stale_catalog_prefetch](#ysql-yb-enable-stale-catalog-prefetch) flag.
 
 ##### enable_bitmapscan
 
@@ -717,6 +743,17 @@ Default: `0`
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
+
 ## Networking
 
 ### RPC and binding addresses
@@ -1009,6 +1046,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
@@ -1631,6 +1682,17 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
+
+##### --ysql_yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+
+See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 
 ##### --ysql_minimal_catalog_caches_preload
 
@@ -3091,6 +3153,23 @@ Specifies the database where pg_cron is to be installed. You can create the data
 The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
+##### --pg_cron_leader_lease_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+The time, in seconds, that the [pg_cron](../../../additional-features/pg-extensions/extension-pgcron/) leader holds its lease.
+
+In v2025.2.9.0 and later, when the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change.
+
+In earlier releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
+
+For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
+
+Set this flag on all YB-TServers. The value must be greater than `--pg_cron_leadership_refresh_sec` (default `10`).
 
 ##### --ysql_output_buffer_size
 

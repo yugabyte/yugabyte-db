@@ -92,7 +92,7 @@ DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
     "substring.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_enable_object_locking_infra);
+DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -466,7 +466,7 @@ bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
          FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
          FLAGS_ysql_yb_ddl_transaction_block_enabled &&
          // ysql_yb_ddl_transaction_block_enabled depends on object locking
-         FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_enable_object_locking_infra;
+         FLAGS_enable_object_locking_for_table_locks && FLAGS_ysql_yb_enable_object_locking_infra;
 }
 
 Status XClusterDDLQueueHandler::ProcessQueriesForCommitTime(const HybridTime& commit_time) {

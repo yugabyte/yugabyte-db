@@ -948,8 +948,7 @@ Status WriteQuery::DoExecute() {
   }
 
   // The request_id field should be populated for all write requests, but any read requests which
-  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id,
-  // and conflict_resolution passes the serial_no to the wait queue as the request_id.
+  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id.
   DCHECK(request().has_request_id() || request().write_batch().write_pairs_size() == 0);
   auto request_id = request().has_request_id() ? request().request_id() : -1;
 

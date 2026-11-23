@@ -51,6 +51,10 @@ extern YbcPgExpr YBCNewTupleExpr(YbcPgStatement ybc_stmt, const YbcPgTypeAttrs *
 extern Expr *YbExprInstantiateExprs(Expr *expr, EState *estate);
 extern YbPushdownExprs *YbInstantiatePushdownExprs(YbPushdownExprs *pushdown,
 												   EState *estate);
+extern void YbResetScanPushdownCxt(MemoryContext cxt);
+extern YbPushdownExprs *YbInstantiateScanPushdownExprs(MemoryContext *cxt,
+													   EState *estate,
+													   YbPushdownExprs *pushdown);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params, Oid relid);
 

@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -22,6 +21,7 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 /*
@@ -73,44 +73,10 @@ func newPostgresDirectories(version string) postgresDirectories {
 // major version upgrades and keep the unversioned directory.
 func postgresDataDir(version string) string {
 	dataDir := common.GetBaseInstall() + "/data/postgres"
-	if major := pgMajorVersion(version); major != 14 {
+	if major := common.PostgresMajorVersion(version); major != 14 {
 		return fmt.Sprintf("%s-%d", dataDir, major)
 	}
 	return dataDir
-}
-
-func pgMajorVersion(version string) int {
-	major, _ := strconv.Atoi(strings.Split(version, ".")[0])
-	return major
-}
-
-// installedDataDir returns the data directory set in the active install's postgresql.conf.
-func installedDataDir() (string, error) {
-	confPath := filepath.Join(common.GetActiveSymlink(), "pgsql/conf/postgresql.conf")
-	contents, err := os.ReadFile(confPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read %s: %w", confPath, err)
-	}
-	// The last setting wins, as it does for postgres.
-	dataDir := ""
-	for _, line := range strings.Split(string(contents), "\n") {
-		if value, found := strings.CutPrefix(line, "data_directory ="); found {
-			dataDir = strings.Trim(strings.TrimSpace(value), "'")
-		}
-	}
-	if dataDir == "" {
-		return "", fmt.Errorf("data_directory is not set in %s", confPath)
-	}
-	return dataDir, nil
-}
-
-// clusterMajorVersion returns the major version from the PG_VERSION file of the cluster in dataDir.
-func clusterMajorVersion(dataDir string) (int, error) {
-	contents, err := os.ReadFile(filepath.Join(dataDir, "PG_VERSION"))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read the postgres version of %s: %w", dataDir, err)
-	}
-	return strconv.Atoi(strings.TrimSpace(string(contents)))
 }
 
 // Component 1: Postgres
@@ -205,8 +171,16 @@ func (pg Postgres) Initialize() error {
 	}
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
-		pg.createTSDatabase()
+		// Before createdb, which refuses to copy a template1 with a stale collation version.
+		if err := pg.refreshCollationVersions(); err != nil {
+			return err
+		}
+		if err := pg.createDatabase("yugaware"); err != nil {
+			return err
+		}
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
 	}
 
 	log.Info("Finishing Postgres initialize")
@@ -403,21 +377,23 @@ func (pg Postgres) Upgrade() error {
 
 	// Needs the installed postgres running, which a major upgrade stops.
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createTSDatabase()
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
 	}
 
-	oldDataDir, err := installedDataDir()
+	oldDataDir, err := common.InstalledPostgresDataDir()
 	if err != nil {
 		return err
 	}
-	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
 	if err != nil {
 		return err
 	}
-	if oldMajorVersion != pgMajorVersion(pg.version) {
+	if oldMajorVersion != common.PostgresMajorVersion(pg.version) {
 		if strings.Compare(oldDataDir, pg.dataDir) == 0 {
 			return fmt.Errorf("cannot upgrade postgres from %d to %d in existing data directory %s",
-				oldMajorVersion, pgMajorVersion(pg.version), pg.dataDir)
+				oldMajorVersion, common.PostgresMajorVersion(pg.version), pg.dataDir)
 		}
 		if err := pg.majorversionUpgradeDataDir(oldDataDir); err != nil {
 			return err
@@ -536,15 +512,15 @@ func (pg Postgres) removeOldDataDirs(activeDataDir string) error {
 
 // MaybeVacuumStats must be called before updating active symlink on upgrade
 func (pg Postgres) MaybeVacuumStats() error {
-	oldDataDir, err := installedDataDir()
+	oldDataDir, err := common.InstalledPostgresDataDir()
 	if err != nil {
 		return err
 	}
-	oldMajorVersion, err := clusterMajorVersion(oldDataDir)
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
 	if err != nil {
 		return err
 	}
-	if oldMajorVersion == pgMajorVersion(pg.version) {
+	if oldMajorVersion == common.PostgresMajorVersion(pg.version) {
 		log.Debug("Skipping vacuumdb stats because major version did not change")
 		return nil
 	}
@@ -620,7 +596,9 @@ func (pg Postgres) replicatedMigrateStep2() error {
 	pg.Start()
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
+		if err := pg.createDatabase("yugaware"); err != nil {
+			log.Fatal(err.Error())
+		}
 	}
 	return nil
 }
@@ -653,9 +631,16 @@ func (pg Postgres) runInitDB() error {
 		"--locale=" + viper.GetString("postgres.install.locale"),
 	}
 	// pg_upgrade requires matching data checksum settings, and initdb enables them by default from
-	// PostgreSQL 18. Keep them off to match clusters created by earlier versions.
-	if pgMajorVersion(pg.version) >= 18 {
-		initDbArgs = append(initDbArgs, "--no-data-checksums")
+	// PostgreSQL 18. An install whose first cluster predates 18 has them off, and every cluster
+	// pg_upgrade later moves it into has to keep them off.
+	if common.PostgresMajorVersion(pg.version) >= 18 {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			return fmt.Errorf("failed to load state to choose data checksums: %w", err)
+		}
+		if state.Postgres.InitialMajorVersion < 18 {
+			initDbArgs = append(initDbArgs, "--no-data-checksums")
+		}
 	}
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres
@@ -828,52 +813,85 @@ func (pg Postgres) copyConfFiles() error {
 	return nil
 }
 
-func (pg Postgres) createTSDatabase() {
-	cmd := pg.PgBin + "/createdb"
+// psql runs each statement in database db of the installed postgres, stopping at the first error.
+func (pg Postgres) psql(db string, statements ...string) *shell.Output {
 	args := []string{
-		"-h", pg.MountPath,
-		"-U", pg.getPgUserName(),
+		"-d", db,
+		"-h", "localhost",
 		"-p", viper.GetString("postgres.install.port"),
-		common.PerfAdvisorDBName,
+		"-U", pg.getPgUserName(),
+		"-qAtX", "-v", "ON_ERROR_STOP=1",
 	}
-	var out *shell.Output
-	if common.HasSudoAccess() {
-		// RUns as service user
-		// This is needed for the ts db to be created in the right location
-		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
-	} else {
-		out = shell.Run(cmd, args...)
+	for _, sql := range statements {
+		args = append(args, "-c", sql)
 	}
-	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create ts database: %s", out.Error.Error()))
-	}
+	return shell.Run(filepath.Join(pg.PgBin, "psql"), args...)
 }
 
-func (pg Postgres) createYugawareDatabase() {
+// createDatabase creates database name unless it already exists, as it does after a resumed
+// install, an upgrade, or a data volume moved over from another host. Letting createdb fail with
+// "already exists" is not enough: it checks template1's collation version first.
+func (pg Postgres) createDatabase(name string) error {
+	out := pg.psql("postgres", "SELECT 1 FROM pg_database WHERE datname = "+common.PgQuoteLiteral(name))
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check for postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
+	}
+	if strings.TrimSpace(out.StdoutString()) == "1" {
+		log.Debug("postgres database " + name + " already exists")
+		return nil
+	}
+
 	cmd := pg.PgBin + "/createdb"
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
 		"-p", viper.GetString("postgres.install.port"),
-		"yugaware",
+		name,
 	}
-	var out *shell.Output
 	if common.HasSudoAccess() {
 		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
 	} else {
 		out = shell.Run(cmd, args...)
 	}
 	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
+		return fmt.Errorf("could not create postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
 	}
+	return nil
+}
+
+// refreshCollationVersions rebuilds the indexes of each database whose recorded collation version
+// differs from the one the OS provides now, then records the new version. For a libc locale that
+// version is the glibc version, so it changes when the data directory moves to a host with a
+// different glibc (RHEL 8 to 9). Text indexes built under the old sort rules can silently miss rows
+// or admit duplicates until rebuilt, and postgres refuses to create a database from a template1
+// whose version is stale.
+func (pg Postgres) refreshCollationVersions() error {
+	// postgres records collation versions per database from 15 on.
+	if common.PostgresMajorVersion(pg.version) < 15 {
+		return nil
+	}
+	out := pg.psql("postgres", "SELECT datname FROM pg_database WHERE datallowconn AND "+
+		"datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)")
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check postgres database collation versions: %w: %s",
+			out.Error, out.StderrString())
+	}
+	for db := range strings.SplitSeq(strings.TrimSpace(out.StdoutString()), "\n") {
+		if db == "" {
+			continue
+		}
+		log.Info("Rebuilding the indexes of postgres database " + db + " because the OS collation " +
+			"version changed. This can take a while for a large database.")
+		quoted := common.PgQuoteIdent(db)
+		if out := pg.psql(db, "REINDEX DATABASE "+quoted,
+			"ALTER DATABASE "+quoted+" REFRESH COLLATION VERSION"); !out.Succeeded() {
+			return fmt.Errorf("failed to rebuild indexes of postgres database %s for its new collation "+
+				"version: %w: %s", db, out.Error, out.StderrString())
+		}
+	}
+	return nil
 }
 
 func (pg Postgres) createFilesAndDirs() error {

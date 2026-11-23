@@ -164,7 +164,8 @@ typedef struct
 
 StaticAssertDecl(BACKEND_NUM_TYPES < 32, "too many backend types for uint32");
 
-static const BackendTypeMask BTYPE_MASK_ALL = {(1 << BACKEND_NUM_TYPES) - 1};
+/* YB: unsigned shift, since YB's BACKEND_NUM_TYPES can be 31 */
+static const BackendTypeMask BTYPE_MASK_ALL = {(1U << BACKEND_NUM_TYPES) - 1};
 static const BackendTypeMask BTYPE_MASK_NONE = {0};
 
 static inline BackendTypeMask
@@ -3314,7 +3315,8 @@ PostmasterStateMachine(void)
 								YB_RELCACHE_INIT_BACKEND,
 								YB_GLOBAL_VIEW_BACKEND,
 								YB_XCLUSTER_DDL_QUEUE_BACKEND,
-								YB_XCLUSTER_SETUP_BACKEND);
+								YB_XCLUSTER_SETUP_BACKEND,
+								YB_OSC_BACKFILL_BACKEND);
 
 		/*
 		 * No walwriter, bgwriter, slot sync worker, or WAL summarizer either.

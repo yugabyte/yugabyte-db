@@ -156,6 +156,7 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscTransform
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState

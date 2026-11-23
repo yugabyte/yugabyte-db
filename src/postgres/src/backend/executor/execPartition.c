@@ -1244,7 +1244,8 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 		partRelInfo->ri_BatchSize = 1;
 
 	/* YB: also handle YB insert on conflict read batching. */
-	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
+	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo,
+												 mtstate->yb_ioc_batch_size))
 		partRelInfo->ri_ybIocBatchingPossible = true;
 
 	/*

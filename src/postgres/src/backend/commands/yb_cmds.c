@@ -605,7 +605,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									/* belongs_to_yb_system_db= */ false);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		yb_enable_colocated_tables_with_tablespaces;
 
 	char	   *db_name = get_database_name(databaseId);
 	char	   *schema_name = stmt->relation->schemaname;
@@ -2375,7 +2375,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 				 errmsg("all replication slots are in use"),
-				 errhint("Free one or increase max_replication_slots.")));
+				 errhint("Free one or increase gflag \"--max_replication_slots\" "
+						 "on master and tserver.")));
 	}
 
 	if (yb_publication_name != NULL && YBCStatusIsNotSupported(status))

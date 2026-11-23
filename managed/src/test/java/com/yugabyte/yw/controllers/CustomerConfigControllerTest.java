@@ -18,9 +18,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
@@ -44,6 +46,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -53,7 +56,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -239,6 +246,54 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListStorageConfigUsageFromBackups() {
+    UUID usedConfigUuid =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "USED").getConfigUUID();
+    UUID unusedConfigUuid =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "UNUSED").getConfigUUID();
+    Universe universe1 = ModelFactory.createUniverse("universe-1", defaultCustomer.getId());
+    Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getId());
+    Universe universe3 = ModelFactory.createUniverse("universe-3", defaultCustomer.getId());
+    UUID customerUuid = defaultCustomer.getUuid();
+    // Two completed backups of the same universe must produce a single universe entry.
+    ModelFactory.createBackup(customerUuid, universe1.getUniverseUUID(), usedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+    ModelFactory.createBackup(customerUuid, universe1.getUniverseUUID(), usedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+    // In-progress backups count as usage.
+    ModelFactory.createBackup(customerUuid, universe2.getUniverseUUID(), usedConfigUuid);
+    // Failed backups don't.
+    ModelFactory.createBackup(customerUuid, universe3.getUniverseUUID(), unusedConfigUuid)
+        .transitionState(Backup.BackupState.Failed);
+    // Backups of a universe that no longer exists don't either.
+    ModelFactory.createBackup(customerUuid, UUID.randomUUID(), unusedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+
+    String url = "/api/customers/" + customerUuid + "/configs";
+    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    assertOk(result);
+    Map<String, JsonNode> configsByUuid = new HashMap<>();
+    Json.parse(contentAsString(result))
+        .forEach(config -> configsByUuid.put(config.get("configUUID").asText(), config));
+
+    JsonNode usedConfig = configsByUuid.get(usedConfigUuid.toString());
+    assertTrue(usedConfig.get("inUse").asBoolean());
+    Set<String> usedUniverseUuids = new HashSet<>();
+    usedConfig
+        .get("universeDetails")
+        .forEach(universe -> usedUniverseUuids.add(universe.get("uuid").asText()));
+    assertEquals(2, usedConfig.get("universeDetails").size());
+    assertEquals(
+        Set.of(universe1.getUniverseUUID().toString(), universe2.getUniverseUUID().toString()),
+        usedUniverseUuids);
+
+    JsonNode unusedConfig = configsByUuid.get(unusedConfigUuid.toString());
+    assertFalse(unusedConfig.get("inUse").asBoolean());
+    assertEquals(0, unusedConfig.get("universeDetails").size());
+    assertAuditEntry(0, customerUuid);
+  }
+
+  @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9").getConfigUUID();
 
@@ -391,6 +446,23 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
     assertEquals(String.format(BACKUPS_BEING_DELETED, config.getConfigName()), e.getMessage());
+    assertNotNull(CustomerConfig.get(config.getConfigUUID()));
+  }
+
+  @Test
+  public void testServiceDeleteRefusedWithInProgressBackup() {
+    // The HTTP delete rejects running backups before validation; the service delete doesn't.
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
+    ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), config.getConfigUUID());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .contains(
+                "Configuration " + config.getConfigName() + " is used in backup and can't be"));
     assertNotNull(CustomerConfig.get(config.getConfigUUID()));
   }
 

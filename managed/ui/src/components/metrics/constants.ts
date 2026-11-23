@@ -429,17 +429,26 @@ export const MASTER_DISK_IO_METRIC_KEYS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Returns the metric keys to query for a tab, adjusted for Kubernetes universes and for master
- * servers.
+ * Returns the metric keys to query for a tab, adjusted for Kubernetes universes, for master
+ * servers, and for whether YBA scrapes the node_exporter sidecar.
  */
-export const metricsForTab = (type: string, isKubernetes: boolean, isMaster: boolean): string[] => {
+export const metricsForTab = (
+  type: string,
+  isKubernetes: boolean,
+  isMaster: boolean,
+  isSidecarScraped: boolean
+): string[] => {
   const tab = (MetricTypesWithOperations as Record<string, { metrics: readonly string[] }>)[type];
   let metrics: string[] = [...tab.metrics];
   if (isKubernetes) {
     metrics = metrics
-      .filter((metric) => !METRICS_UNAVAILABLE_ON_KUBERNETES.includes(metric))
+      .filter((metric) => {
+        const isMetricAvailableOnK8s = !METRICS_UNAVAILABLE_ON_KUBERNETES.includes(metric);
+        const isSidecarMetric = Object.hasOwn(NODE_EXPORTER_PANEL_SOURCES, metric);
+        return isMetricAvailableOnK8s && (isSidecarScraped || !isSidecarMetric);
+      })
       .map((metric) => KUBERNETES_METRIC_KEYS[metric] ?? metric);
-    if (type === MetricTypes.SERVER) {
+    if (type === MetricTypes.SERVER && isSidecarScraped) {
       metrics.push(NODE_EXPORTER_MEMORY_METRIC_KEY);
     }
   }
