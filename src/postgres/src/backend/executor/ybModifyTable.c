@@ -32,6 +32,7 @@
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_auth_members_d.h"
 #include "catalog/pg_authid_d.h"
@@ -1752,6 +1753,33 @@ YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo)
 	}
 
 	return count;
+}
+
+/*
+ * Returns whether inserting a row writes exactly one entry to each secondary
+ * index.
+ */
+bool
+YbSecondaryIndicesGetOneEntryPerRow(ResultRelInfo *resultRelInfo)
+{
+	for (int i = 0; i < resultRelInfo->ri_NumIndices; i++)
+	{
+		Relation	index = resultRelInfo->ri_IndexRelationDescs[i];
+		IndexInfo  *indexInfo = resultRelInfo->ri_IndexRelationInfo[i];
+
+		if (index->rd_index->indisprimary)
+			continue;
+
+		/*
+		 * Partial and not-yet-ready indexes skip rows, ybgin writes one entry
+		 * per key, and DocDB writes ybhnsw entries along with the row.
+		 */
+		if (indexInfo->ii_Predicate != NIL || !indexInfo->ii_ReadyForInserts ||
+			indexInfo->ii_Am != LSM_AM_OID)
+			return false;
+	}
+
+	return true;
 }
 
 /*
