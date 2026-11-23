@@ -7330,7 +7330,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentSt
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -7452,6 +7451,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
 // from the stream metadata it cached until prepare_replication_slots_for_transactional_ddl adds the
 // tables and invalidates it on every master.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDdl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -7541,6 +7541,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDd
 // A paused pub-refresh slot is converted to an implicit slot, which then decodes DDL committed
 // while it was paused from the sys catalog. A pub-refresh slot that wasn't paused becomes unusable.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotToImplicit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -7629,6 +7630,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
 // Releasing a paused slot lets it stream as a pub-refresh slot again. A paused slot whose catalog
 // barrier expired becomes unusable instead of being converted.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefreshSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -7683,6 +7685,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
 // A converted slot whose consumer resumes after cdc_intent_retention_ms fails VWAL init, on the
 // user tablets idle since the pause and on the sys catalog tablet idle since prepare.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsumerResumesLate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
@@ -7733,6 +7736,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
 // the slot was created with. The raised cdc_intent_retention_ms is what keeps the barriers alive.
 void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAndHistory(
     bool pub_refresh) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   const auto initial_retention = MonoDelta::FromSeconds(10) * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = initial_retention.ToMilliseconds();
@@ -7871,7 +7875,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStoppedImplicitSlotRetention)
 // subtransaction rolled back to a savepoint are still in the intents DB, so the response carries
 // the aborted subtransactions of such a transaction for the walsender to skip them (#36047).
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
@@ -7950,7 +7953,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTran
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectColumnRenameAndTypeChangeFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -8010,7 +8012,6 @@ TEST_F(
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestVWALDetectTableRenameAndSchemaChangeFromPgCatalog) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -8069,7 +8070,6 @@ TEST_F(
 // Verifies that an ALTER PUBLICATION ADD TABLE mid-txn ends the GetConsistentChanges response at
 // the publication refresh signal, without shipping DMLs that follow the alter in the same txn.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnAlterPublication) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
@@ -8175,7 +8175,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnA
 // publication refresh signal, without shipping DMLs that follow the create in the same txn.
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestVWALPubRefreshCutsResponseOnCreateTableAllTables) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
