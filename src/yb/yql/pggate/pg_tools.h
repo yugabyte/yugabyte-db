@@ -35,6 +35,8 @@
 
 #include "yb/common/transaction.pb.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
@@ -187,6 +189,12 @@ struct YbctidBatch {
 
 Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid);
 
+// Builds the DocKey of the rows whose key columns have the given values. hashed_values are the
+// values of hashed_components, the hash code is computed from them.
+Result<dockv::DocKey> BuildDocKey(
+    const dockv::PartitionSchema& partition_schema, dockv::KeyEntryValues hashed_components,
+    const LWQLValuePB* const* hashed_values, dockv::KeyEntryValues range_components);
+
 struct BufferingSettings {
   size_t max_batch_size;
   size_t max_in_flight_operations;
@@ -233,6 +241,18 @@ class TableLocalityMap {
 };
 
 bool SkipIntents(const PgsqlOp& op);
+
+// The skip intents decisions for the request to an index, given the ones taken for its table.
+//
+// A read of an index never skips the intents db, so that it carries the transaction's metadata:
+// while an index created in a transaction block is not committed, the tserver serves it only to
+// the transaction that created it (IndexInfoPB.birth_time_pending_txn_id), and the metadata is
+// how it tells. The read still sees the rows a skip intents write left in the regular db,
+// because that depends on read_at_in_txn_limit alone.
+inline YbcPgSkipIntentsOptimizationInfo IndexSkipIntentsInfo(
+    const YbcPgSkipIntentsOptimizationInfo& table_info) {
+  return {.skip_intents = false, .read_at_in_txn_limit = table_info.read_at_in_txn_limit};
+}
 
 // Records both skip intents optimization decisions on a read or write request.
 template <class ReqPB>

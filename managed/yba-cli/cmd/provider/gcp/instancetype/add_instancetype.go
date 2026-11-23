@@ -16,7 +16,8 @@ var addInstanceTypesCmd = &cobra.Command{
 	Use:     "add",
 	Aliases: []string{"create"},
 	Short:   "Add an instance type to YugabyteDB Anywhere GCP provider",
-	Long:    "Add an instance type to YugabyteDB Anywhere GCP provider",
+	Long: "Add an instance type to YugabyteDB Anywhere GCP provider. " +
+		"If the instance type exists, it is updated and unset flags keep their current values.",
 	Example: `yba provider gcp instance-type add \
 	--name <provider-name> --instance-type-name <instance-type>\
 	--volume mount-points=<mount-point>::size=<size>::type=<volume-type>`,

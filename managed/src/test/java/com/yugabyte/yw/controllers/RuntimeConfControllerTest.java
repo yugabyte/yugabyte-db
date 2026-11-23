@@ -38,6 +38,7 @@ import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -508,6 +509,16 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
     return route(request);
+  }
+
+  @Test
+  public void gflagsApiRedactionFollowsItsKey() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    assertTrue(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    assertEquals(OK, setKey(key, "false", GLOBAL_SCOPE_UUID).status());
+    assertFalse(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    assertEquals(OK, setKey(key, "true", GLOBAL_SCOPE_UUID).status());
+    assertTrue(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
   }
 
   @Test

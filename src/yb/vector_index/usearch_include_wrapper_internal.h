@@ -86,3 +86,14 @@
 #include "usearch/index_dense.hpp"
 
 #pragma GCC diagnostic pop
+
+namespace yb::vector_index {
+
+// Distance between the vectors whose coordinates start at lhs and rhs.
+inline unum::usearch::metric_punned_t::result_t MetricDistance(
+    const unum::usearch::metric_punned_t& metric, const void* lhs, const void* rhs) {
+  using unum::usearch::byte_t;
+  return metric(static_cast<const byte_t*>(lhs), static_cast<const byte_t*>(rhs));
+}
+
+}  // namespace yb::vector_index

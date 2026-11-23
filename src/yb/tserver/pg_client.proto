@@ -86,6 +86,8 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
+  rpc RestartTransactionForRetry(PgRestartTransactionForRetryRequestPB)
+      returns (PgRestartTransactionForRetryResponsePB);
 
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
@@ -858,7 +860,6 @@ message PgPerformOpPB {
 
 enum ReadTimeManipulation {
   NONE = 0;
-  RESTART = 1;
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
@@ -903,7 +904,6 @@ message PgPerformOptionsPB {
   message ReadTimeOptionsPB {
     uint64 read_time_serial_no = 1;
     uint64 read_time_serial_no_history_min = 2;
-    bool restart_transaction = 3;
     bool defer_read_point = 4;
     ReadTimeManipulation read_time_manipulation = 5;
     ReadHybridTimePB read_time = 6;
@@ -913,6 +913,11 @@ message PgPerformOptionsPB {
     // See the commit desc for more info.
     bool clamp_uncertainty_window = 7;
     OptionalUint32PB follower_read_staleness_ms = 8;
+    // While a statement is retried after a read restart, read points picked for it get a global
+    // limit no later than this, so the retry's uncertainty windows shrink and it converges.
+    fixed64 global_limit_cap_ht = 9;
+    // Per-tablet counterpart of global_limit_cap_ht, keyed by tablet id.
+    map<string, fixed64> local_limit_caps = 10;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -947,7 +952,9 @@ message PgPerformOptionsPB {
 
   uint32 xrepl_origin_id = 31;
 
-  bool is_using_table_locks = 32;
+  // The transaction runs with global object locking: its DDLs take global object locks, while the
+  // transaction itself may hold only local locks, as a DML-only transaction does.
+  bool using_table_locks_globally = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
 
@@ -981,6 +988,12 @@ message PgPerformOptionsPB {
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
 
+  // The transaction takes object locks, at least local ones; PgSession::AcquireObjectLock says why
+  // a transaction without global object locks takes them. Its fast path writes carry the lock
+  // owner, or the deadlock detector misses a cycle between a row lock wait and an object lock wait
+  // (#37328).
+  bool using_table_locks_locally = 42;
+
   // Every round of a connection start's prefetch carries this. It keeps the database counted
   // busy across the prefetch's requests rather than only while one of them is in flight, so a
   // connection arriving meanwhile -- seconds of CPU building a relcache, with nothing
@@ -994,7 +1007,7 @@ message PgPerformOptionsPB {
   //
   // Here rather than in caching_info because a prefetch reading without the cache sends no
   // caching info and still carries this.
-  bool part_of_connection_prefetch = 42;
+  bool part_of_connection_prefetch = 43;
 
   // The last request of that prefetch, carried by every round of it, so the round that ends the
   // prefetch is the one that also runs out of paging state. That round releases the count. Where
@@ -1007,7 +1020,7 @@ message PgPerformOptionsPB {
   // reads every request back, so a partial set would send it to the master leader anyway. The
   // small prefetches elsewhere -- the pre-auth pair of tables, the few read after a relcache
   // preload -- do not carry it, so no version is recorded from them.
-  bool completes_connection_prefetch = 43;
+  bool completes_connection_prefetch = 44;
 }
 
 message PgRequestSequenceNumPB {
@@ -1053,6 +1066,29 @@ message PgRollbackToSubTransactionRequestPB {
 
 message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgRestartTransactionForRetryRequestPB {
+  enum Kind {
+    // Retries of errors other than read restarts (conflicts, deadlocks, aborts): set up the session
+    // as the options dictate, where pggate's bumped txn_serial_no replaces the transaction.
+    DEFAULT = 0;
+    // Replace the distributed transaction with a new one, keeping the txn_serial_no.
+    REPLACE_DIST_TRANSACTION_ONLY = 1;
+    // Only return the limits of the read point that faced the restart; used by READ COMMITTED
+    // statement retries, which don't restart the transaction.
+    FETCH_GLOBAL_LOCAL_LIMITS_ONLY = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  Kind kind = 3;
+}
+
+message PgRestartTransactionForRetryResponsePB {
+  AppStatusPB status = 1;
+  // Global and per-tablet local limits of the plain session's read point before the restart.
+  fixed64 global_limit_ht = 2;
+  map<string, fixed64> local_limits = 3;
 }
 
 message PgTabletServerCountRequestPB {
@@ -1106,8 +1142,8 @@ message PgInsertSequenceTupleRequestPB {
   bool is_called = 6;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 9;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 10;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 10;
 }
 
 message PgInsertSequenceTupleResponsePB {
@@ -1127,8 +1163,8 @@ message PgUpdateSequenceTupleRequestPB {
   bool expected_is_called = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 13;
 }
 
 message PgUpdateSequenceTupleResponsePB {
@@ -1153,8 +1189,8 @@ message PgFetchSequenceTupleRequestPB {
   bool cycle = 9;
   reserved 11; // ASH metadata is now passed in RequestHeader PB
   fixed64 origination_ht = 12;
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 13;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 13;
 }
 
 message PgFetchSequenceTupleResponsePB {
@@ -1171,8 +1207,8 @@ message PgReadSequenceTupleRequestPB {
   uint64 ysql_db_catalog_version = 5;
   uint64 read_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
-  // See PgsqlWriteRequestPB::is_using_table_locks.
-  bool is_using_table_locks = 8;
+  // See PgsqlWriteRequestPB::using_table_locks_globally.
+  bool using_table_locks_globally = 8;
 }
 
 message PgReadSequenceTupleResponsePB {

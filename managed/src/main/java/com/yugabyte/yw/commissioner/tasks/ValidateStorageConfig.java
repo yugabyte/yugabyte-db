@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.StorageCheckRunner;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -84,7 +86,7 @@ public class ValidateStorageConfig extends AbstractTaskBase {
             Code.INTERNAL_ERROR,
             "The storage config to validate is no longer available. Validate it again.");
       }
-      check(config);
+      checkStorage(checkRunner, configValidator, confGetter, config, null);
     } finally {
       unsavedConfigs.remove(params().configUUID);
     }
@@ -97,7 +99,7 @@ public class ValidateStorageConfig extends AbstractTaskBase {
           Code.INTERNAL_ERROR, "Storage config " + params().configUUID + " no longer exists");
     }
     try {
-      check(config);
+      checkStorage(checkRunner, configValidator, confGetter, config, null);
     } catch (RuntimeException e) {
       deleteIfValidating(config);
       throw e;
@@ -134,10 +136,28 @@ public class ValidateStorageConfig extends AbstractTaskBase {
     }
   }
 
-  private void check(CustomerConfig config) {
+  /**
+   * Runs the storage validators on {@code config}, on the runner's pool with a deadline, as a new
+   * config or, with {@code saved}, as an edit of it. A failure is thrown as the task error, with
+   * the v2 error code first in its message.
+   */
+  static void checkStorage(
+      StorageCheckRunner checkRunner,
+      CustomerConfigValidator configValidator,
+      RuntimeConfGetter confGetter,
+      CustomerConfig config,
+      @Nullable CustomerConfig saved) {
     Duration timeout = confGetter.getGlobalConf(GlobalConfKeys.storageConfigValidationTimeout);
     try {
-      checkRunner.run(() -> configValidator.validateConfigDataWithValidator(config), timeout);
+      checkRunner.run(
+          () -> {
+            if (saved == null) {
+              configValidator.validateConfigDataWithValidator(config);
+            } else {
+              configValidator.validateConfigDataWithValidator(config, saved);
+            }
+          },
+          timeout);
     } catch (RejectedExecutionException e) {
       throw new TaskExecutionException(
           Code.INTERNAL_ERROR,

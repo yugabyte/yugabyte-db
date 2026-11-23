@@ -9,6 +9,13 @@ CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 3, "placement
 
 CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 3, "placement_blocks" : [{"cloud" : "cloud1", "region" : "region3", "zone" : "zone1", "min_num_replicas" : 1}, {"cloud" :  "cloud1", "region": "region3", "zone" : "zone2", "min_num_replicas" : 1}, {"cloud" : "cloud1", "region": "region3", "zone" : "zone3", "min_num_replicas" : 1}]}');
 
+-- default_tablespace must not put the default tablegroup in a tablespace
+SET default_tablespace = tsp1;
+CREATE TABLE in_pg_default (a int) TABLESPACE pg_default;
+RESET default_tablespace;
+SELECT grpname, grptablespace FROM pg_yb_tablegroup;
+DROP TABLE in_pg_default;
+
 -- Should succeed in creating colocated partitioned tables with tablespace
 CREATE TABLE partitioned_table (name varchar, region varchar, PRIMARY KEY(name, region)) PARTITION BY LIST(region);
 CREATE TABLE partition_in_dc1 PARTITION OF partitioned_table FOR VALUES IN ('region1') TABLESPACE tsp1;
@@ -21,7 +28,7 @@ SELECT COUNT(*) FROM pg_tablespace;
 -- The created implicit tablegroups must use the specified tablespaces
 SELECT y.spcname FROM pg_tablespace as y JOIN pg_yb_tablegroup as x ON x.grptablespace = y.oid;
 DROP TABLE partitioned_table;
--- Implicit tablegroups must be deleted since it has no tables
+-- The tablespace tablegroups must be deleted since they have no tables, the default one stays
 SELECT COUNT(*) FROM pg_yb_tablegroup;
 
 -- Test non-colocated children tables of a partitioned table
@@ -287,6 +294,11 @@ DROP TABLE table3;
 CREATE TABLE table1(a int);
 SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
 CREATE TABLE table2(a int) TABLESPACE pg_default;
+SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
+-- The same holds for indexes, however many there are
+CREATE INDEX index1 ON table2(a) TABLESPACE pg_default;
+CREATE INDEX index2 ON table2(a) TABLESPACE pg_default;
+ALTER TABLE table2 ADD CONSTRAINT table2_a_key UNIQUE (a) USING INDEX TABLESPACE pg_default;
 SELECT grpname, grpowner, grptablespace, grpacl, grpoptions FROM pg_yb_tablegroup;
 DROP TABLE table1;
 DROP TABLE table2;

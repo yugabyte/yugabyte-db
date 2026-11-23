@@ -619,6 +619,26 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateCredentialsFileOverwritesReadOnlyFile() throws IOException {
+    ObjectMapper mapper = Json.mapper();
+    String configFile =
+        accessManager.createGCPCredentialsFile(
+            defaultProvider.getUuid(), mapper.writeValueAsString(Map.of("foo", "old")));
+    // Simulate a file restored from the DB by an older YBA as read-only.
+    Files.setPosixFilePermissions(
+        Paths.get(configFile), PosixFilePermissions.fromString("r--------"));
+
+    accessManager.createGCPCredentialsFile(
+        defaultProvider.getUuid(), mapper.writeValueAsString(Map.of("foo", "new")));
+
+    assertEquals(
+        Map.of("foo", "new"), accessManager.readCredentialsFromFile(defaultProvider.getUuid()));
+    assertEquals(
+        "rw-------",
+        PosixFilePermissions.toString(Files.getPosixFilePermissions(Paths.get(configFile))));
+  }
+
+  @Test
   public void testReadCredentialsFromFile() throws IOException {
     ObjectMapper mapper = Json.mapper();
     Map<String, String> inputConfig = new HashMap<>();
