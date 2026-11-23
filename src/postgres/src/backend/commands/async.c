@@ -3517,25 +3517,17 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
 }
 
 /*
- * Exit the poller after an error, to be restarted. It resumes from the slot's
- * restart LSN, which advances only after a transaction is written to the
- * queue, and listeners skip replayed entries, so they see only a delay.
+ * Exit to be restarted; the poller resumes from the slot's restart LSN, so
+ * listeners see only a delay. On a permanent error, or once restarts have kept
+ * failing for yb_notifications_poller_retry_timeout_ms, terminate the
+ * listeners instead.
  *
- * On a permanent error, or once restarts have kept failing for
- * yb_notifications_poller_retry_timeout_ms, terminate the node's listeners
- * instead and refuse new LISTENs until they are gone.
+ * A run of failures ends when a poller acks or stays up for the timeout. An
+ * error-free read doesn't count, as a stuck poller can read nothing before it
+ * fails. An idle poller never acks, so errors on an idle node can add up.
  *
- * A run of failed restarts ends when a poller acks a transaction or stays up
- * for the timeout. An error-free read doesn't count: a poller stuck on one
- * transaction can read nothing before reaching it, every time.
- *
- * An idle poller never acks, so it looks like a failing one. Hence a poller
- * up for less than the timeout terminates the listeners on one error if its
- * run began more than the timeout ago, and a failure more than the timeout
- * into every run restarts indefinitely, at most once per timeout.
- *
- * Caller holds NotifyQueueLock exclusively and has checked that this poller
- * is not stale. This releases the lock.
+ * Caller holds NotifyQueueLock exclusively and has checked that the poller
+ * isn't stale; this releases the lock.
  */
 static void
 ybNotifsPollerExitOnError(const ErrorData *edata)
@@ -3565,7 +3557,6 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	/* Listeners and refused LISTENs report error_message. */
 	if (permanent)
 		strlcpy(message, edata->message, sizeof(message));
 	else
