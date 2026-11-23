@@ -37,6 +37,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3701,6 +3702,10 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		if (index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{
