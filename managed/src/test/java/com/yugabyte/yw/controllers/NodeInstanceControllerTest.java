@@ -32,6 +32,8 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -293,6 +295,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetNodeDetailsK8sRedactsLdapSecretsInLiveHelmValues() {
+    // Off by default on this branch.
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
     Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
     when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
         .thenReturn(
