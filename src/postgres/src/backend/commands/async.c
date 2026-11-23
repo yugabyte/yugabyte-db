@@ -606,11 +606,9 @@ static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 typedef struct YbNotifsPollerPendingEntry
 {
 	AsyncQueueEntry qe;
-	/* sort keys, see ybNotifsPollerPendingEntryCmp */
-	int			run_start;
-	int32		seq;
-	/* the sending backend's node; with qe.srcPid, identifies the sender */
+	/* sort keys with qe.srcPid, see ybNotifsPollerPendingEntryCmp */
 	char		sender_node[UUID_LEN];
+	int32		seq;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -3673,44 +3671,26 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	YbNotifsPollerPendingEntry *entry =
 		palloc0(sizeof(YbNotifsPollerPendingEntry));
-	int			position = list_length(ybNotifsPollerPendingEntries);
 
 	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq,
 							  entry->sender_node);
-	entry->run_start = -1;
-	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT)
-	{
-		const YbNotifsPollerPendingEntry *prev =
-			position > 0 ? llast(ybNotifsPollerPendingEntries) : NULL;
-
-		if (prev != NULL && prev->run_start >= 0 &&
-			prev->qe.srcPid == entry->qe.srcPid &&
-			memcmp(prev->sender_node, entry->sender_node, UUID_LEN) == 0)
-			entry->run_start = prev->run_start;
-		else
-			entry->run_start = position;
-
-		/* A row from an older writer has no seq: keep its arrival position. */
-		if (entry->seq < 0)
-			entry->seq = position;
-	}
+	/* A row from an older writer has no seq: keep its arrival position. */
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT && entry->seq < 0)
+		entry->seq = list_length(ybNotifsPollerPendingEntries);
 	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, entry);
 	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
  * Orders a transaction's pending entries as the sending backends issued them,
- * see YB_NOTIF_SEQ_KEY. The BEGIN entry has run_start and seq -1, and so stays
+ * see YB_NOTIF_SEQ_KEY. The BEGIN entry, the only one with seq -1, stays
  * first.
  *
  * The virtual WAL streams DocDB transactions that commit at the same hybrid
- * time as one transaction, each one's rows together and ordered by DocDB
- * transaction id. Each sender numbers its notifications from 0, so sort by
- * the arrival position of the sender's first row (run_start) first, to keep
- * each sender's notifications together and in the virtual WAL's order. This
- * branch's virtual WAL records carry no DocDB transaction id, so the sender
- * (node, pid) stands in for it: a backend's next transaction starts after its
- * previous one commits, so the two never share a commit time.
+ * time as one transaction. Each sender numbers its notifications from 0, so
+ * sort by sender (node, pid) first to keep each sender's notifications
+ * together. A backend's next transaction starts after its previous one
+ * commits, so one batch never holds two transactions of the same sender.
  *
  * All rows of one sender carry a seq, or (older writer) none do and the
  * arrival positions keep the order.
@@ -3723,9 +3703,15 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 {
 	const YbNotifsPollerPendingEntry *ea = lfirst(a);
 	const YbNotifsPollerPendingEntry *eb = lfirst(b);
+	int			cmp;
 
-	if (ea->run_start != eb->run_start)
-		return ea->run_start < eb->run_start ? -1 : 1;
+	if ((ea->seq < 0) != (eb->seq < 0))
+		return ea->seq < 0 ? -1 : 1;
+	cmp = memcmp(ea->sender_node, eb->sender_node, UUID_LEN);
+	if (cmp != 0)
+		return cmp;
+	if (ea->qe.srcPid != eb->qe.srcPid)
+		return ea->qe.srcPid < eb->qe.srcPid ? -1 : 1;
 	if (ea->seq < eb->seq)
 		return -1;
 	if (ea->seq > eb->seq)
