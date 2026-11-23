@@ -391,7 +391,7 @@ def print_comment(fmt, strong, prs, metas, issues, jira):
           "issue._")
 
 if __name__ == "__main__":
-    if "--jira" in sys.argv:
+    if any(a == "--jira" or a.startswith("--jira=") for a in sys.argv[1:]):
         # A traceback can show internal Jira text (in a failed command's
         # arguments), and the Actions log is public. Report the error type only.
         try:
