@@ -34,6 +34,10 @@ public class TestPgRegressUpdateOptimized extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
+    // EXPLAIN output counts flushes; a backend with cold catalog caches does catalog reads
+    // mid-UPDATE (e.g. ybgin's initGinState), forcing extra flushes. Pin all queries to one
+    // backend instead of conn mgr's random backend selection.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_update_optimized_schedule");
   }
 }
