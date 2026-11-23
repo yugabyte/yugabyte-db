@@ -1540,31 +1540,26 @@ InitializeGUCOptions(void)
 	build_guc_variables();
 
 	/*
+	 * YB: setting a GUC before its own initialization corrupts
+	 * guc_nondef_list, so an assign hook that sets other GUCs checks this
+	 * flag and skips that until every GUC is initialized (see
+	 * assign_yb_enable_cbo()).
+	 */
+	yb_initializing_guc_options = true;
+
+	/*
 	 * Load all variables with their compiled-in defaults, and initialize
 	 * status fields as needed.
 	 */
-	yb_initializing_guc_options = true;
 	hash_seq_init(&status, guc_hashtab);
 	while ((hentry = (GUCHashEntry *) hash_seq_search(&status)) != NULL)
 	{
 		/* Check mapping between initial and default value */
 		Assert(check_GUC_init(hentry->gucvar));
 
-		/*
-		 * YB: an assign hook run earlier in this loop may already have set
-		 * this GUC and linked it into guc_nondef_list.
-		 * InitializeOneGUCOption() marks it PGC_S_DEFAULT without unlinking
-		 * it, and its next source change would link it a second time, cutting
-		 * every entry after it off the list (they then escape RESET ALL).
-		 */
-		RemoveGUCFromLists(hentry->gucvar);
-
 		InitializeOneGUCOption(hentry->gucvar);
 	}
 	yb_initializing_guc_options = false;
-
-	/* YB: deferred from assign_yb_enable_cbo() until every GUC exists */
-	yb_set_cbo_dependent_defaults(yb_enable_cbo);
 
 	reporting_enabled = false;
 
@@ -1578,6 +1573,9 @@ InitializeGUCOptions(void)
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
 	SetConfigOption("transaction_deferrable", "no",
 					PGC_POSTMASTER, PGC_S_OVERRIDE);
+
+	/* YB: deferred from assign_yb_enable_cbo() until every GUC exists */
+	yb_set_cbo_dependent_defaults(yb_enable_cbo);
 
 	/*
 	 * For historical reasons, some GUC parameters can receive defaults from
