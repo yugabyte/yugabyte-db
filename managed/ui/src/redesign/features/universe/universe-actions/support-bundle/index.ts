@@ -1,4 +1,5 @@
-export { SUPPORT_BUNDLE_UI_V2_ENABLED_KEY } from './constants';
+export { SUPPORT_BUNDLE_REDESIGN_ENABLED_KEY, SUPPORT_BUNDLE_UI_V2_ENABLED_KEY } from './constants';
+export { isSupportBundleRedesignEnabled } from './isSupportBundleRedesignEnabled';
 export { isSupportBundleUiV2Enabled } from './isSupportBundleUiV2Enabled';
 export {
   SUPPORT_BUNDLE_PAGE_SIZE,
