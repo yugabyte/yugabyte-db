@@ -3387,7 +3387,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
-    index_info.emplace(table_info.index_info());
+    index_info.emplace(table_info.index_info(), ht);
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
@@ -6283,6 +6283,29 @@ Result<int64_t> Tablet::CountIntents() {
   }
   RETURN_NOT_OK(intent_iter->status());
   return num_intents;
+}
+
+Result<bool> Tablet::HasExternalIntents() const {
+  // Set before the first external intents write, never reset, and inherited by split children.
+  if (!metadata_->IsUnderXClusterReplication()) {
+    return false;
+  }
+
+  auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return false;
+  }
+  static constexpr char kPrefix = dockv::KeyEntryTypeAsChar::kExternalTransactionId;
+  static constexpr char kUpperBound = kPrefix + 1;
+  Slice upper_bound(&kUpperBound, 1);
+  auto iter = docdb::CreateRocksDBIterator(
+      intents_db_.get(), &docdb::KeyBounds::kNoBounds, docdb::BloomFilterOptions::Inactive(),
+      rocksdb::kDefaultQueryId, /* file_filter= */ nullptr, &upper_bound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  iter.Seek(Slice(&kPrefix, 1));
+  return iter.CheckedValid();
 }
 
 Status Tablet::ReadIntents(std::vector<std::string>* intents) {

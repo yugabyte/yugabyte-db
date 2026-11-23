@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
@@ -99,6 +100,26 @@ public class StateTransitionDetailsTest {
     assertEquals(
         Map.of("max_concurrent_uploads", "6"),
         restored.getClusterByUuid(readReplicaUuid).userIntent.ybcFlags);
+  }
+
+  @Test
+  public void getBeforeUniverseDetailsPutsPrimaryFirst() {
+    UUID primaryUuid = UUID.randomUUID();
+    UUID readReplicaUuid = UUID.randomUUID();
+    UniverseDefinitionTaskParams before = paramsWithClusters(primaryUuid, readReplicaUuid, "p");
+    UniverseDefinitionTaskParams target = paramsWithClusters(primaryUuid, readReplicaUuid, "p");
+    target.getClusterByUuid(readReplicaUuid).userIntent.numNodes = 2;
+    // An older read-replica-only edit wrote its target with the primary last.
+    Collections.reverse(target.clusters);
+    StateTransitionDetails details =
+        new StateTransitionDetails(
+            true /* rollbackSafe */, DeltaEvaluator.buildDeltaJsonTree(before, target));
+
+    UniverseDefinitionTaskParams restored = details.getBeforeUniverseDetails();
+
+    assertEquals(primaryUuid, restored.clusters.get(0).uuid);
+    assertEquals(readReplicaUuid, restored.clusters.get(1).uuid);
+    assertEquals(0, restored.getClusterByUuid(readReplicaUuid).userIntent.numNodes);
   }
 
   private static UniverseDefinitionTaskParams paramsWithClusters(
