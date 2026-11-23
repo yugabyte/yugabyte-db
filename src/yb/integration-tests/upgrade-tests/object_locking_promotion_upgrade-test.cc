@@ -64,8 +64,8 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
   ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
   // Before finalize, pg_locks on the writer's node shows its local RowExclusive lock. Right after
-  // the upgrade, pg_locks can fail for a few seconds with "Couldn't fetch old transactions" while
-  // the transaction status tablets settle, so retry on that error.
+  // the upgrade, pg_locks can fail for a few seconds while the restarted tablets' leaders become
+  // ready, so retry on those transient errors.
   auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(observer.Execute("SET yb_locks_min_txn_age = '0s'"));
   ASSERT_OK(LoggedWaitFor(
@@ -74,8 +74,10 @@ TEST_F(ObjectLockingPromotionUpgradeTest, CreateIndexWaitsForLegacyWriterAcrossP
             "SELECT locktype, mode, granted FROM pg_locks WHERE relation = 'test'::regclass"
             " ORDER BY locktype, mode");
         if (!rows.ok()) {
-          if (rows.status().ToString().find("Couldn't fetch old transactions") !=
-              std::string::npos) {
+          const auto msg = rows.status().ToString();
+          if (msg.find("Couldn't fetch old transactions") != std::string::npos ||
+              msg.find("Leader not yet replicated NoOp") != std::string::npos) {
+            LOG(INFO) << "Retrying pg_locks: " << msg;
             return false;
           }
           return rows.status();
