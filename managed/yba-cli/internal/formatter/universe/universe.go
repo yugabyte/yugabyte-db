@@ -44,6 +44,9 @@ const (
 	numTserversHeader             = "Number of Tservers"
 	liveNodesHeader               = "Number of Live Nodes"
 	cpuArchitectureHeader         = "CPU Architecture"
+	softwareUpgradeStateHeader    = "Software Upgrade State"
+	rollbackAllowedHeader         = "Rollback Allowed"
+	prevVersionHeader             = "Previous YugabyteDB Version"
 )
 
 // Context for universe outputs
@@ -136,6 +139,9 @@ func NewUniverseContext() *Context {
 		"NumTservers":             numTserversHeader,
 		"LiveNodes":               liveNodesHeader,
 		"CPUArchitecture":         cpuArchitectureHeader,
+		"SoftwareUpgradeState":    softwareUpgradeStateHeader,
+		"RollbackAllowed":         rollbackAllowedHeader,
+		"PrevVersion":             prevVersionHeader,
 	}
 	return &universeCtx
 }
@@ -260,6 +266,25 @@ func (c *Context) DedicatedMasters() string {
 func (c *Context) Version() string {
 	userIntent := c.primaryUserIntent()
 	return userIntent.GetYbSoftwareVersion()
+}
+
+// SoftwareUpgradeState fetches the software upgrade state of the universe
+func (c *Context) SoftwareUpgradeState() string {
+	details := c.u.GetUniverseDetails()
+	return details.GetSoftwareUpgradeState()
+}
+
+// RollbackAllowed fetches whether the last software upgrade can be rolled back
+func (c *Context) RollbackAllowed() string {
+	details := c.u.GetUniverseDetails()
+	return fmt.Sprintf("%t", details.GetIsSoftwareRollbackAllowed())
+}
+
+// PrevVersion fetches the YugabyteDB version before the last software upgrade
+func (c *Context) PrevVersion() string {
+	details := c.u.GetUniverseDetails()
+	prev := details.GetPrevYBSoftwareConfig()
+	return prev.GetSoftwareVersion()
 }
 
 // YSQLAuthEnabled fetches password of the primary cluster

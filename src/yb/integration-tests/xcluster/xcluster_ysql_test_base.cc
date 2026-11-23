@@ -1143,7 +1143,7 @@ Status XClusterYsqlTestBase::DeleteOutboundReplicationGroup(
   const auto target_master_address = consumer_cluster()->GetMasterAddresses();
 
   return source_xcluster_client.DeleteOutboundReplicationGroup(
-      kReplicationGroupId, target_master_address);
+      replication_group_id, target_master_address);
 }
 
 Status XClusterYsqlTestBase::VerifyDDLExtensionTablesCreation(

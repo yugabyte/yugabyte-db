@@ -49,7 +49,7 @@ import {
   patchTasksForCustomer,
   showTaskInDrawer
 } from '../../../../actions/tasks';
-import { Task, TaskState } from '../dtos';
+import { Task, TaskState, TaskType } from '../dtos';
 import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTaskBanner';
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
@@ -192,6 +192,8 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   // Status-only banners for tasks without a dedicated banner component.
   const renderGenericTaskBanner = (bannerTask: Task) => {
+    // The federation modal polls this task and reports the result via toast instead.
+    if (bannerTask.type === TaskType.MANAGE_CROSS_CLOUD_FEDERATION) return null;
     switch (bannerTask.status) {
       case TaskState.RUNNING:
         return (

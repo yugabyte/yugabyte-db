@@ -202,7 +202,9 @@ class TabletVectorIndexes :
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics,
-      const Slice* iterate_upper_bound = nullptr) const;
+      const Slice* iterate_upper_bound = nullptr) const override;
+
+  HybridTime MinRunningHybridTime() const override;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);

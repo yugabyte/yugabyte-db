@@ -4,7 +4,10 @@ package api.v2.controllers;
 
 import api.v2.handlers.StorageConfigHandler;
 import api.v2.models.StorageConfig;
+import api.v2.models.StorageConfigPagedQuerySpec;
+import api.v2.models.StorageConfigPagedResp;
 import api.v2.models.StorageConfigSpec;
+import api.v2.models.YBATask;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.audit.AuditService;
@@ -26,9 +29,19 @@ public class StorageConfigApiControllerImp extends StorageConfigApiControllerImp
   }
 
   @Override
-  public StorageConfig createStorageConfig(
+  public YBATask createStorageConfig(
       Http.Request request, UUID cUUID, StorageConfigSpec storageConfigSpec) {
     return storageConfigHandler.createStorageConfig(cUUID, storageConfigSpec);
+  }
+
+  @Override
+  public YBATask editStorageConfig(
+      Http.Request request,
+      UUID cUUID,
+      UUID scUUID,
+      StorageConfigSpec storageConfigSpec,
+      String ifMatch) {
+    return storageConfigHandler.editStorageConfig(cUUID, scUUID, storageConfigSpec, ifMatch);
   }
 
   @Override
@@ -37,8 +50,14 @@ public class StorageConfigApiControllerImp extends StorageConfigApiControllerImp
   }
 
   @Override
-  public void validateStorageConfig(
+  public StorageConfigPagedResp pageListStorageConfigs(
+      Http.Request request, UUID cUUID, StorageConfigPagedQuerySpec storageConfigPagedQuerySpec) {
+    return storageConfigHandler.pageListStorageConfigs(cUUID, storageConfigPagedQuerySpec);
+  }
+
+  @Override
+  public YBATask validateStorageConfig(
       Http.Request request, UUID cUUID, StorageConfigSpec storageConfigSpec) {
-    storageConfigHandler.validateStorageConfig(cUUID, storageConfigSpec);
+    return storageConfigHandler.validateStorageConfig(cUUID, storageConfigSpec);
   }
 }

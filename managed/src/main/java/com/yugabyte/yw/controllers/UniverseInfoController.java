@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -60,6 +61,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -158,8 +160,15 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    // Keeping current logic.
+    UniverseDefinitionTaskParams.ClusterType clusterType =
+        universe.getUniverseDetails().currentClusterType;
+    if (clusterType == null) {
+      clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+    }
     return PlatformResults.withData(
-        universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails()));
+        universeInfoHandler.getUniverseResources(
+            customer, universe.getUniverseDetails(), clusterType, true));
   }
 
   @ApiOperation(
@@ -185,7 +194,8 @@ public class UniverseInfoController extends AuthenticatedController {
         new Context(
             runtimeConfigFactory.globalRuntimeConf(), customer, universe.getUniverseDetails());
     return PlatformResults.withData(
-        UniverseResourceDetails.create(universe.getUniverseDetails(), context));
+        UniverseResourceDetails.create(
+            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true));
   }
 
   @ApiOperation(

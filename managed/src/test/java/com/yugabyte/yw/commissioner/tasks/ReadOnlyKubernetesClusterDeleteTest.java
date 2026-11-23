@@ -170,7 +170,7 @@ public class ReadOnlyKubernetesClusterDeleteTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(subTaskTypes(taskInfo).contains(TaskType.CheckLeaderlessTablets));
     verify(mockKubernetesManager, times(1)).helmDelete(any(), any(), any());
-    verify(mockKubernetesManager, times(1)).deleteStorage(any(), any(), any());
+    verify(mockKubernetesManager, times(1)).deleteStorage(any(), any(), any(), any());
     verify(mockKubernetesManager, times(1)).deletePodDisruptionBudget(any());
     verify(mockKubernetesManager, times(1)).createPodDisruptionBudget(any());
     assertReadReplicaDeleted();
@@ -253,8 +253,31 @@ public class ReadOnlyKubernetesClusterDeleteTest extends CommissionerBaseTest {
                 TaskType.UniverseUpdateSucceeded)));
     // The helm/PVC/PDB deletes ran only in the first attempt.
     verify(mockKubernetesManager, times(1)).helmDelete(any(), any(), any());
-    verify(mockKubernetesManager, times(1)).deleteStorage(any(), any(), any());
+    verify(mockKubernetesManager, times(1)).deleteStorage(any(), any(), any(), any());
     verify(mockKubernetesManager, times(1)).deletePodDisruptionBudget(any());
+    assertReadReplicaDeleted();
+  }
+
+  @Test
+  public void testClusterDeleteFailsOnStorageDeleteError() throws Exception {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(mockKubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    TaskInfo taskInfo = waitForTask(submitTask(taskParams()));
+    assertEquals(Failure, taskInfo.getTaskState());
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(1, universe.getUniverseDetails().getReadOnlyClusters().size());
+  }
+
+  @Test
+  public void testForceClusterDeleteIgnoresStorageDeleteError() throws Exception {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(mockKubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    ReadOnlyKubernetesClusterDelete.Params params = taskParams();
+    params.isForceDelete = true;
+    TaskInfo taskInfo = waitForTask(submitTask(params));
+    assertEquals(Success, taskInfo.getTaskState());
     assertReadReplicaDeleted();
   }
 

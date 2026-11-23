@@ -91,6 +91,10 @@ void YBSession::SetReadPoint(const ReadHybridTime& read_time, const TabletId& ta
   read_point()->SetReadTime(read_time, std::move(local_limits));
 }
 
+void YBSession::ResetReadPoint() {
+  SetReadPoint({});
+}
+
 bool YBSession::IsRestartRequired() {
   auto rp = read_point();
   return rp && rp->IsRestartRequired();

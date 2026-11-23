@@ -115,9 +115,11 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
           TaskType.PromoteAutoFlags,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
@@ -250,6 +252,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

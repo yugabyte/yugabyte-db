@@ -465,20 +465,6 @@ func IsOutputType(t string) bool {
 	return viper.GetString("output") == t
 }
 
-// RemoveComponentFromSlice removes the component from the slice
-func RemoveComponentFromSlice(sliceInterface interface{}, index int) interface{} {
-	slice := sliceInterface.([]interface{})
-	length := len(slice)
-	for i := range slice {
-		if i == index && i != length-1 {
-			return append(slice[:i], slice[i+1:]...)
-		} else if i == length-1 {
-			return slice[:i]
-		}
-	}
-	return slice
-}
-
 // ConvertMsToUnit converts time from milliseconds to unit
 func ConvertMsToUnit(value int64, unit string) float64 {
 	var v float64

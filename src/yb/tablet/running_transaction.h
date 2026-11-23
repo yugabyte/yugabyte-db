@@ -32,6 +32,7 @@ namespace yb {
 namespace tablet {
 
 YB_DEFINE_ENUM(UpdateAbortCheckHTMode, (kStatusRequestSent)(kStatusResponseReceived));
+YB_STRONGLY_TYPED_BOOL(ApplyOnCallingThread);
 
 // Represents transaction running at transaction participant.
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -129,10 +130,15 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self, RemoveReason reason);
 
   // Sets apply state for this transaction.
-  // If data is not null, then apply intents task will be initiated if was not previously started.
+  void SetApplyData(const docdb::ApplyTransactionState& apply_state);
+
+  // Same as above, but if data is not null, then apply intents task will be initiated if was not
+  // previously started. With apply_on_calling_thread, the task runs before returning instead of on
+  // the strand.
   void SetApplyData(const docdb::ApplyTransactionState& apply_state,
-                    const TransactionApplyData* data = nullptr,
-                    ScopedRWOperation* operation = nullptr);
+                    const TransactionApplyData* data,
+                    ScopedRWOperation* operation,
+                    ApplyOnCallingThread apply_on_calling_thread);
 
   void SetApplyOpId(const OpId& id);
 
@@ -150,6 +156,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
+  void SetProcessingApply(bool value);
 
   void UpdateTransactionPromoting(const TabletId& new_status_tablet);
 
@@ -231,7 +238,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionApplyData apply_data_;
   OpId apply_record_op_id_;
   docdb::ApplyTransactionState apply_state_;
-  // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
+  // Set from local commit until all intents are written to regular DB.
+  // Atomic to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};
   ApplyIntentsTask apply_intents_task_;
 

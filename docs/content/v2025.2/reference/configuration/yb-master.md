@@ -287,7 +287,9 @@ Disable callhome diagnostics.
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+Available in v2025.2.8.1 and later.
+
+Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
 
 ### Metric export flags
 
@@ -696,6 +698,17 @@ Default: `50`
 {{% /tags/wrap %}}
 
 Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
+
+##### --load_balancer_min_free_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2025.2.9.0 and later.
+
+Minimum percentage of a YB-TServer's total disk capacity, summed across all of its data and WAL directories, that must remain free after hosting a new tablet replica. The cluster balancer rejects a YB-TServer as the destination for a replica if hosting it would leave less than this percentage of disk free. Disk usage is estimated from the usage the YB-TServer reported in its last heartbeat, plus the full size of every replica it is already starting. YB-TServers that have not reported their disk capacity are never rejected. The default matches the [--reject_writes_min_disk_space_pct](../yb-tserver/#reject-writes-min-disk-space-pct) threshold past which a YB-TServer rejects writes. Set to `0` to disable the check. This flag can be changed at runtime without restarting the server.
 
 ##### --load_balancer_num_idle_runs
 
@@ -1483,7 +1496,9 @@ Enables YSQL backends to generate and consume invalidation messages incrementall
 Default: `true` on a new universe. During an upgrade, `false` until the upgrade is finalized, then `true`.
 {{% /tags/wrap %}}
 
-When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited. v2025.2.8.0 and later only.
+Available in v2025.2.8.0 and later.
+
+When `true`, the YB-Master leader limits how many YSQL catalog prefetches it serves at a time. Ordinary catalog reads stay unlimited.
 
 The limit stays off until every YB-Master and YB-TServer in the universe has been upgraded. A YB-TServer from an earlier version does not report that a read is a prefetch, so applying the limit before then would cover only the upgraded servers. A value you set yourself takes effect immediately and is kept when the upgrade is finalized.
 
@@ -1498,7 +1513,9 @@ A prefetch past the limit is rejected. The client retries after backing off.
 Default: `-1` (resolved at startup to max(8, 2 × cores))
 {{% /tags/wrap %}}
 
-Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`. v2025.2.8.0 and later only.
+Available in v2025.2.8.0 and later.
+
+Maximum number of YSQL catalog prefetches the YB-Master leader serves at once when [enable_ysql_catalog_prefetch_admission](#enable-ysql-catalog-prefetch-admission) is `true`.
 
 `-1`, the default, is resolved once at process startup to `max(8, 2 * cores)` for this YB-Master. `0` means no limit. Setting the flag to `-1` after startup also means no limit, because that resolution runs only at startup.
 
@@ -1511,7 +1528,9 @@ A prefetch beyond the limit is rejected, and the client retries until its RPC de
 Default: `50`
 {{% /tags/wrap %}}
 
-Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`. v2025.2.8.0 and later only.
+Available in v2025.2.8.0 and later.
+
+Percentage of [master_max_concurrent_ysql_catalog_prefetches](#master-max-concurrent-ysql-catalog-prefetches) available to a YSQL catalog prefetch that is just starting. A prefetch already in progress, a prefetch that refreshes a catalog cache, and the prefetch that builds the relcache init file, can use the full limit. At least one new prefetch is always allowed. Valid values are `0` through `100`.
 
 A prefetch is a sequence of paged reads. Holding new prefetches to this share leaves room for sequences already under way to finish.
 
@@ -2294,13 +2313,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-Master and every YB-TServer. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 

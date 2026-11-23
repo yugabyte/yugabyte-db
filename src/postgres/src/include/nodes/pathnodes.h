@@ -1349,7 +1349,7 @@ typedef struct YbPlanInfo
 } YbPlanInfo;
 
 /*
- * YB: info used by YbIndexPathInfo.
+ * YB: info used by YbMergeScanInfo.
  *
  * Holds info used for merge scans.  'clause' is the column's SAOP or equality
  * index condition, or NULL for a hash column with neither, which
@@ -1365,19 +1365,51 @@ typedef struct YbMergeScanStreamColInfo
 } YbMergeScanStreamColInfo;
 
 /*
+ * YB: info used by YbMergeScanInfo.
+ */
+typedef struct
+{
+	NodeTag		type;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} YbSortInfo;
+
+/*
+ * YB: info used by index paths (YbIndexPathInfo) and the IndexScan and
+ * IndexOnlyScan nodes.
+ *
+ * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
+ * in index column order (see yb_finalize_merge_scan_info).  The
+ * executor must bind each of them per stream, and ybValidateMergeScanBinds
+ * checks that it does.  pggate treats every key column before the last merge
+ * sort column that is not itself a merge sort column as a stream key
+ * (PgDmlRead::IsMergeSortColumn), including the columns this list leaves out.
+ */
+typedef struct
+{
+	NodeTag		type;
+	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
+	YbSortInfo *sort_cols;
+} YbMergeScanInfo;
+
+/*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
  * of a scan.
  *
- * 'merge_scan_stream_cols' lists the merge stream keys in index column order
- * (see yb_finalize_merge_scan_stream_cols).
+ * 'merge_scan_info' holds the merge stream keys and merge sort columns of a
+ * merge scan path (see yb_finalize_merge_scan_info).  It is NULL for a path
+ * that is not a merge scan.
  */
 typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *merge_scan_stream_cols; /* List of YbMergeScanStreamColInfo */
+	YbMergeScanInfo *merge_scan_info;
 } YbIndexPathInfo;
 
 
@@ -2518,11 +2550,20 @@ typedef struct PlaceHolderVar
  * outer relation Var and Var_i is an inner relation Var, might be turned into
  * (Var_i IN (BVar_o(0),BVar_o(1),BVar_o(0)...)) where BVar_o(i) represents the
  * ith batched variable of Var_o.
+ *
+ * share is the number of outer values the expression is estimated with when
+ * it shares a batch with other batched clauses of the same scan, and
+ * rows_scale its part of the factor that raises the estimate of those clauses
+ * to one row per probe tuple.  Both are set only on the copies
+ * yb_batched_clauses makes for estimation; 0 stands for the whole batch
+ * (yb_batch_expr_size) and for no scaling.
  */
 typedef struct YbBatchedExpr
 {
 	Expr		xpr;
 	Expr	   *orig_expr;		/* Original Var this is a batched version of. */
+	double		share;			/* outer values estimated with, or 0 */
+	double		rows_scale;		/* part of the one-row factor, or 0 */
 } YbBatchedExpr;
 
 /*

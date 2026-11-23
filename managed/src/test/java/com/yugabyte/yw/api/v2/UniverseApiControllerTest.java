@@ -5,6 +5,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
@@ -19,11 +20,14 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.test.Helpers.contentAsString;
 
 import api.v2.handlers.UniverseManagementHandler;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
@@ -32,20 +36,29 @@ import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageBase;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
+import com.yugabyte.yba.v2.client.models.PlacementAZ;
+import com.yugabyte.yba.v2.client.models.PlacementCloud;
+import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.ProviderNodeSpec;
+import com.yugabyte.yba.v2.client.models.ProviderRootNodesSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseDeleteSpec;
 import com.yugabyte.yba.v2.client.models.UniverseListApiFilter;
 import com.yugabyte.yba.v2.client.models.UniversePagedQuerySpec;
 import com.yugabyte.yba.v2.client.models.UniversePagedResp;
+import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
+import com.yugabyte.yba.v2.client.models.UniverseResourcesPerProvider;
 import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -54,6 +67,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -61,12 +76,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.DB;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,6 +103,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
+import play.mvc.Result;
 
 /** Tests for Create/Get/Delete of Universe using v2.UniverseApiControllerImp */
 @Slf4j
@@ -295,6 +315,149 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         api.getUniverse(customer.getUuid(), uUUID);
     validateUniverseSpec(universeResp.getSpec(), dbUniverse);
     validateUniverseInfo(universeResp.getInfo(), dbUniverse);
+  }
+
+  private static final String YCQL_LDAP_SECRET = "ycql-ldap-lr23812";
+  private static final String HBA_WITH_SECRET =
+      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-lr23812";
+  private static final String HBA_REDACTED =
+      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=REDACTED";
+
+  /**
+   * The primary holds the LDAP gflags per process and per AZ. The stored row holds the admin
+   * passwords, as rows saved before storage redaction still do.
+   */
+  private Universe createUniverseWithSecrets() {
+    Universe universe = createUniverse("secrets-universe", customer.getId());
+    Map<String, String> ldapGFlags =
+        Map.of(
+            "ycql_ldap_bind_passwd",
+            YCQL_LDAP_SECRET,
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            HBA_WITH_SECRET);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.specificGFlags = SpecificGFlags.construct(ldapGFlags, ldapGFlags);
+          SpecificGFlags.PerProcessFlags azFlags = new SpecificGFlags.PerProcessFlags();
+          azFlags.value.put(ServerType.TSERVER, ldapGFlags);
+          userIntent.specificGFlags.setPerAZ(Map.of(UUID.randomUUID(), azFlags));
+        });
+    ObjectNode details =
+        (ObjectNode)
+            Json.parse(
+                DB.sqlQuery(
+                        "SELECT universe_details_json FROM universe WHERE universe_uuid = :uuid")
+                    .setParameter("uuid", universe.getUniverseUUID())
+                    .findOne()
+                    .getString("universe_details_json"));
+    ObjectNode userIntent = (ObjectNode) details.at("/clusters/0/userIntent");
+    userIntent.put("ysqlPassword", "ysql-admin-lr23812");
+    userIntent.put("ycqlPassword", "ycql-admin-lr23812");
+    DB.sqlUpdate("UPDATE universe SET universe_details_json = :json WHERE universe_uuid = :uuid")
+        .setParameter("json", details.toString())
+        .setParameter("uuid", universe.getUniverseUUID())
+        .execute();
+    return universe;
+  }
+
+  private JsonNode rawGetUniverse(UUID universeUUID) {
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            String.format("/api/v2/customers/%s/universes/%s", customer.getUuid(), universeUUID),
+            authToken);
+    assertEquals(contentAsString(result), 200, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private JsonNode rawPageListUniverses() {
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            String.format("/api/v2/customers/%s/universes/page", customer.getUuid()),
+            authToken,
+            Json.newObject());
+    assertEquals(contentAsString(result), 200, result.status());
+    return Json.parse(contentAsString(result));
+  }
+
+  private static void assertSecretsRedacted(JsonNode universe) {
+    assertFalse(universe.toString(), universe.toString().contains("lr23812"));
+    JsonNode gflags = universe.at("/spec/clusters/0/gflags");
+    for (JsonNode processGFlags :
+        List.of(
+            gflags.get("tserver"),
+            gflags.get("master"),
+            gflags.get("az_gflags").elements().next().get("tserver"))) {
+      assertEquals("REDACTED", processGFlags.get("ycql_ldap_bind_passwd").asText());
+      assertEquals(HBA_REDACTED, processGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    }
+    assertAdminPasswordsOmitted(universe);
+  }
+
+  private static void assertAdminPasswordsOmitted(JsonNode universe) {
+    for (String api : List.of("ysql", "ycql")) {
+      JsonNode apiSpec = universe.at("/spec/" + api);
+      assertTrue(universe.toString(), apiSpec.isObject());
+      assertFalse(apiSpec.toString(), apiSpec.has("password"));
+    }
+  }
+
+  @Test
+  public void testGetAndListUniverseV2RedactSecrets() throws IOException {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    stubGFlagsValidation();
+    Universe universe = createUniverseWithSecrets();
+
+    assertSecretsRedacted(rawGetUniverse(universe.getUniverseUUID()));
+    JsonNode page = rawPageListUniverses();
+    assertThat(page.get("entities").size(), is(1));
+    assertSecretsRedacted(page.get("entities").get(0));
+  }
+
+  @Test
+  public void testGetAndListUniverseV2RedactKubernetesOverrides() throws IOException {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    stubGFlagsValidation();
+    String overrides = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + YCQL_LDAP_SECRET + "\n";
+    Universe universe = createUniverse("overrides-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = overrides;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", overrides));
+        });
+
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    for (JsonNode resp :
+        List.of(
+            rawGetUniverse(universe.getUniverseUUID()),
+            rawPageListUniverses().get("entities").get(0))) {
+      assertFalse(resp.toString(), resp.toString().contains("lr23812"));
+      JsonNode providerSpec = resp.at("/spec/clusters/0/provider_spec");
+      assertEquals(redacted, providerSpec.get("helm_overrides").asText());
+      assertEquals(redacted, providerSpec.at("/az_helm_overrides/az-1").asText());
+    }
+  }
+
+  @Test
+  public void testGetUniverseV2KeepsLdapGFlagsWithApiRedactionOff() throws IOException {
+    // The mocked runtime config leaves enableGFlagsSensitiveDataApiRedaction off.
+    stubGFlagsValidation();
+    Universe universe = createUniverseWithSecrets();
+
+    JsonNode resp = rawGetUniverse(universe.getUniverseUUID());
+    JsonNode tserver = resp.at("/spec/clusters/0/gflags/tserver");
+    assertEquals(YCQL_LDAP_SECRET, tserver.get("ycql_ldap_bind_passwd").asText());
+    assertEquals(HBA_WITH_SECRET, tserver.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    assertAdminPasswordsOmitted(resp);
   }
 
   @Test
@@ -698,5 +861,125 @@ public class UniverseApiControllerTest extends UniverseTestBase {
             ApiException.class, () -> api.checkResizeOptions(customer.getUuid(), uUUID, spec));
     assertEquals(400, ex.getCode());
     assertThat(ex.getResponseBody(), containsString("provider_nodes_specs"));
+  }
+
+  @Test
+  public void testGetPerProviderDetails() throws ApiException, IOException {
+    setNewUIEnabled();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2(true);
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    ClusterPerProviderSpec primaryProviderSpec = clusterSpec.getProviderSpecs().get(0);
+    ClusterStorageSpec storageSpec =
+        primaryProviderSpec.getNodesSpecs().getTserverSpecification().getStorageSpec();
+
+    Provider secondProvider = ModelFactory.newProvider(customer, Common.CloudType.gcp, "gcp-2");
+    Region secondRegion = Region.create(secondProvider, "us-central1", "us-central1", "yb-image");
+    AvailabilityZone secondZone =
+        AvailabilityZone.createOrThrow(secondRegion, "gcp-az-1", "GCP AZ 1", "subnet-1");
+    ImageBundleDetails imageDetails = new ImageBundleDetails();
+    imageDetails.setArch(Architecture.aarch64);
+    imageDetails.setGlobalYbImage("yb-image-global");
+    ImageBundle imageBundle =
+        ImageBundle.create(secondProvider, "centos-image", imageDetails, true);
+    double coresPerNode = 4.0;
+    double memGbPerNode = 8.0;
+    InstanceType.upsert(
+        providerUuid,
+        ApiUtils.UTIL_INST_TYPE,
+        coresPerNode,
+        memGbPerNode,
+        new InstanceType.InstanceTypeDetails());
+    InstanceType.upsert(
+        secondProvider.getUuid(),
+        ApiUtils.UTIL_INST_TYPE,
+        coresPerNode,
+        memGbPerNode,
+        new InstanceType.InstanceTypeDetails());
+
+    clusterSpec.addProviderSpecsItem(
+        new ClusterPerProviderSpec()
+            .provider(secondProvider.getUuid())
+            .imageBundleUuid(imageBundle.getUuid())
+            .accessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE)
+            .networkingSpec(primaryProviderSpec.getNetworkingSpec())
+            .instanceTags(Map.of("itag1", "ival1"))
+            .nodesSpecs(
+                new ProviderRootNodesSpec()
+                    .tserverSpecification(
+                        new ProviderNodeSpec()
+                            .instanceType(ApiUtils.UTIL_INST_TYPE)
+                            .storageSpec(storageSpec))));
+
+    PlacementCloud primaryCloud = clusterSpec.getPlacementSpec().getCloudList().get(0);
+    PlacementRegion primaryRegion = primaryCloud.getRegionList().get(0);
+    List<PlacementAZ> primaryAzs = new ArrayList<>(primaryRegion.getAzList());
+    PlacementAZ replacedAz = primaryAzs.remove(0);
+    primaryRegion.setAzList(primaryAzs);
+    int replacedNodes = replacedAz.getNumNodesInAz();
+    int primaryNodes = primaryAzs.stream().mapToInt(PlacementAZ::getNumNodesInAz).sum();
+    PlacementCloud secondCloud =
+        new PlacementCloud()
+            .uuid(secondProvider.getUuid())
+            .code(secondProvider.getCode())
+            .regionList(
+                List.of(
+                    new PlacementRegion()
+                        .uuid(secondRegion.getUuid())
+                        .code(secondRegion.getCode())
+                        .name(secondRegion.getName())
+                        .azList(
+                            List.of(
+                                new PlacementAZ()
+                                    .uuid(secondZone.getUuid())
+                                    .name(secondZone.getName())
+                                    .subnet(secondZone.getSubnet())
+                                    .numNodesInAz(replacedNodes)
+                                    .replicationFactor(replacedAz.getReplicationFactor())
+                                    .leaderPreference(replacedAz.getLeaderPreference())
+                                    .leaderAffinity(true)))));
+    clusterSpec.getPlacementSpec().setCloudList(List.of(primaryCloud, secondCloud));
+
+    UniverseResourcesPerProvider universeResourcesPerProvider =
+        new UniverseApi().getUniverseResourcesPerProvider(customer.getUuid(), universeCreateSpec);
+    Map<String, UniverseResourceDetails> resourcesPerProvider =
+        universeResourcesPerProvider.getResourcesPerProvider();
+    assertThat(resourcesPerProvider.keySet(), hasSize(2));
+
+    UniverseResourceDetails primaryDetails = resourcesPerProvider.get(providerUuid.toString());
+    UniverseResourceDetails secondDetails =
+        resourcesPerProvider.get(secondProvider.getUuid().toString());
+    assertProviderResources(
+        primaryDetails,
+        primaryNodes,
+        primaryAzs.stream().map(PlacementAZ::getName).toArray(String[]::new),
+        storageSpec,
+        coresPerNode,
+        memGbPerNode);
+    assertProviderResources(
+        secondDetails,
+        replacedNodes,
+        new String[] {secondZone.getName()},
+        storageSpec,
+        coresPerNode,
+        memGbPerNode);
+    assertThat(
+        primaryDetails.getNumNodes() + secondDetails.getNumNodes(), is(clusterSpec.getNumNodes()));
+  }
+
+  private static void assertProviderResources(
+      UniverseResourceDetails details,
+      int numNodes,
+      String[] azNames,
+      ClusterStorageSpec storageSpec,
+      double coresPerNode,
+      double memGbPerNode) {
+    assertThat(details, notNullValue());
+    assertThat(details.getNumNodes(), is(numNodes));
+    assertThat(details.getAzList(), containsInAnyOrder(azNames));
+    int numVolumes = storageSpec.getNumVolumes();
+    assertThat(details.getVolumeCount(), is(numNodes * numVolumes));
+    assertThat(details.getVolumeSizeGb(), is(numNodes * numVolumes * storageSpec.getVolumeSize()));
+    assertThat(details.getNumCores(), is(numNodes * coresPerNode));
+    assertThat(details.getMemSizeGb(), is(numNodes * memGbPerNode));
   }
 }

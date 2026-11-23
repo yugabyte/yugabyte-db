@@ -1,0 +1,138 @@
+BEGIN;
+CREATE TABLE users (
+  id SERIAL,
+  login TEXT,
+  password TEXT,
+  admin BOOL
+);
+INSERT INTO users
+VALUES
+  (1,'alice', 'adfsqfcksqhdqijsdizjdfiqqlq<iqq', TRUE),
+  (2,'bob', 'a_very_bad_password', FALSE)
+;
+CREATE ROLE claire;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO claire;
+CREATE EXTENSION IF NOT EXISTS anon;
+-- Mask only the non admin users
+SECURITY LABEL FOR anon ON TABLE users IS 'MASKED WHEN admin IS FALSE';
+SECURITY LABEL FOR anon ON COLUMN users.login    IS 'MASKED WITH VALUE NULL';
+SECURITY LABEL FOR anon ON COLUMN users.password IS 'MASKED WITH VALUE NULL';
+SECURITY LABEL FOR anon ON ROLE claire IS 'MASKED';
+SAVEPOINT init;
+-- Table level static masking + Selective Masking
+SELECT anon.anonymize_table('users');
+ anonymize_table 
+-----------------
+ t
+(1 row)
+
+SELECT bool_and(login IS NULL) FROM users WHERE NOT admin;
+ bool_and 
+----------
+ t
+(1 row)
+
+SELECT login='alice' FROM users WHERE id=1;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK TO init;
+-- Column level static masking + Selective Masking
+SELECT anon.anonymize_column('users','login');
+ anonymize_column 
+------------------
+ t
+(1 row)
+
+SELECT bool_and(login IS NULL) FROM users WHERE NOT admin;
+ bool_and 
+----------
+ t
+(1 row)
+
+SELECT login='alice' FROM users WHERE id=1;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK TO init;
+-- Disable Selective Masking
+SECURITY LABEL FOR anon ON TABLE users IS NULL;
+SELECT anon.anonymize_table('users');
+ anonymize_table 
+-----------------
+ t
+(1 row)
+
+SELECT login IS NULL FROM users WHERE id=1;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK TO init;
+SET anon.transparent_dynamic_masking TO on;
+SET ROLE claire;
+SELECT * FROM users;
+ id | login |            password             | admin 
+----+-------+---------------------------------+-------
+  1 | alice | adfsqfcksqhdqijsdizjdfiqqlq<iqq | t
+  2 |       |                                 | f
+(2 rows)
+
+RESET ROLE;
+--
+-- Valid rules
+--
+CREATE FUNCTION public.trusted()
+  RETURNS BOOL
+AS $$
+  SELECT TRUE
+$$
+  LANGUAGE SQL
+;
+SECURITY LABEL FOR anon ON FUNCTION public.trusted
+  IS 'TRUSTED';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN public.trusted()';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN NOT public.trusted()';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN admin IS TRUE';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN admin != FALSE';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN admin IS NOT NULL';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN NOT admin';
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN admin';
+--
+-- Invalid Rules
+--
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN admin IS FALSE AS BOOL ) THEN 1 ELSE 0 END; SELECT sql_injection_101(); CASE WHEN CAST( TRUE';
+ERROR:  Anon: `MASKED WHEN admin IS FALSE AS BOOL ) THEN 1 ELSE 0 END; SELECT sql_injection_101(); CASE WHEN CAST( TRUE` is not a valid label for a table
+DETAIL:  admin IS FALSE AS BOOL ) THEN 1 ELSE 0 END; SELECT sql_injection_101(); CASE WHEN CAST( TRUE is not a valid expression
+ROLLBACK TO init;
+CREATE FUNCTION public.untrusted()
+  RETURNS BOOL
+AS $$
+  SELECT TRUE
+$$
+  LANGUAGE SQL
+;
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN public.unstrusted()';
+ERROR:  Anon: `MASKED WHEN public.unstrusted()` is not a valid label for a table
+DETAIL:  public.unstrusted() does not belong in a TRUSTED schema
+ROLLBACK TO init;
+SECURITY LABEL FOR anon ON TABLE users
+  IS 'MASKED WHEN trusted()';
+ERROR:  Anon: `MASKED WHEN trusted()` is not a valid label for a table
+DETAIL:  trusted() is not qualified
+ROLLBACK TO init;
+ROLLBACK;

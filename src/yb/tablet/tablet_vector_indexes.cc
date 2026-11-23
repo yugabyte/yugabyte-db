@@ -45,6 +45,7 @@
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/vector_index_checker.h"
 
 #include "yb/util/operation_counter.h"
@@ -104,8 +105,8 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
  public:
   Status Init(
       const Tablet& tablet, const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) {
-    // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
-    // all callers handle errors from the underlying iterator gracefully.
+    // Using non-blocking operation to avoid deadlock during shutdown. A compaction that gets
+    // TryAgain here fails the index, so compactions must not start while operations are paused.
     rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
@@ -1483,6 +1484,34 @@ Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
     vector_index = it->second;
   }
   return CheckVectorIndex(tablet(), *vector_index, max_inconsistencies, deadline);
+}
+
+HybridTime TabletVectorIndexes::MinRunningHybridTime() const {
+  auto* participant = tablet().transaction_participant();
+  if (!participant) {
+    return HybridTime::kMax;
+  }
+
+  // The participant does not track the transactions replicated to an xCluster target. Such a
+  // transaction is applied from its external intents when its apply record arrives, and they are
+  // deleted after the regular DB write of the apply, so the iterator created after this check
+  // sees the records of the transactions whose external intents are gone. The external intents
+  // of a transaction aborted on the source are kept for at least external_intent_cleanup_secs,
+  // until an intents DB compaction removes them.
+  auto has_external_intents = tablet().HasExternalIntents();
+  if (!has_external_intents.ok()) {
+    LOG_IF_WITH_PREFIX_AND_FUNC(WARNING, !has_external_intents.status().IsShutdownInProgress())
+        << "Failed to look for external intents: " << has_external_intents.status();
+    return HybridTime::kMin;
+  }
+
+  if (*has_external_intents) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << "External intents present";
+    return HybridTime::kMin;
+  }
+
+  // Invalid until the transactions are loaded, any of them could be applied later.
+  return participant->MinRunningHybridTime().GetValueOr(HybridTime::kMin);
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(

@@ -292,6 +292,40 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInLiveHelmValues() {
+    Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenReturn(
+            "gflags:\n"
+                + "  tserver:\n"
+                + "    ycql_ldap_bind_passwd: dummy-bind-pass\n"
+                + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+                + " ldapbindpasswd=dummy-hba-pass ldapserver=ldap.example.com\"\n");
+
+    assertEquals(
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: REDACTED\n"
+            + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=REDACTED ldapserver=ldap.example.com\"\n",
+        getKubernetesOverrides(u, "host-n1"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInStoredOverrides() {
+    Universe u =
+        createK8sUniverseWithOverrides(
+            "k8s-stored-secrets",
+            "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n",
+            null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    assertEquals(
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n",
+        getKubernetesOverrides(u, "host-n1"));
+  }
+
+  @Test
   public void testGetNodeDetailsK8sReturnsStoredOverridesWhenHelmValuesEmpty() {
     // Operator-managed universe where "helm get values" yields nothing, but overrides are
     // persisted on the UserIntent. The endpoint should fall back to them. See PLAT-20542.

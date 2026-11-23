@@ -11,7 +11,7 @@ Here's how you can create your own set of fake data!
 Alternative fake data packages
 --------------------------------------------------------------------------------
 
-The projet is offering alternative fake datasets (currently only French).
+The project is offering alternative fake datasets (currently only French).
 You can download the zip file containing the dataset and load it into the
 extension like this:
 
@@ -19,7 +19,7 @@ extension like this:
 
 1. Click on "data"
 
-1. Choose your prefered zip file and download it on your server
+1. Choose your preferred zip file and download it on your server
 
 1. Unzip the file into a folder (for example `/path/to/custom_csv_files/`)
 

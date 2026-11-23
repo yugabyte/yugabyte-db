@@ -1152,6 +1152,8 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YBIsDdlTxnBlockCommitInProgress();
+extern bool YbUsingObjectLocksLocally(void);
 
 /*
  * Snapshot of the current top-level DDL statement identity. Used to preserve
@@ -1902,6 +1904,7 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
+extern void YbValidateFunctionSetItem(const VariableSetStmt *sstmt);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
@@ -1963,5 +1966,14 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
+
+/*
+ * The yb_xcluster_ddl_replication extension and its tables. The extension
+ * creates its tables in a schema of the same name. The master's copies are in
+ * src/yb/cdc/xcluster_types.h.
+ */
+#define YB_XCLUSTER_DDL_REPLICATION_NAME		"yb_xcluster_ddl_replication"
+#define YB_XCLUSTER_DDL_QUEUE_TABLE_NAME		"ddl_queue"
+#define YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME	"replicated_ddls"
 
 #endif							/* PG_YB_UTILS_H */

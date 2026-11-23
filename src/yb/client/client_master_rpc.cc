@@ -153,8 +153,7 @@ void ClientMasterRpcBase::Finished(const Status& status) {
     // Only retry while the deadline has not passed. Otherwise an unreachable master (e.g. during
     // cluster shutdown, when the master is already down) would make us retry indefinitely,
     // ignoring the RPC deadline and hanging callers that wait for this RPC to complete.
-    if (rpc_error != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD &&
-        rpc_error != rpc::ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN) {
+    if (rpc_error != rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
       auto now = CoarseMonoClock::Now();
       if (now < retrier().deadline()) {
         LOG(WARNING) << ToString() << ": Encountered a network error from the Master("

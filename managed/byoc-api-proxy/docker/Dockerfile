@@ -35,4 +35,5 @@ WORKDIR /opt/yugabyte/byoc-api-proxy
 ENTRYPOINT ["java", \
     "-Djdk.internal.httpclient.disableHostnameVerification=true", \
     "-XX:+ExitOnOutOfMemoryError", \
+    "-XX:-UseBASE64Intrinsics", \
     "-jar", "/opt/yugabyte/byoc-api-proxy/byoc-api-proxy.jar"]

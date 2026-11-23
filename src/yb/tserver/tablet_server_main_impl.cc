@@ -125,7 +125,6 @@ DECLARE_string(pgsql_proxy_bind_address);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
-DECLARE_bool(use_client_to_server_encryption);
 DECLARE_string(ysql_hba_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
@@ -133,7 +132,6 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(start_pgsql_proxy);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
-DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 
 
 namespace yb {
@@ -154,11 +152,6 @@ Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsql
 #ifdef __linux__
   ysql_conn_mgr_conf.cgroup = TServerCgroupManager::SystemHighCgroup();
 #endif
-
-  if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
-    LOG(FATAL) << "Client to server encryption can not be enabled "
-               << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
-               << " disabled.";
 
   // Construct the config file for the Ysql Connection Manager process.
   const auto conn_mgr_shmem_key =

@@ -18,12 +18,15 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -32,17 +35,14 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
-import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
-import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -281,15 +281,9 @@ public class TelemetryProviderService {
       // log export exist only here. Checking just the mirrored fields let a provider referenced
       // by one of those be deleted, stranding a dangling exporterUuid that breaks every later
       // collector-config regeneration for the universe.
-      Optional<ExportTelemetryConfig> exportConfig =
-          ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID());
-      if (exportConfig.isPresent()
-          && exportConfig.get().getTelemetryConfig() != null
-          && exportConfig
-              .get()
-              .getTelemetryConfig()
-              .referencedExporterUuids()
-              .contains(providerUUID)) {
+      TelemetryConfig persisted =
+          OtelCollectorUtil.getPersistedTelemetryConfig(universe.getUniverseUUID());
+      if (persisted != null && persisted.referencedExporterUuids().contains(providerUUID)) {
         return true;
       }
 
@@ -378,31 +372,16 @@ public class TelemetryProviderService {
             .collect(Collectors.toList());
 
     if (awsProviders.size() > 1) {
-      String firstAccessKey = null;
-      String firstSecretKey = null;
-      if (ProviderType.AWS_CLOUDWATCH.equals(awsProviders.get(0).getConfig().getType())) {
-        AWSCloudWatchConfig firstAWSConfig = (AWSCloudWatchConfig) awsProviders.get(0).getConfig();
-        firstAccessKey = firstAWSConfig.getAccessKey();
-        firstSecretKey = firstAWSConfig.getSecretKey();
-      } else if (ProviderType.S3.equals(awsProviders.get(0).getConfig().getType())) {
-        S3Config firstS3Config = (S3Config) awsProviders.get(0).getConfig();
-        firstAccessKey = firstS3Config.getAccessKey();
-        firstSecretKey = firstS3Config.getSecretKey();
-      }
+      // The keys as rendered on the node.
+      Pair<String, String> firstKeys = OtelCollectorConfigGenerator.getAwsKeys(awsProviders.get(0));
+      String firstAccessKey = firstKeys.getFirst();
+      String firstSecretKey = firstKeys.getSecond();
 
       for (int i = 1; i < awsProviders.size(); i++) {
-        String currentAccessKey = null;
-        String currentSecretKey = null;
-        if (ProviderType.AWS_CLOUDWATCH.equals(awsProviders.get(i).getConfig().getType())) {
-          AWSCloudWatchConfig currentAWSConfig =
-              (AWSCloudWatchConfig) awsProviders.get(i).getConfig();
-          currentAccessKey = currentAWSConfig.getAccessKey();
-          currentSecretKey = currentAWSConfig.getSecretKey();
-        } else if (ProviderType.S3.equals(awsProviders.get(i).getConfig().getType())) {
-          S3Config currentS3Config = (S3Config) awsProviders.get(i).getConfig();
-          currentAccessKey = currentS3Config.getAccessKey();
-          currentSecretKey = currentS3Config.getSecretKey();
-        }
+        Pair<String, String> currentKeys =
+            OtelCollectorConfigGenerator.getAwsKeys(awsProviders.get(i));
+        String currentAccessKey = currentKeys.getFirst();
+        String currentSecretKey = currentKeys.getSecond();
 
         if (firstAccessKey != null
             && firstSecretKey != null
