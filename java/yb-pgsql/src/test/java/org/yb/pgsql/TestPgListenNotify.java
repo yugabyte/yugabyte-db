@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -2084,13 +2085,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
             "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
         Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
         stmt.execute("NOTIFY " + channel + ", 'x'");
-        waitForPollerRestart(stmt, pollerPid);
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
       } finally {
         restorePgConfOnAllTServers(originalPgConf);
       }
 
       List<PGNotification> received = waitForNotification(listener, channel, "x");
       assertEquals("Expected the notification exactly once", 1, received.size());
+      assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
       waitAndAssertNoNotifications(listener, "The notification should not be re-delivered");
     }
   }
@@ -2098,7 +2100,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   /**
    * A restarted poller that fails to initialize retries without failing new LISTENs, and once it
    * initializes, both the listener from before and the one that joined meanwhile receive
-   * notifications.
+   * notifications. SIGTERM exits through FATAL, not ybNotifsPollerExitOnError; only the restarts
+   * that then fail to initialize take that path.
    */
   @Test
   public void testRestartedPollerRecoversFromInitFailure() throws Exception {
@@ -2154,6 +2157,70 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
+  }
+
+  /**
+   * A transaction acked after an error ends that run of failed restarts, so a later error restarts
+   * the poller even when the first error is older than yb_notifications_poller_retry_timeout_ms.
+   * The second error hits a poller that has been up for less than the timeout, so only its ack can
+   * end the run.
+   */
+  @Test
+  public void testAckEndsFailedRestartRun() throws Exception {
+    final String channel = "ack_ends_run";
+    final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN " + channel);
+      int pollerPid = getPollerPid(stmt);
+
+      // First error; the replay after the hook is cleared delivers and acks 'a'.
+      long firstErrorMs;
+      try {
+        appendToPgConfOnAllTServers(
+            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+        firstErrorMs = System.currentTimeMillis();
+        stmt.execute("NOTIFY " + channel + ", 'a'");
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      } finally {
+        restorePgConfOnAllTServers(originalPgConf);
+      }
+      waitForNotification(listener, channel, "a");
+      int restartedPid = getPollerPid(stmt);
+      assertNotEquals("Expected the poller to have restarted", pollerPid, restartedPid);
+      pollerPid = restartedPid;
+
+      // Let the first error age past the timeout, then start a fresh poller (SIGTERM does not
+      // end the run) and have it ack 'b'.
+      long agedMs = firstErrorMs + timeoutMs + Timeouts.adjustTimeoutSecForBuildType(2000);
+      Thread.sleep(Math.max(0, agedMs - System.currentTimeMillis()));
+      ProcessUtil.signalProcess(pollerPid, "TERM");
+      pollerPid = waitForPollerRestart(stmt, pollerPid);
+      stmt.execute("NOTIFY " + channel + ", 'b'");
+      waitForNotification(listener, channel, "b");
+
+      // Second error, before this poller has been up for the timeout.
+      originalPgConf.clear();
+      try {
+        appendToPgConfOnAllTServers(
+            "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+        stmt.execute("NOTIFY " + channel + ", 'c'");
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      } finally {
+        restorePgConfOnAllTServers(originalPgConf);
+      }
+
+      List<PGNotification> received = waitForNotification(listener, channel, "c");
+      assertEquals("Expected the notification exactly once", 1, received.size());
+      assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
+    } finally {
+      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+    }
   }
 
   private void setPollerRetryTimeoutMs(String value) throws Exception {
