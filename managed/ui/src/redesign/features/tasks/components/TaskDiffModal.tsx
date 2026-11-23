@@ -126,7 +126,8 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     );
   }
 
-  // No taskDiff: the task ran before the backend recorded it, or the audit fetch failed.
+  // No taskDiff: the task ran before the backend recorded it, the audit fetch failed, or it is a
+  // retry whose first attempt failed before the freeze (only a first try captures the delta).
   const noDiff = !taskDiffDetails;
 
   return (

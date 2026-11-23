@@ -85,6 +85,13 @@ export const getOriginalTaskTypeColumnLabel = (
  * @returns A boolean indicating whether the task supports before/after data or not.
  */
 export const doesTaskSupportsDiffData = (task: Task): boolean => {
+  // A validation (precheck-only) task never freezes the universe, so it records no taskDiff.
+  if (
+    (task.type === TaskType.EDIT || task.type === TaskType.RESIZE_NODE) &&
+    getIsPreCheckTask(task)
+  ) {
+    return false;
+  }
   if (task.type === TaskType.EDIT) {
     // A read replica edit is a Cluster target task.
     return task.target === 'Universe' || task.target === 'Cluster';
