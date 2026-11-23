@@ -8,6 +8,11 @@ name: "issue-overlap"
 # repository_dispatch with the issue key, and the comment goes to Jira only,
 # because the description may be internal. GitHub comments never include Jira
 # results.
+#
+# Rollout: comments are posted only when the repository variable
+# ISSUE_OVERLAP_POST is "true". Until then each run writes what it would post
+# to the job summary (GitHub issues) or only whether it would post (Jira
+# issues, whose comment text is internal), so precision can be checked first.
 on:
   issues:
     types: [opened]
@@ -17,11 +22,12 @@ on:
 permissions: {}
 
 # No concurrency group: GitHub keeps one pending run per group and cancels it
-# when another queues, so a burst of new issues would lose checks. Each run
-# saves its own cache entry, so parallel runs only cost a duplicate fetch.
+# when another queues, so a burst of new issues would lose checks. Parallel
+# runs only cost a duplicate fetch.
 
 env:
   PR_OVERLAP_CACHE: ${{ github.workspace }}/../issue-overlap-cache
+  POST: ${{ vars.ISSUE_OVERLAP_POST }}
 
 jobs:
   github-issue:
@@ -35,10 +41,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/scripts/issue_overlap
+      # One cache entry a day (40 MB): a key per run would save a new entry
+      # every run and push other caches out of the repository's 10 GB.
+      - id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: ${{ env.PR_OVERLAP_CACHE }}
-          key: issue-overlap-${{ github.run_id }}
+          key: issue-overlap-${{ steps.day.outputs.day }}
           restore-keys: issue-overlap-
       - name: Comment on the issue
         env:
@@ -49,11 +59,14 @@ jobs:
           # which the jira-issue job checks, and for an issue with no terms.
           python3 .github/scripts/issue_overlap/issue_check.py \
             --issue "$ISSUE" --format github > "$RUNNER_TEMP/comment.md"
-          if [[ -s "$RUNNER_TEMP/comment.md" ]]; then
+          if [[ ! -s "$RUNNER_TEMP/comment.md" ]]; then
+            echo "No related work found; not commenting."
+          elif [[ "$POST" == "true" ]]; then
             gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
               --body-file "$RUNNER_TEMP/comment.md"
           else
-            echo "No related work found; not commenting."
+            { echo "### Would comment on #$ISSUE"; echo
+              cat "$RUNNER_TEMP/comment.md"; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   jira-issue:
@@ -67,10 +80,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/scripts/issue_overlap
+      # One cache entry a day (40 MB): a key per run would save a new entry
+      # every run and push other caches out of the repository's 10 GB.
+      - id: day
+        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
           path: ${{ env.PR_OVERLAP_CACHE }}
-          key: issue-overlap-${{ github.run_id }}
+          key: issue-overlap-${{ steps.day.outputs.day }}
           restore-keys: issue-overlap-
       - name: Comment on the Jira issue
         env:
@@ -82,5 +99,16 @@ jobs:
             echo "::error ::client_payload.key must be a DB Jira key"
             exit 1
           fi
-          python3 .github/scripts/issue_overlap/issue_check.py \
-            --jira "$KEY" --format jira --post
+          if [[ "$POST" == "true" ]]; then
+            python3 .github/scripts/issue_overlap/issue_check.py \
+              --jira "$KEY" --format jira --post
+          else
+            # The comment text is internal: log only whether one would post.
+            python3 .github/scripts/issue_overlap/issue_check.py \
+              --jira "$KEY" --format jira > "$RUNNER_TEMP/comment.txt"
+            if [[ -s "$RUNNER_TEMP/comment.txt" ]]; then
+              echo "Would comment on $KEY (text not logged)."
+            else
+              echo "Would not comment on $KEY."
+            fi
+          fi

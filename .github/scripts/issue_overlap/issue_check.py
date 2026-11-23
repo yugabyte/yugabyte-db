@@ -23,6 +23,7 @@ import math
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -36,6 +37,11 @@ GH_DESC_FIELD = "customfield_10885"
 MAX_SEARCH_TERMS = 6      # GitHub search allows 30 requests a minute
 COMMON_HITS = 25          # a term in more open issues than this says nothing
 MAX_TERM_LEN = 100        # GitHub search rejects queries over 256 characters
+SEARCH_RETRY_WAIT = 61    # seconds; the search rate-limit window is a minute
+MAX_ITEMS = 3             # per comment section
+# An issue with this many terms (a long design-level report) matches PRs on
+# shared vocabulary alone, so a PR needs one more shared term to be listed.
+LONG_ISSUE_TERMS = 20
 
 TEST_NAME = re.compile(
     r"\b(?:[A-Z]\w*Test\w*\.\w+|Test\w+#\w+|org\.yb\.[\w.]+#?\w*)")
@@ -137,12 +143,31 @@ def extract_terms(title, body):
     return strong, idents
 
 
-def match_prs(strong, idents, data, metas):
-    """Score pool PRs by the issue terms their diff, title or body contain."""
+def linked_pattern(selfs):
+    """Regex for a reference to the issue (#N, issues/N, or its Jira key)."""
+    alts = []
+    for s in selfs:
+        if s.startswith("#"):
+            alts.append(rf"(?<![\w/])#{s[1:]}\b|/issues/{s[1:]}\b")
+        else:
+            alts.append(rf"\b{re.escape(s)}\b")
+    return re.compile("|".join(alts)) if alts else None
+
+
+def match_prs(strong, idents, data, metas, linked=None):
+    """Score pool PRs by the issue terms their diff, title or body contain.
+
+    Skips PRs whose title or body already reference the issue (linked):
+    GitHub shows those on the issue already, and they were most of the
+    comments in a sample of new issues."""
+    def is_linked(n):
+        return linked and linked.search(
+            metas[n]["title"] + "\n" + (metas[n].get("body") or ""))
     # Catch-up merges and other huge PRs contain nearly every identifier.
     hay = {n: "\n".join((d["text"], metas[n]["title"], metas[n].get("body") or
                          "", " ".join(d["paths"])))
-           for n, d in data.items() if len(d["paths"]) <= po.MAX_FILES}
+           for n, d in data.items()
+           if len(d["paths"]) <= po.MAX_FILES and not is_linked(n)}
     terms = strong | idents
     df = {t: sum(t in h for h in hay.values()) for t in terms}
     n = len(hay)
@@ -174,11 +199,20 @@ def search_issues(terms, selfs):
     found = {}
     for t in terms:
         q = f'repo:{po.REPO} is:issue is:open "{t.replace(chr(34), "")}"'
+        args = ("api", "-X", "GET", "search/issues", "-f", f"q={q}",
+                "-f", "per_page=20")
         try:
-            r = json.loads(po.gh("api", "-X", "GET", "search/issues", "-f",
-                                 f"q={q}", "-f", "per_page=20"))
+            try:
+                r = json.loads(po.gh(*args))
+            except po.subprocess.CalledProcessError as e:
+                # Search allows 30 requests a minute; bots file issues in
+                # bursts. Wait out the window once.
+                if "rate limit" not in e.stderr.lower():
+                    raise
+                time.sleep(SEARCH_RETRY_WAIT)
+                r = json.loads(po.gh(*args))
         except po.subprocess.CalledProcessError as e:
-            # One failed term (rate limit, rejected query) shouldn't stop
+            # One failed term (rejected query, still limited) shouldn't stop
             # the others.
             print(f"warning: GitHub search failed: {e.stderr.strip()[:200]}",
                   file=sys.stderr)
@@ -291,7 +325,7 @@ def main():
     # Prune only with the full default pool; a narrower --bases would drop
     # the shared cache entries of every PR outside it.
     data = po.load(pool, prune=args.bases == po.DEFAULT_BASES.pattern)
-    prs, df = match_prs(strong, idents, data, metas)
+    prs, df = match_prs(strong, idents, data, metas, linked_pattern(selfs))
     terms = pick_search_terms(strong, idents, df)
     # Terms from a Jira issue may be internal, so they never go to GitHub
     # search. Every GitHub issue has a Jira copy, so the Jira search below
@@ -305,14 +339,16 @@ def main():
         import contextlib, io
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            print_comment(args.format, strong, prs, metas, issues, jira)
+            print_comment(args.format, strong, prs, metas, issues, jira,
+                          len(strong | idents))
         if buf.getvalue().strip():
             jira_post_comment(args.jira, buf.getvalue())
             print(f"posted to {args.jira}")
         else:
             print("nothing to post")
     else:
-        print_comment(args.format, strong, prs, metas, issues, jira)
+        print_comment(args.format, strong, prs, metas, issues, jira,
+                      len(strong | idents))
 
 
 def print_text(strong, terms, prs, metas, issues, jira):
@@ -340,24 +376,27 @@ def print_text(strong, terms, prs, metas, issues, jira):
             print("- none")
 
 
-def print_comment(fmt, strong, prs, metas, issues, jira):
+def print_comment(fmt, strong, prs, metas, issues, jira, n_terms):
     """A short comment, or nothing when there is nothing worth saying.
 
-    Keeps only strong matches (two or more terms, or a test name), at most
-    five per section. The github format never includes Jira results: Jira
-    summaries are internal and GitHub comments are public."""
+    Keeps only strong matches, at most MAX_ITEMS per section: a test name,
+    or two or more shared terms (three for a PR when the issue has
+    LONG_ISSUE_TERMS or more). The github format never includes Jira
+    results: Jira summaries are internal and GitHub comments are public."""
     # Only a test name is specific enough alone; error text cut at the first
     # number ("plancache reference") matched issues from 2020.
     tests = {t for t in strong if TEST_NAME.fullmatch(t)}
 
-    def keep(terms):
-        return len(terms) >= 2 or any(t in tests for t in terms)
+    def keep(terms, need=2):
+        return len(terms) >= need or any(t in tests for t in terms)
+
+    pr_need = 3 if n_terms >= LONG_ISSUE_TERMS else 2
 
     h, b, code = (("### ", "- ", "`") if fmt == "github" else
                   ("h4. ", "* ", "{{"))
     endcode = "`" if fmt == "github" else "}}"
     sections = []
-    rows = [(n, hits) for _, n, hits in prs if keep(hits)][:5]
+    rows = [(n, hits) for _, n, hits in prs if keep(hits, pr_need)][:MAX_ITEMS]
     if rows:
         sections.append((f"Open PRs that may already fix this", [
             f"{b}#{n} {metas[n]['title']} (@{metas[n]['author']['login']}) "
@@ -371,7 +410,7 @@ def print_comment(fmt, strong, prs, metas, issues, jira):
         found.append(("Unresolved Jira DB issues about the same thing", jira))
     for head, f in found:
         rows = sorted(((k, e) for k, e in f.items() if keep(e["terms"])),
-                      key=lambda kv: -len(kv[1]["terms"]))[:5]
+                      key=lambda kv: -len(kv[1]["terms"]))[:MAX_ITEMS]
         if rows:
             sections.append((head, [
                 f"{b}{k} {e['title']} "
