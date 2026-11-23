@@ -145,8 +145,10 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM or
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
 (1 row)
 
--- A yb_hash_code condition on a hash key is not an equality on the key, so the
--- equality on the key is still derived
+-- An equality condition on yb_hash_code(bucket_id) is pushed down as
+-- YB_SK_SEARCHHASHCODE.  It is kept with the index clauses on bucket_id, but
+-- it is not an equality on the column.  An equality on bucket_id is still
+-- derived in this case.
 CREATE TABLE orders_hash (
     order_id int,
     user_id int,
@@ -770,6 +772,34 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE
         1 |      50 |         0
         2 |      50 |         0
 (2 rows)
+
+-- An OR arm that already has an equality on the bucket key does not get a
+-- derived one.  The other arm still does.
+\set query ':P :hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_gen
+         Recheck Cond: (((bucket_id = 0) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = 0) AND (user_id = 50))
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+(9 rows)
+
+/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        1 |      50 |         0
+        2 |      50 |         0
+        3 |      60 |         1
+(3 rows)
 
 -- TODO(#31672): within an OR arm an equality is only followed one step.
 -- bucket_id is computed from z, so deriving it needs a constant value for z.

@@ -67,8 +67,10 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
--- A yb_hash_code condition on a hash key is not an equality on the key, so the
--- equality on the key is still derived
+-- An equality condition on yb_hash_code(bucket_id) is pushed down as
+-- YB_SK_SEARCHHASHCODE.  It is kept with the index clauses on bucket_id, but
+-- it is not an equality on the column.  An equality on bucket_id is still
+-- derived in this case.
 CREATE TABLE orders_hash (
     order_id int,
     user_id int,
@@ -217,6 +219,11 @@ $$ AS query \gset
 -- from a "user_id = NULL" arm (the arm is also a constant the planner drops).
 \set hint '/*+ BitmapScan(orders_gen) */'
 \set query ':P :hint SELECT * FROM orders_gen WHERE user_id = 50 OR user_id = NULL ORDER BY user_id, order_id;'
+\i :run_query
+
+-- An OR arm that already has an equality on the bucket key does not get a
+-- derived one.  The other arm still does.
+\set query ':P :hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;'
 \i :run_query
 
 -- TODO(#31672): within an OR arm an equality is only followed one step.
