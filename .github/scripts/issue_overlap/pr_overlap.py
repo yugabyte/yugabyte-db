@@ -2,9 +2,14 @@
 """Find open yugabyte-db PRs that change the same code as a given PR.
 
 Two PRs overlap when they change the same function in the same file, or when
-their changed lines share an identifier that few other open PRs touch (for
-example `shared_simple_eval_resowner`). Sharing only a file is shown as context
-but is not enough to flag a pair: hot files make that too noisy.
+their changed lines share at least two identifiers that few other open PRs
+touch (for example `shared_simple_eval_resowner`). Sharing only a file is shown
+as context but is not enough to flag a pair: hot files make that too noisy.
+
+--all compares only pairs that share a file touched by at most 50 pool PRs, by
+different authors, each changing at most --max-files files. So it misses pairs
+whose only link is rare identifiers in different files, or a function in a
+file that more than 50 PRs touch. The single-PR mode compares every pair.
 
 Usage:
   pr_overlap.py 38804                 # PRs overlapping one PR (any state)
@@ -134,7 +139,21 @@ def summarize(files):
             "text": "\n".join(text)}
 
 
-def load(prs, jobs=8):
+def prune_cache(prs):
+    """Drop cached files of closed PRs and of superseded head SHAs.
+
+    The CI cache saves this whole directory on every run, so without pruning
+    it grows with every push to every PR."""
+    keep = {f"{p['number']}-{p['headRefOid']}.json" for p in prs}
+    if not os.path.isdir(CACHE):
+        return
+    for name in os.listdir(CACHE):
+        if re.fullmatch(r"\d+-[0-9a-f]+\.json", name) and name not in keep:
+            os.remove(os.path.join(CACHE, name))
+
+
+def load(prs, jobs=8, prune=False):
+    """Diff summaries of prs. prune=True when prs is the whole pool."""
     out = {}
     with concurrent.futures.ThreadPoolExecutor(jobs) as ex:
         futs = {ex.submit(fetch_files, p): p for p in prs}
@@ -147,6 +166,8 @@ def load(prs, jobs=8):
                       file=sys.stderr)
             if sys.stderr.isatty() and i % 25 == 0:
                 print(f"  fetched {i}/{len(futs)}", file=sys.stderr)
+    if prune:
+        prune_cache(prs)
     return out
 
 
@@ -190,7 +211,7 @@ def main():
     if args.pr:
         target = metas.get(args.pr) or pr_meta(args.pr)
         metas[args.pr] = target
-    data = load(list(metas.values()))
+    data = load(list(metas.values()), prune=True)
     if target and target["number"] not in data:
         sys.exit(f"could not read #{target['number']}")
 
@@ -204,6 +225,7 @@ def main():
         hits.sort(reverse=True)
         if args.json:
             print(json.dumps([{"pr": n, "terms": f} for _, n, f in hits]))
+            return
         for _, n, found in hits:
             print(f"{describe(metas[n])}\n    matches: {', '.join(found)}")
         if not hits:

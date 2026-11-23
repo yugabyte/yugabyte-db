@@ -15,15 +15,19 @@ python3 pr_overlap.py 38804                             # open PRs changing the 
 ## How a match is decided
 
 - Terms come from the issue: test names, error text after `ERROR:`/`FATAL:`/`Check failed:`
-  (cut at the first number or address), and snake_case/CamelCase identifiers. Tokens in URLs are
-  ignored.
+  (cut at the first number, address or quoted name), and snake_case/CamelCase identifiers.
+  Tokens in URLs and the lines the Jira sync adds are ignored.
 - PRs are matched against their diff, title, body and paths. Issues are matched through GitHub
-  search and Jira JQL on the six most specific terms. A term that more than 1% of open PRs (or
-  more than 25 issues) contain is ignored.
+  search and Jira JQL on the six most specific terms. A term that more than 1% of open PRs, or
+  more than 25 issues in either tracker, contain is ignored.
 - A comment lists an item only if it shares a test name or at least two terms with the issue.
-  It shows at most five items per section and posts nothing when nothing qualifies.
-- **GitHub comments never include Jira results.** Jira summaries are internal. Jira comments
-  include both.
+  It shows at most five items per section. The script prints nothing and exits 0 when nothing
+  qualifies, when the issue has no terms, and for the GitHub copy of a Jira-filed issue (the
+  `jira-issue` job checks that one).
+- **Jira text stays in Jira.** GitHub comments never include Jira results. In `--jira` mode,
+  terms are never sent to GitHub search (each GitHub issue has a Jira copy, so the Jira search
+  finds GitHub-filed duplicates), and errors print only their type, because the Actions log
+  is public.
 
 ## Gotchas
 

@@ -35,13 +35,22 @@ JIRA_TOKEN = os.path.expanduser("~/.claude/jira-api.token")
 GH_DESC_FIELD = "customfield_10885"
 MAX_SEARCH_TERMS = 6      # GitHub search allows 30 requests a minute
 COMMON_HITS = 25          # a term in more open issues than this says nothing
+MAX_TERM_LEN = 100        # GitHub search rejects queries over 256 characters
 
 TEST_NAME = re.compile(
     r"\b(?:[A-Z]\w*Test\w*\.\w+|Test\w+#\w+|org\.yb\.[\w.]+#?\w*)")
 ERROR_LINE = re.compile(r"(?:ERROR|FATAL|PANIC|Check failed):\s+(.+)")
 URL = re.compile(r"https?://\S+")
-HEX_OR_NUM =re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b")
-LINKED_ISSUE = re.compile(r"(?:#|issues/)(\d{4,6})\b|\b(DB-\d+)\b")
+# Parts of an error message that change from run to run: addresses, numbers
+# and quoted names (relation "t1" does not exist).
+VARIABLE = re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b|\"[^\"]*\"|'[^']*'")
+# Lines the Jira sync adds to the GitHub copy of an issue.
+JIRA_SYNC_LINE = re.compile(r"^(Jira Link:.*|\[[A-Z]+-\d+\]: https?://\S+)$",
+                            re.M)
+
+
+def jira_cred_source():
+    return "$JIRA_AUTH" if os.environ.get("JIRA_AUTH") else JIRA_TOKEN
 
 
 def jira_get(path, **q):
@@ -88,6 +97,10 @@ def load_issue(args):
                              po.REPO, "--json", "title,body"))
         title, body = d["title"], d["body"] or ""
         selfs = {f"#{args.issue}"}
+        # The Jira issue the sync links to is this same issue.
+        for line in JIRA_SYNC_LINE.findall(body):
+            selfs.update(re.findall(r"\b[A-Z]+-\d+\b", line))
+        body = JIRA_SYNC_LINE.sub("", body)
     elif args.jira:
         d = jira_get(f"issue/{args.jira}",
                      fields=f"summary,description,{GH_DESC_FIELD}")
@@ -100,10 +113,6 @@ def load_issue(args):
     else:
         body = sys.stdin.read() if args.text == "-" else open(args.text).read()
         title, selfs = "", set()
-    # The GitHub issue and its Jira mirror are the same issue.
-    for m in LINKED_ISSUE.finditer(body[:300]):
-        if m.group(2) and "Jira Link" in body[:300]:
-            selfs.add(m.group(2))
     return title, body, selfs
 
 
@@ -115,8 +124,8 @@ def extract_terms(title, body):
     for m in ERROR_LINE.finditer(text):
         # Keep the error text up to the first address or number, which
         # changes from run to run.
-        phrase = HEX_OR_NUM.split(m.group(1))[0].strip(" .:'\"`")
-        if len(phrase) >= 15:
+        phrase = VARIABLE.split(m.group(1))[0].strip(" .:'\"`\\")
+        if 15 <= len(phrase) <= MAX_TERM_LEN and '"' not in phrase:
             strong.add(phrase)
     idents = {t for t in po.IDENT.findall(text)
               if t not in po.STOP and po.CODE_LIKE.search(t)}
@@ -156,9 +165,16 @@ def search_issues(terms, selfs, self_title):
     """Open GitHub issues mentioning each term, via the search API."""
     found = {}
     for t in terms:
-        q = f'repo:{po.REPO} is:issue is:open "{t}"'
-        r = json.loads(po.gh("api", "-X", "GET", "search/issues", "-f",
-                             f"q={q}", "-f", "per_page=20"))
+        q = f'repo:{po.REPO} is:issue is:open "{t.replace(chr(34), "")}"'
+        try:
+            r = json.loads(po.gh("api", "-X", "GET", "search/issues", "-f",
+                                 f"q={q}", "-f", "per_page=20"))
+        except po.subprocess.CalledProcessError as e:
+            # One failed term (rate limit, rejected query) shouldn't stop
+            # the others.
+            print(f"warning: GitHub search failed: {e.stderr.strip()[:200]}",
+                  file=sys.stderr)
+            continue
         if r["total_count"] > COMMON_HITS:
             continue
         for it in r["items"]:
@@ -178,12 +194,15 @@ def search_jira(terms, selfs, self_title):
     """Unresolved Jira DB issues whose text mentions each term."""
     found = {}
     for t in terms:
+        # The term is a phrase inside a JQL string: escape \ and " twice,
+        # once for the phrase quotes and once for the JQL string quotes.
+        esc = t.replace("\\", "\\\\\\\\").replace('"', '\\\\\\"')
         jql = (f'project = DB AND statusCategory != Done AND '
-               f'text ~ "\\"{t}\\""')
-        r = jira_get("search/jql", jql=jql, maxResults=20,
+               f'text ~ "\\"{esc}\\""')
+        r = jira_get("search/jql", jql=jql, maxResults=COMMON_HITS + 1,
                      fields="summary,assignee,status")
         issues = r.get("issues", [])
-        if len(issues) >= 20:
+        if len(issues) > COMMON_HITS:
             continue
         for it in issues:
             if is_self(it["key"], it["fields"]["summary"], selfs, self_title):
@@ -237,22 +256,37 @@ def main():
             jira_get("myself")
         except urllib.error.HTTPError as e:
             if args.jira:
-                sys.exit(f"Jira rejected {JIRA_TOKEN} (HTTP {e.code}); renew it")
-            print(f"WARNING: Jira rejected {JIRA_TOKEN} (HTTP {e.code}); "
-                  "Jira not searched\n")
+                sys.exit(f"Jira rejected {jira_cred_source()} (HTTP {e.code}); "
+                         "renew it")
+            print(f"WARNING: Jira rejected {jira_cred_source()} "
+                  f"(HTTP {e.code}); Jira not searched\n")
             use_jira = False
 
+    comment = args.format != "text"
     title, body, selfs = load_issue(args)
+    if args.issue and comment and not body.strip():
+        # The GitHub copy of an issue filed in Jira: only the sync's lines.
+        # The workflow checks that issue from Jira instead.
+        print("issue body is empty or only Jira sync lines; not checking",
+              file=sys.stderr)
+        return
     strong, idents = extract_terms(title, body)
     if not strong and not idents:
-        sys.exit("no test names, error text or code identifiers in the issue")
+        msg = "no test names, error text or code identifiers in the issue"
+        if comment:
+            print(f"{msg}; not commenting", file=sys.stderr)
+            return
+        sys.exit(msg)
 
     pool = po.pool_prs(re.compile(args.bases))
     metas = {p["number"]: p for p in pool}
-    data = po.load(pool)
+    data = po.load(pool, prune=True)
     prs, df = match_prs(strong, idents, data, metas)
     terms = pick_search_terms(strong, idents, df)
-    issues = search_issues(terms, selfs, title)
+    # Terms from a Jira issue may be internal, so they never go to GitHub
+    # search. Every GitHub issue has a Jira copy, so the Jira search below
+    # still finds GitHub-filed duplicates.
+    issues = None if args.jira else search_issues(terms, selfs, title)
     jira = search_jira(terms, selfs, title) if use_jira else None
 
     if args.format == "text":
@@ -284,7 +318,7 @@ def print_text(strong, terms, prs, metas, issues, jira):
                         ("Unresolved Jira DB issues", jira)):
         print(f"\n## {head} that mention the same things")
         if found is None:
-            print("- not searched (no working Jira token)")
+            print("- not searched")
             continue
         rows = sorted(found.items(), key=lambda kv: -len(kv[1]["terms"]))
         for key, e in rows[:10]:
@@ -320,7 +354,9 @@ def print_comment(fmt, strong, prs, metas, issues, jira):
             f"{metas[n]['url']} - matches "
             + ", ".join(f"{code}{t}{endcode}" for t in hits[:4])
             for n, hits in rows]))
-    found = [("Open GitHub issues about the same thing", issues)]
+    found = []
+    if issues:
+        found.append(("Open GitHub issues about the same thing", issues))
     if fmt == "jira" and jira:
         found.append(("Unresolved Jira DB issues about the same thing", jira))
     for head, f in found:
@@ -344,4 +380,15 @@ def print_comment(fmt, strong, prs, metas, issues, jira):
           "issue._")
 
 if __name__ == "__main__":
-    main()
+    if "--jira" in sys.argv:
+        # A traceback can show internal Jira text (in a failed command's
+        # arguments), and the Actions log is public. Report the error type only.
+        try:
+            main()
+        except SystemExit:
+            raise
+        except Exception as e:  # noqa: BLE001
+            sys.exit(f"issue_check failed: {type(e).__name__} "
+                     "(details suppressed in --jira mode)")
+    else:
+        main()

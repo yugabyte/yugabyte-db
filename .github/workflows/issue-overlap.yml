@@ -16,11 +16,9 @@ on:
 
 permissions: {}
 
-# Runs share the PR-diff cache; one at a time keeps a cold cache from being
-# filled by several runs at once.
-concurrency:
-  group: issue-overlap
-  cancel-in-progress: false
+# No concurrency group: GitHub keeps one pending run per group and cancels it
+# when another queues, so a burst of new issues would lose checks. Each run
+# saves its own cache entry, so parallel runs only cost a duplicate fetch.
 
 env:
   PR_OVERLAP_CACHE: ${{ github.workspace }}/../issue-overlap-cache
@@ -46,14 +44,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE: ${{ github.event.issue.number }}
-          BODY: ${{ github.event.issue.body }}
         run: |
-          # The GitHub copy of a Jira-filed issue has only the "Jira Link"
-          # line; the jira-issue job checks that issue from Jira.
-          if [[ -z "$(printf '%s' "$BODY" | grep -v '^Jira Link:' | tr -d '[:space:]')" ]]; then
-            echo "Issue body is empty or only a Jira link; nothing to check."
-            exit 0
-          fi
+          # Prints nothing (exit 0) for the GitHub copy of a Jira-filed issue,
+          # which the jira-issue job checks, and for an issue with no terms.
           python3 .github/scripts/issue_overlap/issue_check.py \
             --issue "$ISSUE" --format github > "$RUNNER_TEMP/comment.md"
           if [[ -s "$RUNNER_TEMP/comment.md" ]]; then
