@@ -262,23 +262,68 @@ echo "systemd-journald restarted successfully."
 # For earlyoom MEMLOCK requirement
 # The hard cap comes from pam_limits.
 # this default is what the user manager sets on the service once it is allowed to.
+memlock_default="50M"
+memlock_bytes=$((50 * 1024 * 1024))
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/system.conf; then
-    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/system.conf
+    echo "DefaultLimitMEMLOCK=${memlock_default}" | tee -a /etc/systemd/system.conf
 fi
 if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
-    echo 'DefaultLimitMEMLOCK=50M' | tee -a /etc/systemd/user.conf
+    echo "DefaultLimitMEMLOCK=${memlock_default}" | tee -a /etc/systemd/user.conf
 fi
 chmod 644 /etc/systemd/system.conf /etc/systemd/user.conf
 
+# Print the hard RLIMIT_MEMLOCK of the running user manager in bytes, or -1 for
+# unlimited. Fails if the manager has no main process.
+yb_user_manager_memlock() {
+  local pid
+  pid=$(systemctl show -p MainPID --value "user@$1.service")
+  [[ -n "$pid" && "$pid" != 0 && -r "/proc/${pid}/limits" ]] || return 1
+  awk '/^Max locked memory/ { print ($5 == "unlimited") ? -1 : $5 }' "/proc/${pid}/limits"
+}
+
+# Make the yugabyte user manager apply the memlock default. The manager cannot
+# give its units more than the hard memlock pam gave it at start, so it has to be
+# restarted when that is too low. Restarting stops every user-level unit
+# (yb-node-agent, node_exporter, earlyoom), so it is done only then: re-running
+# YNP on a node whose manager already has the limit leaves its units running.
+# The configure_os is run only with sudo priviledges so restarting manager will not kill
+# the process in the midway.
 restart_yb_user_manager() {
-  local yb_uid
+  local yb_uid unit hard
+  local user_ctl
   yb_uid=$(id -u {{ yb_user }})
-  if systemctl is-active --quiet "user@${yb_uid}.service"; then
-    # The running manager keeps the memlock pam gave it at start.
-    if ! systemctl restart "user@${yb_uid}.service"; then
-      echo "Failed to restart user@${yb_uid}.service to apply memlock"
-      exit 1
-    fi
+  unit="user@${yb_uid}.service"
+  user_ctl="XDG_RUNTIME_DIR=/run/user/${yb_uid} systemctl --user"
+  # Not running: the next start (linger or login) gets the new limits.
+  systemctl is-active --quiet "$unit" || return 0
+  if ! hard=$(yb_user_manager_memlock "$yb_uid"); then
+    echo "Cannot read the memlock limit of ${unit}; not restarting it."
+    return 0
+  fi
+  if [[ "$hard" == -1 || "$hard" -ge "$memlock_bytes" ]]; then
+    # Re-execute to re-read user.conf. Unlike a restart, this keeps units running.
+    su - {{ yb_user }} -c "$user_ctl daemon-reexec" || true
+    echo "${unit} memlock is ${hard}; no restart needed."
+    return 0
+  fi
+  # Never stop the process tree this run belongs to.
+  if grep -q "/user@${yb_uid}\.service/" /proc/self/cgroup; then
+    echo "WARNING: provisioning runs under ${unit}; not restarting it. User-level" \
+      "services keep memlock ${hard} until ${unit} restarts or the node reboots."
+    return 0
+  fi
+  echo "${unit} memlock ${hard} is below ${memlock_bytes}; restarting it."
+  if ! systemctl restart "$unit"; then
+    echo "Failed to restart ${unit} to apply memlock"
+    exit 1
+  fi
+  # If the restart did not raise the limit, every later run would restart the
+  # manager again, so stop here.
+  hard=$(yb_user_manager_memlock "$yb_uid") || hard=0
+  if [[ "$hard" != -1 && "$hard" -lt "$memlock_bytes" ]]; then
+    echo "${unit} memlock is still ${hard} after restart (need ${memlock_bytes})." \
+      "Check the memlock entries in /etc/security/limits.conf and limits.d."
+    exit 1
   fi
 }
 
@@ -294,22 +339,11 @@ if ! grep -qxF "${xdg_runtime_env}" {{ yb_user_home }}/.bashrc >/dev/null 2>&1; 
 fi
 
 if [[ "$platform_el_version" -ge 8 ]]; then
-    # Stop user systemd service
-    su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1" || true
-    
     status_cmd="XDG_RUNTIME_DIR=$runtime_dir systemctl --user status --no-pager >/dev/null 2>&1"
-    count=0
-    
-    # Wait for user systemd to stop
-    while su - {{ yb_user }} -c "$status_cmd"; do
-        count=$((count + 1))
-        if [ $count -gt 10 ]; then
-            echo "User systemd service failed to stop after $count attempts."
-            exit 1
-        fi
-        echo "Waiting for user systemd service to stop..."
-        sleep 2
-    done
+    # The user manager is no longer stopped on every run, as that stops
+    # yb-node-agent and the other user-level units. restart_yb_user_manager below
+    # re-reads user.conf (DefaultLimitNOFILE, DefaultLimitMEMLOCK) and restarts
+    # the manager only when its memlock is too low.
     # Enable linger unconditionally. An active user manager does not imply linger, as any open
     # session of the user also starts it, so the loop below may never run its body.
     if ! loginctl enable-linger {{ yb_user }}; then
@@ -328,6 +362,7 @@ if [[ "$platform_el_version" -ge 8 ]]; then
         echo "Waiting for user systemd service to become active..."
         sleep 2
     done
+    restart_yb_user_manager
 else
     # Non el8/el9 - just enable linger
     if ! loginctl enable-linger {{ yb_user }}; then
