@@ -100,6 +100,10 @@ spec:
                         Use path style access for S3 bucket configuration. Valid for S3 compatible
                         storages.
                       type: boolean
+                    IMMUTABLE_STORAGE:
+                      description: |
+                        If true, backup deletion only results in deletion of YBA metadata.
+                      type: boolean
                     SIGNING_REGION:
                       description: |
                         Signing region to be used for S3 clients when accessing storage bucket. Use

@@ -551,8 +551,12 @@ YbTidNext(TidScanState *node)
 	if (tsdesc == NULL)
 	{
 		TidScan    *plan = (TidScan *) node->ss.ps.plan;
-		YbPushdownExprs *rel_pushdown =
-			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
+		YbPushdownExprs *rel_pushdown;
+
+		YbResetScanPushdownCxt(node->yb_tss_pushdown_cxt);
+		rel_pushdown = YbInstantiateScanPushdownExprs(&node->yb_tss_pushdown_cxt,
+													  estate,
+													  &plan->yb_rel_pushdown);
 
 		if (node->yb_tss_aggrefs)
 		{

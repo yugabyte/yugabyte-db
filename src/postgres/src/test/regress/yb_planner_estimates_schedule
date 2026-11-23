@@ -6,7 +6,6 @@
 # Dependency for `yb.orig.cardinality_estimate_*`
 test: yb.orig.cardinality_estimate_setup
 
-test: yb.orig.cardinality_estimate_modes
 test: yb.orig.cardinality_estimate_consistency
 
 # Dependency for the seeknext estimate tests

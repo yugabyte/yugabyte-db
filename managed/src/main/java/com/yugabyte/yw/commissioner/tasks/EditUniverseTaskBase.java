@@ -33,7 +33,6 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -514,7 +513,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Delete the load balancers of the cluster that the new placement does not call for, after
     // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
     // back.
-    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    List<ManagedLoadBalancer> plannedLbs =
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, universe.getUniverseDetails().getManagedLoadBalancerState());
     createDeleteManagedLoadBalancerTasks(
         lb ->
             lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),
@@ -531,18 +532,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
-      Duration sleepBeforeStart =
-          confGetter.getConfForScope(
-              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
-      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
-        createWaitForDurationSubtask(universe, sleepBeforeStart)
-            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
-      createModifyBlackListTask(
-              null /* addNodes */,
-              tserversToBeRemoved /* removeNodes */,
-              false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createClearTserverBlacklistTasks(universe, tserversToBeRemoved);
     }
   }
 

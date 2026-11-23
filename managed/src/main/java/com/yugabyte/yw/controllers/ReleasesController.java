@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -39,6 +38,7 @@ import io.swagger.annotations.Authorization;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -181,7 +181,8 @@ public class ReleasesController extends AuthenticatedController {
     } else {
       releases = Release.getAll();
     }
-    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    Map<String, List<ResponseRelease.Universe>> versionUniverseMap =
+        releasesUtils.versionUniverseSummaries();
     List<ResponseRelease> respReleases = new ArrayList<>();
     for (Release release : releases) {
       ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
@@ -205,7 +206,8 @@ public class ReleasesController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);
-    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    Map<String, List<ResponseRelease.Universe>> versionUniverseMap =
+        releasesUtils.versionUniverseSummaries();
     ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
     return PlatformResults.withData(resp);
   }
@@ -391,7 +393,7 @@ public class ReleasesController extends AuthenticatedController {
   }
 
   private ResponseRelease releaseToResponseRelease(
-      Release release, Map<String, List<Universe>> versionUniversesMap) {
+      Release release, Map<String, List<ResponseRelease.Universe>> versionUniversesMap) {
     ResponseRelease resp = new ResponseRelease();
     resp.release_uuid = release.getReleaseUUID();
     resp.version = release.getVersion();
@@ -419,12 +421,8 @@ public class ReleasesController extends AuthenticatedController {
     }
 
     resp.universes =
-        versionUniversesMap.getOrDefault(release.getVersion(), new ArrayList<Universe>()).stream()
-            .map(
-                u ->
-                    new ResponseRelease.Universe(
-                        u.getUniverseUUID(), u.getName(), u.getCreationDate()))
-            .collect(Collectors.toList());
+        new ArrayList<>(
+            versionUniversesMap.getOrDefault(release.getVersion(), Collections.emptyList()));
     return resp;
   }
 }

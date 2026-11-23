@@ -113,7 +113,7 @@ services:
       {{ end }}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.21+9-jre/"
       # ysql_dump links against YugabyteDB's own C++ runtime, shipped in the same bundle.
       Environment="LD_LIBRARY_PATH={{ .YsqlDumpLibPath }}"
       # install_dir: BouncyCastle dlopen()s the native libraries it unpacks, so they cannot go to

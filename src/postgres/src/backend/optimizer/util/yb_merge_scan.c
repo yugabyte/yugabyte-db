@@ -29,10 +29,13 @@
 #include "access/transam.h"
 #include "catalog/pg_operator_d.h"
 #include "catalog/pg_type_d.h"
+#include "commands/defrem.h"
 #include "common/int.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/plannodes.h"
 #include "optimizer/paths.h"
+#include "optimizer/planner.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/yb_merge_scan.h"
 #include "parser/parsetree.h"
@@ -316,17 +319,31 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 	int			best_num_elems = -1;
 	ScalarArrayOpExpr *best_saop;
 	YbMergeScanStreamColInfo *stream_col_info;
+	int			effective_max_merge_scan_streams;
+	int			mergeValue = ybGetValueForMergeOption(index->yb_options);
 
 	/*
 	 * Abort if any of the following hold:
 	 * - the caller disables merge scan (in/out param merge_scan_stream_cols is
 	 *   NULL)
+	 * - a pg_hint_plan IndexScan/IndexOnlyScan hint sets the index option
+	 *   merge=off (index->yb_options)
 	 * - the session disables merge scan (GUC yb_max_merge_scan_streams is 0 or
-	 *   yb_enable_base_scans_cost_model is false)
+	 *   yb_enable_base_scans_cost_model is false).  If the hint sets merge=on,
+	 *   yb_max_merge_scan_streams 0 is replaced by
+	 *   YB_DEFAULT_MERGE_SCAN_MAX_STREAMS, so only
+	 *   yb_enable_base_scans_cost_model can disable it.
 	 * - merge scan is not supported for this relation (not a YB relation)
 	 */
+	if (mergeValue == 0)
+		return false;
+
+	effective_max_merge_scan_streams = yb_max_merge_scan_streams;
+	if (mergeValue == 1 && effective_max_merge_scan_streams == 0)
+		effective_max_merge_scan_streams = YB_DEFAULT_MERGE_SCAN_MAX_STREAMS;
+
 	if (!(merge_scan_stream_cols &&
-		  yb_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
+		  effective_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
 		  index->rel->is_yb_relation))
 		return false;
 
@@ -437,7 +454,7 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 	 */
 	if (unlikely(pg_mul_s32_overflow(*merge_scan_cardinality, best_num_elems,
 									 merge_scan_cardinality)) ||
-		*merge_scan_cardinality > yb_max_merge_scan_streams)
+		*merge_scan_cardinality > effective_max_merge_scan_streams)
 		return false;
 
 	/* Fill out param merge_scan_stream_cols. */

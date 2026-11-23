@@ -198,6 +198,7 @@ Then clean up any temp files created during this run.
   the change is unrelated, even if a related closed/merged PR used a similar
   issue.
 - The GitHub title the template proposes (e.g. `[DocDB] Title`) is the raw issue
-  title. The `[<issue>] <Component>: <Title>` PR/commit format is applied later by
-  `/create-pr` or `/create-diff` — don't pre-format the issue title that way.
+  title. The `[<issue>,...] <Component>: <Title>` PR/commit format is applied
+  later by `/create-pr` or `/create-diff` — don't pre-format the issue title that
+  way.
 - This skill only *creates* the tracker. Opening the PR/diff is a separate step.

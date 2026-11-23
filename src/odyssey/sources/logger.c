@@ -199,6 +199,7 @@ static char od_logger_escape_tab[256] = {
 	['\r'] = 'r', ['\\'] = '\\', ['='] = '='
 };
 
+__attribute__((format(printf, 3, 0)))
 __attribute__((hot)) static inline int od_logger_escape(char *dest, int size,
 							char *fmt, va_list args)
 {
@@ -231,6 +232,7 @@ __attribute__((hot)) static inline int od_logger_escape(char *dest, int size,
 	return dst_pos - dest;
 }
 
+__attribute__((format(printf, 6, 0)))
 __attribute__((hot)) static inline int
 od_logger_format(od_logger_t *logger, od_logger_level_t level, char *context,
 		 od_client_t *client, od_server_t *server, char *fmt,
@@ -582,6 +584,19 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 	}
 }
 
+__attribute__((format(printf, 8, 9))) static int
+yb_od_logger_formatf(od_logger_t *logger, od_logger_level_t level,
+		     char *context, od_client_t *client, od_server_t *server,
+		     char *output, int output_len, char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	int len = od_logger_format(logger, level, context, client, server, fmt,
+				   args, output, output_len);
+	va_end(args);
+	return len;
+}
+
 extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 				  char *context, void *client, void *server,
 				  char *string)
@@ -607,9 +622,8 @@ extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 
 	int len = strlen(string);
 	char output[len + OD_LOGLINE_MAXLEN];
-	va_list empty_va_list = { 0 };
-	len = od_logger_format(logger, level, context, client, server, string,
-			       empty_va_list, output, len + 100);
+	len = yb_od_logger_formatf(logger, level, context, client, server,
+				   output, len + 100, "%s", string);
 
 	if (logger->loaded) {
 		/* create new log event and pass it to logger pool */

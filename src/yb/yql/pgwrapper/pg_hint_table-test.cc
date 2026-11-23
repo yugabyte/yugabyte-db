@@ -447,9 +447,11 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
   WaitForCatalogVersionToPropagate();
   auto hint_insertion_metrics = GetPrometheusMetrics();
 
-  // The conn_hint backend will have its own hint cache refreshed.
+  // The conn_hint backend will have its own hint cache refreshed. With transactional DDL off, the
+  // INSERT's catalog version bump refreshes it again (since upstream PG commit 0dca5d68d7be).
   int64_t hint_insertion_refreshes = GetMetricValue(hint_insertion_metrics, "HintCacheRefresh");
-  ASSERT_EQ(hint_insertion_refreshes - generic_plan_refreshes, 1);
+  ASSERT_EQ(hint_insertion_refreshes - generic_plan_refreshes,
+            IsTransactionalDdlEnabled(conn_hint) ? 1 : 2);
 
   int64_t hint_insertion_hits = GetMetricValue(hint_insertion_metrics, "HintCacheHits");
   ASSERT_EQ(hint_insertion_hits - generic_plan_hits, 0);

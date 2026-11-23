@@ -117,8 +117,10 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
+#include "commands/defrem.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planner.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
@@ -613,6 +615,28 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	path->path.total_cost = (startup_cost + run_cost + input_total_cost);
 }
 
+static bool
+ybShouldPenalizeMergeOption(IndexPath *path)
+{
+	bool penalize = false;
+	if (path->indexinfo->yb_options != NIL)
+	{
+		int mergeOptionValue = ybGetValueForMergeOption(path->indexinfo->yb_options);
+		if (mergeOptionValue >= 0)
+		{
+			if (path->yb_index_path_info.merge_scan_stream_cols == NIL)
+			{
+				if (mergeOptionValue == 1)
+					penalize = true;
+			}
+			else if (mergeOptionValue == 0)
+				penalize = true;
+		}
+	}
+
+	return penalize;
+}
+
 /*
  * cost_index
  *	  Determines and returns the cost of scanning a relation using an index.
@@ -690,11 +714,15 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											  path->indexclauses);
 	}
 
-	/* is this scan type disabled? */
+	/*
+	 * is this scan type disabled?  YB: so is a path that does not follow
+	 * a hint's merge= option.
+	 */
 	enable_mask = (indexonly ? PGS_INDEXONLYSCAN : PGS_INDEXSCAN)
 		| (partial_path ? 0 : PGS_CONSIDER_NONPARTIAL);
 	path->path.disabled_nodes =
-		(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
+		((baserel->pgs_mask & enable_mask) == enable_mask &&
+		 !ybShouldPenalizeMergeOption(path)) ? 0 : 1;
 
 	/*
 	 * Call index-access-method-specific code to estimate the processing cost
@@ -10198,11 +10226,15 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Assert(baserel->relid > 0);
 	Assert(baserel->rtekind == RTE_RELATION);
 
-	/* is this scan type disabled? */
+	/*
+	 * is this scan type disabled?  So is a path that does not follow a
+	 * hint's merge= option.
+	 */
 	enable_mask = (index_only ? PGS_INDEXONLYSCAN : PGS_INDEXSCAN)
 		| (partial_path ? 0 : PGS_CONSIDER_NONPARTIAL);
 	path->path.disabled_nodes =
-		(baserel->pgs_mask & enable_mask) == enable_mask ? 0 : 1;
+		((baserel->pgs_mask & enable_mask) == enable_mask &&
+		 !ybShouldPenalizeMergeOption(path)) ? 0 : 1;
 
 	/*
 	 * Distinct index scans are serial: indxpath.c builds no partial variant

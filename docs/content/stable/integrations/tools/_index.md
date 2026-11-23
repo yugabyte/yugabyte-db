@@ -91,7 +91,7 @@ To use these tools with YugabyteDB, you should have a cluster up and running, an
 
 To create a local cluster, follow the steps in [Quick start](/stable/quick-start/macos/).
 
-To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/stable/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
+To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/). In addition, do the following:
 
 - [Download the cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Aeon requires the use of TLS
 - [Add your computer to the cluster IP allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster

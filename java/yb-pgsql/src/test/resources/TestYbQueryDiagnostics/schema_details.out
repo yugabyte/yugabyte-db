@@ -88,6 +88,30 @@
 
 ============================================================
 
+- Table name: test_view
+- Database name: yugabyte
+- Table information:
+|Table Name       |Table Groupname |Colocated |
++-----------------+----------------+----------+
+|public.test_view |                |false     |
+
+- Columns:
+|Column |Type                   |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+-----------------------+----------+---------+--------+---------+-------------+------------+
+|id     |integer                |          |         |        |plain    |             |            |
+|name   |character varying(100) |          |         |        |extended |             |            |
+
+- View definition:
+|View Definition                                                        |
++-----------------------------------------------------------------------+
+| SELECT id,
+    name
+   FROM table_referenced_by_view
+  WHERE id >= 0; |
+
+
+============================================================
+
 - Table name: test_table_partition
 - Database name: yugabyte
 - Table information:
@@ -164,30 +188,6 @@
 |Name                                 |Constraint Definition                                           |
 +-------------------------------------+----------------------------------------------------------------+
 |referencing_table_test_table_id_fkey |FOREIGN KEY (test_table_id) REFERENCES test_table_partition(id) |
-
-
-============================================================
-
-- Table name: test_view
-- Database name: yugabyte
-- Table information:
-|Table Name       |Table Groupname |Colocated |
-+-----------------+----------------+----------+
-|public.test_view |                |false     |
-
-- Columns:
-|Column |Type                   |Collation |Nullable |Default |Storage  |Stats Target |Description |
-+-------+-----------------------+----------+---------+--------+---------+-------------+------------+
-|id     |integer                |          |         |        |plain    |             |            |
-|name   |character varying(100) |          |         |        |extended |             |            |
-
-- View definition:
-|View Definition                                                        |
-+-----------------------------------------------------------------------+
-| SELECT id,
-    name
-   FROM table_referenced_by_view
-  WHERE id >= 0; |
 
 
 ============================================================

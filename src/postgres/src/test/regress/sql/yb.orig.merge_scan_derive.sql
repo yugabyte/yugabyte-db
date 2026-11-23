@@ -145,14 +145,14 @@ ANALYZE r5n;
 -- Following queries send various numbers of requests/scan various number of
 -- rows due to non-deterministic order of equal rows in merge sort.  Hide their
 -- DIST.
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- Derived with multiple stream keys
 \set query ':P :Q SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;'
 \i :run_query
 
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r1_expr_r3_r4_idx;

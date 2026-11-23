@@ -39,6 +39,7 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
@@ -87,6 +88,10 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
 DEFINE_RUNTIME_int32(master_bg_task_long_operation_warning_ms, 5 * 1000,
     "Log warnings if the catalog manager background tasks (combined) take longer than this amount "
     "of time.");
+
+DEFINE_test_flag(bool, online_schema_change_backfill_pause_controller, false,
+    "Skip the online schema change controller in the bg tasks loop. Jobs still move when an RPC "
+    "or a test visits them.");
 
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
@@ -263,6 +268,10 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
     }
   }
 
+  if (!FLAGS_TEST_online_schema_change_backfill_pause_controller) {
+    catalog_manager_->online_schema_change().RunOnce(epoch);
+  }
+
   // Trigger pending backfills.
   std::unordered_set<TableId> table_map;
   {
@@ -351,6 +360,7 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
         master_->ysql_backends_manager()->AbortAllJobs();
+        catalog_manager_->online_schema_change().Reset();
         was_leader_ = false;
       }
       WARN_NOT_OK(

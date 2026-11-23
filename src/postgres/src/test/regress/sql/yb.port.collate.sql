@@ -164,7 +164,7 @@ SELECT a, b, a < b as lt FROM
   (VALUES ('a', 'B'), ('A', 'b' COLLATE "C")) v(a,b);
 
 -- collation mismatch in subselects
-SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y, x FROM collate_test10); -- YB: TODO: find out why output differs with upstream PG
+SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y, x FROM collate_test10);
 -- now it works with overrides
 SELECT * FROM collate_test10 WHERE (x COLLATE "POSIX", y COLLATE "C") NOT IN (SELECT y, x FROM collate_test10);
 SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y COLLATE "C", x COLLATE "POSIX" FROM collate_test10);
@@ -243,6 +243,14 @@ EXPLAIN (COSTS OFF)
 
 
 -- CREATE/DROP COLLATION
+
+CREATE COLLATION builtin_c ( PROVIDER = builtin, LOCALE = "C" );
+
+SELECT b FROM collate_test1 ORDER BY b COLLATE builtin_c;
+
+CREATE COLLATION builtin2 ( PROVIDER = builtin ); -- fails
+CREATE COLLATION builtin2 ( PROVIDER = builtin, LOCALE = "en_US" ); -- fails
+CREATE COLLATION builtin2 ( PROVIDER = builtin, LC_CTYPE = "C", LC_COLLATE = "C" ); -- fails
 
 CREATE COLLATION mycoll1 FROM "C";
 CREATE COLLATION mycoll2 ( LC_COLLATE = "POSIX", LC_CTYPE = "POSIX" );

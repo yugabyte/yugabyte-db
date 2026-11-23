@@ -49,6 +49,7 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_future_parameter", "1"},
     {"yb_ycm_internal_client_addr", "192.168.1.1"},
     {"yb_ycm_internal_client_port", "9432"},
+    {"yb_conn_mgr_client_hostname", "example.com"},
   };
 
   public TestReservedStartupParameters() {

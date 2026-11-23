@@ -34,6 +34,9 @@
 extern PGDLLIMPORT bool yb_enable_derived_saops;
 extern PGDLLIMPORT int yb_max_merge_scan_streams;
 
+/* Boot default of yb_max_merge_scan_streams; merge=on uses this when the GUC is 0. */
+#define YB_DEFAULT_MERGE_SCAN_MAX_STREAMS 64
+
 extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   IndexOptInfo *index,
 									   Expr *expr,

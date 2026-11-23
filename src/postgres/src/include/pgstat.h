@@ -659,12 +659,6 @@ extern void pgstat_report_connect(Oid dboid);
 extern void pgstat_update_parallel_workers_stats(PgStat_Counter workers_to_launch,
 												 PgStat_Counter workers_launched);
 extern void yb_pgstat_clear_entry_pid(int pid);
-/* YB_TODO_PG19MERGE: PG15 merge remnant */
-#ifdef YB_TODO
-/* Postgres changed the implementation for stats. Need to rework. */
-extern void pgstat_report_query_termination(const char *termination_reason,
-											int32 backend_pid);
-#endif
 
 #define pgstat_count_buffer_read_time(n)							\
 	(pgStatBlockReadTime += (n))

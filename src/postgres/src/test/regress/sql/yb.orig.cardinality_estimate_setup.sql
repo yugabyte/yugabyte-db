@@ -6,7 +6,7 @@
 -- To avoid IF NOT EXISTS NOTICE messages.
 SET client_min_messages TO WARNING;
 
--- the following plpgsql functions have been borrowed from vanilla pg tests
+-- the following plpgsql function has been borrowed from vanilla pg tests
 
 -- from gin.sql, removed guc settings and ANALYZE option
 drop function if exists explain_query_json cascade;
@@ -16,51 +16,6 @@ language plpgsql as
 $$
 begin
   return query execute 'EXPLAIN (FORMAT json) ' || query_sql;
-end;
-$$;
-
--- from stats_ext.sql, removed the analyze option.
--- check the number of estimated/actual rows in the top node
-drop function if exists check_estimated_rows cascade;
-create function check_estimated_rows(text) returns table (estimated int, actual int)
-language plpgsql as
-$$
-declare
-    ln text;
-    tmp text[];
-    first_row bool := true;
-begin
-    for ln in
-        execute format('explain analyze %s', $1)
-    loop
-        if first_row then
-            first_row := false;
-            tmp := regexp_match(ln, 'rows=(\d*) .* rows=(\d*)');
-            return query select tmp[1]::int, tmp[2]::int;
-        end if;
-    end loop;
-end;
-$$;
-
--- modified the above to return estimates only
-drop function if exists get_estimated_rows cascade;
-create function get_estimated_rows(text) returns table (estimated int)
-language plpgsql as
-$$
-declare
-    ln text;
-    tmp text[];
-    first_row bool := true;
-begin
-    for ln in
-        execute format('explain %s', $1)
-    loop
-        if first_row then
-            first_row := false;
-            tmp := regexp_match(ln, 'rows=(\d*)');
-            return query select tmp[1]::int;
-        end if;
-    end loop;
 end;
 $$;
 

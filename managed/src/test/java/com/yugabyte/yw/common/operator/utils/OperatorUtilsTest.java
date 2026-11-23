@@ -23,6 +23,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -47,15 +49,23 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -117,6 +127,7 @@ import io.yugabyte.operator.v1alpha1.kmsconfigspec.oci.PrivateKeySecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.AppRole;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
 import java.nio.charset.StandardCharsets;
@@ -721,6 +732,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     s3Data.put("IAM_INSTANCE_PROFILE", false);
     s3Data.put("BACKUP_LOCATION", "s3://test-bucket/backups");
     s3Data.put("PATH_STYLE_ACCESS", true);
+    s3Data.put("IMMUTABLE_STORAGE", true);
     s3Config.setData(s3Data);
     s3Config.save();
 
@@ -745,6 +757,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertFalse(data.getUSE_IAM());
     assertEquals("s3://test-bucket/backups", data.getBACKUP_LOCATION());
     assertTrue(data.getPATH_STYLE_ACCESS());
+    assertTrue(data.getIMMUTABLE_STORAGE());
 
     assertEquals("aws-secret", config.getSpec().getAwsSecretAccessKeySecret().getName());
     assertEquals("test-namespace", config.getSpec().getAwsSecretAccessKeySecret().getNamespace());
@@ -2690,5 +2703,99 @@ public class OperatorUtilsTest extends FakeDBApplication {
     // createBackupScheduleCr wraps anything it catches, so the guard message lands on the cause.
     assertNotNull(ex.getCause());
     assertTrue(ex.getCause().getMessage().contains("has no Kubernetes resource details"));
+  }
+
+  /*--- checkIfDeviceInfoChanged for the read replica ---*/
+
+  private static void setTserverAZVolumeSize(UserIntent userIntent, UUID azUUID, int volumeSize) {
+    DeviceInfo azDeviceInfo = new DeviceInfo();
+    azDeviceInfo.volumeSize = volumeSize;
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    overrides.updateAZOverride(
+        azUUID,
+        azO -> azO.updatePerProcess(ServerType.TSERVER, p -> p.setDeviceInfo(azDeviceInfo)));
+    userIntent.setUserIntentOverrides(overrides);
+  }
+
+  private static Cluster readReplicaWithAZVolume(Provider provider, UUID azUUID, int volumeSize) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 50;
+    userIntent.deviceInfo.numVolumes = 1;
+    setTserverAZVolumeSize(userIntent, azUUID, volumeSize);
+    Cluster cluster = new Cluster(ClusterType.ASYNC, userIntent);
+    cluster.placementInfo = ModelFactory.constructPlacementInfoObject(Map.of(azUUID, 1));
+    return cluster;
+  }
+
+  private static YBUniverse ybUniverseWithReadReplicaPerAZ(
+      Provider provider, String azCode, long volumeSize) {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("rr-volume", provider);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ azVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ();
+    azVolume.setVolumeSize(volumeSize);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume rrVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume();
+    rrVolume.setVolumeSize(50L);
+    rrVolume.setNumVolumes(1L);
+    rrVolume.setPerAZ(Map.of(azCode, azVolume));
+    ReadReplica readReplica = new ReadReplica();
+    readReplica.setNumNodes(1L);
+    readReplica.setReplicationFactor(1L);
+    readReplica.setTserverVolume(rrVolume);
+    ybUniverse.getSpec().setReadReplica(readReplica);
+    return ybUniverse;
+  }
+
+  private static void usePrimaryTserverVolumeWithoutPerAZ(YBUniverse ybUniverse) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(50L);
+    ybUniverse.getSpec().setDeviceInfo(null);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+  }
+
+  @Test
+  public void testReadReplicaPerAZVolumeChangeDetectedWithPrimaryTserverVolume() {
+    Provider provider = ModelFactory.kubernetesProvider(testCustomer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    YBUniverse ybUniverse = ybUniverseWithReadReplicaPerAZ(provider, az.getCode(), 80L);
+    usePrimaryTserverVolumeWithoutPerAZ(ybUniverse);
+    Cluster readReplica = readReplicaWithAZVolume(provider, az.getUuid(), 60);
+    UserIntent incoming = readReplica.userIntent.clone();
+    setTserverAZVolumeSize(incoming, az.getUuid(), 80);
+
+    assertTrue(operatorUtils.checkIfDeviceInfoChanged(readReplica, incoming, ybUniverse));
+  }
+
+  @Test
+  public void testReadReplicaPerAZVolumeChangeDetectedWithLegacyPrimaryDeviceInfo() {
+    Provider provider = ModelFactory.kubernetesProvider(testCustomer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    // createYbUniverse gives the primary the legacy spec.deviceInfo.
+    YBUniverse ybUniverse = ybUniverseWithReadReplicaPerAZ(provider, az.getCode(), 80L);
+    Cluster readReplica = readReplicaWithAZVolume(provider, az.getUuid(), 60);
+    UserIntent incoming = readReplica.userIntent.clone();
+    setTserverAZVolumeSize(incoming, az.getUuid(), 80);
+
+    assertTrue(operatorUtils.checkIfDeviceInfoChanged(readReplica, incoming, ybUniverse));
+  }
+
+  @Test
+  public void testReadReplicaPerAZVolumeUnchangedNotDetected() {
+    Provider provider = ModelFactory.kubernetesProvider(testCustomer);
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    YBUniverse ybUniverse = ybUniverseWithReadReplicaPerAZ(provider, az.getCode(), 60L);
+    usePrimaryTserverVolumeWithoutPerAZ(ybUniverse);
+    Cluster readReplica = readReplicaWithAZVolume(provider, az.getUuid(), 60);
+
+    assertFalse(
+        operatorUtils.checkIfDeviceInfoChanged(
+            readReplica, readReplica.userIntent.clone(), ybUniverse));
   }
 }

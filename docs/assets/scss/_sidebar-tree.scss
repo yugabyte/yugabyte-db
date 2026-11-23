@@ -192,6 +192,17 @@
               display: none;
             }
           }
+
+          // Inline group labels (Aeon nav). The Products heading is a section and keeps the full row.
+          &:not(.section) {
+            min-height: 0;
+            margin-bottom: 0;
+
+            > a {
+              padding-top: 12px;
+              padding-bottom: 4px;
+            }
+          }
         }
 
         > li > a {

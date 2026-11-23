@@ -99,7 +99,7 @@ RESET plan_cache_mode;
 
 SET yb_enable_advanced_index_cond_fold = off;
 
-\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set P1 ':explain'
 \set stmt 'SELECT val, k FROM pc_tbl WHERE bkt4 IN (0, 1) AND bkt4 IN (0, 1, 2, 3) ORDER BY val, k;'
 PREPARE p_pinned AS :stmt

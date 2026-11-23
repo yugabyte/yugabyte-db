@@ -12,6 +12,7 @@ import {
   type QueryPageParams
 } from '@yugabytedb/perf-advisor-ui';
 
+import { PaRegistrationMode } from '@app/redesign/features/PerfAdvisor/api';
 import { AppName } from '@app/redesign/helpers/dtos';
 import { YBPanelItem } from '../../panels';
 
@@ -23,6 +24,7 @@ interface PerfAdvisorOverviewDashboardProps {
   timezone: string;
   apiUrl: string;
   registrationStatus: boolean;
+  registrationMode?: PaRegistrationMode;
   // When true, the dashboard renders the standalone anomalies view.
   showStandaloneAnomalies?: boolean;
 }
@@ -32,10 +34,15 @@ export const PerfAdvisorOverviewDashboard = ({
   timezone,
   apiUrl,
   registrationStatus,
+  registrationMode,
   showStandaloneAnomalies = false
 }: PerfAdvisorOverviewDashboardProps) => {
   const { t } = useTranslation();
-  const runtimeConfigs = usePerfAdvisorRuntimeConfigs();
+  const baseRuntimeConfigs = usePerfAdvisorRuntimeConfigs();
+  const runtimeConfigs = {
+    ...baseRuntimeConfigs,
+    showAdvancedDatabaseStats: registrationMode === PaRegistrationMode.ADVANCED
+  };
 
   const [troubleshootUuid, setTroubleshootUuid] = useState<string | null>(
     getTroubleshootUuidFromUrl

@@ -153,6 +153,11 @@ ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
 -- derived equality must be inferred independently inside each arm; then an arm
 -- that constrains user_id can still drive an index whose leading column is the
 -- generated/expression bucket computed from user_id.
+-- An OR whose arms are all "column = constant" on the same index column is
+-- merged into one "column = ANY (...)" condition before any per-arm index path
+-- is built, so those arms never reach the per-arm derivation.  The ORs below
+-- therefore have at most one bare equality arm; each other arm also constrains
+-- a second column.
 -- TODO(#31354 or #31355): Recheck Cond should be removed.
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
@@ -164,7 +169,7 @@ SET enable_bitmapscan = true;
 \set R3 'orders_expr'
 
 -- Three-way OR
-\set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR user_id = 60 OR user_id = 70 ORDER BY user_id, order_id;'
+\set query ':P :hint SELECT * FROM :R WHERE user_id = 50 OR (user_id = 60 AND order_id = 3) OR (user_id = 70 AND order_id = 4) ORDER BY user_id, order_id;'
 \i :run_query
 
 -- OR with AND
@@ -177,7 +182,7 @@ SET enable_bitmapscan = true;
 -- still apply within each arm so the bitmap scan on orders_gen uses the bucket.
 \set hint '/*+ NestLoop(u o) BitmapScan(o) */'
 SELECT $$
-:P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR o.user_id = 60 ORDER BY u.id, o.order_id;
+:P :hint SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 OR (o.user_id = 60 AND o.order_id = 3) ORDER BY u.id, o.order_id;
 $$ AS query \gset
 \i :run_query
 
@@ -248,21 +253,22 @@ DROP TABLE guard_type_gen, guard_type_expr;
 -- substituting the constant is safe and the derivation SHOULD still happen --
 -- confirming the type requirement above does not over-reject compatible types.
 CREATE TABLE guard_coerce_gen (
+    id int,
     c varchar,
     bucket_id int GENERATED ALWAYS AS (yb_hash_code(c) % 5) STORED,
     PRIMARY KEY (bucket_id ASC, c ASC)
 );
-CREATE TABLE guard_coerce_expr (c varchar);
+CREATE TABLE guard_coerce_expr (id int, c varchar);
 CREATE INDEX NONCONCURRENTLY ON guard_coerce_expr ((yb_hash_code(c) % 5) ASC, c ASC);
 \set R1 'guard_coerce_gen'
 \set R2 'guard_coerce_expr'
 SELECT $$
-INSERT INTO :R(c) VALUES ('a'), ('b'), ('c');
+INSERT INTO :R(id, c) VALUES (1, 'a'), (2, 'b'), (3, 'c');
 $$ AS query \gset
 \i :run_query
 \set Rnext :abs_srcdir '/yb_commands/bitmap_hint_from_R.sql'
 SELECT $$
-:P :hint SELECT c FROM :R WHERE c = 'a'::text OR c = 'b' ORDER BY c;
+:P :hint SELECT c FROM :R WHERE c = 'a'::text OR (c = 'b' AND id = 2) ORDER BY c;
 $$ AS query \gset
 \i :run_query
 DROP TABLE guard_coerce_gen, guard_coerce_expr;

@@ -1699,7 +1699,7 @@ DropReplicationSlot(DropReplicationSlotCmd *cmd)
 
 	/*
 	 * YB: WAIT works via the cluster-wide slot advisory lock taken by
-	 * ReplicationSlotAcquire(); without it there is no way to wait for the
+	 * ReplicationSlotDrop(); without it there is no way to wait for the
 	 * slot to become inactive.
 	 */
 	if (IsYugaByteEnabled() && cmd->wait &&

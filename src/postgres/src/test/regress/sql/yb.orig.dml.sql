@@ -212,6 +212,52 @@ set yb_enable_upsert_mode = false;
 -- Upsert succeeded, v1 replaced and v2 regenerated.
 select * from upsert_guard_test7 order by h;
 
+-- Test J: INSERT into a partitioned table whose secondary index exists only
+-- on one partition. Each partition that rows are routed to is checked.
+create table upsert_guard_part10 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part10_a partition of upsert_guard_part10
+    for values from (1) to (100);
+create table upsert_guard_part10_b partition of upsert_guard_part10
+    for values from (100) to (200);
+create unique index upsert_guard_part10_a_v1 on upsert_guard_part10_a (v1);
+insert into upsert_guard_part10 values (1, 10), (2, 20), (101, 1010);
+
+set yb_enable_upsert_mode = true;
+-- partition without the index: upsert overwrites the row
+insert into upsert_guard_part10 values (101, 1011);
+-- partition with the index: warning, then a duplicate key error
+insert into upsert_guard_part10 values (1, 11);
+-- rows for both partitions: one warning, for the partition with the index
+insert into upsert_guard_part10 values (102, 1020), (3, 30), (103, 1030), (4, 40);
+set yb_enable_upsert_mode = false;
+
+select * from upsert_guard_part10 order by h;
+
+-- Index should be consistent with the partition.
+/*+IndexOnlyScan(upsert_guard_part10_a upsert_guard_part10_a_v1)*/
+select v1 from upsert_guard_part10_a where v1 > 0 order by v1;
+
+-- Test K: a cached plan follows the current yb_enable_upsert_mode setting.
+create table upsert_guard_test11 (h int primary key, v1 int);
+insert into upsert_guard_test11 values (1, 10);
+prepare upsert_guard_ins11(int, int) as
+    insert into upsert_guard_test11 values ($1, $2);
+set plan_cache_mode = force_generic_plan;
+
+set yb_enable_upsert_mode = true;
+execute upsert_guard_ins11(1, 11);
+set yb_enable_upsert_mode = false;
+-- upsert mode is off now: duplicate key error
+execute upsert_guard_ins11(1, 12);
+set yb_enable_upsert_mode = true;
+execute upsert_guard_ins11(1, 13);
+set yb_enable_upsert_mode = false;
+
+reset plan_cache_mode;
+deallocate upsert_guard_ins11;
+select * from upsert_guard_test11 order by h;
+
 -- clean up
 DROP TABLE upsert_guard_test2;
 DROP TABLE upsert_guard_test4;
@@ -222,6 +268,8 @@ DROP TABLE upsert_guard_audit5;
 DROP FUNCTION upsert_guard_trig5();
 DROP TABLE upsert_guard_test6;
 DROP TABLE upsert_guard_test7;
+DROP TABLE upsert_guard_part10;
+DROP TABLE upsert_guard_test11;
 
 -- GH-31214 - validate single shard updates on various partition table hierarchies.
 -- Case 1: Root and leaf share the same primary key (k1 - cluster key, k2 - partition key).
@@ -477,31 +525,31 @@ CREATE TEMP TABLE ck_ne_ptk_tmp_p2 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY K
 INSERT INTO ck_ne_ptk_tmp_base VALUES (1, 5, 1), (2, 5, 2), (3, 15, 3), (4, 5, 4), (5, 5, 5), (6, 15, 6), (7, 5, 7), (8, 5, 8);
 
 -- 11a. Cross-partition update via leaf with clustering key in WHERE. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
 SELECT * FROM ck_ne_ptk_tmp_p1 ORDER BY ck;
 SELECT * FROM ck_ne_ptk_tmp_p2 ORDER BY ck;
 
 -- 11b. Cross-partition update via leaf without clustering key in WHERE. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
 SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 
 -- 11c. Same-partition clustering key update via leaf.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
 
 -- 11d. Non-partition column update via leaf.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
 
 -- 11e. Partition key update to a value that stays in the same partition.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
 
 -- 11f. INSERT ... ON CONFLICT ... DO UPDATE.
 INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 9), (11, 5, 11);
 
 -- Same-partition partition key update via upsert. Should succeed.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
 
 -- Cross-partition partition key update via upsert. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
 
 SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 DROP TABLE ck_ne_ptk_tmp_base CASCADE;

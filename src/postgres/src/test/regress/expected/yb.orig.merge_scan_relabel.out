@@ -17,7 +17,7 @@
 \i :filename
 \set _echo_parameterized_query :ECHO
 \set ECHO none
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
@@ -57,7 +57,7 @@ ANALYZE tv_tbl;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -78,7 +78,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -98,7 +98,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 50
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -119,7 +119,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t::varchar FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -166,7 +166,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -187,7 +187,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -207,7 +207,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 50
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text = '1' AND t::varchar = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -228,7 +228,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v::text, t::varchar FROM tv_tbl WHERE v::text IN ('1', '1') AND t::varchar IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -285,7 +285,7 @@ ANALYZE tv_tbl;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -306,7 +306,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -326,7 +326,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 50
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v = '1' AND t = '1' ORDER BY i2, i4, n LIMIT 5;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -347,7 +347,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v, t FROM tv_tbl WHERE v IN ('1', '1') AND t IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -405,7 +405,7 @@ SELECT $$IN ('1'::varchar, '1'::varchar)$$ AS "R4" \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -426,7 +426,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -446,7 +446,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 491
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -467,7 +467,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -487,7 +487,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 491
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1' ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -508,7 +508,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1', '1') ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -533,7 +533,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v = '1'::varchar ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -554,7 +554,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, v FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -614,7 +614,7 @@ SPLIT AT VALUES (('0'), ('1'), ('2'), ('3'));
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -634,7 +634,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -654,7 +654,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -674,7 +674,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -694,7 +694,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -719,7 +719,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -744,7 +744,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -769,7 +769,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -827,7 +827,7 @@ CREATE INDEX NONCONCURRENTLY idx ON tv_tbl ((v::text) HASH, i2 ASC, i4 ASC);
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -847,7 +847,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -867,7 +867,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -887,7 +887,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0) IndexScan(tv_tbl idx)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -907,7 +907,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 99
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1' AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -932,7 +932,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1', '1') AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -957,7 +957,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v = '1'::varchar AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -982,7 +982,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Index Rows Scanned: 10
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT i4, n, v, i2 FROM tv_tbl WHERE v IN ('1'::varchar, '1'::varchar) AND i2 IN (1, 2) ORDER BY i4, n LIMIT 5;
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)

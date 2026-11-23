@@ -242,10 +242,10 @@ void AdjustAutoAnalyzeFlagIfNeeded() {
 }
 
 // pg_partman keeps its existing behavior unless these features are on, so tell a user who set its
-// flag explicitly. The infra auto flags are left out because they stay off until an upgrade is
-// finalized. Advisory locks are left out because with them off, pg_partman fails instead of keeping
-// its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a warning at
-// startup would not track.
+// flag explicitly. The infra auto flags are left out because they are off only before an upgrade
+// is finalized. Advisory locks are left out because with them off, pg_partman fails instead of
+// keeping its existing behavior, and ysql_yb_enable_advisory_locks is a runtime flag, which a
+// warning at startup would not track.
 void WarnIfPgPartmanFlagHasNoEffect() {
   if (!FLAGS_ysql_yb_pg_partman_use_native_txn_ddl_and_locks ||
       google::GetCommandLineFlagInfoOrDie("ysql_yb_pg_partman_use_native_txn_ddl_and_locks")

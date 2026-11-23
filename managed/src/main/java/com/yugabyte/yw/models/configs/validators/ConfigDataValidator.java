@@ -28,6 +28,19 @@ public abstract class ConfigDataValidator extends BaseBeanValidator {
     throwBeanValidatorError(fieldFullName(fieldName), exceptionMsg, errorSource, null);
   }
 
+  /**
+   * For a storage check that failed on the cloud provider's side: keeps the SDK's exception as the
+   * cause, so that callers can tell it from an invalid field. The response is the same.
+   */
+  protected void throwBeanConfigDataValidatorError(
+      String fieldName, String exceptionMsg, Throwable cause) {
+    beanValidator
+        .error()
+        .forField(fieldFullName(fieldName), exceptionMsg)
+        .cause(cause)
+        .throwError();
+  }
+
   protected void throwMultipleBeanConfigDataValidatorError(
       SetMultimap<String, String> errorsMap, String errorSource) {
     SetMultimap<String, String> fullFieldErrors = HashMultimap.create();

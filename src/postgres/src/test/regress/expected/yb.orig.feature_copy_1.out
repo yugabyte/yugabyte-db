@@ -819,9 +819,90 @@ select v1 from upsert_guard_test3 where v1 > 0 order by v1;
  20
 (2 rows)
 
+-- Test H: COPY into a partitioned table whose secondary index exists only
+-- on one partition. Each partition that rows are routed to is checked.
+create table upsert_guard_part8 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part8_a partition of upsert_guard_part8
+    for values from (1) to (100);
+create table upsert_guard_part8_b partition of upsert_guard_part8
+    for values from (100) to (200);
+create unique index upsert_guard_part8_a_v1 on upsert_guard_part8_a (v1);
+insert into upsert_guard_part8 values (1, 10), (2, 20), (101, 1010);
+-- COPY REPLACE routed only to the partition without the index: upsert works.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+-- COPY REPLACE routed to the partition with the index: error.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+ERROR:  COPY with REPLACE is not supported on table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
+CONTEXT:  COPY upsert_guard_part8, line 2: "1,11"
+-- yb_enable_upsert_mode: one warning for the partition with the index, whose
+-- rows are inserted normally; the other partition still upserts.
+set yb_enable_upsert_mode = true;
+copy upsert_guard_part8 from stdin with (format csv);
+WARNING:  upsert mode disabled for table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
+-- A conflicting row in the partition with the index is a duplicate key error.
+copy upsert_guard_part8 from stdin with (format csv);
+WARNING:  upsert mode disabled for table "upsert_guard_part8_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
+ERROR:  duplicate key value violates unique constraint "upsert_guard_part8_a_pkey"
+CONTEXT:  COPY upsert_guard_part8, line 2: ""
+set yb_enable_upsert_mode = false;
+select * from upsert_guard_part8 order by h;
+  h  |  v1  
+-----+------
+   1 |   10
+   2 |   20
+   3 |   30
+   4 |   40
+ 101 | 1012
+ 102 | 1020
+(6 rows)
+
+-- Index should be consistent with the partition.
+/*+IndexOnlyScan(upsert_guard_part8_a upsert_guard_part8_a_v1)*/
+select v1 from upsert_guard_part8_a where v1 > 0 order by v1;
+ v1 
+----
+ 10
+ 20
+ 30
+ 40
+(4 rows)
+
+-- Test I: COPY REPLACE into a partitioned table whose trigger exists only on
+-- one partition.
+create table upsert_guard_part9 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part9_a partition of upsert_guard_part9
+    for values from (1) to (100);
+create function upsert_guard_part9_trig() returns trigger as $$
+begin
+    raise notice 'trigger fired for h = %', new.h;
+    return new;
+end;
+$$ language plpgsql;
+create trigger upsert_guard_part9_a_trig before insert on upsert_guard_part9_a
+    for each row execute function upsert_guard_part9_trig();
+insert into upsert_guard_part9 values (1, 10);
+NOTICE:  trigger fired for h = 1
+copy upsert_guard_part9 from stdin with (format csv, replace);
+ERROR:  COPY with REPLACE is not supported on table "upsert_guard_part9_a" because it has secondary indexes, triggers, or foreign key constraints
+HINT:  Consider using INSERT ... ON CONFLICT for true upsert semantics instead.
+CONTEXT:  COPY upsert_guard_part9, line 1: "1,11"
+select * from upsert_guard_part9 order by h;
+ h | v1 
+---+----
+ 1 | 10
+(1 row)
+
 -- clean up
 DROP TABLE upsert_guard_test1;
 DROP TABLE upsert_guard_test3;
+DROP TABLE upsert_guard_part8;
+DROP TABLE upsert_guard_part9;
+DROP FUNCTION upsert_guard_part9_trig();
 DROP TABLE forcetest;
 DROP TABLE x;
 DROP TABLE y;

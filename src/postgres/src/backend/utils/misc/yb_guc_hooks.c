@@ -636,6 +636,13 @@ yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
 	yb_extra_commands_to_retry_in_proc = (bool *) extra;
 }
 
+void
+yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasReplicationOriginSetup())
+		yb_ysql_conn_mgr_sticky_replication_origin = true;
+}
+
 bool
 check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source)
 {

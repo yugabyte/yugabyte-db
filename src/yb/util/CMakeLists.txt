@@ -343,7 +343,7 @@ ADD_YB_LIBRARY(yb_util_shmem
 ADD_YB_TEST_LIBRARY(
   yb_test_util
   SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc
-       multi_drive_test_env.cc
+       multi_drive_test_env.cc power_loss_env.cc
   DEPS gflags glog gmock gtest yb_util yb_util_shmem)
 
 if(APPLE AND "${YB_TCMALLOC_ENABLED}" STREQUAL "1")

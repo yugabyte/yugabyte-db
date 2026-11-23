@@ -46,7 +46,7 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     indexes_.emplace_back(
         "hnswlib",
         ASSERT_RESULT((CreateHnswlibIndexTraits<Vector, DistanceResult>(
-            block_cache_, options, mem_tracker_)))
+            block_cache_, options, mem_tracker_, /* tenant_extractor= */ nullptr)))
             ->Create(vector_index::FactoryMode::kCreate, vector_index::StoreVectorPayload::kFalse));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(

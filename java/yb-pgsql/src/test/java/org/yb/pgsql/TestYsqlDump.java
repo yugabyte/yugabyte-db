@@ -108,7 +108,7 @@ public class TestYsqlDump extends BasePgSQLTest {
    */
   public static final String RESTRICT_KEY = "test";
 
-  // YB_TODO_PG19MERGE: widened to accept the "19devel" major; tighten back to
+  // TODO(#37891): widened to accept the "19devel" major; tighten back to
   // "<int>.<int>" once pg19 ships a numeric version.
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
       " version [0-9A-Za-z.]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
@@ -480,7 +480,6 @@ public class TestYsqlDump extends BasePgSQLTest {
   @Test
   public void ysqlDumpColocatedTablesWithTablespaces() throws Exception {
     restartClusterWithClusterBuilder(cb -> {
-      cb.addCommonFlag("ysql_enable_colocated_tables_with_tablespaces", "true");
       cb.addCommonTServerFlag("placement_cloud", "testCloud");
       cb.addCommonTServerFlag("placement_region", "testRegion");
       cb.perTServerFlags(Arrays.asList(
