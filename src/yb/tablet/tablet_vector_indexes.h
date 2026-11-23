@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
@@ -20,6 +21,8 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/hnsw/hnsw_fwd.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
 
 #include "yb/rocksdb/listener.h"
 
@@ -102,8 +105,18 @@ class TabletVectorIndexes :
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
 
-  // Removes specified index. Its data on disk is destroyed in the background, see ScheduleDestroy.
-  Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+  // Takes the index out of the tablet and stops it, see DocVectorIndex::StartDestroy. Marks its
+  // storage as removed, see docdb::MarkRemovedVectorIndexStorage, for PrepareAddTable. Returns the
+  // completion of the removal, which destroys the storage, in the background unless the index was
+  // skipped, see ScheduleDestroy. The caller runs it once the tablet metadata no longer lists the
+  // index; dropping it keeps the storage.
+  Result<std::function<void()>> Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+
+  // Called before the tablet metadata lists the table again. Waits for the destroy of a removed
+  // vector index of the table, whose storage the table would use, and deletes that storage if a
+  // crash left it, see Remove. Only Raft applies remove indexes, one at a time like the caller, so
+  // none is queued after the wait.
+  Status PrepareAddTable(const TableId& table_id, const qlexpr::IndexInfo* index_info);
 
   // Instantiates vector indexes of the given indexed table that were skipped because the indexed
   // column was missing from the schema (see DoCreateIndex), once an alter brings the column back.
@@ -244,7 +257,7 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexPtr RemoveTableFromList(const TableId& table_id)
       REQUIRES(vector_indexes_mutex_);
 
-  void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
+  void DestroySkippedIndexStorage(const TableInfoPtr& table_info);
 
   // Destroy waits for the inserts of the index queued in the shared insert pool, e.g. a whole
   // chunk of a backfill, so the Raft apply that removes the index does not run it.
