@@ -669,7 +669,7 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_oid == kPgAttributeTableOid ||
+          (table_oid == kPgAttributeTableOid || table_oid == kPgNamespaceTableOid ||
            table_oid == kPgPublicationRelPrpubidIndexOid));
 }
 
@@ -700,6 +700,7 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgNamespaceTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
   }
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
@@ -1302,10 +1303,10 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
-  // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
-  // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams.
+  // We add the pg_class, pg_attribute and pg_namespace (when detecting DDL from catalog DML),
+  // pg_publication_rel, pg_replication_origin and pg_publication catalog tables to the stream
+  // metadata as we will poll them to figure out changes to the publications, replication origins
+  // and table schemas. This will not be done for gRPC streams.
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
       FLAGS_cdc_enable_dynamic_schema_changes && is_logical_replication_stream_req) {
     auto catalog_table_ids =
@@ -1313,7 +1314,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
                       << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
-                              ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                              ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                       << "stream metadata tables list.";

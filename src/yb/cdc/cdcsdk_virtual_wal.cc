@@ -294,7 +294,8 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
     const auto stream_table_ids = stream->GetTableIds();
-    for (const auto table_oid : {kPgAttributeTableOid, kPgPublicationRelPrpubidIndexOid}) {
+    for (const auto table_oid :
+         {kPgAttributeTableOid, kPgNamespaceTableOid, kPgPublicationRelPrpubidIndexOid}) {
       SCHECK_FORMAT(
           std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
               stream_table_ids.end(),
@@ -323,13 +324,15 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
       pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
       table_list.emplace(pg_attribute_table_id_);
+      pg_namespace_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgNamespaceTableOid);
+      table_list.emplace(pg_namespace_table_id_);
       pg_publication_rel_prpubid_index_table_id_ =
           GetPgsqlTableId(pg_database_oid_, kPgPublicationRelPrpubidIndexOid);
       table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
     }
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
                         << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
-                                ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                                ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                                 : "")
                         << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                            "polling list.";
@@ -2059,7 +2062,7 @@ bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) con
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_id == pg_attribute_table_id_ ||
+          (table_id == pg_attribute_table_id_ || table_id == pg_namespace_table_id_ ||
            table_id == pg_publication_rel_prpubid_index_table_id_));
 }
 
@@ -2162,20 +2165,21 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
   }
 
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-    table_id == pg_attribute_table_id_) {
+    (table_id == pg_attribute_table_id_ || table_id == pg_namespace_table_id_)) {
     return PubRefreshTrigger::kNone;
   }
 
-  // We should only receive records corresponding to pg_class, pg_attribute (when detecting DDL
-  // from catalog DML), pg_publication_rel, pg_replication_origin and pg_publication tables. Only
-  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex:
-  // when a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting
-  // retention barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_attribute and pg_namespace (when
+  // detecting DDL from catalog DML), pg_publication_rel, pg_replication_origin and pg_publication
+  // tables. Only possibility of reaching here is when a DDL record is sent from sys catalog tablet,
+  // for ex: when a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for
+  // setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
       << " pg_attribute_table_id_ = " << pg_attribute_table_id_
+      << " pg_namespace_table_id_ = " << pg_namespace_table_id_
       << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
       << " pg_publication_rel_prpubid_index_table_id_ = "
       << pg_publication_rel_prpubid_index_table_id_
