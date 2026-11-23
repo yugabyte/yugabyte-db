@@ -43,10 +43,10 @@ ERROR_LINE = re.compile(r"(?:ERROR|FATAL|PANIC|Check failed):\s+(.+)")
 URL = re.compile(r"https?://\S+")
 # Parts of an error message that change from run to run: addresses, numbers
 # and quoted names (relation "t1" does not exist).
-VARIABLE = re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b|\"[^\"]*\"|'[^']*'")
+VARIABLE = re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b|\"[^\"]*\"|(?<!\w)'[^']*'")
 # Lines the Jira sync adds to the GitHub copy of an issue.
-JIRA_SYNC_LINE = re.compile(r"^(Jira Link:.*|\[[A-Z]+-\d+\]: https?://\S+)$",
-                            re.M)
+JIRA_SYNC_LINE = re.compile(
+    r"^(Jira Link:.*|\[[A-Z]+-\d+\]: https?://\S+)\r?$", re.M)
 
 
 def jira_cred_source():
@@ -161,14 +161,12 @@ def match_prs(strong, idents, data, metas):
     return sorted(out, reverse=True), df
 
 
-def is_self(key, title, selfs, mirror_title=None):
-    """The issue itself, or its copy in the other tracker.
+def is_self(key, selfs):
+    """The issue itself or its copy in the other tracker, matched by key.
 
-    Pass mirror_title only for results from the other tracker: there a
-    matching title is the sync's copy. Within one tracker, recurring test
-    failures share titles, and those are the duplicates worth reporting."""
-    return key in selfs or (bool(mirror_title)
-                            and title.strip() == mirror_title.strip())
+    Never by title: recurring test failures share titles, and those are the
+    duplicates worth reporting."""
+    return key in selfs
 
 
 def search_issues(terms, selfs):
@@ -189,7 +187,7 @@ def search_issues(terms, selfs):
             continue
         for it in r["items"]:
             key = f"#{it['number']}"
-            if is_self(key, it["title"], selfs):
+            if is_self(key, selfs):
                 continue
             e = found.setdefault(key, {"title": it["title"],
                                        "url": it["html_url"],
@@ -200,7 +198,7 @@ def search_issues(terms, selfs):
     return found
 
 
-def search_jira(terms, selfs, mirror_title):
+def search_jira(terms, selfs):
     """Unresolved Jira DB issues whose text mentions each term."""
     found = {}
     for t in terms:
@@ -215,7 +213,7 @@ def search_jira(terms, selfs, mirror_title):
         if len(issues) > COMMON_HITS:
             continue
         for it in issues:
-            if is_self(it["key"], it["fields"]["summary"], selfs, mirror_title):
+            if is_self(it["key"], selfs):
                 continue
             f = it["fields"]
             e = found.setdefault(it["key"], {
@@ -290,15 +288,16 @@ def main():
 
     pool = po.pool_prs(re.compile(args.bases))
     metas = {p["number"]: p for p in pool}
-    data = po.load(pool, prune=True)
+    # Prune only with the full default pool; a narrower --bases would drop
+    # the shared cache entries of every PR outside it.
+    data = po.load(pool, prune=args.bases == po.DEFAULT_BASES.pattern)
     prs, df = match_prs(strong, idents, data, metas)
     terms = pick_search_terms(strong, idents, df)
     # Terms from a Jira issue may be internal, so they never go to GitHub
     # search. Every GitHub issue has a Jira copy, so the Jira search below
     # still finds GitHub-filed duplicates.
     issues = None if args.jira else search_issues(terms, selfs)
-    jira = (search_jira(terms, selfs, None if args.jira else title)
-            if use_jira else None)
+    jira = search_jira(terms, selfs) if use_jira else None
 
     if args.format == "text":
         print_text(strong, terms, prs, metas, issues, jira)

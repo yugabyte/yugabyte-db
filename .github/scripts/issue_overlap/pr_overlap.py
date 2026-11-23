@@ -213,7 +213,8 @@ def main():
     if args.pr:
         target = metas.get(args.pr) or pr_meta(args.pr)
         metas[args.pr] = target
-    data = load(list(metas.values()), prune=True)
+    data = load(list(metas.values()),
+                prune=args.bases == DEFAULT_BASES.pattern)
     if target and target["number"] not in data:
         sys.exit(f"could not read #{target['number']}")
 
