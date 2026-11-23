@@ -36,11 +36,13 @@ public class DeleteStorageConfig extends AbstractTaskBase {
 
   private static final String IN_USE_PREFIX = StorageConfigDeletion.IN_USE + ": ";
 
-  // Backups that delete_backups leaves alone: running, already deleted, or already being deleted.
+  // Backups that delete_backups leaves alone: running or being stopped, already deleted, or already
+  // being deleted.
   private static final Set<BackupState> NOT_TO_QUEUE =
       Sets.union(
               Backup.IN_PROGRESS_STATES,
-              Sets.immutableEnumSet(BackupState.Deleted, BackupState.QueuedForForcedDeletion))
+              Sets.immutableEnumSet(
+                  BackupState.Stopping, BackupState.Deleted, BackupState.QueuedForForcedDeletion))
           .immutableCopy();
 
   @Inject

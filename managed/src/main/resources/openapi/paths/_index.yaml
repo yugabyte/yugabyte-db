@@ -2004,7 +2004,7 @@
     description: |
       Deletes a storage configuration and returns the task that does it (resource_uuid is the
       configuration's UUID). The request is refused (409 STORAGE_CONFIG_IN_USE) while a backup
-      stored with the configuration runs, while a backup schedule, a DR configuration or YBA's
+      stored with the configuration runs or is being stopped, while a backup schedule, a DR configuration or YBA's
       continuous backup uses it, and, unless delete_backups is set, while completed backups, or
       backups whose delete failed, are stored with it; the task
       checks again before it deletes anything, and fails with the same error code if the
@@ -2017,7 +2017,9 @@
       backup garbage collector then deletes the backups, from YBA and from the storage, and removes
       the configuration once none of them is still being deleted, so the task's success means
       queued, not removed. Deleting a configuration that a delete already queued, or that a delete
-      task is already deleting, returns that delete's task, whatever delete_backups is.
+      task is already deleting, returns that delete's task, whatever delete_backups is. A backup
+      that a request accepted just before the delete task ran, and whose task hasn't started
+      writing yet, isn't seen by the checks; that backup then fails, as with the v1 delete.
     tags:
       - Storage Config
     parameters:
@@ -2036,7 +2038,7 @@
       '404':
         description: The customer has no storage configuration with this UUID
       '409':
-        description: 'error.code is STORAGE_CONFIG_IN_USE when the configuration is in use: error.usage lists the universes, schedules and DR configurations using it (as info.usage does), and error.running_backups, error.completed_backups and error.failed_to_delete_backups count its running and completed backups and those whose delete failed (the last two block only without delete_backups), and error.continuous_backup is true when YBA''s continuous backup uses it. STORAGE_CONFIG_NOT_ACTIVE when the configuration is still VALIDATING (error.storage_config_state), and STORAGE_CONFIG_EDIT_IN_PROGRESS while the task of an edit runs (error.task_uuid).'
+        description: 'error.code is STORAGE_CONFIG_IN_USE when the configuration is in use: error.usage lists the universes, schedules and DR configurations using it (as info.usage does), and error.running_backups, error.completed_backups and error.failed_to_delete_backups count its running (or stopping) and completed backups and those whose delete failed (the last two block only without delete_backups), and error.continuous_backup is true when YBA''s continuous backup uses it. STORAGE_CONFIG_NOT_ACTIVE when the configuration is still VALIDATING, or QUEUED_FOR_DELETION with no delete task to return (the record of the delete that queued it has been cleaned up), with error.storage_config_state; and STORAGE_CONFIG_EDIT_IN_PROGRESS while the task of an edit runs (error.task_uuid).'
       '500':
         description: Server error
     security:

@@ -122,7 +122,7 @@ public class DeleteStorageConfigTest extends FakeDBApplication {
     Backup completed = backup(BackupState.Completed);
     backup(BackupState.InProgress);
 
-    assertInUse(true, "1 running backup(s)");
+    assertInUse(true, "1 running or stopping backup(s)");
     assertEquals(BackupState.Completed, stateOf(completed));
   }
 
@@ -143,6 +143,15 @@ public class DeleteStorageConfigTest extends FakeDBApplication {
     ContinuousBackupConfig.create(config.getConfigUUID(), 5, TimeUnit.MINUTES, 3, "dir");
 
     assertInUse(true, "YBA continuous backup");
+  }
+
+  @Test
+  public void aBackupBeingStoppedKeepsTheConfig() {
+    // Its task still writes to the storage until the backup is Stopped.
+    Backup stopping = backup(BackupState.Stopping);
+
+    assertInUse(true, "1 running or stopping backup(s)");
+    assertEquals(BackupState.Stopping, stateOf(stopping));
   }
 
   @Test
