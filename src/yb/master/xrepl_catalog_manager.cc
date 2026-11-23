@@ -2202,6 +2202,20 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     return status;
   }
 
+  if (FLAGS_TEST_cdcsdk_enable_cdc_table) {
+    // The table counts as a table of these streams from now on, and not only once the CDC bg task
+    // has added it to them. Otherwise a table that is dropped before that is deleted at once
+    // rather than hidden, along with the changes that the CDC table pollers have not read. That
+    // is what happens to the table that a rewrite makes when the next statement rewrites it
+    // again.
+    LockGuard lock(mutex_);
+    for (const auto& stream : streams) {
+      if (IsCdcLogicalReplicationStream(*stream)) {
+        cdcsdk_tables_to_stream_map_[table->id()].insert(stream->StreamId());
+      }
+    }
+  }
+
   TEST_SYNC_POINT("PopulateCDCStateTableOnNewTableCreation::End");
   return Status::OK();
 }

@@ -186,11 +186,22 @@ Result<std::set<TableId>> CdcsdkManager::ReadPublishedTables(
   return result;
 }
 
+std::optional<PgOid> CdcsdkManager::RelationOid(const TableId& table_id) const {
+  auto table = catalog_manager_.GetTableInfo(table_id);
+  if (!table) {
+    return std::nullopt;
+  }
+  auto relation_oid = table->GetPgTableOid();
+  return relation_oid.ok() ? std::optional<PgOid>(*relation_oid) : std::nullopt;
+}
+
 Result<bool> CdcsdkManager::UpdatePolledTablesAsOf(
     const CDCStreamInfo& stream, HybridTime time, CdcTablePolledTablesPB* polled_tables) {
   const auto published = VERIFY_RESULT(ReadPublishedTables(stream, time));
   bool changed = false;
   std::set<TableId> polled;
+  // The tables that are found to be no longer published in this call, by relation.
+  std::map<PgOid, TableId> unpublished_tables;
   for (auto& table : *polled_tables->mutable_tables()) {
     polled.insert(table.table_id());
     const bool is_published = published.contains(table.table_id());
@@ -211,6 +222,9 @@ Result<bool> CdcsdkManager::UpdatePolledTablesAsOf(
                 << ". It is polled until the CDC safe time reaches that";
       table.set_stop_time(time.ToUint64());
       changed = true;
+      if (const auto relation_oid = RelationOid(table.table_id())) {
+        unpublished_tables.emplace(*relation_oid, table.table_id());
+      }
     }
   }
   for (const auto& table_id : published) {
@@ -221,8 +235,21 @@ Result<bool> CdcsdkManager::UpdatePolledTablesAsOf(
     // transaction can publish a table and then write to it. A poller asks for the changes that
     // commit after its safe time.
     const auto start_time = time.ToUint64() - 1;
+    // A statement that rewrites a table moves its relation to another DocDB table, by a change to
+    // the relation's row in pg_class. As of the commit time of that change the relation's old
+    // table is not published and its new one is, so nothing but the two cases of this function is
+    // needed: the old table is polled until the CDC table has its changes up to this time, and
+    // the new one from this time on. That includes the rows that the statement copied from the
+    // old table, which commit with the change to pg_class. The virtual WAL sends them too.
+    const auto relation_oid = RelationOid(table_id);
+    const auto rewritten_table = relation_oid ? unpublished_tables.find(*relation_oid)
+                                              : unpublished_tables.end();
     LOG(INFO) << "Table " << table_id << " of stream " << stream.id() << " is published as of "
-              << time << ", and is polled for the changes that commit after " << start_time;
+              << time
+              << (rewritten_table != unpublished_tables.end()
+                      ? Format(", in place of table $0 that was rewritten", rewritten_table->second)
+                      : "")
+              << ", and is polled for the changes that commit after " << start_time;
     auto* table = polled_tables->add_tables();
     table->set_table_id(table_id);
     table->set_start_time(start_time);

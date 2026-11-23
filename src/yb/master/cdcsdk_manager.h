@@ -25,6 +25,7 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -119,8 +120,12 @@ class CdcsdkManager : public CdcsdkManagerIf {
   // The tables of the stream that some publication of its database had at the given time.
   Result<std::set<TableId>> ReadPublishedTables(const CDCStreamInfo& stream, HybridTime time);
 
-  // Makes polled_tables what it has to be after a change to the publications that committed at the
-  // given time. Returns whether it changed.
+  // The PG relation that the table stores, or nullopt if the table is gone. A relation that is
+  // rewritten keeps its oid and gets another table.
+  std::optional<PgOid> RelationOid(const TableId& table_id) const;
+
+  // Makes polled_tables what it has to be after a change to the publications, or to the tables
+  // of the published relations, that committed at the given time. Returns whether it changed.
   Result<bool> UpdatePolledTablesAsOf(
       const CDCStreamInfo& stream, HybridTime time, CdcTablePolledTablesPB* polled_tables);
 

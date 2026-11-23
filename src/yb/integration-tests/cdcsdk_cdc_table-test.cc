@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/common/common_flags.h"
+#include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 
@@ -40,10 +41,10 @@ DECLARE_uint64(tablet_split_limit_per_table);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_uint64(TEST_pg_auth_key);
+DECLARE_bool(TEST_xcluster_block_first_poll);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 
 using namespace std::literals;
@@ -333,6 +334,10 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
         [this, table_name, value_sql, &stop = thread_holder->stop_flag()] {
           auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
           for (int i = 0; !stop.load(std::memory_order_acquire); ++i) {
+            if (pause_inserts_.load(std::memory_order_acquire)) {
+              SleepFor(20ms);
+              continue;
+            }
             const int id = 4 * i + 1;
             // A split or a leader change can fail a statement. What matters is what got
             // committed.
@@ -428,8 +433,101 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
     ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(ASSERT_RESULT(DatabaseOid(conn))));
   }
 
+  // The DocDB table that the relation is stored in now, as the connection sees it. A statement
+  // that rewrites the relation gives it another one, with other tablets.
+  Result<TestTable> GetCurrentTestTable(pgwrapper::PGConn& conn, const std::string& table_name) {
+    const auto relfilenode = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+        Format("SELECT relfilenode FROM pg_class WHERE oid = '$0'::regclass", table_name)));
+    TestTable table;
+    table.table_id = GetPgsqlTableId(VERIFY_RESULT(DatabaseOid(conn)), relfilenode);
+    table.filter = Format("replace(table_id::text, '-', '') = '$0'", table.table_id);
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    RETURN_NOT_OK(test_client()->GetTabletsFromTableId(table.table_id, 0, &tablets));
+    for (const auto& tablet : tablets) {
+      table.tablet_ids.push_back(tablet.tablet_id());
+    }
+    return table;
+  }
+
+  // The number of tables that the master has polled for the stream.
+  Result<int> NumPolledTables() {
+    auto stream = VERIFY_RESULT(
+        test_cluster()->mini_master()->catalog_manager_impl().GetXReplStreamInfo(stream_id_));
+    return stream->LockForRead()->pb.cdc_table_polled_tables().tables_size();
+  }
+
+  // The rows of a table made by CreateTestTable, as "id:v" in the order of the ids.
+  Result<std::string> TableRows(pgwrapper::PGConn& conn, const std::string& table_name) {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT coalesce(string_agg(id || ':' || v, ',' ORDER BY id), '') FROM $0", table_name));
+  }
+
+  // The rows that the selected changes of one DocDB table leave when they are applied to an
+  // empty table in the order they committed in, in the form of TableRows. A change that is
+  // missing from the CDC table shows as a row that is missing, is left over, or has an old value.
+  Result<std::string> ReplayChanges(
+      pgwrapper::PGConn& conn, const std::string& table_filter,
+      const std::string& changes_filter = "true") {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT coalesce(string_agg(id || ':' || v, ',' ORDER BY id), '') FROM ("
+        "  SELECT DISTINCT ON (id) id, op, v FROM ("
+        "    SELECT coalesce(($1)::int, ($2)::int) AS id, op, $3 AS v,"
+        "           commit_time, record_time, write_id"
+        "    FROM $0 WHERE $4 AND $5) changes"
+        "  ORDER BY id, commit_time DESC, record_time DESC, write_id DESC) last_changes "
+        "WHERE op <> 'D'",
+        master::kPgYbCdcChangesTableName, Int32Value("after", kIdAttnum),
+        Int32Value("before", kIdAttnum), StringValue("after", kValueAttnum), table_filter,
+        changes_filter));
+  }
+
+  // Inserts, updates and deletes rows, with single statements and in a transaction, each over
+  // several tablets. The new rows have ids from first_id on, and rows from earlier calls are
+  // updated and deleted too.
+  Status ChangeRows(pgwrapper::PGConn& conn, const std::string& table_name, int first_id) {
+    RETURN_NOT_OK(InsertRows(conn, table_name, first_id, first_id + 9));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE $0 SET v = 'b' WHERE id % 3 = 0", table_name));
+    RETURN_NOT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE id % 7 = 0", table_name));
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    RETURN_NOT_OK(InsertRows(conn, table_name, first_id + 10, first_id + 19));
+    RETURN_NOT_OK(conn.ExecuteFormat("UPDATE $0 SET v = v || 'c' WHERE id % 5 = 0", table_name));
+    RETURN_NOT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE id % 11 = 0", table_name));
+    return conn.Execute("COMMIT");
+  }
+
   // Of the slot, in the tests that ask the master about it.
   xrepl::StreamId stream_id_ = xrepl::StreamId::Nil();
+
+  // While set, the threads of StartInserts insert nothing.
+  std::atomic<bool> pause_inserts_{false};
+};
+
+// A DDL statement runs either on its own, or as part of the transaction that it is in and with
+// table locks, which is the default in release builds. These tests run both ways.
+class CDCSDKCdcTableDdlModeTest : public CDCSDKCdcTableTest,
+                                  public testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    CDCSDKCdcTableTest::SetUp();
+    ToggleDDLMode(/* use_legacy= */ !transactional_ddl());
+  }
+
+  bool transactional_ddl() const { return GetParam(); }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    DdlMode, CDCSDKCdcTableDdlModeTest, ::testing::Bool(),
+    [](const testing::TestParamInfo<bool>& info) {
+      return info.param ? "Transactional" : "Legacy";
+    });
+
+// For what only happens when a DDL statement is part of the transaction that it is in.
+class CDCSDKCdcTableTransactionalDdlTest : public CDCSDKCdcTableTest {
+ public:
+  void SetUp() override {
+    CDCSDKCdcTableTest::SetUp();
+    ToggleDDLMode(/* use_legacy= */ false);
+  }
 };
 
 TEST_F(CDCSDKCdcTableTest, TablePublication) {
@@ -1675,7 +1773,7 @@ TEST_F(CDCSDKCdcTableTest, PublicationAddTableThenLeaderChange) {
 
 // A publication is changed in a transaction that also writes to the table, and by replacing its
 // list of tables.
-TEST_F(CDCSDKCdcTableTest, PublicationChangeInTransactionAndSetTable) {
+TEST_P(CDCSDKCdcTableDdlModeTest, PublicationChangeInTransactionAndSetTable) {
   ASSERT_OK(SetUpCluster());
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
@@ -1721,7 +1819,7 @@ TEST_F(CDCSDKCdcTableTest, PublicationChangeInTransactionAndSetTable) {
 
   ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 10)), 0);
   ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 30)), 20);
-  if (FLAGS_ysql_yb_ddl_transaction_block_enabled) {
+  if (transactional_ddl()) {
     // The rows commit with the change to the publication, and were written before it.
     ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 31, 40)), 10);
   }
@@ -1791,6 +1889,662 @@ TEST_F(CDCSDKCdcTableTest, PublicationChangesUnderLoad) {
       ASSERT_RESULT(CountChanges(
           conn, Format("$0 AND commit_time <= $1", t1.filter, safe_time.ToUint64()))),
       ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")));
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A statement that rewrites a published table moves it to another DocDB table. The changes of
+// the old one from before the statement committed, the rows that the statement copied, and the
+// changes of the new one are all in the CDC table.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewrite) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  const auto before_rewrite = Now();
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto after_rewrite = Now();
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_NE(new_table.table_id, old_table.table_id);
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(old_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  ASSERT_EQ(ASSERT_RESULT(NumPolledTables()), 1);
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 10)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 10)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 11, 20)), 10);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", new_table.filter, safe_time.ToUint64()))),
+      20);
+
+  // The rows that the statement copied commit with its change to pg_class, which is the time
+  // from which the new table is polled.
+  const auto copied_rows = Format(
+      "$0 AND ($1)::int BETWEEN 1 AND 10", new_table.filter, Int32Value("after", kIdAttnum));
+  const auto relfilenode_attnum = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT attnum::int FROM pg_attribute "
+      "WHERE attrelid = 'pg_class'::regclass AND attname = 'relfilenode'"));
+  const HybridTime rewrite_time(static_cast<uint64_t>(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT min(commit_time) FROM $0 WHERE replace(table_id::text, '-', '') = '$1' AND "
+      "(after->'$2'->1->>'uint32_value')::bigint = $3",
+      master::kPgYbCdcChangesTableName, GetPgsqlTableId(database_oid, kPgClassTableOid),
+      relfilenode_attnum, ASSERT_RESULT(GetPgsqlTableOid(new_table.table_id)))))));
+  ASSERT_GT(rewrite_time, before_rewrite);
+  ASSERT_LT(rewrite_time, after_rewrite);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time = $1", copied_rows, rewrite_time.ToUint64()))),
+      10);
+  // So a reader that looks up the relation's table as of the commit time of a change finds the
+  // table that the change is in: the old one before the rewrite, and the new one from it on.
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time >= $1", old_table.filter, rewrite_time.ToUint64()))),
+      0);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time < $1", new_table.filter, rewrite_time.ToUint64()))),
+      0);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// Every kind of statement that rewrites a table, one after the other. For each of them, the CDC
+// table has what the table held before in the changes of its old DocDB table, the rows that the
+// statement copied as the first changes of the new one, and in the end the rows of the table in
+// the changes of its last one.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteStatements) {
+  // A rewrite gives the new DocDB table the default replica identity, whatever the relation has,
+  // and the stream goes by the table. With the default one, the updates and deletes of the
+  // table that is left without a primary key here would not tell which row they are for.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "FULL";
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  // The statements, and whether they copy the rows to the new table.
+  const std::vector<std::pair<std::string, bool>> statements = {
+      {"ALTER TABLE t1 ADD COLUMN c1 INT DEFAULT random()", true},
+      {"ALTER TABLE t1 ADD COLUMN c2 SERIAL", true},
+      {"ALTER TABLE t1 ALTER COLUMN c1 TYPE DOUBLE PRECISION", true},
+      {"ALTER TABLE t1 ALTER COLUMN c1 TYPE INT USING (c2 * 100)::INT", true},
+      {"ALTER TABLE t1 DROP CONSTRAINT t1_pkey", true},
+      {"ALTER TABLE t1 ADD PRIMARY KEY (id)", true},
+      {"TRUNCATE TABLE t1", false},
+      {"ALTER TABLE t1 ALTER COLUMN c1 TYPE BIGINT", true},
+  };
+  struct Rewrite {
+    std::string statement;
+    bool copies_rows;
+    TestTable old_table;
+    // What the table held when the statement was sent.
+    std::string rows;
+    HybridTime before;
+    HybridTime after;
+  };
+  std::vector<Rewrite> rewrites;
+  int first_id = 1;
+  for (const auto& [statement, copies_rows] : statements) {
+    ASSERT_OK(ChangeRows(conn, "t1", first_id));
+    first_id += 100;
+    Rewrite rewrite;
+    rewrite.statement = statement;
+    rewrite.copies_rows = copies_rows;
+    rewrite.old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+    rewrite.rows = ASSERT_RESULT(TableRows(conn, "t1"));
+    ASSERT_FALSE(rewrite.rows.empty());
+    rewrite.before = Now();
+    ASSERT_OK(conn.Execute(statement));
+    rewrite.after = Now();
+    rewrites.push_back(std::move(rewrite));
+  }
+  ASSERT_OK(ChangeRows(conn, "t1", first_id));
+  const auto last_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(last_table, true /* polled */));
+  thread_holder.Stop();
+
+  for (size_t i = 0; i < rewrites.size(); ++i) {
+    const auto& rewrite = rewrites[i];
+    SCOPED_TRACE(rewrite.statement);
+    const auto& new_table = i + 1 < rewrites.size() ? rewrites[i + 1].old_table : last_table;
+    ASSERT_NE(new_table.table_id, rewrite.old_table.table_id);
+    ASSERT_OK(WaitForPolling(rewrite.old_table, false /* polled */));
+
+    ASSERT_EQ(ASSERT_RESULT(ReplayChanges(conn, rewrite.old_table.filter)), rewrite.rows);
+    ASSERT_EQ(
+        ASSERT_RESULT(CountChanges(
+            conn, Format(
+                      "$0 AND commit_time >= $1", rewrite.old_table.filter,
+                      rewrite.before.ToUint64()))),
+        0);
+
+    // The changes of the new table from before anything else was done to it.
+    const auto copied_rows =
+        Format("$0 AND commit_time <= $1", new_table.filter, rewrite.after.ToUint64());
+    ASSERT_EQ(
+        ASSERT_RESULT(ReplayChanges(conn, copied_rows)), rewrite.copies_rows ? rewrite.rows : "");
+    ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, Format("$0 AND op <> 'I'", copied_rows))), 0);
+    ASSERT_EQ(
+        ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+            "SELECT count(DISTINCT commit_time) FROM $0 WHERE $1 AND commit_time > $2",
+            master::kPgYbCdcChangesTableName, copied_rows, rewrite.before.ToUint64()))),
+        rewrite.copies_rows ? 1 : 0);
+    ASSERT_EQ(
+        ASSERT_RESULT(CountChanges(
+            conn, Format("$0 AND commit_time <= $1", copied_rows, rewrite.before.ToUint64()))),
+        0);
+  }
+  ASSERT_EQ(
+      ASSERT_RESULT(ReplayChanges(conn, last_table.filter)), ASSERT_RESULT(TableRows(conn, "t1")));
+  ASSERT_EQ(ASSERT_RESULT(NumPolledTables()), 1);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The pollers of a table are behind when the table is rewritten. Its old tablets are polled
+// until the changes from before that are in the CDC table, and the CDC safe time waits for them:
+// a reader does not get the rows that the statement copied before those changes.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteWithUnreadChanges) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, old_table.filter));
+
+  PausePollersOf(old_table.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t1", 11, 30));
+  const auto before_rewrite = Now();
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 31, 40));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+
+  // The pollers of the new tablets are not held up.
+  ASSERT_OK(WaitForChanges(conn, 40, new_table.filter));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 10);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(old_table.table_id)));
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+    ASSERT_TRUE(safe_time.is_valid());
+    ASSERT_LT(safe_time, before_rewrite);
+  }
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(old_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 40)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 40);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The pollers of the tablets that a rewrite gave the table do nothing for a while. The CDC safe
+// time must wait for them, at a time before the rewrite, although every other poller has got
+// past it. The master only gets to compute the polled tablets in the background long after the
+// rewrite: they have to be in place by the time the poller of the sys catalog tablet has it.
+TEST_P(CDCSDKCdcTableDdlModeTest, SafeTimeHeldUntilRewrittenTableIsPolled) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, old_table.filter));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 15000 * kTimeMultiplier;
+  // For a pass of the background task that is under way.
+  SleepFor(2s * kTimeMultiplier);
+  // A poller that is created from now on does not poll. Those of the new tablets are the only
+  // ones.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_block_first_poll) = true;
+
+  const auto before_rewrite = Now();
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto after_rewrite = Now();
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
+  while (CoarseMonoClock::Now() < deadline) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      const auto safe_time = ASSERT_RESULT(CdcSafeTime(i, database_oid));
+      ASSERT_TRUE(safe_time.is_valid());
+      ASSERT_LT(safe_time, after_rewrite);
+    }
+    SleepFor(200ms);
+  }
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 0);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(new_table.table_id)));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_block_first_poll) = false;
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_GT(safe_time, before_rewrite);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", new_table.filter, safe_time.ToUint64()))),
+      20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 20)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 10)), 10);
+}
+
+// The master is restarted after a table is rewritten, while the pollers of the old tablets are
+// behind. The old table is dropped by then, and its tablets are still polled to the end.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteAcrossMasterRestart) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, old_table.filter));
+
+  PausePollersOf(old_table.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t1", 11, 30));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 31, 40));
+  // The master has seen the rewrite.
+  ASSERT_OK(WaitForChanges(conn, 40, new_table.filter));
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(InsertRows(conn, "t1", 41, 50));
+  ASSERT_OK(WaitForChanges(conn, 50, new_table.filter));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 10);
+  ASSERT_OK(WaitForPolling(old_table, true /* polled */));
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(old_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 50)), 50);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 50);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table is rewritten twice before the poller of the sys catalog tablet reads the first
+// rewrite. The table that the relation had in between is dropped by then. It is still polled,
+// for the time that it was the relation's table.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewritesSeenLate) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto first_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, first_table.filter));
+
+  PausePollerOf(master::kSysCatalogTabletId);
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto second_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 21, 30));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ALTER COLUMN c TYPE BIGINT"));
+  const auto after_rewrites = Now();
+  const auto third_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 31, 40));
+
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(first_table.table_id)));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(second_table.table_id)));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(third_table.table_id)));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, second_table.filter)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, third_table.filter)), 0);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_rewrites);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(first_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(second_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(third_table, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, first_table.filter, 1, 20)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, first_table.filter)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, second_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, second_table.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, third_table.filter, 1, 40)), 40);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, third_table.filter)), 40);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table is rewritten in a transaction that changes it before and after. All of that commits
+// at one time: the old table is polled up to that time, and the new one from that time on. A
+// rewrite that is rolled back changes nothing.
+TEST_F(CDCSDKCdcTableTransactionalDdlTest, TableRewriteInTransaction) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  ASSERT_OK(InsertRows(conn, "t1", 21, 30));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_NE(new_table.table_id, old_table.table_id);
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ALTER COLUMN c TYPE BIGINT"));
+  ASSERT_OK(InsertRows(conn, "t1", 31, 40));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_EQ(ASSERT_RESULT(GetCurrentTestTable(conn, "t1")).table_id, new_table.table_id);
+  ASSERT_OK(InsertRows(conn, "t1", 41, 50));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(old_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  ASSERT_EQ(ASSERT_RESULT(NumPolledTables()), 1);
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 20)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 41, 50)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 40);
+  // Nothing of the transaction that was rolled back, in any table.
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, "true", 31, 40)), 0);
+  // What the transaction with the rewrite did commits at one time, in both tables.
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(DISTINCT commit_time) FROM $0 WHERE "
+          "($1 AND ($3)::int BETWEEN 11 AND 20) OR ($2 AND ($3)::int BETWEEN 1 AND 30)",
+          master::kPgYbCdcChangesTableName, old_table.filter, new_table.filter,
+          Int32Value("after", kIdAttnum)))),
+      1);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The rewrite of a table that no publication has changes nothing. When the table is published
+// later, the DocDB table that it has by then is polled.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteOfUnpublishedTable) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD COLUMN c INT DEFAULT random()"));
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t2"));
+  ASSERT_NE(new_table.table_id, old_table.table_id);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(old_table.table_id)));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(new_table.table_id)));
+  ASSERT_EQ(ASSERT_RESULT(NumPolledTables()), 1);
+
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 21, 30));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  ASSERT_EQ(ASSERT_RESULT(NumPolledTables()), 2);
+
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 21, 30)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 10);
+}
+
+// The tablet of a table is split and the table is rewritten, all before the poller of the tablet
+// has read its last changes or has been told about the split. A master that has just started
+// finds the children as the tablets of a dropped table, and has them polled to the end.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteOfSplitTable) {
+  SetTabletSplitTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto old_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_EQ(old_table.tablet_ids.size(), 1);
+  const auto parent = old_table.tablet_ids[0];
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 30));
+  ASSERT_OK(WaitForChanges(conn, 30, old_table.filter));
+
+  PausePollerOf(parent);
+  ASSERT_OK(InsertRows(conn, "t1", 31, 45));
+  SplitTablet("t1", parent, 2);
+  const auto children = ASSERT_RESULT(TabletIds("t1"));
+  std::vector<TabletId> old_tablets = children;
+  old_tablets.push_back(parent);
+  PausePollersOf(old_tablets);
+  ASSERT_OK(InsertRows(conn, "t1", 46, 60));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto new_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 61, 90));
+  ASSERT_OK(WaitForChanges(conn, 90, new_table.filter));
+  // The poller of the parent has not been told about the split.
+  ASSERT_OK(WaitForPollers({parent}, true /* polled */));
+  ASSERT_OK(WaitForPollers(children, false /* polled */));
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(WaitForPollers(children, true /* polled */));
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 30);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(old_table.table_id)));
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPollers(old_tablets, false /* polled */));
+  ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 60)), 60);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, old_table.filter)), 60);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, new_table.filter, 1, 90)), 90);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, new_table.filter)), 90);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// Rows are inserted all along while one of two tables is rewritten again and again. Every row
+// that a rewrite found in the table is in the changes of the table's DocDB table from before,
+// and every row of the table is in the changes of its last one.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewritesUnderLoad) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(CreateTestTable(conn, "t2"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder sampling_thread;
+  StartSafeTimeSampling(&sampling_thread, database_oid, &changes_up_to);
+  TestThreadHolder insert_threads;
+  StartInserts(&insert_threads, "t1");
+  StartInserts(&insert_threads, "t2");
+
+  // The DocDB tables that t1 has had, in order.
+  std::vector<TestTable> tables = {ASSERT_RESULT(GetCurrentTestTable(conn, "t1"))};
+  const std::vector<std::string> statements = {
+      "ALTER TABLE t1 ADD COLUMN c1 INT DEFAULT random()",
+      "ALTER TABLE t1 ADD COLUMN c2 SERIAL",
+      "ALTER TABLE t1 ALTER COLUMN c1 TYPE BIGINT",
+      "ALTER TABLE t1 ALTER COLUMN c1 TYPE INT USING (c2 % 1000)::INT",
+  };
+  for (const auto& statement : statements) {
+    SleepFor(2s * kTimeMultiplier);
+    // Without table locks, a statement that copies a table fails when a row is inserted while
+    // it runs. The inserts go on until right before the statement, and from right after it.
+    pause_inserts_ = !transactional_ddl();
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto status = conn.Execute(statement);
+          WARN_NOT_OK(status, Format("Failed to execute $0", statement));
+          return status.ok();
+        },
+        kTimeout, Format("Execute $0", statement)));
+    pause_inserts_ = false;
+    tables.push_back(ASSERT_RESULT(GetCurrentTestTable(conn, "t1")));
+    ASSERT_NE(tables.back().table_id, tables[tables.size() - 2].table_id);
+  }
+  SleepFor(2s * kTimeMultiplier);
+  insert_threads.Stop();
+
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(tables.back(), true /* polled */));
+  sampling_thread.Stop();
+
+  const auto ids_of = [](const std::string& filter) {
+    return Format(
+        "SELECT ($0)::int FROM $1 WHERE $2 AND op = 'I'", Int32Value("after", kIdAttnum),
+        master::kPgYbCdcChangesTableName, filter);
+  };
+  for (size_t i = 0; i + 1 < tables.size(); ++i) {
+    SCOPED_TRACE(statements[i]);
+    ASSERT_OK(WaitForPolling(tables[i], false /* polled */));
+    // The rows that the statement copied are the first changes of the new table.
+    const auto copied_rows = Format(
+        "$0 AND commit_time = (SELECT min(commit_time) FROM $1 WHERE $0)", tables[i + 1].filter,
+        master::kPgYbCdcChangesTableName);
+    ASSERT_GT(ASSERT_RESULT(CountChanges(conn, copied_rows)), 0);
+    ASSERT_EQ(
+        ASSERT_RESULT(CountChanges(
+            conn,
+            Format(
+                "$0 AND ($1)::int NOT IN ($2)", copied_rows, Int32Value("after", kIdAttnum),
+                ids_of(tables[i].filter)))),
+        0);
+  }
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT count(*) FROM t1 WHERE id NOT IN ($0)",
+          ids_of(Format(
+              "$0 AND commit_time <= $1", tables.back().filter, safe_time.ToUint64()))))),
+      0);
+  ASSERT_GT(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 0);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t2.filter, safe_time.ToUint64()))),
+      ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")));
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table is rewritten again right after a rewrite, before the background task of the master
+// has added the table that the first one made to the stream. That table is still kept when it is
+// dropped, and polled for the time that it was the relation's table.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableRewrittenAgainAtOnce) {
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto first_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, first_table.filter));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_cdc_bg_task_wait_ms) = 15000 * kTimeMultiplier;
+  // For a pass of the background task that is under way.
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto second_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ALTER COLUMN c TYPE BIGINT"));
+  const auto third_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 21, 30));
+
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(first_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(second_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(third_table, true /* polled */));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, first_table.filter, 1, 10)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, first_table.filter)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, second_table.filter, 1, 20)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, second_table.filter)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, third_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, third_table.filter)), 30);
   VerifySampledSafeTimes(conn, changes_up_to);
 }
 
