@@ -1,8 +1,12 @@
 is_cloud={{ is_cloud | default(false) }}
 
+# check_ulimit RESOURCE EXPECTED [FAIL_BELOW]
+# With FAIL_BELOW, a value below EXPECTED but at least FAIL_BELOW is reported as WARN rather
+# than FAIL.
 check_ulimit() {
     local resource=$1
     local expected_value=$2
+    local fail_below=$3
     local current_value
     local flag
 
@@ -44,6 +48,11 @@ check_ulimit() {
     if [ "$current_value" -ge "$expected_value" ]; then
         echo "[PASS] $resource is set to $current_value (expected: $expected_value or higher)"
         add_result "$resource" "PASS" "$resource is set to $current_value (expected: $expected_value or higher)"
+    elif [ -n "$fail_below" ] && [ "$current_value" -ge "$fail_below" ]; then
+        local msg="$resource is set to $current_value (expected: $expected_value or higher)."
+        msg+=" Re-run node-agent-provision.sh to raise it."
+        echo "[WARN] $msg"
+        add_result "$resource" "WARN" "$msg"
     else
         echo "[FAIL] $resource is set to $current_value (expected: $expected_value or higher)"
         add_result "$resource" "FAIL" "$resource is set to $current_value (expected: $expected_value or higher)"
@@ -83,7 +92,16 @@ verify_sysctl() {
 # Verify ulimit settings
 {% if is_preflight_check %}
 {% for key in limits %}
+{% if key == 'memlock' %}
+# The standalone preflight runs inside the node agent and sees the agent's memlock. Nodes
+# provisioned when limits.conf had "* - memlock 64" keep that limit until they are re-provisioned,
+# and the node agent cannot raise it as it is not root. Only earlyoom needs the higher value, so a
+# value at the previous requirement (64) only warns and does not fail universe creation or adding
+# a node.
+check_ulimit "{{ key }}" "{{ limits[key] }}" 64
+{% else %}
 check_ulimit "{{ key }}" "{{ limits[key] }}"
+{% endif %}
 {% endfor %}
 {% else %}
 # Right after provisioning, this shell predates the limits.conf changes, which only apply to new
