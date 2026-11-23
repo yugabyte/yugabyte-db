@@ -2067,8 +2067,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A poller error that goes away restarts the poller instead of terminating the listeners. The
-   * listener stays connected and receives the notification the poller failed on, once.
+   * A transient poller error restarts the poller; the listener stays connected and gets the
+   * notification once.
    */
   @Test
   public void testPollerRestartsAfterTransientError() throws Exception {
@@ -2089,10 +2089,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A restarted poller that fails to initialize retries without failing new LISTENs, and once it
-   * initializes, both the listener from before and the one that joined meanwhile receive
-   * notifications. SIGTERM exits through FATAL, not ybNotifsPollerExitOnError; only the restarts
-   * that then fail to initialize take that path.
+   * A restarted poller that fails to initialize keeps retrying without failing new LISTENs, and
+   * once it initializes, old and new listeners both receive notifications. (SIGTERM itself exits
+   * through FATAL; only the failed inits go through ybNotifsPollerExitOnError.)
    */
   @Test
   public void testRestartedPollerRecoversFromInitFailure() throws Exception {
@@ -2124,9 +2123,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A restarted poller that keeps failing to initialize terminates the listeners once
-   * yb_notifications_poller_retry_timeout_ms passes, instead of leaving them connected and
-   * receiving nothing.
+   * A restarted poller that keeps failing to initialize terminates the listeners once the retry
+   * timeout passes, instead of leaving them receiving nothing.
    */
   @Test
   public void testRestartedPollerInitFailureTerminatesListeners() throws Exception {
@@ -2151,10 +2149,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A transaction acked after an error ends that run of failed restarts, so a later error restarts
-   * the poller even when the first error is older than yb_notifications_poller_retry_timeout_ms.
-   * The second error hits a poller that has been up for less than the timeout, so only its ack can
-   * end the run.
+   * An ack ends a run of failed restarts: a second error, after the first is older than the retry
+   * timeout, still restarts the poller. That poller has been up for less than the timeout, so only
+   * its ack can have ended the run.
    */
   @Test
   public void testAckEndsFailedRestartRun() throws Exception {
@@ -2167,15 +2164,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       listener.createStatement().execute("LISTEN " + channel);
       int pollerPid = getPollerPid(stmt);
 
-      // First error; the replay after the hook is cleared delivers and acks 'a'.
+      // First error; the replay delivers and acks 'a'.
       long firstErrorMs = notifyWhilePollerFails(stmt, channel, "a");
       waitForNotification(listener, channel, "a");
       int restartedPid = getPollerPid(stmt);
       assertNotEquals("Expected the poller to have restarted", pollerPid, restartedPid);
       pollerPid = restartedPid;
 
-      // Let the first error age past the timeout, then start a fresh poller (SIGTERM does not
-      // end the run) and have it ack 'b'.
+      // Age the first error past the timeout, then have a fresh poller ack 'b'.
       long agedMs = firstErrorMs + timeoutMs + Timeouts.adjustTimeoutSecForBuildType(2000);
       Thread.sleep(Math.max(0, agedMs - System.currentTimeMillis()));
       ProcessUtil.signalProcess(pollerPid, "TERM");
@@ -2195,10 +2191,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Sends a NOTIFY while the poller errors on every queue write, then clears the error so the
-   * restarted poller delivers it. The poller is left failing for a fixed time rather than until its
-   * pid changes: a crash-looping poller lives ~50 ms per restart, so polling pg_stat_activity can
-   * miss it. Returns the time just before the NOTIFY.
+   * Sends a NOTIFY while every poller queue write errors, then clears the error. Waits a fixed
+   * time rather than for a new pid, which a ~50 ms-lived crash-looping poller can hide. Returns the
+   * time just before the NOTIFY.
    */
   private long notifyWhilePollerFails(Statement stmt, String channel, String payload)
       throws Exception {

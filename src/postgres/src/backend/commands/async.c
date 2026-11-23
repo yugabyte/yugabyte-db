@@ -669,9 +669,7 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
  * Shared memory state reporting how the node's 'notifications poller' bg
  * worker first initialized. Every LISTEN waits on it. The poller sets SUCCESS
  * or FAILED, and ybCleanupListenState sets FAILED if the LISTEN that started
- * the poller ends before the poller reports. Once it is SUCCESS, a poller
- * restarted after an error leaves it alone: its listeners are already
- * running, and new LISTENs join them.
+ * the poller ends before the poller reports. Restarts leave SUCCESS alone.
  */
 typedef enum
 {
@@ -687,9 +685,8 @@ typedef struct
 	volatile bool has_runtime_error;
 
 	/*
-	 * When the poller's current run of failed restarts began; zero if it has
-	 * not failed since it was started for its listeners. See
-	 * ybNotifsPollerExitOnError. Kept here as it must survive restarts.
+	 * Start of the current run of failed restarts, or zero. In shared memory
+	 * to survive restarts.
 	 */
 	TimestampTz retry_start_time;
 
@@ -3332,9 +3329,8 @@ ybStartNotifsPollerBgWorker(void)
  * unregisters before the poller reports. A poller that fails its first
  * initialization is restarted until ybCleanupListenState terminates it as the
  * last listener unregisters, which is right away, as every listener is
- * waiting here and fails with it. A poller restarted after initializing once
- * handles its failures in ybNotifsPollerExitOnError, and never reports them
- * here.
+ * waiting here and fails with it. Later failures go through
+ * ybNotifsPollerExitOnError instead.
  */
 static void
 ybWaitForNotifsPollerInit(void)
@@ -3470,11 +3466,10 @@ ybExitStaleNotifsPoller(const char *detail)
 }
 
 /*
- * Is the error one that restarting the poller cannot get past, or that has
- * already lost notifications? Errors from DocDB reach here as
- * ERRCODE_INTERNAL_ERROR with only their message, so most are matched on it.
- * The list need not be complete: an error left off it costs at most
- * yb_notifications_poller_retry_timeout_ms of restarts.
+ * Is the error one a restart can't get past, or that has already lost
+ * notifications? DocDB errors arrive as ERRCODE_INTERNAL_ERROR with only their
+ * message, so most are matched on text. An error missing here costs at most
+ * the retry timeout.
  */
 static bool
 ybIsPermanentNotifsPollerError(const ErrorData *edata)
@@ -3483,10 +3478,7 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
 	if (edata->sqlerrcode == ERRCODE_UNDEFINED_OBJECT)
 		return true;
 
-	/*
-	 * The stream went unread for cdc_intent_retention_ms, so the slot no
-	 * longer holds every notification (CDCServiceImpl::CheckStreamActive).
-	 */
+	/* Stream expired, so notifications are lost (CheckStreamActive). */
 	if (edata->message && strstr(edata->message, "is expired for Tablet ID"))
 		return true;
 
@@ -3499,27 +3491,22 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
 }
 
 /*
- * Exit the poller after an error. The postmaster restarts it, and it resumes
- * from the slot's restart LSN, which it advances only after writing a
- * transaction to the queue; replayed entries are skipped by listeners. The
- * listeners see only a delay.
+ * Exit the poller after an error, to be restarted. It resumes from the slot's
+ * restart LSN, which advances only after a transaction is written to the
+ * queue, and listeners skip replayed entries, so they see only a delay.
  *
- * Restarting cannot help after a permanent error, nor once restarts have kept
- * failing for yb_notifications_poller_retry_timeout_ms; then terminate the
- * node's listeners instead, so that they do not wait on notifications that
- * will never come, and refuse new LISTENs until they are gone.
+ * On a permanent error, or once restarts have kept failing for
+ * yb_notifications_poller_retry_timeout_ms, terminate the node's listeners
+ * instead and refuse new LISTENs until they are gone.
  *
- * A run of failed restarts ends with a poller that acks a transaction, or
- * stays up for the timeout. Reading without error is not enough: a poller
- * failing on the same transaction may read nothing before reaching it on
- * every restart, and an idle poller never acks.
+ * A run of failed restarts ends when a poller acks a transaction or stays up
+ * for the timeout. An error-free read doesn't count: a poller stuck on one
+ * transaction can read nothing before reaching it, every time.
  *
- * Two consequences are accepted, since without acks an idle poller looks the
- * same as a failing one. An idle poller that restarted successfully, but
- * has not been up for the timeout, terminates the listeners on one error if
- * its run of failed restarts began more than the timeout ago. A failure that
- * comes more than the timeout into every run restarts indefinitely, at most
- * once per timeout.
+ * An idle poller never acks, so it looks like a failing one. Hence a poller
+ * up for less than the timeout terminates the listeners on one error if its
+ * run began more than the timeout ago, and a failure more than the timeout
+ * into every run restarts indefinitely, at most once per timeout.
  *
  * Caller holds NotifyQueueLock exclusively and has checked that this poller
  * is not stale. This releases the lock.
@@ -3629,9 +3616,8 @@ ybNotifsPollerInit(void)
 		}
 
 		/*
-		 * A restart. Its listeners are running and new LISTENs join them, so
-		 * setting FAILED would refuse those LISTENs while the listeners are
-		 * left receiving nothing. Handle it as an error in the loop.
+		 * A restart: setting FAILED would refuse new LISTENs while existing
+		 * listeners get nothing. Handle it like an error in the loop.
 		 */
 		if (poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
 		{
