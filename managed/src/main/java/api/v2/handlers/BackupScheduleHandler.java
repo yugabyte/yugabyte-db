@@ -13,8 +13,8 @@ import api.v2.models.BackupScheduleState;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.PagedList;
@@ -30,10 +30,6 @@ import java.util.stream.Collectors;
 /** v2 backup schedules: the v1 schedules whose task is a backup. */
 @Singleton
 public class BackupScheduleHandler {
-
-  /** Task types of v1 backup schedules; the first two are those of schedules made before 2.14. */
-  public static final List<TaskType> BACKUP_TASK_TYPES =
-      List.of(TaskType.BackupUniverse, TaskType.MultiTableBackup, TaskType.CreateBackup);
 
   public BackupSchedule getBackupSchedule(UUID cUUID, UUID bsUUID) {
     Schedule schedule = backupSchedules(cUUID).idEq(bsUUID).findOne();
@@ -86,7 +82,7 @@ public class BackupScheduleHandler {
         .query()
         .where()
         .eq("customer_uuid", cUUID)
-        .in("task_type", BACKUP_TASK_TYPES);
+        .in("task_type", BackupUtil.BACKUP_TASK_TYPES);
   }
 
   private static List<Schedule.State> toV1States(Collection<BackupScheduleState> states) {

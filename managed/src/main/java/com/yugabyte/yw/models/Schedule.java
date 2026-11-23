@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -735,7 +736,7 @@ public class Schedule extends Model {
   private static ExpressionList<Schedule> backupSchedulesUsingStorageConfig() {
     return find.query()
         .where()
-        .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup, TaskType.CreateBackup)
+        .in("task_type", BackupUtil.BACKUP_TASK_TYPES)
         .notIn("status", State.Deleting, State.Error);
   }
 
