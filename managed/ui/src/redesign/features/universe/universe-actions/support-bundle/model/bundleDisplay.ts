@@ -7,14 +7,15 @@ import {
   SupportBundleStatus
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-import { isSensitiveComponent } from './categories';
+import {
+  isSensitiveComponent,
+  PG_AUDIT_LOGS,
+  SupportBundleSelectableComponent
+} from './categories';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-/**
- * `creation_date` stays null until collection succeeds, so a running bundle is named after its
- * collection end date, which defaults to the submit time.
- */
+/** Named after its creation date, which the server sets when the bundle is requested. */
 export const getSupportBundleName = (bundle: SupportBundle): string => {
   const timestamp = bundle.info?.creation_date ?? bundle.spec?.end_date;
   return timestamp
@@ -54,9 +55,37 @@ export const getSupportBundleStatusDisplay = (
 export const isSupportBundleRunning = (bundle: SupportBundle) =>
   bundle.info?.status === SupportBundleStatus.Running;
 
+const PG_AUDIT_FILTER_FLAG = '--filter_pgaudit_logs';
+
 /**
- * Sensitive components the bundle was collected with. PG audit logs can't be reported: the
- * persisted SupportBundleSpec doesn't keep filter_pg_audit_logs.
+ * Sensitive components the bundle was collected with.
+ *
+ * The server's manifest merge rewrites `components` to group names (FilesComponent, ...) and moves
+ * each file component into `files_component_specs`, so both are checked, as
+ * SupportBundleHandlerV2.requestsCoreFiles does. PG audit logs ride on UniverseLogs: they are
+ * included when its params turn audit filtering off.
  */
-export const getSensitiveComponents = (bundle: SupportBundle): SupportBundleComponentType[] =>
-  (bundle.spec?.components ?? []).filter(isSensitiveComponent);
+export const getSensitiveComponents = (
+  bundle: SupportBundle
+): SupportBundleSelectableComponent[] => {
+  const fileSpecs = bundle.spec?.files_component_specs ?? [];
+  const collected = new Set<string>([
+    ...(bundle.spec?.components ?? []),
+    ...fileSpecs.map((spec) => spec.component_name ?? '')
+  ]);
+  const sensitive: SupportBundleSelectableComponent[] = [
+    SupportBundleComponentType.CoreFiles
+  ].filter((component) => collected.has(component));
+  const includesPgAuditLogs = fileSpecs.some((spec) => {
+    if (spec.component_name !== SupportBundleComponentType.UniverseLogs) {
+      return false;
+    }
+    const params = spec.params ?? [];
+    const flagIndex = params.indexOf(PG_AUDIT_FILTER_FLAG);
+    return flagIndex >= 0 && params[flagIndex + 1] === 'false';
+  });
+  if (includesPgAuditLogs) {
+    sensitive.push(PG_AUDIT_LOGS);
+  }
+  return sensitive.filter(isSensitiveComponent);
+};

@@ -6,7 +6,7 @@ import {
 
 import { SupportBundleCategoryId, SupportBundleSelectableComponent } from './categories';
 
-const ONE_GIB_IN_BYTES = 1024 * 1024 * 1024;
+export const ONE_GIB_IN_BYTES = 1024 * 1024 * 1024;
 
 export const TimeRangePreset = {
   LAST_15_MINUTES: 'last15Minutes',

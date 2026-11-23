@@ -17,7 +17,7 @@ import {
 import { isSupportBundleRunning } from '../model/bundleDisplay';
 import { SUPPORT_BUNDLE_PAGE_SIZE } from '../supportBundleApi';
 
-const RUNNING_BUNDLE_POLL_INTERVAL_MS = 10_000;
+export const RUNNING_BUNDLE_POLL_INTERVAL_MS = 10_000;
 const ESTIMATE_DEBOUNCE_MS = 500;
 
 /**
@@ -44,17 +44,27 @@ export const useSupportBundleList = (
     }
   );
 
+/**
+ * Mutations invalidate only the lists: the estimate key also sits under `supportBundleQueryKey.ALL`,
+ * and refetching it would size files on every node again.
+ */
+const listQueryPrefix = (universeUuid: string) => [
+  ...supportBundleQueryKey.ALL,
+  'list',
+  universeUuid
+];
+
 export const useCreateSupportBundleV2 = (universeUuid: string) => {
   const queryClient = useQueryClient();
   return useMutation((spec: SupportBundleCreateSpec) => createSupportBundle(universeUuid, spec), {
-    onSuccess: () => queryClient.invalidateQueries(supportBundleQueryKey.ALL)
+    onSuccess: () => queryClient.invalidateQueries(listQueryPrefix(universeUuid))
   });
 };
 
 export const useDeleteSupportBundleV2 = (universeUuid: string) => {
   const queryClient = useQueryClient();
   return useMutation((bundleUuid: string) => deleteSupportBundle(universeUuid, bundleUuid), {
-    onSuccess: () => queryClient.invalidateQueries(supportBundleQueryKey.ALL)
+    onSuccess: () => queryClient.invalidateQueries(listQueryPrefix(universeUuid))
   });
 };
 

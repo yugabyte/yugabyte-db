@@ -11,7 +11,7 @@ import {
   PG_AUDIT_LOGS,
   SupportBundleSelectableComponent
 } from './categories';
-import { getDaysUntilExpiry } from './bundleDisplay';
+import { getDaysUntilExpiry, getSensitiveComponents } from './bundleDisplay';
 import { LARGE_BUNDLE_THRESHOLD_BYTES, summarizeEstimate } from './estimate';
 import { CollectionMode, getDefaultFormValues, SupportBundleFormValues } from './formState';
 import { toCreateSpec } from './toCreateSpec';
@@ -107,5 +107,42 @@ describe('getDaysUntilExpiry', () => {
   it('rounds up to whole days and never goes negative', () => {
     expect(getDaysUntilExpiry('2026-08-04T00:00:00Z', NOW)).toBe(9);
     expect(getDaysUntilExpiry('2026-07-01T00:00:00Z', NOW)).toBe(0);
+  });
+});
+
+describe('getSensitiveComponents', () => {
+  // The server rewrites `components` to group names and keeps each file component in its specs.
+  const mergedBundle = (fileSpecs: { component_name: string; params?: string[] }[]) => ({
+    spec: {
+      components: [SupportBundleComponentType.FilesComponent],
+      files_component_specs: fileSpecs
+    }
+  });
+
+  it('finds core dumps and unfiltered PG audit logs in a bundle as the server stores it', () => {
+    expect(
+      getSensitiveComponents(
+        mergedBundle([
+          { component_name: SupportBundleComponentType.CoreFiles },
+          {
+            component_name: SupportBundleComponentType.UniverseLogs,
+            params: ['--filter_pgaudit_logs', 'false']
+          }
+        ])
+      )
+    ).toEqual([SupportBundleComponentType.CoreFiles, PG_AUDIT_LOGS]);
+  });
+
+  it('reports nothing when audit lines were filtered out and no core dumps were collected', () => {
+    expect(
+      getSensitiveComponents(
+        mergedBundle([
+          {
+            component_name: SupportBundleComponentType.UniverseLogs,
+            params: ['--filter_pgaudit_logs', 'true']
+          }
+        ])
+      )
+    ).toEqual([]);
   });
 });
