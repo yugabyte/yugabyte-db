@@ -3393,10 +3393,10 @@ YbNotifsPollerMain(Datum main_arg)
 	/*
 	 * Ignore SIGINT (e.g. pg_cancel_backend()). The poller has no query to
 	 * cancel, and it can't skip the transaction it is processing without
-	 * losing notifications. Treating SIGINT as a shutdown request made it exit
-	 * with code 0, which makes the postmaster unregister it, so delivery
-	 * stopped on the node with no error. Like the bgwriter and walreceiver,
-	 * which also ignore SIGINT, it is stopped with SIGTERM.
+	 * losing notifications. Exiting with code 0 would make the postmaster
+	 * unregister it, silently stopping delivery on the node. Like the
+	 * bgwriter and walreceiver, which also ignore SIGINT, it is stopped with
+	 * SIGTERM.
 	 */
 	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, die);

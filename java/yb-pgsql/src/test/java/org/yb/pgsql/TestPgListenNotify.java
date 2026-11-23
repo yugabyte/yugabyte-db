@@ -448,8 +448,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       // Give a poller that wrongly reacted to SIGINT time to exit.
       Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      List<Row> pollers = getRowList(listenerStmt,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
       assertEquals("The poller should keep running after pg_cancel_backend",
-          pollerPid, getPollerPid(listenerStmt));
+          1, pollers.size());
+      assertEquals("The poller should not have been restarted",
+          pollerPid, pollers.get(0).getInt(0).intValue());
 
       try (Connection notifierConn = getConnectionBuilder().connect();
            Statement notifierStmt = notifierConn.createStatement()) {
