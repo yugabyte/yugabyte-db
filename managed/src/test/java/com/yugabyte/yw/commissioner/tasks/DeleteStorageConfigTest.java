@@ -14,10 +14,12 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -122,6 +124,25 @@ public class DeleteStorageConfigTest extends FakeDBApplication {
 
     assertInUse(true, "1 running backup(s)");
     assertEquals(BackupState.Completed, stateOf(completed));
+  }
+
+  @Test
+  public void backupsWhoseDeleteFailedKeepTheConfigWithoutDeleteBackups() {
+    // Their files are still in the storage: without the config, nothing could delete them.
+    Backup failedToDelete = backup(BackupState.FailedToDelete);
+
+    assertInUse(false, "1 backup(s) whose delete failed");
+
+    run(true);
+    assertEquals(ConfigState.QueuedForDeletion, reloaded().getState());
+    assertEquals(BackupState.QueuedForDeletion, stateOf(failedToDelete));
+  }
+
+  @Test
+  public void ybaContinuousBackupKeepsTheConfig() {
+    ContinuousBackupConfig.create(config.getConfigUUID(), 5, TimeUnit.MINUTES, 3, "dir");
+
+    assertInUse(true, "YBA continuous backup");
   }
 
   @Test

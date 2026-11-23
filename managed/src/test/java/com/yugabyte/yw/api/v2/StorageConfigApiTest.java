@@ -69,6 +69,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.Bootst
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
@@ -81,6 +82,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1128,8 +1130,27 @@ public class StorageConfigApiTest extends FakeDBApplication {
         error.get("usage").get("schedule_uuids").get(0).asText());
     submittedDelete(0);
 
-    // Completed backups don't block when they're deleted with the config.
+    // And so does YBA's continuous backup.
     schedule.delete();
+    ContinuousBackupConfig continuous =
+        ContinuousBackupConfig.create(uuid, 5, TimeUnit.MINUTES, 3, "dir");
+    error = deleteError(uuid, true, 409);
+    assertTrue(error.get("continuous_backup").asBoolean());
+    ContinuousBackupConfig.delete(continuous.getUuid());
+
+    // Backups whose delete failed block without delete_backups, as completed ones do.
+    Backup failedToDelete =
+        ModelFactory.createBackup(customer.getUuid(), universe.getUniverseUUID(), uuid);
+    failedToDelete.setState(BackupState.FailedToDelete);
+    failedToDelete.save();
+    error = deleteError(uuid, false, 409);
+    assertEquals(1, error.get("failed_to_delete_backups").asInt());
+    assertEquals(2, error.get("completed_backups").asInt());
+    assertFalse(error.get("continuous_backup").asBoolean());
+    submittedDelete(0);
+
+    // Completed backups, and those whose delete failed, don't block when they're deleted with the
+    // config.
     delete(uuid, true);
     submittedDelete(1);
   }
