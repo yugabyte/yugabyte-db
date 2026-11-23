@@ -121,13 +121,17 @@ public class UniverseControllerRequestBinder {
 
   /**
    * Returns current's ports (V1 or V2 model) as JSON with the requested ports on top. A key that
-   * the request leaves out or sends as null keeps current's port.
+   * the request leaves out or sends as null keeps current's port. Any other non-object gives 400.
    */
   public static ObjectNode mergePorts(Object current, @Nullable JsonNode requested) {
     ObjectNode merged = Json.mapper().valueToTree(current);
-    if (requested != null && requested.isObject()) {
-      CommonUtils.deepMerge(merged, requested, true /* skipWritingNulls */);
+    if (requested == null || requested.isNull()) {
+      return merged;
     }
+    if (!requested.isObject()) {
+      throw new PlatformServiceException(BAD_REQUEST, "communicationPorts must be a JSON object.");
+    }
+    CommonUtils.deepMerge(merged, requested, true /* skipWritingNulls */);
     return merged;
   }
 

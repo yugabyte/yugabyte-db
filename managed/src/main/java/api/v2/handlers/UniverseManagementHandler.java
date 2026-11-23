@@ -357,9 +357,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   /**
-   * The V2 model gives each networking field a default, so a field that the edit leaves out would
-   * reset. Read the raw request JSON and keep the universe's value for each left-out field. Edit
-   * shares these schemas with create, which needs the defaults; PLAT-24061 splits them.
+   * The V2 model gives the ports, assign_public_ip and assign_static_public_ip a default, so one
+   * that the edit leaves out would reset. Read the raw request JSON and keep the universe's value
+   * for each. Edit shares these schemas with create, which needs the defaults; PLAT-24061 splits
+   * them.
    */
   private static void keepUnsentNetworking(
       Request request, UniverseEditSpec editSpec, UniverseDefinitionTaskParams current) {

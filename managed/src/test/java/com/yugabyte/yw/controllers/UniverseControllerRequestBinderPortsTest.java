@@ -3,7 +3,10 @@
 package com.yugabyte.yw.controllers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import org.junit.Test;
 import play.libs.Json;
@@ -37,6 +40,21 @@ public class UniverseControllerRequestBinderPortsTest {
       assertEquals(requested, c[1], merged.masterHttpPort);
       assertEquals(requested, c[2], merged.otelCollectorMetricsPort);
       assertEquals(requested, c[3], merged.internalYsqlServerRpcPort);
+    }
+  }
+
+  // A communicationPorts value that is not an object or null gives 400, as binding did before.
+  @Test
+  public void testMergePortsRejectsNonObject() {
+    for (String requested : new String[] {"\"abc\"", "[1]", "7000"}) {
+      PlatformServiceException e =
+          assertThrows(
+              requested,
+              PlatformServiceException.class,
+              () ->
+                  UniverseControllerRequestBinder.mergePorts(
+                      new CommunicationPorts(), Json.parse(requested)));
+      assertEquals(requested, BAD_REQUEST, e.getHttpStatus());
     }
   }
 }

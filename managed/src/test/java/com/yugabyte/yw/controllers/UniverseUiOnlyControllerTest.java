@@ -363,6 +363,11 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     JsonNode ports = Json.parse(contentAsString(result)).get("communicationPorts");
     assertEquals(7012, ports.get("masterHttpPort").asInt());
     assertEquals(8899, ports.get("otelCollectorMetricsPort").asInt());
+
+    // Ports that are not a JSON object give 400, not the universe's ports.
+    editJson.put("communicationPorts", "abc");
+    result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(editJson));
+    assertBadRequest(result, "communicationPorts must be a JSON object.");
   }
 
   @Test
