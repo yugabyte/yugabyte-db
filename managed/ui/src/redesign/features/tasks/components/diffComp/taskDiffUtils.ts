@@ -181,6 +181,14 @@ export const withIdentityFromPayload = (
       }
       // Equal candidates (e.g. equal leader preferences) cannot be told apart: leave the element
       // without identity rather than pick the wrong one.
+      if (candidates.length > 1 && !isClusters) {
+        // A uniform change (e.g. every AZ scaled alike): when every payload element changed, the
+        // lists line up one to one, so the order settles the tie.
+        const modified = taskDiff.filter((e) => !isDeltaNode(e)).length;
+        if (modified === payload.length) {
+          candidates = [candidates[0]];
+        }
+      }
       if (candidates.length !== 1) {
         return element;
       }
@@ -215,8 +223,11 @@ export const withUnchangedIntentFromPayload = (taskDiff: any, payload: any): any
   return {
     ...taskDiff,
     clusters: clusters.map((cluster) => {
+      if (isDeltaNode(cluster)) {
+        return cluster;
+      }
       const userIntent = cluster?.userIntent;
-      if (isDeltaNode(cluster) || !userIntent || isDeltaNode(userIntent)) {
+      if (isDeltaNode(userIntent)) {
         return cluster;
       }
       const source =

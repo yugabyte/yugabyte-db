@@ -350,3 +350,27 @@ describe('cluster identity when the payload lists the read replica first', () =>
     expect(out.clusters[0].clusterType).toBe('PRIMARY');
   });
 });
+
+describe('uniform change over several elements', () => {
+  it('pairs the modified AZs with the payload AZs in order', () => {
+    const az = { numNodesInAZ: { $deltaType: 'REPLACE', $oldValue: 1, $newValue: 2 } };
+    const out = withIdentityFromPayload(
+      [az, az],
+      [
+        { name: 'a', numNodesInAZ: 2 },
+        { name: 'b', numNodesInAZ: 2 }
+      ]
+    );
+    expect(out.map((e: any) => e.name)).toEqual(['a', 'b']);
+  });
+});
+
+describe('withUnchangedIntentFromPayload without a userIntent delta', () => {
+  it('restores dedicatedNodes for a cluster that only changed its placement', () => {
+    const out = withUnchangedIntentFromPayload(
+      { clusters: [{ clusterType: 'PRIMARY', placementInfo: { cloudList: [] } }] },
+      { clusters: [{ clusterType: 'PRIMARY', userIntent: { dedicatedNodes: true } }] }
+    );
+    expect(out.clusters[0].userIntent.dedicatedNodes).toBe(true);
+  });
+});
