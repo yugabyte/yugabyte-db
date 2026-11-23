@@ -1373,6 +1373,8 @@ class TransactionParticipant::Impl
 
   Status ResolveIntents(
       HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
+    // Transactions not loaded yet are missing from transactions_, which the loop below scans.
+    RETURN_NOT_OK(loader_.WaitAllLoaded(deadline));
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
 
     if (FLAGS_max_transactions_in_status_request == 0) {
