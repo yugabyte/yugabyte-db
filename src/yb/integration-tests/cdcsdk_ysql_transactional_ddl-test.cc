@@ -541,6 +541,9 @@ class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
 void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row;
+  // With the rows inserted first, the transaction with the DDLs is streamed over several batches of
+  // intents.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -560,7 +563,11 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
       "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
       /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
 
+  constexpr size_t kNumRowsBeforeDdl = 20;
   ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test_table SELECT i, i, i FROM generate_series(101, $0) AS i",
+      100 + kNumRowsBeforeDdl));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN d int"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1, 1, 1)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2, 2, 2)"));
@@ -578,8 +585,8 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(DeleteRows(3 /* key */, &test_cluster_));
 
-  constexpr size_t kNumTxnRecords = 4;
-  constexpr size_t kNumRecords = 9;
+  constexpr size_t kNumTxnRecords = kNumRowsBeforeDdl + 4;
+  constexpr size_t kNumRecords = kNumTxnRecords + 5;
   auto change_resp = GetAllPendingChangesFromCdc(
       stream_id, tablets, nullptr /* cp */, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
       0 /* wal_segment_index */, kNumRecords /* expected_records_count */);
@@ -605,9 +612,14 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   const std::vector<std::string> columns_with_d = {
       kKeyColumnName, kValueColumnName, kValue2ColumnName, "d"};
 
-  // The inserts in the transaction were written while d existed.
+  for (size_t i = 0; i < kNumRowsBeforeDdl; ++i) {
+    ASSERT_EQ(dml_records[i].row_message().op(), RowMessage::INSERT) << i;
+    ASSERT_NO_FATALS(CheckRecordTuples(dml_records[i], columns, {}));
+  }
+
+  // The next two inserts were written while d existed.
   for (int32_t key = 1; key <= 2; ++key) {
-    const auto& record = dml_records[key - 1];
+    const auto& record = dml_records[kNumRowsBeforeDdl + key - 1];
     ASSERT_EQ(record.row_message().op(), RowMessage::INSERT);
     ASSERT_NO_FATALS(CheckRecordTuples(record, columns_with_d, {}));
     ASSERT_NO_FATALS(AssertKeyValue(record, key, key, true /* validate_third_column */, key));
@@ -616,11 +628,13 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
 
   // The UPDATE and DELETE in the transaction are unpacked writes, which hold no schema version, so
   // they can still carry d. Only their values are checked.
-  ASSERT_EQ(dml_records[2].row_message().op(), RowMessage::UPDATE);
-  ASSERT_NO_FATALS(AssertKeyValue(dml_records[2], 1, 20));
-  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(dml_records[2], 1, 1));
-  ASSERT_EQ(dml_records[3].row_message().op(), RowMessage::DELETE);
-  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(dml_records[3], 2, 2));
+  const auto& updated = dml_records[kNumRowsBeforeDdl + 2];
+  ASSERT_EQ(updated.row_message().op(), RowMessage::UPDATE);
+  ASSERT_NO_FATALS(AssertKeyValue(updated, 1, 20));
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(updated, 1, 1));
+  const auto& deleted = dml_records[kNumRowsBeforeDdl + 3];
+  ASSERT_EQ(deleted.row_message().op(), RowMessage::DELETE);
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(deleted, 2, 2));
 
   ExpectedRecordWithThreeColumns expected_records[] = {
       {1, 30, 1}, {3, 3, 3}, {1, 40, 1}, {3, 33, 3}, {}};

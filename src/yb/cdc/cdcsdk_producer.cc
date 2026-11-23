@@ -125,9 +125,9 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
 
 DEFINE_RUNTIME_bool(cdc_reload_schema_after_txn_schema_change, true,
                     "When this flag is set to true, GetChanges will reload the schema of a table "
-                    "after streaming a transaction whose records used a different schema than the "
-                    "one at its commit, so that the records streamed after the transaction use "
-                    "the current schema.");
+                    "after streaming a transaction whose records were decoded with a schema other "
+                    "than the one at its commit, so that the records streamed after the "
+                    "transaction use the current schema.");
 
 DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
                  "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
@@ -153,56 +153,63 @@ YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
 // cached schema details is reverted back post this transaction.
 class IntentSchemaState {
  public:
-  explicit IntentSchemaState(const SchemaDetailsMap& cached_schema_details) {
-    for (const auto& [table_id, details] : cached_schema_details) {
-      versions_.emplace(table_id, Entry{.version = details.schema_version, .cached = true});
+  explicit IntentSchemaState(SchemaDetailsMap* cached_schema_details)
+      : cached_schema_details_(cached_schema_details),
+        enabled_(
+            FLAGS_cdc_reload_schema_after_txn_schema_change &&
+            FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto& [table_id, details] : *cached_schema_details_) {
+      versions_.emplace(table_id, details.schema_version);
     }
   }
 
+  // Marks the table's cached schema as loaded in the transaction when the table had no cached
+  // schema before the batch, or when the version differs from the one decoded before it.
   void Add(const TableId& table_id, SchemaVersion version) {
-    auto [it, inserted] = versions_.try_emplace(table_id, Entry{.version = version});
-    auto& entry = it->second;
-    entry.decoded = true;
-    if (!inserted && entry.version != version) {
-      entry.version = version;
-      entry.changed = true;
+    auto [it, inserted] = versions_.try_emplace(table_id, version);
+    if (!inserted && it->second == version) {
+      return;
     }
-  }
-
-  // Erases the cached schema of the tables whose schema changed in this batch, so that the next
-  // record reloads it and sends a DDL record for the current schema. A table with no cached schema
-  // before the batch is compared with its schema at commit instead, since the schema loaded for its
-  // first intent may already be one from inside the transaction.
-  void EraseStaleSchemas(
-      client::YBClient* client, HybridTime commit_time,
-      SchemaDetailsMap* cached_schema_details) const {
-    for (const auto& [table_id, entry] : versions_) {
-      if (!entry.decoded) {
-        continue;
-      }
-      auto stale = entry.changed;
-      if (!stale && !entry.cached) {
-        auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
-        stale = !commit_schema.ok() || commit_schema->second != entry.version;
-      }
-      if (stale) {
-        VLOG(1) << "Erasing cached schema version " << entry.version << " of table " << table_id
-                << " after a transaction that changed it";
-        cached_schema_details->erase(table_id);
-      }
+    it->second = version;
+    auto cached = cached_schema_details_->find(table_id);
+    if (enabled_ && cached != cached_schema_details_->end()) {
+      cached->second.loaded_in_txn = true;
     }
   }
 
  private:
-  struct Entry {
-    SchemaVersion version;
-    bool cached = false;
-    bool decoded = false;
-    bool changed = false;
-  };
-
-  std::unordered_map<TableId, Entry> versions_;
+  SchemaDetailsMap* const cached_schema_details_;
+  const bool enabled_;
+  std::unordered_map<TableId, SchemaVersion> versions_;
 };
+
+// Erases each cached schema loaded while decoding a transaction's intents whose version differs
+// from the table's schema at the transaction's commit. The next record then reloads the schema and
+// sends a DDL record for it.
+void EraseSchemasLoadedInTxn(
+    client::YBClient* client, HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
+  for (auto it = cached_schema_details->begin(); it != cached_schema_details->end();) {
+    auto& [table_id, details] = *it;
+    if (!details.loaded_in_txn) {
+      ++it;
+      continue;
+    }
+    details.loaded_in_txn = false;
+    auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
+    if (!commit_schema.ok()) {
+      LOG(WARNING) << "Keeping cached schema version " << details.schema_version << " of table "
+                   << table_id << ", failed to get its schema at commit time " << commit_time
+                   << ": " << commit_schema.status();
+      ++it;
+    } else if (commit_schema->second != details.schema_version) {
+      VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
+              << table_id << ", its schema version at commit is " << commit_schema->second;
+      it = cached_schema_details->erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 
 Result<bool> IsPackedRowUpdate(const dockv::ValueEntryType value_type, Slice value_slice) {
   if (value_type != dockv::ValueEntryType::kPackedRowV2) {
@@ -1188,7 +1195,7 @@ Status PopulateCDCSDKIntentRecord(
   dockv::SubDocKey prev_decoded_key;
   std::unordered_set<std::string> null_value_columns;
   bool is_packed_row_record = false;
-  IntentSchemaState intent_schema_state(*cached_schema_details);
+  IntentSchemaState intent_schema_state(cached_schema_details);
 
   for (size_t i = 0; i < intents.size(); i++) {
     const docdb::IntentKeyValueForCDC& intent = intents[i];
@@ -1515,10 +1522,6 @@ Status PopulateCDCSDKIntentRecord(
     MakeNewProtoRecord(
         prev_intent, op_id, *row_message, schema, col_count, &proto_record, resp, write_id,
         reverse_index_key, commit_time, prev_key.ToBuffer(), throughput_metrics);
-  }
-
-  if (FLAGS_cdc_reload_schema_after_txn_schema_change) {
-    intent_schema_state.EraseStaleSchemas(client, commit_time, cached_schema_details);
   }
 
   return Status::OK();
@@ -2098,6 +2101,10 @@ Status ProcessIntents(
         enum_oid_label_map, composite_atts_map, request_source, cached_schema_details,
         schema_packing_storages, resp, consumption, &write_id, &reverse_index_key, commit_time,
         client, end_of_transaction, throughput_metrics));
+  }
+
+  if (end_of_transaction && FLAGS_cdc_reload_schema_after_txn_schema_change) {
+    EraseSchemasLoadedInTxn(client, commit_time, cached_schema_details);
   }
 
   if (end_of_transaction) {
