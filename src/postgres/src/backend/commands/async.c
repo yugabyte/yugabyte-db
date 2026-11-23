@@ -854,8 +854,17 @@ static void ybInsertPendingNotifiesToTable(void);
 static void ybCreateNotifsReplicationSlot(void);
 static void ybStartNotifsPollerBgWorker(void);
 static void ybCleanupListenState(void);
+static void ybRemoveStaleListenerEntries(void);
 static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
+
+/*
+ * YB: requested at startup, not created on demand, because the postmaster
+ * reads them in YbCleanupListenStateForProc() and ShmemInitStruct() cannot
+ * attach to an existing struct from the postmaster.
+ */
+static YbNotifsPollerShmemData *ybNotifsPollerShmem = NULL;
+static BackgroundWorkerHandle *ybNotifsPollerBgwHandleShmem = NULL;
 
 /* YB: helper functions for 'notifications poller' bg worker */
 static bool ybIsStaleNotifsPoller(void);
@@ -1085,6 +1094,16 @@ AsyncShmemRequest(void *arg)
 					 .buffer_tranche_id = LWTRANCHE_NOTIFY_BUFFER,
 					 .bank_tranche_id = LWTRANCHE_NOTIFY_SLRU,
 		);
+
+	/* YB */
+	ShmemRequestStruct(.name = "YbNotifsPollerData",
+					   .size = sizeof(YbNotifsPollerShmemData),
+					   .ptr = (void **) &ybNotifsPollerShmem,
+		);
+	ShmemRequestStruct(.name = "YbNotifsPollerBgwHandle",
+					   .size = YbBackgroundWorkerHandleSize(),
+					   .ptr = (void **) &ybNotifsPollerBgwHandleShmem,
+		);
 }
 
 static void
@@ -1106,6 +1125,10 @@ AsyncShmemInit(void *arg)
 		QUEUE_BACKEND_WAKEUP_PENDING(i) = false;
 		QUEUE_BACKEND_IS_ADVANCING(i) = false;
 	}
+
+	/* YB */
+	memset(ybNotifsPollerShmem, 0, sizeof(YbNotifsPollerShmemData));
+	memset(ybNotifsPollerBgwHandleShmem, 0, YbBackgroundWorkerHandleSize());
 
 	/*
 	 * During start or reboot, clean out the pg_notify directory.
@@ -1723,6 +1746,9 @@ BecomeRegisteredListener(void)
 
 	if (Trace_notify)
 		elog(DEBUG1, "BecomeRegisteredListener(%d)", MyProcPid);
+
+	if (IsYugaByteEnabled())
+		ybRemoveStaleListenerEntries();
 
 	/*
 	 * Before registering, make sure we will unlisten before dying. (Note:
@@ -2346,6 +2372,16 @@ YbCleanupListenStateForProc(PGPROC *proc)
 	/* Mark our entry as invalid */
 	QUEUE_BACKEND_PID(procNumber) = InvalidPid;
 	QUEUE_BACKEND_DBOID(procNumber) = InvalidOid;
+	QUEUE_BACKEND_WAKEUP_PENDING(procNumber) = false;
+	QUEUE_BACKEND_IS_ADVANCING(procNumber) = false;
+
+	/*
+	 * NOTE: The postmaster cannot attach to DSA, so the proc's
+	 * globalChannelTable entries stay. SignalBackends() skips them, and the
+	 * next listener with this ProcNumber removes them; see
+	 * ybRemoveStaleListenerEntries().
+	 */
+
 	/* and remove it from the list */
 	if (QUEUE_FIRST_LISTENER == procNumber)
 		QUEUE_FIRST_LISTENER = QUEUE_NEXT_LISTENER(procNumber);
@@ -2835,6 +2871,10 @@ SignalBackends(void)
 
 			if (QUEUE_POS_EQUAL(pos, QUEUE_HEAD))
 				continue;		/* it's fully caught up already */
+
+			/* YB: left by a killed listener; see YbCleanupListenStateForProc */
+			if (IsYugaByteEnabled() && pid == InvalidPid)
+				continue;
 
 			Assert(pid != InvalidPid);
 
@@ -4084,18 +4124,55 @@ ybStartNotifsPollerBgWorker(void)
 	pfree(local_handle);
 }
 
+/*
+ * Remove the globalChannelTable entries a killed listener left for
+ * MyProcNumber. Without this, this backend inherits the killed listener's
+ * listening=true entries and skips ybOnListenCommit() for those channels.
+ * Derived from CleanupListenersOnExit(), but covers every database.
+ */
+static void
+ybRemoveStaleListenerEntries(void)
+{
+	dshash_seq_status status;
+	GlobalChannelEntry *entry;
+
+	dshash_seq_init(&status, globalChannelTable, true);
+	while ((entry = dshash_seq_next(&status)) != NULL)
+	{
+		ListenerEntry *listeners = (ListenerEntry *)
+			dsa_get_address(globalChannelDSA, entry->listenersArray);
+
+		for (int i = 0; i < entry->numListeners; i++)
+		{
+			if (listeners[i].procNo != MyProcNumber)
+				continue;
+			entry->numListeners--;
+			if (i < entry->numListeners)
+				memmove(&listeners[i], &listeners[i + 1],
+						sizeof(ListenerEntry) * (entry->numListeners - i));
+			if (entry->numListeners == 0)
+			{
+				dsa_free(globalChannelDSA, entry->listenersArray);
+				dshash_delete_current(&status);
+			}
+			break;
+		}
+	}
+	dshash_seq_term(&status);
+}
+
 static BackgroundWorkerHandle *
 ybShmemNotifsPollerBgwHandle(bool *found)
 {
-	return ShmemInitStruct("YbNotifsPollerBgwHandle",
-						   YbBackgroundWorkerHandleSize(), found);
+	*found = true;
+	return ybNotifsPollerBgwHandleShmem;
 }
 
 static YbNotifsPollerShmemData *
 ybShmemNotifsPollerData(bool *found)
 {
-	return ShmemInitStruct("YbNotifsPollerData",
-						   sizeof(YbNotifsPollerShmemData), found);
+	*found = true;
+	return ybNotifsPollerShmem;
 }
 
 void
