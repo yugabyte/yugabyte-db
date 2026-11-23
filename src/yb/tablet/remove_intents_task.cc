@@ -44,7 +44,7 @@ void RemoveIntentsTask::Run() {
   VLOG_WITH_PREFIX(2) << "Remove intents";
 
   RemoveIntentsData data;
-  auto status = participant_context_.GetLastReplicatedData(&data);
+  auto status = participant_context_.GetLastReplicatedDataLockFree(&data);
   if (status.ok()) {
     status = applier_.RemoveIntents(data, reason_, id_);
   }

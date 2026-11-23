@@ -1330,7 +1330,7 @@ void SetRejectMode(
 // but ack heartbeats hold the op uncommitted while the leader keeps its lease.
 void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
     SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) =
       transactional_ddl.get();
   ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
   // A leader move would let the old leader's followers commit the op without the window.

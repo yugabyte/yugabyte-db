@@ -62,6 +62,9 @@ typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 class PeerProxy;
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
 
+class PostponedApply;
+using PostponedApplyPtr = std::unique_ptr<PostponedApply>;
+
 class MultiRaftHeartbeatBatcher;
 using MultiRaftHeartbeatBatcherPtr = std::shared_ptr<MultiRaftHeartbeatBatcher>;
 

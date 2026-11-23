@@ -576,11 +576,13 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
+// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
+// largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
-  HybridTime min_ht = log_ht;
-  HybridTime max_ht = log_ht;
+  HybridTime min_ht = log_ht ? log_ht : commit_ht;
+  HybridTime max_ht = min_ht;
   if (commit_ht) {
     min_ht = std::min(min_ht, commit_ht);
     max_ht = std::max(max_ht, commit_ht);
@@ -3025,8 +3027,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
 
-  if (TEST_sleep_before_apply_intents_) {
-    std::this_thread::sleep_for(TEST_sleep_before_apply_intents_.ToSteadyDuration());
+  if (auto sleep = TEST_sleep_before_apply_intents_.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(sleep.ToSteadyDuration());
   }
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
@@ -3710,6 +3712,17 @@ Status Tablet::MarkBackfillDone(
   auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
+    return status;
+  }
+  return metadata_->Flush();
+}
+
+Status Tablet::MarkNonConcurrentIndexDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
+  LOG_WITH_PREFIX(INFO) << "Setting non-concurrent index as done";
+  auto status = metadata_->OnNonConcurrentIndexDone(op_id, table_id, birth_time);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering non-concurrent index done failed: " << status;
     return status;
   }
   return metadata_->Flush();
@@ -5401,16 +5414,16 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   return StillHasOrphanedPostSplitDataAbortable();
 }
 
+bool Tablet::HasUncompactedRocksDbParentData() const {
+  return key_bounds().IsInitialized() && !metadata()->rocksdb_parent_data_compacted();
+}
+
 bool Tablet::NeedPostSplitCompaction() {
   if (!key_bounds().IsInitialized()) {
     return false;
   }
 
-  if (!metadata()->rocksdb_parent_data_compacted()) {
-    return true;
-  }
-
-  return vector_indexes().PostSplitCompactionRequired();
+  return HasUncompactedRocksDbParentData() || vector_indexes().PostSplitCompactionRequired();
 }
 
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
@@ -5425,7 +5438,7 @@ bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
   }
 
   VLOG_WITH_PREFIX(1) << "Vector index parent data compaction is not required before split";
-  return !metadata()->rocksdb_parent_data_compacted();
+  return HasUncompactedRocksDbParentData();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {
@@ -5730,7 +5743,13 @@ Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
     target_path_id = metadata()->target_tier_path_id();
     target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
-    if (NeedPostSplitCompaction()) {
+    // A move writes the copy under a new file number, above
+    // post_split_compaction_file_number_upper_bound, so the post-split compaction, which only
+    // takes files below that bound, would skip it and its parent data would never be compacted
+    // away. Only RocksDB parent data holds the pass: a pending vector-index post-split compaction
+    // does not touch RocksDB file numbers, which is why this is narrower than
+    // NeedPostSplitCompaction().
+    if (HasUncompactedRocksDbParentData()) {
       result.awaiting_post_split_compaction = true;
       result.status = tier_migration_status();
       VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";

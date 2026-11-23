@@ -115,6 +115,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // will be used for local limit of this tablet.
   void SetReadPoint(const ReadHybridTime& read_time, const TabletId& tablet_id = TabletId());
 
+  // Clears the read point, so the read time is picked when the request is served.
+  void ResetReadPoint();
+
   // Returns true if our current read point requires restart.
   bool IsRestartRequired();
 

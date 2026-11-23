@@ -212,7 +212,7 @@ DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -668,7 +668,7 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
 bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           (table_oid == kPgAttributeTableOid ||
            table_oid == kPgPublicationRelPrpubidIndexOid));
 }
@@ -698,7 +698,7 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   std::vector<TableId> table_ids;
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
   }
@@ -767,6 +767,17 @@ bool IsPublicationsBoundStreamCreationRequest(
   return FLAGS_cdcsdk_enable_publication_scoped_replication_slots &&
          req.has_cdcsdk_stream_create_options() &&
          req.cdcsdk_stream_create_options().has_bound_publication_name() &&
+         !IsNotificationSlotCreationRequest(req, namespace_name);
+}
+
+// Notifications slots stream only pg_yb_notifications through a fixed publication, so pub refresh
+// is enough for them. Detecting publication changes implicitly would make the VWAL poll the master
+// leader.
+bool DetectsPublicationChangesImplicitly(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  return FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+         FLAGS_cdc_enable_dynamic_schema_changes &&
+         IsLogicalReplicationStreamCreationRequest(req, namespace_name) &&
          !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
@@ -1184,6 +1195,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   }
 
   bool is_logical_replication_stream_req;
+  bool detect_publication_changes_implicitly;
   bool allow_tables_without_primary_key;
 
   const bool has_bound_table_ids =
@@ -1216,6 +1228,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     }
 
     is_logical_replication_stream_req = IsLogicalReplicationStreamCreationRequest(req, ns->name());
+    detect_publication_changes_implicitly = DetectsPublicationChangesImplicitly(req, ns->name());
 
     has_bound_publication = req.has_cdcsdk_stream_create_options() &&
                             req.cdcsdk_stream_create_options().has_bound_publication_name();
@@ -1305,14 +1318,13 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
   // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
   // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams.
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-      FLAGS_cdc_enable_dynamic_schema_changes && is_logical_replication_stream_req) {
+  // This will not be done for gRPC streams or notifications slots.
+  if (detect_publication_changes_implicitly) {
     auto catalog_table_ids =
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
-                      << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
+                      << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
                               ? ", pg_attribute, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
@@ -1321,7 +1333,8 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
 
-  return CreateNewCdcsdkStream(req, table_ids, namespace_id, resp, epoch, rpc);
+  return CreateNewCdcsdkStream(
+      req, table_ids, namespace_id, detect_publication_changes_implicitly, resp, epoch, rpc);
 }
 
 xrepl::StreamId CatalogManager::GenerateNewXreplStreamId() {
@@ -1342,7 +1355,8 @@ void CatalogManager::RecoverXreplStreamId(const xrepl::StreamId& stream_id) {
 
 Status CatalogManager::CreateNewCdcsdkStream(
     const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-    const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+    const std::optional<const NamespaceId>& namespace_id,
+    bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
     const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
   VLOG_WITH_FUNC(1) << "table_ids: " << AsString(table_ids)
                     << ", namespace_id: " << AsString(namespace_id);
@@ -1546,9 +1560,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (is_logical_replication_stream_req) {
     metadata->set_allow_tables_without_primary_key(
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
-    metadata->set_detect_publication_changes_implicitly(
-        FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-        FLAGS_cdc_enable_dynamic_schema_changes);
+    metadata->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
   }
 
   // CDC streams which are bound to fixed set of tables will have dynamic table addition disabled.
@@ -5733,7 +5745,7 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
       IllegalState,
       "Replication slots can't detect publication changes implicitly on this universe");
   SCHECK(
-      !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Replication slots can't be prepared for conversion once transactional DDL replication is "
       "enabled");
 
@@ -5811,7 +5823,7 @@ Status CatalogManager::PauseReplicationSlot(
             << req->ShortDebugString();
   const auto& slot_name = req->replication_slot_name();
   SCHECK(
-      !FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Replication slots can't be paused for conversion once transactional DDL replication is "
       "enabled");
 
@@ -6490,7 +6502,7 @@ Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
   SCHECK(
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
       "Transactional DDL replication isn't enabled");
   SCHECK(
       FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&

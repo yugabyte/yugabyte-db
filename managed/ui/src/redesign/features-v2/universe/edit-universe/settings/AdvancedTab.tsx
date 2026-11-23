@@ -529,7 +529,7 @@ export const AdvancedTab = () => {
               </StyledContent>
             </StyledPanel>
           )}
-          {!isK8sUniverse && <EditK8sHelmOverrides />}
+          {isK8sUniverse && <EditK8sHelmOverrides />}
           {isCloudVendorCloudType(providerCode) && (
             <StyledPanel sx={{ marginTop: '24px' }}>
               <StyledHeader

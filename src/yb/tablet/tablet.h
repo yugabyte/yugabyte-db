@@ -208,7 +208,8 @@ struct TierReconcileResult {
   // The pass's verdict changed status.state. A change made under the pass by
   // SetTierMigrationTarget is not counted: that call reports its own.
   bool state_changed = false;
-  // A split child whose post-split compaction has not run yet: nothing scanned or scheduled.
+  // A split child whose RocksDB parent data has not been compacted away yet: nothing scanned or
+  // scheduled. The reconciler counts these and reports them through its metrics.
   bool awaiting_post_split_compaction = false;
 };
 
@@ -681,6 +682,10 @@ class Tablet : public AbstractTablet,
   // This means that full compactions can now garbage collect delete markers.
   Status MarkBackfillDone(
       const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
+
+  // Used to finalize the birth_time of a nonconcurrently built index on its tablets.
+  Status MarkNonConcurrentIndexDone(
+      const OpId& op_id, const TableId& table_id, uint64_t birth_time);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
@@ -1337,7 +1342,7 @@ class Tablet : public AbstractTablet,
   void CleanupIntentFiles();
 
   void TEST_SleepBeforeApplyIntents(MonoDelta value) {
-    TEST_sleep_before_apply_intents_ = value;
+    TEST_sleep_before_apply_intents_.store(value, std::memory_order_relaxed);
   }
 
   void TEST_SleepBeforeDeleteIntentsFile(MonoDelta value) {
@@ -1543,6 +1548,10 @@ class Tablet : public AbstractTablet,
   // True when a post-split compaction should be (re)scheduled: split child with RocksDB parent
   // data still present, or with a vector index post-split compaction still required.
   bool NeedPostSplitCompaction();
+
+  // Split child whose RocksDB parent data has not been compacted away yet. The RocksDB half of
+  // NeedPostSplitCompaction(); the tier migration pass waits on this alone.
+  bool HasUncompactedRocksDbParentData() const;
 
   template <class PB>
   Result<IsolationLevel> DoGetIsolationLevel(const PB& transaction);
@@ -1929,7 +1938,7 @@ class Tablet : public AbstractTablet,
   mutable simple_spinlock cdcsdk_retention_barrier_lock_;
   MonoTime cdcsdk_block_barrier_revision_start_time_ = MonoTime::Now();
 
-  MonoDelta TEST_sleep_before_apply_intents_;
+  std::atomic<MonoDelta> TEST_sleep_before_apply_intents_{MonoDelta::kZero};
   MonoDelta TEST_sleep_before_delete_intents_file_;
   std::atomic<bool> TEST_disable_flush_on_shutdown_{false};
 

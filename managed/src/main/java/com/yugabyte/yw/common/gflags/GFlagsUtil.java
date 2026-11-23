@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -1538,7 +1539,8 @@ public class GFlagsUtil {
    * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
    * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
    * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
-   * Other gflags may contain the word.
+   * Other gflags may contain the word. Kubernetes overrides get the same check from
+   * KubernetesOverridesRedactor.restore with nothing stored.
    */
   public static void checkNoRedactedGFlagsOnCreate(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -1567,6 +1569,9 @@ public class GFlagsUtil {
         }
       }
     }
+    KubernetesOverridesRedactor.restore(
+        null, userIntent.universeOverrides, "Kubernetes universe overrides");
+    KubernetesOverridesRedactor.restoreAz(null, userIntent.azOverrides);
   }
 
   /**
@@ -3075,5 +3080,34 @@ public class GFlagsUtil {
     }
 
     return mergedSpecificGFlags;
+  }
+
+  /** Returns a copy with the sensitive values of its per-process and per-AZ gflags redacted. */
+  public static SpecificGFlags redactSensitiveSpecificGFlags(
+      SpecificGFlags specificGFlags, GFlagsValidation gFlagsValidation, String ybSoftwareVersion) {
+    if (specificGFlags == null) {
+      return null;
+    }
+    SpecificGFlags redacted = specificGFlags.clone();
+    redactPerProcessFlags(redacted.getPerProcessFlags(), gFlagsValidation, ybSoftwareVersion);
+    if (redacted.getPerAZ() != null) {
+      redacted
+          .getPerAZ()
+          .values()
+          .forEach(azFlags -> redactPerProcessFlags(azFlags, gFlagsValidation, ybSoftwareVersion));
+    }
+    return redacted;
+  }
+
+  private static void redactPerProcessFlags(
+      SpecificGFlags.PerProcessFlags flags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (flags == null || flags.value == null) {
+      return;
+    }
+    flags.value.replaceAll(
+        (serverType, gflags) ->
+            RedactingService.redactGFlags(gflags, ybSoftwareVersion, gFlagsValidation));
   }
 }
