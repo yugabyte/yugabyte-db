@@ -8,7 +8,6 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { isEmpty } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { toast } from 'react-toastify';
@@ -71,28 +70,11 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     currentTask?.target === TargetType.UNIVERSE && currentTask?.type === TaskType.SOFTWARE_UPGRADE;
 
   // SoftwareUpgradeDiff reads task.details, not the diff data, so it renders without an audit row.
-  // A retry whose first attempt failed before the freeze records its taskDiff on its own audit row.
-  // Only the taskDiff is taken from it: the request data of the root row is still needed.
-  const retryAuditNeeded =
-    !!auditData && isEmpty(auditData.taskDiff) && auditData.taskUUID !== currentTask?.id;
-  const { data: retryAuditData, isLoading: isRetryAuditLoading } = useQuery(
-    ['auditData-retry', currentTask?.id],
-    () => getAuditLog(currentTask!.id!),
-    { enabled: !!currentTask && visible && retryAuditNeeded, select: (data) => data.data }
-  );
-  const diffAuditData = useMemo(
-    () =>
-      auditData && retryAuditData && isEmpty(auditData.taskDiff)
-        ? { ...auditData, taskDiff: retryAuditData.taskDiff }
-        : auditData,
-    [auditData, retryAuditData]
-  );
-
   const taskDiffDetails = useMemo(
     () =>
-      mapAuditLogToTaskDiffApiResp(diffAuditData) ??
+      mapAuditLogToTaskDiffApiResp(auditData) ??
       (isSoftwareUpgrade ? { beforeData: {}, afterData: {}, uuid: '', parentUuid: '' } : undefined),
-    [diffAuditData, isSoftwareUpgrade]
+    [auditData, isSoftwareUpgrade]
   );
 
   useEffect(() => {
@@ -136,7 +118,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     return null;
   }
 
-  if (isSubTaskDetailsLoading || isAuditQueryLoading || (retryAuditNeeded && isRetryAuditLoading)) {
+  if (isSubTaskDetailsLoading || isAuditQueryLoading) {
     return (
       <div style={{ position: 'absolute', top: '30%', left: '50%' }}>
         <YBLoadingCircleIcon />
