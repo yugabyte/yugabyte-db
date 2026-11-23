@@ -3377,11 +3377,8 @@ ybWaitForNotifsPollerInit(void)
 	for (;;)
 	{
 		/*
-		 * Check for an exit before reading init_status. If the poller has
-		 * exited and init_status is still NOT_STARTED, the poller never set
-		 * it. In the other order, a poller could set SUCCESS and exit just
-		 * after init_status was read, and the LISTEN would fail although the
-		 * poller had initialized.
+		 * Check for an exit before reading init_status, so that a status the
+		 * poller set just before exiting is not missed.
 		 */
 		bool		exited = ybNotifsPollerExited(poller_data, &poller_pid);
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
