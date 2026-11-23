@@ -488,6 +488,11 @@ public enum TaskType {
       CustomerTask.TaskType.Delete,
       CustomerTask.TargetType.CustomerConfiguration),
 
+  EditStorageConfig(
+      com.yugabyte.yw.commissioner.tasks.EditStorageConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.CustomerConfiguration),
+
   ValidateStorageConfig(
       com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig.class,
       ImmutableSet.of(

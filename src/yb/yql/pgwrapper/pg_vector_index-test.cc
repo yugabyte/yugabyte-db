@@ -57,8 +57,12 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
+DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
+DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(ysql_enable_cdr_metadata);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(priority_thread_pool_size);
@@ -66,6 +70,7 @@ DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_string(vector_index_backend);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
@@ -666,6 +671,100 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, expected_filtered));
 }
 
+// The backfill indexes rows as of the time the index is added to the tablet, so the index misses
+// vectors deleted or updated after an earlier read time. Such a read must not use the index.
+TEST_P(PgVectorIndexTest, ReadBeforeIndexCreation) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  const auto read_time_us = GetCurrentTimeMicros();
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 500, 9000]' WHERE id = 2"));
+  ASSERT_OK(CreateIndex(conn));
+
+  auto check_searches = [this, &conn] {
+    for (int64_t id : {1, 2}) {
+      const auto query = "SELECT * FROM test" + IndexQuerySuffix(Vector(id), 1);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+      ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
+    }
+  };
+
+  // Read the table as of read_time_us, and the catalog as of now, so the index is visible.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", read_time_us));
+  // The read time is before the delete.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1")), 1);
+  ASSERT_NO_FATALS(check_searches());
+
+  // A follower read right after CREATE INDEX also reads before the index birth time.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_follower_read_staleness_ms = $0", ToMilliseconds(60s * kTimeMultiplier)));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+  ASSERT_NO_FATALS(check_searches());
+}
+
+// A transaction that picked its read time before creating a vector index can't search it, like a
+// regular index, whose read then needs a read restart. The index of a non-colocated table created
+// by the same transaction is searchable.
+TEST_P(PgVectorIndexTest, SearchInIndexCreatingTransaction) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 16));
+  // Outside the tablet of the vector indexes, where a sequential scan is a test failure.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE anchor (k INT PRIMARY KEY)$0",
+      IsColocated() ? " WITH (COLOCATION = false)" : ""));
+  ASSERT_OK(conn.Execute("INSERT INTO anchor VALUES (1)"));
+  const auto query_suffix = IndexQuerySuffix(Vector(1), 1);
+  int num_indexes = 0;
+  // Debug and release builds have different defaults.
+  for (bool ddl_transaction_block : {false, true}) {
+    SCOPED_TRACE(Format("ddl_transaction_block: $0", ddl_transaction_block));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) =
+        ddl_transaction_block;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ASSERT_OK(RestartCluster());
+
+    conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Picks the read time of the transaction.
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT k FROM anchor"));
+    const auto index = Format("vi$0", ++num_indexes);
+    ASSERT_OK(CreateIndex(conn, index));
+    auto query = "SELECT * FROM test" + query_suffix;
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+    // Without DDL transaction blocks, the index outlives the rollback.
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX IF EXISTS $0", index));
+
+    const auto table = Format("t$0", ++num_indexes);
+    ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT k FROM anchor"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id BIGINT PRIMARY KEY, embedding vector(3))", table));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (1, '$1'), (2, '$2')", table, AsString(Vector(1)),
+        AsString(Vector(2))));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding $1)", table,
+        pgwrapper::VectorOpsName(distance_kind_)));
+    query = Format("SELECT * FROM $0$1", table, query_suffix);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    // Reads of a table created by the transaction use a later read time, unless the table is
+    // colocated.
+    if (IsColocated()) {
+      ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
+    } else {
+      ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), ExpectedRow(1));
+    }
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+  }
+}
+
 // The search merges rows from intents with the index results. A row without a vector there must
 // be skipped, and must hide its old vector, which is still in the index.
 void PgVectorIndexTest::TestNullVectorsInIntents(bool commit) {
@@ -1138,18 +1237,65 @@ class PgVectorIndexPkRoutingTest : public PgVectorIndexTestBase {
 
   // Embedding of row (tenant, id) is [tenant, id, 0], so the rows of a tenant ordered by distance
   // to [tenant, 0, 0] are ordered by id.
+  // With backfill the rows are inserted before the index is created.
   Status CreateAndFill(PGConn& conn, const std::string& table, const std::string& key_columns,
-                       const std::string& primary_key, const std::string& split) {
+                       const std::string& primary_key, const std::string& split,
+                       Backfill backfill) {
     RETURN_NOT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0 ($1, embedding vector(3), PRIMARY KEY ($2)) $3",
         table, key_columns, primary_key, split));
+    const auto create_index = Format(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table);
+    if (!backfill) {
+      RETURN_NOT_OK(conn.Execute(create_index));
+    }
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE INDEX ON $0 USING ybhnsw (embedding vector_l2_ops)", table));
-    return conn.ExecuteFormat(
         "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
         "FROM generate_series(0, $1) t, generate_series(0, $2) i",
-        table, kNumTenants - 1, kRowsPerTenant - 1);
+        table, kNumTenants - 1, kRowsPerTenant - 1));
+    return backfill ? conn.Execute(create_index) : Status::OK();
   }
+
+  struct FilterStats {
+    uint64_t checked = 0;
+    uint64_t accepted = 0;
+    // Vectors of deleted rows and replaced vectors.
+    uint64_t removed = 0;
+  };
+
+  // Vectors that the filter of vector index searches checked, over all tablets.
+  FilterStats GetFilterStats() {
+    // Tablets of a table on the same tserver share its metrics.
+    std::unordered_set<EventStats*> checked;
+    std::unordered_set<EventStats*> accepted;
+    std::unordered_set<EventStats*> removed;
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      checked.insert(index->metrics().filter_checked.get());
+      accepted.insert(index->metrics().filter_accepted.get());
+      removed.insert(index->metrics().filter_removed.get());
+    }
+    auto sum = [](const std::unordered_set<EventStats*>& stats) {
+      uint64_t result = 0;
+      for (auto* entry : stats) {
+        result += entry->TotalSum();
+      }
+      return result;
+    };
+    return {.checked = sum(checked), .accepted = sum(accepted), .removed = sum(removed)};
+  }
+
+  struct TenantsOptions {
+    std::string primary_key;
+    std::string split = {};
+    Backfill backfill = Backfill::kFalse;
+    // Creates the table in a colocated database.
+    bool colocated = false;
+    // Splits the single tablet of the table after the first flush. The children keep the chunks
+    // inherited from the parent until they are compacted.
+    bool split_tablet = false;
+  };
+
+  void TestTenants(const TenantsOptions& options);
 
   static std::string KnnQuery(
       const std::string& table, const std::string& where, int tenant, int limit) {
@@ -1171,7 +1317,7 @@ TEST_F(PgVectorIndexPkRoutingTest, HashKey) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(CreateAndFill(
       conn, "th", "tenant INT, id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
 
   for (int tenant = 0; tenant != kNumTenants; ++tenant) {
     SCOPED_TRACE(Format("tenant: $0", tenant));
@@ -1267,7 +1413,7 @@ TEST_F(PgVectorIndexPkRoutingTest, MultiColumnHashKey) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(CreateAndFill(
       conn, "tm", "tenant INT, id INT", "(tenant, id) HASH",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
 
   auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tm", "tenant = 3 AND id = 2", 3, 5)));
   ASSERT_EQ(stats.ids, std::vector<int32_t>{2});
@@ -1284,12 +1430,12 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(CreateAndFill(
       conn, "tt", "tenant TEXT COLLATE \"C\", id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
   // Expressions with a non-C collation are not pushed down, so their key equalities can't be
   // routed. Their results must still be correct.
   ASSERT_OK(CreateAndFill(
       conn, "tt_icu", "tenant TEXT COLLATE \"en-US-x-icu\", id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
 
   for (int tenant = 0; tenant != kNumTenants; ++tenant) {
     SCOPED_TRACE(Format("tenant: $0", tenant));
@@ -1312,7 +1458,7 @@ TEST_F(PgVectorIndexPkRoutingTest, TextHashKey) {
   // the value can be text or varchar.
   ASSERT_OK(CreateAndFill(
       conn, "tv", "tenant VARCHAR(20) COLLATE \"C\", id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
   for (const auto* value : {"'7'", "'7'::varchar", "'7'::text", "'7'::varchar(5)"}) {
     SCOPED_TRACE(value);
     auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tv", Format("tenant = $0", value), 7, 3)));
@@ -1331,10 +1477,10 @@ TEST_F(PgVectorIndexPkRoutingTest, IntegerCrossTypeKey) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(CreateAndFill(
       conn, "tb", "tenant BIGINT, id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
   ASSERT_OK(CreateAndFill(
       conn, "ts", "tenant SMALLINT, id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
 
   for (const auto* where : {"tenant = 6", "6 = tenant", "tenant = 6::smallint", "tenant IN (6)"}) {
     SCOPED_TRACE(where);
@@ -1372,7 +1518,7 @@ TEST_F(PgVectorIndexPkRoutingTest, FloatKey) {
   ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
   ASSERT_OK(CreateAndFill(
       conn, "tf", "tenant FLOAT8, id INT", "(tenant) HASH, id",
-      Format("SPLIT INTO $0 TABLETS", kNumTablets)));
+      Format("SPLIT INTO $0 TABLETS", kNumTablets), Backfill::kFalse));
 
   // -0 equals 0 but has a different key encoding, so float keys are never routed.
   auto stats = ASSERT_RESULT(Query(conn, KnnQuery("tf", "tenant = '-0'", 0, 3)));
@@ -1386,7 +1532,7 @@ TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   // Partitions: [, 5), [5, (10, 5)), [(10, 5), 15), [15, ).
   ASSERT_OK(CreateAndFill(
       conn, "tr", "tenant INT, id INT", "tenant ASC, id ASC",
-      "SPLIT AT VALUES ((5), (10, 5), (15))"));
+      "SPLIT AT VALUES ((5), (10, 5), (15))", Backfill::kFalse));
 
   for (auto [tenant, partitions] : std::initializer_list<std::pair<int, int64_t>>{
            // The split point (5) sorts after the prefix of tenant 5, so both of its neighbours
@@ -1407,6 +1553,164 @@ TEST_F(PgVectorIndexPkRoutingTest, RangeKey) {
   // No equality on the leading range column: every partition is searched.
   stats = ASSERT_RESULT(Query(conn, KnnQuery("tr", "id = 7", 10, 3)));
   ASSERT_EQ(stats.partitions, kNumTablets);
+}
+
+// With vector_index_tenant_hash_group_and_range_components the vectors of each tenant are linked
+// only to each other. A search visits only the tenant its key equalities select, so the filter
+// accepts every vector it checks, and a query that selects no tenant fails.
+void PgVectorIndexPkRoutingTest::TestTenants(const TenantsOptions& options) {
+  // Exact search scans all vectors, ignoring tenants.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 1;
+  if (options.split_tablet) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = false;
+  }
+  auto conn = ASSERT_RESULT(Connect());
+  if (options.colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db WITH COLOCATION = true"));
+    conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  }
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  constexpr auto kTable = "tt";
+  ASSERT_OK(CreateAndFill(
+      conn, kTable, "tenant INT, id INT", options.primary_key, options.split, options.backfill));
+  // A generic plan binds the tenant at execution.
+  ASSERT_OK(conn.Execute("SET plan_cache_mode = force_generic_plan"));
+  ASSERT_OK(conn.Execute(
+      "PREPARE knn(int) AS " + KnnQuery(kTable, "tenant = $1", /* tenant= */ 0, /* limit= */ 3)));
+
+  struct QueryResult {
+    std::vector<int32_t> ids;
+    // Whether the filter rejected some of the vectors it checked.
+    bool rejected;
+  };
+  auto query = [this, &conn](const std::string& query) -> Result<QueryResult> {
+    auto before = GetFilterStats();
+    QueryResult result {
+      .ids = VERIFY_RESULT(conn.FetchRows<int32_t>(query)),
+      .rejected = false,
+    };
+    auto after = GetFilterStats();
+    SCHECK_GT(after.checked, before.checked, IllegalState, "Filter checked no vectors");
+    result.rejected = after.checked - before.checked != after.accepted - before.accepted;
+    return result;
+  };
+  auto check = [this, &conn, &query](int rows_per_tenant) {
+    // The filter does not accept rows with intents, see VectorIndexKeyProvider::Prefetch.
+    ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    // The query vector is closest to the vectors of tenant 0, so other tenants are found only
+    // through their own entry points.
+    for (int tenant = 0; tenant != kNumTenants; ++tenant) {
+      SCOPED_TRACE(Format("tenant: $0", tenant));
+      auto result = ASSERT_RESULT(query(KnnQuery(
+          kTable, Format("tenant = $0", tenant), /* tenant= */ 0, rows_per_tenant)));
+      ASSERT_EQ(result.ids, Ids(0, rows_per_tenant));
+      ASSERT_FALSE(result.rejected);
+    }
+    for (int tenant : {3, 7}) {
+      SCOPED_TRACE(Format("prepared, tenant: $0", tenant));
+      auto result = ASSERT_RESULT(query(Format("EXECUTE knn($0)", tenant)));
+      ASSERT_EQ(result.ids, Ids(0, 3));
+      ASSERT_FALSE(result.rejected);
+    }
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(KnnQuery(kTable, "tenant = 100", 0, 3))),
+              std::vector<int32_t>());
+
+    // Equalities on more key columns than the tenant has.
+    auto result = ASSERT_RESULT(query(KnnQuery(kTable, "tenant = 10 AND id = 7", 0, 3)));
+    ASSERT_EQ(result.ids, (std::vector<int32_t>{7}));
+    result = ASSERT_RESULT(query(KnnQuery(kTable, "tenant = 10 AND id IN (7, 8)", 0, 3)));
+    ASSERT_EQ(result.ids, (std::vector<int32_t>{7, 8}));
+
+    for (const auto* where : {"id < 3", "tenant IN (3, 12)"}) {
+      SCOPED_TRACE(where);
+      ASSERT_NOK_STR_CONTAINS(
+          conn.FetchRows<int32_t>(KnnQuery(kTable, where, 0, 3)), "got no tenant");
+    }
+  };
+
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(kRowsPerTenant));
+
+  if (options.split_tablet) {
+    auto peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), kTable, ListPeersFilter::kLeaders));
+    ASSERT_EQ(peers.size(), 1);
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+        cluster_.get(), peers.front()->tablet_id()));
+    // Each child searches the tenant in the inherited chunk, keeping the vectors of its key bounds.
+    ASSERT_NO_FATALS(check(kRowsPerTenant));
+  }
+
+  // A second chunk, then both chunks merged.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT t, i, vector('[' || t || ', ' || i || ', 0]') "
+      "FROM generate_series(0, $1) t, generate_series($2, $3) i",
+      kTable, kNumTenants - 1, kRowsPerTenant, 2 * kRowsPerTenant - 1));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+  for (const auto& index : ListVectorIndexes(cluster_.get())) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+  }
+  ASSERT_NO_FATALS(check(2 * kRowsPerTenant));
+
+  // The vector of a deleted row stays in the index, so the filter removes it.
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE tenant = 4 AND id = 0", kTable));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto before = GetFilterStats();
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(KnnQuery(kTable, "tenant = 4", 0, 3))),
+            Ids(1, 3));
+  ASSERT_GT(GetFilterStats().removed, before.removed);
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TenantsHashKey) {
+  TestTenants({
+    .primary_key = "(tenant) HASH, id",
+    .split = Format("SPLIT INTO $0 TABLETS", kNumTablets),
+  });
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TenantsRangeKey) {
+  TestTenants({
+    .primary_key = "tenant ASC, id ASC",
+    .split = "SPLIT AT VALUES ((5), (10, 5), (15))",
+  });
+}
+
+// The tenant is encoded with the sorting type of its column.
+TEST_F(PgVectorIndexPkRoutingTest, TenantsRangeDescKey) {
+  TestTenants({
+    .primary_key = "tenant DESC, id ASC",
+    .split = "SPLIT AT VALUES ((15), (10, 5), (5))",
+  });
+}
+
+// Backfill inserts the vectors of each tenant back to back.
+TEST_F(PgVectorIndexPkRoutingTest, TenantsBackfill) {
+  TestTenants({
+    .primary_key = "(tenant) HASH, id",
+    .split = Format("SPLIT INTO $0 TABLETS", kNumTablets),
+    .backfill = Backfill::kTrue,
+  });
+}
+
+// The ybctids of a colocated table, which the payloads keep, have no colocation id.
+TEST_F(PgVectorIndexPkRoutingTest, TenantsColocated) {
+  TestTenants({
+    .primary_key = "tenant ASC, id ASC",
+    .colocated = true,
+  });
+}
+
+TEST_F(PgVectorIndexPkRoutingTest, TenantsSplit) {
+  TestTenants({
+    .primary_key = "tenant ASC, id ASC",
+    .split_tablet = true,
+  });
 }
 
 // A stuck vector index insert blocks the apply of a write sent by a local call. The Perform that

@@ -90,19 +90,15 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
               + " USE_GCP_IAM.");
     }
 
-    // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
-    // config create/edit to resolve an audience, and same-cloud IAM can't be exercised from YBA.
-    // Skip the bucket/cred check (URL already validated); the node/YBC do the real check.
-    if (gcsData.useGcpIam) {
-      return;
-    }
-
+    // Null storage means: check the location format only, don't probe the bucket.
     Storage storage = null;
-    try {
-      storage = factory.createGcpStorage(gcsData);
-    } catch (IOException ex) {
-      throwBeanConfigDataValidatorError(
-          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+    if (!GCPUtil.isUnresolvedFederationConfig(gcsData)) {
+      try {
+        storage = factory.createGcpStorage(gcsData);
+      } catch (IOException ex) {
+        throwBeanConfigDataValidatorError(
+            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+      }
     }
 
     validateGCSUrl(
@@ -135,7 +131,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     if (gsUriPath.length() < 5 || !GCS_URL_SCHEMES.contains(protocol)) {
       String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
       throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
-    } else {
+    } else if (storage != null) {
       CloudLocationInfo locationInfo = gcpUtil.getCloudLocationInfo(region, gcsData, gsUriPath);
       try {
         gcpUtil.validateOnBucket(

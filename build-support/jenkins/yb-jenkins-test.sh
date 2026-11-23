@@ -253,8 +253,8 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
 
       # Several short tests in one Spark task, so that a small job does not set up a worker per
       # test. Off unless the pipeline sets a target; the harness also needs the Spark master's web
-      # UI, to see how many cores are free, and for the main pass the expected run times the
-      # pipeline wrote from CSI (YB_TEST_DURATIONS_FILE, next to rerun_list.txt).
+      # UI, to see how many cores other applications hold, and for the main pass the expected run
+      # times the pipeline wrote from CSI (YB_TEST_DURATIONS_FILE, next to rerun_list.txt).
       if [[ ${YB_SPARK_PACK_TARGET_SEC:-0} != 0 && -n ${YB_SPARK_MASTER_UI_URL:-} ]]; then
         run_tests_extra_args+=( "--pack_target_sec" "${YB_SPARK_PACK_TARGET_SEC}" )
         run_tests_extra_args+=( "--spark_master_ui_url" "${YB_SPARK_MASTER_UI_URL}" )

@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
@@ -83,23 +84,54 @@ public class UniverseInfoHandler {
 
   public UniverseResourceDetails getUniverseResources(
       Customer customer, UniverseDefinitionTaskParams taskParams) {
-    Set<NodeDetails> nodesInCluster;
-    if (taskParams
-        .getCurrentClusterType()
-        .equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY)) {
-      nodesInCluster =
-          taskParams.nodeDetailsSet.stream()
-              .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
-              .collect(Collectors.toSet());
-    } else {
-      nodesInCluster =
-          taskParams.nodeDetailsSet.stream()
-              .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
-              .collect(Collectors.toSet());
+    return getUniverseResources(customer, taskParams, null, true);
+  }
+
+  public UniverseResourceDetails getUniverseResources(
+      Customer customer,
+      UniverseDefinitionTaskParams taskParams,
+      @Nullable UniverseDefinitionTaskParams.ClusterType clusterType,
+      boolean priceForAllNodes) {
+    return UniverseResourceDetails.create(
+        Optional.empty(),
+        getNodes(clusterType, taskParams),
+        taskParams,
+        resourceContext(customer, taskParams),
+        priceForAllNodes);
+  }
+
+  public Map<UUID, UniverseResourceDetails> getUniverseResourcesPerProvider(
+      Customer customer, UniverseDefinitionTaskParams taskParams) {
+    return getUniverseResourcesPerProvider(customer, taskParams, null);
+  }
+
+  public Map<UUID, UniverseResourceDetails> getUniverseResourcesPerProvider(
+      Customer customer,
+      UniverseDefinitionTaskParams taskParams,
+      @Nullable UniverseDefinitionTaskParams.ClusterType clusterType) {
+    return UniverseResourceDetails.createPerProvider(
+        getNodes(clusterType, taskParams), taskParams, resourceContext(customer, taskParams));
+  }
+
+  private Set<NodeDetails> getNodes(
+      @Nullable UniverseDefinitionTaskParams.ClusterType clusterType,
+      UniverseDefinitionTaskParams taskParams) {
+    if (clusterType == null) {
+      return taskParams.nodeDetailsSet;
     }
-    UniverseResourceDetails.Context context =
-        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams, true);
-    return UniverseResourceDetails.create(nodesInCluster, taskParams, context);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+      if (!CollectionUtils.isEmpty(taskParams.getReadOnlyClusters())) {
+        return taskParams.getNodesInCluster(taskParams.getReadOnlyClusters().get(0).uuid);
+      } else {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "The universe " + taskParams.getUniverseUUID() + " has no async replica");
+      }
+    }
+    return taskParams.getNodesInCluster(taskParams.getPrimaryCluster().uuid);
+  }
+
+  private Context resourceContext(Customer customer, UniverseDefinitionTaskParams taskParams) {
+    return new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams, true);
   }
 
   public List<UniverseResourceDetails> universeListCost(Customer customer) {
@@ -114,7 +146,13 @@ public class UniverseInfoHandler {
         new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParamsList);
     for (Universe universe : universeSet) {
       try {
-        response.add(UniverseResourceDetails.create(universe.getUniverseDetails(), context));
+        response.add(
+            UniverseResourceDetails.create(
+                Optional.empty(),
+                universe.getNodes(),
+                universe.getUniverseDetails(),
+                context,
+                true));
       } catch (Exception e) {
         log.error(
             "Could not add cost details for Universe with UUID: " + universe.getUniverseUUID());

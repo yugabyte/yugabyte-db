@@ -83,6 +83,8 @@ DEFINE_UNKNOWN_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
 DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
     "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(enable_write_pipelining_infra);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 DEFINE_RUNTIME_bool(auto_promote_nonlocal_transactions_to_global, true,
                     "Automatically promote transactions touching data outside of region to "
@@ -146,6 +148,7 @@ YB_STRONGLY_TYPED_BOOL(SetReady);
 YB_STRONGLY_TYPED_BOOL(TransactionPromoting);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
+YB_DEFINE_ENUM(AsyncWritesDecision, (kUndecided)(kNo)(kYes));
 
 struct LogPrefixTag {
   explicit LogPrefixTag(const std::string* name_ = nullptr, uint64_t value_ = 0)
@@ -1449,6 +1452,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     for (auto& waiter : waiters) {
       waiter(status);
     }
+  }
+
+  bool UseAsyncWrites() const {
+    auto decision = use_async_writes_.load();
+    if (decision != AsyncWritesDecision::kUndecided) {
+      return decision == AsyncWritesDecision::kYes;
+    }
+    decision = FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining
+        ? AsyncWritesDecision::kYes : AsyncWritesDecision::kNo;
+    auto expected = AsyncWritesDecision::kUndecided;
+    if (!use_async_writes_.compare_exchange_strong(expected, decision)) {
+      decision = expected;
+    }
+    return decision == AsyncWritesDecision::kYes;
   }
 
   Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
@@ -2951,6 +2968,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   int64_t completed_write_ops_ GUARDED_BY(mutex_) = 0;
   mutable std::atomic<bool> write_pipelining_abort_{false};
 
+  mutable std::atomic<AsyncWritesDecision> use_async_writes_{AsyncWritesDecision::kUndecided};
+
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 
   OriginationInfo origination_info_ GUARDED_BY(mutex_);
@@ -3207,6 +3226,10 @@ bool YBTransaction::RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_i
 void YBTransaction::RecordAsyncWriteCompletion(
     const TabletId& tablet_id, const OpId& op_id, const Status& status) {
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+}
+
+bool YBTransaction::UseAsyncWrites() const {
+  return impl_->UseAsyncWrites();
 }
 
 Result<OpIds> YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {

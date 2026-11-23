@@ -404,7 +404,7 @@ class VectorIndexQuery {
             ->mutable_vector_idx_options();
         vector_idx_options.set_num_top_vectors_to_remove(
             partition_state.number_of_vectors_fetched_from_tablet);
-        // Tablets don't use the prefixes, they only select the partitions above.
+        // Tablets don't use the partition key prefixes, they only select the partitions above.
         vector_idx_options.mutable_partition_key_prefixes()->clear();
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(
             table, arena, *sidecars_, new_read_req);
@@ -2258,6 +2258,68 @@ class PgClientSession::Impl {
     return status;
   }
 
+  Status RestartTransactionForRetry(
+      const PgRestartTransactionForRetryRequestPB& req,
+      PgRestartTransactionForRetryResponsePB* resp, rpc::RpcContext* context) {
+    VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    TEST_SYNC_POINT("PgClientSession::RestartTransactionForRetry");
+    const auto& session = Session(PgClientSessionKind::kPlain);
+    // The limits are taken only from a read point with a pending restart, i.e. the one that faced
+    // it. If a request with another read time serial no switched the session's read point since,
+    // no limits are returned and the retry gets full uncertainty windows: capping at another
+    // point's limits, e.g. a clamped catalog read point, could close the retry's windows.
+    if (session && session->read_point()->IsRestartRequired()) {
+      const auto& read_point = *session->read_point();
+      if (const auto global_limit = read_point.GetReadTime().global_limit;
+          global_limit.is_valid()) {
+        resp->set_global_limit_ht(global_limit.ToUint64());
+        auto& local_limits = *resp->mutable_local_limits();
+        for (const auto& [tablet, local_limit] : read_point.RestartLocalLimits()) {
+          local_limits[tablet] = local_limit.ToUint64();
+        }
+      }
+      // The retry reads at the current time, so it must already be past the restart time, which
+      // the restarting read's response propagated to this clock.
+      const auto restart_read_ht = read_point.GetRestartReadHt();
+      LOG_IF_WITH_PREFIX(DFATAL, read_point.Now() <= restart_read_ht)
+          << "Clock is not past the restart time " << restart_read_ht;
+    }
+    switch (req.kind()) {
+      case PgRestartTransactionForRetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY:
+        return Status::OK();
+      case PgRestartTransactionForRetryRequestPB::REPLACE_DIST_TRANSACTION_ONLY:
+        return ReplacePlainTransaction(context->GetClientDeadline());
+      case PgRestartTransactionForRetryRequestPB::DEFAULT:
+        return ResultToStatus(
+            SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+      default:
+        break;
+    }
+    return STATUS_FORMAT(InvalidArgument, "Unexpected retry kind: $0", req.kind());
+  }
+
+  // The retry's next request starts a new distributed transaction for the same txn_serial_no, with
+  // the replaced transaction's priority. The read point is reset so the new transaction does not
+  // take the failed attempt's read time as its own (BeginTransactionIfNecessary keeps a read time
+  // the session already has), whether the retry reads or writes first. A non-transactional session
+  // only releases the failed attempt's object locks: the retry's new read_time_serial_no resets its
+  // read point.
+  Status ReplacePlainTransaction(CoarseTimePoint deadline) {
+    constexpr auto kKind = PgClientSessionKind::kPlain;
+    auto& session_data = GetSessionData(kKind);
+    auto& txn = session_data.transaction;
+    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kKind, deadline));
+    if (!txn) {
+      return Status::OK();
+    }
+    saved_priority_ = txn->GetPriority();
+    txn->Abort();
+    session_data.session->SetTransaction(nullptr);
+    txn = nullptr;
+    ResetReadPoint(kKind);
+    return Status::OK();
+  }
+
   Status RollbackToSubTransaction(
       const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2471,12 +2533,11 @@ class PgClientSession::Impl {
 
   // Drop the server-side TServer cache entry for the given sequence so that a subsequent nextval
   // does not hand out stale values after the sequence was modified out-of-band (setval(),
-  // ALTER SEQUENCE ... RESTART, or DROP). No-op unless the server cache method is enabled.
+  // ALTER SEQUENCE ... RESTART, or DROP). The cache method is a runtime flag, so this runs even
+  // when it is not currently "server": a later switch back to "server" must not serve a range
+  // cached before this call. No-op when the sequence has no cache entry.
   Status InvalidateSequenceCacheEntry(
       PgOid db_oid, PgOid sequence_oid, CoarseTimePoint deadline) {
-    if (FLAGS_ysql_sequence_cache_method != "server") {
-      return Status::OK();
-    }
     const PgObjectId sequence_id(db_oid, sequence_oid);
     return sequence_cache().Invalidate(sequence_id, ToSteady(deadline));
   }
@@ -2577,36 +2638,11 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  Status FetchSequenceTuple(
+  // Allocate the next sequence range in sequences_data and return its start and end.
+  Result<std::pair<int64_t, int64_t>> AllocateSequenceRange(
       const PgFetchSequenceTupleRequestMsg& req, PgFetchSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     using pggate::PgDocData;
-    using pggate::PgWireDataHeader;
-
-    RETURN_NOT_OK(ValidateSequenceModificationFunctionForXCluster(req.db_oid()));
-
-    const auto inc_by = req.inc_by();
-    std::shared_ptr<PgSequenceCache::Entry> cache_entry;
-    if (FLAGS_ysql_sequence_cache_method == "server") {
-      const PgObjectId sequence_id(
-          narrow_cast<uint32_t>(req.db_oid()), narrow_cast<uint32_t>(req.seq_oid()));
-      cache_entry = VERIFY_RESULT(
-          sequence_cache().GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
-      DCHECK(cache_entry);
-    }
-    // On exit we should notify a waiter for this sequence id that it is available.
-    auto se = cache_entry
-        ? MakeOptionalScopeExit([&cache_entry] { cache_entry->NotifyWaiter(); }) : std::nullopt;
-
-    // If the cache has a value, return immediately.
-    if (auto sequence_value = cache_entry ? cache_entry->GetValueIfCached(inc_by) : std::nullopt;
-        sequence_value) {
-      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the
-      // first and last value are the same.
-      resp->set_first_value(*sequence_value);
-      resp->set_last_value(*sequence_value);
-      return Status::OK();
-    }
 
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
     auto table = VERIFY_RESULT(table_cache().Get(table_oid.GetYbTableId()));
@@ -2622,7 +2658,7 @@ class PgClientSession::Impl {
 
     auto* fetch_sequence_params = write_request->mutable_fetch_sequence_params();
     fetch_sequence_params->set_fetch_count(req.fetch_count());
-    fetch_sequence_params->set_inc_by(inc_by);
+    fetch_sequence_params->set_inc_by(req.inc_by());
     fetch_sequence_params->set_min_value(req.min_value());
     fetch_sequence_params->set_max_value(req.max_value());
     fetch_sequence_params->set_cycle(req.cycle());
@@ -2647,40 +2683,94 @@ class PgClientSession::Impl {
     PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
     if (row_count != 2) {
       return STATUS_FORMAT(
-        InternalError, "Invalid row count has been fetched from sequence $0", req.seq_oid());
+          InternalError, "Invalid row count has been fetched from sequence $0", req.seq_oid());
     }
 
     // Get the range start
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
       return STATUS_FORMAT(InternalError,
-                              "Invalid value range start has been fetched from sequence $0",
-                              req.seq_oid());
+                           "Invalid value range start has been fetched from sequence $0",
+                           req.seq_oid());
     }
     auto first_value = PgDocData::ReadNumber<int64_t>(&cursor);
 
     // Get the range end
     if (PgDocData::ReadHeaderIsNull(&cursor)) {
       return STATUS_FORMAT(InternalError,
-                              "Invalid value range end has been fetched from sequence $0",
-                              req.seq_oid());
+                           "Invalid value range end has been fetched from sequence $0",
+                           req.seq_oid());
     }
     auto last_value = PgDocData::ReadNumber<int64_t>(&cursor);
+    return std::make_pair(first_value, last_value);
+  }
 
-    if (cache_entry) {
-      cache_entry->SetRange(first_value, last_value);
-      auto optional_sequence_value = cache_entry->GetValueIfCached(inc_by);
+  Status FetchSequenceTuple(
+      const PgFetchSequenceTupleRequestMsg& req, PgFetchSequenceTupleResponseMsg* resp,
+      rpc::RpcContext* context) {
+    RETURN_NOT_OK(ValidateSequenceModificationFunctionForXCluster(req.db_oid()));
 
-      RSTATUS_DCHECK(
-          optional_sequence_value.has_value(), InternalError,
-          "Value for sequence $0 was not found.", req.seq_oid());
-      // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the first
-      // and last value are the same.
-      last_value = first_value = *optional_sequence_value;
+    const auto db_oid = narrow_cast<PgOid>(req.db_oid());
+    const auto inc_by = req.inc_by();
+    std::shared_ptr<PgSequenceCache::Entry> cache_entry;
+    if (FLAGS_ysql_sequence_cache_method == "server") {
+      const PgObjectId sequence_id(db_oid, narrow_cast<uint32_t>(req.seq_oid()));
+      cache_entry = VERIFY_RESULT(
+          sequence_cache().GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
+      DCHECK(cache_entry);
+    }
+    // On exit we should notify a waiter for this sequence id that it is available.
+    auto sequence_entry_notifier = cache_entry
+        ? MakeOptionalScopeExit([&cache_entry] { cache_entry->NotifyWaiter(); })
+        : std::nullopt;
+
+    auto sequence_value = cache_entry
+        ? cache_entry->GetValueIfCached(inc_by, sequence_cache().DatabaseEpoch(db_oid))
+        : std::nullopt;
+    // If the cache has a value, return immediately.
+    if (sequence_value) {
+      // Since the TServer cache is enabled, the connection cache size is implicitly 1
+      // so the first and last value are the same.
+      resp->set_first_value(*sequence_value);
+      resp->set_last_value(*sequence_value);
+      return Status::OK();
     }
 
-    resp->set_first_value(first_value);
-    resp->set_last_value(last_value);
-    return Status::OK();
+    // Retry when the database epoch moves during the DocDB fetch. The range already written to
+    // sequences_data is left unused; returning it could reinstall values from before switchover.
+    for (;;) {
+      const uint64_t epoch_at_fetch = sequence_cache().DatabaseEpoch(db_oid);
+      std::pair<int64_t, int64_t> first_last_pair =
+          VERIFY_RESULT(AllocateSequenceRange(req, resp, context));
+      const uint64_t epoch_now = sequence_cache().DatabaseEpoch(db_oid);
+
+      if (epoch_now != epoch_at_fetch) {
+        // Epoch moved while this range was allocated. Do not cache it and do not hand it out.
+        if (CoarseMonoClock::Now() >= context->GetClientDeadline()) {
+          return STATUS_FORMAT(TimedOut,
+              "Timed out refetching sequence $0 after cache epoch change", req.seq_oid());
+        }
+        context->sidecars().Reset();
+        continue;
+      }
+
+      // cache_entry is non-null only in 'server' mode. That mode keeps
+      // the allocated block in the TServer cache and returns one value.
+      // 'connection' mode has no entry, so the allocated block is returned as-is.
+      if (cache_entry) {
+        cache_entry->SetRange(first_last_pair.first, first_last_pair.second, epoch_now);
+        auto optional_sequence_value = cache_entry->GetValueIfCached(inc_by, epoch_now);
+        RSTATUS_DCHECK(
+            optional_sequence_value.has_value(), InternalError,
+            "Value for sequence $0 was not found.", req.seq_oid());
+        // Since the TServer cache is enabled, the connection cache size is implicitly 1
+        // so the first and last value are the same.
+        first_last_pair.first = first_last_pair.second = *optional_sequence_value;
+      }
+
+      resp->set_first_value(first_last_pair.first);
+      resp->set_last_value(first_last_pair.second);
+      return Status::OK();
+    }
   }
 
   Status ReadSequenceTuple(
@@ -2814,7 +2904,11 @@ class PgClientSession::Impl {
     }
 
     auto arena = ObtainArena(&context, *resp);
-    auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline(), arena);
+    // Every request on the catalog session sets its own read time, so resetting it here doesn't
+    // affect other requests.
+    auto& session = EnsureSession(
+        PgClientSessionKind::kLegacyCatalog, context.GetClientDeadline(), arena);
+    session->ResetReadPoint();
 
     // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
     // instead of passing through YBSession.
@@ -3522,7 +3616,9 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
+          // This tserver's clock was updated from the commit response, so it is past the commit
+          // time; propagate it to the master.
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit, clock()->Now()),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 
@@ -3918,10 +4014,6 @@ class PgClientSession::Impl {
 
     auto& read_point = *Session(PgClientSessionKind::kPlain)->read_point();
     switch (manipulation) {
-      case ReadTimeManipulation::RESTART:
-        read_point.Restart();
-        VLOG(1) << "Restarted read point " << read_point.GetReadTime();
-        return;
       case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
         if (!read_point.GetReadTime() || (read_time_serial_no_ != read_time_serial_no)) {
           read_point.SetCurrentReadTime();
@@ -4131,23 +4223,7 @@ class PgClientSession::Impl {
             (read_time_options.has_read_time() && read_time_options.read_time().has_read_ht()),
         IllegalState, "Historical read session must have a read time");
 
-    if (read_time_options.restart_transaction()) {
-      VLOG_WITH_PREFIX(3) << "Restarting transaction";
-      RETURN_NOT_OK(RestartTransaction(kind, deadline));
-      if (read_time_options.clamp_uncertainty_window()) {
-        // The clamp uncertainty option is set by catalog reads (among other cases).
-        // Catalog cache invalidation messages are processed by resetting the catalog snapshot,
-        // so a subsequent catalog read must use the latest snapshot. Reusing a restarted read
-        // time from a prior error can predate the invalidations and return stale catalog rows.
-        // Therefore, override the restarted read point here with the current time.
-        // This override loses the restart read information until TODO(#31142) is fixed.
-        RSTATUS_DCHECK(
-          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
-      }
-    } else if (!skip_read_time) {
+    if (!skip_read_time) {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_read_time = read_time_options.has_read_time();
       const auto has_follower_staleness = read_time_options.has_follower_read_staleness_ms();
@@ -4244,6 +4320,26 @@ class PgClientSession::Impl {
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
+
+      // After clamping, so a clamped read keeps its empty uncertainty window. A reset read point
+      // (e.g. non-transactional writes) must get its read time from the storage layer, so it is
+      // not capped.
+      if (const auto cap = HybridTime::FromPB(read_time_options.global_limit_cap_ht());
+          cap && kind == PgClientSessionKind::kPlain &&
+          !IsReadPointResetRequested(read_time_options) &&
+          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION)) {
+        // A read time picked by DocDB would get an uncapped global limit.
+        if (!session.read_point()->GetReadTime()) {
+          session.read_point()->SetCurrentReadTime();
+        }
+        auto& read_point = *session.read_point();
+        read_point.CapGlobalLimit(cap);
+        for (const auto& entry : read_time_options.local_limit_caps()) {
+          using rpc::map_util::ExtractKey;
+          using rpc::map_util::ExtractValue;
+          read_point.CapLocalLimit(ExtractKey(entry), HybridTime(ExtractValue(entry)));
+        }
+      }
     }
 
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
@@ -4269,7 +4365,7 @@ class PgClientSession::Impl {
     DCHECK(is_plain_session || kind == PgClientSessionKind::kLegacyCatalog);
     const auto& data = GetSessionData(kind);
     auto& session = *data.session;
-    session.SetReadPoint({});
+    session.ResetReadPoint();
     VLOG_WITH_PREFIX(3) << "Reset read time: " << session.read_point()->GetReadTime();
 
     if (!is_plain_session || data.transaction || !plain_session_used_read_time_.pending_update) {
@@ -4466,35 +4562,6 @@ class PgClientSession::Impl {
     return &ddl_txn_metadata_;
   }
 
-  Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
-    auto& session_data = GetSessionData(kind);
-    auto& session = *session_data.session;
-    auto& txn = session_data.transaction;
-    if (!txn) {
-      SCHECK(
-        session.IsRestartRequired(), IllegalState,
-        "Attempted to restart when session does not require restart");
-
-      const auto old_read_time = session.read_point()->GetReadTime();
-      session.RestartNonTxnReadPoint(client::Restart::kTrue);
-      const auto new_read_time = session.read_point()->GetReadTime();
-      VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
-      LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)
-          << "Read time did not change during restart: " << old_read_time
-          << " => " << new_read_time;
-      return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
-    }
-
-    SCHECK(
-        txn->IsRestartRequired(), IllegalState,
-        "Attempted to restart when transaction does not require restart");
-    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kind, deadline));
-    txn = VERIFY_RESULT(txn->CreateRestartedTransaction());
-    session.SetTransaction(txn);
-    VLOG_WITH_PREFIX(3) << "Restarted transaction";
-    return Status::OK();
-  }
-
   client::YBSessionPtr& EnsureSession(
       PgClientSessionKind kind, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena,
       std::optional<uint64_t> read_time = std::nullopt) {
@@ -4522,7 +4589,7 @@ class PgClientSession::Impl {
       // Reset the read_time for sequence queries to read recent data. This is required in case the
       // user reset yb_read_time to 0 in a session.
       if (kind == PgClientSessionKind::kSequence) {
-        session->SetReadPoint({});
+        session->ResetReadPoint();
       }
     }
     return session;

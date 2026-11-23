@@ -5,6 +5,7 @@ package api.v2.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.NOT_FOUND;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import api.v2.mappers.StorageConfigMapper;
 import api.v2.models.AzureCredentials;
@@ -33,14 +34,21 @@ import api.v2.models.YBATask;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.EditStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DuplicateKeyException;
@@ -53,6 +61,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +87,9 @@ import play.libs.Json;
 public class StorageConfigHandler {
 
   public static final String NAME_CONFLICT = "STORAGE_CONFIG_NAME_CONFLICT";
+  public static final String NOT_ACTIVE = "STORAGE_CONFIG_NOT_ACTIVE";
+  public static final String EDIT_IN_PROGRESS = "STORAGE_CONFIG_EDIT_IN_PROGRESS";
+  public static final String REVISION_MISMATCH = "STORAGE_CONFIG_REVISION_MISMATCH";
   public static final String CONFIG_INVALID = StorageValidationErrors.CONFIG_INVALID;
   public static final String VALIDATION_FAILED = StorageValidationErrors.VALIDATION_FAILED;
   public static final String PROVIDER_UNAVAILABLE = StorageValidationErrors.PROVIDER_UNAVAILABLE;
@@ -88,15 +100,18 @@ public class StorageConfigHandler {
   private final CustomerConfigValidator configValidator;
   private final Commissioner commissioner;
   private final UnsavedStorageConfigs unsavedConfigs;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public StorageConfigHandler(
       CustomerConfigValidator configValidator,
       Commissioner commissioner,
-      UnsavedStorageConfigs unsavedConfigs) {
+      UnsavedStorageConfigs unsavedConfigs,
+      RuntimeConfGetter confGetter) {
     this.configValidator = configValidator;
     this.commissioner = commissioner;
     this.unsavedConfigs = unsavedConfigs;
+    this.confGetter = confGetter;
   }
 
   public YBATask createStorageConfig(UUID cUUID, StorageConfigSpec spec) {
@@ -157,6 +172,67 @@ public class StorageConfigHandler {
         CustomerTask.TaskType.Validate,
         config.getConfigName());
     return new YBATask().taskUuid(taskUUID);
+  }
+
+  /**
+   * Edits a storage config through a task, which checks the edited config and applies it; the
+   * stored config stays as it is until then. See the editStorageConfig operation for the contract.
+   */
+  public YBATask editStorageConfig(
+      UUID cUUID, UUID scUUID, StorageConfigSpec spec, @Nullable String ifMatch) {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    CustomerConfig stored = CustomerConfig.get(cUUID, scUUID);
+    if (stored == null || stored.getType() != ConfigType.STORAGE) {
+      throw new PlatformServiceException(NOT_FOUND, "No storage config with UUID " + scUUID);
+    }
+    if (!stored.isActive()) {
+      ObjectNode error = Json.newObject();
+      error.put("code", NOT_ACTIVE);
+      error.put(
+          "message",
+          String.format("Storage config %s is %s and can't be edited", scUUID, stored.getState()));
+      error.put(
+          "storage_config_state",
+          StorageConfigMapper.INSTANCE.toStorageConfigInfo(stored).getState().toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
+    if (ifMatch != null
+        && confGetter.getGlobalConf(GlobalConfKeys.conditionalGetEnabled)
+        && !StorageConfigRevisionProvider.matchesIfMatch(ifMatch, stored)) {
+      ObjectNode error = Json.newObject();
+      error.put("code", REVISION_MISMATCH);
+      error.put(
+          "message",
+          String.format(
+              "Storage config %s changed since the ETag in If-Match; get it and edit it again",
+              scUUID));
+      throw new PlatformServiceException(PRECONDITION_FAILED, error);
+    }
+    checkNoEditInProgress(scUUID);
+    CustomerConfig edited = validateEdit(cUUID, stored, spec);
+    // Kept in memory for the task: the task params are stored unencrypted, the secrets aren't.
+    UUID key = unsavedConfigs.put(edited);
+    EditStorageConfig.Params params = new EditStorageConfig.Params();
+    params.customerUUID = cUUID;
+    params.configUUID = scUUID;
+    params.editKey = key;
+    params.revision = stored.getUpdateTime().getTime();
+    UUID taskUUID;
+    try {
+      taskUUID = commissioner.submit(TaskType.EditStorageConfig, params);
+    } catch (RuntimeException e) {
+      unsavedConfigs.remove(key);
+      throw e;
+    }
+    log.info("Submitted task {} to edit storage config {}", taskUUID, scUUID);
+    CustomerTask.create(
+        customer,
+        scUUID,
+        taskUUID,
+        CustomerTask.TargetType.CustomerConfiguration,
+        CustomerTask.TaskType.Edit,
+        edited.getConfigName());
+    return new YBATask().taskUuid(taskUUID).resourceUuid(scUUID);
   }
 
   public StorageConfig getStorageConfig(UUID cUUID, UUID scUUID) {
@@ -256,6 +332,148 @@ public class StorageConfigHandler {
       throw StorageValidationErrors.toV2Error(e);
     }
     return config;
+  }
+
+  /**
+   * Runs the checks of an edit that need no storage and returns the edited v1 config, not saved:
+   * the stored config with the spec's name and data, its left-out secrets kept from the stored one.
+   */
+  private CustomerConfig validateEdit(UUID cUUID, CustomerConfig stored, StorageConfigSpec spec) {
+    StorageSpec storage = spec.getStorage();
+    if (!v1Subtype(storage).equals(stored.getName())) {
+      throw badRequest(
+          "storage.storage_type can't change: the configuration is " + stored.getName());
+    }
+    // Null when the stored data no longer parses: the edit then keeps nothing from it, so the
+    // client
+    // must send the secrets, and the task runs the storage check.
+    CustomerConfigData storedData = storedDataOrNull(stored);
+    if (storedData != null) {
+      StorageConfigSecrets.keepStored(storage, storedData);
+    }
+    checkSpec(storage);
+    String name = spec.getName().trim();
+    if (name.isEmpty()) {
+      throw badRequest("name must not be blank");
+    }
+    CustomerConfig named = CustomerConfig.get(cUUID, name);
+    if (named != null && !named.getConfigUUID().equals(stored.getConfigUUID())) {
+      throw nameConflict(cUUID, name);
+    }
+    CustomerConfig edited = StorageConfigMapper.INSTANCE.toV1CustomerConfig(cUUID, spec);
+    edited.setConfigUUID(stored.getConfigUUID());
+    // Backups and schedules refer to their files under it.
+    if (!StringUtils.equals(backupLocation(edited), backupLocation(stored))) {
+      throw badRequest("storage.backup_location can't change");
+    }
+    if (storedData != null) {
+      keepWhatTheSpecCantExpress(edited, storedData);
+    }
+    edited.setConfigName(name);
+    try {
+      configValidator.validateConfigData(edited);
+    } catch (PlatformServiceException e) {
+      throw StorageValidationErrors.toV2Error(e);
+    }
+    return edited;
+  }
+
+  private static String v1Subtype(StorageSpec storage) {
+    if (storage instanceof S3StorageSpec) {
+      return CustomerConfigConsts.NAME_S3;
+    } else if (storage instanceof GcsStorageSpec) {
+      return CustomerConfigConsts.NAME_GCS;
+    } else if (storage instanceof AzureStorageSpec) {
+      return CustomerConfigConsts.NAME_AZURE;
+    } else if (storage instanceof NfsStorageSpec) {
+      return CustomerConfigConsts.NAME_NFS;
+    } else if (storage instanceof OciStorageSpec) {
+      return CustomerConfigConsts.NAME_OCI;
+    }
+    throw new IllegalArgumentException("Unknown storage spec: " + storage.getClass());
+  }
+
+  /**
+   * Keeps what the stored config has that the v2 spec can't express, which the edited data, built
+   * from the spec, would otherwise drop or rewrite:
+   *
+   * <ul>
+   *   <li>the S3 proxy (deprecated, but still used by YBC and YBA's STS calls);
+   *   <li>for an S3 config federated both before and after the edit, the access keys, IAM flag and
+   *       IAM settings that v1 lets it keep: the keys are YBA's own credential where it doesn't
+   *       federate, e.g. after an HA promotion;
+   *   <li>the GCS external account config and IMDSv2 flag;
+   *   <li>for a GCS config on IAM both before and after the edit, the service account key that v1
+   *       lets a config saved with both keep.
+   * </ul>
+   */
+  private static void keepWhatTheSpecCantExpress(
+      CustomerConfig edited, CustomerConfigData storedData) {
+    CustomerConfigData editedData = edited.getDataObject();
+    if (editedData instanceof CustomerConfigStorageS3Data
+        && storedData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) editedData;
+      CustomerConfigStorageS3Data storedS3 = (CustomerConfigStorageS3Data) storedData;
+      s3.proxySetting = storedS3.proxySetting;
+      if (s3.useCrossCloudFederation && storedS3.useCrossCloudFederation) {
+        s3.awsAccessKeyId = storedS3.awsAccessKeyId;
+        s3.awsSecretAccessKey = storedS3.awsSecretAccessKey;
+        s3.isIAMInstanceProfile = storedS3.isIAMInstanceProfile;
+        s3.iamConfig = storedS3.iamConfig;
+      }
+    } else if (editedData instanceof CustomerConfigStorageGCSData
+        && storedData instanceof CustomerConfigStorageGCSData) {
+      CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) editedData;
+      CustomerConfigStorageGCSData storedGcs = (CustomerConfigStorageGCSData) storedData;
+      gcs.externalAccountConfig = storedGcs.externalAccountConfig;
+      gcs.useImdsv2 = storedGcs.useImdsv2;
+      if (gcs.useGcpIam && storedGcs.useGcpIam && gcs.gcsCredentialsJson == null) {
+        gcs.gcsCredentialsJson = storedGcs.gcsCredentialsJson;
+      }
+    } else {
+      return;
+    }
+    edited.setData((ObjectNode) StorageConfigMapper.DATA_MAPPER.valueToTree(editedData));
+  }
+
+  /** The stored data, or null if it no longer parses (a field whose type changed since). */
+  @Nullable
+  private static CustomerConfigData storedDataOrNull(CustomerConfig stored) {
+    try {
+      return stored.getDataObjectLenient();
+    } catch (RuntimeException e) {
+      log.warn(
+          "Editing storage config {} as a new config: its stored data doesn't parse: {}",
+          stored.getConfigUUID(),
+          e.getMessage());
+      return null;
+    }
+  }
+
+  private static String backupLocation(CustomerConfig config) {
+    return config.getData().path(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText(null);
+  }
+
+  /**
+   * Refuses an edit while the task of an earlier one runs, so that clients don't race each other.
+   * It doesn't exclude anything: two concurrent requests can both pass it, and an earlier edit that
+   * fails doesn't block a later one. What prevents a lost update is the task's check that the
+   * config is unchanged since the request.
+   */
+  private static void checkNoEditInProgress(UUID scUUID) {
+    for (CustomerTask task : CustomerTask.findIncompleteByTargetUUID(scUUID)) {
+      if (task.getType() == CustomerTask.TaskType.Edit) {
+        ObjectNode error = Json.newObject();
+        error.put("code", EDIT_IN_PROGRESS);
+        error.put(
+            "message",
+            String.format(
+                "Storage config %s is being edited by task %s; try again once it finishes",
+                scUUID, task.getTaskUUID()));
+        error.put("task_uuid", task.getTaskUUID().toString());
+        throw new PlatformServiceException(CONFLICT, error);
+      }
+    }
   }
 
   /**

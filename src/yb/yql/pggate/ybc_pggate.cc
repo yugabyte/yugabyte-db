@@ -114,7 +114,6 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "yb_enable_invalidation_messages is enabled.");
 
 DECLARE_bool(TEST_ash_debug_aux);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -2054,8 +2053,12 @@ YbcStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
-bool YBCIsRestartReadPointRequested() {
-  return pgapi->IsRestartReadPointRequested();
+void YBCPgResetRetryReadLimitCaps() {
+  pgapi->ResetRetryReadLimitCaps();
+}
+
+bool YBCPgIsReadRestartRetryInProgress() {
+  return pgapi->IsReadRestartRetryInProgress();
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {
@@ -3110,7 +3113,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
-    const bool use_attr_num = FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl;
+    const bool use_attr_num = yb_enable_replication_slot_transactional_ddl;
 
     // (attnum, column name) -> (index in old tuples, index in new tuples).
     // OMITTED_VALUE indicates omission.

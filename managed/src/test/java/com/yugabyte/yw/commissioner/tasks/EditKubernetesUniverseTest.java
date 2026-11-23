@@ -984,6 +984,38 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertThat(e.getMessage(), containsString("expose service setting follows the primary"));
   }
 
+  @Test
+  public void testAzOverridesChangeRejectedWithoutTheirSecrets() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-stored-pass\n";
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides =
+                    new HashMap<>(Map.of("az-1", stored)));
+
+    Cluster primary = defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    primary.userIntent.azOverrides =
+        new HashMap<>(Map.of("az-1", stored.replace("dummy-stored-pass", "dummy-new-pass")));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = new ArrayList<>(Collections.singletonList(primary));
+    taskParams.nodePrefix = NODE_PREFIX;
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    assertThat(
+        e.getMessage(),
+        containsString("previous overrides: " + redacted + ", new overrides: " + redacted));
+  }
+
   //   @Test
   public void testEditKubernetesUniverseRetry() {
     setupUniverseSingleAZ(/* Create Masters */ true);
@@ -1943,6 +1975,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(1, universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.numNodes);
+    // Code that reads clusters.get(0) as the primary must still get the primary.
+    assertEquals(
+        UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+        universe.getUniverseDetails().clusters.get(0).clusterType);
     assertTrue(universe.getUniverseDetails().updateSucceeded);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
     assertNull(universe.getStateTransitionDetails());
@@ -1956,9 +1992,33 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     StateTransitionDetails details = universe.getStateTransitionDetails();
     assertNotNull(details);
     assertTrue(details.isRollbackSafe());
-    // The primary is not edited, so the checkpoint keeps it as part of the target.
-    assertNotNull(details.getTargetUniverseDetails().getPrimaryCluster());
+    // The primary is not edited, so the checkpoint keeps it as part of the target, first.
+    assertEquals(
+        UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+        details.getTargetUniverseDetails().clusters.get(0).clusterType);
     assertTrue(commissioner.canTaskRollbackDetailed(failedEdit));
+
+    rollBackReadReplicaOnlyEdit(failedEdit);
+  }
+
+  @Test
+  public void testRollbackEditKubernetesUniverseOfReadReplicaOnlyEditWithPrimaryLastCheckpoint()
+      throws InterruptedException {
+    TaskInfo failedEdit = failReadReplicaOnlyEdit();
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    // A checkpoint whose target lists the primary after the read replica, as an older build wrote
+    // it. The rollback must still restore the primary first.
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    UniverseDefinitionTaskParams target = details.getTargetUniverseDetails();
+    target.clusters.sort(
+        Comparator.comparing(
+            c -> c.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY));
+    JsonNode primaryLastDelta =
+        DeltaEvaluator.buildDeltaJsonTree(
+            details.getBeforeUniverseDetails(), target, new NodeDetailsArrayComparator());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.setStateTransitionDetails(new StateTransitionDetails(true, primaryLastDelta)));
 
     rollBackReadReplicaOnlyEdit(failedEdit);
   }
@@ -2426,6 +2486,35 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(3, adds.size());
     assertEquals(3, removes.size());
     assertTrue(lastPosition(adds) < firstPosition(removes));
+  }
+
+  @Test
+  public void testMasterFullMoveKeepsYbcEnabled() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().setYbcInstalled(true);
+              u.getUniverseDetails().getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+            });
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.ybSoftwareVersion = FULL_MOVE_VERSION;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> helm =
+        subtasks(
+            planEdit(newIntent, pi),
+            TaskType.KubernetesCommandExecutor,
+            p ->
+                ImmutableSet.of("HELM_INSTALL", "HELM_UPGRADE")
+                    .contains(p.path("commandType").asText()));
+    assertFalse(helm.isEmpty());
+    for (TaskInfo t : helm) {
+      assertTrue(t.getTaskParams().path("enableYbc").asBoolean());
+    }
   }
 
   @Test

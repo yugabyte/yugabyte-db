@@ -452,8 +452,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // the callback for every index from the indexes argument. If the indexes argument is empty,
   // the result is provided for every index of the specified indexed table. The callback must have
   // the following signature:
-  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time).
-  // birth_time is the value persisted on the index table's IndexInfo (0 if unset).
+  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time,
+  //       IndexInfoPB::BirthTimeState birth_time_state).
+  // birth_time and birth_time_state are the values persisted on the index table's IndexInfo
+  // (birth_time is 0 if unset).
   void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.
@@ -1796,8 +1798,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns true if the table is created internally by a YugabyteDB feature/extension (e.g.
   // xCluster DDL replication) and must be excluded from CDCSDK streams. Such tables look like
   // ordinary user PG tables but exist solely to drive those features, so they should never be
-  // streamed. This is the single place to register such tables: when a new feature/extension
-  // introduces a table that CDCSDK must exclude, add a check for it here.
+  // streamed. When a new feature/extension introduces a table that CDCSDK must exclude, add a
+  // check for it here and in yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c,
+  // which keeps the table out of every logical replication slot's table list.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
 
   // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.
@@ -3357,7 +3360,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateNewCdcsdkStream(
       const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const std::optional<const NamespaceId>& namespace_id,
+      bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(

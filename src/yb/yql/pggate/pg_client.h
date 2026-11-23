@@ -275,6 +275,10 @@ class PgClient {
 
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
+  Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
+      tserver::PgPerformOptionsPB* options,
+      tserver::PgRestartTransactionForRetryRequestPB::Kind kind);
+
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);

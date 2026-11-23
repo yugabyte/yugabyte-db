@@ -1783,12 +1783,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         HelmUtils.mergeYaml(overrides, azOverrides);
       }
     } catch (IOException e) {
-      log.error(
-          String.format(
-              "Error in writing overrides map to string or string to map: "
-                  + "universe overrides: %s, azOverrides: %s",
-              taskParams().universeOverrides, taskParams().azOverrides),
-          e);
+      // The overrides can hold secrets, so they are not logged.
+      log.error("Error in writing overrides map to string or string to map", e);
       throw new RuntimeException("Error in writing overrides map to string.");
     }
     // The provider, universe and AZ overrides were merged over the generated gflags, so they can
@@ -2174,7 +2170,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       Map<String, Object> values = defaultValuesYaml.load(defaultValuesStr);
       // apply overrides on the helm chart default values
       HelmUtils.mergeYaml(values, overrides);
-      log.trace("Running validations on merged yaml: {}", values);
+      // The values hold the gflags, overrides and TLS keys, so they are not logged.
+      log.trace("Running validations on merged yaml");
       // run any validations against the final values for helm install/upgrade
       // allow K8SCertManager cert type only with override
       allowK8SCertManagerOnlyWithOverride(values);
