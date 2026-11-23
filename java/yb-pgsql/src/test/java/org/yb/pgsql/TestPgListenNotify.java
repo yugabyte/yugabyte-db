@@ -604,7 +604,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     setPollerTestGuc(0, "yb_test_notifs_poller_error_before_init", "true", "on");
     try (Connection conn = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = conn.createStatement()) {
-      // Without the fix, the LISTEN waits until the driver cancels it.
+      // Bounds the test if the LISTEN waits instead of failing.
       stmt.setQueryTimeout((int) Timeouts.adjustTimeoutSecForBuildType(60));
       stmt.execute("LISTEN " + channel);
       fail("LISTEN should have failed as its poller exits before it initializes");

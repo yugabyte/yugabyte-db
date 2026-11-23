@@ -3312,9 +3312,8 @@ ybStartNotifsPollerBgWorker(void)
  * apart, so a caller polling more often sees every exit.
  */
 static bool
-ybNotifsPollerExited(pid_t *seen_pid)
+ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
 {
-	static YbNotifsPollerShmemData *poller_data = NULL;
 	static BackgroundWorkerHandle *shm_handle = NULL;
 	static BackgroundWorkerHandle *handle = NULL;
 	bool		has_handle;
@@ -3324,7 +3323,6 @@ ybNotifsPollerExited(pid_t *seen_pid)
 	{
 		bool		found;
 
-		poller_data = ybShmemNotifsPollerData(&found);
 		shm_handle = ybShmemNotifsPollerBgwHandle(&found);
 		handle = MemoryContextAlloc(TopMemoryContext,
 									YbBackgroundWorkerHandleSize());
@@ -3389,33 +3387,28 @@ ybWaitForNotifsPollerInit(void)
 		 * Check for an exit before reading init_status, so that a poller that
 		 * reported and then exited is not taken for one that did not report.
 		 */
-		bool		exited = ybNotifsPollerExited(&poller_pid);
+		bool		exited = ybNotifsPollerExited(poller_data, &poller_pid);
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
 			return;
 
-		if (init_status == YB_NOTIFS_POLLER_INIT_FAILED || exited)
+		if (init_status == YB_NOTIFS_POLLER_INIT_FAILED)
 		{
-			if (init_status == YB_NOTIFS_POLLER_INIT_FAILED)
-			{
-				/* FAILED and error_message are set under the lock. */
-				LWLockAcquire(NotifyQueueLock, LW_SHARED);
-				strlcpy(error_message, poller_data->error_message,
-						sizeof(error_message));
-				LWLockRelease(NotifyQueueLock);
-			}
-			else
-				strlcpy(error_message,
-						"The notifications poller exited before it initialized.",
-						sizeof(error_message));
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller background worker "
-							"failed to initialize"),
-					 (error_message[0] ? errdetail("%s", error_message) : 0),
-					 errhint("Retry the LISTEN. If it keeps failing, check the "
-							 "server log.")));
+			/* FAILED and error_message are set under the lock. */
+			LWLockAcquire(NotifyQueueLock, LW_SHARED);
+			strlcpy(error_message, poller_data->error_message,
+					sizeof(error_message));
+			LWLockRelease(NotifyQueueLock);
+			break;
+		}
+
+		if (exited)
+		{
+			strlcpy(error_message,
+					"The notifications poller exited before it initialized.",
+					sizeof(error_message));
+			break;
 		}
 
 		/*
@@ -3428,6 +3421,14 @@ ybWaitForNotifsPollerInit(void)
 		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
 	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("notifications poller background worker "
+					"failed to initialize"),
+			 (error_message[0] ? errdetail("%s", error_message) : 0),
+			 errhint("Retry the LISTEN. If it keeps failing, check the "
+					 "server log.")));
 }
 
 static BackgroundWorkerHandle *
