@@ -770,10 +770,9 @@ bool IsPublicationsBoundStreamCreationRequest(
          !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
-// Whether the stream detects publication changes, table rewrites and DDL by polling the PG catalog
-// tables, which live in the sys catalog tablet on the master leader. Notifications slots stream
-// only pg_yb_notifications through a fixed publication, so they use pub refresh instead: polling
-// the catalog would make every poll round of every node's poller depend on the master leader.
+// Notifications slots stream only pg_yb_notifications through a fixed publication, so pub refresh
+// is enough for them. Detecting publication changes implicitly would make the VWAL poll the master
+// leader.
 bool DetectsPublicationChangesImplicitly(
     const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
   return FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
