@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { at } from './base';
 
 export type Loaded<T> =
   | { state: 'loading' }
@@ -11,7 +12,7 @@ export const RefreshContext = createContext(0);
 // The pages answer text/plain, and a master that does not serve an endpoint (a follower whose C++
 // leader predates it) answers HTML or a 404, so the body is parsed by hand.
 export async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+  const r = await fetch(at(url), { signal, headers: { Accept: 'application/json' } });
   const text = await r.text();
   if (!r.ok) {
     throw new Error(`HTTP ${r.status} ${r.statusText} from ${url}${snippet(text)}`);

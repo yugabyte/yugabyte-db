@@ -3,7 +3,7 @@ import { useJson } from '../api';
 import { Badge, ErrorBox, KeyValues, Load, Mono, Note, Section } from '../components/Common';
 import { DataTable } from '../components/DataTable';
 import { JsonTree } from '../components/JsonTree';
-import { formatNumber, plural, unescapeHtml } from '../format';
+import { formatNumber, plural, serverLink, unescapeHtml } from '../format';
 import { Link, useLocation } from '../router';
 import { TableJson, TabletLocation, TabletRow } from '../types';
 
@@ -17,7 +17,7 @@ function Location({ loc }: { loc: TabletLocation }) {
   if (/^https?:\/\//.test(loc.location)) {
     const host = new URL(loc.location).host;
     target = (
-      <a href={loc.location} title={loc.uuid}>
+      <a href={serverLink(loc.location)} title={loc.uuid}>
         {host}
       </a>
     );

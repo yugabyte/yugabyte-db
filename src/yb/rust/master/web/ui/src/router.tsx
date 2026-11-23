@@ -1,4 +1,5 @@
 import { AnchorHTMLAttributes, MouseEvent, useEffect, useState } from 'react';
+import { at, fromBrowserPath } from './base';
 
 // The app's own pages. The master serves index.html at each of them (`PAGES` and `HOST_PAGES` in
 // master/web/src/ui.rs); any other path is a server page and gets a full load.
@@ -25,16 +26,16 @@ export interface Location {
 }
 
 function current(): Location {
-  const search = window.location.search;
-  return { path: window.location.pathname, query: new URLSearchParams(search), search };
+  const { pathname, search } = window.location;
+  return { path: fromBrowserPath(pathname), query: new URLSearchParams(search), search };
 }
 
 const listeners = new Set<() => void>();
 window.addEventListener('popstate', () => listeners.forEach((l) => l()));
 
 export function navigate(href: string, replace = false): void {
-  if (replace) window.history.replaceState(null, '', href);
-  else window.history.pushState(null, '', href);
+  if (replace) window.history.replaceState(null, '', at(href));
+  else window.history.pushState(null, '', at(href));
   window.scrollTo(0, 0);
   listeners.forEach((l) => l());
 }
@@ -75,7 +76,7 @@ export function Link({ href, onClick, ...rest }: AnchorHTMLAttributes<HTMLAnchor
     e.preventDefault();
     navigate(href);
   };
-  return <a href={href} onClick={handle} {...rest} />;
+  return <a href={at(href)} onClick={handle} {...rest} />;
 }
 
 export function tableHref(id: string): string {

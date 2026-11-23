@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { RefreshContext } from './api';
+import { at } from './base';
 import { Link, useLocation } from './router';
 import { HomePage } from './pages/Home';
 import { TabletServersPage } from './pages/TabletServers';
@@ -145,7 +146,7 @@ export function App() {
       <div className="shell">
         <aside className="sidebar">
           <Link href="/" className="logo" title="Home">
-            <img src={logo} alt="YugabyteDB" />
+            <img src={at(logo)} alt="YugabyteDB" />
             <span>Master</span>
           </Link>
           <nav>

@@ -1,3 +1,5 @@
+import { PROXIED_SERVER, PROXY_PREFIX } from './base';
+
 const ENTITIES: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
@@ -54,8 +56,18 @@ export function plural(n: number, word: string): string {
 }
 
 // A browser link to a server's web page; the master's own scheme is the best guess for theirs.
+// Through the YBA proxy the link goes through it too: the browser cannot reach the server. The
+// proxy answers 400 for `<prefix><host>:<port>` with no path.
 export function serverUrl(hostPort: string, path = ''): string {
+  if (PROXY_PREFIX) return `${PROXY_PREFIX}${hostPort}${path || '/'}`;
   return `${window.location.protocol}//${hostPort}${path}`;
+}
+
+// A server URL from the JSON as the browser can follow it.
+export function serverLink(url: string): string {
+  if (!PROXY_PREFIX) return url;
+  const u = new URL(url);
+  return serverUrl(u.host, u.pathname + u.search + u.hash);
 }
 
 const LOOPBACK = /^(localhost|127(\.\d+){3}|\[::1\])$/;
@@ -66,7 +78,9 @@ type Addrs = { host: string; port: number }[] | undefined;
 // not say which master answered, so match the browser's address; through a loopback name that is
 // no server's address, a port only one server uses decides.
 export function thisServerIndex(servers: Addrs[]): number {
-  const { hostname, port, protocol } = window.location;
+  const { hostname, port, protocol } = PROXIED_SERVER
+    ? new URL(`http://${PROXIED_SERVER}`)
+    : window.location;
   const ownPort = port || (protocol === 'https:' ? '443' : '80');
   const find = (match: (hp: { host: string; port: number }) => boolean) =>
     servers.flatMap((addrs, i) => ((addrs ?? []).some(match) ? [i] : []));
