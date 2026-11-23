@@ -1836,9 +1836,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     if (universeEditSpec.getNetworkingSpec() != null) {
       validateUniverseEditNetworkingSpec(
-          universeEditSpec.getNetworkingSpec(),
-          v1EditParams,
-          v2dbUniverseSpec.getNetworkingSpec());
+          universeEditSpec.getNetworkingSpec(), v1EditParams, v2dbUniverseSpec.getNetworkingSpec());
     }
     validateClustersEditSpec(
         universeEditSpec.getClusters(), v1EditParams.clusters, v2dbUniverseSpec.getClusters());

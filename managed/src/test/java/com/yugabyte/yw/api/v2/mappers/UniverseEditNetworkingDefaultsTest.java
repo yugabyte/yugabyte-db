@@ -30,10 +30,8 @@ public class UniverseEditNetworkingDefaultsTest {
                 + "\"expected_universe_version\": -1,"
                 + "\"clusters\": [{\"uuid\": \""
                 + clusterUuid
-                + "\"}],"
-                + "\"networking_spec\": {\"communication_ports\": {\"ysql_server_rpc_port\": 5444}},"
-                + "\"universe_settings\": {}"
-                + "}",
+                + "\"}],\"networking_spec\": {\"communication_ports\": {\"ysql_server_rpc_port\":"
+                + " 5444}},\"universe_settings\": {}}",
             UniverseEditSpec.class);
 
     assertNull(edit.getNetworkingSpec().getAssignPublicIp());
