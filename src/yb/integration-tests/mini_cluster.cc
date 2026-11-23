@@ -1272,6 +1272,17 @@ Result<std::vector<tablet::TabletPeerPtr>> ListTabletPeersForTableName(
       cluster, VERIFY_RESULT(FindTableId(cluster, table_name)), filter);
 }
 
+Result<std::vector<tablet::TabletPeerPtr>> WaitForTableNumPeers(
+    MiniCluster* cluster, const std::string& table_name, size_t num_peers, MonoDelta timeout,
+    ListPeersFilter filter) {
+  std::vector<tablet::TabletPeerPtr> peers;
+  RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+    peers = VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter));
+    return peers.size() == num_peers;
+  }, timeout, Format("Table $0 has $1 peers", table_name, num_peers)));
+  return peers;
+}
+
 Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name, ListPeersFilter filter) {
   return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter)));

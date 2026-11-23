@@ -4336,6 +4336,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_error_holding_queue_lock", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller raises an ERROR "
+						 "while holding NotifyQueueLock, before writing to the "
+						 "async queue."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_notifs_poller_error_holding_queue_lock,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_skip_ensure_read_time_in_parallel_execution", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Skip forcing ENSURE_READ_TIME_IS_SET during parallel execution."),
 			gettext_noop("When true, parallel execution will not force read time to be "
@@ -4478,12 +4491,16 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("When set to non-zero, the next DDL will fail: "
-						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict."),
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash, 5=conflict, "
+						 "6=deadlock, 7=conflict and 8=deadlock at the "
+						 "commit RPC of a transaction with DDL state, "
+						 "which needs transactional DDL (they stay set "
+						 "until one commits)."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
-		0, 0, 5,
+		0, 0, 8,
 		NULL, NULL, NULL
 	},
 	{

@@ -149,6 +149,7 @@ YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
 YbNotifsPollerInitStatus
+YbNotifsPollerPendingEntry
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
@@ -401,7 +402,6 @@ YbcTableProperties
 YbcTablePropertiesData
 YbcTcmallocStats
 YbcTxnPriorityRequirement
-YbcTypeEntityProvider
 YbcUpdateInitPostgresMetricsFn
 YbcWaitEventDescriptor
 YbcWaitEventInfo
