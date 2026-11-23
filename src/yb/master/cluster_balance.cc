@@ -1895,16 +1895,8 @@ TabletServerId ClusterLoadBalancer::SelectBestLeaderAfterStepdown(
     }
 
     // Check which affinitized zone this tserver belongs to (if any).
-    // Use MatchesCloudInfo to support wildcard matching (e.g., cloud.region.*).
-    const auto& ts_desc = ts_meta->second.descriptor;
-    for (size_t priority = 0; priority < state_->affinitized_zones_.size(); ++priority) {
-      for (const auto& zone_cloud_info : state_->affinitized_zones_[priority]) {
-        if (ts_desc->MatchesCloudInfo(zone_cloud_info)) {
-          return priority;
-        }
-      }
-    }
-    return state_->affinitized_zones_.size();
+    return CatalogManagerUtil::GetLeaderAffinityPriority(
+        *ts_meta->second.descriptor, state_->affinitized_zones_);
   };
 
   // Find all running replicas of this tablet (excluding the one we're removing).

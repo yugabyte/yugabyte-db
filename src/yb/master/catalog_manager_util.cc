@@ -539,6 +539,19 @@ void CatalogManagerUtil::GetAllAffinitizedZones(
   }
 }
 
+size_t CatalogManagerUtil::GetLeaderAffinityPriority(
+    const TSDescriptor& ts_desc, const vector<AffinitizedZonesSet>& affinitized_zones) {
+  size_t priority = 0;
+  for (; priority < affinitized_zones.size(); ++priority) {
+    for (const auto& zone : affinitized_zones[priority]) {
+      if (ts_desc.MatchesCloudInfo(zone)) {
+        return priority;
+      }
+    }
+  }
+  return priority;
+}
+
 Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) {
   auto& placement_info = replication_info.live_replicas();
   if (!placement_info.placement_blocks().empty()) {

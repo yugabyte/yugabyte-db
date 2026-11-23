@@ -13361,25 +13361,6 @@ Status CatalogManager::SendCreateTabletRequests(
   return Status::OK();
 }
 
-namespace {
-
-// The position of the first set of preferred zones that the tserver is in, counting from the most
-// preferred, or the number of sets when it is in none of them.
-size_t LeaderPreferenceRank(
-    const TSDescriptor& ts_desc, const std::vector<AffinitizedZonesSet>& affinitized_zones) {
-  size_t rank = 0;
-  for (; rank < affinitized_zones.size(); ++rank) {
-    for (const auto& zone : affinitized_zones[rank]) {
-      if (ts_desc.MatchesCloudInfo(zone)) {
-        return rank;
-      }
-    }
-  }
-  return rank;
-}
-
-}  // namespace
-
 // If responses have been received from sufficient replicas (including hinted leader),
 // pick proposed leader and start election.
 void CatalogManager::StartElectionIfReady(
@@ -13428,11 +13409,11 @@ void CatalogManager::StartElectionIfReady(
         GetTableReplicationInfoWithDefault(table), &affinitized_zones);
   }
 
-  // Rank every voter of the Raft config that can be a leader, whether or not its replica has
-  // reported yet.
+  // Get the leader priority of every voter of the Raft config that can be a leader, whether or not
+  // its replica has reported yet. A lower value is a higher priority.
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
-  std::unordered_map<TabletServerId, size_t> voter_ranks;
-  size_t best_rank = std::numeric_limits<size_t>::max();
+  std::unordered_map<TabletServerId, size_t> voter_priorities;
+  size_t best_priority = std::numeric_limits<size_t>::max();
   for (const auto& peer : cstate.config().peers()) {
     if (peer.member_type() != PeerMemberType::VOTER) {
       continue;
@@ -13440,16 +13421,17 @@ void CatalogManager::StartElectionIfReady(
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == peer.permanent_uuid()) {
         if (!ts_desc->IsBlacklisted(leader_blacklist)) {
-          const size_t rank = LeaderPreferenceRank(*ts_desc, affinitized_zones);
-          voter_ranks.emplace(peer.permanent_uuid(), rank);
-          best_rank = std::min(best_rank, rank);
+          const size_t priority =
+              CatalogManagerUtil::GetLeaderAffinityPriority(*ts_desc, affinitized_zones);
+          voter_priorities.emplace(peer.permanent_uuid(), priority);
+          best_priority = std::min(best_priority, priority);
         }
         break;
       }
     }
   }
 
-  // Candidates are the replicas of the best rank. For an initial election a candidate need not
+  // Candidates are the replicas of the best priority. For an initial election a candidate need not
   // have reported yet, because the first report adds every voter to the replica map. The exception
   // is enable_register_ts_from_raft off: then a voter is added only when it reports itself.
   // When no voter is in a preferred zone, all voters tie and any of them is a candidate.
@@ -13460,8 +13442,8 @@ void CatalogManager::StartElectionIfReady(
         replica.second.state != RaftGroupStatePB::RUNNING)) {
       continue;
     }
-    auto it = voter_ranks.find(replica.first);
-    if (it != voter_ranks.end() && it->second == best_rank) {
+    auto it = voter_priorities.find(replica.first);
+    if (it != voter_priorities.end() && it->second == best_priority) {
       possible_leaders.push_back(replica.first);
     }
   }
