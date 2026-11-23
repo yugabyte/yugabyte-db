@@ -5153,7 +5153,7 @@ TEST_F(PgMiniTest, TabletMetadataStateColumn) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists("test_ks", YQLDatabase::YQL_DATABASE_CQL));
 
   client::YBSchemaBuilder builder;
-  builder.AddColumn("id")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  builder.AddColumn("id").Type(DataType::INT32).NotNull().HashPrimaryKey();
   client::YBSchema schema;
   ASSERT_OK(builder.Build(&schema));
 

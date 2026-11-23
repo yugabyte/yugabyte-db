@@ -290,10 +290,10 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
   // Including all columns in the primary hash allows advisory locks use case to be horizontally
   // scalable when necessary, given FLAGS_num_advisory_locks_tablets is set to a higher value on
   // cluster startup accordingly.
-  schema_builder.AddColumn("dbid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("dbid").Type(DataType::UINT32).HashPrimaryKey();
+  schema_builder.AddColumn("classid").Type(DataType::UINT32).HashPrimaryKey();
+  schema_builder.AddColumn("objid").Type(DataType::UINT32).HashPrimaryKey();
+  schema_builder.AddColumn("objsubid").Type(DataType::UINT32).HashPrimaryKey();
   schema_builder.SetTableProperties(table_properties);
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -424,10 +424,10 @@ Status YsqlManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
   }
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kPgAutoAnalyzeTableId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(kPgAutoAnalyzeMutations)->Type(DataType::INT64);
-  schema_builder.AddColumn(kPgAutoAnalyzeLastAnalyzeInfo)->Type(DataType::JSONB);
-  schema_builder.AddColumn(kPgAutoAnalyzeCurrentAnalyzeInfo)->Type(DataType::JSONB);
+  schema_builder.AddColumn(kPgAutoAnalyzeTableId).HashPrimaryKey().Type(DataType::STRING);
+  schema_builder.AddColumn(kPgAutoAnalyzeMutations).Type(DataType::INT64);
+  schema_builder.AddColumn(kPgAutoAnalyzeLastAnalyzeInfo).Type(DataType::JSONB);
+  schema_builder.AddColumn(kPgAutoAnalyzeCurrentAnalyzeInfo).Type(DataType::JSONB);
 
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));

@@ -254,9 +254,9 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
   // Schema:
   // replication_group_id string (HASH), tablet_id string (HASH), safe_time int64
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kXCReplicationGroupId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(kXCProducerTabletId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(kXCSafeTime)->Type(DataType::INT64);
+  schema_builder.AddColumn(kXCReplicationGroupId).HashPrimaryKey().Type(DataType::STRING);
+  schema_builder.AddColumn(kXCProducerTabletId).HashPrimaryKey().Type(DataType::STRING);
+  schema_builder.AddColumn(kXCSafeTime).Type(DataType::INT64);
 
   client::YBSchema yb_schema;
   RETURN_NOT_OK(schema_builder.Build(&yb_schema));

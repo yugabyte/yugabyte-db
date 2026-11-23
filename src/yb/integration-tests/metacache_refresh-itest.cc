@@ -131,8 +131,8 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
         YBTableName(YQL_DATABASE_PGSQL, kNamespaceId, kPgsqlNamespaceName, kPgsqlTableName);
 
     client::YBSchemaBuilder schema_builder;
-    schema_builder.AddColumn("key")->PrimaryKey()->Type(DataType::STRING)->NotNull();
-    schema_builder.AddColumn("value")->Type(DataType::INT64)->NotNull();
+    schema_builder.AddColumn("key").PrimaryKey().Type(DataType::STRING).NotNull();
+    schema_builder.AddColumn("value").Type(DataType::INT64).NotNull();
     EXPECT_OK(client_->CreateNamespaceIfNotExists(
         kPgsqlNamespaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
         kNamespaceId));

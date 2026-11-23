@@ -21,6 +21,7 @@
 #pragma once
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/table_alterer.h"
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/transaction.pb.h"
@@ -33,8 +34,7 @@
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"
 
-namespace yb {
-namespace ql {
+namespace yb::ql {
 
 class QLEnv {
  public:
@@ -56,8 +56,7 @@ class QLEnv {
 
   virtual std::unique_ptr<client::YBTableCreator> NewTableCreator();
 
-  virtual std::unique_ptr<client::YBTableAlterer> NewTableAlterer(
-      const client::YBTableName& table_name);
+  virtual client::YBTableAlterer MakeTableAlterer(const client::YBTableName& table_name);
 
   virtual Status TruncateTable(const std::string& table_id);
 
@@ -231,5 +230,4 @@ class QLEnv {
   mutable QLSession::SharedPtr ql_session_;
 };
 
-}  // namespace ql
-}  // namespace yb
+}  // namespace yb::ql

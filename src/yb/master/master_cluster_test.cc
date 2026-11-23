@@ -287,8 +287,8 @@ TEST_F(RemoveTabletServerTest, DeletedSplitParentWithStaleReplicaDoesNotBlockRem
 
   client::YBSchema schema;
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-  schema_builder.AddColumn("value")->Type(DataType::INT32)->NotNull();
+  schema_builder.AddColumn("key").Type(DataType::INT32).NotNull().HashPrimaryKey();
+  schema_builder.AddColumn("value").Type(DataType::INT32).NotNull();
   ASSERT_OK(schema_builder.Build(&schema));
   auto table_creator = client->NewTableCreator();
   ASSERT_OK(table_creator->table_name(table_name)

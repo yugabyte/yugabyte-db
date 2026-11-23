@@ -193,12 +193,11 @@ class MasterFailoverTest : public YBTest {
   }
 
   Status RenameTable(const YBTableName& table_name_orig, const YBTableName& table_name_new) {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
-    return table_alterer
-      ->RenameTo(table_name_new)
-      ->timeout(MonoDelta::FromSeconds(90))
-      ->wait(true)
-      ->Alter();
+    return client_->MakeTableAlterer(table_name_orig)
+        .RenameTo(table_name_new)
+        .timeout(MonoDelta::FromSeconds(90))
+        .wait(true)
+        .Alter();
   }
 
   // Test that we can get the table location information from the
@@ -784,7 +783,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   const YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "dereference_tasks_table");
   YBSchema schema;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(DataType::INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("key").Type(DataType::INT32).NotNull().PrimaryKey();
   ASSERT_OK(b.Build(&schema));
   auto table_creator = client->NewTableCreator();
   ASSERT_OK(table_creator->table_name(table_name)

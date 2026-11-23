@@ -170,7 +170,7 @@ struct SliceKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->HashPrimaryKey();
+    builder->AddColumn("key").Type(KeyTypeWrapper::type).NotNull().HashPrimaryKey();
   }
 
   void GenerateRowKey(YBqlWriteOp* insert, int split_idx, int row_idx) const {
@@ -220,7 +220,7 @@ struct IntKeysTestSetup {
   }
 
   void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
-    builder->AddColumn("key")->Type(KeyTypeWrapper::type)->NotNull()->HashPrimaryKey();
+    builder->AddColumn("key").Type(KeyTypeWrapper::type).NotNull().HashPrimaryKey();
   }
 
   void GenerateRowKey(YBqlWriteOp* insert, int split_idx, int row_idx) const {
@@ -269,13 +269,13 @@ class AllTypesItest : public YBTest {
   void CreateAllTypesSchema() {
     YBSchemaBuilder builder;
     setup_.AddKeyColumnsToSchema(&builder);
-    builder.AddColumn("int8_val")->Type(DataType::INT8);
-    builder.AddColumn("int16_val")->Type(DataType::INT16);
-    builder.AddColumn("int32_val")->Type(DataType::INT32);
-    builder.AddColumn("int64_val")->Type(DataType::INT64);
-    builder.AddColumn("string_val")->Type(DataType::STRING);
-    builder.AddColumn("bool_val")->Type(DataType::BOOL);
-    builder.AddColumn("binary_val")->Type(DataType::BINARY);
+    builder.AddColumn("int8_val").Type(DataType::INT8);
+    builder.AddColumn("int16_val").Type(DataType::INT16);
+    builder.AddColumn("int32_val").Type(DataType::INT32);
+    builder.AddColumn("int64_val").Type(DataType::INT64);
+    builder.AddColumn("string_val").Type(DataType::STRING);
+    builder.AddColumn("bool_val").Type(DataType::BOOL);
+    builder.AddColumn("binary_val").Type(DataType::BINARY);
     CHECK_OK(builder.Build(&schema_));
   }
 

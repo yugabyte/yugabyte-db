@@ -61,7 +61,7 @@ class YcqlOnlyUpgradeTest : public UpgradeTestBase {
   Status CreateTable() {
     client::YBSchema schema;
     client::YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0").Type(DataType::INT32).NotNull().HashPrimaryKey();
     RETURN_NOT_OK(b.Build(&schema));
 
     client::YBTableName table_name(YQL_DATABASE_CQL, "namespace_name", "table_name");

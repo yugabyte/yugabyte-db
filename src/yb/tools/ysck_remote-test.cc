@@ -75,8 +75,8 @@ class RemoteYsckTest : public YBTest {
   RemoteYsckTest()
     : random_(SeedRandom()) {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("key").Type(DataType::INT32).NotNull().HashPrimaryKey();
+    b.AddColumn("int_val").Type(DataType::INT32).NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 

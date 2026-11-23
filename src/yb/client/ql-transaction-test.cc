@@ -280,9 +280,9 @@ TEST_F(QLTransactionTest, WriteRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
 
   const std::string kExtraColumn = "v2";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->AddColumn(kExtraColumn)->Type(DataType::INT32);
-  ASSERT_OK(table_alterer->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  table_alterer.AddColumn(kExtraColumn).Type(DataType::INT32);
+  ASSERT_OK(table_alterer.Alter());
 
   ASSERT_OK(table_.Open(kTableName, client_.get())); // Reopen to update schema version.
 

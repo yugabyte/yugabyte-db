@@ -201,8 +201,8 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
     ASSERT_OK(client_->CreateNamespaceIfNotExists(
         kTableName.namespace_name(), kTableName.namespace_type()));
     client::YBSchemaBuilder builder;
-    builder.AddColumn("k")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
-    builder.AddColumn("v")->Type(DataType::STRING)->Nullable();
+    builder.AddColumn("k").Type(DataType::STRING).HashPrimaryKey().NotNull();
+    builder.AddColumn("v").Type(DataType::STRING).Nullable();
     TableProperties table_properties;
     table_properties.SetTransactional(true);
     builder.SetTableProperties(table_properties);

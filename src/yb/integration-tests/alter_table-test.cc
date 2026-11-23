@@ -137,8 +137,8 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
       inserted_idx_(0) {
 
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("c1")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("c0").Type(DataType::INT32).NotNull().HashPrimaryKey();
+    b.AddColumn("c1").Type(DataType::INT32).NotNull();
     CHECK_OK(b.Build(&schema_));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
@@ -247,9 +247,9 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
   Status AddNewI32Column(const YBTableName& table_name,
                          const string& column_name,
                          const MonoDelta& timeout) {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
-    table_alterer->AddColumn(column_name)->Type(DataType::INT32)->NotNull();
-    return table_alterer->timeout(timeout)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(table_name);
+    table_alterer.AddColumn(column_name).Type(DataType::INT32).NotNull();
+    return table_alterer.timeout(timeout).Alter();
   }
 
   enum VerifyPattern {
@@ -380,9 +380,9 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new")->Type(DataType::INT32);
-    ASSERT_OK(table_alterer->Alter());
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    table_alterer.AddColumn("new").Type(DataType::INT32);
+    ASSERT_OK(table_alterer.Alter());
   }
 
   InsertRows(1, 1);
@@ -580,8 +580,8 @@ TEST_P(AlterTableTest, TestDropAndAddNewColumn) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
@@ -599,8 +599,8 @@ TEST_P(AlterTableTest, DISABLED_TestCompactionAfterDrop) {
   ASSERT_NE(0, docdb_dump.length());
 
   LOG(INFO) << "Dropping c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   LOG(INFO) << "Forcing compaction";
   CHECK_OK(tablet->ForceManualRocksDBCompact());
@@ -628,8 +628,8 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
   UpdateRow(0, { {"c1", 1}, {"c2", 10001} });
 
   LOG(INFO) << "Dropping c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   UpdateRow(1, { {"c2", 10002} });
 
@@ -653,10 +653,9 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
 // over column ids after a table rename.
 TEST_P(AlterTableTest, TestRenameTableAndAdd) {
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
   YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "someothername");
-  ASSERT_OK(table_alterer->RenameTo(new_name)
-            ->Alter());
+  ASSERT_OK(table_alterer.RenameTo(new_name).Alter());
 
   // After a successful rename the old name must not resolve. The commit erased it.
   ASSERT_FALSE(ASSERT_RESULT(TableNameResolves(kTableName)));
@@ -676,8 +675,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameSysCatalogWriteFailureDoesNotDea
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_sys_catalog_write) = true;
 
   YBTableName new_name(kTableName.namespace_type(), kTableName.namespace_name(), "renamed-table");
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  Status s = table_alterer->RenameTo(new_name)->timeout(MonoDelta::FromSeconds(30))->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  Status s = table_alterer.RenameTo(new_name).timeout(MonoDelta::FromSeconds(30)).Alter();
   // The injected write failure must surface as an error instead of hanging.
   ASSERT_NOK(s);
 
@@ -770,8 +769,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameWindowBothNamesResolve) {
   StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
 
   auto rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    return table_alterer->RenameTo(new_name)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    return table_alterer.RenameTo(new_name).Alter();
   });
   auto release_alter = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
@@ -830,10 +829,10 @@ TEST_P(AlterTableSysCatalogWriteTest, TestDropByOldNameWaitsForRenameCommit) {
   StringWaiterLogSink drop_started_sink("Servicing DeleteTable request");
 
   auto rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
     // The drop deletes the table as soon as the rename commits, so waiting for the new schema to
     // reach the tablets cannot succeed. Return once the master has committed the rename.
-    return table_alterer->RenameTo(new_name)->wait(false)->Alter();
+    return table_alterer.RenameTo(new_name).wait(false).Alter();
   });
   std::future<Status> drop_future;  // Assigned once the rename is parked.
   auto release_alter = ScopeExit([] {
@@ -887,10 +886,10 @@ TEST_P(AlterTableSysCatalogWriteTest, TestQueuedRenameWaitsWithoutBlockingCatalo
   StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
 
   auto first_rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
     // The second rename changes the name again before the tablets report, so polling for this
     // alter to finish by name cannot succeed. Return once the master has committed the rename.
-    return table_alterer->RenameTo(first_name)->wait(false)->Alter();
+    return table_alterer.RenameTo(first_name).wait(false).Alter();
   });
   std::future<Status> second_rename_future;  // Assigned once the first rename is parked.
   auto release_alter = ScopeExit([] {
@@ -899,8 +898,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestQueuedRenameWaitsWithoutBlockingCatalo
   ASSERT_OK(parked_sink.WaitFor(30s * kTimeMultiplier));
 
   second_rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    return table_alterer->RenameTo(second_name)->wait(false)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    return table_alterer.RenameTo(second_name).wait(false).Alter();
   });
 
   // The second rename reserves its new name under mutex_ and then waits for the COW write lock
@@ -958,8 +957,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestFailedRenameDoesNotLeakReservedName) {
   YBTableName new_name(
       kTableName.namespace_type(), kTableName.namespace_name(), "never-renamed-to");
 
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  Status s = table_alterer->RenameTo(new_name)->SetWalRetentionSecs(3600)->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  Status s = table_alterer.RenameTo(new_name).SetWalRetentionSecs(3600).Alter();
   ASSERT_THAT(s, EqualsCode(STATUS(InvalidArgument, "")));
 
   // The old name stays live and the reservation is rolled back.
@@ -978,9 +977,9 @@ TEST_P(AlterTableSysCatalogWriteTest, TestFailedAlterStepReleasesReservedName) {
       kTableName.namespace_type(), kTableName.namespace_name(), "never-renamed-either");
 
   // Dropping a column that does not exist fails schema-change application.
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->DropColumn("no-such-column");
-  Status s = table_alterer->RenameTo(new_name)->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  table_alterer.DropColumn("no-such-column");
+  Status s = table_alterer.RenameTo(new_name).Alter();
   ASSERT_THAT(s, EqualsCode(STATUS(NotFound, "")));
 
   // The old name stays live and the reservation is rolled back.
@@ -1003,9 +1002,9 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameCollisionCheckedBeforeAlterSteps
   ASSERT_OK(CreateTable(taken_name));
 
   // Dropping a column that does not exist is an invalid step. The collision must win.
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->DropColumn("no-such-column");
-  Status s = table_alterer->RenameTo(taken_name)->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  table_alterer.DropColumn("no-such-column");
+  Status s = table_alterer.RenameTo(taken_name).Alter();
   ASSERT_THAT(s, EqualsCode(STATUS(AlreadyPresent, "")));
 
   // Nothing changed. Each name still resolves to its own table.
@@ -1019,8 +1018,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameCollisionCheckedBeforeAlterSteps
 // has nothing to erase and must not touch the live entry. A rollback that erased the entry
 // anyway would drop the table's only name mapping.
 TEST_P(AlterTableSysCatalogWriteTest, TestRenameToSameNameKeepsTableReachable) {
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  Status s = table_alterer->RenameTo(kTableName)->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  Status s = table_alterer.RenameTo(kTableName).Alter();
   ASSERT_THAT(s, EqualsCode(STATUS(AlreadyPresent, "")));
 
   // The table's one name mapping is intact. A lookup and a subsequent alter both succeed.
@@ -1045,8 +1044,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameToReservedNameRejected) {
   StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
 
   auto rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    return table_alterer->RenameTo(contested_name)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    return table_alterer.RenameTo(contested_name).Alter();
   });
   auto release_alter = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
@@ -1055,8 +1054,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestRenameToReservedNameRejected) {
 
   // The second rename fails against the reservation, before it reaches its own park point, so
   // this call returns while the first rename is still parked.
-  std::unique_ptr<YBTableAlterer> other_alterer(client_->NewTableAlterer(other_name));
-  Status s = other_alterer->RenameTo(contested_name)->Alter();
+  auto other_alterer = client_->MakeTableAlterer(other_name);
+  const auto s = other_alterer.RenameTo(contested_name).Alter();
   ASSERT_THAT(s, EqualsCode(STATUS(AlreadyPresent, "")));
 
   // The failed rename changed nothing. The other table stays reachable by its own name, and the
@@ -1091,8 +1090,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestDropByOldNameDuringReservationWindow) 
   StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
 
   auto rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    return table_alterer->RenameTo(new_name)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    return table_alterer.RenameTo(new_name).Alter();
   });
   auto release_alter = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
@@ -1133,8 +1132,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestDropByReservedNameDuringReservationWin
   StringWaiterLogSink parked_sink("Blocking AlterTableWithBatchTracker");
 
   auto rename_future = std::async(std::launch::async, [&] {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    return table_alterer->RenameTo(new_name)->Alter();
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    return table_alterer.RenameTo(new_name).Alter();
   });
   auto release_alter = ScopeExit([] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_alter_table) = "";
@@ -1168,8 +1167,8 @@ TEST_P(AlterTableSysCatalogWriteTest, TestFailureAfterCommitKeepsRename) {
       kTableName.namespace_type(), kTableName.namespace_name(), "renamed-then-failed");
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_after_commit) = true;
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  Status s = table_alterer->RenameTo(new_name)->Alter();
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  Status s = table_alterer.RenameTo(new_name).Alter();
   ASSERT_NOK(s);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_after_commit) = false;
 
@@ -1204,8 +1203,8 @@ TEST_P(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("{ int32:16777216, int32:10002, null }", rows[1]);
 
   LOG(INFO) << "Dropping c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
@@ -1242,9 +1241,9 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
       : FLAGS_log_min_seconds_to_retain * 2;
 
   LOG(INFO) << "Modifying wal retention time to " << kWalRetentionSecs;
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
 
-  ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
+  ASSERT_OK(table_alterer.SetWalRetentionSecs(kWalRetentionSecs).Alter());
 
   int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
 
@@ -1283,8 +1282,8 @@ TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   // Drop c1.
   LOG(INFO) << "Dropping c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   rows = ScanToStrings();
   ASSERT_EQ(2, rows.size());
@@ -1482,10 +1481,10 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
 
   // Issue a bunch of new alters without waiting for them to finish.
   for (size_t i = 0; i < kNumNewCols; i++) {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
-    table_alterer->AddColumn(Format("new_col$0", i))
-                 ->Type(DataType::INT32)->NotNull();
-    ASSERT_OK(table_alterer->wait(false)->Alter());
+    auto table_alterer = client_->MakeTableAlterer(kSplitTableName);
+    table_alterer.AddColumn(Format("new_col$0", i))
+                 .Type(DataType::INT32).NotNull();
+    ASSERT_OK(table_alterer.wait(false).Alter());
   }
 
   // Now wait. This should block on all of them.
@@ -1506,8 +1505,8 @@ TEST_P(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
 
@@ -1530,8 +1529,8 @@ TEST_P(ReplicatedAlterTableTest, TestAlterOneTSDown) {
   ShutdownTS(0);
   // Now operating with 2 out of 3 servers.  Alter should still work because it's quorum-based.
 
-  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
+  auto table_alterer = client_->MakeTableAlterer(kTableName);
+  ASSERT_OK(table_alterer.DropColumn("c1").Alter());
   ASSERT_OK(AddNewI32Column(kTableName, "c1"));
   ASSERT_OK(AddNewI32Column(kTableName, "new_col"));
 

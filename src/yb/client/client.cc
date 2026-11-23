@@ -834,12 +834,12 @@ Result<TableCompactionStatus> YBClient::GetCompactionStatus(
       table_name, show_tablets, CoarseMonoClock::Now() + default_admin_operation_timeout());
 }
 
-std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
-  return std::unique_ptr<YBTableAlterer>(new YBTableAlterer(this, name));
+YBTableAlterer YBClient::MakeTableAlterer(const YBTableName& name) {
+  return YBTableAlterer{this, name};
 }
 
-std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const string id) {
-  return std::unique_ptr<YBTableAlterer>(new YBTableAlterer(this, id));
+YBTableAlterer YBClient::MakeTableAlterer(const string& id) {
+  return YBTableAlterer{this, id};
 }
 
 Status YBClient::IsAlterTableInProgress(
@@ -2399,8 +2399,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   // Put in the new live placement info.
   replication_info.mutable_live_replicas()->Swap(&live_replicas);
 
-  std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
-  return table_alterer->replication_info(replication_info)->Alter();
+  return MakeTableAlterer(table_name).replication_info(replication_info).Alter();
 }
 
 Status YBClient::CreateTransactionsStatusTable(

@@ -2995,13 +2995,10 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   }
 
   Status AlterTableSetDefaultTTL(int ttl_sec) {
-    const auto table_name = table_.name();
-    auto alterer = client_->NewTableAlterer(table_name);
-    alterer->wait(true);
     TableProperties table_properties;
     table_properties.SetDefaultTimeToLive(ttl_sec * MonoTime::kMillisecondsPerSecond);
-    alterer->SetTableProperties(table_properties);
-    return alterer->Alter();
+    return client_->MakeTableAlterer(table_.name())
+        .wait(true).SetTableProperties(table_properties).Alter();
   }
 
   Status TestSplitBeforeParentDeletion(bool hide_only);
@@ -5431,13 +5428,10 @@ TEST_F(TabletSplitITestMultiMaster, AlterTableRetryLoopAfterSplitAndMasterFailov
     return parent.get()->LockForRead()->is_hidden();
   }, 30s * kTimeMultiplier, "Wait for split parent to become hidden"));
 
-  const auto table_name = table_.name();
-  auto alterer = client_->NewTableAlterer(table_name);
-  alterer->wait(true);
   TableProperties table_properties;
   table_properties.SetDefaultTimeToLive(300 * MonoTime::kMillisecondsPerSecond);
-  alterer->SetTableProperties(table_properties);
-  ASSERT_OK(alterer->Alter());
+  ASSERT_OK(client_->MakeTableAlterer(table_.name())
+      .wait(true).SetTableProperties(table_properties).Alter());
 
   StringWaiterLogSink skip_sink(
       "Skipping AlterTable for hidden already-split tablet " + parent_tablet_id);

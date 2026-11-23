@@ -264,8 +264,8 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
   if (!req.is_hash() && !req.is_range()) {
     EnsureYBbasectidColumnCreated();
   }
-  client::YBColumnSpec* col = schema_builder_.AddColumn(req.attr_name())->Type(yb_type);
-  col->Order(req.attr_num());
+  auto& col = schema_builder_.AddColumn(req.attr_name()).Type(yb_type);
+  col.Order(req.attr_num());
   auto sorting_type = static_cast<SortingType>(req.sorting_type());
   if (req.is_hash()) {
     if (!range_columns_.empty()) {
@@ -274,13 +274,13 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
     if (sorting_type != SortingType::kNotSpecified) {
       return STATUS(InvalidArgument, "Hash column can't have sorting order");
     }
-    col->HashPrimaryKey();
+    col.HashPrimaryKey();
     hash_schema_ = dockv::YBHashSchema::kPgsqlHash;
   } else if (req.is_range()) {
-    col->PrimaryKey(sorting_type);
+    col.PrimaryKey(sorting_type);
     range_columns_.emplace_back(req.attr_name());
   }
-  col->PgTypeOid(req.attr_pgoid());
+  col.PgTypeOid(req.attr_pgoid());
   return Status::OK();
 }
 
@@ -298,9 +298,10 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // In all other case value of this column is NULL.
   if (req_.is_unique_index()) {
     auto name = "ybuniqueidxkeysuffix";
-    client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-    col->Order(std::to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix));
-    col->PrimaryKey();
+    schema_builder_.AddColumn(name)
+        .Type(yb_type)
+        .Order(std::to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix))
+        .PrimaryKey();
     range_columns_.emplace_back(name);
   }
 
@@ -308,10 +309,11 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
   // added at the end of the primary key of the index, i.e. either before any non-primary-key
   // column if any or before exec() below.
   auto name = "ybidxbasectid";
-  client::YBColumnSpec* col = schema_builder_.AddColumn(name)->Type(yb_type);
-  col->Order(std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
+  auto& col = schema_builder_.AddColumn(name)
+      .Type(yb_type)
+      .Order(std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId));
   if (!req_.is_unique_index()) {
-    col->PrimaryKey();
+    col.PrimaryKey();
     range_columns_.emplace_back(name);
   }
 
@@ -413,10 +415,10 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
 
   // Set up the schema.
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(DataType::INT64);
-  schema_builder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(DataType::INT64);
-  schema_builder.AddColumn(kPgSequenceLastValueColName)->Type(DataType::INT64)->NotNull();
-  schema_builder.AddColumn(kPgSequenceIsCalledColName)->Type(DataType::BOOL)->NotNull();
+  schema_builder.AddColumn(kPgSequenceDbOidColName).HashPrimaryKey().Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceSeqOidColName).HashPrimaryKey().Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceLastValueColName).Type(DataType::INT64).NotNull();
+  schema_builder.AddColumn(kPgSequenceIsCalledColName).Type(DataType::BOOL).NotNull();
   client::YBSchema schema;
   CHECK_OK(schema_builder.Build(&schema));
 

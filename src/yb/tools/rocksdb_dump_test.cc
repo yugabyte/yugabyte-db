@@ -77,7 +77,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("k").Type(DataType::INT64).NotNull().HashPrimaryKey();
     ASSERT_OK(b.Build(&schema));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());

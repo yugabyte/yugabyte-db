@@ -1969,7 +1969,7 @@ class PgClientSession::Impl {
       const PgAlterTableRequestPB& req, PgAlterTableResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
     const auto table_id = PgObjectId::GetYbTableIdFromPB(req.table_id());
-    const auto alterer = client_.NewTableAlterer(table_id);
+    auto alterer = client_.MakeTableAlterer(table_id);
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
@@ -1977,18 +1977,18 @@ class PgClientSession::Impl {
         IsTxnUsingTableLocks(req.options().using_table_locks_globally()), GetDeferReadPoint(req),
         req.options().origination_ht()));
     if (txn) {
-      alterer->part_of_transaction(txn);
+      alterer.part_of_transaction(txn);
     }
-    alterer->part_of_sub_transaction(req.options().active_sub_transaction_id());
+    alterer.part_of_sub_transaction(req.options().active_sub_transaction_id());
     if (req.increment_schema_version()) {
-      alterer->set_increment_schema_version();
+      alterer.set_increment_schema_version();
     }
     std::optional<dockv::VectorValueFormat> vector_value_format;
     for (const auto& add_column : req.add_columns()) {
       const auto yb_type = QLType::Create(ToLW(
           static_cast<PersistentDataType>(add_column.attr_ybtype())));
-      auto column_spec = alterer->AddColumn(add_column.attr_name())
-            ->Type(yb_type)->Order(add_column.attr_num())->PgTypeOid(add_column.attr_pgoid());
+      auto& column_spec = alterer.AddColumn(add_column.attr_name())
+            .Type(yb_type).Order(add_column.attr_num()).PgTypeOid(add_column.attr_pgoid());
       auto missing_val = add_column.attr_missing_val();
       if (yb_type->main() == DataType::VECTOR && !IsNull(missing_val)) {
         if (!vector_value_format) {
@@ -2001,14 +2001,14 @@ class PgClientSession::Impl {
         missing_val =
             VERIFY_RESULT(dockv::EncodeVectorSchemaMissingValue(missing_val, *vector_value_format));
       }
-      column_spec->SetMissing(missing_val);
+      column_spec.SetMissing(missing_val);
       // Do not set 'nullable' attribute as PgCreateTable::AddColumn() does not do it.
     }
     for (const auto& rename_column : req.rename_columns()) {
-      alterer->AlterColumn(rename_column.old_name())->RenameTo(rename_column.new_name());
+      alterer.AlterColumn(rename_column.old_name()).RenameTo(rename_column.new_name());
     }
     for (const auto& drop_column : req.drop_columns()) {
-      alterer->DropColumn(drop_column);
+      alterer.DropColumn(drop_column);
     }
 
     if (!req.rename_table().table_name().empty() ||
@@ -2024,7 +2024,7 @@ class PgClientSession::Impl {
       if (!req.rename_table().schema_name().empty()) {
         new_table_name.set_pgschema_name(req.rename_table().schema_name());
       }
-      alterer->RenameTo(new_table_name);
+      alterer.RenameTo(new_table_name);
     }
 
     if (req.has_replica_identity()) {
@@ -2034,10 +2034,10 @@ class PgClientSession::Impl {
       auto replica_identity = VERIFY_RESULT(GetReplicaIdentityEnumValue(
           req.replica_identity().replica_identity()));
       table_properties.SetReplicaIdentity(replica_identity);
-      alterer->SetTableProperties(table_properties);
+      alterer.SetTableProperties(table_properties);
     }
-    alterer->timeout(context->GetClientDeadline() - CoarseMonoClock::now());
-    RETURN_NOT_OK(alterer->Alter());
+    alterer.timeout(context->GetClientDeadline() - CoarseMonoClock::now());
+    RETURN_NOT_OK(alterer.Alter());
     table_cache().Invalidate(table_id);
     return Status::OK();
   }

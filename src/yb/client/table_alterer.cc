@@ -26,87 +26,82 @@
 DEFINE_test_flag(bool, allow_wait_for_alter_table_to_finish, true,
     "When disabled, alter returns without waiting inline and checking the alter status at master.");
 
-using std::string;
-
-namespace yb {
-namespace client {
+namespace yb::client {
 
 struct YBTableAlterer::Step {
+  Step(master::AlterTableRequestPB::StepType st, std::string_view name)
+      : step_type(st), spec(name) {}
+
   master::AlterTableRequestPB::StepType step_type;
-  std::unique_ptr<YBColumnSpec> spec;
+  YBColumnSpec spec;
 };
 
 YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : client_(client), table_name_(name) {
 }
 
-YBTableAlterer::YBTableAlterer(YBClient* client, const string id)
-  : client_(client), table_id_(std::move(id)) {
+YBTableAlterer::YBTableAlterer(YBClient* client, const std::string& id)
+  : client_(client), table_id_(id) {
 }
 
-YBTableAlterer::~YBTableAlterer() {
-}
+YBTableAlterer::~YBTableAlterer() = default;
 
-YBTableAlterer* YBTableAlterer::RenameTo(const YBTableName& new_name) {
+YBTableAlterer& YBTableAlterer::RenameTo(const YBTableName& new_name) {
   rename_to_ = std::make_unique<YBTableName>(new_name);
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBTableAlterer::AddColumn(const string& name) {
-  steps_.push_back({master::AlterTableRequestPB::ADD_COLUMN, std::make_unique<YBColumnSpec>(name)});
-  return steps_.back().spec.get();
+YBColumnSpec& YBTableAlterer::AddColumn(std::string_view name) {
+  return steps_.emplace_back(master::AlterTableRequestPB::ADD_COLUMN, name).spec;
 }
 
-YBColumnSpec* YBTableAlterer::AlterColumn(const string& name) {
-  steps_.push_back(
-      {master::AlterTableRequestPB::ALTER_COLUMN, std::make_unique<YBColumnSpec>(name)});
-  return steps_.back().spec.get();
+YBColumnSpec& YBTableAlterer::AlterColumn(std::string_view name) {
+  return steps_.emplace_back(master::AlterTableRequestPB::ALTER_COLUMN, name).spec;
 }
 
-YBTableAlterer* YBTableAlterer::DropColumn(const string& name) {
-  steps_.push_back(
-      {master::AlterTableRequestPB::DROP_COLUMN, std::make_unique<YBColumnSpec>(name)});
-  return this;
+YBTableAlterer& YBTableAlterer::DropColumn(std::string_view name) {
+  steps_.emplace_back(master::AlterTableRequestPB::DROP_COLUMN, name);
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_properties) {
+YBTableAlterer& YBTableAlterer::SetTableProperties(const TableProperties& table_properties) {
   table_properties_ = std::make_unique<TableProperties>(table_properties);
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::replication_info(const ReplicationInfoPB& ri) {
+YBTableAlterer& YBTableAlterer::replication_info(const ReplicationInfoPB& ri) {
   replication_info_ = std::make_unique<ReplicationInfoPB>(ri);
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::SetWalRetentionSecs(const uint32_t wal_retention_secs) {
+YBTableAlterer& YBTableAlterer::SetWalRetentionSecs(const uint32_t wal_retention_secs) {
   wal_retention_secs_ = wal_retention_secs;
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
+YBTableAlterer& YBTableAlterer::timeout(const MonoDelta& timeout) {
   timeout_ = timeout;
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::wait(bool wait) {
+YBTableAlterer& YBTableAlterer::wait(bool wait) {
   wait_ = wait;
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::part_of_transaction(const TransactionMetadata* txn) {
+YBTableAlterer& YBTableAlterer::part_of_transaction(const TransactionMetadata* txn) {
   txn_ = txn;
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::part_of_sub_transaction(uint32_t sub_txn_id) {
+YBTableAlterer& YBTableAlterer::part_of_sub_transaction(uint32_t sub_txn_id) {
   sub_txn_id_ = sub_txn_id;
-  return this;
+  return *this;
 }
 
-YBTableAlterer* YBTableAlterer::set_increment_schema_version() {
+YBTableAlterer& YBTableAlterer::set_increment_schema_version() {
   increment_schema_version_ = true;
-  return this;
+  return *this;
 }
 
 Status YBTableAlterer::Alter() {
@@ -157,7 +152,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     }
   }
 
-  for (const Step& s : steps_) {
+  for (const auto& s : steps_) {
     auto* pb_step = req->add_alter_schema_steps();
     pb_step->set_type(s.step_type);
 
@@ -165,33 +160,33 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
       case master::AlterTableRequestPB::ADD_COLUMN:
       {
         YBColumnSchema col;
-        RETURN_NOT_OK(s.spec->ToColumnSchema(&col));
+        RETURN_NOT_OK(s.spec.ToColumnSchema(&col));
         ColumnSchemaToPB(*col.col_,
                          pb_step->mutable_add_column()->mutable_schema());
         break;
       }
       case master::AlterTableRequestPB::DROP_COLUMN:
       {
-        pb_step->mutable_drop_column()->set_name(s.spec->data_->name);
+        pb_step->mutable_drop_column()->set_name(s.spec.data_->name);
         break;
       }
       case master::AlterTableRequestPB::ALTER_COLUMN:
         // TODO(KUDU-861): support altering a column in the wire protocol.
         // For now, we just give an error if the caller tries to do
         // any operation other than rename.
-        if (s.spec->data_->type) {
-          return STATUS(NotSupported, "Cannot change type of the column", s.spec->data_->name);
+        if (s.spec.data_->type) {
+          return STATUS(NotSupported, "Cannot change type of the column", s.spec.data_->name);
         }
-        if (s.spec->data_->kind != ColumnKind::VALUE) {
-          return STATUS(NotSupported, "Cannot alter key column", s.spec->data_->name);
+        if (s.spec.data_->kind != ColumnKind::VALUE) {
+          return STATUS(NotSupported, "Cannot alter key column", s.spec.data_->name);
         }
         // We only support rename column
-        if (!s.spec->data_->rename_to) {
+        if (!s.spec.data_->rename_to) {
           return STATUS(InvalidArgument, "no alter operation specified",
-                                         s.spec->data_->name);
+                                         s.spec.data_->name);
         }
-        pb_step->mutable_rename_column()->set_old_name(s.spec->data_->name);
-        pb_step->mutable_rename_column()->set_new_name(*s.spec->data_->rename_to);
+        pb_step->mutable_rename_column()->set_old_name(s.spec.data_->name);
+        pb_step->mutable_rename_column()->set_new_name(*s.spec.data_->rename_to);
         pb_step->set_type(master::AlterTableRequestPB::RENAME_COLUMN);
         break;
       default:
@@ -227,5 +222,4 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   return Status::OK();
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

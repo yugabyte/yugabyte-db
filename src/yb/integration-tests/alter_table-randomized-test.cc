@@ -238,7 +238,7 @@ struct MirrorTable {
                                                       kTableName.namespace_type()));
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("key").Type(DataType::INT32).HashPrimaryKey().NotNull();
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(kTableName)
@@ -311,18 +311,18 @@ struct MirrorTable {
 
   void AddAColumn(const string& name, bool nullable) {
     // Add to the real table.
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
 
-    table_alterer->AddColumn(name)->Type(DataType::INT32);
-    ASSERT_OK(table_alterer->Alter());
+    table_alterer.AddColumn(name).Type(DataType::INT32);
+    ASSERT_OK(table_alterer.Alter());
 
     // Add to the mirror state.
     ts_.AddColumnWithDefault(name, kNullValue, nullable);
   }
 
   void DropAColumn(const string& name) {
-    std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    CHECK_OK(table_alterer->DropColumn(name)->Alter());
+    auto table_alterer = client_->MakeTableAlterer(kTableName);
+    CHECK_OK(table_alterer.DropColumn(name).Alter());
     ts_.DropColumn(name);
   }
 

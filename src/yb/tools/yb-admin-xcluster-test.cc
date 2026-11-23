@@ -253,17 +253,14 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismat
       Transactional::kTrue, NumTablets(), client_.get(), &consumer_table, table_name);
 
   // Drop a column from the consumer table.
-  {
-    auto table_alterer = client_.get()->NewTableAlterer(table_name);
-    ASSERT_OK(table_alterer->DropColumn(kValueColumn)->Alter());
-  }
+  ASSERT_OK(client_->MakeTableAlterer(table_name).DropColumn(kValueColumn).Alter());
 
   // Add the same column back into the producer table. This results in a schema mismatch
   // between the producer and consumer versions of the table.
   {
-    auto table_alterer = client_.get()->NewTableAlterer(table_name);
-    table_alterer->AddColumn(kValueColumn)->Type(DataType::INT32);
-    ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60 * kTimeMultiplier))->Alter());
+    auto table_alterer = client_->MakeTableAlterer(table_name);
+    table_alterer.AddColumn(kValueColumn).Type(DataType::INT32);
+    ASSERT_OK(table_alterer.timeout(MonoDelta::FromSeconds(60 * kTimeMultiplier)).Alter());
   }
 
   // Try setting up replication, this should fail due to the schema mismatch.
@@ -855,8 +852,8 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
 
     // Build the table.
     client::YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(DataType::INT32);
+    builder.AddColumn(kKeyColumn).Type(DataType::INT32).HashPrimaryKey().NotNull();
+    builder.AddColumn(kValueColumn).Type(DataType::INT32);
 
     TableProperties table_properties;
     table_properties.SetTransactional(true);

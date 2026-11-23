@@ -430,8 +430,8 @@ TEST_F(XClusterVerifyTest, FingerprintDistinguishesSortingType) {
 // an id-less schema, so it is what the rejection is tested with.
 TEST_F(XClusterVerifyTest, FingerprintRejectsSchemaWithoutColumnIds) {
   client::YBSchemaBuilder builder;
-  builder.AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn("v")->Type(DataType::STRING)->Nullable();
+  builder.AddColumn("h").Type(DataType::INT32).HashPrimaryKey().NotNull();
+  builder.AddColumn("v").Type(DataType::STRING).Nullable();
   client::YBSchema schema;
   ASSERT_OK(builder.Build(&schema));
 

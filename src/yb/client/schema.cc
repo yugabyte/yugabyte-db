@@ -32,8 +32,6 @@
 
 #include "yb/client/schema.h"
 
-#include <unordered_map>
-
 #include "yb/util/logging.h"
 
 #include "yb/client/schema-internal.h"
@@ -48,78 +46,74 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-using std::shared_ptr;
-using std::unordered_map;
-using std::vector;
-using std::string;
-
-namespace yb {
-namespace client {
+namespace yb::client {
 ////////////////////////////////////////////////////////////
 // YBColumnSpec
 ////////////////////////////////////////////////////////////
 
-YBColumnSpec::YBColumnSpec(const std::string& name)
+YBColumnSpec::YBColumnSpec(std::string_view name)
   : data_(new Data(name)) {
 }
 
-YBColumnSpec::~YBColumnSpec() {
-  delete data_;
-}
+YBColumnSpec::YBColumnSpec(YBColumnSpec&&) = default;
 
-YBColumnSpec* YBColumnSpec::Type(const std::shared_ptr<QLType>& type) {
+YBColumnSpec& YBColumnSpec::operator=(YBColumnSpec&&) = default;
+
+YBColumnSpec::~YBColumnSpec() = default;
+
+YBColumnSpec& YBColumnSpec::Type(const std::shared_ptr<QLType>& type) {
   data_->type = type;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::Order(int32_t order) {
+YBColumnSpec& YBColumnSpec::Order(int32_t order) {
   data_->order = order;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::PrimaryKey(SortingType sorting_type) {
+YBColumnSpec& YBColumnSpec::PrimaryKey(SortingType sorting_type) {
   data_->kind = SortingTypeToColumnKind(sorting_type);
   return NotNull();
 }
 
-YBColumnSpec* YBColumnSpec::HashPrimaryKey() {
+YBColumnSpec& YBColumnSpec::HashPrimaryKey() {
   data_->kind = ColumnKind::HASH;
   return NotNull();
 }
 
-YBColumnSpec* YBColumnSpec::StaticColumn() {
+YBColumnSpec& YBColumnSpec::StaticColumn() {
   data_->static_column = true;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::NotNull() {
+YBColumnSpec& YBColumnSpec::NotNull() {
   data_->nullable = Nullable::kFalse;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::Nullable() {
+YBColumnSpec& YBColumnSpec::Nullable() {
   data_->nullable = Nullable::kTrue;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::Counter() {
+YBColumnSpec& YBColumnSpec::Counter() {
   data_->is_counter = true;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::PgTypeOid(int32_t oid) {
+YBColumnSpec& YBColumnSpec::PgTypeOid(int32_t oid) {
   data_->pg_type_oid = oid;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
+YBColumnSpec& YBColumnSpec::RenameTo(std::string_view new_name) {
   data_->rename_to = new_name;
-  return this;
+  return *this;
 }
 
-YBColumnSpec* YBColumnSpec::SetMissing(const QLValuePB& missing_value) {
+YBColumnSpec& YBColumnSpec::SetMissing(const QLValuePB& missing_value) {
   data_->missing_value = missing_value;
-  return this;
+  return *this;
 }
 
 Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
@@ -143,7 +137,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   return Status::OK();
 }
 
-YBColumnSpec* YBColumnSpec::Type(DataType type) {
+YBColumnSpec& YBColumnSpec::Type(DataType type) {
   return Type(QLType::Create(type));
 }
 
@@ -153,13 +147,7 @@ YBColumnSpec* YBColumnSpec::Type(DataType type) {
 
 class YBSchemaBuilder::Data {
  public:
-  ~Data() {
-    // Rather than delete the specs here, we have to do it in
-    // ~YBSchemaBuilder(), to avoid a circular dependency in the
-    // headers declaring friend classes with nested classes.
-  }
-
-  vector<YBColumnSpec*> specs;
+  std::vector<YBColumnSpec> specs;
   TableProperties table_properties;
 };
 
@@ -167,31 +155,21 @@ YBSchemaBuilder::YBSchemaBuilder()
   : data_(new Data()) {
 }
 
-YBSchemaBuilder::~YBSchemaBuilder() {
-  for (YBColumnSpec* spec : data_->specs) {
-    // Can't use STLDeleteElements because YBSchemaBuilder
-    // is a friend of YBColumnSpec in order to access its destructor.
-    // STLDeleteElements is a free function and therefore can't access it.
-    delete spec;
-  }
-  delete data_;
+YBSchemaBuilder::~YBSchemaBuilder() = default;
+
+YBColumnSpec& YBSchemaBuilder::AddColumn(std::string_view name) {
+  return data_->specs.emplace_back(name);
 }
 
-YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
-  auto c = new YBColumnSpec(name);
-  data_->specs.push_back(c);
-  return c;
-}
-
-YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
+YBSchemaBuilder& YBSchemaBuilder::SetTableProperties(const TableProperties& table_properties) {
   data_->table_properties = table_properties;
-  return this;
+  return *this;
 }
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
   std::vector<YBColumnSchema> cols(data_->specs.size(), YBColumnSchema());
   for (size_t i = 0; i < cols.size(); i++) {
-    RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
+    RETURN_NOT_OK(data_->specs[i].ToColumnSchema(&cols[i]));
   }
 
   // Change the API to allow specifying each column individually as part of a primary key.
@@ -203,7 +181,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
   const YBColumnSpec::Data* reached_range_column = nullptr;
   const YBColumnSpec::Data* reached_regular_column = nullptr;
   for (size_t i = 0; i < cols.size(); i++) {
-    auto& column_data = *data_->specs[i]->data_;
+    auto& column_data = *data_->specs[i].data_;
     if (column_data.kind == ColumnKind::HASH) {
       if (reached_range_column) {
         return STATUS_FORMAT(
@@ -243,7 +221,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
 ////////////////////////////////////////////////////////////
 
 YBColumnSchema::YBColumnSchema(const std::string &name,
-                               const shared_ptr<QLType>& type,
+                               const std::shared_ptr<QLType>& type,
                                ColumnKind kind,
                                Nullable is_nullable,
                                bool is_static,
@@ -302,7 +280,7 @@ bool YBColumnSchema::is_static() const {
   return DCHECK_NOTNULL(col_)->is_static();
 }
 
-const shared_ptr<QLType>& YBColumnSchema::type() const {
+const std::shared_ptr<QLType>& YBColumnSchema::type() const {
   return DCHECK_NOTNULL(col_)->type();
 }
 
@@ -462,8 +440,8 @@ void YBSchema::Reset(std::unique_ptr<Schema> schema) {
 }
 
 Status YBSchema::Reset(
-    const vector<YBColumnSchema>& columns, const TableProperties& table_properties) {
-  vector<ColumnSchema> cols_private;
+    const std::vector<YBColumnSchema>& columns, const TableProperties& table_properties) {
+  std::vector<ColumnSchema> cols_private;
   for (const YBColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
   }
@@ -574,7 +552,7 @@ std::vector<size_t> YBSchema::GetPrimaryKeyColumnIndexes() const {
   return result;
 }
 
-string YBSchema::ToString() const {
+std::string YBSchema::ToString() const {
   return schema_->ToString();
 }
 
@@ -582,5 +560,4 @@ ssize_t YBSchema::FindColumn(const GStringPiece& name) const {
   return schema_->find_column(name);
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

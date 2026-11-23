@@ -97,7 +97,7 @@ Status XClusterYcqlTestBase::BuildSchemaAndCreateTables(
     const std::vector<uint32_t>& num_consumer_tablets,
     const std::vector<uint32_t>& num_producer_tablets) {
   client::YBSchemaBuilder b;
-  b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  b.AddColumn("c0").Type(DataType::INT32).NotNull().HashPrimaryKey();
 
   TableProperties table_properties;
   table_properties.SetTransactional(UseTransactionalTables());

@@ -434,8 +434,8 @@ TEST_F(WriteStallCrossTabletCascadeTest, HealthyTabletUnaffectedByWriteStalledTa
   client::TableHandle table_b;
   {
     client::YBSchemaBuilder b;
-    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+    b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
+    b.AddColumn("v").Type(DataType::BINARY).NotNull();
     ASSERT_OK(table_b.Create(table_b_name, 1 /* num_tablets */, client_.get(), &b));
   }
 
@@ -558,8 +558,8 @@ TEST_F(WriteStallCrossTabletCascadeTest, WriteStalledFollowerStarvesOtherTablets
   client::TableHandle table_b;
   {
     client::YBSchemaBuilder b;
-    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+    b.AddColumn("k").Type(DataType::BINARY).NotNull().HashPrimaryKey();
+    b.AddColumn("v").Type(DataType::BINARY).NotNull();
     ASSERT_OK(table_b.Create(table_b_name, 1 /* num_tablets */, client_.get(), &b));
   }
 

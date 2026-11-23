@@ -500,12 +500,12 @@ Result<master::CreateTableRequestPB> CDCStateTable::GenerateCreateCdcStateTableR
   req.set_table_type(TableType::YQL_TABLE_TYPE);
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(kCdcStreamId)->PrimaryKey()->Type(DataType::STRING);
-  schema_builder.AddColumn(kCdcCheckpoint)->Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcTabletId).HashPrimaryKey().Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcStreamId).PrimaryKey().Type(DataType::STRING);
+  schema_builder.AddColumn(kCdcCheckpoint).Type(DataType::STRING);
   schema_builder.AddColumn(kCdcData)
-      ->Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
-  schema_builder.AddColumn(kCdcLastReplicationTime)->Type(DataType::TIMESTAMP);
+      .Type(QLType::CreateTypeMap(DataType::STRING, DataType::STRING));
+  schema_builder.AddColumn(kCdcLastReplicationTime).Type(DataType::TIMESTAMP);
 
   client::YBSchema yb_schema;
   RETURN_NOT_OK(schema_builder.Build(&yb_schema));

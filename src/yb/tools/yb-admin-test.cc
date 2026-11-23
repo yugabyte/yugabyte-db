@@ -812,7 +812,7 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
 
   YBSchema index_schema;
   YBSchemaBuilder b;
-  b.AddColumn("C$_key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  b.AddColumn("C$_key").Type(DataType::INT32).NotNull().HashPrimaryKey();
   ASSERT_OK(b.Build(&index_schema));
 
   // Create index.
@@ -927,8 +927,8 @@ TEST_F(AdminCliTest, TestSnapshotCreation) {
                                        kTableName.namespace_name(),
                                        "extra-table");
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(DataType::BINARY)->NotNull();
-  schema_builder.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+  schema_builder.AddColumn("k").HashPrimaryKey().Type(DataType::BINARY).NotNull();
+  schema_builder.AddColumn("v").Type(DataType::BINARY).NotNull();
   YBSchema schema;
   ASSERT_OK(schema_builder.Build(&schema));
   ASSERT_OK(client_->NewTableCreator()->table_name(extra_table)
@@ -3273,8 +3273,8 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
 
   YBSchema schema;
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("k")->HashPrimaryKey()->Type(DataType::BINARY)->NotNull();
-  schema_builder.AddColumn("v")->Type(DataType::BINARY)->NotNull();
+  schema_builder.AddColumn("k").HashPrimaryKey().Type(DataType::BINARY).NotNull();
+  schema_builder.AddColumn("v").Type(DataType::BINARY).NotNull();
   ASSERT_OK(schema_builder.Build(&schema));
 
   const auto client =

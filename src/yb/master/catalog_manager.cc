@@ -6229,13 +6229,13 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(
   // which the snapshot was recorded. "details" is a json column for future extensibility.
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("node")->Type(DataType::STRING)->HashPrimaryKey();
-  schema_builder.AddColumn("entity_type")->Type(DataType::STRING)->PrimaryKey();
-  schema_builder.AddColumn("entity_id")->Type(DataType::STRING)->PrimaryKey();
-  schema_builder.AddColumn("metric")->Type(DataType::STRING)->PrimaryKey();
-  schema_builder.AddColumn("ts")->Type(DataType::TIMESTAMP)->PrimaryKey(SortingType::kDescending);
-  schema_builder.AddColumn("value")->Type(DataType::INT64);
-  schema_builder.AddColumn("details")->Type(DataType::JSONB);
+  schema_builder.AddColumn("node").Type(DataType::STRING).HashPrimaryKey();
+  schema_builder.AddColumn("entity_type").Type(DataType::STRING).PrimaryKey();
+  schema_builder.AddColumn("entity_id").Type(DataType::STRING).PrimaryKey();
+  schema_builder.AddColumn("metric").Type(DataType::STRING).PrimaryKey();
+  schema_builder.AddColumn("ts").Type(DataType::TIMESTAMP).PrimaryKey(SortingType::kDescending);
+  schema_builder.AddColumn("value").Type(DataType::INT64);
+  schema_builder.AddColumn("details").Type(DataType::JSONB);
 
   YBSchema ybschema;
   RETURN_NOT_OK(schema_builder.Build(&ybschema));
@@ -6290,9 +6290,9 @@ Status CatalogManager::CreateTestEchoService(const LeaderEpoch& epoch) {
   }
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kTestEchoTimestamp)->HashPrimaryKey()->Type(DataType::TIMESTAMP);
-  schema_builder.AddColumn(kTestEchoNodeId)->Type(DataType::STRING);
-  schema_builder.AddColumn(kTestEchoMessage)->Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoTimestamp).HashPrimaryKey().Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn(kTestEchoNodeId).Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoMessage).Type(DataType::STRING);
 
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -6315,8 +6315,8 @@ Status CatalogManager::CreatePgCronService(const LeaderEpoch& epoch) {
 
   // Use a generic schema that can be extended later on.
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("id")->HashPrimaryKey()->Type(DataType::INT64);
-  schema_builder.AddColumn("data")->Type(DataType::JSONB);
+  schema_builder.AddColumn("id").HashPrimaryKey().Type(DataType::INT64);
+  schema_builder.AddColumn("data").Type(DataType::JSONB);
 
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -9971,7 +9971,7 @@ Status CatalogManager::CreateTablegroup(
   ctreq.set_tablespace_id(req->tablespace_id());
 
   YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
+  schema_builder.AddColumn("parent_column").Type(DataType::BINARY).PrimaryKey();
   YBSchema ybschema;
   CHECK_OK(schema_builder.Build(&ybschema));
   auto schema = yb::client::internal::GetSchema(ybschema);
@@ -10383,7 +10383,7 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     req.set_is_colocated_via_database(true);
 
     YBSchemaBuilder schema_builder;
-    schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
+    schema_builder.AddColumn("parent_column").Type(DataType::BINARY).PrimaryKey();
     YBSchema ybschema;
     CHECK_OK(schema_builder.Build(&ybschema));
     auto schema = yb::client::internal::GetSchema(ybschema);

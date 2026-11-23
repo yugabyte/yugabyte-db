@@ -35,14 +35,13 @@
 
 #include "yb/client/schema.h"
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 // Helper functions that convert between client-facing and internal PB enums.
 class YBColumnSpec::Data {
  public:
-  explicit Data(std::string name)
-      : name(std::move(name)) {
+  explicit Data(std::string_view name)
+      : name(name) {
   }
 
   const std::string name;
@@ -67,5 +66,4 @@ class YBColumnSpec::Data {
   std::optional<std::string> rename_to;
 };
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

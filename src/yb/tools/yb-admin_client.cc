@@ -812,8 +812,7 @@ Status ClusterAdminClient::SetTabletPeerInfo(
 Status ClusterAdminClient::SetWalRetentionSecs(
   const YBTableName& table_name,
   const uint32_t wal_ret_secs) {
-  auto alterer = yb_client_->NewTableAlterer(table_name);
-  RETURN_NOT_OK(alterer->SetWalRetentionSecs(wal_ret_secs)->Alter());
+  RETURN_NOT_OK(yb_client_->MakeTableAlterer(table_name).SetWalRetentionSecs(wal_ret_secs).Alter());
   cout << "Set table " << table_name.table_name() << " WAL retention time to " << wal_ret_secs
        << " seconds." << endl;
   return Status::OK();

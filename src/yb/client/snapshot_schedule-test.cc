@@ -309,10 +309,9 @@ TEST_F(SnapshotScheduleTest, RestoreSchema) {
                                    kTableName.namespace_name()));
   auto hybrid_time = cluster_->mini_master(0)->Now();
   auto old_schema = table_.schema();
-  auto alterer = client_->NewTableAlterer(table_.name());
-  auto* column = alterer->AddColumn("new_column");
-  column->Type(DataType::INT32);
-  ASSERT_OK(alterer->Alter());
+  auto alterer = client_->MakeTableAlterer(table_.name());
+  alterer.AddColumn("new_column").Type(DataType::INT32);
+  ASSERT_OK(alterer.Alter());
   ASSERT_OK(table_.Reopen());
   ASSERT_NO_FATALS(WriteData(WriteOpType::UPDATE));
   ASSERT_NO_FATALS(VerifyData(WriteOpType::UPDATE));
