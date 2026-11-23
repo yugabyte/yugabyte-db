@@ -3292,20 +3292,18 @@ ybStartNotifsPollerBgWorker(void)
 	LWLockRelease(NotifyQueueLock);
 
 	/*
-	 * Not WaitForBackgroundWorkerStartup: a poller that exits right away is
-	 * reported as stopped, which ybWaitForNotifsPollerInit, waiting next,
-	 * turns into a clearer error.
+	 * Don't wait for the worker to start here: ybWaitForNotifsPollerInit,
+	 * called next, already waits for that, and also reports a worker that
+	 * exits before it initializes with a clearer error.
 	 */
 	pfree(local_handle);
 }
 
 /*
  * Has the node's notifications poller exited since this backend last saw it
- * running? *seen_pid is the pid it was last seen running with, or 0.
- *
- * Between a worker's exit and its restart, the postmaster resets its pid to 0,
- * which GetBackgroundWorkerPid reports as BGWH_STOPPED. Restarts are a second
- * apart, so a caller polling more often sees every exit.
+ * running? *seen_pid is the pid it was last seen running with, or 0. An
+ * exited worker shows as stopped until it is restarted, and with a new pid
+ * after that.
  */
 static bool
 ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
@@ -3356,12 +3354,11 @@ ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
  * not. The poller reports how its initialization went in init_status, and so
  * does ybCleanupListenState if the listener that started the poller
  * unregisters before the poller reports. A poller can also exit without
- * reporting, e.g. on an error before ybNotifsPollerInit; the postmaster then
- * restarts it, and this fails as soon as it sees the exit, rather than wait
- * for as long as the failure persists. A poller that fails to initialize is
- * restarted until ybCleanupListenState terminates it as the last listener
- * unregisters. On a first startup that is right away, as every listener is
- * waiting here and fails with it.
+ * reporting, e.g. on an error before ybNotifsPollerInit; this fails once it
+ * sees that. A poller that fails to initialize is restarted until
+ * ybCleanupListenState terminates it as the last listener unregisters. On a
+ * first startup that is right away, as every listener is waiting here and
+ * fails with it.
  */
 static void
 ybWaitForNotifsPollerInit(void)
@@ -3458,7 +3455,10 @@ YbNotifsPollerMain(Datum main_arg)
 		ybExitStaleNotifsPoller(NULL);
 	LWLockRelease(NotifyQueueLock);
 
-	/* Test-only: exit, to be restarted, without reporting an init status. */
+	/*
+	 * Test-only: exit before reporting an init status. The postmaster restarts
+	 * the poller.
+	 */
 	if (yb_test_notifs_poller_error_before_init)
 		elog(ERROR, "notifications poller failing before it initializes, for testing");
 

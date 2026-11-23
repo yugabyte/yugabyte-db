@@ -594,8 +594,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A LISTEN must fail, rather than wait for as long as the failure lasts, when its notifications
-   * poller keeps exiting before it initializes, and so never reports how its initialization went.
+   * A LISTEN fails, rather than hangs, when its poller exits before it initializes.
    */
   @Test
   public void testListenFailsWhenPollerExitsBeforeInit() throws Exception {
@@ -782,8 +781,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Waits until a new backend on the given tserver shows the given setting for a GUC, i.e. its
-   * postmaster has reloaded it: pollers started before then use the old value.
+   * Waits until a new backend on the given tserver shows the given setting for a GUC, i.e. once
+   * its postmaster has reloaded the config: pollers started before then use the old value.
    */
   private void waitForPostmasterSetting(int tserverIndex, String guc, String setting)
       throws Exception {
