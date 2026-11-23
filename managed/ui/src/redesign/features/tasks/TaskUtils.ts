@@ -103,6 +103,11 @@ export function useIsTaskNewUIEnabled(): boolean {
   return featureFlags?.test?.newTaskDetailsUI || featureFlags?.release?.newTaskDetailsUI;
 }
 
+const isReadReplicaGFlagsOnly = (auditLog: AuditLogProps): boolean => {
+  const details = auditLog.additionalDetails as any;
+  return !!details?.readonly_cluster_gflags && !details?.gflags;
+};
+
 export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
@@ -127,7 +132,11 @@ export const mapAuditLogToTaskDiffApiResp = (
         auditLog.payload,
         (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
       ),
-      auditLog.payload
+      // A read-replica-only gflags change is audited as readonly_cluster_gflags, and the v2 body
+      // has no clusters: the one cluster of the delta is the read replica.
+      isReadReplicaGFlagsOnly(auditLog)
+        ? { clusters: [{ clusterType: 'ASYNC' }] }
+        : auditLog.payload
     ),
     auditLog.payload
   );

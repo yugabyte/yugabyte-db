@@ -164,6 +164,17 @@ describe('mapAuditLogToTaskDiffApiResp', () => {
     expect(resp?.gflagsAudit).toEqual(gflags);
   });
 
+  it('types the cluster of a read-replica-only gflags change as ASYNC', () => {
+    const rr = { userIntent: { x: { $deltaType: 'REPLACE', $oldValue: 1, $newValue: 2 } } };
+    const resp = mapAuditLogToTaskDiffApiResp({
+      ...base,
+      payload: { universe_gflags: {} },
+      additionalDetails: { readonly_cluster_gflags: { master: [] } },
+      taskDiff: { clusters: [rr] }
+    });
+    expect((resp?.afterData as any).clusters[0].clusterType).toBe('ASYNC');
+  });
+
   it('returns nothing without a taskDiff', () => {
     expect(mapAuditLogToTaskDiffApiResp(base)).toBeUndefined();
   });
