@@ -605,8 +605,10 @@ typedef struct YbNotifsPollerPendingEntry
 {
 	AsyncQueueEntry qe;
 	/* sort keys, see ybNotifsPollerPendingEntryCmp */
-	char		docdb_txn_id[37];	/* empty if the row has none */
+	int			run_start;
 	int32		seq;
+	/* the sending backend's node; with qe.srcPid, identifies the sender */
+	char		sender_node[UUID_LEN];
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -752,7 +754,8 @@ static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-									  AsyncQueueEntry *qe, int32 *seq);
+									  AsyncQueueEntry *qe, int32 *seq,
+									  char *sender_node);
 static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
@@ -3570,29 +3573,44 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
 	YbNotifsPollerPendingEntry *entry =
 		palloc0(sizeof(YbNotifsPollerPendingEntry));
+	int			position = list_length(ybNotifsPollerPendingEntries);
 
-	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq);
-	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT &&
-		record->has_docdb_txn_id)
-		strlcpy(entry->docdb_txn_id, record->docdb_txn_id,
-				sizeof(entry->docdb_txn_id));
-	/* A row from an older writer has no seq: keep its arrival position. */
-	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT && entry->seq < 0)
-		entry->seq = list_length(ybNotifsPollerPendingEntries);
+	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq,
+							  entry->sender_node);
+	entry->run_start = -1;
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT)
+	{
+		const YbNotifsPollerPendingEntry *prev =
+			position > 0 ? llast(ybNotifsPollerPendingEntries) : NULL;
+
+		if (prev != NULL && prev->run_start >= 0 &&
+			prev->qe.srcPid == entry->qe.srcPid &&
+			memcmp(prev->sender_node, entry->sender_node, UUID_LEN) == 0)
+			entry->run_start = prev->run_start;
+		else
+			entry->run_start = position;
+
+		/* A row from an older writer has no seq: keep its arrival position. */
+		if (entry->seq < 0)
+			entry->seq = position;
+	}
 	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, entry);
 	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
  * Orders a transaction's pending entries as the sending backends issued them,
- * see YB_NOTIF_SEQ_KEY. The BEGIN entry has no DocDB transaction id and seq -1,
- * and so stays first.
+ * see YB_NOTIF_SEQ_KEY. The BEGIN entry has run_start and seq -1, and so stays
+ * first.
  *
  * The virtual WAL streams DocDB transactions that commit at the same hybrid
  * time as one transaction, each one's rows together and ordered by DocDB
  * transaction id. Each sender numbers its notifications from 0, so sort by
- * that id first to keep each sender's notifications together and in the
- * virtual WAL's order.
+ * the arrival position of the sender's first row (run_start) first, to keep
+ * each sender's notifications together and in the virtual WAL's order. This
+ * branch's virtual WAL records carry no DocDB transaction id, so the sender
+ * (node, pid) stands in for it: a backend's next transaction starts after its
+ * previous one commits, so the two never share a commit time.
  *
  * All rows of one sender carry a seq, or (older writer) none do and the
  * arrival positions keep the order.
@@ -3605,10 +3623,9 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 {
 	const YbNotifsPollerPendingEntry *ea = lfirst(a);
 	const YbNotifsPollerPendingEntry *eb = lfirst(b);
-	int			cmp = strcmp(ea->docdb_txn_id, eb->docdb_txn_id);
 
-	if (cmp != 0)
-		return cmp;
+	if (ea->run_start != eb->run_start)
+		return ea->run_start < eb->run_start ? -1 : 1;
 	if (ea->seq < eb->seq)
 		return -1;
 	if (ea->seq > eb->seq)
@@ -3835,7 +3852,7 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
  */
 static void
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-						  AsyncQueueEntry *qe, int32 *seq)
+						  AsyncQueueEntry *qe, int32 *seq, char *sender_node)
 {
 	*seq = -1;
 
@@ -3854,6 +3871,13 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	Assert(!isnull);
 	qe->srcPid = DatumGetInt32(sender_id);
+
+	Datum		node = heap_getattr(tuple, yb_sender_node_uuid_att.attnum, desc,
+									&isnull);
+
+	Assert(!isnull);
+	memcpy(sender_node, DatumGetPointer(node), UUID_LEN);
+
 	qe->xid = (TransactionId) record->xid;
 
 	Datum		dbid = heap_getattr(tuple, yb_db_oid_att.attnum, desc, &isnull);
