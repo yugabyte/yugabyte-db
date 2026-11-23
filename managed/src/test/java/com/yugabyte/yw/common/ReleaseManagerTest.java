@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareReleases;
@@ -59,6 +60,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 import play.Environment;
 import play.libs.Json;
+import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseManagerTest extends FakeDBApplication {
@@ -1076,5 +1078,36 @@ public class ReleaseManagerTest extends FakeDBApplication {
     ReleaseContainer container5 =
         new ReleaseContainer(release5, mockCloudUtilFactory, appConfig, mockReleasesUtils);
     assertFalse(UniverseTaskBase.validateLocalFilepath(universeNullArch, container5));
+  }
+
+  @Test
+  public void testRaiseIfDisabledOrDeleted() {
+    Release helmOnly = Release.create("2.21.0.1", "STS");
+    helmOnly.addArtifact(
+        ReleaseArtifact.create("sha256", ReleaseArtifact.Platform.KUBERNETES, null, "helm_url"));
+    assertEquals(Release.ReleaseState.INCOMPLETE, helmOnly.getState());
+    new ReleaseContainer(helmOnly, mockCloudUtilFactory, appConfig, mockReleasesUtils)
+        .raiseIfDisabledOrDeleted();
+
+    Release release = Release.create("2.22.0.0", "STS");
+    release.addArtifact(
+        ReleaseArtifact.create(
+            "sha256", ReleaseArtifact.Platform.LINUX, Architecture.x86_64, "url"));
+    ReleaseContainer container =
+        new ReleaseContainer(release, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    container.raiseIfDisabledOrDeleted();
+    for (Release.ReleaseState state :
+        new Release.ReleaseState[] {Release.ReleaseState.DISABLED, Release.ReleaseState.DELETED}) {
+      release.setState(state);
+      Result result = assertPlatformException(container::raiseIfDisabledOrDeleted);
+      assertBadRequest(result, "Release 2.22.0.0 is not ACTIVE");
+    }
+
+    ReleaseMetadata legacy = ReleaseMetadata.create("2.23.0.0");
+    legacy.state = ReleaseManager.ReleaseState.DISABLED;
+    ReleaseContainer legacyContainer =
+        new ReleaseContainer(legacy, mockCloudUtilFactory, appConfig, mockReleasesUtils);
+    Result result = assertPlatformException(legacyContainer::raiseIfDisabledOrDeleted);
+    assertBadRequest(result, "Release 2.23.0.0 is not ACTIVE");
   }
 }

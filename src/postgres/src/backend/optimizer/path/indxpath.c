@@ -38,6 +38,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3712,6 +3713,10 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		if (index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{
@@ -5668,7 +5673,7 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 		yb_finalize_merge_scan_info(index, rel->relids,
 									yb_merge_scan_stream_cols, index_clauses,
 									&useful_pathkeys, yb_distinct_nkeys,
-									embedded);
+									embedded, scandir);
 	if (*yb_merge_scan_info == NULL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,

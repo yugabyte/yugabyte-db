@@ -55,4 +55,4 @@ export const YSQL_LOG_LEVEL_OPTIONS = [
 
 export const PGAUDIT_DOCS_URL = 'https://www.pgaudit.org/';
 export const AUDIT_LOG_DOCS_URL =
-  'https://docs.yugabyte.com/preview/secure/audit-logging/audit-logging-ysql/';
+  'https://docs.yugabyte.com/stable/yugabyte-platform/alerts-monitoring/universe-logging/';

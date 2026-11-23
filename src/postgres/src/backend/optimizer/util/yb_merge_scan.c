@@ -467,6 +467,20 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 }
 
 /*
+ * Append a column to the merge sort columns in sort_info.
+ */
+static void
+ybAppendMergeSortCol(YbSortInfo *sort_info, AttrNumber resno, Oid sortop,
+					 Oid collation, bool nulls_first)
+{
+	sort_info->sortColIdx[sort_info->numCols] = resno;
+	sort_info->sortOperators[sort_info->numCols] = sortop;
+	sort_info->collations[sort_info->numCols] = collation;
+	sort_info->nullsFirst[sort_info->numCols] = nulls_first;
+	sort_info->numCols++;
+}
+
+/*
  * Whether the operator clause is an equality, per the index column's opfamily,
  * between index column indexcol and anything else.  match_index_to_operand
  * matches the column the way the planner matched the clause to it, ignoring a
@@ -515,6 +529,105 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 }
 
 /*
+ * Whether index column indexcol, one build_index_pathkeys skipped as
+ * redundant, is a single-value stream key: a column with an equality index
+ * clause or a hash column (see yb_finalize_merge_scan_info).  If clause is not
+ * NULL, also sets *clause to the column's equality index clause, if it has
+ * one.
+ */
+static bool
+ybIsSingleValueStreamCol(IndexOptInfo *index, List *indexclauses,
+						 int indexcol, Expr **clause)
+{
+	Expr	   *eq_clause = ybEqualityIndexClause(index, indexclauses,
+												  indexcol);
+
+	if (clause)
+		*clause = eq_clause;
+	return eq_clause != NULL || indexcol < index->nhashcolumns;
+}
+
+/*
+ * Whether index column indexcol is a copy of an earlier index column, possibly
+ * relabeled, and so holds the same value in every index row.
+ */
+static bool
+ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
+{
+	Node	   *expr = (Node *) ((TargetEntry *) list_nth(index->indextlist,
+														   indexcol))->expr;
+
+	for (int i = 0; i < indexcol; i++)
+	{
+		if (match_index_to_operand(expr, i, index))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Whether index column indexcol, before the last merge sort column, is a gap
+ * column: one the merge sorts on beyond the columns the pathkeys name.  Each
+ * stream returns its rows in index order, so merging on gap columns too keeps
+ * every stream in merge order.  A gap column is a range column without an
+ * equality index clause that is neither a SAOP stream column nor a copy of an
+ * earlier index column, and is one of three kinds (see
+ * yb_finalize_merge_scan_info):
+ * - a column a partial index predicate implies
+ * - a column tied by a filter that runs before the merge
+ * - a column tied by a filter that runs after the merge, such as a local
+ *   filter or the storage table filter of a secondary index scan that is not
+ *   embedded
+ * Only the last kind needs the merge to sort on it, or the merged rows can
+ * come out of order.  Telling the first two kinds apart takes a proof that the
+ * predicate implies the column (see #37784) or knowing where each filter runs
+ * (see #37785), so err on the side of correct order and treat columns of all
+ * three kinds as gap columns, at a cost to the first two kinds:
+ * - extra comparisons that always tie
+ * - for an expression column of an embedded index scan, the pathkey cut in
+ *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
+ *   without a merge
+ */
+static bool
+ybIsMergeGapCol(IndexOptInfo *index, List *indexclauses, Bitmapset *saop_idxs,
+				int indexcol)
+{
+	return (!bms_is_member(indexcol, saop_idxs) &&
+			!ybIsSingleValueStreamCol(index, indexclauses, indexcol, NULL) &&
+			!ybIsCopyOfEarlierIndexCol(index, indexcol));
+}
+
+/*
+ * Append gap column indexcol (see ybIsMergeGapCol) to the merge sort columns
+ * in sort_info.
+ */
+static void
+ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
+					int indexcol, ScanDirection scandir)
+{
+	/* The same ordering build_index_pathkeys gives the column. */
+	bool		reverse_sort = index->reverse_sort[indexcol];
+	bool		nulls_first = index->nulls_first[indexcol];
+	Oid			sortop;
+
+	if (ScanDirectionIsBackward(scandir))
+	{
+		reverse_sort = !reverse_sort;
+		nulls_first = !nulls_first;
+	}
+	sortop = get_opfamily_member(index->sortopfamily[indexcol],
+								 index->opcintype[indexcol],
+								 index->opcintype[indexcol],
+								 reverse_sort ? BTGreaterStrategyNumber :
+								 BTLessStrategyNumber);
+	if (!OidIsValid(sortop))
+		elog(ERROR, "missing ordering operator for index column %d",
+			 indexcol + 1);
+	ybAppendMergeSortCol(sort_info, indexcol + 1, sortop,
+						 index->indexcollations[indexcol], nulls_first);
+}
+
+/*
  * Settle the stream key columns of an index path, the columns each merge
  * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
  * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
@@ -522,11 +635,12 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
  * the same stream keys and merge sort columns.  The pathkeys are final only
  * after this call, which can truncate them on an embedded index.
  *
- * On an embedded index, pggate compares each merge sort value in the table
- * row, which has no value for an expression index column.  So when embedded,
- * *pathkeys is truncated before the first pathkey that resolves to an
- * expression column, and *yb_distinct_nkeys is set to -1 if the truncation
- * cuts into the pathkeys that span the distinct prefix.
+ * On an embedded index, a plain index scan compares each merge sort value in
+ * the table row, which has no value for an expression index column.  So when
+ * embedded, *pathkeys is truncated before the first pathkey that resolves to
+ * an expression column or has an expression gap column before it, and
+ * *yb_distinct_nkeys is set to -1 if the truncation cuts into the pathkeys
+ * that span the distinct prefix.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -548,32 +662,29 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
  *       - A constant, as in a broken EquivalenceClass.
  *       - An earlier merge sort column.
  *
- *       The merge order then holds only if those filters run within each
- *       stream, before the merge.  TODO(#33384): ensure that.
+ *     Each of these columns except a copy is a gap column (see
+ *     ybIsMergeGapCol), which the merge also sorts on (see
+ *     ybAppendMergeGapCol).
  *
  * No column at or after the last merge sort column is a stream key, since the
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
  * walk picked there, whose streams the merge does not need.
  *
  * Returns the merge scan info, whose stream keys EXPLAIN shows, or NULL when
- * no stream key column remains, and the path is then not a merge scan.
+ * the path cannot be a merge scan.
  */
 YbMergeScanInfo *
 yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 							List *stream_cols, List *indexclauses,
 							List **pathkeys, int *yb_distinct_nkeys,
-							bool embedded)
+							bool embedded, ScanDirection scandir)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
 	Bitmapset  *saop_idxs = NULL;
 	Bitmapset  *sort_idxs = NULL;
 	int			last_sort_indexcol = -1;
-	int			numsortkeys;
-	AttrNumber *sortColIdx;
-	Oid		   *sortOperators;
-	Oid		   *collations;
-	bool	   *nullsFirst;
+	int			max_sort_cols;
 	YbMergeScanInfo *merge_scan_info;
 	YbSortInfo *sort_info;
 
@@ -586,18 +697,22 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	}
 
 	/*
-	 * Find the merge sort columns.  (Parts copied from
+	 * Find the merge sort columns and the gap columns.  (Parts copied from
 	 * prepare_sort_from_pathkeys.)
 	 *
-	 * We will need at most list_length(pathkeys) sort columns; possibly less
+	 * No check here keeps two pathkeys from resolving to the same index column
+	 * (see #38181), so count one merge sort column for each pathkey, as
+	 * prepare_sort_from_pathkeys does.  The gap columns are distinct, since
+	 * each pathkey looks for them only after the previous merge sort column,
+	 * and they are key columns, since each comes before a merge sort column,
+	 * so there are at most index->nkeycolumns of them.
 	 */
-	numsortkeys = list_length(*pathkeys);
-	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
-	sortOperators = (Oid *) palloc(numsortkeys * sizeof(Oid));
-	collations = (Oid *) palloc(numsortkeys * sizeof(Oid));
-	nullsFirst = (bool *) palloc(numsortkeys * sizeof(bool));
-
-	numsortkeys = 0;
+	max_sort_cols = list_length(*pathkeys) + index->nkeycolumns;
+	sort_info = makeNode(YbSortInfo);
+	sort_info->sortColIdx = palloc(max_sort_cols * sizeof(AttrNumber));
+	sort_info->sortOperators = palloc(max_sort_cols * sizeof(Oid));
+	sort_info->collations = palloc(max_sort_cols * sizeof(Oid));
+	sort_info->nullsFirst = palloc(max_sort_cols * sizeof(bool));
 
 	foreach(lc, *pathkeys)
 	{
@@ -608,11 +723,16 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		Oid			pk_datatype = InvalidOid;
 		Oid			sortop;
 		ListCell   *j;
+		Bitmapset  *gap_idxs = NULL;
+		bool		expression_gap = false;
+		int			gap_indexcol;
 
 		/*
 		 * Take the first tlist item found in the EC, skipping the SAOP columns
 		 * in stream_cols.  A SAOP column can belong to a sort EquivalenceClass
 		 * when a clause equates it to a sort column.
+		 * TODO(#38181): the match ignores collation, so it can take an earlier
+		 * index column that holds the same column in another collation.
 		 */
 		foreach(j, index->indextlist)
 		{
@@ -632,7 +752,32 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
 			return NULL;
-		if (embedded && index->indexkeys[tle->resno - 1] == 0)
+
+		/*
+		 * build_index_pathkeys makes pathkeys only from key columns, so this
+		 * column and the gap columns before it are key columns, as the merge
+		 * sort arrays assume.
+		 */
+		Assert(tle->resno <= index->nkeycolumns);
+
+		for (int indexcol = last_sort_indexcol + 1; indexcol < tle->resno - 1;
+			 indexcol++)
+		{
+			if (!ybIsMergeGapCol(index, indexclauses, saop_idxs, indexcol))
+				continue;
+			gap_idxs = bms_add_member(gap_idxs, indexcol);
+			expression_gap |= index->indexkeys[indexcol] == 0;
+		}
+
+		/*
+		 * For an embedded index scan, an expression column is not available
+		 * for sort (see also #36017).  That holds for the merge sort column of
+		 * this pathkey and for a gap column before it, which the merge sorts
+		 * on as well, even when the gap column needs no merge (see
+		 * ybIsMergeGapCol).
+		 */
+		if (embedded &&
+			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
 
@@ -646,6 +791,10 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 				*yb_distinct_nkeys = -1;
 			break;
 		}
+		gap_indexcol = -1;
+		while ((gap_indexcol = bms_next_member(gap_idxs, gap_indexcol)) >= 0)
+			ybAppendMergeGapCol(sort_info, index, gap_indexcol, scandir);
+		sort_idxs = bms_add_members(sort_idxs, gap_idxs);
 
 		/*
 		 * Look up the correct sort operator from the PathKey's slightly
@@ -659,14 +808,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
 				 pathkey->pk_strategy, pk_datatype, pk_datatype,
 				 pathkey->pk_opfamily);
-
-		/* Add the column to the sort arrays */
-		sortColIdx[numsortkeys] = tle->resno;
-		sortOperators[numsortkeys] = sortop;
-		collations[numsortkeys] = ec->ec_collation;
-		nullsFirst[numsortkeys] = pathkey->pk_nulls_first;
-		numsortkeys++;
-
+		ybAppendMergeSortCol(sort_info, tle->resno, sortop, ec->ec_collation,
+							 pathkey->pk_nulls_first);
 		sort_idxs = bms_add_member(sort_idxs, tle->resno - 1);
 		last_sort_indexcol = Max(last_sort_indexcol, tle->resno - 1);
 	}
@@ -690,8 +833,7 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		if (bms_is_member(indexcol, sort_idxs))
 			continue;
 
-		clause = ybEqualityIndexClause(index, indexclauses, indexcol);
-		if (!clause && indexcol >= index->nhashcolumns)
+		if (!ybIsSingleValueStreamCol(index, indexclauses, indexcol, &clause))
 			continue;
 
 		info = makeNode(YbMergeScanStreamColInfo);
@@ -704,14 +846,6 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 
 	if (result == NIL)
 		return NULL;
-
-	/* Return results */
-	sort_info = makeNode(YbSortInfo);
-	sort_info->numCols = numsortkeys;
-	sort_info->sortColIdx = sortColIdx;
-	sort_info->sortOperators = sortOperators;
-	sort_info->collations = collations;
-	sort_info->nullsFirst = nullsFirst;
 
 	merge_scan_info = makeNode(YbMergeScanInfo);
 	merge_scan_info->stream_cols = result;

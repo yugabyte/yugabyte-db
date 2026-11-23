@@ -727,17 +727,24 @@ public class Schedule extends Model {
         .findList();
   }
 
+  /**
+   * Backup schedules that keep their storage config from being deleted: all but those being deleted
+   * or failed. Their storage config is only in their task params.
+   */
+  private static ExpressionList<Schedule> backupSchedulesUsingStorageConfig() {
+    return find.query()
+        .where()
+        .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup, TaskType.CreateBackup)
+        .notIn("status", State.Deleting, State.Error);
+  }
+
+  /** The customer's backup schedules that keep their storage config from being deleted. */
+  public static List<Schedule> findBackupSchedulesUsingStorageConfig(UUID customerUUID) {
+    return backupSchedulesUsingStorageConfig().eq("customer_uuid", customerUUID).findList();
+  }
+
   public static List<Schedule> findAllScheduleWithCustomerConfig(UUID customerConfigUUID) {
-    List<Schedule> scheduleList =
-        find.query()
-            .where()
-            .in(
-                "task_type",
-                TaskType.BackupUniverse,
-                TaskType.MultiTableBackup,
-                TaskType.CreateBackup)
-            .notIn("status", State.Deleting, State.Error)
-            .findList();
+    List<Schedule> scheduleList = backupSchedulesUsingStorageConfig().findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
     scheduleList =
         scheduleList.stream()

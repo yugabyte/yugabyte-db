@@ -148,7 +148,7 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 
@@ -190,7 +190,7 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 
 	return true;
@@ -228,7 +228,7 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 
@@ -920,6 +920,16 @@ SpeculativeInsertionLockAcquire(TransactionId xid)
 	 */
 	if (speculativeInsertionToken == 0)
 		speculativeInsertionToken = 1;
+
+	/*
+	 * YB: With object locking, SpeculativeInsertionWait and
+	 * SpeculativeInsertionLockRelease are no-ops, so nobody can wait on this
+	 * lock.  Skip it.  Since it is never released, taking it would leave one
+	 * local lock table entry per inserted key until the end of the
+	 * transaction.  The token is still needed in the tuple header.
+	 */
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+		return speculativeInsertionToken;
 
 	SET_LOCKTAG_SPECULATIVE_INSERTION(tag, xid, speculativeInsertionToken);
 

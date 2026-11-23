@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -16,6 +17,9 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.mappers.UniverseVMImageUpgradeMapper;
+import api.v2.models.UniverseVMImageUpgradeSpec;
+import api.v2.models.VMImageClusterSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -36,6 +40,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
@@ -770,6 +775,94 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     replaced = getReplaceRootVolumeParams();
     assertEquals(ImmutableSet.of("host-n4", "host-n5"), replaced.keySet());
     replaced.values().forEach(p -> assertTrue(p.forceReplacement));
+  }
+
+  @Test
+  public void testVMImageUpgradeV2Spec() {
+    ImageBundle bundle =
+        ImageBundle.create(defaultProvider, "ib-1", getImageBundleDetails(1), true);
+    VMImageUpgradeParams params =
+        v2VMImageUpgradeParams(
+            new VMImageClusterSpec()
+                .clusterUuid(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+                .providerUuid(defaultProvider.getUuid())
+                .imageBundleUuid(bundle.getUuid()));
+    params.verifyParams(defaultUniverse, true);
+  }
+
+  @Test
+  public void testVMImageUpgradeV2SpecOci() {
+    ImageBundle ociBundle = addOciNodes();
+    VMImageUpgradeParams params =
+        v2VMImageUpgradeParams(
+            new VMImageClusterSpec()
+                .clusterUuid(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+                .providerUuid(ociBundle.getProvider().getUuid())
+                .imageBundleUuid(ociBundle.getUuid()));
+    params.verifyParams(defaultUniverse, true);
+  }
+
+  /** Builds the params the way the v2 vm-image API does. */
+  private static VMImageUpgradeParams v2VMImageUpgradeParams(VMImageClusterSpec bundle) {
+    UniverseVMImageUpgradeSpec spec = new UniverseVMImageUpgradeSpec().addImageBundlesItem(bundle);
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(spec, params);
+    return params;
+  }
+
+  @Test
+  public void testVMImageUpgradeArchMismatchAws() {
+    assertArchMismatchRefused(CloudType.aws);
+  }
+
+  @Test
+  public void testVMImageUpgradeArchMismatchGcp() {
+    assertArchMismatchRefused(CloudType.gcp);
+  }
+
+  @Test
+  public void testVMImageUpgradeArchMismatchAzu() {
+    assertArchMismatchRefused(CloudType.azu);
+  }
+
+  @Test
+  public void testVMImageUpgradeArchMismatchOci() {
+    assertArchMismatchRefused(CloudType.oci);
+  }
+
+  /** Moves the universe to an x86_64 bundle on the given cloud and upgrades it to aarch64. */
+  private void assertArchMismatchRefused(CloudType cloud) {
+    defaultProvider.setCode(cloud.toString());
+    defaultProvider.update();
+    ImageBundle current =
+        ImageBundle.create(defaultProvider, "ib-x86", getImageBundleDetails(1), true);
+    ImageBundleDetails armDetails = getImageBundleDetails(1);
+    armDetails.setArch(Architecture.aarch64);
+    ImageBundle arm = ImageBundle.create(defaultProvider, "ib-arm", armDetails, false);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.arch = Architecture.x86_64;
+              UserIntent intent = details.getPrimaryCluster().userIntent;
+              intent.providerType = cloud;
+              intent.setProviderImageBundleUUID(defaultProvider.getUuid(), current.getUuid());
+              details.nodeDetailsSet.forEach(n -> n.cloudInfo.cloud = cloud.toString());
+            });
+
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    params.machineImages = null;
+    params.imageBundles =
+        Collections.singletonList(
+            new VMImageUpgradeParams.ImageBundleUpgradeInfo(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid,
+                arm.getUuid(),
+                defaultProvider.getUuid()));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> params.verifyParams(defaultUniverse, true));
+    assertTrue(e.getMessage(), e.getMessage().contains("is for aarch64"));
   }
 
   private TaskInfo submitOciOnlyUpgrade(ImageBundle ociBundle, boolean force) {

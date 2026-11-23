@@ -34,7 +34,11 @@ func init() {
 	// Preview on the server, so the command is gated the same way.
 	util.PreviewCommand(
 		UpgradeUniverseCmd,
-		[]*cobra.Command{telemetryconfig.UpgradeExportTelemetryConfigCmd},
+		[]*cobra.Command{
+			telemetryconfig.UpgradeExportTelemetryConfigCmd,
+			upgradeFinalizeCmd,
+			upgradeRollbackCmd,
+		},
 	)
 
 	UpgradeUniverseCmd.PersistentFlags().StringP("name", "n", "",
