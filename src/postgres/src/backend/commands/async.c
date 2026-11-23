@@ -3309,34 +3309,27 @@ static bool
 ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
 {
 	static BackgroundWorkerHandle *shm_handle = NULL;
-	static BackgroundWorkerHandle *handle = NULL;
-	bool		has_handle;
-	pid_t		pid;
+	BgwHandleStatus status = BGWH_NOT_YET_STARTED;
+	pid_t		pid = 0;
 
-	if (handle == NULL)
+	if (shm_handle == NULL)
 	{
 		bool		found;
 
 		shm_handle = ybShmemNotifsPollerBgwHandle(&found);
-		handle = MemoryContextAlloc(TopMemoryContext,
-									YbBackgroundWorkerHandleSize());
 	}
 
+	/*
+	 * No handle: the LISTEN starting the poller has not registered it yet,
+	 * or the poller was stopped, which happens only after init_status is set
+	 * to FAILED or once no listeners remain.
+	 */
 	LWLockAcquire(NotifyQueueLock, LW_SHARED);
-	has_handle = poller_data->has_bgw_handle;
-	if (has_handle)
-		memcpy(handle, shm_handle, YbBackgroundWorkerHandleSize());
+	if (poller_data->has_bgw_handle)
+		status = GetBackgroundWorkerPid(shm_handle, &pid);
 	LWLockRelease(NotifyQueueLock);
 
-	/*
-	 * The LISTEN starting the poller has not registered it yet, or the poller
-	 * was stopped, which happens only after init_status is set to FAILED or
-	 * once no listeners remain.
-	 */
-	if (!has_handle)
-		return false;
-
-	switch (GetBackgroundWorkerPid(handle, &pid))
+	switch (status)
 	{
 		case BGWH_NOT_YET_STARTED:
 			return false;
@@ -3350,15 +3343,12 @@ ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
 }
 
 /*
- * Wait for the node's notifications poller to initialize, and fail if it does
- * not. The poller reports how its initialization went in init_status, and so
- * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller can also exit without
- * reporting, e.g. on an error before ybNotifsPollerInit; this fails once it
- * sees that. A poller that fails to initialize is restarted until
- * ybCleanupListenState terminates it as the last listener unregisters. On a
- * first startup that is right away, as every listener is waiting here and
- * fails with it.
+ * Wait for the node's notifications poller to initialize. Fail if init_status
+ * is set to FAILED, by the poller or by ybCleanupListenState when the LISTEN
+ * that started the poller unregisters, or if the poller exits with init_status
+ * still unset. A failed poller is restarted until the last listener
+ * unregisters, which on a first startup is right away, as every listener fails
+ * here.
  */
 static void
 ybWaitForNotifsPollerInit(void)
