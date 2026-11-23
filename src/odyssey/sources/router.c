@@ -1282,8 +1282,8 @@ od_router_status_t od_router_attach(od_router_t *router,
 					 * backend has exited. Otherwise the slot stays held until
 					 * it does, and we wait like any client at the limit.
 					 */
-					if (idle_server->yb_backend_exited ||
-					    !idle_server->yb_slot_claimed) {
+					assert(idle_server->yb_slot_claimed);
+					if (idle_server->yb_backend_exited) {
 						idle_server->yb_slot_claimed = false;
 						yb_slot_claimed = true;
 					} else {

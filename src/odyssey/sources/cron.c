@@ -379,10 +379,16 @@ static void od_cron(void *arg)
 		/* mark and sweep expired idle server connections */
 		od_cron_expire(cron);
 
-		/* YB */
-		if (yb_backend_release_slots_of_exited(cron->global->router) > 0)
+		/*
+		 * YB: Check if exiting backends have exited, signal routes if they did.
+		 * This is only needed with multi route pooling as only that has the logic
+		 * of waiting for exiting backend's socket to close.
+		 */
+		if (yb_backend_release_slots_of_exited(cron->global->router) > 0) {
+			assert(instance->config.yb_enable_multi_route_pool);
 			yb_signal_all_routes(cron->global->router, NULL,
 					     instance->config.yb_enable_multi_route_pool);
+		}
 
 		/* update statistics */
 		if (++stats_tick >= instance->config.stats_interval) {

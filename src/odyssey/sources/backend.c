@@ -235,7 +235,8 @@ void od_backend_close_connection(od_server_t *server)
 	yb_od_backend_close_connection(server, true);
 }
 
-void yb_od_backend_close_connection(od_server_t *server, bool settle_slot)
+void yb_od_backend_close_connection(od_server_t *server,
+				    bool release_slot_if_acquired)
 {
 	/* YB NOTE: Log the type of the backend being closed. */
 	od_instance_t *instance = server->global->instance;
@@ -256,13 +257,18 @@ void yb_od_backend_close_connection(od_server_t *server, bool settle_slot)
 			od_debug(&instance->logger, "backend", NULL, server,
 				 "failed to send Terminate, skipping drain");
 		} else {
-			/* YB: Wait for backend to close socket */
+			/*
+			 * YB: Wait for backend to close socket. Dup the fd and save it so
+			 * that the fd used by machinarium can be safely cleaned up and we
+			 * use the new FD to check for socket closure
+			 */
 			server->yb_backend_exited =
 				yb_od_backend_drain_until_eof(server);
 			if (!server->yb_backend_exited &&
-			    server->yb_slot_claimed)
+			    server->yb_slot_claimed) {
 				server->yb_exiting_fd =
 					dup(machine_fd(server->io.io));
+			}
 		}
 	}
 
@@ -284,7 +290,7 @@ cleanup:
 	 * if this server actually claimed one. Servers created for cancel
 	 * requests, logical replication, etc. never claim slots.
 	 */
-	if (!settle_slot || !server->yb_slot_claimed)
+	if (!release_slot_if_acquired || !server->yb_slot_claimed)
 		return;
 	if (!server->yb_backend_exited) {
 		yb_hold_backend_slot(server);
