@@ -3022,6 +3022,16 @@ YBAddDdlTxnState(YbDdlMode mode)
 	}
 
 	/*
+	 * Collect the outcome of the writes still buffered or in flight before
+	 * registering the catalog change. A trigger that registers one, such as
+	 * the hint table's, runs while its statement's write has not been flushed
+	 * yet. A conflict of that write must surface before the transaction has
+	 * DDL state, when the query layer can still retry the statement: after,
+	 * yb_is_retry_possible refuses the retry (#39047).
+	 */
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeforeCatalogChange());
+
+	/*
 	 * This is the first DDL statement in the transaction block. We need to set
 	 * the DDL state in the PGGate and also initialize ddl_transaction_state.
 	 *

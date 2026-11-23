@@ -11,10 +11,12 @@
 // under the License.
 //
 
+#include <future>
 #include <string>
 
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/json_document.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -256,6 +258,71 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
     // Make sure we observed at least one join
     ASSERT_FALSE(observed_join_types.empty()) << "No joins were observed during the test";
   }
+}
+
+// Concurrent writes to hint_plan.hints that conflict are retried by the query layer, as before
+// #37717 (#39047). An upsert's write is buffered or in flight when the table's AFTER STATEMENT
+// trigger registers a catalog change, and its outcome is only collected at the end of the
+// statement. A write conflict collected there was refused a retry, and the client got 40001.
+//
+// 1. conn_first upserts the hint row outside a transaction block and sleeps at the start of the
+//    hint table's invalidation trigger.
+// 2. conn_second upserts the same row outside a transaction block while conn_first sleeps.
+//    Depending on whether conn_first's write has reached DocDB, conn_second either commits first
+//    (conn_first's write then conflicts) or waits on conn_first (and conflicts once it commits).
+// 3. Both statements must succeed: the losing one is retried.
+TEST_F(PgHintTableTest, ConflictingHintUpsertIsRetried) {
+  constexpr auto kFirstHint = "MergeJoin(pg_class pg_attribute)";
+  constexpr auto kSecondHint = "YbBatchedNL(pg_class pg_attribute)";
+  auto conn_first = ASSERT_RESULT(ConnectWithHintTable());
+  auto conn_second = ASSERT_RESULT(ConnectWithHintTable());
+  auto conn_check = ASSERT_RESULT(Connect());
+  const auto upsert = [](const std::string& hint) {
+    return Format(
+        "INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) "
+        "VALUES ('$0', '', '$1') "
+        "ON CONFLICT (norm_query_string, application_name) DO UPDATE SET hints = '$1'",
+        query_id, hint);
+  };
+  ASSERT_OK(conn_first.Execute(upsert("SeqScan(pg_class)")));
+  ASSERT_OK(conn_first.ExecuteFormat(
+      "SET pg_hint_plan.yb_test_hint_cache_invalidate_delay_ms = $0", 3000 * kTimeMultiplier));
+  std::vector<ExternalDaemon*> tservers;
+  for (auto* ts : cluster_->tserver_daemons()) {
+    tservers.push_back(ts);
+  }
+  LogWaiter sleep_waiter(tservers, "sleeping for");
+
+  // Step 1.
+  auto first = std::async(std::launch::async, [&conn_first, &upsert] {
+    return conn_first.Execute(upsert(kFirstHint));
+  });
+  ASSERT_OK(sleep_waiter.WaitFor(30s * kTimeMultiplier));
+
+  // Step 2.
+  auto second = std::async(std::launch::async, [&conn_second, &upsert] {
+    return conn_second.Execute(upsert(kSecondHint));
+  });
+  const auto wait_status = WaitFor([&conn_check, &second]() -> Result<bool> {
+    return second.wait_for(0s) == std::future_status::ready ||
+           VERIFY_RESULT(conn_check.FetchRow<PGUint64>(
+               "SELECT COUNT(*) FROM pg_stat_activity "
+               "WHERE state = 'active' AND query LIKE 'INSERT INTO hint_plan.hints%YbBatchedNL%'"))
+               > 0;
+  }, 30s * kTimeMultiplier, "conn_second runs its upsert");
+  // The statements must overlap, or the test proves nothing.
+  const auto first_running = first.wait_for(0s) == std::future_status::timeout;
+
+  // Step 3.
+  const auto first_status = first.get();
+  const auto second_status = second.get();
+  ASSERT_OK(wait_status);
+  ASSERT_TRUE(first_running) << "conn_first finished before conn_second ran; raise the delay";
+  ASSERT_OK(first_status);
+  ASSERT_OK(second_status);
+  const auto hint = ASSERT_RESULT(conn_check.FetchRow<std::string>(Format(
+      "SELECT hints FROM hint_plan.hints WHERE norm_query_string = '$0'", query_id)));
+  ASSERT_TRUE(hint == kFirstHint || hint == kSecondHint) << hint;
 }
 
 void FailIfNotConcurrentDDLErrors(const Status& status) {

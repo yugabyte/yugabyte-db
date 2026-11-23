@@ -43,6 +43,7 @@ class PgFlushDebugContext {
   [[nodiscard]] static YbcFlushDebugContext YbcSwitchToDbCatalogVersionMode(PgOid db_oid);
   [[nodiscard]] static YbcFlushDebugContext YbcEndOfTopLevelStmt();
   [[nodiscard]] static YbcFlushDebugContext YbcParallelWorkers();
+  [[nodiscard]] static YbcFlushDebugContext YbcBeforeCatalogChange();
 
   [[nodiscard]] static PgFlushDebugContext Make(const YbcFlushDebugContext& ybc_context);
   [[nodiscard]] static PgFlushDebugContext CatalogTablePrefetch();
