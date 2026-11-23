@@ -1998,6 +1998,64 @@
     x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+  delete:
+    operationId: deleteStorageConfig
+    summary: Delete a storage configuration
+    description: |
+      Deletes a storage configuration and returns the task that does it (resource_uuid is the
+      configuration's UUID). The request is refused (409 STORAGE_CONFIG_IN_USE) while a backup
+      stored with the configuration runs, while a backup schedule or a DR configuration uses it,
+      and, unless delete_backups is set, while completed backups are stored with it; the task
+      checks again before it deletes anything, and fails with the same error code if the
+      configuration came into use meanwhile. Without delete_backups, the task removes the
+      configuration, so when it succeeds the configuration is gone (404), unless backups stored
+      with it are still being deleted: then it stays QUEUED_FOR_DELETION until they're done. Its
+      failed and stopped backups stay in YBA's list without a configuration, as with the v1
+      delete. With delete_backups, the task queues the
+      configuration's backups for deletion and the configuration as QUEUED_FOR_DELETION; YBA's
+      backup garbage collector then deletes the backups, from YBA and from the storage, and removes
+      the configuration once none of them is still being deleted, so the task's success means
+      queued, not removed. Deleting a configuration that a delete already queued, or that a delete
+      task is already deleting, returns that delete's task, whatever delete_backups is.
+    tags:
+      - Storage Config
+    parameters:
+      - name: delete_backups
+        in: query
+        description: 'Also delete the backups stored with the configuration, from YBA and from the storage. Without it, a configuration with completed backups can''t be deleted.'
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no delete permission on the customer'
+      '404':
+        description: The customer has no storage configuration with this UUID
+      '409':
+        description: 'error.code is STORAGE_CONFIG_IN_USE when the configuration is in use: error.usage lists the universes, schedules and DR configurations using it (as info.usage does), and error.running_backups and error.completed_backups count its running and completed backups (completed ones block only without delete_backups). STORAGE_CONFIG_NOT_ACTIVE when the configuration is still VALIDATING (error.storage_config_state), and STORAGE_CONFIG_EDIT_IN_PROGRESS while the task of an edit runs (error.task_uuid).'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: CustomerConfig
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: Delete
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: delete
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-idempotent: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/support-bundle/components':
   parameters:
     - name: cUUID

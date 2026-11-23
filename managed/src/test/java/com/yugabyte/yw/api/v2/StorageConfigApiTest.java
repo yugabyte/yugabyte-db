@@ -16,6 +16,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.handlers.StorageConfigDeletion;
 import api.v2.handlers.StorageConfigHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yba.v2.client.ApiClient;
@@ -56,6 +57,7 @@ import com.yugabyte.yba.v2.client.models.StorageConfigUsage;
 import com.yugabyte.yba.v2.client.models.StorageSpec;
 import com.yugabyte.yba.v2.client.models.StorageType;
 import com.yugabyte.yba.v2.client.models.YBATask;
+import com.yugabyte.yw.commissioner.tasks.DeleteStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.EditStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -65,6 +67,8 @@ import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
@@ -106,6 +110,8 @@ public class StorageConfigApiTest extends FakeDBApplication {
         .thenAnswer(invocation -> buildTaskInfo(null, TaskType.ValidateStorageConfig));
     when(mockCommissioner.submit(eq(TaskType.EditStorageConfig), any(ITaskParams.class)))
         .thenAnswer(invocation -> buildTaskInfo(null, TaskType.EditStorageConfig));
+    when(mockCommissioner.submit(eq(TaskType.DeleteStorageConfig), any(ITaskParams.class)))
+        .thenAnswer(invocation -> buildTaskInfo(null, TaskType.DeleteStorageConfig));
   }
 
   /** The params of the EditStorageConfig task submitted last. */
@@ -1010,5 +1016,136 @@ public class StorageConfigApiTest extends FakeDBApplication {
         .map(header -> header.getValue().get(0))
         .findFirst()
         .orElse(null);
+  }
+
+  private YBATask delete(UUID scUUID, boolean deleteBackups) throws ApiException {
+    return storageConfigApi.deleteStorageConfig(customer.getUuid(), scUUID, deleteBackups, null);
+  }
+
+  /** The params of the DeleteStorageConfig tasks submitted, the last one. */
+  private DeleteStorageConfig.Params submittedDelete(int submits) {
+    ArgumentCaptor<ITaskParams> params = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(submits))
+        .submit(eq(TaskType.DeleteStorageConfig), params.capture());
+    return submits == 0 ? null : (DeleteStorageConfig.Params) params.getValue();
+  }
+
+  private JsonNode deleteError(UUID scUUID, boolean deleteBackups, int code) {
+    ApiException e = assertThrows(ApiException.class, () -> delete(scUUID, deleteBackups));
+    assertEquals(e.getResponseBody(), code, e.getCode());
+    return error(e);
+  }
+
+  @Test
+  public void deleteSubmitsTheTask() throws ApiException {
+    CustomerConfig nfs = ModelFactory.createNfsStorageConfig(customer, "nfs", "/mnt/nfs");
+
+    YBATask task = delete(nfs.getConfigUUID(), true);
+
+    assertEquals(nfs.getConfigUUID(), task.getResourceUuid());
+    DeleteStorageConfig.Params params = submittedDelete(1);
+    assertEquals(customer.getUuid(), params.customerUUID);
+    assertEquals(nfs.getConfigUUID(), params.configUUID);
+    assertTrue(params.deleteBackups);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(task.getTaskUuid());
+    assertEquals(CustomerTask.TaskType.Delete, customerTask.getType());
+    assertEquals(CustomerTask.TargetType.CustomerConfiguration, customerTask.getTargetType());
+    assertEquals(nfs.getConfigUUID(), customerTask.getTargetUUID());
+    // The task deletes it: the request leaves the config as it is.
+    assertEquals(ConfigState.Active, CustomerConfig.get(nfs.getConfigUUID()).getState());
+    List<Audit> audits =
+        Audit.getAll(customer.getUuid()).stream()
+            .filter(a -> a.getTarget() == Audit.TargetType.CustomerConfig)
+            .collect(java.util.stream.Collectors.toList());
+    assertEquals(1, audits.size());
+    assertEquals(Audit.ActionType.Delete, audits.get(0).getAction());
+    assertEquals(nfs.getConfigUUID().toString(), audits.get(0).getTargetID());
+  }
+
+  @Test
+  public void aRepeatedDeleteGetsTheEarlierTask() throws ApiException {
+    CustomerConfig nfs = ModelFactory.createNfsStorageConfig(customer, "nfs", "/mnt/nfs");
+    YBATask first = delete(nfs.getConfigUUID(), false);
+
+    // While the task runs, and once it queued the config, whatever delete_backups is.
+    assertEquals(first.getTaskUuid(), delete(nfs.getConfigUUID(), true).getTaskUuid());
+    CustomerTask.findByTaskUUID(first.getTaskUuid()).markAsCompleted();
+    nfs.updateState(ConfigState.QueuedForDeletion);
+    assertEquals(first.getTaskUuid(), delete(nfs.getConfigUUID(), false).getTaskUuid());
+    submittedDelete(1);
+
+    // Queued by something that left no delete task: refused, with its state.
+    CustomerConfig queued = ModelFactory.createNfsStorageConfig(customer, "queued", "/mnt/q");
+    queued.updateState(ConfigState.QueuedForDeletion);
+    JsonNode error = deleteError(queued.getConfigUUID(), false, 409);
+    assertEquals(StorageConfigHandler.NOT_ACTIVE, error.get("code").asText());
+    assertEquals("QUEUED_FOR_DELETION", error.get("storage_config_state").asText());
+  }
+
+  @Test
+  public void deleteOfAMissingConfigIs404() {
+    deleteError(UUID.randomUUID(), false, 404);
+    Customer other = ModelFactory.testCustomer("other-customer");
+    CustomerConfig othersConfig = ModelFactory.createNfsStorageConfig(other, "nfs", "/mnt/nfs");
+    deleteError(othersConfig.getConfigUUID(), false, 404);
+    CustomerConfig alerts = CustomerConfig.createAlertConfig(customer.getUuid(), Json.newObject());
+    alerts.generateUUID();
+    alerts.save();
+    deleteError(alerts.getConfigUUID(), false, 404);
+    submittedDelete(0);
+  }
+
+  @Test
+  public void deleteOfAConfigInUseIs409() throws ApiException {
+    CustomerConfig nfs = ModelFactory.createNfsStorageConfig(customer, "nfs", "/mnt/nfs");
+    UUID uuid = nfs.getConfigUUID();
+    Universe universe = ModelFactory.createUniverse("backed-up", customer.getId());
+    Backup completed =
+        ModelFactory.createBackup(customer.getUuid(), universe.getUniverseUUID(), uuid);
+    completed.transitionState(BackupState.Completed);
+
+    JsonNode error = deleteError(uuid, false, 409);
+    assertEquals(StorageConfigDeletion.IN_USE, error.get("code").asText());
+    assertEquals(1, error.get("completed_backups").asInt());
+    assertEquals(0, error.get("running_backups").asInt());
+    assertEquals(
+        universe.getUniverseUUID().toString(),
+        error.get("usage").get("universe_uuids").get(0).asText());
+
+    // A running backup blocks even with delete_backups.
+    Backup running =
+        ModelFactory.createBackup(customer.getUuid(), universe.getUniverseUUID(), uuid);
+    error = deleteError(uuid, true, 409);
+    assertEquals(1, error.get("running_backups").asInt());
+    running.transitionState(BackupState.Completed);
+
+    // And so does a schedule.
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), uuid);
+    error = deleteError(uuid, true, 409);
+    assertEquals(
+        schedule.getScheduleUUID().toString(),
+        error.get("usage").get("schedule_uuids").get(0).asText());
+    submittedDelete(0);
+
+    // Completed backups don't block when they're deleted with the config.
+    schedule.delete();
+    delete(uuid, true);
+    submittedDelete(1);
+  }
+
+  @Test
+  public void deleteConflictsWithAValidatingConfigOrAnEdit() throws ApiException {
+    UUID validating = create(nfsSpec("validating", "/mnt/v"));
+    JsonNode error = deleteError(validating, false, 409);
+    assertEquals(StorageConfigHandler.NOT_ACTIVE, error.get("code").asText());
+    assertEquals("VALIDATING", error.get("storage_config_state").asText());
+
+    CustomerConfig nfs = ModelFactory.createNfsStorageConfig(customer, "nfs", "/mnt/nfs");
+    YBATask editTask = edit(nfs.getConfigUUID(), nfsSpec("renamed", "/mnt/nfs"), null);
+    error = deleteError(nfs.getConfigUUID(), false, 409);
+    assertEquals(StorageConfigHandler.EDIT_IN_PROGRESS, error.get("code").asText());
+    assertEquals(editTask.getTaskUuid().toString(), error.get("task_uuid").asText());
+    submittedDelete(0);
   }
 }
