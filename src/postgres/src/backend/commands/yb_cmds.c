@@ -1318,6 +1318,32 @@ ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
 	return result;
 }
 
+/*
+ * Return whether ALTER TABLE ... ADD COLUMN gives DocDB a missing value, i.e.
+ * the value that existing rows read for the new column, for the given cooked
+ * default expression.
+ *
+ * PG decides separately whether to store the default as a missing value
+ * (attmissingval) instead of rewriting the table; see
+ * AddRelationNewConstraints.  YB rows come from DocDB and never see
+ * attmissingval, so PG's decision is safe only if DocDB got the same value.
+ * YBCPrepareAlterTableCmd uses this function to decide what to send DocDB.
+ * While yb_enable_add_column_missing_default is on, ATExecAddColumn also uses
+ * it to force a rewrite when PG chose a missing value that DocDB doesn't
+ * have; with the flag off, it does not rewrite (see the comment there and
+ * #38681).
+ *
+ * The volatility check must look at the planned expression, as PG does:
+ * planning can inline a VOLATILE SQL function such as
+ * "LANGUAGE sql AS 'SELECT 42'" into a constant.
+ */
+bool
+YbAddColumnUsesDocdbMissingValue(Expr *cooked_default)
+{
+	return (yb_enable_add_column_missing_default &&
+			!contain_volatile_functions_after_planning(cooked_default));
+}
+
 static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
@@ -1429,9 +1455,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 					/*
 					 * Compute the missing default value if the default expression
-					 * is non-volatile.
+					 * is non-volatile after planning.
 					 */
-					if (!contain_volatile_functions((Node *) expr))
+					if (YbAddColumnUsesDocdbMissingValue(expr))
 					{
 						expr = expression_planner(expr);
 						EState	   *estate = CreateExecutorState();
