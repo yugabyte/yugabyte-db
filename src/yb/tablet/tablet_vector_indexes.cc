@@ -29,10 +29,12 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/docdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
@@ -120,6 +122,13 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
   }
 
   Result<Slice> Fetch(Slice key) override {
+    // Past the key, the lookup would step over the entries the read does not see one at a time,
+    // e.g. ones written after the read time, and a search looks up every candidate.
+    upper_bound_.Clear();
+    upper_bound_.AppendRawBytes(key);
+    upper_bound_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    docdb::IntentAwareIteratorUpperboundScope upper_bound_scope(
+        upper_bound_.AsSlice(), iter_holder_.iter.get());
     auto value = VERIFY_RESULT(iter_holder_.iter->FetchValue(key));
     if (value.empty() || !key_bounds_->IsInitialized()) {
       return value;
@@ -144,6 +153,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
 
  private:
   ScopedRWOperation rocksdb_op_;
+  dockv::KeyBytes upper_bound_;
   docdb::IntentAwareIteratorWithBounds iter_holder_;
   const docdb::KeyBounds* key_bounds_ = &docdb::KeyBounds::kNoBounds;
 };

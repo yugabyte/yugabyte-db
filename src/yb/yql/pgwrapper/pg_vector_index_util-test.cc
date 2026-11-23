@@ -14,6 +14,7 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 
+#include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/dockv/doc_key.h"
@@ -28,6 +29,7 @@
 #include "yb/qlexpr/index.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/statistics.h"
 
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
@@ -1355,6 +1357,158 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTime) {
   // The query waits for the tablet leader, which HasVectorDeletion requires.
   ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, kNumRows)), "[1, 2, 3, 4, 5]");
   ASSERT_TRUE(ASSERT_RESULT(HasVectorDeletion()));
+}
+
+// A restore to a time keeps the SST files written after it behind a hybrid time filter, whether
+// the rolled back rows have files of their own or share one with restored rows. Until a
+// compaction drops the rolled back entries, an index candidate check steps over them past the
+// candidate's key, so search time grows with the square of the rolled back vectors. The restore
+// triggers that compaction. Parameters: whether the index stores payloads, and whether the rolled
+// back rows are flushed to a file of their own.
+class PgVectorIndexRestoreToTimeTest
+    : public PgVectorIndexUtilTest, public testing::WithParamInterface<std::tuple<bool, bool>> {
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexRestoreToTimeTest, testing::Combine(testing::Bool(), testing::Bool()),
+    [](const testing::TestParamInfo<std::tuple<bool, bool>>& param_info) -> std::string {
+      return Format(
+          "$0$1", std::get<0>(param_info.param) ? "StoredPayload" : "ReverseMapping",
+          std::get<1>(param_info.param) ? "SeparateFile" : "WithinFile");
+    });
+
+TEST_P(PgVectorIndexRestoreToTimeTest, RestoreToTime) {
+  const auto [store_payload, separate_file] = GetParam();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  constexpr size_t kNumRows = 100;
+  constexpr size_t kNumRolledBackRows = 5000;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  // After the schedule's first snapshot, which flushes, so that without a flush here the restored
+  // rows share a file with the rolled back ones.
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  if (separate_file) {
+    ASSERT_OK(cluster_->FlushTablets());
+  }
+  auto restore_at = cluster_->mini_master(0)->Now();
+  // Closer to the query vector than any of the restored rows, so a search goes through all of them.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
+      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
+      kNumRows + 1, kNumRows + kNumRolledBackRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
+  ASSERT_OK(snapshot_util.RestoreSnapshotSchedule(schedule_id, restore_at));
+
+  conn = ASSERT_RESULT(Connect());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  ASSERT_OK(WaitFor([&tablet]() -> Result<bool> {
+    for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+      if (file.largest.user_frontier &&
+          down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).HasFilter()) {
+        return false;
+      }
+    }
+    return true;
+  }, 60s * kTimeMultiplier, "Compaction of the files the restore filtered"));
+
+  // The rolled back rows are closer to the query vector, so they are not found.
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  ASSERT_NE(tablet->regulardb_statistics(), nullptr);
+  auto& statistics = *tablet->regulardb_statistics();
+  auto data_blocks = [&statistics] {
+    return statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_HIT) +
+           statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_MISS);
+  };
+  constexpr int kNumSearches = 3;
+  auto start_blocks = data_blocks();
+  auto start = MonoTime::Now();
+  for (int i = 0; i != kNumSearches; ++i) {
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  }
+  auto search_time = (MonoTime::Now() - start) / kNumSearches;
+  auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
+  LOG(INFO) << "Rolled back rows: " << kNumRolledBackRows
+            << ", data blocks per search: " << data_blocks_per_search
+            << ", time per search: " << search_time;
+  // The rolled back vectors stay in the index, so a search checks each of them, reading about a
+  // block per check. Stepping over the rolled back entries took over ten blocks per check.
+  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumRolledBackRows));
+}
+
+// A search at a read time before most of the vectors were written, e.g. in a REPEATABLE READ
+// transaction, still finds them in the index and checks each of them. A candidate check must not
+// step over the entries written after the read time past the candidate's key, or search time
+// grows with the square of the newer vectors. Parameter: whether the index stores payloads.
+class PgVectorIndexSearchAtOldReadTimeTest
+    : public PgVectorIndexUtilTest, public testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexSearchAtOldReadTimeTest, testing::Bool(),
+    [](const testing::TestParamInfo<bool>& param_info) -> std::string {
+      return param_info.param ? "StoredPayload" : "ReverseMapping";
+    });
+
+TEST_P(PgVectorIndexSearchAtOldReadTimeTest, SearchAtOldReadTime) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = GetParam();
+  constexpr size_t kNumRows = 10;
+  constexpr size_t kNumNewerRows = 10000;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  // A replaced vector makes the search check its candidates.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  auto writer = ASSERT_RESULT(Connect());
+  // Closer to the query vector than any of the older rows, so a search goes through all of them.
+  ASSERT_OK(writer.ExecuteFormat(
+      "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
+      "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
+      kNumRows + 1, kNumRows + kNumNewerRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  ASSERT_NE(tablet->regulardb_statistics(), nullptr);
+  auto& statistics = *tablet->regulardb_statistics();
+  auto data_blocks = [&statistics] {
+    return statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_HIT) +
+           statistics.getTickerCount(rocksdb::BLOCK_CACHE_DATA_MISS);
+  };
+  constexpr int kNumSearches = 3;
+  auto start_blocks = data_blocks();
+  auto start = MonoTime::Now();
+  for (int i = 0; i != kNumSearches; ++i) {
+    ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 3)), "[1, 2, 3]");
+  }
+  auto search_time = (MonoTime::Now() - start) / kNumSearches;
+  auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
+  ASSERT_OK(conn.Execute("COMMIT"));
+  LOG(INFO) << "Newer rows: " << kNumNewerRows
+            << ", data blocks per search: " << data_blocks_per_search
+            << ", time per search: " << search_time;
+  // A search checks each newer vector, reading about a block per check. Stepping over the newer
+  // entries took over two blocks per check.
+  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumNewerRows));
 }
 
 // A committed transaction is visible through its intents until it is applied, while the index

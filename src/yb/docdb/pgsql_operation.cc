@@ -619,7 +619,8 @@ class FilteringIterator {
   }
 
   Result<FetchResult> FetchTuple(Slice tuple_id, dockv::PgTableRow* row) {
-    iterator_holder_->SeekTuple(tuple_id);
+    iterator_holder_->SeekSingleTuple(tuple_id);
+    auto clear_tuple_bound = ScopeExit([this] { iterator_holder_->ClearTupleBound(); });
     if (!VERIFY_RESULT(iterator_holder_->PgFetchNext(row)) ||
         iterator_holder_->GetTupleId() != tuple_id) {
       return FetchResult::NotFound;

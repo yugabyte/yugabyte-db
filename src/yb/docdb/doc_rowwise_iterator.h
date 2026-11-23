@@ -93,6 +93,12 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   void SeekTuple(
       Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue) override;
 
+  // Past the tuple, a fetch would step over the entries the read does not see one at a time, e.g.
+  // ones written after the read time. Without its own upper bound, the iterator seeks as SeekTuple.
+  void SeekSingleTuple(Slice tuple_id) override;
+
+  void ClearTupleBound() override;
+
   // Returns true if tuple was fetched, false otherwise.
   Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) override;
 
@@ -196,6 +202,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   void SeekPrevDocKey(Slice key);
 
+  // Returns tuple_id with the cotable id or colocation id of the table, if any, prepended.
+  Slice TupleKey(Slice tuple_id);
+
   void ConfigureForYsql();
   void InitResult();
 
@@ -272,6 +281,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   std::optional<dockv::KeyBytes> tuple_key_;
+
+  dockv::KeyBytes tuple_upper_bound_;
+  bool tuple_bound_set_ = false;
 
   TableType table_type_;
   bool ignore_ttl_ = false;

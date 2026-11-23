@@ -948,6 +948,7 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   // Schedule post split compaction after compaction enabled on the tablet.
   tablet().TriggerPostSplitCompactionIfNeeded();
+  tablet().TriggerHybridTimeFilterCompactionIfNeeded();
 
   return Status::OK();
 }
