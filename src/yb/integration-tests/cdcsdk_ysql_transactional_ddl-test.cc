@@ -537,8 +537,8 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRe
 class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
  protected:
   // A column added and dropped in the same transaction is removed from the schema right away
-  // rather than marked for deletion. Writes after the transaction commits must not carry the
-  // column in either tuple of a REPLICA IDENTITY FULL record.
+  // rather than marked for deletion. Records written after the transaction commits, and the last
+  // DDL record streamed before each of them, must not have the column.
   void TestWritesAfterDropOfAddedColumn(bool packed_row);
 };
 
@@ -550,132 +550,99 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE t1 (a int primary key, b int, c int) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 REPLICA IDENTITY FULL"));
-  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */,
+      true /* add_primary_key */, false /* colocated */, 0 /* table_oid */,
+      false /* enum_value */, "" /* enum_suffix */, "public" /* schema_name */,
+      2 /* num_cols */, {kValue2ColumnName}));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), 1);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
       "pg_grpc_slot", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
       /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
 
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN d int"));
-  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1, 1, 1)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (2, 2, 2, 2)"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP COLUMN d"));
-  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 20 WHERE a = 1"));
-  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 2"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN d int"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1, 1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 2, 2, 2)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN d"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 20 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 2"));
   ASSERT_OK(conn.Execute("COMMIT"));
 
   // Writes after the commit: single-shard ones and a distributed transaction.
-  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 30 WHERE a = 1"));
-  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 3, 3)"));
+  ASSERT_OK(UpdateRows(1 /* key */, 30 /* value */, &test_cluster_));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (3, 3, 3)"));
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 40 WHERE a = 1"));
-  ASSERT_OK(conn.Execute("UPDATE t1 SET b = 33 WHERE a = 3"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 40 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 33 WHERE key = 3"));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE a = 3"));
+  ASSERT_OK(DeleteRows(3 /* key */, &test_cluster_));
 
-  // Records of the transaction with the DDLs, then those written after it.
   constexpr size_t kNumTxnRecords = 4;
   constexpr size_t kNumRecords = 9;
+  auto change_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, nullptr /* cp */, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
+      0 /* wal_segment_index */, kNumRecords /* expected_records_count */);
 
-  using Tuple = google::protobuf::RepeatedPtrField<DatumMessagePB>;
-  auto find_col = [](const Tuple& tuple, const std::string& name) -> const DatumMessagePB* {
-    for (const auto& col : tuple) {
-      if (col.column_name() == name) {
-        return &col;
+  std::vector<CDCSDKProtoRecordPB> dml_records;
+  // The columns of the last DDL record streamed before each DML record.
+  std::vector<std::vector<std::string>> ddl_columns_before_dml;
+  std::vector<std::string> ddl_columns;
+  for (const auto& record : change_resp.records) {
+    if (record.row_message().op() == RowMessage::DDL) {
+      ddl_columns.clear();
+      for (const auto& column : record.row_message().schema().column_info()) {
+        ddl_columns.push_back(column.name());
       }
-    }
-    return nullptr;
-  };
-
-  std::vector<RowMessage> records;
-  CDCSDKCheckpointPB checkpoint;
-  bool streamed = false;
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto resp = streamed ? GetChangesFromCDCWithoutRetry(stream_id, tablets, &checkpoint)
-                             : GetChangesFromCDC(stream_id, tablets, &checkpoint);
-        if (!resp.ok()) {
-          if (!streamed &&
-              (resp.status().IsLeaderNotReadyToServe() || resp.status().IsNotFound())) {
-            return false;
-          }
-          return resp.status();
-        }
-        streamed = true;
-        for (const auto& record : resp->cdc_sdk_proto_records()) {
-          const auto& row = record.row_message();
-          if (row.table() == "t1" &&
-              (row.op() == RowMessage::INSERT || row.op() == RowMessage::UPDATE ||
-               row.op() == RowMessage::DELETE)) {
-            records.push_back(row);
-          }
-        }
-        checkpoint = resp->cdc_sdk_checkpoint();
-        return records.size() >= kNumRecords;
-      },
-      MonoDelta::FromSeconds(60) * kTimeMultiplier,
-      "Waiting to stream all the writes"));
-
-  ASSERT_EQ(records.size(), kNumRecords);
-  for (size_t i = 0; i < records.size(); ++i) {
-    LOG(INFO) << "Record " << i << ": " << records[i].ShortDebugString();
-  }
-
-  const auto& txn_id = records[0].transaction_id();
-  ASSERT_FALSE(txn_id.empty());
-  for (size_t i = 0; i < kNumTxnRecords; ++i) {
-    ASSERT_EQ(records[i].transaction_id(), txn_id) << i;
-  }
-
-  // The two inserts in the transaction were written while d existed.
-  for (size_t i = 0; i < 2; ++i) {
-    const auto& inserted = records[i];
-    ASSERT_EQ(inserted.op(), RowMessage::INSERT) << i;
-    const auto* a = find_col(inserted.new_tuple(), "a");
-    const auto* d = find_col(inserted.new_tuple(), "d");
-    ASSERT_NE(a, nullptr) << i;
-    ASSERT_NE(d, nullptr) << i;
-    ASSERT_EQ(d->datum_int32(), a->datum_int32()) << i;
-  }
-
-  const auto& updated = records[2];
-  ASSERT_EQ(updated.op(), RowMessage::UPDATE);
-  ASSERT_EQ(find_col(updated.new_tuple(), "a")->datum_int32(), 1);
-  ASSERT_EQ(find_col(updated.new_tuple(), "b")->datum_int32(), 20);
-  ASSERT_EQ(find_col(updated.new_tuple(), "c")->datum_int32(), 1);
-  ASSERT_EQ(find_col(updated.old_tuple(), "a")->datum_int32(), 1);
-  ASSERT_EQ(find_col(updated.old_tuple(), "b")->datum_int32(), 1);
-  ASSERT_EQ(find_col(updated.old_tuple(), "c")->datum_int32(), 1);
-
-  const auto& deleted = records[3];
-  ASSERT_EQ(deleted.op(), RowMessage::DELETE);
-  ASSERT_EQ(find_col(deleted.old_tuple(), "a")->datum_int32(), 2);
-  ASSERT_EQ(find_col(deleted.old_tuple(), "b")->datum_int32(), 2);
-  ASSERT_EQ(find_col(deleted.old_tuple(), "c")->datum_int32(), 2);
-
-  // The UPDATE and DELETE above can still carry d: they are unpacked writes, which hold no schema
-  // version, so they are decoded with the schema cached from the earlier inserts. Everything
-  // written after the commit has exactly the columns a, b and c.
-  for (size_t i = kNumTxnRecords; i < records.size(); ++i) {
-    const auto& row = records[i];
-    ASSERT_NE(row.transaction_id(), txn_id) << i;
-    ASSERT_EQ(find_col(row.new_tuple(), "d"), nullptr) << i << ": " << row.ShortDebugString();
-    ASSERT_EQ(find_col(row.old_tuple(), "d"), nullptr) << i << ": " << row.ShortDebugString();
-    if (row.op() != RowMessage::DELETE) {
-      ASSERT_EQ(row.new_tuple_size(), 3) << i << ": " << row.ShortDebugString();
-    }
-    if (row.op() != RowMessage::INSERT) {
-      ASSERT_EQ(row.old_tuple_size(), 3) << i << ": " << row.ShortDebugString();
+    } else if (IsDMLRecord(record)) {
+      dml_records.push_back(record);
+      ddl_columns_before_dml.push_back(ddl_columns);
     }
   }
+  ASSERT_EQ(dml_records.size(), kNumRecords);
+
+  const std::vector<std::string> columns = {kKeyColumnName, kValueColumnName, kValue2ColumnName};
+  const std::vector<std::string> columns_with_d = {
+      kKeyColumnName, kValueColumnName, kValue2ColumnName, "d"};
+
+  // The inserts in the transaction were written while d existed.
+  for (int32_t key = 1; key <= 2; ++key) {
+    const auto& record = dml_records[key - 1];
+    ASSERT_EQ(record.row_message().op(), RowMessage::INSERT);
+    ASSERT_NO_FATALS(CheckRecordTuples(record, columns_with_d, {}));
+    ASSERT_NO_FATALS(AssertKeyValue(record, key, key, true /* validate_third_column */, key));
+    ASSERT_EQ(record.row_message().new_tuple(3).datum_int32(), key);
+  }
+
+  // The UPDATE and DELETE in the transaction are unpacked writes, which hold no schema version, so
+  // they can still carry d. Only their values are checked.
+  ASSERT_EQ(dml_records[2].row_message().op(), RowMessage::UPDATE);
+  ASSERT_NO_FATALS(AssertKeyValue(dml_records[2], 1, 20));
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(dml_records[2], 1, 1));
+  ASSERT_EQ(dml_records[3].row_message().op(), RowMessage::DELETE);
+  ASSERT_NO_FATALS(AssertBeforeImageKeyValue(dml_records[3], 2, 2));
+
+  ExpectedRecordWithThreeColumns expected_records[] = {
+      {1, 30, 1}, {3, 3, 3}, {1, 40, 1}, {3, 33, 3}, {}};
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {1, 20, 1}, {}, {1, 30, 1}, {3, 3, 3}, {3, 33, 3}};
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 1, 3, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+  for (size_t i = kNumTxnRecords; i < kNumRecords; ++i) {
+    ASSERT_EQ(ddl_columns_before_dml[i], columns) << i;
+    ASSERT_NO_FATALS(CheckRecordWithThreeColumns(
+        dml_records[i], expected_records[i - kNumTxnRecords], count,
+        true /* validate_old_tuple */, expected_before_image_records[i - kNumTxnRecords],
+        true /* validate_third_column */));
+  }
+  CheckCount(expected_count, count);
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnPacked) {
