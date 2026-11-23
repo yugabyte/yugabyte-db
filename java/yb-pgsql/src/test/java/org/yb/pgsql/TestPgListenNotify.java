@@ -602,10 +602,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
     final String guc = "yb_test_notifs_poller_error_before_init";
     HostAndPort ts0 = getRpcHostPortForTServer(0);
-    String originalPgConf = miniCluster.getClient().getFlag(ts0, "ysql_pg_conf_csv");
-
-    setServerFlag(ts0, "ysql_pg_conf_csv",
-        (originalPgConf.isEmpty() ? "" : originalPgConf + ",") + guc + "=true");
+    String originalPgConf = appendToPgConf(ts0, guc + "=true");
     waitForPostmasterSetting(0, guc, "on");
     try (Connection conn = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = conn.createStatement()) {
@@ -2231,17 +2228,25 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * Appends an entry to ysql_pg_conf_csv on every tserver, first saving each prior value in
-   * {@code original} for the caller to restore. The value is CSV with quoting, so it is only
-   * appended to, never split. A change to the flag reloads postgresql.conf, so it reaches
-   * background workers such as the poller.
+   * {@code original} for the caller to restore.
    */
   private void appendToPgConfOnAllTServers(String entry, Map<HostAndPort, String> original)
       throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
-      original.put(tserver, current);
-      setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
+      original.put(tserver, appendToPgConf(tserver, entry));
     }
+  }
+
+  /**
+   * Appends an entry to ysql_pg_conf_csv on the given tserver, and returns the prior value for the
+   * caller to restore. The value is CSV with quoting, so it is only appended to, never split. A
+   * change to the flag reloads postgresql.conf, so it reaches background workers such as the
+   * poller.
+   */
+  private String appendToPgConf(HostAndPort tserver, String entry) throws Exception {
+    String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
+    setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
+    return current;
   }
 
   private void setNotificationsPollSleepDurationEmpty(String valueMs) throws Exception {
