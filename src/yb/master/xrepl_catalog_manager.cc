@@ -4295,6 +4295,27 @@ Status CatalogManager::GetCDCStream(
     *stream_info->mutable_xcluster_bootstrap_info() = stream_lock->pb.xcluster_bootstrap_info();
   }
 
+  // A dropped table stays in replica_identity_map until the background CDCSDK cleanup removes it,
+  // and the slot-name caller fails to resolve it. It is marked deleting before it is added to
+  // dropped_table_id, so check both. The tserver (stream-id caller) still gets the full map.
+  if (req->has_cdcsdk_ysql_replication_slot_name()) {
+    const std::unordered_set<TableId> dropped_table_ids(
+        stream_lock->pb.dropped_table_id().begin(), stream_lock->pb.dropped_table_id().end());
+    // Release before taking mutex_ and table locks to keep the mutex_ -> COW lock order.
+    stream_lock.Unlock();
+    auto* map = stream_info->mutable_replica_identity_map();
+    for (auto it = map->begin(); it != map->end();) {
+      auto table = dropped_table_ids.contains(it->first) ? nullptr : GetTableInfo(it->first);
+      if (!table || table->LockForRead()->started_deleting()) {
+        VLOG_WITH_FUNC(1) << "Omitting replica identity of dropped table " << it->first
+                          << " for stream " << stream->id();
+        it = map->erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
   return Status::OK();
 }
 
