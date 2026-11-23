@@ -6497,6 +6497,89 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   LOG(INFO) << "Test passed: Old table was HIDDEN (not DELETED), no hang occurred";
 }
 
+// The CDC bg thread's unprocessed-table map is in memory only. A table dropped before the bg thread
+// registered it must still be retained after a master restart, which relies on the reseed done
+// when the master loads its streams.
+TEST_F(CDCSDKConsumptionConsistentChangesTest,
+       TestMasterRestartWhileDroppedTableAwaitsCDCRegistration) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  // Read when the deletion task schedules itself, so it must be set before the cluster starts.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto base_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "base_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {base_table.table_id()}, kVWALSessionId1));
+
+  // Keep new tables out of the stream, so the dropped table stays in the unprocessed map. The flag
+  // is process wide, so it also holds across the master restart below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
+
+  std::atomic<int> deferred_hits{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "DoProcessCDCSDKTabletDeletion::DeferredWaitingTable",
+      [&deferred_hits](void*) { ++deferred_hits; });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("CREATE TABLE side_table (id INT PRIMARY KEY, value TEXT)"));
+  auto old_table_id = ASSERT_RESULT(
+      GetTable(&test_cluster_, test_namespace_name, "side_table")).table_id();
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE side_table"));
+  auto new_table_id = ASSERT_RESULT(
+      GetTable(&test_cluster_, test_namespace_name, "side_table")).table_id();
+  ASSERT_NE(old_table_id, new_table_id);
+
+  auto is_old_table_hidden = [&]() -> Result<bool> {
+    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+    auto table_info = VERIFY_RESULT(cm.FindTableById(old_table_id));
+    return table_info->IsHiddenButNotDeleting();
+  };
+  ASSERT_TRUE(ASSERT_RESULT(is_old_table_hidden()))
+      << "Old table " << old_table_id << " must be HIDDEN right after the drop";
+
+  // The restarted master starts with an empty unprocessed map. Only the reseed on load can make
+  // the deletion task treat the old table as waiting again.
+  ASSERT_OK(test_cluster_.mini_cluster_->mini_master()->Restart());
+  ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
+  deferred_hits = 0;
+
+  ASSERT_OK(WaitFor(
+      [&deferred_hits]() -> bool { return deferred_hits.load() >= 3; },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "After the master restart, the deletion task never deferred the waiting table's tablet"));
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
+  ASSERT_TRUE(ASSERT_RESULT(is_old_table_hidden()))
+      << "Old table " << old_table_id << " was deleted after the master restart";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = false;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+        for (const auto& table_info : resp.table_info()) {
+          if (table_info.table_id() == new_table_id) {
+            return true;
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60 * kTimeMultiplier),
+      "Timed out waiting for new table to be added to stream metadata"));
+
+  // VWAL needs the old table's metadata; this is what hangs if the table was deleted.
+  auto start_time = CoarseMonoClock::Now();
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {old_table_id}, kVWALSessionId1));
+  auto elapsed = MonoDelta(CoarseMonoClock::Now() - start_time);
+  ASSERT_LT(elapsed.ToSeconds(), 10)
+      << "UpdatePublicationTableList took " << elapsed.ToSeconds() << " seconds";
+}
+
 // TODO(#31908): Re-enable the test once support for colocated rewrite + CDC is added.
 // This test verifies that VWAL is able to correctly switchover to new table upon table rewrite for
 // colocated table.

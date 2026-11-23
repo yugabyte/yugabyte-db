@@ -503,17 +503,13 @@ void CatalogManager::ReseedCDCSDKUnprocessedMapForHiddenTables() {
       if (stream_info->namespace_id() != ns_id || !IsCdcLogicalReplicationStream(*stream_info)) {
         continue;
       }
-      // A table hidden before the stream existed was never waiting to be added to it
+      // A table hidden before the stream existed was never waiting to be added to it. Streams
+      // created without a consistent snapshot option have no creation time; like the live path,
+      // we don't filter on time for them. A HIDING table has no hide time and was dropped moments
+      // ago, so it is never filtered either.
       {
         auto stream_lock = stream_info->LockForRead();
-        if (!stream_lock->pb.has_stream_creation_time()) {
-          VLOG(1) << "Not re-adding hidden table " << table.id() << " for stream " << stream_id
-                  << ": stream has no creation time";
-          continue;
-        }
-        // A HIDING table was dropped moments ago, so treat it as hidden after the stream was
-        // created.
-        if (hide_time &&
+        if (hide_time && stream_lock->pb.has_stream_creation_time() &&
             *hide_time < HybridTime::FromMicros(stream_lock->pb.stream_creation_time())) {
           continue;
         }
