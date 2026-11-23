@@ -3359,7 +3359,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateNewCdcsdkStream(
       const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const std::optional<const NamespaceId>& namespace_id,
+      bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(
