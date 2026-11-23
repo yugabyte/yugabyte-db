@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -49,6 +50,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -371,7 +373,12 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
     requestParams.enableYCQLAuth = userIntent.enableYCQLAuth;
     requestParams.enableYSQL = userIntent.enableYSQL;
     requestParams.enableYSQLAuth = userIntent.enableYSQLAuth;
-    requestParams.communicationPorts = universe.getUniverseDetails().communicationPorts;
+    // A copy, so the request's ports do not overwrite the universe's ports that verifyParams reads.
+    requestParams.communicationPorts =
+        Json.fromJson(
+            UniverseControllerRequestBinder.mergePorts(
+                universe.getUniverseDetails().communicationPorts, null),
+            UniverseTaskParams.CommunicationPorts.class);
     return requestParams;
   }
 }

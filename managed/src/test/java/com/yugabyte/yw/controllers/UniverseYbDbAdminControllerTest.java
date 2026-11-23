@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -468,6 +469,55 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     assertEquals(5434, ports.ysqlServerRpcPort);
     assertEquals(13100, ports.ysqlServerHttpPort);
     assertEquals(6440, ports.internalYsqlServerRpcPort);
+  }
+
+  // The port checks compare the requested ports with the universe's ports, not with themselves.
+  @Test
+  public void testConfigureDBApisPortChecks() {
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Universe k8s = createUniverse("k8s-universe", customer.getId(), CloudType.kubernetes);
+    updateUniverseAPIDetails(k8s, true, false, true, false);
+    Result result =
+        assertPlatformException(
+            () -> sendConfigurePortsRequest(k8s, "ysql", "ysqlServerHttpPort", 13001));
+    assertBadRequest(result, "Cannot change YSQL ports on k8s universe.");
+
+    Universe vm = createUniverse(customer.getId());
+    updateUniverseAPIDetails(vm, true, false, true, false);
+    // 7000 is the master HTTP port.
+    result =
+        assertPlatformException(
+            () -> sendConfigurePortsRequest(vm, "ysql", "ysqlServerRpcPort", 7000));
+    assertBadRequest(result, "All ports must be different.");
+
+    assertOk(sendConfigurePortsRequest(vm, "ycql", "yqlServerRpcPort", 9043));
+    ArgumentCaptor<ConfigureDBApiParams> captor =
+        ArgumentCaptor.forClass(ConfigureDBApiParams.class);
+    verify(mockCommissioner, times(1)).submit(any(), captor.capture());
+    assertEquals(9043, captor.getValue().communicationPorts.yqlServerRpcPort);
+    // The request does not change the universe's ports; the task does.
+    assertEquals(
+        9042,
+        Universe.getOrBadRequest(vm.getUniverseUUID())
+            .getUniverseDetails()
+            .communicationPorts
+            .yqlServerRpcPort);
+  }
+
+  private Result sendConfigurePortsRequest(
+      Universe universe, String api, String portName, int port) {
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", true).put("enableYCQL", true);
+    bodyJson.set("communicationPorts", Json.newObject().put(portName, port));
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/"
+            + api;
+    return doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
   }
 
   @Test

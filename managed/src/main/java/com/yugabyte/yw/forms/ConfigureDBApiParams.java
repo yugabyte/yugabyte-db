@@ -61,7 +61,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     UserIntent userIntent = primaryCluster.userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
-    if (CommunicationPorts.hasDuplicatePorts(universePorts)) {
+    if (CommunicationPorts.hasDuplicatePorts(communicationPorts)) {
       throw new PlatformServiceException(BAD_REQUEST, "All ports must be different.");
     }
     boolean changeInYsql =
@@ -172,7 +172,8 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot enable YCQL auth when API is disabled.");
       } else if ((communicationPorts.yqlServerHttpPort != universePorts.yqlServerHttpPort
-          || communicationPorts.yqlServerRpcPort != universePorts.yqlServerRpcPort)) {
+              || communicationPorts.yqlServerRpcPort != universePorts.yqlServerRpcPort)
+          && Util.isKubernetesBased(userIntent)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change YCQL ports on k8s universe.");
       } else if ((enableYCQLAuth != userIntent.enableYCQLAuth)
