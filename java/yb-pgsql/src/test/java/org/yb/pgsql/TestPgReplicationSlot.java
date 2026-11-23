@@ -42,11 +42,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -54,6 +57,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.RelationType;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -5933,5 +5938,151 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream1.close();
     replConn1.close();
+  }
+
+  // The master leaves the yb_xcluster_ddl_replication tables out of every CDC stream, so a slot
+  // that covers all tables streams only once its walsender leaves them out of its table list too.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesCreatedBeforeIt() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE TABLE yb_xcluster_ddl_replication.t2 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
+          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "t2"));
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    // The walsender asks the master for every table in its list, so the list must equal the user
+    // tables in each slot's stream. The stream also holds the catalog tables that CDC polls.
+    Set<String> walsenderTables;
+    List<Row> slots;
+    try (Statement stmt = connection.createStatement()) {
+      walsenderTables = getRowList(stmt,
+          "SELECT schemaname || '.' || tablename FROM pg_publication_tables").stream()
+          .map(row -> row.getString(0))
+          .collect(Collectors.toSet());
+      slots = getRowList(stmt, "SELECT slot_name, yb_stream_id FROM pg_replication_slots");
+    }
+    assertEquals(2, slots.size());
+    Map<String, String> userTableNamesById = new HashMap<>();
+    for (TableInfo table :
+        miniCluster.getClient().getTablesList(null, false, null).getTableInfoList()) {
+      if (table.getRelationType() == RelationType.USER_TABLE_RELATION) {
+        userTableNamesById.put(
+            table.getId().toStringUtf8(), table.getPgschemaName() + "." + table.getName());
+      }
+    }
+    for (Row slot : slots) {
+      Set<String> streamTables = miniCluster.getClient().getDBStreamInfo(slot.getString(1))
+          .getTableInfoList().stream()
+          .map(table -> userTableNamesById.get(table.getTableId().toStringUtf8()))
+          .filter(Objects::nonNull)
+          .collect(Collectors.toSet());
+      assertEquals(slot.getString(0), walsenderTables, streamTables);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_decoding_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    stream.close();
+    conn.close();
+
+    conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    stream = openStream(conn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+    stream.close();
+    conn.close();
+  }
+
+  // Adding a database to xCluster creates the extension while its slots stream.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesCreatedWhileStreaming() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_decoding_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    Connection pubConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream pubStream = openStream(pubConn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(pubStream, 4).contains(PgOutputInsertMessage.Create("1")));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:2", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(pubStream, 3).contains(PgOutputInsertMessage.Create("2")));
+    stream.close();
+    conn.close();
+    pubStream.close();
+    pubConn.close();
+  }
+
+  // Slots also leave these tables out when a publication lists them explicitly, whether they are
+  // listed on CREATE PUBLICATION or added with ALTER PUBLICATION while the slot streams.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesListedInPublication() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, yb_xcluster_ddl_replication.ddl_queue");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    createSlot(conn.unwrap(PGConnection.class).getReplicationAPI(), "test_slot",
+        YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = openStream(conn, "test_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.replicated_ddls");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    /* BEGIN, RELATION, INSERT and COMMIT, as the publication change resends RELATION. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("2")));
+    stream.close();
+    conn.close();
   }
 }
