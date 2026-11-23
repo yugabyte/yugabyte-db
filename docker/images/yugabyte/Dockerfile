@@ -269,6 +269,9 @@ ENV container=yugabyte-db
 ENV YB_HOME=/home/yugabyte
 ENV YB_MANAGED_DEVOPS_USE_PYTHON3=1
 ENV YB_DEVOPS_USE_PYTHON3=1
+# An arbitrary UID (OpenShift) otherwise gets / as its home, which it cannot write. $YB_HOME is
+# writable by group 0, so clients such as ycqlsh and ysqlsh can keep their history and config there.
+ENV HOME=/home/yugabyte
 WORKDIR $YB_HOME
 
 # Expose the required ports.
