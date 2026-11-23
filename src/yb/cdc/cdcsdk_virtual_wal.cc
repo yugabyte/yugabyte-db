@@ -2089,10 +2089,9 @@ bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
     return false;
   }
 
-  // ALTER SCHEMA ... RENAME TO writes only pg_namespace. With packed-row, its UPDATE is reported
-  // as an INSERT, which CREATE SCHEMA also writes. That only costs extra RELATION messages.
+  // ALTER SCHEMA ... RENAME TO writes only pg_namespace.
   if (table_id == pg_namespace_table_id_) {
-    return row_message.op() == RowMessage_Op_UPDATE || row_message.op() == RowMessage_Op_INSERT;
+    return row_message.op() == RowMessage_Op_UPDATE;
   }
   return table_id == pg_attribute_table_id_;
 }
