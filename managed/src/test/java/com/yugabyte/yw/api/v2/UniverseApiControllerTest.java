@@ -408,6 +408,34 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
+  public void testGetAndListUniverseV2RedactKubernetesOverrides() throws IOException {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    stubGFlagsValidation();
+    String overrides = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + YCQL_LDAP_SECRET + "\n";
+    Universe universe = createUniverse("overrides-universe", customer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = overrides;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", overrides));
+        });
+
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    for (JsonNode resp :
+        List.of(
+            rawGetUniverse(universe.getUniverseUUID()),
+            rawPageListUniverses().get("entities").get(0))) {
+      assertFalse(resp.toString(), resp.toString().contains("lr23812"));
+      JsonNode providerSpec = resp.at("/spec/clusters/0/provider_spec");
+      assertEquals(redacted, providerSpec.get("helm_overrides").asText());
+      assertEquals(redacted, providerSpec.at("/az_helm_overrides/az-1").asText());
+    }
+  }
+
+  @Test
   public void testGetUniverseV2KeepsLdapGFlagsWithApiRedactionOff() throws IOException {
     // The mocked runtime config leaves enableGFlagsSensitiveDataApiRedaction off.
     stubGFlagsValidation();
