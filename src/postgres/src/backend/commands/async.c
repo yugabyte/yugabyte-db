@@ -3514,6 +3514,13 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
  * failing on the same transaction may read nothing before reaching it on
  * every restart, and an idle poller never acks.
  *
+ * Two consequences are accepted, since without acks an idle poller looks the
+ * same as a failing one. An idle poller that restarted successfully, but
+ * has not been up for the timeout, terminates the listeners on one error if
+ * its run of failed restarts began more than the timeout ago; nothing was
+ * pending, so the listeners lose only their connections. A failure that comes more than the timeout into
+ * every run restarts indefinitely, at most once per timeout.
+ *
  * Caller holds NotifyQueueLock exclusively and has checked that this poller
  * is not stale. This releases the lock.
  */
