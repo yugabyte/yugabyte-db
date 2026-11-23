@@ -33,11 +33,16 @@ const LinkButton = styled(ButtonBase)(({ theme }) => ({
   whiteSpace: 'nowrap'
 }));
 
+const EMPTY_SIZE = '-';
+
 interface SummaryPanelProps {
   /** Categories that will be collected, in display order. */
   categories: SupportBundleCategoryDef[];
   summary: SupportBundleEstimateSummary | null;
   isEstimating: boolean;
+  isEstimateFailed: boolean;
+  /** False while the form can't be estimated: an incomplete range, or nothing to collect. */
+  canEstimate: boolean;
   asOf: Date | null;
   onRefreshEstimate: () => void;
   onScopeToFewerNodes: () => void;
@@ -50,6 +55,8 @@ export const SummaryPanel = ({
   categories,
   summary,
   isEstimating,
+  isEstimateFailed,
+  canEstimate,
   asOf,
   onRefreshEstimate,
   onScopeToFewerNodes,
@@ -68,8 +75,27 @@ export const SummaryPanel = ({
           {t('summary.estimatedSize')}
         </Typography>
         <Typography variant="h4" color="text.primary" data-testid="SupportBundleSummaryPanel-Size">
-          {hasEstimate ? `≈ ${formatBytes(summary.totalBytes)}` : t('summary.estimating')}
+          {hasEstimate ? `\u2248 ${formatBytes(summary.totalBytes)}` : EMPTY_SIZE}
         </Typography>
+        {!hasEstimate && (
+          <Typography
+            variant="subtitle1"
+            color="grey.700"
+            data-testid="SupportBundleSummaryPanel-EstimateStatus"
+          >
+            {!canEstimate
+              ? t('summary.cannotEstimate')
+              : isEstimateFailed && !isEstimating
+                ? t('summary.estimateFailed')
+                : t('summary.estimating')}
+          </Typography>
+        )}
+        {!hasEstimate && canEstimate && isEstimateFailed && !isEstimating && (
+          <LinkButton onClick={onRefreshEstimate} data-testid="SupportBundleSummaryPanel-Retry">
+            <RefreshIcon />
+            <span>{t('summary.refreshEstimate')}</span>
+          </LinkButton>
+        )}
         {hasEstimate && (
           // The timestamp is long once it carries the time zone; Refresh moves to its own line
           // instead of squeezing into a column beside it.

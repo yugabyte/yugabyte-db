@@ -73,7 +73,7 @@ export const CategoryRow = ({
     <Typography component="div" variant="subtitle1" color="grey.700">
       {category.components.map((def, index) => (
         <Fragment key={def.component}>
-          {index > 0 && ' · '}
+          {index > 0 && ' \u00b7 '}
           {def.sensitive ? (
             <SensitiveText>{t(`component.${def.i18nKey}`)}</SensitiveText>
           ) : (

@@ -77,12 +77,12 @@ describe('CreateSupportBundlePage', () => {
   it('estimates the recommended bundle as soon as the page opens', async () => {
     renderPage();
 
-    expect(await screen.findByText('≈ 7.1 GB')).toBeInTheDocument();
+    expect(await screen.findByText('\u2248 7.1 GB')).toBeInTheDocument();
   });
 
   it('adds metrics and their time range when Performance Metrics is checked', async () => {
     renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
 
     fireEvent.click(
       within(screen.getByTestId('CreateSupportBundlePage-Category-performanceMetrics')).getByRole(
@@ -98,7 +98,7 @@ describe('CreateSupportBundlePage', () => {
 
   it('leaves out a recommended category the user unchecks', async () => {
     renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
 
     fireEvent.click(
       within(screen.getByTestId('CreateSupportBundlePage-Category-clusterLogs')).getByRole(
@@ -126,7 +126,7 @@ describe('CreateSupportBundlePage', () => {
 
   it('sends only the nodes the user keeps', async () => {
     renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
 
     openSelect('CreateSupportBundlePage-Nodes');
     fireEvent.click(await screen.findByTestId('CreateSupportBundlePage-Nodes-n2'));
@@ -134,9 +134,25 @@ describe('CreateSupportBundlePage', () => {
     await waitFor(() => expect(lastEstimateSpec().node_names).toEqual(['n1']), { timeout: 2000 });
   });
 
+  it('refuses to estimate or create a bundle with no nodes selected', async () => {
+    renderPage();
+    await screen.findByText('\u2248 7.1 GB');
+    const estimateCount = api.estimateSupportBundleSize.mock.calls.length;
+
+    openSelect('CreateSupportBundlePage-Nodes');
+    fireEvent.click(await screen.findByTestId('CreateSupportBundlePage-Nodes-__allNodes__'));
+
+    expect(await screen.findByTestId('SupportBundleSummaryPanel-EstimateStatus')).toHaveTextContent(
+      'pick at least one node'
+    );
+    expect(screen.getByTestId('SupportBundleSummaryPanel-Create')).toBeDisabled();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(api.estimateSupportBundleSize).toHaveBeenCalledTimes(estimateCount);
+  });
+
   it('holds off estimating and creating until a custom range is complete', async () => {
     renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
     const estimateCount = api.estimateSupportBundleSize.mock.calls.length;
 
     openSelect('CreateSupportBundlePage-TimeRange');
@@ -149,7 +165,7 @@ describe('CreateSupportBundlePage', () => {
 
   it('re-estimates on Refresh estimate', async () => {
     renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
     const estimateCount = api.estimateSupportBundleSize.mock.calls.length;
 
     fireEvent.click(screen.getByTestId('SupportBundleSummaryPanel-Refresh'));
@@ -163,7 +179,7 @@ describe('CreateSupportBundlePage', () => {
   it('stays open when the bundle cannot be created', async () => {
     api.createSupportBundle.mockRejectedValue(new Error('Bad request'));
     const { onCreated } = renderPage();
-    await screen.findByText('≈ 7.1 GB');
+    await screen.findByText('\u2248 7.1 GB');
 
     fireEvent.click(screen.getByTestId('SupportBundleSummaryPanel-Create'));
 

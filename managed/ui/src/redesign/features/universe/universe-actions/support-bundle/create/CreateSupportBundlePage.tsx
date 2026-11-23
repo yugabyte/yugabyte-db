@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 
 import { Universe } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RBAC_ERR_MSG_NO_PERM } from '@app/redesign/features/rbac/common/validator/ValidatorUtils';
 import { handleServerError } from '@app/utils/errorHandlingUtils';
 import CloseLargeIcon from '@app/redesign/assets/approved/close-large.svg';
 import LogoYugabyteIcon from '@app/redesign/assets/approved/logo-yugabyte.svg';
@@ -149,6 +150,17 @@ export const CreateSupportBundlePage = ({
   const toggleExpanded = (mode: CollectionMode) =>
     setExpandedCard(expandedCard === mode ? null : mode);
 
+  // A custom range doesn't move with `now`, so its spec (and query key) stays the same and the
+  // query has to be refetched instead.
+  const refreshEstimate = () => {
+    const now = new Date();
+    if (JSON.stringify(toCreateSpec(values, context, now)) === JSON.stringify(estimateSpec)) {
+      void estimate.refetch();
+    } else {
+      setEstimateNow(now);
+    }
+  };
+
   const scopeToFewerNodes = () => {
     nodesFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setIsNodesSelectOpen(true);
@@ -164,8 +176,13 @@ export const CreateSupportBundlePage = ({
         toast.success(t('createSuccess'));
         onCreated();
       },
-      onError: (error) =>
-        handleServerError(error as AxiosError, { customErrorLabel: t('createFailed') })
+      onError: (error) => {
+        if ((error as AxiosError).response?.status === 403) {
+          toast.error(RBAC_ERR_MSG_NO_PERM, { autoClose: 3000 });
+          return;
+        }
+        handleServerError(error as AxiosError, { customErrorLabel: t('createFailed') });
+      }
     });
   };
 
@@ -328,8 +345,10 @@ export const CreateSupportBundlePage = ({
           categories={selectedCategories}
           summary={summary}
           isEstimating={estimate.isEstimating}
+          isEstimateFailed={estimate.isError}
+          canEstimate={!!estimateSpec && selectedComponents.length > 0}
           asOf={estimate.asOf}
-          onRefreshEstimate={() => setEstimateNow(new Date())}
+          onRefreshEstimate={refreshEstimate}
           onScopeToFewerNodes={scopeToFewerNodes}
           onCreate={onCreate}
           isCreateDisabled={

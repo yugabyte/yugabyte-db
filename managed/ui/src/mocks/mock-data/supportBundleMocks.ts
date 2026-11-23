@@ -163,12 +163,11 @@ export const createSupportBundleUniverseMock = ({
 /** Collected once from the YBA host rather than from each node. */
 const YBA_COMPONENTS: string[] = [
   SupportBundleComponentType.ApplicationLogs,
-  SupportBundleComponentType.SystemLogs,
   SupportBundleComponentType.YbaMetadata
 ];
 const COMPONENT_BYTES: Partial<Record<SupportBundleComponentType, number>> = {
   [SupportBundleComponentType.ApplicationLogs]: 1_300_000_000,
-  [SupportBundleComponentType.SystemLogs]: 240_000_000,
+  [SupportBundleComponentType.SystemLogs]: 80_000_000,
   [SupportBundleComponentType.YbaMetadata]: 12_000_000,
   [SupportBundleComponentType.UniverseLogs]: 420_000_000,
   [SupportBundleComponentType.CoreFiles]: 150_000_000,

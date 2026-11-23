@@ -805,7 +805,7 @@
         },
         "create": {
           "title": "Create Support Bundle",
-          "subtitle": "{{universeName}} · {{regions}} · {{nodes}}",
+          "subtitle": "{{universeName}} \u00b7 {{regions}} \u00b7 {{nodes}}",
           "regionCount_one": "{{count}} region",
           "regionCount_other": "{{count}} regions",
           "nodeCount_one": "{{count}} node",
@@ -855,7 +855,9 @@
         },
         "summary": {
           "estimatedSize": "Estimated Bundle Size",
-          "estimating": "Estimating…",
+          "estimating": "Estimating\u2026",
+          "cannotEstimate": "Complete the time range and pick at least one node and category to estimate the size.",
+          "estimateFailed": "Couldn't estimate the bundle size.",
           "asOf": "As of",
           "refreshEstimate": "Refresh estimate",
           "largeBundleWarning": "Over 20 GB. Uploads are slow and large bundles can fill the YBA file system.",
@@ -863,7 +865,7 @@
           "viewBreakdown": "View size breakdown",
           "hideBreakdown": "Hide size breakdown",
           "compressionNote": "Files are compressed on each node before transfer.",
-          "expiryNote": "Bundles expire after 10 days."
+          "expiryNote": "Bundles expire after the retention period."
         },
         "category": {
           "platformLogs": "Platform Logs",
@@ -896,7 +898,7 @@
         },
         "sensitiveTooltip": {
           "coreFiles": "Process core dumps are memory dumps and cannot be redacted. They may contain application data, credentials, or other sensitive information that was present in memory when the dump was created.\n\nUse customize bundle if you want to exclude core dumps.",
-          "pgAuditLogs": "PG audit logs can include SQL statement text and, depending on your audit configuration, parameter values. YBA applies PII filtering when pgAudit logs are included in a support bundle, but the logs may still contain other sensitive application or customer data. Review them before sharing."
+          "pgAuditLogs": "PG audit logs can include SQL statement text and, depending on your audit configuration, parameter values. They are collected without filtering or redaction, so they may contain sensitive application or customer data. Review them before sharing."
         }
       }
     },

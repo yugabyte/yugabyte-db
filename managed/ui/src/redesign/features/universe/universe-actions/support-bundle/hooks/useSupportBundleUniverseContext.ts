@@ -9,7 +9,9 @@ import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
 
 import { SupportBundleUniverseContext } from '../model/categories';
 
-const isNotFound = (error: unknown) => (error as AxiosError)?.response?.status === 404;
+const isNotFound = (error: unknown) =>
+  (error as AxiosError)?.response?.status === 404 ||
+  (error as AxiosError & { request?: { status?: number } })?.request?.status === 404;
 
 /** What decides which support bundle components apply to this universe. */
 export const useSupportBundleUniverseContext = (
