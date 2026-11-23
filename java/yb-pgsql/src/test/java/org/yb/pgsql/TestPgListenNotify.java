@@ -2336,6 +2336,74 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * The notifications poller must not poll the sys catalog tablet on the master leader: otherwise
+   * every LISTEN depends on the master leader being available (#36720).
+   */
+  @Test
+  public void testPollerDoesNotPollMaster() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listenerConn, CHANNEL, PAYLOAD);
+
+      // An idle poller polls every yb_notifications_poll_sleep_duration_empty_ms (100ms).
+      long before = getTotalMasterGetChangesCount();
+      Thread.sleep(2000);
+      long delta = getTotalMasterGetChangesCount() - before;
+      assertEquals("GetChanges RPCs served by the masters while a listener idles", 0, delta);
+    }
+  }
+
+  /**
+   * Notifications slots use pub refresh instead of polling the catalog. Notifications must keep
+   * flowing across pub refreshes.
+   */
+  @Test
+  public void testNotificationsAcrossPubRefreshes() throws Exception {
+    setPubRefreshIntervalSecs("1");
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      // The interval is read only when the next refresh is scheduled, and the schedule lives with
+      // the slot. A slot left by an earlier test would keep its next refresh ~900s away, so make
+      // the LISTEN create a new slot.
+      waitForPollerAndSlotCleanup(listenerConn);
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      for (int i = 0; i < 3; i++) {
+        String payload = "after_refresh_" + i;
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + payload + "'");
+        }
+        waitForNotification(listenerConn, CHANNEL, payload);
+        Thread.sleep(1500);
+      }
+    } finally {
+      setPubRefreshIntervalSecs("900");
+    }
+  }
+
+  private long getTotalMasterGetChangesCount() throws Exception {
+    long total = 0;
+    for (MiniYBDaemon master : miniCluster.getMasters().values()) {
+      total += new Metrics(master.getLocalhostIP(), master.getWebPort(), "server")
+          .getHistogram("handler_latency_yb_cdc_CDCService_GetChanges").totalCount;
+    }
+    return total;
+  }
+
+  private void setPubRefreshIntervalSecs(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "cdcsdk_publication_list_refresh_interval_secs", value);
+    }
+  }
+
   private long getTotalWriteRpcCount() throws Exception {
     long total = 0;
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
