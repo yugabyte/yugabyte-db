@@ -163,6 +163,8 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/jsonb.h"
+#include "utils/numeric.h"
 #include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
@@ -580,6 +582,14 @@ static FormData_pg_attribute *YbNotificationsAtts[] = {
 #define YB_NOTIFICATIONS_NATTS \
 	(sizeof(YbNotificationsAtts) / sizeof(YbNotificationsAtts[0]))
 
+/*
+ * Key in extra_options holding a notification's position within its sending
+ * transaction. Needed because CDC orders a transaction's rows by the hybrid
+ * time each tablet assigned them, so rows on different tablets of
+ * pg_yb_notifications can stream out of the order they were sent in.
+ */
+#define YB_NOTIF_SEQ_KEY "seq"
+
 static Relation pg_yb_notifications_relation = NULL;
 static Oid	pg_yb_notifications_reloid = InvalidOid;
 static Oid	pg_yb_notifications_relfilenode = InvalidOid;
@@ -591,6 +601,15 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
  */
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
+
+/* Element of ybNotifsPollerPendingEntries. */
+typedef struct YbNotifsPollerPendingEntry
+{
+	AsyncQueueEntry qe;
+	/* sort keys with qe.srcPid, see ybNotifsPollerPendingEntryCmp */
+	char		sender_node[UUID_LEN];
+	int32		seq;
+} YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
 static TimestampTz ybNotifsPollerId = 0;
@@ -723,6 +742,7 @@ static void ClearPendingActionsAndNotifies(void);
 
 /* YB: helper functions for NOTIFY */
 static void ybInsertPendingNotifiesToTable(void);
+static Datum ybNotificationExtraOptions(int32 seq);
 
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
@@ -745,11 +765,13 @@ static int32 ybEvictSlowestListener(TimestampTz *sigtermTime);
 static bool ybIsListenerPid(int32 pid);
 static bool ybPollEviction(int32 sigtermPid, TimestampTz sigtermTime);
 static void ybNotifsPollerAddPendingEntriesToQueue(void);
+static int	ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
 static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-									  AsyncQueueEntry *qe);
+									  AsyncQueueEntry *qe, int32 *seq,
+									  char *sender_node);
 static void ybSignalAllListeners(void);
 
 /* YB: common helper functions */
@@ -2016,7 +2038,7 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	while (nextNotify != NULL)
 	{
 		if (IsYugaByteEnabled())
-			qe = *((AsyncQueueEntry *) lfirst(nextNotify));
+			qe = ((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
 		else
 		{
 			Notification *n = (Notification *) lfirst(nextNotify);
@@ -3111,6 +3133,7 @@ ybInsertPendingNotifiesToTable(void)
 	Datum	   *uuids = (Datum *) palloc(num_notifs * sizeof(Datum));
 	int			i = 0;
 	ListCell   *nextNotify;
+	MemoryContext oldcontext;
 
 	YBBeginOperationsBuffering();
 
@@ -3148,7 +3171,15 @@ ybInsertPendingNotifiesToTable(void)
 		slot->tts_values[yb_data_att.attnum - 1] = CStringGetDatum(cstring_to_text_with_len(n->data,
 																							n->channel_len + n->payload_len + 2));
 
-		slot->tts_isnull[yb_extra_options_att.attnum - 1] = true;
+		slot->tts_isnull[yb_extra_options_att.attnum - 1] = false;
+		/*
+		 * The per-tuple context is reset every row; pggate copies the datum
+		 * when the insert binds it.
+		 */
+		oldcontext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+		slot->tts_values[yb_extra_options_att.attnum - 1] =
+			ybNotificationExtraOptions(i);
+		MemoryContextSwitchTo(oldcontext);
 		ExecStoreVirtualTuple(slot);
 
 		YBCExecuteInsertForDb(dboid, rel, slot, ONCONFLICT_NONE, NULL,
@@ -3609,6 +3640,8 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			list_sort(ybNotifsPollerPendingEntries,
+					  ybNotifsPollerPendingEntryCmp);
 			ybNotifsPollerAddPendingEntriesToQueue();
 			if (yb_test_fatal_after_notifs_queue_write)
 				ereport(FATAL,
@@ -3636,11 +3669,51 @@ static void
 ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
-	AsyncQueueEntry *qe = palloc0(sizeof(AsyncQueueEntry));
+	YbNotifsPollerPendingEntry *entry =
+		palloc0(sizeof(YbNotifsPollerPendingEntry));
 
-	ybRecordToAsyncQueueEntry(record, qe);
-	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, qe);
+	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq,
+							  entry->sender_node);
+	/* A row from an older writer has no seq: keep its arrival position. */
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT && entry->seq < 0)
+		entry->seq = list_length(ybNotifsPollerPendingEntries);
+	ybNotifsPollerPendingEntries = lappend(ybNotifsPollerPendingEntries, entry);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * Orders a transaction's pending entries as the sending backends issued them,
+ * see YB_NOTIF_SEQ_KEY. The BEGIN entry has no sender (all zeros), and so stays
+ * first.
+ *
+ * The virtual WAL streams DocDB transactions that commit at the same hybrid
+ * time as one transaction. Each sender numbers its notifications from 0, so
+ * sort by sender (node, pid) first to keep each sender's notifications
+ * together. A backend's next transaction starts after its previous one
+ * commits, so one batch never holds two transactions of the same sender.
+ *
+ * All rows of one sender carry a seq, or (older writer) none do and the
+ * arrival positions keep the order.
+ *
+ * The order is deterministic, so a transaction replayed after a poller crash
+ * is queued in the same order, as the listeners' duplicate-skipping requires.
+ */
+static int
+ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
+{
+	const YbNotifsPollerPendingEntry *ea = lfirst(a);
+	const YbNotifsPollerPendingEntry *eb = lfirst(b);
+	int			cmp = memcmp(ea->sender_node, eb->sender_node, UUID_LEN);
+
+	if (cmp != 0)
+		return cmp;
+	if (ea->qe.srcPid != eb->qe.srcPid)
+		return ea->qe.srcPid < eb->qe.srcPid ? -1 : 1;
+	if (ea->seq < eb->seq)
+		return -1;
+	if (ea->seq > eb->seq)
+		return 1;
+	return 0;
 }
 
 static void
@@ -3868,8 +3941,10 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
  */
 static void
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
-						  AsyncQueueEntry *qe)
+						  AsyncQueueEntry *qe, int32 *seq, char *sender_node)
 {
+	*seq = -1;
+
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
 	{
 		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
@@ -3885,6 +3960,13 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	Assert(!isnull);
 	qe->srcPid = DatumGetInt32(sender_id);
+
+	Datum		node = heap_getattr(tuple, yb_sender_node_uuid_att.attnum, desc,
+									&isnull);
+
+	Assert(!isnull);
+	memcpy(sender_node, DatumGetPointer(node), UUID_LEN);
+
 	qe->xid = (TransactionId) record->xid;
 
 	Datum		dbid = heap_getattr(tuple, yb_db_oid_att.attnum, desc, &isnull);
@@ -3909,8 +3991,58 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	entryLength = QUEUEALIGN(entryLength);
 	qe->length = entryLength;
 
+	Datum		extra_options = heap_getattr(tuple, yb_extra_options_att.attnum,
+											 desc, &isnull);
+
+	/*
+	 * The table also takes plain SQL writes, so don't trust the value's shape:
+	 * an ERROR here would terminate every listener on the node. A value that
+	 * isn't an object with a non-negative int32 seq falls back to arrival
+	 * order; a fractional seq is rounded.
+	 */
+	if (!isnull)
+	{
+		Jsonb	   *jb = DatumGetJsonbP(extra_options);
+		JsonbValue	v;
+		bool		error = false;
+		int32		val;
+
+		if (JsonContainerIsObject(&jb->root) &&
+			getKeyJsonValueFromContainer(&jb->root, YB_NOTIF_SEQ_KEY,
+										 strlen(YB_NOTIF_SEQ_KEY), &v) &&
+			v.type == jbvNumeric)
+		{
+			val = numeric_int4_opt_error(v.val.numeric, &error);
+			if (!error && val >= 0)
+				*seq = val;
+		}
+	}
+
 	pfree(desc);
 	pfree(tuple);
+}
+
+/* Build the extra_options value of a pg_yb_notifications row. */
+static Datum
+ybNotificationExtraOptions(int32 seq)
+{
+	JsonbParseState *state = NULL;
+	JsonbValue	key;
+	JsonbValue	val;
+	JsonbValue *res;
+
+	key.type = jbvString;
+	key.val.string.val = (char *) YB_NOTIF_SEQ_KEY;
+	key.val.string.len = strlen(YB_NOTIF_SEQ_KEY);
+	val.type = jbvNumeric;
+	val.val.numeric = int64_to_numeric(seq);
+
+	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	pushJsonbValue(&state, WJB_KEY, &key);
+	pushJsonbValue(&state, WJB_VALUE, &val);
+	res = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+
+	return JsonbPGetDatum(JsonbValueToJsonb(res));
 }
 
 /*
