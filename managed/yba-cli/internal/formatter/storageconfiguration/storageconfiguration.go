@@ -166,8 +166,8 @@ func (c *Context) S3SecretAccessKey() string {
 // IAMInstanceProfile of the storage config
 func (c *Context) IAMInstanceProfile() string {
 	data := c.s.GetData()
-	if iamInstanceProfile, ok := data[util.IAMInstanceProfile]; ok {
-		return iamInstanceProfile.(string)
+	if iamInstanceProfile := data[util.IAMInstanceProfile]; iamInstanceProfile != nil {
+		return fmt.Sprintf("%v", iamInstanceProfile)
 	}
 	return "-"
 }
@@ -175,8 +175,8 @@ func (c *Context) IAMInstanceProfile() string {
 // UseGCPIAM of the storage config
 func (c *Context) UseGCPIAM() string {
 	data := c.s.GetData()
-	if useGCPIAM, ok := data[util.UseGCPIAM]; ok {
-		return useGCPIAM.(string)
+	if useGCPIAM := data[util.UseGCPIAM]; useGCPIAM != nil {
+		return fmt.Sprintf("%v", useGCPIAM)
 	}
 	return "-"
 }

@@ -758,3 +758,15 @@ func MaskObject(token string) string {
 	}
 	return token[:2] + strings.Repeat("*", n-4) + token[n-2:]
 }
+
+// IsTrueValue reads a stored config flag that may be a JSON boolean, a string, or missing.
+func IsTrueValue(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		enabled, err := strconv.ParseBool(v)
+		return err == nil && enabled
+	}
+	return false
+}

@@ -20,9 +20,9 @@ yba storage-config s3 update --name <storage-configuration-name> \
 ### Options
 
 ```
-      --update-credentials         [Optional] Update credentials of the storage configuration. (default false) If set to true, provide either (access-key-id,secret-access-key) pair or set use-iam-instance-profile.
-      --access-key-id string       S3 Access Key ID. Required for non IAM role based storage configurations.
-      --secret-access-key string   S3 Secret Access Key. Required for non IAM role based storage configurations.
+      --update-credentials         [Optional] Read new keys from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY when --access-key-id and --secret-access-key are not given. (default false)
+      --access-key-id string       S3 Access Key ID. Omit to keep the stored keys. Required when switching off IAM, unless set in the environment.
+      --secret-access-key string   S3 Secret Access Key. Omit to keep the stored keys. Required when switching off IAM, unless set in the environment.
       --new-name string            [Optional] Update name of the storage configuration.
       --use-iam-instance-profile   [Optional] Use IAM Role from the YugabyteDB Anywhere Host. Configuration creation will fail on insufficient permissions on the host. (default false)
   -h, --help                       help for update

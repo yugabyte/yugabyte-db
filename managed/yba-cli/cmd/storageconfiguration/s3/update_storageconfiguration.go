@@ -112,31 +112,34 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 
 		data := storageConfig.GetData()
 
+		wasIAM := util.IsTrueValue(data[util.IAMInstanceProfile])
+		isIAM := wasIAM
 		if cmd.Flags().Changed("use-iam-instance-profile") {
-			isIAM, err := cmd.Flags().GetBool("use-iam-instance-profile")
+			isIAM, err = cmd.Flags().GetBool("use-iam-instance-profile")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			data[util.IAMInstanceProfile] = strconv.FormatBool(isIAM)
 		}
 
-		if strings.Compare(data[util.IAMInstanceProfile].(string), "true") != 0 {
-			accessKeyID, err := cmd.Flags().GetString("access-key-id")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			secretAccessKey, err := cmd.Flags().GetString("secret-access-key")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if !util.IsEmptyString(accessKeyID) &&
-				!util.IsEmptyString(secretAccessKey) {
-				data[util.AWSAccessKeyEnv] = accessKeyID
-				data[util.AWSSecretAccessKeyEnv] = secretAccessKey
-			} else {
-				logrus.Fatal(formatter.Colorize(
-					"One of access-key-id or secret-access-key is missing", formatter.RedColor))
-			}
+		accessKeyID, err := cmd.Flags().GetString("access-key-id")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		secretAccessKey, err := cmd.Flags().GetString("secret-access-key")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		keyFlagSet := cmd.Flags().Changed("access-key-id") ||
+			cmd.Flags().Changed("secret-access-key")
+		updateCreds, err := cmd.Flags().GetBool("update-credentials")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		err = applyS3Keys(
+			data, accessKeyID, secretAccessKey, keyFlagSet, updateCreds, wasIAM, isIAM)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		requestBody := ybaclient.CustomerConfig{
@@ -161,6 +164,42 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 	},
 }
 
+// applyS3Keys writes the S3 key pair into data. Without key flags the stored pair is kept,
+// or read from the environment with --update-credentials or when switching off IAM.
+// IAM drops the keys and ignores --update-credentials.
+func applyS3Keys(
+	data map[string]interface{},
+	accessKeyID, secretAccessKey string,
+	keyFlagSet, updateCreds, wasIAM, isIAM bool,
+) error {
+	if isIAM {
+		if keyFlagSet {
+			return fmt.Errorf("--access-key-id and --secret-access-key cannot be used " +
+				"with IAM instance profile based storage configurations")
+		}
+		delete(data, util.AWSAccessKeyEnv)
+		delete(data, util.AWSSecretAccessKeyEnv)
+		return nil
+	}
+	if !keyFlagSet {
+		if !updateCreds && !wasIAM {
+			return nil
+		}
+		logrus.Infof("Reading S3 keys from %s and %s\n",
+			util.AWSAccessKeyEnv, util.AWSSecretAccessKeyEnv)
+		awsCreds, err := util.AwsCredentialsFromEnv()
+		if err != nil {
+			return err
+		}
+		accessKeyID, secretAccessKey = awsCreds.AccessKeyID, awsCreds.SecretAccessKey
+	} else if util.IsEmptyString(accessKeyID) || util.IsEmptyString(secretAccessKey) {
+		return fmt.Errorf("--access-key-id and --secret-access-key must both be non-empty")
+	}
+	data[util.AWSAccessKeyEnv] = accessKeyID
+	data[util.AWSSecretAccessKeyEnv] = secretAccessKey
+	return nil
+}
+
 func init() {
 	updateS3StorageConfigurationCmd.Flags().SortFlags = false
 
@@ -168,18 +207,19 @@ func init() {
 	updateS3StorageConfigurationCmd.PersistentFlags().String("new-name", "",
 		"[Optional] Update name of the storage configuration.")
 	updateS3StorageConfigurationCmd.Flags().Bool("update-credentials", false,
-		"[Optional] Update credentials of the storage configuration. (default false)"+
-			" If set to true, provide either (access-key-id,secret-access-key) pair"+
-			" or set use-iam-instance-profile.")
+		"[Optional] Read new keys from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"+
+			" when --access-key-id and --secret-access-key are not given. (default false)")
 	updateS3StorageConfigurationCmd.Flags().String("access-key-id", "",
 		fmt.Sprintf("S3 Access Key ID. %s",
 			formatter.Colorize(
-				"Required for non IAM role based storage configurations.",
+				"Omit to keep the stored keys. Required when switching off IAM, "+
+					"unless set in the environment.",
 				formatter.GreenColor)))
 	updateS3StorageConfigurationCmd.Flags().String("secret-access-key", "",
 		fmt.Sprintf("S3 Secret Access Key. %s",
 			formatter.Colorize(
-				"Required for non IAM role based storage configurations.",
+				"Omit to keep the stored keys. Required when switching off IAM, "+
+					"unless set in the environment.",
 				formatter.GreenColor)))
 	updateS3StorageConfigurationCmd.MarkFlagsRequiredTogether("access-key-id", "secret-access-key")
 	updateS3StorageConfigurationCmd.Flags().Bool("use-iam-instance-profile", false,
