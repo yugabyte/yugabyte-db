@@ -1069,6 +1069,40 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testRedactSensitiveSpecificGFlags() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812";
+    UUID azUuid = UUID.randomUUID();
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value =
+        ImmutableMap.of(
+            ServerType.TSERVER, ImmutableMap.of("ycql_ldap_bind_passwd", "dummy-az-lr23812"));
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("m", "1"),
+            ImmutableMap.of(
+                "ycql_ldap_bind_passwd", "dummy-lr23812", YSQL_HBA_CONF_CSV, hba, "t", "1"));
+    specificGFlags.setPerAZ(ImmutableMap.of(azUuid, azFlags));
+    specificGFlags.setGflagGroups(List.of(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY));
+
+    SpecificGFlags redacted =
+        GFlagsUtil.redactSensitiveSpecificGFlags(specificGFlags, gFlagsValidation, "2.18");
+
+    Map<String, String> tserver = redacted.getPerProcessFlags().value.get(ServerType.TSERVER);
+    assertEquals(SECRET_REPLACEMENT, tserver.get("ycql_ldap_bind_passwd"));
+    assertEquals(
+        hba.replace("dummy-hba-lr23812", SECRET_REPLACEMENT), tserver.get(YSQL_HBA_CONF_CSV));
+    assertEquals("1", tserver.get("t"));
+    assertEquals("1", redacted.getPerProcessFlags().value.get(ServerType.MASTER).get("m"));
+    assertEquals(
+        SECRET_REPLACEMENT,
+        redacted.getPerAZ().get(azUuid).value.get(ServerType.TSERVER).get("ycql_ldap_bind_passwd"));
+    assertEquals(specificGFlags.getGflagGroups(), redacted.getGflagGroups());
+    assertEquals(
+        hba,
+        specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get(YSQL_HBA_CONF_CSV));
+  }
+
+  @Test
   public void testMergeSensitiveGFlagsYsqlHbaRedactedIgnoresSurroundingWhitespace() {
     try (var mockedRedactingService =
         Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {

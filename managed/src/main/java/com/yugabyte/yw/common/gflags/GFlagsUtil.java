@@ -2681,4 +2681,33 @@ public class GFlagsUtil {
 
     return mergedSpecificGFlags;
   }
+
+  /** Returns a copy with the sensitive values of its per-process and per-AZ gflags redacted. */
+  public static SpecificGFlags redactSensitiveSpecificGFlags(
+      SpecificGFlags specificGFlags, GFlagsValidation gFlagsValidation, String ybSoftwareVersion) {
+    if (specificGFlags == null) {
+      return null;
+    }
+    SpecificGFlags redacted = specificGFlags.clone();
+    redactPerProcessFlags(redacted.getPerProcessFlags(), gFlagsValidation, ybSoftwareVersion);
+    if (redacted.getPerAZ() != null) {
+      redacted
+          .getPerAZ()
+          .values()
+          .forEach(azFlags -> redactPerProcessFlags(azFlags, gFlagsValidation, ybSoftwareVersion));
+    }
+    return redacted;
+  }
+
+  private static void redactPerProcessFlags(
+      SpecificGFlags.PerProcessFlags flags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (flags == null || flags.value == null) {
+      return;
+    }
+    flags.value.replaceAll(
+        (serverType, gflags) ->
+            RedactingService.redactGFlags(gflags, ybSoftwareVersion, gFlagsValidation));
+  }
 }
