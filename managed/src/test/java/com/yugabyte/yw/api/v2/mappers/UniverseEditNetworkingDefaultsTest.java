@@ -9,7 +9,6 @@ import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.models.UniverseEditSpec;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import java.util.ArrayList;
@@ -141,14 +140,9 @@ public class UniverseEditNetworkingDefaultsTest {
     intent.assignStaticPublicIP = true;
     intent.enableIPV6 = true;
 
-    Cluster cluster = new Cluster();
-    cluster.uuid = clusterUuid;
-    cluster.clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
-    cluster.userIntent = intent;
-
     UniverseDefinitionTaskParams existing = new UniverseDefinitionTaskParams();
     existing.clusters = new ArrayList<>();
-    existing.clusters.add(cluster);
+    existing.upsertCluster(intent, null, null, clusterUuid, UniverseDefinitionTaskParams.ClusterType.PRIMARY);
     existing.communicationPorts = new CommunicationPorts();
     existing.communicationPorts.masterHttpPort = 7001;
     existing.universeSettings = new UniverseDefinitionTaskParams.UniverseSettings();
