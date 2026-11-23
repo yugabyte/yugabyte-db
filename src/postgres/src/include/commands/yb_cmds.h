@@ -96,6 +96,8 @@ extern void YBCDropIndex(Relation index);
 
 extern bool YbATAltersPartitions(List **subcmds, int subcmds_size);
 
+extern bool YbAddColumnUsesDocdbMissingValue(Expr *cooked_default);
+
 extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
 								  Oid relationId,
