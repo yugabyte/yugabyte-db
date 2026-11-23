@@ -40,7 +40,6 @@ typedef struct {
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
-  const bool*     ysql_enable_colocated_tables_with_tablespaces;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
@@ -81,7 +80,6 @@ typedef struct {
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_enable_obj_tuple_locks;
   const bool*     TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization;
-  const bool*     TEST_ysql_yb_enable_replication_slot_transactional_ddl;
   const uint32_t* wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms;
   const uint64_t* ysql_catalog_prefetch_row_limit;
   const uint64_t* ysql_catalog_prefetch_size_limit;

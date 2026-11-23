@@ -76,6 +76,7 @@ Supported flags:
 %p = process ID
 %i = client ID
 %s = server ID
+%b = backend process ID
 %u = user name
 %d = database name
 %c = context

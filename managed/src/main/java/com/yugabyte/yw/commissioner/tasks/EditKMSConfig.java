@@ -83,7 +83,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
       }
     } catch (Exception e) {
       log.info("Editing KMS task failed due to " + e.getMessage());
-      throw new RuntimeException(e.getMessage());
+      throw new RuntimeException(e.getMessage(), e);
     }
 
     KmsConfig updateResult =

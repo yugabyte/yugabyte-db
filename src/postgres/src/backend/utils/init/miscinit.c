@@ -328,6 +328,7 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_GLOBAL_VIEW_BACKEND:
 		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
 		case YB_XCLUSTER_SETUP_BACKEND:
+		case YB_OSC_BACKFILL_BACKEND:
 			/*
 			 * Registered YB internal-connection kinds are handled by the
 			 * registry lookup at the top of this function; these cases exist
@@ -1014,6 +1015,13 @@ GetUserNameFromId(Oid roleid, bool noerr)
 	tuple = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
 	if (!HeapTupleIsValid(tuple))
 	{
+		/*
+		 * YB: Send YbObjectDropped to ConnMgr. We match against AuthenticatedUserId
+		 * to only detect when the initial login role is deleted
+		 */
+		if (YbIsClientYsqlConnMgr() && !noerr && roleid == AuthenticatedUserId)
+			YbSendConnMgrObjectDropped('u', roleid);
+
 		if (!noerr)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),

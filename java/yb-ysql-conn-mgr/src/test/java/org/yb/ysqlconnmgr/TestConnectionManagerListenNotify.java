@@ -95,9 +95,9 @@ public class TestConnectionManagerListenNotify extends BaseYsqlConnMgr {
 
         listenerStmt.execute("LISTEN " + CHANNEL);
 
-        assertTrue("Listener should be sticky after LISTEN",
+        assertTrue("LISTEN should not count as a sticky object",
             verifySessionParameterValue(listenerStmt,
-                "ysql_conn_mgr_sticky_object_count", "1"));
+                "ysql_conn_mgr_sticky_object_count", "0"));
         assertTrue("Other connection should not be affected by LISTEN on listener",
             verifySessionParameterValue(otherStmt,
                 "ysql_conn_mgr_sticky_object_count", "0"));

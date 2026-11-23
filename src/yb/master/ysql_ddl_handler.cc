@@ -14,6 +14,7 @@
 #include <optional>
 #include <tuple>
 
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
@@ -198,9 +199,17 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
-bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+bool CatalogManager::DeferObjectLockReleaseToDdlVerifier(
+    const TransactionId& txn, bool release_all) {
   LockGuard lock(ddl_txn_verifier_mutex_);
-  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+  auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
+  if (!verifier_state) {
+    return false;
+  }
+  if (release_all) {
+    verifier_state->release_all_deferred = true;
+  }
+  return true;
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
@@ -402,6 +411,11 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
       "Received ReportYsqlDdlTxnStatus request without transaction id");
+  // Move the clock past the commit time before handling the DDL (see
+  // HandleSuccessfulYsqlDdlTxn).
+  if (req->has_propagated_hybrid_time()) {
+    master_->clock()->Update(HybridTime(req->propagated_hybrid_time()));
+  }
   // When req->is_committed() is known (i.e., not kNoChange), the first argument table is not
   // needed.
   RETURN_NOT_OK(YsqlDdlTxnCompleteCallback(
@@ -503,8 +517,67 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         cols_being_dropped.push_back(col.name());
     }
   }
+
+  // A nonconcurrently built index was populated inline by the CREATE INDEX transaction and is
+  // finalized here, now that the transaction has committed (see IndexInfoPB.birth_time_state).
+  // Online (backfilled) indexes are in BIRTH_TIME_PENDING_BACKFILL at this point and are finalized
+  // when backfill completes, so they are skipped.
+  const bool finalize_index_birth_time =
+      txn_data.table->is_index() && l->pb.has_index_info() &&
+      l->pb.index_info().birth_time_state() == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  if (finalize_index_birth_time) {
+    // An inline build never retains delete markers; that is only done while backfilling.
+    LOG_IF(DFATAL, l->pb.schema().table_properties().retain_delete_markers())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " retains delete markers";
+    // Index tables have no columns marked for deletion, and the tablets are only updated below.
+    LOG_IF(DFATAL, !cols_being_dropped.empty())
+        << "Nonconcurrent index " << txn_data.table->ToString() << " has columns being dropped";
+  }
+
   if (cols_being_dropped.empty()) {
-    return ClearYsqlDdlTxnState(txn_data);
+    uint64_t index_birth_time = 0;
+    if (finalize_index_birth_time) {
+      auto* index_info = mutable_pb.mutable_index_info();
+      // birth_time must be >= the commit time, so that reads before birth_time are rejected with
+      // SnapshotTooOld and reads at/after it see the complete index. The commit time is picked by
+      // the transaction coordinator. The master's clock is moved past it before this runs: by the
+      // hybrid time propagated on ReportYsqlDdlTxnStatus, or, when the master polls the
+      // transaction instead, by the GetTransactionStatus response (PollTransactionStatusBase).
+      // xCluster automatic-mode targets get birth_time from the source (TODO(#33155)), so don't
+      // stamp one there, but still mark it final so the target index becomes readable.
+      if (!GetXClusterManager()->IsTableReplicationConsumer(txn_data.table->id())) {
+        index_birth_time = master_->clock()->Now().ToUint64();
+        index_info->set_birth_time(index_birth_time);
+      }
+      index_info->clear_birth_time_state();
+      index_info->clear_birth_time_pending_txn_id();
+    }
+    RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
+    // Propagate birth time related information so that the index starts accepting reads.
+    // The DDL transaction state is already cleared, so a retry would not get here again: don't
+    // fail on a single tablet, but try to reach all of them.
+    // TODO(#37622): the master does not resend this if a tablet misses it (e.g. on master
+    // failover). The tablet validator usually repairs that, but not if its single check ran
+    // while the index was still pending.
+    if (finalize_index_birth_time) {
+      auto tablets = txn_data.table->GetTablets();
+      if (!tablets.ok()) {
+        LOG(WARNING) << "Failed to get tablets of " << txn_data.table->ToString()
+                     << " to mark the non-concurrent index done: " << tablets.status();
+        return Status::OK();
+      }
+      for (const auto& tablet : *tablets) {
+        auto call = std::make_shared<AsyncMarkNonConcurrentIndexDone>(
+            master_, AsyncTaskPool(), tablet, txn_data.table->id(), txn_data.epoch,
+            index_birth_time);
+        tablet->table()->AddTask(call);
+        WARN_NOT_OK(
+            ScheduleTask(call),
+            Format("Failed to schedule marking the non-concurrent index done on $0",
+                   tablet->tablet_id()));
+      }
+    }
+    return Status::OK();
   }
   Schema current_schema;
   RETURN_NOT_OK(SchemaFromPB(mutable_pb.schema(), &current_schema));
@@ -863,14 +936,23 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     }
 
     if (tables.empty()) {
-      LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
+      // A rollback to savepoint can undo every DDL of a txn that is still running (txn_state is
+      // kUnknown until the verifier sees the txn finish; state is no signal, since a failed
+      // verification task can set kDdlPostProcessingFailed while the txn runs). Such a txn still
+      // holds its object locks and releases them itself when it finishes, unless a previous
+      // release-all from it was already dropped because this entry existed.
+      const bool release_locks =
+          iter->second.txn_state != TxnState::kUnknown || iter->second.release_all_deferred;
+      LOG(INFO) << "Erasing DDL Verification state for " << txn_id << ", "
+                << (release_locks ? "releasing its object locks"
+                                  : "txn is still running, deferring its object lock release");
       ysql_ddl_txn_verfication_state_map_.erase(iter);
       // At this point, we can be sure that the docdb schema changes have been applied.
       // For instance, consider the case of an ALTER.
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      if (!FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+      if (release_locks && !FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
         WARN_NOT_OK(
             background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
               DoReleaseObjectLocksIfNecessary(txn_id);
@@ -1134,8 +1216,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
-    if (!verifier_state || verifier_state->state != YsqlDdlVerificationState::kDdlInProgress ||
-        verifier_state->txn_state != TxnState::kUnknown) {
+    if (!verifier_state || verifier_state->txn_state != TxnState::kUnknown) {
       VLOG(3) << "Rolling back to sub-transaction for an already completed "
               << " transaction: " << txn
               << ", verifier_state: "
@@ -1269,6 +1350,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper(
   TableInfo* table, const TransactionId& txn_id, const SubTransactionId sub_txn_id,
   const LeaderEpoch& epoch) {
   const auto id = "table id: " + table->id();
+  TEST_SYNC_POINT("CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper:Start");
 
   auto l = table->LockForWrite();
   if (!VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(txn_id))) {
@@ -1365,9 +1447,15 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
 
   bool is_done = false;
   bool is_success = false;
+  std::vector<TableInfoPtr> txn_tables;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     const auto itr = ysql_ddl_txn_undergoing_subtransaction_rollback_map_.find(req_txn);
+    if (itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end()) {
+      if (const auto* verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, req_txn)) {
+        txn_tables = verifier_state->tables;
+      }
+    }
     // Rollback is done if:
     // 1. We don't have the state - indicates that the state was cleaned up after a successful
     // rollback.
@@ -1383,6 +1471,27 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
     is_success = itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end() ||
                  itr->second.sub_txn != sub_txn_id;
   }
+
+  // The rollback map is in memory only, so a new master leader has no entry for a rollback that
+  // the old leader started tracking but did not trigger. A finished rollback removes the table's
+  // DDL states at or after sub_txn_id, so any left on a running table mean the rollback was lost.
+  // Since the rollback was lost, don't report it as done. Return an error instead so that the
+  // caller can handle it. Reporting it as not done would only lead to a timeout, since no rollback
+  // is in progress.
+  for (const auto& table : txn_tables) {
+    auto l = table->LockForRead();
+    if (l->is_running() && VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(req_txn)) &&
+        l->ysql_first_ddl_state_at_or_after_sub_txn(sub_txn_id) <
+            l->ysql_ddl_txn_verifier_state().size()) {
+      resp->set_done(true);
+      return STATUS_FORMAT(
+          IllegalState,
+          "Rollback to sub-transaction $0 of transaction $1 was not applied to table $2, likely "
+          "due to a master leader change",
+          sub_txn_id, req_txn, table->ToString());
+    }
+  }
+
   resp->set_done(is_done);
   VLOG(1) << "Received IsRollbackDocdbSchemaToSubtxnDoneRequestPB request for transaction "
           << req_txn << ", sub_transaction_id: " << sub_txn_id

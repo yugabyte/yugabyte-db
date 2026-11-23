@@ -18,6 +18,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/common_util.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -226,6 +227,11 @@ YBTableCreator& YBTableCreator::is_local_index(bool is_local_index) {
 
 YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   index_info_->set_is_unique(is_unique_index);
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::backfill_origination_ht(HybridTime origination_ht) {
+  index_info_->set_backfill_origination_ht(origination_ht.ToPB());
   return *this;
 }
 

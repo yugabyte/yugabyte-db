@@ -3,12 +3,15 @@
  * yb_cost.h
  *	  YB cost estimation.
  *
- *	  Selectivity constants and cost functions used by the optimizer
- *	  to estimate costs.
+ *	  Selectivity constants and cost functions.
  *
- *	  Used by optimizer paths (indxpath, allpaths, pathnode,
- *	  plancat), the amcostestimate implementations (yb_lsm, ybgin),
- *	  and analyze.c.
+ *	  Used by the planner, access-method cost estimators, and
+ *	  ANALYZE.  It is mostly planner code that sits under access/
+ *	  for historical reasons, and #37428 tracks moving it into the
+ *	  optimizer's directories.  The exception is
+ *	  YbIsScanningEmbeddedIdx(), which scan execution also calls.
+ *	  It is a fact about how relations are stored, not cost logic,
+ *	  and #37095 tracks moving it out.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

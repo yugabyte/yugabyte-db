@@ -914,9 +914,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				 */
 				if (YbIsClientYsqlConnMgr())
 				{
-					elog(LOG, "Incrementing sticky object count for LOAD '%s'",
+					elog(LOG, "Making connection sticky for LOAD '%s'",
 						 stmt->filename);
-					increment_sticky_object_count();
+					yb_ysql_conn_mgr_sticky_nontxn_object = true;
 				}
 			}
 			break;
@@ -1881,7 +1881,7 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * out during its WaitForYsqlBackendsCatalogVersion call.
 					 */
 					if (IsYugaByteEnabled() &&
-						!YBCIsLegacyModeForCatalogOps() &&
+						YBCUsingObjectLocksGloballyForCurrentTxn() &&
 						GetCurrentTransactionNestLevel() == 1 &&
 						YbGetTriggerDepth() == 0)
 					{

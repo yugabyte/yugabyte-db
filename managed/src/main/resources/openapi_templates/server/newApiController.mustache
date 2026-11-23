@@ -143,7 +143,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     }
     {{/bodyParams}}
     {{#useInterfaces}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/useInterfaces}}
     {{^useInterfaces}}
     {{>responseToResult}}
@@ -259,6 +259,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{/isFile}}
     {{/formParams}}
     {{#headerParams}}
+    {{^vendorExtensions.x-yba-api-idempotency-key}}
     {{#collectionFormat}}
     String[] {{paramName}}Array = request.getHeaders().getAll("{{baseName}}").toArray(new String[0]);
     {{#required}}
@@ -289,6 +290,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
       {{/required}}
     }
     {{/collectionFormat}}
+    {{/vendorExtensions.x-yba-api-idempotency-key}}
     {{/headerParams}}
     {{#useInterfaces}}
     {{#controllerOnly}}
@@ -296,10 +298,10 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{/controllerOnly}}
     {{^controllerOnly}}
     {{#supportAsync}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/supportAsync}}
     {{^supportAsync}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/supportAsync}}
     {{/controllerOnly}}
     {{/useInterfaces}}

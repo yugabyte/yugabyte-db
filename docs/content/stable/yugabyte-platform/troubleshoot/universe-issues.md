@@ -117,17 +117,16 @@ Starting in YugabyteDB Anywhere v2026.1.2.0, the [YBA installer](../../install-y
 
 To enable the PA collector for a universe:
 
-1. Open the universe and click **Actions > More > Enable Perf Advisor Collector**.
-
-1. Confirm the **Are you sure you want to enable Performance Monitoring?** action, and select **Apply changes**.
+- In versions earlier than v2026.1.3.0, open the universe and click **Actions > More > Enable Perf Advisor Collector**.
+- In v2026.1.3.0 and later, open the universe and click **Actions > More > Enable Performance Monitoring**, choose **Basic** to only enable PA Collector, or **Advanced** to also enable Advanced Observability features, and click **Apply changes**.
 
 After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) and ASH data.
 
-To disable collection, click **Actions > More > Disable Perf Advisor Collector**.
+To disable collection, click **Actions > More > Disable Perf Advisor Collector** or in v2026.1.3.0 **Actions > More > Disable Performance Monitoring**.
 
 When you create a support bundle, select the **Perf Advisor metrics** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metrics** option is not displayed. For more information about the component, see [Perf Advisor metrics](#perf-advisor-metrics).
 
-For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
+For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/). To see whether the universe was overloaded, and why, use [Cluster Load](../../alerts-monitoring/cluster-load/) on the **Performance** tab (requires **Advanced**).
 
 ### Create support bundles
 
@@ -307,7 +306,7 @@ You can also create "Custom Queries" by providing PromQL expressions; their resu
 
 #### Perf Advisor metrics
 
-{{<tags/feature/ea idea="1428">}} Performance monitoring metrics collected from the [Perf Advisor (PA) collector](#perf-advisor-collector) registered with YugabyteDB Anywhere. This component is available only when the PA collector is enabled for the universe (**Actions > More > Enable Perf Advisor Collector**). If the collector is not enabled, **Perf Advisor metrics** does not appear in the support bundle component list.
+{{<tags/feature/ea idea="1428">}} Performance monitoring metrics collected from the [Perf Advisor (PA) collector](#perf-advisor-collector) registered with YugabyteDB Anywhere. This component is available only when Performance Monitoring is enabled for the universe. If the collector is not enabled, **Perf Advisor metrics** does not appear in the support bundle component list.
 
 When selected, YugabyteDB Anywhere requests a Perf Advisor support bundle dump for the specified date range and includes the results in the archive under `support_bundle/YBA/pa/`. Share this data with {{% support-platform %}} to help analyze anomalies and cluster load patterns.
 

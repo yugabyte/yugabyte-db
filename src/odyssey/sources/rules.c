@@ -930,7 +930,7 @@ int od_rules_validate(od_rules_t *rules, od_config_t *config,
 				od_error(
 					logger, "rules", NULL, NULL,
 					"auth query and pam service auth method cannot be "
-					"used simultaneously",
+					"used simultaneously (db %s, user %s)",
 					rule->db_name, rule->user_name);
 				return -1;
 			}
@@ -1085,7 +1085,7 @@ void od_rules_print(od_rules_t *rules, od_logger_t *logger)
 				       "  watchdog interval   %d",
 				       storage->watchdog->interval);
 		}
-		od_log(logger, "storage", NULL, NULL, "");
+		od_log(logger, "storage", NULL, NULL, "%s", "");
 	}
 
 	od_list_foreach(&rules->rules, i)
@@ -1153,10 +1153,10 @@ void od_rules_print(od_rules_t *rules, od_logger_t *logger)
 		       "  pool rollback                     %s",
 		       rule->pool->rollback ? "yes" : "no");
 		od_log(logger, "rules", NULL, NULL,
-		       "  pool client_idle_timeout          %d",
+		       "  pool client_idle_timeout          %" PRIu64,
 		       rule->pool->client_idle_timeout);
 		od_log(logger, "rules", NULL, NULL,
-		       "  pool idle_in_transaction_timeout  %d",
+		       "  pool idle_in_transaction_timeout  %" PRIu64,
 		       rule->pool->idle_in_transaction_timeout);
 		od_log(logger, "rules", NULL, NULL,
 		       "  pool attach_check                 %s",
@@ -1277,6 +1277,6 @@ void od_rules_print(od_rules_t *rules, od_logger_t *logger)
 		od_log(logger, "rules", NULL, NULL,
 		       "  options:                         %s", "todo");
 
-		od_log(logger, "rules", NULL, NULL, "");
+		od_log(logger, "rules", NULL, NULL, "%s", "");
 	}
 }

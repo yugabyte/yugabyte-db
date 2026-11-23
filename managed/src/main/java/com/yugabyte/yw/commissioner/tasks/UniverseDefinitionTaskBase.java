@@ -76,6 +76,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
@@ -83,7 +84,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -113,6 +113,7 @@ import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -1874,6 +1875,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
+          if (opType == UniverseOpType.EDIT) {
+            // The read replica's services follow the primary cluster's expose service setting.
+            Cluster primaryCluster = taskParams().getPrimaryCluster();
+            if (primaryCluster == null) { // A read-replica-only edit.
+              primaryCluster = universeDetails.getPrimaryCluster();
+            }
+            ExposingServiceState exposingService = cluster.userIntent.enableExposingService;
+            if (exposingService != univCluster.userIntent.enableExposingService
+                && exposingService != primaryCluster.userIntent.enableExposingService) {
+              throw new IllegalArgumentException(
+                  "Readonly cluster's expose service setting follows the primary cluster and"
+                      + " can't be changed on its own.");
+            }
+          }
         } else {
           if (opType == UniverseOpType.EDIT) {
             // During edit universe, overrides can't be changed.
@@ -1912,11 +1927,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               String newAZOverridesStr = newAZsOverrides.get(az);
               Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
               if (!curAZOverrides.equals(newAZOverrides)) {
+                // The overrides can hold secrets, and this goes to the client and the log.
                 throw new IllegalArgumentException(
                     String.format(
                         "Kubernetes overrides can't be modified during the edit operation. "
                             + "For AZ %s, previous overrides: %s, new overrides: %s",
-                        az, curAZOverridesStr, newAZOverridesStr));
+                        az,
+                        KubernetesOverridesRedactor.redact(curAZOverridesStr),
+                        KubernetesOverridesRedactor.redact(newAZOverridesStr)));
               }
             }
           }
@@ -2251,8 +2269,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**
@@ -4395,17 +4412,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.force = true;
               Map<String, String> gflags = new HashMap<>();
               gflags.put(GFlagsUtil.YB_MAJOR_VERSION_UPGRADE_COMPATIBILITY, flagValue);
-              Cluster cluster = universe.getCluster(node.placementUuid);
-              Map<String, String> nodeGFlags =
-                  GFlagsUtil.getGFlagsForNode(
-                      node, serverType, cluster, universe.getUniverseDetails().clusters);
-              String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
-              if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
-                gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
-              }
+              addUserYsqlPgConfCsv(gflags, universe, node, serverType);
               params.gflags = gflags;
             })
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+  }
+
+  /**
+   * Adds the node's user ysql_pg_conf_csv, which SetFlagInMemory needs to rebuild the live value
+   * when the caller sets only a few flags.
+   */
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Universe universe, NodeDetails node, ServerType serverType) {
+    Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster == null) {
+      // Fail rather than drop the user ysql_pg_conf_csv from the live value.
+      throw new IllegalStateException(
+          String.format(
+              "No cluster for node %s (placementUuid %s) in universe %s",
+              node.nodeName, node.placementUuid, universe.getUniverseUUID()));
+    }
+    addUserYsqlPgConfCsv(
+        gflags,
+        GFlagsUtil.getGFlagsForNode(
+            node, serverType, cluster, universe.getUniverseDetails().clusters));
+  }
+
+  protected static void addUserYsqlPgConfCsv(
+      Map<String, String> gflags, Map<String, String> nodeGFlags) {
+    String userYsqlPgConfCsv = nodeGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, "");
+    if (StringUtils.isNotBlank(userYsqlPgConfCsv)) {
+      gflags.put(GFlagsUtil.YSQL_PG_CONF_CSV, userYsqlPgConfCsv);
+    }
   }
 
   public void updateAndPersistAuditLoggingConfigTask() {
@@ -4723,6 +4761,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  /**
+   * Retries the delete of load balancers whose cluster is gone, which a forced read replica delete
+   * leaves when its cloud delete fails. Errors are ignored, so the caller can't fail on a load
+   * balancer it doesn't use, and the entry stays for the next try.
+   */
+  protected void createDeleteOrphanedManagedLoadBalancerTasks() {
+    Universe universe = getUniverse();
+    createDeleteManagedLoadBalancerTasks(
+        lb -> universe.getCluster(lb.getClusterUuid()) == null, true /* ignoreErrors */);
   }
 
   /**

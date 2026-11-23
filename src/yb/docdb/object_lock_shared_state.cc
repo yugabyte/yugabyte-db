@@ -19,6 +19,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/crash_point.h"
+#include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/robust_mutex.h"
@@ -366,6 +367,11 @@ class ObjectLockSharedState::Impl {
     VLOG_WITH_FUNC(1) << "set to " << CollectionToString(exclusive_intents.SharedMemorySpan());
   }
 
+  [[nodiscard]] bool IsEnabled() const EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled;
+  }
+
   uint64_t PgLockRequestCount() const {
     std::lock_guard lock(mutex_);
     return shared_requests_.PgLockRequestCount();
@@ -405,9 +411,10 @@ class ObjectLockSharedState::Impl {
     }
 
     if (!shared_requests_.AddLockRequest(request, account_to_pg ? entries.size() : 0)) {
-      LOG(WARNING) << AsString(request) << ": too many active fastpath requests, consider "
-                   << "increasing object_lock_fastpath_buffer_size (current value: "
-                   << FLAGS_object_lock_fastpath_buffer_size << ")";
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << AsString(request) << ": too many active fastpath requests, consider increasing "
+          << "object_lock_fastpath_buffer_size (current value: "
+          << FLAGS_object_lock_fastpath_buffer_size << ")";
       return 0;
     }
 
@@ -539,6 +546,10 @@ void ObjectLockSharedState::ResetExclusiveLockIntentsTo(
 
 void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
   impl_->ConsumePendingLockRequests(consume);
+}
+
+bool ObjectLockSharedState::IsEnabled() const {
+  return impl_->IsEnabled();
 }
 
 uint64_t ObjectLockSharedState::PgLockRequestCount() const {

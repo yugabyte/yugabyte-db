@@ -273,6 +273,8 @@ func writeBCFKSKeystore(certPath, keyPath, keystorePath, alias, password string)
 	defer os.RemoveAll(bcNativeDir)
 	out = shell.RunWithEnvVars(keytoolPath, passEnv, "-importkeystore",
 		"-J-Dorg.bouncycastle.native.loader.install_dir="+bcNativeDir,
+		// Same as the platform: avoid the RDSEED entropy source.
+		"-J-Dorg.bouncycastle.native.cpu_variant=java",
 		"-srckeystore", intermediate,
 		"-srcstoretype", "PKCS12",
 		"-srcstorepass:env", keystorePasswordEnvVar,

@@ -238,6 +238,7 @@ class DBImpl : public DB {
 
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) override;
   void GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out) override;
+  size_t EvictTableReaders() override;
 
   yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override;
 

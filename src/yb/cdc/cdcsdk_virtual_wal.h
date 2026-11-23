@@ -175,6 +175,8 @@ class CDCSDKVirtualWAL {
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
+  void MoveAbortedSubtxnsToResponse(RowMessage* row_message, GetConsistentChangesResponsePB* resp);
+
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
@@ -398,7 +400,7 @@ class CDCSDKVirtualWAL {
   TableId pg_class_table_id_;
 
   // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
-  // Only populated when TEST_ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
   TableId pg_attribute_table_id_;
 
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
@@ -437,6 +439,11 @@ class CDCSDKVirtualWAL {
   // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
   // tablet for determining changes to the publication.
   bool detect_publication_changes_implicitly_ = false;
+
+  // Set on a pub-refresh slot that is being prepared for conversion to an implicit slot. No change
+  // committed after it is shipped, since it would be shipped again after the conversion with an
+  // LSN computed for an implicit slot.
+  HybridTime implicit_conversion_stop_time_ = HybridTime::kInvalid;
 };
 
 }  // namespace cdc

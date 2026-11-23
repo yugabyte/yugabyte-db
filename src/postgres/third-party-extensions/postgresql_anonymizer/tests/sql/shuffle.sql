@@ -92,4 +92,3 @@ SELECT anon.shuffle_column('a','x','i; SELECT 1') IS FALSE;
 ROLLBACK TO test_injection_3;
 
 ROLLBACK;
-

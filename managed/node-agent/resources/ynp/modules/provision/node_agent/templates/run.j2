@@ -251,11 +251,19 @@ if systemctl list-units --all 2>/dev/null | grep -qF yb-node-agent.service; then
 fi
 
 # Install node agent as a systemd service.
+# Base64 keeps the label from rendering as code: pasted as is, na-x$(touch /tmp/m2) would run touch.
 {% if certificate_name is defined and certificate_name %}
-certificate_name_flag="--certificate_name {{ certificate_name }}"
+certificate_name=$(printf '%s' "{{ certificate_name | base64_encode }}" | base64 --decode)
 {% else %}
-certificate_name_flag=""
+certificate_name=""
 {% endif %}
+certificate_name_args=()
+certificate_name_flag=""
+if [ -n "$certificate_name" ]; then
+    certificate_name_args=(--certificate_name "$certificate_name")
+    # su -c parses its command string again, so quote the value for that shell.
+    printf -v certificate_name_flag -- '--certificate_name %q' "$certificate_name"
+fi
 if [ "$SUDO_ACCESS" = "true" ]; then
     su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
@@ -269,7 +277,7 @@ else
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
         --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag $fips_flag \
-        --install_path {{ yb_home_dir }} $certificate_name_flag
+        --install_path {{ yb_home_dir }} "${certificate_name_args[@]}"
 fi
 
 if [ $? -eq 0 ]; then

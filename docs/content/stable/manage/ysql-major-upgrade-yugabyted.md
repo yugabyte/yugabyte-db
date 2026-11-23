@@ -66,6 +66,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 - If you are upgrading from v2024.2 and use the `vector` (pgvector) extension, export the data in tables that use it, and drop those tables and the extension (`DROP EXTENSION vector;`) before upgrading. Recreate them after the upgrade is finalized. See [Upgrade from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrade-from-v2024-2).
 
+- If you use [YSQL login profiles](../../secure/enable-authentication/ysql-login-profiles/), set `ysql_enable_profile=true` on the YB-Masters and restart them before you start the upgrade. The upgrade restores roles and login profiles on the YB-Master. If the flag is not set there, the upgrade fails with `PROFILE not supported yet`.
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.

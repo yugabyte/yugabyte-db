@@ -3,22 +3,18 @@
  * yb_parallel_scan.h
  *	  Parallel partition-key distribution for YB scans.
  *
- *	  Manages a shared-memory cyclic buffer of partition-key
- *	  ranges that parallel workers consume to divide a YB table
- *	  scan across backends.  Used by nodeYbSeqscan (sequential)
- *	  and yb_lsm (index) parallel scans.  The AM callbacks
- *	  amestimateparallelscan and aminitparallelscan delegate to
- *	  functions declared here.
+ *	  Manages a shared-memory cyclic buffer of partition-key ranges
+ *	  that parallel workers consume to divide a YB scan across
+ *	  backends.  Above the access methods, only nodeYbSeqscan.c
+ *	  includes this header, for the bypass described below.
  *
  *	  Lifecycle: the index-scan side consumes this properly through
- *	  amapi.  The direct calls in nodeYbSeqscan's DSM functions are
- *	  an interim executor bypass of the tableam parallelscan_*
- *	  callbacks (parallelscan_estimate, parallelscan_initialize,
- *	  parallelscan_reinitialize), which upstream nodeSeqscan routes
- *	  through.  The mapping is nearly one to one, so routing it is
- *	  mechanical: once done, YBParallelPartitionKeysData's layout
- *	  can retreat to an AM-private header, and the executor keeps
- *	  only an opaque pointer.
+ *	  amapi.  The direct calls in nodeYbSeqscan.c are an interim
+ *	  bypass of the tableam parallel scan interface that upstream
+ *	  nodeSeqscan uses, and #36166 tracks routing them through it.
+ *	  Once done, YBParallelPartitionKeysData's layout can retreat to
+ *	  an AM-private header, and the executor keeps only an opaque
+ *	  pointer.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -136,7 +132,7 @@ typedef struct YBParallelPartitionKeysData
 
 typedef struct YBParallelPartitionKeysData *YBParallelPartitionKeys;
 
-/* tableam callback helpers: sizing, init, and rescan */
+/* Sizing, init, and rescan of the shared state */
 extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
 extern void yb_rescan_partition_key_data(void *data);

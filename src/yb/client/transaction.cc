@@ -23,6 +23,7 @@
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_cleanup.h"
@@ -82,6 +83,8 @@ DEFINE_UNKNOWN_uint64(transaction_heartbeat_usec, 500000 * yb::kTimeMultiplier,
 DEFINE_UNKNOWN_bool(transaction_disable_heartbeat_in_tests, false,
     "Disable heartbeat during test.");
 DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(enable_write_pipelining_infra);
+DECLARE_bool(ysql_enable_write_pipelining);
 
 DEFINE_RUNTIME_bool(auto_promote_nonlocal_transactions_to_global, true,
                     "Automatically promote transactions touching data outside of region to "
@@ -116,6 +119,15 @@ DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
 
+DEFINE_test_flag(bool, simulate_failing_heartbeats_to_old_status_tablet, false,
+                 "Behave as if heartbeats to the old transaction status tablet are failing: skip "
+                 "the early abort of the old status tablet after promotion, and fail sub-txn "
+                 "rollback heartbeats to it with TimedOut without sending an rpc.");
+
+DEFINE_test_flag(int32, delay_rollback_heartbeat_response_ms, 0,
+                 "Inject delay before delivering a sub-txn rollback heartbeat response, keeping "
+                 "the rpc registered for that long.");
+
 DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "If disabled, do not send involved tablets on heartbeats for pending "
                     "transactions. This behavior is needed to support fetching old transactions "
@@ -136,6 +148,7 @@ YB_STRONGLY_TYPED_BOOL(SetReady);
 YB_STRONGLY_TYPED_BOOL(TransactionPromoting);
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
+YB_DEFINE_ENUM(AsyncWritesDecision, (kUndecided)(kNo)(kYes));
 
 struct LogPrefixTag {
   explicit LogPrefixTag(const std::string* name_ = nullptr, uint64_t value_ = 0)
@@ -198,6 +211,11 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const LWChildTransacti
 bool CanAbortTransaction(
     const Status& status, const TransactionMetadata& txn_metadata,
     const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+  // An unknown pipelined write outcome aborts even inside a subtransaction, since rolling it back
+  // does not undo a write the old leader may still apply.
+  if (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown) {
+    return true;
+  }
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
@@ -328,7 +346,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     std::vector<rpc::Rpcs::Handle *> handles{
         &heartbeat_handle_, &new_heartbeat_handle_, &commit_handle_, &abort_handle_,
-        &old_abort_handle_};
+        &old_abort_handle_, &rollback_heartbeat_handle_, &old_rollback_heartbeat_handle_};
     handles.reserve(handles.size() + transaction_status_move_handles_.size());
     for (auto& entry : transaction_status_move_handles_) {
       handles.push_back(&entry.second);
@@ -538,7 +556,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     CommitCallback commit_callback;
     if (!status.ok() &&
-        tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST) {
+        (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown ||
+         tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST)) {
       write_pipelining_abort_ = true;
     }
     {
@@ -963,14 +982,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
-    {
-      std::lock_guard lock(mutex_);
-      if (!status_.ok()) {
-        return status_;
-      }
-      if (!ready_) {
-        return STATUS_FORMAT(IllegalState, "Transaction not ready");
-      }
+    std::lock_guard lock(mutex_);
+    if (!status_.ok()) {
+      return status_;
+    }
+    if (!ready_) {
+      return STATUS_FORMAT(IllegalState, "Transaction not ready");
     }
     return metadata_;
   }
@@ -1151,14 +1168,24 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
-      const SubtxnSet& aborted_sub_txn_set) {
+      const SubtxnSet& aborted_sub_txn_set,
+      SendHeartbeatToNewTablet send_to_new_tablet) {
     DCHECK(status_tablet);
     if (auto s = CheckNotHistoricalReadTxn(); !s.ok()) {
       LOG_WITH_PREFIX(DFATAL) << s;
       return MakeFuture<Status>([s](auto callback) { callback(s); });
     }
 
-    return MakeFuture<Status>([&, handle](auto callback) {
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet) &&
+        !send_to_new_tablet) {
+      return MakeFuture<Status>([](auto callback) {
+        callback(STATUS(TimedOut, "TEST: heartbeats to old status tablet are failing"));
+      });
+    }
+
+    // The response outlives this call, so it keeps the transaction alive until it arrives.
+    auto transaction = transaction_->shared_from_this();
+    return MakeFuture<Status>([&, handle, transaction = std::move(transaction)](auto callback) {
       manager_->rpcs().RegisterAndStart(
           // Include no origination info on this heartbeat, unlike the normal PENDING heartbeats
           // sent by SendHeartbeat.
@@ -1174,7 +1201,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           // instead, recording the persistence gate's error.
           PrepareHeartbeatRPC(
               deadline, status_tablet, TransactionStatus::PENDING, OriginationInfo(),
-              [&, callback, handle](const auto& status, const auto& req, const auto& resp) {
+              [this, callback, handle, transaction](
+                  const auto& status, const auto& req, const auto& resp) {
+                if (PREDICT_FALSE(FLAGS_TEST_delay_rollback_heartbeat_response_ms > 0)) {
+                  std::this_thread::sleep_for(
+                      FLAGS_TEST_delay_rollback_heartbeat_response_ms * 1ms);
+                }
                 UpdateClock(resp, manager_);
                 manager_->rpcs().Unregister(handle);
                 callback(status);
@@ -1254,7 +1286,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to old status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, old_status_tablet_, &old_rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kFalse));
       }
 
       auto state = state_.load(std::memory_order_acquire);
@@ -1268,24 +1300,27 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         VLOG_WITH_PREFIX(2) << "Sending heartbeat to status tablet for sub-txn rollback.";
         heartbeat_futures.push_back(SendHeartBeatOnRollback(
             deadline, status_tablet_, &rollback_heartbeat_handle_,
-            subtransaction_copy.get().aborted));
+            subtransaction_copy.get().aborted, SendHeartbeatToNewTablet::kTrue));
       }
     }
 
-    // Wait for the heartbeat response
+    // Wait for all heartbeats, even after one fails, so that no heartbeat is in flight once this
+    // returns.
     bool heartbeat_aborted_or_expired = false;
+    Status first_error;
     for (auto& future : heartbeat_futures) {
       auto status = future.get();
-      if (status.IsAborted() || status.IsExpired()) {
-        heartbeat_aborted_or_expired = true;
-      }
 
       // If the transaction has been aborted or no longer exists, we don't have to do anything
       // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
       // good as successful.
-      if (!(status.IsAborted() || status.IsExpired()))
-        RETURN_NOT_OK(status);
+      if (status.IsAborted() || status.IsExpired()) {
+        heartbeat_aborted_or_expired = true;
+      } else if (!status.ok() && first_error.ok()) {
+        first_error = status;
+      }
     }
+    RETURN_NOT_OK(first_error);
 
     #ifndef NDEBUG
     DCHECK(subtransaction_copy_for_dcheck == subtransaction_);
@@ -1417,6 +1452,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     for (auto& waiter : waiters) {
       waiter(status);
     }
+  }
+
+  bool UseAsyncWrites() const {
+    auto decision = use_async_writes_.load();
+    if (decision != AsyncWritesDecision::kUndecided) {
+      return decision == AsyncWritesDecision::kYes;
+    }
+    decision = FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining
+        ? AsyncWritesDecision::kYes : AsyncWritesDecision::kNo;
+    auto expected = AsyncWritesDecision::kUndecided;
+    if (!use_async_writes_.compare_exchange_strong(expected, decision)) {
+      decision = expected;
+    }
+    return decision == AsyncWritesDecision::kYes;
   }
 
   Result<OpIds> GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const
@@ -2711,7 +2760,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // the transaction prematurely, and we defer to the logic at commit time instead.
         if (!old_status_tablet) {
           VLOG_WITH_PREFIX(1) << "Initial status tablet lookup hasn't finished, not aborting yet";
-        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
+        } else if (last_old_heartbeat_failed_.load(std::memory_order_acquire) ||
+                   PREDICT_FALSE(FLAGS_TEST_simulate_failing_heartbeats_to_old_status_tablet)) {
           VLOG_WITH_PREFIX(1) << "Heartbeats to old status tablet are failing, not aborting early";
         } else {
           auto transaction_ptr = transaction_->shared_from_this();
@@ -2917,6 +2967,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   int64_t completed_read_ops_ GUARDED_BY(mutex_) = 0;
   int64_t completed_write_ops_ GUARDED_BY(mutex_) = 0;
   mutable std::atomic<bool> write_pipelining_abort_{false};
+
+  mutable std::atomic<AsyncWritesDecision> use_async_writes_{AsyncWritesDecision::kUndecided};
 
   uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 
@@ -3174,6 +3226,10 @@ bool YBTransaction::RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_i
 void YBTransaction::RecordAsyncWriteCompletion(
     const TabletId& tablet_id, const OpId& op_id, const Status& status) {
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+}
+
+bool YBTransaction::UseAsyncWrites() const {
+  return impl_->UseAsyncWrites();
 }
 
 Result<OpIds> YBTransaction::GetAsyncWriteOpIdsForReadCheck(const TabletId& tablet_id) const {

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * yb_table_scan.c
- *	  Public YB scan interface: descriptor accessors.
+ *	  Interim accessors for YB table scans.
  *
  *	  These thin wrappers let executor nodes manipulate a
  *	  YB-backed TableScanDesc without knowing about internal

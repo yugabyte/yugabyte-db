@@ -18,6 +18,7 @@
 #include "yb/master/async_rpc_tasks.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb::master {
 
@@ -36,6 +37,15 @@ class ClusterBalancerActivityInfo {
     return warnings_.size() == 0 && tasks_.empty() && !has_ongoing_remote_bootstraps_;
   }
 
+  // Whether this run allows global balancing to be enabled: no tasks and no ongoing remote
+  // bootstraps. Unlike IsIdle(), warnings do not count, unless
+  // FLAGS_load_balancer_allow_global_balancing_with_warnings is false: a warning is work the
+  // balancer could not do, and one that repeats every run (e.g. no valid tserver for a replica)
+  // must not keep global balancing disabled.
+  // This only covers enabling. Once enabled, global balancing stays enabled until the balancer
+  // makes a non-global move (see ClusterLoadBalancer::can_perform_global_operations_).
+  bool CanPerformGlobalMoves() const;
+
   // Aggregate the tasks by {type, state}, and store the count and an example message for each.
   using TaskTypeAndState = std::pair<server::MonitoredTaskType, server::MonitoredTaskState>;
   struct TaskTypeAndStateHash {
@@ -53,6 +63,13 @@ class ClusterBalancerActivityInfo {
   using TasksSummaryMap = std::unordered_map<
       TaskTypeAndState, AggregatedTaskDetails, TaskTypeAndStateHash>;
   TasksSummaryMap GetTasksSummary();
+
+  // Returns true if this run has at least one task and all of its tasks are of the given type.
+  bool HasOnlyTasksOfType(server::MonitoredTaskType type) const {
+    return !tasks_.empty() && std::all_of(tasks_.begin(), tasks_.end(), [type](const auto& task) {
+      return task->type() == type;
+    });
+  }
 
   struct WarningMessageCount {
     // Example warning message for one instance of this warning type.
@@ -97,6 +114,17 @@ class ClusterBalancerActivityBuffer {
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
 
   bool IsIdle() const;
+
+  bool IsFull() const { SharedLock<rw_spinlock> l(mutex_); return activities_.full(); }
+
+  // Returns true if any recorded run has at least one task and all of its tasks are of the given
+  // type.
+  bool AnyRunHasOnlyTasksOfType(server::MonitoredTaskType type) const {
+    SharedLock<rw_spinlock> l(mutex_);
+    return std::any_of(activities_.begin(), activities_.end(), [type](const auto& activity) {
+      return activity.HasOnlyTasksOfType(type);
+    });
+  }
 
  private:
   mutable rw_spinlock mutex_;

@@ -461,7 +461,7 @@ class AzureCloudAdmin():
             if disk_iops is not None:
                 disk_params['disk_iops_read_write'] = disk_iops
             if disk_throughput is not None:
-                disk_params['disk_mbps_read_write'] = disk_throughput
+                disk_params['disk_m_bps_read_write'] = disk_throughput
 
         if disk_custom and len(disk_custom) > 0:
             merge(disk_params, disk_custom)

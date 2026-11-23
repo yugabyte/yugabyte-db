@@ -536,6 +536,12 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       resp->set_needs_full_tablet_report(true);
     }
 
+    // The tserver marks this replication status as sent once we reply, so always process it.
+    for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
+          consumer_replication_state);
+    }
+
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
       // Only process metadata if we have plenty of time to process the work (> 50% of
       // timeout).
@@ -554,11 +560,6 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
           }
           ProcessTabletMetadata(ts_desc->id(), metadata, leader_metrics);
         }
-      }
-
-      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-        catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
-            consumer_replication_state);
       }
 
       // Only process the full compaction statuses if we have plenty of time to process the work (>
@@ -1448,15 +1449,24 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
     const auto& ts_desc = *ts_desc_result;
 
     const TabletReplica* existing_replica = FindOrNull(*prev_rl, ts_desc->permanent_uuid());
+    const bool is_sender = sender_uuid == ts_desc->permanent_uuid();
     // The RaftGroupStatePB in the report is only applicable to the replica that is owned by the
     // sender. Initialize the other replicas with an unknown state.
     const RaftGroupStatePB replica_state =
-        (sender_uuid == ts_desc->permanent_uuid()) ? report.state() : RaftGroupStatePB::UNKNOWN;
+        is_sender ? report.state() : RaftGroupStatePB::UNKNOWN;
 
     auto replica = CreateNewReplicaForLocalMemory(ts_desc, &consensus_state, report, replica_state);
     if (existing_replica) {
       replica.UpdateDriveInfo(existing_replica->drive_info);
       replica.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
+    }
+    if (!is_sender) {
+      // Like the state, the report's should_disable_lb_move and tier fields describe the sender's
+      // replica only. The other replicas keep what they last reported for themselves, nothing
+      // until then.
+      replica.should_disable_lb_move =
+          existing_replica && existing_replica->should_disable_lb_move;
+      replica.UpdateStorageTierInfo(existing_replica);
     }
     auto result = replica_locations.get()->insert({ts_desc->id(), replica});
     LOG_IF(FATAL, !result.second) << "duplicate uuid: " << ts_desc->id();
@@ -1496,6 +1506,15 @@ TabletReplica MasterHeartbeatServiceImpl::CreateNewReplicaForLocalMemory(
   }
   if (report.has_fs_data_dir()) {
     replica.fs_data_dir = report.fs_data_dir();
+  }
+  if (report.has_current_storage_tier()) {
+    replica.current_storage_tier = report.current_storage_tier();
+  }
+  if (report.has_target_storage_tier()) {
+    replica.target_storage_tier = report.target_storage_tier();
+  }
+  if (report.has_tier_migration_state()) {
+    replica.tier_migration_state = report.tier_migration_state();
   }
   replica.state = state;
   replica.ts_desc = ts_desc;

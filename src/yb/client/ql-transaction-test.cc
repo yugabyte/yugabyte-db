@@ -80,10 +80,12 @@ DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
 DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_bool(raft_defer_applying_replication);
 
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(priority_thread_pool_size);
+DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
@@ -97,6 +99,7 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
+DECLARE_uint32(raft_deferred_update_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 
@@ -553,6 +556,41 @@ TEST_F(QLTransactionTest, ResendApplying) {
   VerifyData();
   ASSERT_OK(cluster_->RestartSync());
   AssertNoRunningTransactions();
+}
+
+class QLTransactionRaftApplyingDelayTest : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    // Heartbeats send queued ops, so they must not fire inside the deferral window under test.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 1500;
+    QLTransactionTest::SetUp();
+  }
+};
+
+// The participant holds back sending APPLYING to followers, so intents outlive the commit until
+// the deferred signal replicates it.
+TEST_F_EX(QLTransactionTest, RaftApplyingReplicationDelay, QLTransactionRaftApplyingDelayTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_deferred_update_delay_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_defer_applying_replication) = true;
+  WriteData();
+  std::this_thread::sleep_for(300ms);
+  ASSERT_GT(CountIntents(cluster_.get()), 0);
+  VerifyData();
+  ASSERT_OK(WaitIntentsCleaned());
+  VerifyData();
+}
+
+TEST_F_EX(QLTransactionTest, RaftApplyingReplicationDelayManyTransactions,
+          QLTransactionRaftApplyingDelayTest) {
+  constexpr size_t kNumTransactions = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 60s / 1us;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_deferred_update_delay_ms) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_defer_applying_replication) = true;
+  for (size_t i = 0; i != kNumTransactions; ++i) {
+    WriteData(WriteOpType::INSERT, i);
+  }
+  ASSERT_OK(WaitTransactionsCleaned());
+  VerifyData(kNumTransactions);
 }
 
 TEST_F(QLTransactionTest, ConflictResolution) {

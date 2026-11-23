@@ -69,7 +69,7 @@ struct TxnReadPoint {
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool backend_should_take_object_locks,
       std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
@@ -83,12 +83,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CalculateIsolation(
       bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
-  Status RecreateTransaction();
-  Status RestartTransaction();
+  // Used by query layer retries. Both apply the change on the tserver before returning.
+  Status RecreateTransaction(SetupPerformOptionsAccessorTag tag);
+  Status RestartTransaction(SetupPerformOptionsAccessorTag tag);
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
-  Status RestartReadPoint();
-  bool IsRestartReadPointRequested();
+  Status RestartReadPoint(SetupPerformOptionsAccessorTag tag);
+  void ResetRetryReadLimitCaps();
+  bool IsReadRestartRetryInProgress() const { return read_restart_retry_in_progress_; }
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
@@ -196,7 +198,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool IsTableLockingEnabledForCurrentTxn() const;
+  bool UsingObjectLocksGloballyForCurrentTxn() const;
+  bool UsingObjectLocksLocally() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
@@ -243,7 +246,18 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
   void ResetTxnAndSession();
+
+  // Whether the lock is known to be held by the current transaction in a live subtransaction.
+  [[nodiscard]] bool IsObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void RecordObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void ClearHeldObjectLocks();
   void StartNewSession();
+  using RetryRequestPB = tserver::PgRestartTransactionForRetryRequestPB;
+  Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
+      SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind);
+  void CapRetryReadLimits(const tserver::PgRestartTransactionForRetryResponsePB& resp);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
@@ -259,8 +273,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
       tserver::ReadTimeManipulation manipulation,
-      NonTransactionalWrites ops_has_non_transactional_writes,
-      bool need_defer_read_point) const;
+      NonTransactionalWrites ops_has_non_transactional_writes) const;
 
   bool UsesFollowerReads() const;
 
@@ -281,7 +294,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CheckConflictWithCrossTxnSnapshotTime(
       std::optional<ReadTimeAction> read_time_action = {},
       NonTransactionalWrites ops_has_non_transactional_writes = NonTransactionalWrites::kFalse,
-      bool has_read_time = false, bool restart_transaction = false) const;
+      bool has_read_time = false) const;
 
   // ----------------------------------------------------------------------------------------------
 
@@ -291,7 +304,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
-  bool need_restart_ = false;
+  // Each read restart of the statement being retried reports the global and per-tablet local limits
+  // of the read point that faced it; these keep the lowest of each across those restarts, and read
+  // points picked for the retry are capped at them.
+  HybridTime retry_global_limit_cap_;
+  google::protobuf::Map<std::string, uint64_t> retry_local_limit_caps_;
+  bool read_restart_retry_in_progress_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;
@@ -339,9 +357,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
-  const bool enable_table_locking_;
+  const bool backend_should_take_object_locks_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
+
+  // Object locks known to be held by the current transaction, see HeldObjectLocks in the .cc file.
+  class HeldObjectLocks;
+  const std::unique_ptr<HeldObjectLocks> held_object_locks_;
   bool is_read_time_history_cutoff_disabled_{false};
   bool clamp_uncertainty_window_{false};
 

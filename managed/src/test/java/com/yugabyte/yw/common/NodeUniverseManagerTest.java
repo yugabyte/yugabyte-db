@@ -21,7 +21,9 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.Before;
 import org.junit.Test;
@@ -143,5 +145,116 @@ public class NodeUniverseManagerTest extends FakeDBApplication {
     assertTrue(command, command.contains("/tmp/.yb.*/.s.PGSQL.6969 2>/dev/null"));
     assertTrue(command, command.contains(" -p 6969 "));
     assertFalse(command, command.contains(".s.PGSQL.*"));
+  }
+
+  /** On SSH the argv is escaped after the context is built; the redaction must still match. */
+  @Test
+  public void testRunYsqlBatchCommandsRedactsPasswordOverSsh() {
+    String logged =
+        runYsqlBatchOverSsh(
+            "admin-password-test",
+            "ALTER USER \"yugabyte\" WITH PASSWORD 'S3cr3t-pw'; SELECT pg_stat_statements_reset();",
+            true);
+
+    assertTrue(logged.contains("PASSWORD"));
+    assertFalse(logged.contains("S3cr3t-pw"));
+  }
+
+  /** A secret with a shell character is quoted for ssh.py; the redaction must match that form. */
+  @Test
+  public void testRunCommandRedactsQuotedSecretOverSsh() {
+    Universe universe =
+        ModelFactory.createFromConfig(defaultProvider, "quoted-secret-test", "r1-az1-1-1");
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "ok"));
+    String secret = "--password=pa$$w0rd";
+    ShellProcessContext context =
+        ShellProcessContext.builder().redactedVals(Map.of(secret, "--password=REDACTED")).build();
+
+    nodeUniverseManager.runCommand(node, universe, List.of("/bin/tool", secret), context, false);
+
+    verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
+    List<String> sent = commandCaptor.getValue();
+    assertTrue(sent.contains("'" + secret + "'"));
+    String logged =
+        String.join(" ", shellProcessContextCaptor.getValue().redactCommand(new ArrayList<>(sent)));
+    assertTrue(logged.contains("--password=REDACTED"));
+    assertFalse(logged.contains("w0rd"));
+  }
+
+  @Test
+  public void testRunYsqlBatchCommandsRedactsQueryOverSsh() {
+    String logged =
+        runYsqlBatchOverSsh(
+            "redacted-query-test",
+            "SELECT query FROM pg_stat_statements WHERE query LIKE '%ssn%'",
+            false);
+
+    assertTrue(logged.contains(Util.REDACTED_YSQL_QUERY));
+    assertFalse(logged.contains("ssn"));
+  }
+
+  /** run_query passes user SQL through, which may end without ';' or use lowercase. */
+  @Test
+  public void testRunYsqlBatchCommandsRedactsUnterminatedPasswordOverSsh() {
+    String logged =
+        runYsqlBatchOverSsh(
+            "unterminated-password-test", "create user s_live password 'S3cr3t pw$1'", true);
+
+    assertTrue(logged.contains("PASSWORD REDACTED"));
+    assertFalse(logged.contains("S3cr3t"));
+  }
+
+  /** ManageCatalogUpgradeSuperUser's query: the password is doubled inside a format() string. */
+  @Test
+  public void testRunYsqlBatchCommandsRedactsFormatStringPasswordOverSsh() {
+    String logged =
+        runYsqlBatchOverSsh(
+            "format-password-test",
+            "DO $$DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';\nBEGIN\n"
+                + "EXECUTE format('CREATE ROLE yugabyte_upgrade WITH SUPERUSER LOGIN PASSWORD"
+                + " ''Ab1!@^*zQ9'' VALID UNTIL ''%s'';', time);\nEND$$;\n",
+            true);
+
+    assertTrue(logged, logged.contains("PASSWORD REDACTED VALID UNTIL ''%s''"));
+    assertFalse(logged, logged.contains("Ab1!@^*zQ9"));
+  }
+
+  /** run_node_action.py joins params with spaces for the node's shell, so each is quoted. */
+  @Test
+  public void testRunScriptQuotesParamsOverSsh() {
+    Universe universe =
+        ModelFactory.createFromConfig(defaultProvider, "run-script-test", "r1-az1-1-1");
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    nodeUniverseManager.runScript(
+        node, universe, "/tmp/script.sh", List.of("collect_files", "postgres .* log", "it's"));
+
+    verify(shellProcessHandler).run(commandCaptor.capture(), any(ShellProcessContext.class));
+    List<String> argv = commandCaptor.getValue();
+    assertEquals(
+        List.of("'collect_files'", "'postgres .* log'", "'it'\\''s'"),
+        argv.subList(argv.indexOf("--params") + 1, argv.size()));
+  }
+
+  /** Returns the argv as ShellProcessHandler logs it. */
+  private String runYsqlBatchOverSsh(String universeName, String query, boolean logCmdOutput) {
+    Universe universe = ModelFactory.createFromConfig(defaultProvider, universeName, "r1-az1-1-1");
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    nodeUniverseManager.runYsqlBatchCommands(
+        node, universe, "yugabyte", List.of(query), 180L, false, false, logCmdOutput);
+
+    verify(shellProcessHandler).run(commandCaptor.capture(), shellProcessContextCaptor.capture());
+    List<String> sent = commandCaptor.getValue();
+    // The query is really sent, escaped for ssh.py; only the log copy is redacted.
+    assertTrue(String.join(" ", sent).contains("'\"'\"'"));
+    return String.join(
+        " ", shellProcessContextCaptor.getValue().redactCommand(new ArrayList<>(sent)));
   }
 }

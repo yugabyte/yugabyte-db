@@ -1,0 +1,55 @@
+name: "csi-comment"
+
+on:
+  workflow_run:
+    workflows: ["csi-pr"]
+    types: [completed]
+
+jobs:
+  csi-comment:
+    runs-on: ubuntu-latest
+    permissions:
+       pull-requests: write
+       actions: read
+    steps:
+      # Downloading all artifacts from workflow. Specifying name 'csi-pr' does not work for some reason.
+      - name: Download CSI artifact
+        uses: actions/download-artifact@v8
+        with:
+          path: csi
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Post CSI link comment
+        uses: actions/github-script@v7
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            // pr.txt comes from the PR's own run, which a fork controls: trust it only
+            // if it is a number naming a PR that contains the commit that ran workflow.
+            const prNumber = fs.readFileSync('csi/pr.txt', 'utf8').trim();
+            if (!/^\d+$/.test(prNumber)) {
+              core.setFailed(`pr.txt is not a PR number: ${JSON.stringify(prNumber.slice(0, 40))}`);
+              return;
+            }
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prNumber),
+            });
+            if (!commits.some(({ sha }) => sha === process.env.HEAD_SHA)) {
+              core.setFailed(`PR #${prNumber} does not contain the csi-pr run's commit ${process.env.HEAD_SHA}`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                `[![YB](../blob/master/managed/ui/src/redesign/assets/yb_logo.svg?raw=true)`,
+                `CSIweb for PR #${prNumber}](https://csiweb.dev.yugabyte.com/pull/${prNumber})`,
+              ].join(' ')
+            });

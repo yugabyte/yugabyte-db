@@ -181,6 +181,20 @@ Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
   }
   return Status::OK();
 }
+
+// Returns whether the snapshot has a table that is stored in the given colocation parent table.
+Result<bool> SnapshotHasTableStoredIn(
+    const SnapshotInfoPB& snapshot_pb, const TableId& parent_table_id) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::TABLE &&
+        VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data())).parent_table_id() ==
+            parent_table_id) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 Result<TableDescription> TableWithTabletsEntries::DescribeTable(
@@ -470,7 +484,6 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   auto sys_catalog_table_ids = GetSysCatalogTableIds();
 
   std::vector<TableDescription> all_tables;
-  std::unordered_set<TableId> parent_colocated_table_ids;
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
 
   // It is ok to get the NamespaceInfo from in-memory maps as the namespace will be retained by
@@ -478,9 +491,7 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
-  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
-  // expose this.
-  std::optional<TableId> colocation_parent_table_id;
+  std::vector<TableId> colocation_parent_table_ids;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
     auto table_id = table_id_slice.ToString();
@@ -511,7 +522,7 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     VLOG_WITH_FUNC(2) << Format(
         "Selected table for collection: $0 (name: $1)", table_id, table_pb.name());
     if (ns_colocated && IsColocationParentTableId(table_id)) {
-      colocation_parent_table_id = table_id;
+      colocation_parent_table_ids.push_back(table_id);
     }
     // Tables and tablets will be added to all_tables at the end.
     tables_to_tablets.insert(
@@ -553,12 +564,12 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     table_with_tablets.OrderTabletsByPartitions();
   }
 
-  // Emit the parent colocation table first if we saw it during enumeration.
-  if (colocation_parent_table_id) {
-    auto it = tables_to_tablets.find(*colocation_parent_table_id);
+  // Emit the colocation parent tables first, import expects a parent before its tables.
+  for (const auto& parent_table_id : colocation_parent_table_ids) {
+    auto it = tables_to_tablets.find(parent_table_id);
     if (it != tables_to_tablets.end()) {
       all_tables.push_back(
-          VERIFY_RESULT(it->second.DescribeTable(*colocation_parent_table_id, namespace_info)));
+          VERIFY_RESULT(it->second.DescribeTable(parent_table_id, namespace_info)));
       tables_to_tablets.erase(it);
     }
   }
@@ -1160,6 +1171,23 @@ Status CatalogManager::ImportSnapshotPreprocess(
                   tables_data->erase(entry.id());
                   continue;
                 }
+              }
+            }
+            if (data.table_entry_pb.colocated() &&
+                IsColocatedDbTablegroupParentTableId(data.old_table_id)) {
+              // ysql_dump recreates an implicit tablegroup only through the tables in it, so the
+              // parent table of an empty one has no counterpart here. Skip it like the legacy
+              // parent table above.
+              auto ns_it = namespace_map->find(data.table_entry_pb.namespace_id());
+              if (ns_it != namespace_map->end() &&
+                  !FindTableById(VERIFY_RESULT(GetRestoreTargetTablegroupId(
+                      ns_it->second.new_namespace_id, data.old_table_id))).ok() &&
+                  !VERIFY_RESULT(SnapshotHasTableStoredIn(snapshot_pb, data.old_table_id))) {
+                LOG_WITH_FUNC(INFO) << "Skipping colocation parent table " << data.old_table_id
+                                    << ": no table of the snapshot is stored in it and the "
+                                    << "restoring database has no such tablegroup";
+                tables_data->erase(entry.id());
+                continue;
               }
             }
             data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
@@ -2229,6 +2257,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
+    old_tablet->StopCountingReplicaLoad();
     DeleteTabletReplicas(
         old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
         TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
@@ -3001,9 +3030,11 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
-  // Colocation Migration special case. See ImportSnapshotPreprocess for more details.
-  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
-      && table_map->find(meta.table_id()) == table_map->end()) {
+  // The parent table of this tablet was skipped. See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() &&
+      (IsColocatedDbParentTableId(meta.table_id()) ||
+       IsColocatedDbTablegroupParentTableId(meta.table_id())) &&
+      table_map->find(meta.table_id()) == table_map->end()) {
     return Status::OK();
   }
 
@@ -3026,10 +3057,11 @@ Status CatalogManager::ImportTabletEntry(
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
-  // This is the special case of colocation migration.
-  // See ImportSnapshotPreprocess for more details.
-  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
-      && table_map->find(meta.table_id()) == table_map->end()) {
+  // The parent table of this tablet was skipped. See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() &&
+      (IsColocatedDbParentTableId(meta.table_id()) ||
+       IsColocatedDbTablegroupParentTableId(meta.table_id())) &&
+      table_map->find(meta.table_id()) == table_map->end()) {
     return Status::OK();
   }
 

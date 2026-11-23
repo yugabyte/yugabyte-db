@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,7 +37,11 @@ public class AuditAction extends Action.Simple {
             .call(request)
             .thenApply(
                 result -> {
-                  if (result.status() == 200) {
+                  // A replayed idempotent response did not run the operation, so it has no
+                  // audit entry of its own: the original request was audited.
+                  boolean isReplayed =
+                      result.headers().containsKey(IdempotencyService.REPLAYED_HEADER);
+                  if (result.status() == 200 && !isReplayed) {
                     // modifiers are to be added in v1.routes file
                     List<String> modifiers =
                         request.attrs().get(Router.Attrs.HANDLER_DEF).getModifiers();
