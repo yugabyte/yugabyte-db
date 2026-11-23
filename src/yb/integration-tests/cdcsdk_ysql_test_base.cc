@@ -5190,7 +5190,9 @@ Result<std::vector<CDCSDKProtoRecordPB>> CDCSDKYsqlTest::SetBarrierAndPause(
           records.push_back(record);
           if (record.row_message().op() == RowMessage_Op_COMMIT) {
             const auto lsn = record.row_message().pg_lsn();
-            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn + 1));
+            // Acks are inclusive: the restart LSN of a fully acknowledged transaction is its
+            // commit LSN. The restart time moves up to the barrier only once it matches.
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
           }
         }
         return ExecuteYBAdminCommand("pause_replication_slot", {slot_name, "1"}).ok();
