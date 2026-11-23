@@ -601,9 +601,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String channel = "poller_exits_before_init";
 
     final String guc = "yb_test_notifs_poller_error_before_init";
-    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+    HostAndPort ts0 = getRpcHostPortForTServer(0);
+    String originalPgConf = miniCluster.getClient().getFlag(ts0, "ysql_pg_conf_csv");
 
-    appendToPgConfOnAllTServers(guc + "=true", originalPgConf);
+    setServerFlag(ts0, "ysql_pg_conf_csv",
+        (originalPgConf.isEmpty() ? "" : originalPgConf + ",") + guc + "=true");
     waitForPostmasterSetting(0, guc, "on");
     try (Connection conn = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = conn.createStatement()) {
@@ -614,9 +616,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     } catch (SQLException e) {
       assertErrorContains(e, "exited before it initialized");
     } finally {
-      for (Map.Entry<HostAndPort, String> e : originalPgConf.entrySet()) {
-        setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
-      }
+      setServerFlag(ts0, "ysql_pg_conf_csv", originalPgConf);
       waitForPostmasterSetting(0, guc, "off");
     }
 
