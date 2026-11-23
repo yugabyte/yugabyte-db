@@ -193,7 +193,7 @@ describe('CreateSupportBundlePage', () => {
   describe('customize', () => {
     const selectCustomize = async () => {
       renderPage();
-      await screen.findByText('≈ 7.1 GB');
+      await screen.findByText('\u2248 7.1 GB');
       fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Customize-Select'));
     };
     const categoryCheckbox = (categoryId: string) =>
@@ -230,6 +230,24 @@ describe('CreateSupportBundlePage', () => {
 
       fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Customize-Select'));
       await waitFor(() => expect(lastEstimateSpec().components).not.toContain('ApplicationLogs'), {
+        timeout: 2000
+      });
+    });
+
+    it("doesn't carry Customize-only settings into the recommended bundle", async () => {
+      await selectCustomize();
+      fireEvent.click(screen.getByTestId('CustomizeCategory-nodeDiagnostics-Expand'));
+      fireEvent.change(
+        within(screen.getByTestId('CustomizeCoreFiles-MaxCount')).getByRole('spinbutton'),
+        { target: { value: '5' } }
+      );
+      await waitFor(() => expect(lastEstimateSpec().max_num_recent_cores).toBe(5), {
+        timeout: 2000
+      });
+
+      fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Recommended-Select'));
+
+      await waitFor(() => expect(lastEstimateSpec().max_num_recent_cores).toBe(1), {
         timeout: 2000
       });
     });

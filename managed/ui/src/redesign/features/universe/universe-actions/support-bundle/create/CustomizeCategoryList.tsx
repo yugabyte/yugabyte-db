@@ -16,12 +16,15 @@ import {
   SupportBundleUniverseContext
 } from '../model/categories';
 import { SupportBundleEstimateSummary } from '../model/estimate';
-import { METRICS_TIME_RANGE_PRESETS, SupportBundleFormValues } from '../model/formState';
+import {
+  METRICS_TIME_RANGE_PRESETS,
+  ONE_GIB_IN_BYTES,
+  resolveTimeRange,
+  SupportBundleFormValues
+} from '../model/formState';
 import { FormatSelect, PrometheusSettings, SettingsCard } from './MetricsSettings';
 
 const { styled, Box, Typography, ButtonBase } = mui;
-
-const ONE_GIB_IN_BYTES = 1024 * 1024 * 1024;
 
 const List = styled(Box)(({ theme }) => ({
   flex: 1,
@@ -207,7 +210,13 @@ export const CustomizeCategoryList = ({
         const selectedCount = category.components.filter((def) =>
           selected.has(def.component)
         ).length;
-        const isExpanded = expanded.has(category.id);
+        // An unresolved metrics range would disable Create with nothing on screen saying why, so
+        // the group stays open until it's fixed.
+        const isPinnedOpen =
+          category.id === SupportBundleCategoryId.PERFORMANCE_METRICS &&
+          selectedCount > 0 &&
+          !resolveTimeRange(values.metrics.timeRange, new Date());
+        const isExpanded = isPinnedOpen || expanded.has(category.id);
         const categoryBytes = selectedCount > 0 ? summary?.categoryBytes[category.id] : undefined;
         const hasSensitive = category.components.some((def) => def.sensitive);
         return (
@@ -242,6 +251,7 @@ export const CustomizeCategoryList = ({
                   aria-expanded={isExpanded}
                   aria-label={t(`category.${category.id}`)}
                   onClick={() => setExpandedFor(category.id, !isExpanded)}
+                  disabled={isPinnedOpen}
                   data-testid={`CustomizeCategory-${category.id}-Expand`}
                   sx={{ transform: isExpanded ? undefined : 'rotate(180deg)' }}
                 >

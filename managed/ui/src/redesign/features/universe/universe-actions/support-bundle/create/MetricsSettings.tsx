@@ -134,7 +134,9 @@ export const PrometheusSettings = ({ value, onChange, isK8sUniverse }: Prometheu
           <YBAutoComplete
             multiple
             options={metricsTypeOptions.map(toOption)}
-            value={value.prometheusMetricsTypes.map(toOption)}
+            value={value.prometheusMetricsTypes
+              .filter((type) => metricsTypeOptions.includes(type))
+              .map(toOption)}
             getOptionLabel={(option) => (typeof option === 'string' ? option : option.label)}
             isOptionEqualToValue={(option, selected) => option.value === selected.value}
             onChange={(_event, selected) =>

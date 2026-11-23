@@ -1,4 +1,5 @@
 import {
+  PrometheusMetricsType,
   PromExportType,
   SupportBundleComponentType,
   SupportBundleCreateSpec
@@ -12,7 +13,12 @@ import {
   SupportBundleSelectableComponent,
   SupportBundleUniverseContext
 } from './categories';
-import { CollectionMode, resolveTimeRange, SupportBundleFormValues } from './formState';
+import {
+  CollectionMode,
+  getDefaultFormValues,
+  resolveTimeRange,
+  SupportBundleFormValues
+} from './formState';
 
 /** The components the form will collect, limited to those available for this universe. */
 export const getSelectedComponents = (
@@ -41,6 +47,15 @@ export const getSelectedComponents = (
   return Array.from(new Set(selected)).filter((component) => available.has(component));
 };
 
+const DEFAULT_SETTINGS = getDefaultFormValues([]);
+
+/** Kubernetes metrics only exist on Kubernetes universes. */
+export const getApplicableMetricsTypes = (
+  types: PrometheusMetricsType[],
+  context: SupportBundleUniverseContext
+): PrometheusMetricsType[] =>
+  types.filter((type) => context.isK8sUniverse || type !== PrometheusMetricsType.KUBERNETES);
+
 /**
  * Builds the v2 create (and estimate) spec. Returns null while a custom time range is incomplete.
  *
@@ -57,6 +72,16 @@ export const toCreateSpec = (
   if (!range || (!values.nodeScope.allNodes && values.nodeScope.nodeNames.length === 0)) {
     return null;
   }
+
+  // Recommended mode shows only the metrics time range, so the Customize-only settings
+  // (core dump limits, Prometheus options, ...) mustn't follow the user into it.
+  const settings =
+    values.mode === CollectionMode.RECOMMENDED
+      ? {
+          coreFiles: DEFAULT_SETTINGS.coreFiles,
+          metrics: { ...DEFAULT_SETTINGS.metrics, timeRange: values.metrics.timeRange }
+        }
+      : values;
 
   const selected = getSelectedComponents(values, context);
   const includePgAuditLogs = selected.includes(PG_AUDIT_LOGS);
@@ -80,24 +105,24 @@ export const toCreateSpec = (
     spec.filter_pg_audit_logs = !includePgAuditLogs;
   }
   if (components.includes(SupportBundleComponentType.CoreFiles)) {
-    spec.max_num_recent_cores = values.coreFiles.maxNumRecentCores;
-    spec.max_core_file_size = values.coreFiles.maxCoreFileSize;
+    spec.max_num_recent_cores = settings.coreFiles.maxNumRecentCores;
+    spec.max_core_file_size = settings.coreFiles.maxCoreFileSize;
   }
 
   const includesPrometheus = components.includes(SupportBundleComponentType.PrometheusMetrics);
   const includesPerfAdvisor = components.includes(SupportBundleComponentType.PerfAdvisor);
   if (includesPrometheus || includesPerfAdvisor) {
-    const metricsRange = resolveTimeRange(values.metrics.timeRange, now);
+    const metricsRange = resolveTimeRange(settings.metrics.timeRange, now);
     if (!metricsRange) {
       return null;
     }
     if (includesPrometheus) {
-      Object.assign(spec, toPrometheusSpec(values.metrics, metricsRange));
+      Object.assign(spec, toPrometheusSpec(settings.metrics, metricsRange, context));
     }
     if (includesPerfAdvisor) {
       spec.pa_dump_start_date = metricsRange.start.toISOString();
       spec.pa_dump_end_date = metricsRange.end.toISOString();
-      spec.pa_metrics_format = values.metrics.paMetricsFormat;
+      spec.pa_metrics_format = settings.metrics.paMetricsFormat;
     }
   }
 
@@ -106,7 +131,8 @@ export const toCreateSpec = (
 
 const toPrometheusSpec = (
   metrics: SupportBundleFormValues['metrics'],
-  range: { start: Date; end: Date }
+  range: { start: Date; end: Date },
+  context: SupportBundleUniverseContext
 ): Partial<SupportBundleCreateSpec> => {
   const isRemoteRead = metrics.promExportType === PromExportType.REMOTE_READ;
   // PromQL export always downsamples; only remote read can collect every stored data point.
@@ -115,7 +141,7 @@ const toPrometheusSpec = (
     prom_dump_start_date: range.start.toISOString(),
     prom_dump_end_date: range.end.toISOString(),
     prom_export_type: metrics.promExportType,
-    prometheus_metrics_types: [...metrics.prometheusMetricsTypes],
+    prometheus_metrics_types: getApplicableMetricsTypes(metrics.prometheusMetricsTypes, context),
     prom_dump_down_sample: downSample,
     prom_queries: isRemoteRead ? {} : { ...metrics.promQueries }
   };
