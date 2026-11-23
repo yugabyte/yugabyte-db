@@ -130,14 +130,19 @@ def extract_terms(title, body):
     idents = {t for t in po.IDENT.findall(text)
               if t not in po.STOP and po.CODE_LIKE.search(t)}
     idents -= {t for s in strong for t in po.IDENT.findall(s)}
+    # A term inside another (pg_ddl_transaction in
+    # pgwrapper_pg_ddl_transaction) would count one match twice.
+    every = strong | idents
+    idents = {t for t in idents if not any(t != o and t in o for o in every)}
     return strong, idents
 
 
 def match_prs(strong, idents, data, metas):
     """Score pool PRs by the issue terms their diff, title or body contain."""
+    # Catch-up merges and other huge PRs contain nearly every identifier.
     hay = {n: "\n".join((d["text"], metas[n]["title"], metas[n].get("body") or
                          "", " ".join(d["paths"])))
-           for n, d in data.items()}
+           for n, d in data.items() if len(d["paths"]) <= po.MAX_FILES}
     terms = strong | idents
     df = {t: sum(t in h for h in hay.values()) for t in terms}
     n = len(hay)
@@ -156,12 +161,17 @@ def match_prs(strong, idents, data, metas):
     return sorted(out, reverse=True), df
 
 
-def is_self(key, title, selfs, self_title):
-    """The issue itself, or its GitHub/Jira mirror (same title)."""
-    return key in selfs or (self_title and title.strip() == self_title.strip())
+def is_self(key, title, selfs, mirror_title=None):
+    """The issue itself, or its copy in the other tracker.
+
+    Pass mirror_title only for results from the other tracker: there a
+    matching title is the sync's copy. Within one tracker, recurring test
+    failures share titles, and those are the duplicates worth reporting."""
+    return key in selfs or (bool(mirror_title)
+                            and title.strip() == mirror_title.strip())
 
 
-def search_issues(terms, selfs, self_title):
+def search_issues(terms, selfs):
     """Open GitHub issues mentioning each term, via the search API."""
     found = {}
     for t in terms:
@@ -179,7 +189,7 @@ def search_issues(terms, selfs, self_title):
             continue
         for it in r["items"]:
             key = f"#{it['number']}"
-            if is_self(key, it["title"], selfs, self_title):
+            if is_self(key, it["title"], selfs):
                 continue
             e = found.setdefault(key, {"title": it["title"],
                                        "url": it["html_url"],
@@ -190,7 +200,7 @@ def search_issues(terms, selfs, self_title):
     return found
 
 
-def search_jira(terms, selfs, self_title):
+def search_jira(terms, selfs, mirror_title):
     """Unresolved Jira DB issues whose text mentions each term."""
     found = {}
     for t in terms:
@@ -205,7 +215,7 @@ def search_jira(terms, selfs, self_title):
         if len(issues) > COMMON_HITS:
             continue
         for it in issues:
-            if is_self(it["key"], it["fields"]["summary"], selfs, self_title):
+            if is_self(it["key"], it["fields"]["summary"], selfs, mirror_title):
                 continue
             f = it["fields"]
             e = found.setdefault(it["key"], {
@@ -286,8 +296,9 @@ def main():
     # Terms from a Jira issue may be internal, so they never go to GitHub
     # search. Every GitHub issue has a Jira copy, so the Jira search below
     # still finds GitHub-filed duplicates.
-    issues = None if args.jira else search_issues(terms, selfs, title)
-    jira = search_jira(terms, selfs, title) if use_jira else None
+    issues = None if args.jira else search_issues(terms, selfs)
+    jira = (search_jira(terms, selfs, None if args.jira else title)
+            if use_jira else None)
 
     if args.format == "text":
         print_text(strong, terms, prs, metas, issues, jira)

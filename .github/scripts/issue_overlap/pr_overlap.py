@@ -33,6 +33,8 @@ from collections import defaultdict
 REPO = "yugabyte/yugabyte-db"
 CACHE = os.environ.get("PR_OVERLAP_CACHE") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), ".cache")
+# PRs changing more files than this (catch-up merges) overlap everything.
+MAX_FILES = 150
 DEFAULT_BASES = re.compile(r"^(master|pg19|feature-stack/.*)$")
 
 # Paths whose overlap says nothing about intent.
@@ -198,7 +200,7 @@ def main():
     ap.add_argument("--max-df", type=int, default=0,
                     help="identifier counts as rare if at most this many pool "
                          "PRs change it (default: max(3, 1%% of pool))")
-    ap.add_argument("--max-files", type=int, default=150,
+    ap.add_argument("--max-files", type=int, default=MAX_FILES,
                     help="--all skips PRs changing more files (default 150)")
     ap.add_argument("--json", action="store_true", help="JSON output")
     args = ap.parse_args()
