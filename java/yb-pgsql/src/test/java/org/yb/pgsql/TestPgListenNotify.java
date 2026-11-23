@@ -1067,6 +1067,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   /**
    * The virtual WAL streams transactions that commit at the same hybrid time as one transaction.
    * Each transaction's notifications must still be delivered together and in send order (#38398).
+   * The poller orders such transactions by sender, so either may come first.
    * Such commit times collide only across tservers' clocks, so the test makes the virtual WAL
    * treat commits within one window as simultaneous.
    *
@@ -1129,9 +1130,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         expectedA.add(String.format("a_%05d", i));
         expectedB.add(String.format("b_%05d", i));
       }
-      List<String> expected = new ArrayList<>(aFirst ? expectedA : expectedB);
-      expected.addAll(aFirst ? expectedB : expectedA);
-      assertEquals(expected, payloads);
+      List<String> aThenB = new ArrayList<>(expectedA);
+      aThenB.addAll(expectedB);
+      List<String> bThenA = new ArrayList<>(expectedB);
+      bThenA.addAll(expectedA);
+      assertTrue("Notifications: " + payloads,
+          payloads.equals(aThenB) || payloads.equals(bThenA));
     } finally {
       // The virtual WAL can ship a window before the clock reaches its end, moving its safe time
       // there. Keep rounding until the end of every window committed into, so that no later commit
