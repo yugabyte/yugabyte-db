@@ -49,7 +49,7 @@ class PossibleArenaDeleter {
 class FilteringIterator : public InternalIterator {
  public:
   FilteringIterator(
-      InternalIterator* iterator, bool arena_mode, const Slice* iterate_upper_bound = nullptr)
+      InternalIterator* iterator, bool arena_mode, const Slice* iterate_upper_bound)
       : iterator_(iterator, PossibleArenaDeleter(arena_mode)),
         iterate_upper_bound_(iterate_upper_bound) {}
 
@@ -110,12 +110,13 @@ class FilteringIterator : public InternalIterator {
   }
 
   const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
-    if (stopped_at_bound_ && seek_key.empty()) {
-      iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
-      return bound_entry_;
+    iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
+    if (seek_key.empty()) {
+      return Entry();
     }
+    // The wrapped iterator may have moved to seek_key, or stayed on a filtered out entry.
     stopped_at_bound_ = false;
-    return iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
+    return ApplyFilter(/* backward = */ false);
   }
 
   const KeyValueEntry& ApplyFilter(bool backward) {

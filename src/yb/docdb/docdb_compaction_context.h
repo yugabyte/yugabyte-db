@@ -185,7 +185,7 @@ class DocVectorMetadataIteratorProvider {
   // ReadOptions::iterate_upper_bound.
   virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics,
-      const Slice* iterate_upper_bound = nullptr) const = 0;
+      const Slice* iterate_upper_bound) const = 0;
 
   // Start time of the oldest transaction running in this tablet (see
   // TransactionParticipant::MinRunningHybridTime()), or kMin if it is not known yet or the tablet

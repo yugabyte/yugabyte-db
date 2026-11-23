@@ -858,7 +858,7 @@ class VectorMetadataFilter {
         EncodedDocHybridTime(iterator_provider_->MinRunningHybridTime(), kMinWriteId);
     iterator_holder_ =
         VERIFY_RESULT(iterator_provider_->CreateVectorMetadataIterator(
-            ReadHybridTime::Max(), nullptr));
+            ReadHybridTime::Max(), /* statistics= */ nullptr, /* iterate_upper_bound= */ nullptr));
     SCHECK_NOTNULL(iterator());
     return Status::OK();
   }

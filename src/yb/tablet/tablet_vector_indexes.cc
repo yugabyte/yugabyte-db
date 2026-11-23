@@ -110,9 +110,10 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
-    upper_bound_buffer_ = {dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,
-                           dockv::KeyEntryTypeAsChar::kMaxByte};
-    upper_bound_ = upper_bound_buffer_;
+    upper_bound_buffer_.Clear();
+    upper_bound_buffer_.AppendKeyEntryType(dockv::KeyEntryType::kVectorIndexMetadata);
+    upper_bound_buffer_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    upper_bound_ = upper_bound_buffer_.AsSlice();
     iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(
         read_ht, statistics, &upper_bound_));
     key_bounds_ = &tablet.key_bounds();
@@ -123,9 +124,10 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     // A restore leaves the entries written after its time in their SST files, filtered out by
     // hybrid time. Bounding the read to the versions of the key stops the regular DB iterator from
     // walking those entries past it, which a search would do for every candidate.
-    upper_bound_buffer_.assign(key.cdata(), key.size());
-    upper_bound_buffer_.push_back(dockv::KeyEntryTypeAsChar::kMaxByte);
-    upper_bound_ = upper_bound_buffer_;
+    upper_bound_buffer_.Clear();
+    upper_bound_buffer_.AppendRawBytes(key);
+    upper_bound_buffer_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
+    upper_bound_ = upper_bound_buffer_.AsSlice();
     auto value = VERIFY_RESULT(iter_holder_.iter->FetchValue(key));
     if (value.empty() || !key_bounds_->IsInitialized()) {
       return value;
@@ -151,7 +153,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
  private:
   ScopedRWOperation rocksdb_op_;
   // The regular DB iterator of iter_holder_ reads the upper bound through this pointer.
-  std::string upper_bound_buffer_;
+  dockv::KeyBytes upper_bound_buffer_;
   Slice upper_bound_;
   docdb::IntentAwareIteratorWithBounds iter_holder_;
   const docdb::KeyBounds* key_bounds_ = &docdb::KeyBounds::kNoBounds;

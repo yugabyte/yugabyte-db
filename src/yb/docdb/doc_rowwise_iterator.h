@@ -49,6 +49,8 @@ YB_STRONGLY_TYPED_BOOL(AddTablePrefixToKey);
 YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
 
 // An SQL-mapped-to-document-DB iterator.
+YB_STRONGLY_TYPED_BOOL(SingleTuple);
+
 class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
  public:
   DocRowwiseIterator(const dockv::ReaderProjection &projection,
@@ -201,14 +203,15 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   void SeekPrevDocKey(Slice key);
 
-  void DoSeekTuple(Slice tuple_id, docdb::UpdateFilterKey update_filter_key, bool single_tuple);
+  void DoSeekTuple(
+      Slice tuple_id, docdb::UpdateFilterKey update_filter_key, SingleTuple single_tuple);
 
   // Seeks without resetting the regular DB upper bound.
   void DoSeek(Slice key);
 
-  // Sets the regular DB upper bound past the keys starting with key_prefix, or removes the bound
-  // when key_prefix is empty.
-  void SetRegularDbUpperBound(Slice key_prefix);
+  // Sets the regular DB upper bound past the keys starting with key_prefix, which is past every
+  // key when key_prefix is empty.
+  void SetRegularDbUpperBoundForPrefix(Slice key_prefix);
 
   void ConfigureForYsql();
   void InitResult();
@@ -271,7 +274,7 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   dockv::KeyBytes bound_key_;
 
   // ReadOptions::iterate_upper_bound of the regular DB iterator of db_iter_, see SeekSingleTuple.
-  std::string regular_db_upper_bound_buffer_;
+  dockv::KeyBytes regular_db_upper_bound_buffer_;
   Slice regular_db_upper_bound_;
 
   IntentAwareIteratorPtr db_iter_;
