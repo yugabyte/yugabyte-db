@@ -159,7 +159,7 @@ struct BlockBasedTableOptions {
   // used to avoid too many index levels in case we have large keys.
   size_t min_keys_per_index_block = 64;
 
-  // For kMultiLevelBinarySearch: write BlockHandle::cumulative_entry_count in upper-level index
+  // For kMultiLevelBinarySearch: write IndexValue::cumulative_entry_count in upper-level index
   // entries.
   bool write_cumulative_index_entry_counts = false;
 

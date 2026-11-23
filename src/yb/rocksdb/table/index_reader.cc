@@ -306,18 +306,21 @@ Result<Slice> GetValueAtRestartIndex(BlockIter* block_iter, uint32_t restart_idx
   return block_iter->value();
 }
 
-// Returns the BlockHandle::cumulative_entry_count stored in the upper-level index entry `iter` is
+// Returns the IndexValue::cumulative_entry_count stored in the upper-level index entry `iter` is
 // positioned on.
 Result<uint64_t> GetCumulativeEntryCount(const BlockIterWrapper& iter) {
   RETURN_NOT_OK(iter.status());
-  RSTATUS_DCHECK(iter.Valid(), Corruption, "Expected a valid index entry");
-  BlockHandle handle;
+  if (!iter.Valid()) {
+    // An empty upper-level index block, which only a corrupt file has.
+    return STATUS(Corruption, "Expected a valid index entry");
+  }
+  IndexValue index_value;
   Slice value = iter.value();
-  RETURN_NOT_OK(handle.DecodeIndexValueFrom(&value));
-  if (!handle.cumulative_entry_count()) {
+  RETURN_NOT_OK(index_value.DecodeFrom(&value));
+  if (!index_value.cumulative_entry_count) {
     return STATUS(NotSupported, "Index entry has no cumulative entry count");
   }
-  return *handle.cumulative_entry_count();
+  return *index_value.cumulative_entry_count;
 }
 
 // Positions `iter`, which is over an upper-level index block, on the first entry whose cumulative
@@ -454,7 +457,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   // reading one index block per level. Each upper level is left on the entry whose child block is
   // loaded below it, so Next/Prev and the Seek fast path work afterwards. A single-level index
   // needs no counts: `position` is a restart index of its only block. Returns NotSupported for an
-  // upper-level entry without BlockHandle::cumulative_entry_count, or a bottom-level block whose
+  // upper-level entry without IndexValue::cumulative_entry_count, or a bottom-level block whose
   // entries share restart points (index_block_restart_interval > 1), and Corruption when an index
   // block doesn't match its parent's count.
   Result<const KeyValueEntry&> SeekToPosition(uint64_t position) override {
@@ -544,6 +547,13 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       return STATUS(NotSupported, "PositionOf() requires an index without prefix checks");
     }
     RETURN_NOT_OK(status());
+    // As in SeekToPosition, status() keeps reporting errors other than NotSupported.
+    const auto save_error = [this](Result<uint64_t> result) {
+      if (!result.ok() && !result.status().IsNotSupported()) {
+        SaveError(result.status());
+      }
+      return result;
+    };
     if (num_levels_ == 1) {
       const auto num_entries = VERIFY_RESULT(SingleLevelNumEntries());
       return Valid() ? bottom_level_iter_->iter()->GetCurrentRestart() : num_entries;
@@ -552,7 +562,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       // Moving the top level doesn't make the iterator valid: only a positioned bottom level is,
       // and the next Seek starts from the top again.
       iter_[0].SeekToLast();
-      return GetCumulativeEntryCount(iter_[0]);
+      return save_error(GetCumulativeEntryCount(iter_[0]));
     }
 
     uint64_t entries_before = 0;
@@ -560,17 +570,30 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       auto& iter = iter_[level - 1];
       iter.Prev();
       if (iter.Valid()) {
-        auto count = GetCumulativeEntryCount(iter);
+        auto count = save_error(GetCumulativeEntryCount(iter));
         iter.Next();
         entries_before = VERIFY_RESULT(std::move(count));
         break;
       }
       iter.SeekToFirst();
     }
-    const auto entries_through = VERIFY_RESULT(GetCumulativeEntryCount(*(bottom_level_iter_ - 1)));
-    // Entries that share restart points (index_block_restart_interval > 1) make the restart index
-    // differ from the entry's index within the block.
-    if (entries_through - entries_before != bottom_level_iter_->iter()->GetNumRestarts()) {
+    const auto entries_through =
+        VERIFY_RESULT(save_error(GetCumulativeEntryCount(*(bottom_level_iter_ - 1))));
+    const uint64_t num_restarts = bottom_level_iter_->iter()->GetNumRestarts();
+    // As in SeekToPosition: any restart interval above 1 gives fewer restart points than entries;
+    // more, or none, means the block doesn't match its parent's count.
+    if (entries_through < entries_before || num_restarts == 0 ||
+        num_restarts > entries_through - entries_before) {
+      const auto status = STATUS_FORMAT(
+          Corruption,
+          "Index block doesn't match its parent's entry count, entries before: $0, entries through: "
+          "$1, restart points: $2", entries_before, entries_through, num_restarts);
+      SaveError(status);
+      return status;
+    }
+    if (num_restarts != entries_through - entries_before) {
+      // Entries share restart points (index_block_restart_interval > 1), so a restart index isn't
+      // the entry's index within the block.
       return STATUS(NotSupported, "PositionOf() requires index_block_restart_interval = 1");
     }
     return entries_before + bottom_level_iter_->iter()->GetCurrentRestart();

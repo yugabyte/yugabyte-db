@@ -172,7 +172,7 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
 
   // Returns the position of the first bottom-level index entry whose key is >= `target`, which is
   // the number of entries with a smaller key; if every key is smaller, returns the number of
-  // entries in the file.
+  // entries in the file. Errors are as for SeekToPosition.
   virtual yb::Result<uint64_t> PositionOf(Slice target) {
     return STATUS(NotSupported, "PositionOf() not supported for this iterator.");
   }

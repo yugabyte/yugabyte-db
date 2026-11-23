@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -62,6 +63,7 @@
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
@@ -3197,57 +3199,55 @@ TEST_F(HarnessTest, SimpleSpecialKey) {
   }
 }
 
-TEST_F(HarnessTest, BlockHandleIndexValue) {
+TEST_F(HarnessTest, IndexValueEncoding) {
   constexpr uint64_t kOffset = 1234;
   constexpr uint64_t kSize = 5678;
   // Fits in one varint byte, so dropping the value's last byte leaves the tag without its varint.
   constexpr uint64_t kCumulativeEntryCount = 42;
-  // A tag DecodeIndexValueFrom doesn't know.
+  // A tag IndexValue::DecodeFrom doesn't know.
   constexpr char kUnknownTag = 2;
 
-  BlockHandle plain(kOffset, kSize);
-  std::string plain_encoded;
-  plain.AppendEncodedTo(&plain_encoded);
+  const BlockHandle handle(kOffset, kSize);
+  std::string handle_encoded;
+  handle.AppendEncodedTo(&handle_encoded);
+
+  const IndexValue plain(handle);
   std::string plain_value;
-  plain.AppendIndexValueTo(&plain_value);
-  ASSERT_EQ(plain_value, plain_encoded);
+  plain.EncodeTo(&plain_value);
+  ASSERT_EQ(plain_value, handle_encoded);
 
-  BlockHandle with_count(kOffset, kSize);
-  with_count.set_cumulative_entry_count(kCumulativeEntryCount);
-  std::string with_count_encoded;
-  with_count.AppendEncodedTo(&with_count_encoded);
-  ASSERT_EQ(with_count_encoded, plain_encoded);
+  const IndexValue with_count(handle, kCumulativeEntryCount);
   std::string with_count_value;
-  with_count.AppendIndexValueTo(&with_count_value);
+  with_count.EncodeTo(&with_count_value);
 
-  BlockHandle decoded;
+  IndexValue decoded;
   Slice input(with_count_value);
-  ASSERT_OK(decoded.DecodeIndexValueFrom(&input));
+  ASSERT_OK(decoded.DecodeFrom(&input));
   ASSERT_TRUE(input.empty());
-  ASSERT_TRUE(decoded == with_count);
-  ASSERT_EQ(decoded.cumulative_entry_count(), kCumulativeEntryCount);
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_EQ(decoded.cumulative_entry_count, kCumulativeEntryCount);
 
-  // Older binaries read index values with DecodeFrom, which leaves the count unread.
+  // Older binaries read index values with BlockHandle::DecodeFrom, which leaves the count unread.
   BlockHandle old_decoded;
   input = Slice(with_count_value);
   ASSERT_OK(old_decoded.DecodeFrom(&input));
-  ASSERT_TRUE(old_decoded == with_count);
+  ASSERT_TRUE(old_decoded == handle);
 
   input = Slice(plain_value);
-  ASSERT_OK(decoded.DecodeIndexValueFrom(&input));
-  ASSERT_TRUE(decoded == plain);
-  ASSERT_FALSE(decoded.cumulative_entry_count());
+  ASSERT_OK(decoded.DecodeFrom(&input));
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_FALSE(decoded.cumulative_entry_count);
 
   const auto unknown_tag_value = plain_value + kUnknownTag;
   input = Slice(unknown_tag_value);
-  ASSERT_OK(decoded.DecodeIndexValueFrom(&input));
-  ASSERT_TRUE(decoded == plain);
-  ASSERT_FALSE(decoded.cumulative_entry_count());
+  ASSERT_OK(decoded.DecodeFrom(&input));
+  ASSERT_TRUE(decoded.handle == handle);
+  ASSERT_FALSE(decoded.cumulative_entry_count);
   ASSERT_EQ(input.size(), 1U);
 
   // Tag without its varint.
   input = Slice(with_count_value.data(), with_count_value.size() - 1);
-  ASSERT_TRUE(decoded.DecodeIndexValueFrom(&input).IsCorruption());
+  ASSERT_TRUE(decoded.DecodeFrom(&input).IsCorruption());
 }
 
 TEST_F(HarnessTest, FooterTests) {
@@ -4080,20 +4080,20 @@ uint64_t CheckCumulativeEntryCounts(
   uint64_t total = 0;
   for (it->SeekToFirst(); it->Valid(); it->Next()) {
     Slice value = it->value();
-    BlockHandle child;
-    EXPECT_OK(child.DecodeIndexValueFrom(&value));
+    IndexValue child;
+    EXPECT_OK(child.DecodeFrom(&value));
     EXPECT_TRUE(value.empty());
     if (levels_below == 0) {
-      EXPECT_FALSE(child.cumulative_entry_count());
+      EXPECT_FALSE(child.cumulative_entry_count);
       ++total;
       continue;
     }
     total += CheckCumulativeEntryCounts(
-        file, footer, child, levels_below - 1, entries_before + total, expect_counts, cmp);
+        file, footer, child.handle, levels_below - 1, entries_before + total, expect_counts, cmp);
     if (expect_counts) {
-      EXPECT_EQ(child.cumulative_entry_count(), entries_before + total);
+      EXPECT_EQ(child.cumulative_entry_count, entries_before + total);
     } else {
-      EXPECT_FALSE(child.cumulative_entry_count());
+      EXPECT_FALSE(child.cumulative_entry_count);
     }
   }
   EXPECT_OK(it->status());
@@ -4115,6 +4115,16 @@ struct TestTable {
   std::string contents;
   std::unique_ptr<TableReader> reader;
 };
+
+// Opens a reader on `table->contents`, the base file.
+void OpenTestTable(TestTable* table) {
+  table->reader.reset();
+  ASSERT_OK(table->ioptions->table_factory->NewTableReader(
+      TableReaderOptions(*table->ioptions, EnvOptions(), table->icmp),
+      std::unique_ptr<RandomAccessFileReader>(
+          test::GetRandomAccessFileReader(new test::StringSource(table->contents))),
+      table->contents.size(), &table->reader));
+}
 
 // Builds an SST from `num_keys` keys, with blocks small enough for a multi-level index, and opens
 // a reader on its base file.
@@ -4145,11 +4155,99 @@ void BuildAndOpenTestTable(
   table->options.compression = kNoCompression;
   table->ioptions = std::make_unique<ImmutableCFOptions>(table->options);
   table->contents = BuildTestTable(*table->ioptions, table->icmp, table->kvs, split);
-  ASSERT_OK(table->ioptions->table_factory->NewTableReader(
-      TableReaderOptions(*table->ioptions, EnvOptions(), table->icmp),
-      std::unique_ptr<RandomAccessFileReader>(
-          test::GetRandomAccessFileReader(new test::StringSource(table->contents))),
-      table->contents.size(), &table->reader));
+  ASSERT_NO_FATALS(OpenTestTable(table));
+}
+
+// Returns the values of the entries in the index block at `handle`.
+std::vector<std::string> ReadIndexBlockValues(
+    RandomAccessFileReader* file, const Footer& footer, const BlockHandle& handle,
+    const Comparator* cmp) {
+  BlockContents block_contents;
+  EXPECT_OK(ReadBlockContents(file, footer, ReadOptions(), handle, &block_contents,
+                              Env::Default(), yb::MemTrackerPtr(), /* do_uncompress */ true));
+  Block block(std::move(block_contents));
+  std::unique_ptr<BlockIter> it(block.NewIndexBlockIterator(cmp));
+  std::vector<std::string> values;
+  for (it->SeekToFirst(); it->Valid(); it->Next()) {
+    values.push_back(it->value().ToBuffer());
+  }
+  EXPECT_OK(it->status());
+  return values;
+}
+
+// In the first index block whose entries point to bottom-level index blocks, sets the cumulative
+// entry count of entry `entry_index` to `new_count(entries_before, count)`, where entries_before
+// is the previous entry's count, fixes the block's checksum and reopens the reader. The new count
+// must take as many bytes as the old one, so that the block keeps its layout. Call it before
+// reading through the reader: the reopened reader shares the table factory's block cache and the
+// file's cache key prefix, so it would get blocks cached from before the change.
+void SetLeafParentCount(
+    TestTable* table, size_t entry_index,
+    const std::function<uint64_t(uint64_t, uint64_t)>& new_count,
+    uint64_t* entries_before = nullptr) {
+  auto& contents = table->contents;
+  std::unique_ptr<RandomAccessFileReader> file(
+      test::GetRandomAccessFileReader(new test::StringSource(contents)));
+  Footer footer;
+  ASSERT_OK(ReadFooterFromFile(file.get(), contents.size(), &footer));
+  ASSERT_EQ(footer.checksum(), kCRC32c);
+
+  // Bottom-level entries, which point to data blocks, have no counts.
+  auto handle = footer.index_handle();
+  std::vector<std::string> values;
+  for (;;) {
+    values = ReadIndexBlockValues(file.get(), footer, handle, table->icmp.get());
+    ASSERT_GT(values.size(), entry_index);
+    IndexValue first_child;
+    Slice input(values[0]);
+    ASSERT_OK(first_child.DecodeFrom(&input));
+    ASSERT_TRUE(first_child.cumulative_entry_count);
+    const auto grandchild_values =
+        ReadIndexBlockValues(file.get(), footer, first_child.handle, table->icmp.get());
+    ASSERT_FALSE(grandchild_values.empty());
+    IndexValue grandchild;
+    input = Slice(grandchild_values[0]);
+    ASSERT_OK(grandchild.DecodeFrom(&input));
+    if (!grandchild.cumulative_entry_count) {
+      break;
+    }
+    handle = first_child.handle;
+  }
+
+  uint64_t before = 0;
+  if (entry_index > 0) {
+    IndexValue previous;
+    Slice input(values[entry_index - 1]);
+    ASSERT_OK(previous.DecodeFrom(&input));
+    before = *previous.cumulative_entry_count;
+  }
+  if (entries_before) {
+    *entries_before = before;
+  }
+  const auto& old_value = values[entry_index];
+  IndexValue index_value;
+  Slice input(old_value);
+  ASSERT_OK(index_value.DecodeFrom(&input));
+  index_value.cumulative_entry_count =
+      new_count(before, *index_value.cumulative_entry_count);
+  std::string new_value;
+  index_value.EncodeTo(&new_value);
+  ASSERT_EQ(new_value.size(), old_value.size());
+
+  const auto block_end = handle.offset() + handle.size();
+  const auto pos = contents.find(old_value, handle.offset());
+  ASSERT_NE(pos, std::string::npos);
+  ASSERT_LE(pos + old_value.size(), block_end);
+  contents.replace(pos, old_value.size(), new_value);
+  // The trailer is the block type, then the masked CRC32C of the block and its type.
+  auto crc = crc32c::Value(contents.data() + handle.offset(), handle.size());
+  crc = crc32c::Extend(crc, contents.data() + block_end, 1);
+  EncodeFixed32(contents.data() + block_end + 1, crc32c::Mask(crc));
+  ASSERT_NO_FATALS(OpenTestTable(table));
+  file.reset(test::GetRandomAccessFileReader(new test::StringSource(contents)));
+  const auto new_values = ReadIndexBlockValues(file.get(), footer, handle, table->icmp.get());
+  ASSERT_GT(new_values.size(), entry_index);
+  ASSERT_EQ(new_values[entry_index], new_value);
 }
 
 void TestCumulativeEntryCounts(int num_keys, bool write_counts, bool split) {
@@ -4359,6 +4457,60 @@ TEST_F(GeneralTableTest, SeekToPositionRestartIntervalShapes) {
     }
     ASSERT_TRUE(saw_not_supported);
     ASSERT_TRUE(saw_position_of_not_supported);
+  }
+}
+
+// An upper-level count that doesn't match the bottom-level block under it is Corruption from both
+// SeekToPosition and PositionOf, and status() keeps reporting it.
+TEST_F(GeneralTableTest, CumulativeEntryCountMismatch) {
+  {
+    SCOPED_TRACE("Count below the number of entries in the block");
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, /* write_counts */ true, /* split */ false,
+        /* index_block_restart_interval */ 1, &table));
+    ASSERT_NO_FATALS(SetLeafParentCount(
+        &table, /* entry_index */ 0,
+        [](uint64_t /* entries_before */, uint64_t count) { return count - 1; }));
+
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto result = iter->SeekToPosition(0);
+    ASSERT_NOK(result);
+    ASSERT_TRUE(result.status().IsCorruption()) << result.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+
+    iter.reset(table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    const auto position = iter->PositionOf(table.kvs.begin()->first);
+    ASSERT_NOK(position);
+    ASSERT_TRUE(position.status().IsCorruption()) << position.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
+  }
+  {
+    SCOPED_TRACE("Count below the count before the block");
+    TestTable table;
+    ASSERT_NO_FATALS(BuildAndOpenTestTable(
+        kMultiLevelNumKeys, /* write_counts */ true, /* split */ false,
+        /* index_block_restart_interval */ 1, &table));
+    uint64_t entries_before = 0;
+    ASSERT_NO_FATALS(SetLeafParentCount(
+        &table, /* entry_index */ 1,
+        [](uint64_t before, uint64_t /* count */) { return before - 1; },
+        &entries_before));
+
+    // Walking the index doesn't read the counts.
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> iter(
+        table.reader->NewDataBlockAwareIndexIterator(ReadOptions()));
+    std::vector<std::string> keys;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      keys.push_back(iter->key().ToBuffer());
+    }
+    ASSERT_OK(iter->status());
+    ASSERT_LT(entries_before, keys.size());
+    const auto position = iter->PositionOf(keys[entries_before]);
+    ASSERT_NOK(position);
+    ASSERT_TRUE(position.status().IsCorruption()) << position.status();
+    ASSERT_TRUE(iter->status().IsCorruption()) << iter->status();
   }
 }
 

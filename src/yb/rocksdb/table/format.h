@@ -68,18 +68,8 @@ class BlockHandle {
   uint64_t size() const { return size_; }
   void set_size(uint64_t _size) { size_ = _size; }
 
-  // Upper-level index entries only: number of data blocks in the file up to the end of this block.
-  // Not encoded by AppendEncodedTo/DecodeFrom, which the footer and metaindex also use.
-  const std::optional<uint64_t>& cumulative_entry_count() const { return cumulative_entry_count_; }
-  void set_cumulative_entry_count(uint64_t count) { cumulative_entry_count_ = count; }
-
   void AppendEncodedTo(std::string* dst) const;
   Status DecodeFrom(Slice* input);
-  // AppendEncodedTo/DecodeFrom plus cumulative_entry_count, if present. For index entry values.
-  // DecodeIndexValueFrom leaves bytes that don't start with the count's tag unread, so later
-  // formats can add other tags.
-  void AppendIndexValueTo(std::string* dst) const;
-  Status DecodeIndexValueFrom(Slice* input);
 
   // Return a string that contains the copy of handle.
   std::string ToString(bool hex = true) const;
@@ -110,9 +100,29 @@ class BlockHandle {
  private:
   uint64_t offset_ = 0;
   uint64_t size_ = 0;
-  std::optional<uint64_t> cumulative_entry_count_;
 
   static const BlockHandle kNullBlockHandle;
+};
+
+// Value of an index block entry. Like upstream RocksDB's IndexValue, this keeps fields that only
+// index entries have out of BlockHandle, which the footer and metaindex also use.
+struct IndexValue {
+  BlockHandle handle;
+  // Upper-level entries of a multi-level index only, when write_cumulative_index_entry_counts is
+  // on: number of data blocks in the file up to the end of the block `handle` points to.
+  std::optional<uint64_t> cumulative_entry_count;
+
+  IndexValue() = default;
+  explicit IndexValue(
+      const BlockHandle& handle_, std::optional<uint64_t> cumulative_entry_count_ = std::nullopt)
+      : handle(handle_), cumulative_entry_count(cumulative_entry_count_) {}
+
+  // Writes the handle, then the count's tag and varint if cumulative_entry_count is set.
+  // BlockHandle::DecodeFrom ignores trailing bytes, so older binaries can still read these values.
+  void EncodeTo(std::string* dst) const;
+  // Leaves bytes that don't start with the count's tag unread, so later formats can add other
+  // tags.
+  Status DecodeFrom(Slice* input);
 };
 
 inline uint32_t GetCompressFormatForVersion(CompressionType compression_type,

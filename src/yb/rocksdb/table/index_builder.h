@@ -234,13 +234,14 @@ class MultiLevelIndexBuilder : public IndexBuilder {
       const Slice* first_key_in_next_block,
       const BlockHandle& block_handle) override {
     AddIndexEntry(
-        last_key_in_current_block, first_key_in_next_block, block_handle, ShortenKeys::kTrue);
+        last_key_in_current_block, first_key_in_next_block, IndexValue(block_handle),
+        ShortenKeys::kTrue);
   }
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,
       const Slice* first_key_in_next_block,
-      const BlockHandle& block_handle,
+      const IndexValue& index_value,
       ShortenKeys shorten_keys);
 
   Status Finish(IndexBlocks* index_blocks) override {
