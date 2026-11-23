@@ -65,6 +65,7 @@
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/serialization.h"
@@ -1805,6 +1806,110 @@ std::string UpperBoundRoutingKey(const Schema& schema, Slice upper_bound_key) {
       schema, *hash_code - 1, /* is_lower = */ false).ToStringBuffer();
 }
 
+class ClientProvider {
+  friend class PgClientSession::Impl;
+
+  explicit ClientProvider(const std::shared_ptr<client::YBClient>& client)
+      : client_(client) {}
+
+ public:
+  Result<std::shared_ptr<client::YBClient>> Get() const {
+    auto ptr = client_.lock();
+    SCHECK(ptr, Aborted, "Session no longer exists");
+    return ptr;
+  }
+
+ private:
+  std::weak_ptr<client::YBClient> client_;
+};
+
+class BackfillIndexRequest : public std::enable_shared_from_this<BackfillIndexRequest> {
+  class PrivateTag {};
+  using Self = BackfillIndexRequest;
+
+ public:
+  BackfillIndexRequest(
+      PrivateTag, ClientProvider&& client,
+      const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
+      rpc::RpcContext&& context) :
+      client_(std::move(client)),
+      holder_(MakeTypedPBRpcContextHolder(req, resp, std::move(context))),
+      index_id_(PgObjectId::GetYbTableIdFromPB(holder_.req().table_id())),
+      waiter_(GetClientDeadline(), kDefaultMaxRetryWait) {}
+
+  template<class... Args>
+  static void Run(const std::optional<TransactionMetadata>& txn_metadata, Args&&... args) {
+    auto self = std::make_shared<Self>(PrivateTag{}, std::forward<Args>(args)...);
+    self->RespondIfFailed(self->DoRun(txn_metadata));
+  }
+
+ private:
+  template<class... Args>
+  auto MakeCallback(Status (Self::*method)(Args...)) {
+    return [self = shared_from_this(), method](Args... args) {
+      self->RespondIfFailed(std::invoke(method, self, std::forward<Args>(args)...));
+    };
+  }
+
+  CoarseTimePoint GetClientDeadline() const { return holder_->GetClientDeadline(); }
+
+  Status DoRun(const std::optional<TransactionMetadata>& txn_metadata) {
+    VERIFY_RESULT(client_.Get())->BackfillIndexAsync(
+        index_id_, txn_metadata, GetClientDeadline(),
+        MakeCallback(&Self::HandleBackfillIndexResult));
+    return Status::OK();
+  }
+
+  Status HandleBackfillIndexResult(Result<const TableId&>&& table_id) {
+    table_id_ = VERIFY_RESULT_REF(std::move(table_id));
+    return ScheduleBackfillProgressCheck();
+  }
+
+  Status ScheduleBackfillProgressCheck() {
+    waiter_.NextAttempt();
+    SCHECK(!waiter_.ExpiredNow(), TimedOut, "Timed out waiting for Backfill Index");
+    if (const auto delay = waiter_.DelayForNow(); delay > MonoDelta::kZero) {
+      VERIFY_RESULT(client_.Get())->messenger()->scheduler().Schedule(
+          MakeCallback(&Self::CheckBackfillProgress), delay);
+      return Status::OK();
+    }
+    return CheckBackfillProgress();
+  }
+
+  Status CheckBackfillProgress(const Status& status = Status::OK()) {
+    RETURN_NOT_OK(status);
+    VERIFY_RESULT(client_.Get())->IsBackfillIndexInProgressAsync(
+        table_id_, index_id_, GetClientDeadline(),
+        MakeCallback(&Self::HandleIsBackfillIndexInProgressResult));
+    return Status::OK();
+  }
+
+  Status HandleIsBackfillIndexInProgressResult(Result<bool>&& result) {
+    if (VERIFY_RESULT(std::move(result))) {
+      return ScheduleBackfillProgressCheck();
+    }
+    LOG(INFO) << "Backfilled index " << index_id_;
+    holder_->RespondSuccess();
+    return Status::OK();
+  }
+
+  void RespondIfFailed(const Status& status) {
+    if (status.ok()) {
+      return;
+    }
+    StatusToPB(status, holder_.resp().mutable_status());
+    holder_->RespondSuccess();
+  }
+
+  const ClientProvider client_;
+  rpc::TypedPBRpcContextHolder<
+      PgBackfillIndexRequestPB, PgBackfillIndexResponsePB, rpc::RpcCallPBParamsImpl> holder_;
+
+  TableId table_id_;
+  TableId index_id_;
+  CoarseBackoffWaiter waiter_;
+};
+
 } // namespace
 
 class PgClientSession::Impl {
@@ -2175,14 +2280,14 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  Status BackfillIndex(
+  void BackfillIndex(
       const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
-      rpc::RpcContext* context) {
+      rpc::RpcContext&& context, PgSessionGuard& guard) {
     // The PG backend holds a DDL transaction open for the entire backfill duration
     // (StartTransactionCommand at indexcmds.c:2334). Pass it to the master so it can detect when
     // this backend is killed (-> txn aborted) and stop launching new backfill chunks.
     auto meta = GetDdlTransactionMetadata(
-        /*use_transaction=*/true, req.use_regular_transaction_block(), context->GetClientDeadline(),
+        /*use_transaction=*/true, req.use_regular_transaction_block(), context.GetClientDeadline(),
         IsTxnUsingTableLocks(false), DeferReadPoint::kFalse, req.origination_ht());
     std::optional<TransactionMetadata> txn_metadata;
     if (!meta.ok()) {
@@ -2190,10 +2295,8 @@ class PgClientSession::Impl {
     } else if (*meta) {
       txn_metadata = **meta;
     }
-    return client_.BackfillIndex(
-        PgObjectId::GetYbTableIdFromPB(req.table_id()),
-        std::move(txn_metadata),
-        /* wait= */ true, context->GetClientDeadline());
+    BackfillIndexRequest::Run(
+        txn_metadata, MakeClientProvider(), req, resp, std::move(context));
   }
 
   Status StartTableBackfill(
@@ -5124,6 +5227,10 @@ class PgClientSession::Impl {
     }
 #endif
     return Status::OK();
+  }
+
+  ClientProvider MakeClientProvider() {
+    return ClientProvider{SharedField(SharedSessionFromThis(), &client_)};
   }
 
   client::YBClient& client_;
