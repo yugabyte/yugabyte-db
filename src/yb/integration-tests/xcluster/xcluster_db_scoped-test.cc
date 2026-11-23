@@ -13,6 +13,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/cdc/cdc_service_context.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
@@ -21,11 +22,17 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_vector_index_exact);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -1174,5 +1181,36 @@ TEST_F_EX(XClusterDBScopedTest, VectorIndexUpdatesWithDifferentTabletLayouts,
     }
   }
   ASSERT_TRUE(stale_ids.empty()) << "Stale on the target: " << AsString(stale_ids);
+}
+
+// Tests that a checkpoint succeeds when a local peer is tombstoned during BootstrapProducer.
+TEST_F(XClusterDBScopedAutomaticModeTest, CheckpointWithTombstonedLocalPeer) {
+  ASSERT_OK(SetUpClusters());
+  // Stop the leader from remote bootstrapping the tombstoned peer back before the run reads it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+
+  // After the run reads the tablet locations, tombstone a follower peer on its tserver, as the
+  // load balancer would.
+  auto* sync_point = SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  sync_point->SetCallBack(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [this](void* arg) {
+        const auto ts_uuid = static_cast<cdc::CDCServiceContext*>(arg)->permanent_uuid();
+        const auto followers = ListTableTabletPeers(
+            producer_cluster(), producer_table_->id(), ListPeersFilter::kNonLeaders);
+        const auto follower = std::ranges::find_if(
+            followers, [&](const auto& peer) { return peer->permanent_uuid() == ts_uuid; });
+        ASSERT_NE(follower, followers.end());
+        auto* ts = ASSERT_NOTNULL(producer_cluster()->find_tablet_server(ts_uuid));
+        ASSERT_OK(ts->DeleteTablet((*follower)->tablet_id(), tablet::TABLET_DATA_TOMBSTONED));
+      });
+  sync_point->EnableProcessing();
+
+  StringWaiterLogSink fallback_sink("from its leader, since the local peer cannot serve");
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_TRUE(fallback_sink.IsEventOccurred());
 }
 }  // namespace yb
