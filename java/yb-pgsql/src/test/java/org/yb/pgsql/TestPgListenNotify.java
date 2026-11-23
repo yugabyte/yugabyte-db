@@ -2152,7 +2152,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * pg_yb_notifications also takes plain SQL writes. A malformed extra_options value must not
-   * break the poller (an error there terminates every listener on the node).
+   * break the poller (an error there terminates every listener on the node). The data is a
+   * well-formed empty channel and payload, so the poller gets as far as extra_options.
    */
   @Test
   public void testPollerToleratesMalformedExtraOptions() throws Exception {
@@ -2172,7 +2173,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           stmt.execute("INSERT INTO pg_yb_notifications"
               + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data,"
               + " extra_options) VALUES (gen_random_uuid(), gen_random_uuid(), 0, 0, false,"
-              + " '\\x00', " + opts + ")");
+              + " '\\x0000', " + opts + ")");
         }
       }
 
