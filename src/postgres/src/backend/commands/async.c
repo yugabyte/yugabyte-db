@@ -3517,8 +3517,7 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
  * Two consequences are accepted, since without acks an idle poller looks the
  * same as a failing one. An idle poller that restarted successfully, but
  * has not been up for the timeout, terminates the listeners on one error if
- * its run of failed restarts began more than the timeout ago; nothing was
- * pending, so the listeners lose only their connections. A failure that
+ * its run of failed restarts began more than the timeout ago. A failure that
  * comes more than the timeout into every run restarts indefinitely, at most
  * once per timeout.
  *
