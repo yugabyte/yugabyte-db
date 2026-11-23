@@ -298,6 +298,12 @@ YbcHeapSnapshotSample
 YbcIsExplicitlyLockedRowSkippedCheckHandle
 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
 YbcIterateDbCatalogCacheMetricsFunc
+YbcLedgerEntry
+YbcLedgerPhase
+YbcLedgerRecord
+YbcLedgerRing
+YbcLedgerRoundTripInfo
+YbcLedgerWaitEventNameFunc
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId

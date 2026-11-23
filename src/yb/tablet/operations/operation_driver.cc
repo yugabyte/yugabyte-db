@@ -30,8 +30,6 @@
 // under the License.
 //
 
-#include "yb/ash/latency_ledger.h"
-
 #include "yb/tablet/operations/operation_driver.h"
 
 #include <atomic>
@@ -41,6 +39,8 @@
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include "yb/ash/latency_ledger.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
