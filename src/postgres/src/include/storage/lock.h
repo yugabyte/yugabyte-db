@@ -405,6 +405,12 @@ typedef struct PROCLOCK
  * it is released and merged together with the owner's grant.  Once no
  * transactional owner holds an unskipped grant, a request made outside
  * prefetching goes to the tserver even though nLocks > 0.
+ *
+ * An unskipped entry means only that its grant was not made by that skip, not
+ * that its owner holds a tserver object lock of its own.  The owner may have
+ * acquired the tserver object lock itself, or been granted the lock locally
+ * because another transactional owner already held it, in which case it
+ * relies on that owner's tserver object lock.
  */
 typedef struct LOCALLOCKTAG
 {
@@ -424,7 +430,7 @@ typedef struct LOCALLOCKOWNER
 	int64		nLocks;			/* # of times held by this owner */
 
 	/* YB fields */
-	bool		yb_object_lock_skipped; /* no tserver object lock behind it */
+	bool		yb_object_lock_skipped; /* granted by the catalog prefetch skip */
 } LOCALLOCKOWNER;
 
 typedef struct LOCALLOCK

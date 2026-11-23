@@ -458,10 +458,12 @@ YbSkipCatalogObjectLockDuringPrefetch(const LOCKTAG *locktag,
 }
 
 /*
- * Whether a transactional owner holds the lock with a grant backed by a
- * tserver object lock, i.e. one not made by
- * YbSkipCatalogObjectLockDuringPrefetch.  Session-owner grants do not count:
- * see the session lock note in LockAcquireExtended.
+ * Whether a transactional owner holds the lock with a grant not made by
+ * YbSkipCatalogObjectLockDuringPrefetch.  Such a grant was either acquired
+ * from the tserver by its owner, or granted locally because another
+ * transactional owner already held the lock (see the YB note above
+ * LOCALLOCKTAG in lock.h).  Session-owner grants do not count: see the
+ * session lock note in LockAcquireExtended.
  */
 static bool
 YbHoldsTransactionalObjectLock(const LOCALLOCK *locallock)
@@ -493,10 +495,11 @@ YbFindLockOwner(LOCALLOCK *locallock, ResourceOwner owner)
  * Record a grant just made to owner without acquiring a tserver object lock,
  * because YbSkipCatalogObjectLockDuringPrefetch held.  If GrantLockLocal just
  * created owner's entry, the entry is marked skipped, even when another
- * owner's grant is backed by a tserver object lock: that lock belongs to the
- * other owner and can be released without this one.  An existing entry keeps
- * its flag: a skipped entry stays skipped, and a backed entry stays backed,
- * because its owner still holds the tserver object lock it acquired.
+ * owner holds an unskipped grant: whatever tserver object lock is behind that
+ * grant belongs to the other owner and can be released without this one.  An
+ * existing entry keeps its flag: a skipped entry stays skipped, and an
+ * unskipped entry stays unskipped, since this grant does not change how the
+ * owner's earlier grant was made.
  */
 static void
 YbMarkOwnerSkippedIfNew(LOCALLOCK *locallock, ResourceOwner owner)
@@ -1136,8 +1139,8 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 *
 	 * With object locking enabled, that rule is part of a broader one: a
 	 * transactional lock goes to the tserver unless some transactional owner
-	 * already holds it with a grant backed by a tserver object lock (see
-	 * YbHoldsTransactionalObjectLock).  A session owner never counts, and
+	 * already holds it with a grant not made by the catalog prefetch skip
+	 * (see YbHoldsTransactionalObjectLock).  A session owner never counts, and
 	 * neither does a grant made during catalog prefetching without a tserver
 	 * object lock.
 	 *
@@ -2077,7 +2080,7 @@ GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner)
 	if (owner != NULL)
 		ResourceOwnerRememberLock(owner, locallock);
 
-	/* YB: a new entry is backed until YbMarkOwnerSkippedIfNew says otherwise */
+	/* YB: a new entry is unskipped until YbMarkOwnerSkippedIfNew marks it */
 	lockOwners[i].yb_object_lock_skipped = false;
 
 	/* Indicate that the lock is acquired for certain types of locks. */
@@ -3119,7 +3122,7 @@ LockReassignOwner(LOCALLOCK *locallock, ResourceOwner parent)
 		/* Merge child's count with parent's */
 		lockOwners[ip].nLocks += lockOwners[ic].nLocks;
 
-		/* YB: the merged grant is backed by a tserver lock if either was */
+		/* YB: the merged grant is skipped only if both were */
 		lockOwners[ip].yb_object_lock_skipped =
 			lockOwners[ip].yb_object_lock_skipped &&
 			lockOwners[ic].yb_object_lock_skipped;
