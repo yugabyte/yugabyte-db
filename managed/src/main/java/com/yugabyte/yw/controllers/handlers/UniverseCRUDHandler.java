@@ -368,6 +368,11 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
+    // A universe UUID that doesn't exist yet configures a new universe.
+    if (taskParams.getUniverseUUID() != null
+        && Universe.maybeGet(taskParams.getUniverseUUID()).isPresent()) {
+      Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    }
     Cluster cluster = getClusterFromTaskParams(taskParams);
     if (taskParams.clusterOperation == ClusterOperationType.CREATE
         && taskParams.currentClusterType == ClusterType.PRIMARY
@@ -2564,7 +2569,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change master gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curMasterGFlags, curIntent),
+                    redactGFlags(newMasterGFlags, curIntent)));
           }
           if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
             throw new PlatformServiceException(
@@ -2572,7 +2579,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change tserver gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curTserverGFlags, curIntent),
+                    redactGFlags(newTserverGFlags, curIntent)));
           }
 
           if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
@@ -2610,6 +2619,10 @@ public class UniverseCRUDHandler {
         newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
+  }
+
+  private Map<String, String> redactGFlags(Map<String, String> gflags, UserIntent userIntent) {
+    return RedactingService.redactGFlags(gflags, userIntent.ybSoftwareVersion, gFlagsValidation);
   }
 
   private void verifyDeviceUnchanged(
