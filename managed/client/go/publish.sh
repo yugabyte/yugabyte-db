@@ -52,20 +52,45 @@ fi
 
 DATE="$(date -u +%Y-%m-%d)"
 BRANCH="client-${DATE}-${SRC_SHA}"
-WORKTREE="$(mktemp -d)"
+$DRY_RUN && BRANCH="${BRANCH}-dryrun"
+
+# One publish per SHA, on any day. A branch without a PR means an earlier run failed after the
+# push. A dry run warns, so it reports what the real run will do.
+EXISTING="$(git -C "$CLIENT_REPO" ls-remote --heads origin \
+  | awk '{print $2}' | sed 's#^refs/heads/##' | grep -E "^client-.*-${SRC_SHA}$" | head -1)" || true
+if [[ -n "$EXISTING" ]]; then
+  PR_URL="$(gh pr list --repo yugabyte/platform-go-client --head "$EXISTING" --state all \
+    --json url --jq '.[0].url // empty' 2>/dev/null)" || true
+  if [[ -n "$PR_URL" ]]; then
+    MSG="$SRC_SHA was already published as $PR_URL."
+  else
+    MSG="Branch $EXISTING exists on origin without a PR. Open its PR with gh pr create, or"
+    MSG+=" delete the branch, then run again."
+  fi
+  $DRY_RUN || die "$MSG"
+  echo "WARNING: the real run will stop: $MSG" >&2
+fi
+
+WORKTREE=""
+GOWORK_DIR=""
 KEEP_BRANCH=false
 cleanup() {
   cd /
-  git -C "$CLIENT_REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
-  rm -rf "$WORKTREE"
+  if [[ -n "$WORKTREE" ]]; then
+    git -C "$CLIENT_REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+    rm -rf "$WORKTREE"
+  fi
+  [[ -z "$GOWORK_DIR" ]] || rm -rf "$GOWORK_DIR"
   if ! $KEEP_BRANCH; then
     git -C "$CLIENT_REPO" branch -D "$BRANCH" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
+WORKTREE="$(mktemp -d)"
+GOWORK_DIR="$(mktemp -d)"
 
 git -C "$CLIENT_REPO" fetch -q origin master
-# -B resets a branch left by an earlier dry run of the same SHA.
+# -B resets a local branch left by an earlier run of the same SHA.
 git -C "$CLIENT_REPO" worktree add -q -B "$BRANCH" "$WORKTREE" origin/master
 
 # v1 is the repo root. Keep the repo's own .gitignore and LICENSE, and v2/ (mirrored next).
@@ -77,6 +102,45 @@ rsync -a --delete "${META[@]}" "$GEN_DIR/v2/" "$WORKTREE/v2/"
 
 (cd "$WORKTREE" && go build ./...) || die "v1 client does not build."
 (cd "$WORKTREE/v2" && go build ./...) || die "v2 client does not build."
+
+# The consumers must still build against the new client. A temporary go.work points them at
+# the generated code without changing their go.mod. A yba-cli break stops the publish; the
+# Terraform provider is checked when its clone exists, and a break there is a warning.
+GOWORK_FILE="$GOWORK_DIR/go.work"
+GO_LOG="$GOWORK_DIR/go.log"
+# check_consumer <name> <dir> <test-regexp>: returns non-zero and prints the go output on failure.
+check_consumer() {
+  local name="$1" dir="$2"
+  echo "Checking $name ($(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)" \
+    "at $(git -C "$dir" rev-parse --short HEAD 2>/dev/null)) against the new client..."
+  rm -f "$GOWORK_FILE"
+  if ! (cd "$GOWORK_DIR" && GOWORK=off go work init "$dir" "$WORKTREE" "$WORKTREE/v2") \
+    >"$GO_LOG" 2>&1; then
+    cat "$GO_LOG" >&2
+    echo "Cannot create a Go workspace for $name." >&2
+    return 1
+  fi
+  # -vet=off: vet's printf check fails on the existing logrus.Fatalf(formatter.Colorize(...))
+  # calls, which has nothing to do with the client. -run "$3" picks the tests to run.
+  if ! (cd "$dir" && GOWORK="$GOWORK_FILE" go build ./... \
+    && GOWORK="$GOWORK_FILE" go test -count=1 -vet=off -run "$3" ./...) >"$GO_LOG" 2>&1; then
+    grep -vE '^(ok|\?) ' "$GO_LOG" >&2
+    return 1
+  fi
+}
+# yba-cli runs all its unit tests; the Terraform provider only compiles its tests.
+check_consumer yba-cli "$MANAGED_DIR/yba-cli" '.' \
+  || die "yba-cli does not build or pass its tests against the new client. Fix yba-cli first."
+TF_DIR="${TERRAFORM_PROVIDER_YBA_DIR:-$HOME/code/terraform-provider-yba}"
+if [[ -f "$TF_DIR/go.mod" ]]; then
+  # The provider bumps the client on its own schedule, so a break is reported, not fatal. The
+  # check builds the local clone as it is, so local edits can also cause a failure.
+  check_consumer terraform-provider-yba "$TF_DIR" '^$' \
+    || echo "WARNING: terraform-provider-yba does not build against the new client (errors" \
+      "above). Fix it when it bumps the client." >&2
+else
+  echo "WARNING: $TF_DIR not found; terraform-provider-yba was not checked." >&2
+fi
 
 cd "$WORKTREE"
 git add -A

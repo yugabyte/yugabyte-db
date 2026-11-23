@@ -196,7 +196,9 @@ did not ask for. A note in the help text or the release notes does not make a ch
 
 ## Tests
 
-- `make test` in `managed/yba-cli` is an empty target and runs nothing. Run `go test ./...`.
+- `make test` in `managed/yba-cli` is an empty target and runs nothing. Run
+  `go test -vet=off ./...`: plain `go test` fails on vet's printf check for the existing
+  `logrus.Fatalf(formatter.Colorize(...))` calls, before any test runs.
 - Every fix to an update or edit command adds a round-trip test: read the object, run the
   command with one flag, read it again, and check that every field the flag does not name is
   unchanged. Use a fixture whose optional fields hold non-default values (custom ports,
