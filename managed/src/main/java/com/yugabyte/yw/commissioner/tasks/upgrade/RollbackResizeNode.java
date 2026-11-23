@@ -117,7 +117,8 @@ public class RollbackResizeNode extends ResizeNode {
     cloudByNode = rollbackComputer.describeCloudNodes(universe, taskParams().clusters);
     rollbackComputer.checkCooldownGate(
         taskParams(), universe, taskParams().getFailedTaskCreateTime(), cloudByNode);
-    if (needsUniverseKeyCheck()) {
+    // A started rollback must finish. Its first try checked the key, like PauseUniverse.
+    if (needsUniverseKeyCheck() && !isRetryOfPlacementLockHolder(universe)) {
       createCheckUniverseKeyInKmsTask(universe);
     }
   }

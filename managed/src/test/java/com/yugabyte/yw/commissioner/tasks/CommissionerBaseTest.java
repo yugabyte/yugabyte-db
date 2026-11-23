@@ -1721,12 +1721,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   /** Gives the universe an active EAR key and makes KMS return it, or fail if kmsWorks is false. */
   protected EncryptionAtRestService<?> setUpUniverseKeyInKms(UUID universeUUID, boolean kmsWorks) {
+    return setUpUniverseKeyInKms(universeUUID, kmsWorks, true);
+  }
+
+  protected EncryptionAtRestService<?> setUpUniverseKeyInKms(
+      UUID universeUUID, boolean kmsWorks, boolean activateKey) {
     KmsConfig kmsConfig =
         KmsConfig.createKMSConfig(
             defaultCustomer.getUuid(), KeyProvider.AWS, Json.newObject(), "test-kms-config");
     byte[] keyRef = "some_key_ref".getBytes();
     EncryptionAtRestUtil.addKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef);
-    EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef);
+    if (activateKey) {
+      EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef);
+    }
     EncryptionAtRestService<?> keyService = mock(EncryptionAtRestService.class);
     lenient().doReturn(keyService).when(mockEARManager).getServiceInstance(anyString());
     if (kmsWorks) {

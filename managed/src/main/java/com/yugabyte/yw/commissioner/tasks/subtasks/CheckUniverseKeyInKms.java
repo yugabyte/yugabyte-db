@@ -9,8 +9,8 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
-import com.yugabyte.yw.models.KmsHistoryId;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -41,24 +41,22 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
   @Override
   public void run() {
     UUID universeUUID = taskParams().getUniverseUUID();
-    // Not EncryptionAtRestUtil.getActiveKey: it turns a DB error into null, which would pass the
-    // check without asking KMS.
-    KmsHistory activeKey =
-        KmsHistory.getActiveHistory(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
-    if (activeKey == null
-        || activeKey.getUuid().keyRef == null
-        || activeKey.getUuid().keyRef.isEmpty()) {
-      log.info("No active universe key for universe {}, skipping KMS check", universeUUID);
+    // The keys YBA pushes to restarted masters, the same rows the precheck gate counts.
+    List<KmsHistory> keys = KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
+    if (keys.isEmpty()) {
+      log.info("No universe key for universe {}, skipping KMS check", universeUUID);
       return;
     }
-    KmsConfig kmsConfig = KmsConfig.get(activeKey.getConfigUuid());
+    // Newest first, so use the newest key if no key is active.
+    KmsHistory key = keys.stream().filter(KmsHistory::isActive).findFirst().orElse(keys.get(0));
+    KmsConfig kmsConfig = KmsConfig.get(key.getConfigUuid());
     if (kmsConfig == null) {
       throw new RuntimeException(
           String.format(
               "YBA cannot get the active universe key: KMS config %s is missing.",
-              activeKey.getConfigUuid()));
+              key.getConfigUuid()));
     }
-    byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+    byte[] keyRef = Base64.getDecoder().decode(key.getUuid().keyRef);
     String cause = "KMS returned no key, see the YBA log";
     Exception kmsError = null;
     byte[] keyVal = null;
@@ -67,10 +65,7 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
           keyManager
               .getServiceInstance(kmsConfig.getKeyProvider().name())
               .retrieveKeyFromKms(
-                  universeUUID,
-                  kmsConfig.getConfigUUID(),
-                  keyRef,
-                  activeKey.getEncryptionContext());
+                  universeUUID, kmsConfig.getConfigUUID(), keyRef, key.getEncryptionContext());
     } catch (Exception e) {
       log.error("Failed to get universe key from KMS for universe {}", universeUUID, e);
       kmsError = e;

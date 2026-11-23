@@ -156,8 +156,23 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE);
   }
 
+  // The check must still ask KMS when the universe has keys but none is marked active.
+  @Test
+  public void testRestartFailsKmsCheckWhenNoKeyIsActive() {
+    setUpUniverseKeyInKms(
+        defaultUniverse.getUniverseUUID(), false /* kmsWorks */, false /* activateKey */);
+    verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, false);
+  }
+
   private void verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption option) {
-    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    verifyRestartFailsBeforeStop(option, true);
+  }
+
+  private void verifyRestartFailsBeforeStop(
+      UpgradeTaskParams.UpgradeOption option, boolean setUpKey) {
+    if (setUpKey) {
+      setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    }
     RestartTaskParams taskParams = new RestartTaskParams();
     taskParams.upgradeOption = option;
     TaskInfo taskInfo = submitTask(taskParams);

@@ -4,14 +4,18 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -136,5 +140,41 @@ public class PauseXClusterUniversesTest extends CommissionerBaseTest {
     }
     verify(mockClient, times(NUM_NODES))
         .setFlag(any(), eq(GFlagsUtil.YSQL_PG_CONF_CSV), anyString(), anyBoolean());
+  }
+
+  // The target key is checked while only the source is locked. Its failure must leave both
+  // universes unlocked and not paused.
+  @Test
+  public void testPauseFailsWhenTargetKmsKeyUnavailable() throws Exception {
+    verifyFailsWhenTargetKmsKeyUnavailable(TaskType.PauseXClusterUniverses);
+  }
+
+  @Test
+  public void testResumeFailsWhenTargetKmsKeyUnavailable() throws Exception {
+    verifyFailsWhenTargetKmsKeyUnavailable(TaskType.ResumeXClusterUniverses);
+  }
+
+  private void verifyFailsWhenTargetKmsKeyUnavailable(TaskType taskType) throws Exception {
+    setUpUniverseKeyInKms(targetUniverse.getUniverseUUID(), false /* kmsWorks */);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            "test-config", sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
+    UUID taskUUID = commissioner.submit(taskType, new XClusterConfigTaskParams(xClusterConfig));
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    List<TaskType> notRun =
+        List.of(
+            TaskType.SetReplicationPaused,
+            TaskType.AnsibleClusterServerCtl,
+            TaskType.PauseServer,
+            TaskType.ResumeServer);
+    assertTrue(taskInfo.getSubTasks().stream().noneMatch(t -> notRun.contains(t.getTaskType())));
+    verify(mockClient, never()).setUniverseReplicationEnabled(any(), anyBoolean());
+    for (Universe universe : List.of(sourceUniverse, targetUniverse)) {
+      Universe u = Universe.getOrBadRequest(universe.getUniverseUUID());
+      assertFalse(u.getUniverseDetails().updateInProgress);
+      assertFalse(u.getUniverseDetails().universePaused);
+    }
   }
 }

@@ -19,6 +19,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -39,6 +41,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -842,6 +845,38 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     CustomerTask retryTask =
         customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
     assertEquals(Success, waitForTask(retryTask.getTaskUUID()).getTaskState());
+  }
+
+  @Test
+  public void testRollbackFailsKmsCheckOnFirstTry() {
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false);
+    TaskInfo taskInfo = submitRollback(createRollbackParams());
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertFalse(
+        taskInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.ChangeInstanceType));
+  }
+
+  @Test
+  public void testRollbackRetrySkipsKmsCheck() throws InterruptedException {
+    // A started rollback must finish, so a KMS outage after the first try must not block it.
+    seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
+    EncryptionAtRestService<?> keyService =
+        setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), true);
+    TaskInfo taskInfo = abortRollbackAtLastInstanceChange(createRollbackParams());
+    verify(keyService, times(1)).retrieveKeyFromKms(any(), any(), any(), any());
+    when(keyService.retrieveKeyFromKms(any(), any(), any(), any()))
+        .thenThrow(new RuntimeException("KMS key disabled"));
+
+    CustomerTask retryTask =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryInfo = waitForTask(retryTask.getTaskUUID());
+    assertEquals(Success, retryInfo.getTaskState());
+    assertFalse(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
   }
 
   @Test
