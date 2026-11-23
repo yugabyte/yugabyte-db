@@ -235,14 +235,13 @@ class LoadBalancerMockedBase : public YBTest {
     return cb_.global_state_->total_tier_migrations_in_flight_;
   }
 
-  bool TierMigrationRetriesEmpty() const { return cb_.tier_migration_retries_.empty(); }
   int TierMigrationsAwaitingReport() const {
     return narrow_cast<int>(cb_.tier_migrations_awaiting_report_.size());
   }
 
   // What RunClusterBalancer does around the per-table steps.
   void BeginTierMigrationRun() { ++cb_.tier_migration_run_; }
-  void PruneTierMigrationRetries() { cb_.PruneTierMigrationRetries(); }
+  void PruneTierMigrationsAwaitingReport() { cb_.PruneTierMigrationsAwaitingReport(); }
 
   bool ActivityInfoIsIdle() const { return cb_.global_state_->activity_info_.IsIdle(); }
 

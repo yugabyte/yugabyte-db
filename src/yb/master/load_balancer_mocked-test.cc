@@ -1857,7 +1857,7 @@ class LoadBalancerTierMigrationTest : public LoadBalancerMockedTest {
     while (VERIFY_RESULT(HandleTierMigrations(&tablet_id, &ts_uuid))) {
       ++sent;
     }
-    PruneTierMigrationRetries();
+    PruneTierMigrationsAwaitingReport();
     return sent;
   }
 
@@ -1986,9 +1986,12 @@ TEST_F(LoadBalancerTierMigrationTest, SentReplicaWaitsForItsReport) {
   ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
 }
 
-// A FAILED replica's re-send is remembered the same way: the replica keeps reporting FAILED until
-// the tserver takes the intent, and is not told again before then.
-TEST_F(LoadBalancerTierMigrationTest, ResentFailedReplicaWaitsForItsReport) {
+// A replica whose tserver gave up (FAILED) is left where it is: not told again, not counted as in
+// flight, and not holding the balancer busy. Retrying or surfacing it is later work. A FAILED
+// report that carries the sent target settles the awaiting-report record too, since the passes
+// can fail before the next heartbeat, so such a replica does not keep a cap slot until the
+// record expires.
+TEST_F(LoadBalancerTierMigrationTest, FailedReplicaIsLeftAlone) {
   PrepareTieredState();
   for (const auto& tablet : tablets_) {
     for (const auto& ts_desc : ts_descs_) {
@@ -2000,35 +2003,40 @@ TEST_F(LoadBalancerTierMigrationTest, ResentFailedReplicaWaitsForItsReport) {
   const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
   SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+  ASSERT_TRUE(ActivityInfoIsIdle());
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  cb_.TEST_ExpireTierMigrationRetries();
+
+  // Off its tier again and told, then the passes fail before the replica reports IN_PROGRESS.
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "ssd", tserver::TierMigrationStatusPB::DONE);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
   ASSERT_EQ(TierMigrationsAwaitingReport(), 1);
-
-  // Still FAILED in the report, task gone, re-send due again: the record holds it back.
-  cb_.TEST_ExpireTierMigrationRetries();
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(TotalTierMigrationsInFlight(), 1);
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-
-  // The tserver took it: the record is dropped, the schedule stays for the next failure.
-  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::IN_PROGRESS);
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
   ASSERT_EQ(TierMigrationsAwaitingReport(), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
 }
 
-// A record whose replica the step no longer visits is dropped at the end of the run, like a retry
-// entry. A replica that is briefly not RUNNING (every follower is UNKNOWN right after a term or
-// config change) is still visited, so neither its record nor its schedule is lost to an election.
+// A record whose replica the step no longer visits is dropped at the end of the run. Visiting
+// still happens with the cap full, so records behind it stay alive, and a replica that is briefly
+// not RUNNING (every follower is UNKNOWN right after a term or config change) is still visited,
+// so its record is not lost to an election.
 TEST_F(LoadBalancerTierMigrationTest, AwaitingReportEntryFollowsTheReplica) {
   PrepareTieredState();
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
   const auto& tablet = tablets_[0];
   const std::string ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  // The cap is full: nothing is sent, but the records are visited and kept.
+  cb_.options_.kMaxConcurrentTierMigrations = 0;
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+  cb_.options_.kMaxConcurrentTierMigrations = 100;
 
   {
     auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
@@ -2043,55 +2051,6 @@ TEST_F(LoadBalancerTierMigrationTest, AwaitingReportEntryFollowsTheReplica) {
   ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
   ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
-}
-
-// A replica whose tserver gave up (FAILED) is re-sent the intent once the minimum backoff has
-// passed, and the wait doubles across repeated failures even though every re-send reports
-// IN_PROGRESS before failing again.
-TEST_F(LoadBalancerTierMigrationTest, FailedReplicaIsRetriedWithBackoff) {
-  PrepareTieredState();
-  for (const auto& tablet : tablets_) {
-    for (const auto& ts_desc : ts_descs_) {
-      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
-                     tserver::TierMigrationStatusPB::DONE);
-    }
-  }
-  const auto& tablet = tablets_[0];
-  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
-  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
-
-  // First seen FAILED: held back for the minimum backoff.
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
-
-  cb_.TEST_ExpireTierMigrationRetries();
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
-  ASSERT_EQ(cb_.tier_migrations_sent_[0].tablet_id, tablet->tablet_id());
-  ASSERT_EQ(cb_.tier_migrations_sent_[0].ts_uuid, ts_uuid);
-
-  // The re-send moves the replica back to IN_PROGRESS; that keeps the schedule.
-  cb_.tier_migrations_sent_.clear();
-  SetReplicaTier(tablet.get(), ts_uuid, "", "hdd", tserver::TierMigrationStatusPB::IN_PROGRESS);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
-
-  // FAILED again: the doubled backoff holds the next re-send back.
-  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-
-  cb_.TEST_ExpireTierMigrationRetries();
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
-
-  // Once the replica converges, the schedule is dropped.
-  SetReplicaTier(tablet.get(), ts_uuid, "hdd", "hdd", tserver::TierMigrationStatusPB::DONE);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_TRUE(TierMigrationRetriesEmpty());
 }
 
 // A tserver with no disk on the tier cannot migrate there: its replicas are skipped rather than
@@ -2181,53 +2140,6 @@ TEST_F(LoadBalancerTierMigrationTest, ReplicaPendingRemovalIsNotMigrated) {
   for (const auto& sent : cb_.tier_migrations_sent_) {
     ASSERT_FALSE(sent.tablet_id == tablet_id && sent.ts_uuid == ts_uuid);
   }
-}
-
-// A retry entry whose replica the step no longer visits is dropped at the end of the run, and a
-// replica that comes back starts over at the minimum wait instead of reusing the old schedule.
-// Visiting still happens with the cap full, so entries behind it stay alive.
-TEST_F(LoadBalancerTierMigrationTest, RetryEntryIsPrunedWhenReplicaGoes) {
-  PrepareTieredState();
-  for (const auto& tablet : tablets_) {
-    for (const auto& ts_desc : ts_descs_) {
-      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
-                     tserver::TierMigrationStatusPB::DONE);
-    }
-  }
-  const auto& tablet = tablets_[0];
-  // A copy: PrepareTieredState below replaces the descriptors this would otherwise point into.
-  const std::string ts_uuid = ts_descs_[0]->permanent_uuid();
-  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
-
-  // The cap is full: nothing is sent, but the entry is visited and kept.
-  cb_.options_.kMaxConcurrentTierMigrations = 0;
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
-  cb_.options_.kMaxConcurrentTierMigrations = 100;
-
-  // The replica is moved away: its entry goes with it.
-  RemoveReplica(tablet.get(), ts_uuid);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_TRUE(TierMigrationRetriesEmpty());
-
-  // Back on that tserver and FAILED again: a fresh first sighting, held for the minimum wait.
-  PrepareTieredState();
-  for (const auto& t : tablets_) {
-    for (const auto& ts_desc : ts_descs_) {
-      SetReplicaTier(t.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
-                     tserver::TierMigrationStatusPB::DONE);
-    }
-  }
-  SetReplicaTier(tablets_[0].get(), ts_uuid, "ssd", "hdd",
-                 tserver::TierMigrationStatusPB::FAILED);
-  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
-  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
-  ASSERT_FALSE(TierMigrationRetriesEmpty());
 }
 
 // The tier is enforced per placement block and blacklisted tservers do not count: a candidate
