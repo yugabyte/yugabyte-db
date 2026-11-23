@@ -2946,6 +2946,8 @@ YbTrackAlteredTableId(Oid relid)
 }
 
 /*
+ * YbLockDatabaseToSerializeDdl
+ *
  * With ysql_enable_concurrent_ddl off, the DDL transactions in one database
  * that increment the catalog version run one at a time: each takes this lock
  * in EXCLUSIVE mode and holds it until it ends. With it on, no DDL takes the
@@ -3011,6 +3013,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 }
 
 /*
+ * YBAddDdlTxnStateExtended
+ *
  * serialize_ddl_in_database is false for a DDL transaction that waits for
  * lockers right after it enters DDL state: the second transaction of DETACH
  * PARTITION CONCURRENTLY. The wait is registered under the session's

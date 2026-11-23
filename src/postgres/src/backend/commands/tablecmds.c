@@ -20578,7 +20578,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		/* commit the transaction and start new txn with the same ddl state. */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediate(false /* serialize_ddl_in_database */ );
+			YbCommitTransactionCommandIntermediateExtended(false /* serialize_ddl_in_database */ );
 		else
 		{
 			/* Make updated catalog entry visible */
