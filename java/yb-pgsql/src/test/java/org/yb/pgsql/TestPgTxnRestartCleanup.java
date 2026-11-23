@@ -93,12 +93,10 @@ public class TestPgTxnRestartCleanup extends BasePgSQLTest {
   /**
    * Waits until the victim's statement has run into the blocker.
    */
-  private void waitForConflict(int victimPid, String queryPrefix, Future<?> result)
-      throws Exception {
+  private void waitForConflict(String victimQuery, Future<?> result) throws Exception {
     try (PreparedStatement activity = connection.prepareStatement(
-        "SELECT 1 FROM pg_stat_activity WHERE pid = ? AND state = 'active' AND query LIKE ?")) {
-      activity.setInt(1, victimPid);
-      activity.setString(2, queryPrefix + "%");
+        "SELECT 1 FROM pg_stat_activity WHERE state = 'active' AND query = ?")) {
+      activity.setString(1, victimQuery);
       TestUtils.waitFor(() -> {
         try (ResultSet rs = activity.executeQuery()) {
           return result.isDone() || rs.next();
@@ -115,19 +113,19 @@ public class TestPgTxnRestartCleanup extends BasePgSQLTest {
    * statement conflicts. Restarting would drop the cursor, so the retry is refused.
    */
   @Test
+  @BypassConnMgr(reason = UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testPipelinedCursorRefusesRestart() throws Exception {
     createConflictTable();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try (Connection blocker = beginBlocker();
          Connection victim = connectVictim();
          Statement stmt = victim.createStatement()) {
-      // Not from the victim thread: the connection is busy once the batch is running.
-      int victimPid = getPgBackendPid(victim);
+      String update_query = "UPDATE t SET v = v + 10 WHERE k = 1";
 
       // pgjdbc sends BEGIN and the whole batch before a single Sync packet, so nothing reaches the
       // client before the UPDATE fails and the transaction is otherwise restartable.
       stmt.addBatch("DECLARE c CURSOR FOR SELECT k FROM t");
-      stmt.addBatch("UPDATE t SET v = v + 10 WHERE k = 1");
+      stmt.addBatch(update_query);
       Future<SQLException> result = executor.submit(() -> {
         try {
           stmt.executeBatch();
@@ -137,7 +135,7 @@ public class TestPgTxnRestartCleanup extends BasePgSQLTest {
         }
       });
 
-      waitForConflict(victimPid, "UPDATE", result);
+      waitForConflict(update_query, result);
       blocker.commit();
 
       SQLException e = result.get(60, TimeUnit.SECONDS);
@@ -164,24 +162,25 @@ public class TestPgTxnRestartCleanup extends BasePgSQLTest {
    * Test to validate that a finished portal does not block transaction restart.
    */
   @Test
+  @BypassConnMgr(reason = UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testFinishedPortalAllowsRestart() throws Exception {
     createConflictTable();
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try (Connection blocker = beginBlocker();
          Connection victim = connectVictim();
          Statement stmt = victim.createStatement()) {
-      int victimPid = getPgBackendPid(victim);
+      String select_query = "SELECT v FROM t WHERE k = 1 FOR UPDATE";
 
       // A fetch size with autocommit off makes pgjdbc run the query on a named portal.
       stmt.setFetchSize(10);
       Future<Integer> result = executor.submit(() -> {
-        try (ResultSet rs = stmt.executeQuery("SELECT v FROM t WHERE k = 1 FOR UPDATE")) {
+        try (ResultSet rs = stmt.executeQuery(select_query)) {
           assertTrue(rs.next());
           return rs.getInt(1);
         }
       });
 
-      waitForConflict(victimPid, "SELECT", result);
+      waitForConflict(select_query, result);
       blocker.commit();
 
       // The blocker's committed value: the restart took a new snapshot.
