@@ -3683,7 +3683,7 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 
 /*
  * Orders a transaction's pending entries as the sending backends issued them,
- * see YB_NOTIF_SEQ_KEY. The BEGIN entry, the only one with seq -1, stays
+ * see YB_NOTIF_SEQ_KEY. The BEGIN entry has no sender (all zeros), and so stays
  * first.
  *
  * The virtual WAL streams DocDB transactions that commit at the same hybrid
@@ -3705,8 +3705,6 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 	const YbNotifsPollerPendingEntry *eb = lfirst(b);
 	int			cmp;
 
-	if ((ea->seq < 0) != (eb->seq < 0))
-		return ea->seq < 0 ? -1 : 1;
 	cmp = memcmp(ea->sender_node, eb->sender_node, UUID_LEN);
 	if (cmp != 0)
 		return cmp;
