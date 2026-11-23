@@ -2124,7 +2124,55 @@ TEST_F(YsqlMajorUpgradeTest, YbSuperuserRole) {
   ASSERT_OK(ExecuteStatements(
       {"CREATE ROLE \"yb_superuser\" INHERIT CREATEROLE CREATEDB BYPASSRLS",
        "GRANT \"pg_read_all_stats\" TO \"yb_superuser\""}));
+  // Built-in yb_* roles already exist, so the upgrade must replay ALTER rather than CREATE.
+  ASSERT_OK(ExecuteStatement(
+      "ALTER ROLE yb_db_admin INHERIT CONNECTION LIMIT 5 VALID UNTIL '2030-01-01'"));
+  ASSERT_OK(ExecuteStatement("COMMENT ON ROLE yb_db_admin IS 'hardened by DBA'"));
+  ASSERT_OK(ExecuteStatement("ALTER ROLE yb_extension NOINHERIT"));
+  ASSERT_OK(ExecuteStatement("ALTER ROLE yb_fdw LOGIN PASSWORD 'dummy_password'"));
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  auto roles = ASSERT_RESULT(conn.FetchRows<std::string>(
+      "SELECT format("
+      "'%s super=%s inherit=%s createrole=%s createdb=%s login=%s replication=%s "
+      "bypassrls=%s connlimit=%s validuntil=%s password=%s comment=%s', "
+      "rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, "
+      "rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil IS NOT NULL, "
+      "rolpassword IS NOT NULL, "
+      "COALESCE(pg_catalog.shobj_description(oid, 'pg_authid'), '')) "
+      "FROM pg_authid "
+      "WHERE rolname IN ('yb_db_admin', 'yb_extension', 'yb_fdw', 'yb_superuser') "
+      "ORDER BY rolname"));
+  const std::vector<std::string> kExpectedRoles = {
+      "yb_db_admin super=f inherit=t createrole=f createdb=f login=f replication=f "
+      "bypassrls=f connlimit=5 validuntil=t password=f comment=hardened by DBA",
+      "yb_extension super=f inherit=f createrole=f createdb=f login=f replication=f "
+      "bypassrls=f connlimit=-1 validuntil=f password=f comment=",
+      "yb_fdw super=f inherit=t createrole=f createdb=f login=t replication=f "
+      "bypassrls=f connlimit=-1 validuntil=f password=t comment=",
+      "yb_superuser super=f inherit=t createrole=t createdb=t login=f replication=f "
+      "bypassrls=t connlimit=-1 validuntil=f password=f comment="};
+  ASSERT_VECTORS_EQ(kExpectedRoles, roles);
+
+  auto granted = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT r.rolname FROM pg_auth_members m "
+      "JOIN pg_authid r ON r.oid = m.roleid "
+      "JOIN pg_authid u ON u.oid = m.member "
+      "WHERE u.rolname = 'yb_superuser'"));
+  ASSERT_EQ(granted, "pg_read_all_stats");
+}
+
+TEST_F(YsqlMajorUpgradeTest, YbSuperuserExtraRole) {
+  // User roles. yb_role is a plain yb_ name. yb_superuser_extra starts with
+  // yb_superuser but is not that role. The upgrade precheck rejects both.
+  ASSERT_OK(ExecuteStatement("CREATE ROLE \"yb_role\" NOINHERIT"));
+  ASSERT_OK(ExecuteStatement(
+      "CREATE ROLE \"yb_superuser_extra\" NOINHERIT CREATEROLE CONNECTION LIMIT 9"));
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+      "yb_role",
+      "yb_superuser_extra",
+      "Your installation contains roles starting with \"yb_\"."}));
 }
 
 TEST_F(YsqlMajorUpgradeTest, Analyze) {
