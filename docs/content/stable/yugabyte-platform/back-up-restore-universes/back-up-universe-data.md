@@ -117,11 +117,7 @@ The allowed values for the parallel and buffer settings depend on the vCPU count
 | Number of buffers per download per node | How many buffers each download keeps in its pool while it receives data and writes it to disk | Half the rounded vCPU count, rounded down, plus 1 | 1 through vCPU count + 1 |
 | Disk write bytes per second to throttle disk usage during restore | How fast YB Controller writes restored data to the node disks, in MB/s | 0 (no limit) | 0 (no limit), or 1 MB/s or greater |
 
-Raise the parallel and buffer values when a backup or restore needs to finish sooner and the nodes have CPU, memory, disk, and network to spare. A parallel-upload value of 2 allows two uploads at a time on every node, so a six-node universe can have twelve uploads in flight. Lower the disk limits when these operations share the disks with a live workload. Incremental backups make this more relevant, because the operations run often.
-
-The default number of buffers is half the vCPU count, rounded down, plus 1. A parallel or buffer value greater than the maximum is capped to that maximum.
-
-For example, on an 8-vCPU node the parallel and buffer settings allow 1–9 (8 + 1). The default number of parallel uploads or downloads is 2, and the default number of buffers is 5 (8 ÷ 2 + 1). The disk settings cap the local disk IO of these operations. Transfer speed still depends on the path to the bucket or NFS share.
+The disk settings cap the local disk IO of backup and restore operations. Transfer speed still depends on the path to the bucket or NFS share. Lower the disk limits when backup and restore operations share the disks with a live workload. Incremental backups make this more relevant, because the operations run often.
 
 To configure throttle parameters:
 
