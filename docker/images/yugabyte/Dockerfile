@@ -232,6 +232,9 @@ ENV container=yugabyte-db
 ENV YB_HOME=/home/yugabyte
 ENV YB_MANAGED_DEVOPS_USE_PYTHON3=1
 ENV YB_DEVOPS_USE_PYTHON3=1
+# libpq reads client TLS certs from ~/.yugabytedb, which the Helm chart mounts under /home/yugabyte.
+# Without this, root gets /root and a UID with no passwd entry (such as OpenShift's) gets /.
+ENV HOME=/home/yugabyte
 WORKDIR $YB_HOME
 
 COPY --from=stage2 / /
