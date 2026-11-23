@@ -3703,9 +3703,8 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 {
 	const YbNotifsPollerPendingEntry *ea = lfirst(a);
 	const YbNotifsPollerPendingEntry *eb = lfirst(b);
-	int			cmp;
+	int			cmp = memcmp(ea->sender_node, eb->sender_node, UUID_LEN);
 
-	cmp = memcmp(ea->sender_node, eb->sender_node, UUID_LEN);
 	if (cmp != 0)
 		return cmp;
 	if (ea->qe.srcPid != eb->qe.srcPid)
