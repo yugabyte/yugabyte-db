@@ -59,6 +59,7 @@ using std::string;
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(remote_bootstrap_from_leader_only);
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_uint32(retain_wal_secs_for_progressing_prevoter);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -1261,6 +1262,140 @@ TEST_F(ConsensusQueueCatchupTest, LeaderReachesConflictOnceFollowerFallbackAdvan
   ASSERT_EQ(peer.next_index, kConflictIndex)
       << "Leader did not advance to the conflicting index even though the follower's fallback "
       << "moved; the follower-side fix alone would not be sufficient.";
+}
+
+// Watermarks carried inside a failed response must not advance the majority-replicated op id.
+//
+// A follower's error responses skip the durability wait and are filled from its in-memory
+// watermarks, so they can name ops that are not yet durable in its WAL. The leader stores those
+// watermarks for positioning (that is how preceding-entry catch-up finds where to resume;
+// UpdatePeerWatermarkToOp() above depends on it), but GetWatermark() counts only peers whose
+// last exchange succeeded, so a value acknowledged only inside a failed response never reaches
+// the commit rule. That check exists to skip unresponsive peers; this test pins the durability
+// role it also plays.
+TEST_F(ConsensusQueueTest, MajorityWatermarkIgnoresWatermarksCarriedByFailedResponses) {
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 10);
+  WaitForLocalPeerToAckIndex(10);
+
+  const auto majority_before = queue_->TEST_GetMajorityReplicatedOpId();
+
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWConsensusResponsePB response(&arena);
+
+  // peer-1's only communication is an error response claiming the newest op id.
+  ASSERT_TRUE(UpdatePeerWatermarkToOp(
+      &request, &response, MakeOpIdForIndex(10), OpId::Min(), 0));
+
+  // The claim was stored for positioning, but the majority watermark did not move.
+  ASSERT_EQ(queue_->GetTrackedPeerForTests(kPeerUuid).last_received, MakeOpIdForIndex(10));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), majority_before);
+
+  // peer-2 successfully acks an older op id. The majority watermark follows the successful
+  // acknowledgements (local peer at 10, peer-2 at 2): were peer-1's error-carried claim
+  // counted, this would be 10.
+  const char* kPeer2Uuid = "peer-2";
+  TrackPeer(*queue_, kPeer2Uuid);
+  response.ref_responder_uuid(kPeer2Uuid);
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap;
+  ASSERT_OK(queue_->RequestForPeer(kPeer2Uuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(2), 0);
+  ASSERT_TRUE(queue_->ResponseFromPeer(kPeer2Uuid, response));
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(2));
+
+  // Once peer-1 acks inside a successful response, it participates again, with the value that
+  // response carried rather than the error-carried one.
+  refs.Reset();
+  request.mutable_ops()->clear();
+  response.mutable_status()->Clear();
+  response.ref_responder_uuid(kPeerUuid);
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(5), 0);
+  queue_->ResponseFromPeer(kPeerUuid, response);
+  ASSERT_EQ(queue_->TEST_GetMajorityReplicatedOpId(), MakeOpIdForIndex(5));
+}
+
+TEST_F(ConsensusQueueTest, WalGcRetentionSkipsPreVoterWhenRetentionWindowExpires) {
+  google::FlagSaver saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retain_wal_secs_for_progressing_prevoter) = 1;
+
+  auto raft_config = BuildRaftConfigPBForTests(3);
+  raft_config.mutable_peers(1)->set_member_type(PeerMemberType::PRE_VOTER);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 120);
+  WaitForLocalPeerToAckIndex(120);
+
+  queue_->TrackPeer(raft_config.peers(1));
+  queue_->TrackPeer(raft_config.peers(2));
+
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(100));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(80));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto first_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(first_retention.min_progressing_pre_voter_op_id, MakeOpIdForIndex(80));
+
+  SleepFor(1200ms);
+  auto second_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(second_retention.min_progressing_pre_voter_op_id, OpId::Max());
+}
+
+TEST_F(ConsensusQueueTest, WalGcRetentionSkipsNonProgressingPreVoterAfterWarmup) {
+  google::FlagSaver saver;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retain_wal_secs_for_progressing_prevoter) = 20;
+
+  auto raft_config = BuildRaftConfigPBForTests(3);
+  raft_config.mutable_peers(1)->set_member_type(PeerMemberType::PRE_VOTER);
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), raft_config);
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, 120);
+  WaitForLocalPeerToAckIndex(120);
+
+  queue_->TrackPeer(raft_config.peers(1));
+  queue_->TrackPeer(raft_config.peers(2));
+
+  ThreadSafeArena arena;
+  LWConsensusResponsePB response(&arena);
+
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(70));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(68));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto first_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(first_retention.min_progressing_pre_voter_op_id, MakeOpIdForIndex(68));
+
+  SleepFor(2200ms);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-2");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(74));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  response.Clear();
+  response.ref_responder_uuid("peer-1");
+  SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(69));
+  queue_->ResponseFromPeer(response.responder_uuid().ToBuffer(), response);
+
+  auto second_retention = queue_->GetWalGcPeerRetentionInfo();
+  ASSERT_EQ(second_retention.min_progressing_pre_voter_op_id, OpId::Max());
 }
 
 } // namespace yb::consensus

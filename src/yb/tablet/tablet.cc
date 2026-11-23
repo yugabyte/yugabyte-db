@@ -5405,6 +5405,29 @@ Result<int64_t> Tablet::CountIntents() {
   return num_intents;
 }
 
+Result<bool> Tablet::HasExternalIntents() const {
+  // Set before the first external intents write, never reset, and inherited by split children.
+  if (!metadata_->IsUnderXClusterReplication()) {
+    return false;
+  }
+
+  auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return false;
+  }
+  static constexpr char kPrefix = dockv::KeyEntryTypeAsChar::kExternalTransactionId;
+  static constexpr char kUpperBound = kPrefix + 1;
+  Slice upper_bound(&kUpperBound, 1);
+  auto iter = docdb::CreateRocksDBIterator(
+      intents_db_.get(), &docdb::KeyBounds::kNoBounds, docdb::BloomFilterOptions::Inactive(),
+      rocksdb::kDefaultQueryId, /* file_filter= */ nullptr, &upper_bound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  iter.Seek(Slice(&kPrefix, 1));
+  return iter.CheckedValid();
+}
+
 Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(pending_op);
@@ -6129,8 +6152,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }
@@ -6668,6 +6691,7 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     result.MakeAtMost(allowed_history_cutoff_provider_(metadata_.get()));
   }
   result.primary_cutoff_ht.MakeAtMost(snapshots_->AllowedHistoryCutoff());
+  result.primary_cutoff_ht.MakeAtMost(vector_indexes_->AllowedHistoryCutoff());
   return result;
 }
 
