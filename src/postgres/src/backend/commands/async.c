@@ -156,6 +156,7 @@
 
 /* YB includes */
 #include "catalog/pg_namespace_d.h"
+#include "commands/yb_cmds.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "postmaster/bgworker_internals.h"
@@ -618,6 +619,9 @@ static TimestampTz ybNotifsPollerId = 0;
 static TimestampTz ybNotifsPollerUpSince = 0;
 static bool ybNotifsPollerAcked = false;
 
+/* Set by ybNotifsPollerInit when the slot's stream has expired. */
+static bool ybNotifsPollerStreamExpired = false;
+
 /*
  * The 'notifications poller' process batches the notifications of a transaction
  * in-memory. On receiving the corresponding COMMIT record from virtual wal, it
@@ -767,6 +771,7 @@ static bool ybIsStaleNotifsPoller(void);
 static void ybExitStaleNotifsPoller(const char *detail) pg_attribute_noreturn();
 static bool ybIsPermanentNotifsPollerError(const ErrorData *edata);
 static void ybNotifsPollerExitOnError(const ErrorData *edata) pg_attribute_noreturn();
+static void ybCheckNotifsStreamNotExpired(void);
 static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
@@ -3466,10 +3471,32 @@ ybExitStaleNotifsPoller(const char *detail)
 }
 
 /*
+ * Fail if the slot's stream has expired: it went unread for
+ * cdc_intent_retention_ms, so notifications are lost. The read that hits the
+ * expiry fails with only an ERRCODE_INTERNAL_ERROR message, so it is retried,
+ * and this check at the next start makes it permanent.
+ */
+static void
+ybCheckNotifsStreamNotExpired(void)
+{
+	YbcReplicationSlotDescriptor *slot;
+
+	YBCGetReplicationSlot(ybNotifsReplicationSlotName(), &slot,
+						  /* if_exists */ false);
+	if (slot->expired)
+	{
+		ybNotifsPollerStreamExpired = true;
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("replication slot \"%s\" for notifications has expired",
+						ybNotifsReplicationSlotName()),
+				 errdetail("It was not read for cdc_intent_retention_ms.")));
+	}
+}
+
+/*
  * Is the error one a restart can't get past, or that has already lost
- * notifications? DocDB errors arrive as ERRCODE_INTERNAL_ERROR with only their
- * message, so most are matched on text. An error missing here costs at most
- * the retry timeout.
+ * notifications? An error missing here costs at most the retry timeout.
  */
 static bool
 ybIsPermanentNotifsPollerError(const ErrorData *edata)
@@ -3478,8 +3505,7 @@ ybIsPermanentNotifsPollerError(const ErrorData *edata)
 	if (edata->sqlerrcode == ERRCODE_UNDEFINED_OBJECT)
 		return true;
 
-	/* Stream expired, so notifications are lost (CheckStreamActive). */
-	if (edata->message && strstr(edata->message, "is expired for Tablet ID"))
+	if (ybNotifsPollerStreamExpired)
 		return true;
 
 	/* Checked in ybNotifsPollerInit; set until the config is changed back. */
@@ -3598,6 +3624,7 @@ ybNotifsPollerInit(void)
 		 * that by setting nowait arg as false.
 		 */
 		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ false);
+		ybCheckNotifsStreamNotExpired();
 		publications = ybNotifsPublications();
 
 		YBCInitVirtualWal(publications);
@@ -3607,6 +3634,7 @@ ybNotifsPollerInit(void)
 	{
 		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
 		ErrorData  *edata = CopyErrorData();
+		bool		is_restart;
 
 		LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 		if (ybIsStaleNotifsPoller())
@@ -3615,11 +3643,14 @@ ybNotifsPollerInit(void)
 			ybExitStaleNotifsPoller(edata->message);
 		}
 
+		/* Only a poller that started once sets SUCCESS, and restarts keep it. */
+		is_restart = poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS;
+
 		/*
-		 * A restart: setting FAILED would refuse new LISTENs while existing
+		 * Setting FAILED on a restart would refuse new LISTENs while existing
 		 * listeners get nothing. Handle it like an error in the loop.
 		 */
-		if (poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
+		if (is_restart)
 		{
 			FlushErrorState();
 			ybNotifsPollerExitOnError(edata);
