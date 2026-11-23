@@ -541,7 +541,6 @@ class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
 void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
