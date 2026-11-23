@@ -31,6 +31,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -237,7 +238,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
     Set<String> certNames = taskParams().signedLoadBalancerCertNames;
-    if (certNames != null && !taskParams().skipLoadBalancerCertRecord) {
+    ManagedLoadBalancerState lbState = universe.getUniverseDetails().getManagedLoadBalancerState();
+    if (certNames != null
+        && !taskParams().skipLoadBalancerCertRecord
+        && lbState != null
+        && !certNames.equals(lbState.getCertNames().get(taskParams().nodeName))) {
       // The process loads the cert when this task (re)starts it. Dropped without a load balancer.
       saveUniverseDetails(
           u ->
