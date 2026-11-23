@@ -1074,12 +1074,14 @@ EXPLAIN (ANALYZE, COSTS OFF) SELECT k FROM tz_expr_pushdown
   WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'UTC') >= 1;
 SELECT k FROM tz_expr_pushdown
   WHERE EXTRACT(HOUR FROM updated_at AT TIME ZONE 'America/New_York') >= 1;
+RESET yb_enable_expression_pushdown;
 DROP TABLE tz_expr_pushdown;
 
--- age() of two timestamptz values depends on the session time zone, so the
--- filter must not be pushed down. Across the DST change below the result
--- differs between UTC and America/New_York.
+-- age() subtracts local date and time in the session time zone. The two
+-- timestamps are 24 hours apart: 1 day in UTC. In America/New_York, daylight
+-- saving time began between them on 2024-03-10, so it is 1 day 1 hour.
 CREATE TABLE age_tz_pushdown(k int primary key, ts timestamptz);
+SET yb_enable_expression_pushdown=on;
 INSERT INTO age_tz_pushdown VALUES (1, '2024-03-11 00:00:00+00');
 EXPLAIN (COSTS OFF) SELECT k FROM age_tz_pushdown
   WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
@@ -1090,4 +1092,5 @@ SET TIME ZONE 'America/New_York';
 SELECT k FROM age_tz_pushdown
   WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
 RESET TIME ZONE;
+RESET yb_enable_expression_pushdown;
 DROP TABLE age_tz_pushdown;
