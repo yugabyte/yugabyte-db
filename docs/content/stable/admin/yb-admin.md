@@ -188,7 +188,7 @@ yb-admin \
 * `JSON`: Returns JSON instead of text output.
 * `include_followers`: Includes follower replicas in the output.
 
-In v2026.2.0.0 and later, JSON output (`list_tablets ... JSON`) includes `partition_key_start_hex` and `partition_key_end_hex` for each tablet: the tablet's partition key boundaries, hex-encoded. Pass them to [get_table_hash](#get-table-hash) as its *start-key-hex* and *end-key-hex* arguments to hash one tablet's range at a time. The bounds are half-open, with `partition_key_start_hex` inclusive and `partition_key_end_hex` exclusive, so one tablet's end value is the next tablet's start value, and hashing every tablet's range covers the table exactly once. An empty value means unbounded, which is what the first tablet's start and the last tablet's end show.
+JSON output (`list_tablets ... JSON`) includes `partition_key_start_hex` and `partition_key_end_hex` for each tablet: the tablet's partition key boundaries, hex-encoded. Pass them to [get_table_hash](#get-table-hash) as its *start-key-hex* and *end-key-hex* arguments to hash one tablet's range at a time. The bounds are half-open, with `partition_key_start_hex` inclusive and `partition_key_end_hex` exclusive, so one tablet's end value is the next tablet's start value, and hashing every tablet's range covers the table exactly once. An empty value means unbounded, which is what the first tablet's start and the last tablet's end show.
 
 Passing these through is the only way to hash a range-partitioned table tablet by tablet, because the text output renders range boundaries as a debug string that can't be converted back into keys. For hash-partitioned tables, the hex values also save you the inclusive-to-exclusive conversion that the text output's `hash_split` ranges require.
 
@@ -836,7 +836,7 @@ yb-admin \
 * A read time remains available only within `timestamp_history_retention_interval_sec` (default 15 minutes). The history cutoff is pinned separately by each tablet RPC, so any multi-tablet or paged scan can fail with `Snapshot too old` after the read time ages out. Raise the retention interval for the scan, or hash independent sub-ranges at separately chosen times.
 * YB-TServers that predate *max-rows* ignore it. The client can still emit a `Next key` at a later tablet boundary, but that encoded continuation may be rejected by an old server on the next call. A `Total row count` greater than *max-rows* is the reliable signal that the cap was ignored; do not continue paging that scan.
 * `Hash scheme version` identifies the algorithm that produced the hash. _Two hashes are comparable only when their scheme versions are equal_, because under different schemes identical data hashes to unrelated values. Check it before comparing across clusters or an upgrade. A YB-TServer too old to report a version shows `0`. If the tablets of one table report different versions, as happens mid-upgrade, the command fails rather than combine them; re-run once every YB-TServer is on the same version.
-* Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, {{<release "2026.1">}}, or later on both yb-admin and the target YB-TServers. Older YB-TServers silently ignore the scoping arguments and hash the full table (or the entire colocated tablet), so verify versions before relying on the result in a mixed-version cluster. *max-rows*, `Next key`, and `Hash scheme version` are available in v2026.2.0.0 and later.
+* Key-range and per-table colocated scoping require YugabyteDB {{<release "2024.2">}}, {{<release "2025.2">}}, {{<release "2026.1">}}, or later on both yb-admin and the target YB-TServers. Older YB-TServers silently ignore the scoping arguments and hash the full table (or the entire colocated tablet), so verify versions before relying on the result in a mixed-version cluster.
 
 **Example: Hash a full table**
 
@@ -2869,8 +2869,6 @@ The catalogs are compared before and after hashing, so a DDL that lands mid-hash
 
 If the two universes use TLS with different certificate authorities, pass `--xcluster_source_certs_dir_name` with the directory holding the source's certificates; xCluster keeps them at `<certs_for_cdc_dir>/<replication-group-id>` on the target's nodes.
 
-Available in v2026.2.0.0 and later.
-
 **Syntax**
 
 ```sh
@@ -2958,8 +2956,6 @@ The mixed-version limitations described for [get_table_hash](#get-table-hash) al
 Verifies every table in one inbound xCluster replication group, slice by slice, using [verify_xcluster_slice](#verify-xcluster-slice) for each slice. The table pairs come from the replication group, so you name a group rather than enumerating tables, and each slice resolves its own read time from the target's xCluster safe time.
 
 The group must use automatic DDL replication. Source YB-Master addresses come from the target's replication information; if an older target master does not provide the structured address field, the command asks you to upgrade the target masters. For TLS with different certificate authorities, pass `--xcluster_source_certs_dir_name` as described for [verify_xcluster_slice](#verify-xcluster-slice).
-
-Available in v2026.2.0.0 and later.
 
 **Syntax**
 
