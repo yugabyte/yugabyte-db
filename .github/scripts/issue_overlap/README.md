@@ -17,10 +17,12 @@ python3 pr_overlap.py 38804                             # open PRs changing the 
 - Terms come from the issue: test names, error text after `ERROR:`/`FATAL:`/`Check failed:`
   (cut at the first number, address or quoted name), and snake_case/CamelCase identifiers.
   Tokens in URLs and the lines the Jira sync adds are ignored.
-- PRs are matched against their diff, title, body and paths. PRs that already reference the
-  issue (`#N` or its Jira key) are skipped, since GitHub shows them on the issue. Issues are
-  matched through GitHub search and Jira JQL on the six most specific terms. A term that more
-  than 1% of open PRs, or more than 25 issues in either tracker, contain is ignored.
+- PRs are matched against their diff, title, body and paths. A PR whose title or body already
+  names the issue, by its GitHub number (`#N`) or its Jira key, is skipped: its author has
+  linked it already. For a Jira issue the GitHub number comes from its "GitHub issue link"
+  field. Issues are matched through GitHub search and Jira JQL on the six most specific terms.
+  A term that more than 1% of open PRs, or more than 25 issues in either tracker, contain is
+  ignored.
 - A comment lists an item only if it shares a test name or at least two terms with the issue.
   A PR needs three when the issue has 20 or more terms, because long reports share vocabulary
   with many PRs. A comment shows at most three items per section. The script prints nothing and

@@ -34,6 +34,8 @@ JIRA_TOKEN = os.path.expanduser("~/.claude/jira-api.token")
 # "Github Public Description (Read-Only)": GitHub -> Jira one-way copy of the
 # body of an issue filed on GitHub.
 GH_DESC_FIELD = "customfield_10885"
+# "GitHub issue link": URL of the issue's GitHub copy.
+GH_LINK_FIELD = "customfield_10802"
 MAX_SEARCH_TERMS = 6      # GitHub search allows 30 requests a minute
 COMMON_HITS = 25          # a term in more open issues than this says nothing
 MAX_TERM_LEN = 100        # GitHub search rejects queries over 256 characters
@@ -109,13 +111,17 @@ def load_issue(args):
         body = JIRA_SYNC_LINE.sub("", body)
     elif args.jira:
         d = jira_get(f"issue/{args.jira}",
-                     fields=f"summary,description,{GH_DESC_FIELD}")
+                     fields=f"summary,description,{GH_DESC_FIELD},{GH_LINK_FIELD}")
         title = d["fields"]["summary"]
         # An issue filed in Jira has its text in description; one filed on
         # GitHub has an empty description and its text in the synced field.
         body = "\n".join(adf_text(d["fields"].get(k) or {})
                          for k in ("description", GH_DESC_FIELD))
         selfs = {args.jira}
+        # PRs name the GitHub copy ([#N]), so it is this issue too.
+        m = re.search(r"/issues/(\d+)", d["fields"].get(GH_LINK_FIELD) or "")
+        if m:
+            selfs.add(f"#{m.group(1)}")
     else:
         body = sys.stdin.read() if args.text == "-" else open(args.text).read()
         title, selfs = "", set()
