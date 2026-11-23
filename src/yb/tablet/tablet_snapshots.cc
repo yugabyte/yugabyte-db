@@ -39,6 +39,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -77,6 +78,14 @@ DEFINE_RUNTIME_int32(tablet_snapshot_op_slow_log_threshold_ms, 1000,
     "and by bootstrap with --force_recover_flushed_frontier) that take at least this many "
     "milliseconds are logged at INFO level. Faster steps are logged at VLOG(1).");
 TAG_FLAG(tablet_snapshot_op_slow_log_threshold_ms, advanced);
+
+// An AutoFlag because a follower postponing the operation relies on its leader not resending to it
+// immediately, which older leaders do, see PeerMessageQueue::ResponseFromPeer. Until it is promoted
+// nothing waits, since a follower waiting while applying the operation would block UpdateConsensus.
+DEFINE_RUNTIME_AUTO_bool(snapshot_wait_for_pending_applies, kLocalVolatile, false, true,
+    "Wait for transactions committed before a snapshot checkpoint to be written to regular DB "
+    "before creating the checkpoint. Followers postpone applying the operation that creates it "
+    "instead of waiting while applying it.");
 
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
@@ -417,6 +426,16 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   RETURN_NOT_OK(scoped_read_operation);
 
   auto step_start = MonoTime::Now();
+  auto* participant = tablet().transaction_participant();
+  if (data.snapshot_hybrid_time && participant && FLAGS_snapshot_wait_for_pending_applies) {
+    // Restore drops intents, so transactions committed at or before the snapshot hybrid time must
+    // be fully written to regular DB. Their APPLY operations precede this one, but large ones are
+    // written by ApplyIntentsTask after it. Followers postpone this operation instead of waiting
+    // here, see TabletPeer::PostponeApply.
+    RETURN_NOT_OK(participant->WaitForPendingApplies(data.snapshot_hybrid_time));
+    step_start = LogSnapshotStepDone(LogPrefix(), "Snapshot wait for pending applies", step_start);
+  }
+
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);

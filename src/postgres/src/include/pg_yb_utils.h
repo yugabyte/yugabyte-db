@@ -1152,6 +1152,7 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YBIsDdlTxnBlockCommitInProgress();
 extern bool YbUsingObjectLocksLocally(void);
 
 /*

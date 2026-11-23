@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -42,6 +43,12 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   // The gflag for master addresses.
   private static final String MASTER_MASTER_ADDR_FLAG = "master_addresses";
+
+  private static final Duration RETRY_DELAY = Duration.ofSeconds(5);
+
+  // Whether a failed setFlag RPC is retried, and until when.
+  private boolean retryRpcFailures;
+  private long retryDeadlineMs;
 
   @Inject
   public SetFlagInMemory(BaseTaskDependencies baseTaskDependencies) {
@@ -84,6 +91,7 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   @Override
   public void run() {
     checkParams();
+    retryDeadlineMs = System.currentTimeMillis() + retryTimeout().toMillis();
     try {
       setFlags();
     } catch (RuntimeException e) {
@@ -119,6 +127,11 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     }
     try (YBClientApi client = getClient()) {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      // A K8s pod can restart at any time, e.g. when the cluster autoscaler moves it, and comes
+      // back on its own; a VM server that is down usually does not. A best-effort push is often
+      // to a server that is down for good. VM callers that push best effort without ignoreErrors
+      // (master failover) rely on the first failure, so they must not wait either.
+      retryRpcFailures = !taskParams().ignoreErrors && Util.isKubernetesBasedUniverse(universe);
 
       if (!taskParams().updateMasterAddrs) {
         String ysqlPgConfCsv =
@@ -226,10 +239,41 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     return GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(baseYsqlPgConfCsv, telemetryYsqlPgConfCsv);
   }
 
+  // Package-private so tests can stub the timeout and the wait.
+  Duration retryTimeout() {
+    return config.getDuration("yb.wait_for_server_timeout");
+  }
+
+  void waitBeforeRetry(Duration delay) {
+    waitFor(delay);
+  }
+
   private void setFlag(YBClientApi client, String gflag, String value, HostAndPort hp)
       throws Exception {
     log.debug("Setting gflag {} on node {} via non-restart rpc", gflag, hp);
-    boolean setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+    boolean setSuccess;
+    while (true) {
+      try {
+        setSuccess = client.setFlag(hp, gflag, value, taskParams().force);
+        break;
+      } catch (Exception e) {
+        // A server that answers and refuses the flag is not retried. The deadline is checked only
+        // between attempts, so an attempt that hangs can run one admin operation timeout past it.
+        if (!retryRpcFailures
+            || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0
+            || System.currentTimeMillis() + RETRY_DELAY.toMillis() >= retryDeadlineMs) {
+          throw e;
+        }
+        log.warn(
+            "Retrying gflag {} on {} {} in {}: {}",
+            gflag,
+            taskParams().serverType,
+            taskParams().nodeName,
+            RETRY_DELAY,
+            e.getMessage());
+        waitBeforeRetry(RETRY_DELAY);
+      }
+    }
     if (!setSuccess) {
       throw new RuntimeException(
           "Could not set gflag "

@@ -1042,24 +1042,20 @@ Status YBClient::Data::IsBackfillIndexInProgress(YBClient* client,
                                                  const TableId& index_id,
                                                  CoarseTimePoint deadline,
                                                  bool* backfill_in_progress) {
-  DCHECK_ONLY_NOTNULL(backfill_in_progress);
+  // Stop retries in case of any error.
+  *DCHECK_NOTNULL(backfill_in_progress) = false;
   YBTableInfo yb_table_info;
-  RETURN_NOT_OK(GetTableSchema(client,
-                               table_id,
-                               deadline,
-                               &yb_table_info));
+  RETURN_NOT_OK(GetTableSchema(client, table_id, deadline, &yb_table_info));
   const auto* index_info = VERIFY_RESULT(yb_table_info.index_map.FindIndex(index_id));
 
-  *backfill_in_progress = true;
   if (!index_info->backfill_error_message().empty()) {
-    *backfill_in_progress = false;
     // backfill_status preserves the error codes (such as the PostgreSQL error code) but may be
     // stale after a rollback: an old master clears only backfill_error_message on success.
     return index_info->backfill_status().ok()
         ? STATUS(Aborted, index_info->backfill_error_message())
         : index_info->backfill_status().CloneAndReplaceCode(Status::kAborted);
-  } else if (index_info->index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL) {
-    *backfill_in_progress = false;
+  } else if (index_info->index_permissions() <= IndexPermissions::INDEX_PERM_DO_BACKFILL) {
+    *backfill_in_progress = true;
   }
 
   return Status::OK();
@@ -1622,7 +1618,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());
   if (resp.has_index_info()) {
-    info->index_info.emplace(resp.index_info());
+    info->index_info.emplace(resp.index_info(), HybridTime::kInvalid);
   }
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());
@@ -3279,12 +3275,16 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
 }
 
 Status YBClient::Data::ReportYsqlDdlTxnStatus(
-    const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline) {
+    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time,
+    const CoarseTimePoint& deadline) {
   master::ReportYsqlDdlTxnStatusRequestPB req;
   master::ReportYsqlDdlTxnStatusResponsePB resp;
 
   req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
   req.set_is_committed(is_committed);
+  if (propagated_hybrid_time.is_valid()) {
+    req.set_propagated_hybrid_time(propagated_hybrid_time.ToUint64());
+  }
   RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "ReportYsqlDdlTxnStatus",
       &master::MasterDdlProxy::ReportYsqlDdlTxnStatusAsync));
