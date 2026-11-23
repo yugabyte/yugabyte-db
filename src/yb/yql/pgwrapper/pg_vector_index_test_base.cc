@@ -333,6 +333,21 @@ Status PgVectorIndexTestBase::WaitForVectorIndexBackfills(
   }, 60s * kTimeMultiplier, description);
 }
 
+Status PgVectorIndexTestBase::WaitForVectorIndexBackfillsStarted(size_t expected_num_indexes) {
+  return WaitFor([this, expected_num_indexes]() -> Result<bool> {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    if (indexes.size() != expected_num_indexes) {
+      return false;
+    }
+    for (const auto& index : indexes) {
+      if (index->metrics().backfill_inserted_entries->value() == 0) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s * kTimeMultiplier, "Backfills started");
+}
+
 FloatVector PgVectorIndexTestBase::RandomVector() {
   if (real_dimensions_ == 0) {
     return RandomFloatVector(dimensions_, distribution_, &rng_);

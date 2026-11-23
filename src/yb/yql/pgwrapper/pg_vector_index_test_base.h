@@ -167,6 +167,12 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   // finished. Fails right away if a backfill failed.
   Status WaitForVectorIndexBackfills(size_t expected_num_indexes, const std::string& description);
 
+  // Waits until all `expected_num_indexes` vector indexes of the cluster have inserted the first
+  // batch of their backfill.
+  // The backfill_inserted_entries metric is per table and tserver, so this needs one tablet per
+  // tserver.
+  Status WaitForVectorIndexBackfillsStarted(size_t expected_num_indexes);
+
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
   void VerifyRows(
       PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected,
