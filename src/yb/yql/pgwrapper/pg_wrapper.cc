@@ -551,10 +551,6 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notifs_poller_init_delay_ms, 0,
     "For testing purposes.");
 DEFINE_validator(ysql_yb_test_notifs_poller_init_delay_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
-DEFINE_RUNTIME_PG_FLAG(bool, yb_test_notifs_poller_error_before_init, false,
-    "When true, the notifications poller raises an ERROR before it initializes, so it exits and "
-    "is restarted without reporting an init status. For testing purposes.");
-
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_uint32(max_replication_slots);

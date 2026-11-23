@@ -601,7 +601,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testListenFailsWhenPollerExitsBeforeInit() throws Exception {
     final String channel = "poller_exits_before_init";
 
-    setPollerTestGuc(0, "yb_test_notifs_poller_error_before_init", "true", "on");
+    final String guc = "yb_test_notifs_poller_error_before_init";
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
+
+    appendToPgConfOnAllTServers(guc + "=true", originalPgConf);
+    waitForPostmasterSetting(0, guc, "on");
     try (Connection conn = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = conn.createStatement()) {
       // Bounds the test if the LISTEN waits instead of failing.
@@ -611,7 +615,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     } catch (SQLException e) {
       assertErrorContains(e, "exited before it initialized");
     } finally {
-      setPollerTestGuc(0, "yb_test_notifs_poller_error_before_init", "false", "off");
+      for (Map.Entry<HostAndPort, String> e : originalPgConf.entrySet()) {
+        setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
+      }
+      waitForPostmasterSetting(0, guc, "off");
     }
 
     assertListenNotifyWorksOnTServer0(channel);
@@ -768,17 +775,18 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    * postmaster has loaded it: pollers started before then would not wait.
    */
   private void setPollerInitDelay(int tserverIndex, long delayMs) throws Exception {
-    setPollerTestGuc(tserverIndex, "yb_test_notifs_poller_init_delay_ms",
-        String.valueOf(delayMs), String.valueOf(delayMs));
+    setServerFlag(getRpcHostPortForTServer(tserverIndex),
+        "ysql_yb_test_notifs_poller_init_delay_ms", String.valueOf(delayMs));
+    waitForPostmasterSetting(tserverIndex, "yb_test_notifs_poller_init_delay_ms",
+        String.valueOf(delayMs));
   }
 
   /**
-   * Sets a notifications poller test GUC on the given tserver through its ysql_ flag, and waits
-   * until its postmaster shows the given setting: pollers started before then use the old value.
+   * Waits until a new backend on the given tserver shows the given setting for a GUC, i.e. its
+   * postmaster has reloaded it: pollers started before then use the old value.
    */
-  private void setPollerTestGuc(int tserverIndex, String guc, String flagValue, String setting)
+  private void waitForPostmasterSetting(int tserverIndex, String guc, String setting)
       throws Exception {
-    setServerFlag(getRpcHostPortForTServer(tserverIndex), "ysql_" + guc, flagValue);
     TestUtils.waitFor(() -> {
       try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
            Statement stmt = conn.createStatement()) {
