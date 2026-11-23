@@ -862,7 +862,7 @@ Result<std::optional<OpId>> GetPendingConfigOpId(const ReportedTabletPB& report)
 bool ShouldDeleteNonMember(
     const ReportedTabletPB& report,
     const ConsensusStatePB& prev_cstate,
-    int64_t prev_opid_index,
+    int64_t last_known_committed_config_index,
     int64_t report_opid_index,
     const TSDescriptorPtr& ts_desc) {
   if (!FLAGS_master_tombstone_evicted_tablet_replicas ||
@@ -873,7 +873,7 @@ bool ShouldDeleteNonMember(
 
   if (!FLAGS_use_tablet_report_pending_config_op_id) {
     // For backward compatibility.
-    return report_opid_index < prev_opid_index;
+    return report_opid_index < last_known_committed_config_index;
   }
 
   const auto pending_config_op_id_result = GetPendingConfigOpId(report);
@@ -883,20 +883,16 @@ bool ShouldDeleteNonMember(
         << " report from " << ts_desc->permanent_uuid() << ": "
         << pending_config_op_id_result.status();
     // Fallback to pre-pending_config_op_id logic.
-    return report_opid_index < prev_opid_index;
+    return report_opid_index < last_known_committed_config_index;
   }
 
   const auto pending_config_op_id = pending_config_op_id_result.get();
-  // The reported pending config op is known to be resolved if its index is not higher than the
-  // committed config op index known to the master (with the same term): everything up to that index
-  // is committed. Without checking the index, a replica that was added and removed in the same term
-  // before receiving updates from the leader would never be deleted, because it doesn't receive
-  // updates anymore and keeps reporting the pending config op id of its ADD_SERVER.
   const auto reported_config_may_still_be_pending =
       pending_config_op_id.has_value() &&
       pending_config_op_id->term >= prev_cstate.current_term() &&
-      pending_config_op_id->index > prev_opid_index;
-  return report_opid_index <= prev_opid_index && !reported_config_may_still_be_pending;
+      pending_config_op_id->index > last_known_committed_config_index;
+  return report_opid_index <= last_known_committed_config_index &&
+         !reported_config_may_still_be_pending;
 }
 
 Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
@@ -996,17 +992,20 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     // Tombstone a replica that is no longer part of the Raft config and should be deleted as
     // decided by ShouldDeleteNonMember.
     const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
-    const int64_t prev_opid_index = prev_cstate.config().committed_op_index();
+    const int64_t last_known_committed_config_index = prev_cstate.config().committed_op_index();
     const int64_t report_opid_index = GetCommittedConsensusStateOpIdIndex(report);
-    if (ShouldDeleteNonMember(report, prev_cstate, prev_opid_index, report_opid_index, ts_desc) &&
+    if (ShouldDeleteNonMember(
+            report, prev_cstate, last_known_committed_config_index, report_opid_index, ts_desc) &&
         !IsRaftConfigMember(ts_desc->permanent_uuid(), prev_cstate.config())) {
       const string delete_msg = (report_opid_index == consensus::kInvalidOpIdIndex) ?
           "Replica has no consensus available" :
           Format("Replica with old config index $0", report_opid_index);
       rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
           ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_TOMBSTONED,
-          prev_opid_index, epoch,
-          Format("$0 (current committed config index is $1)", delete_msg, prev_opid_index)));
+          last_known_committed_config_index, epoch,
+          Format(
+              "$0 (current committed config index is $1)", delete_msg,
+              last_known_committed_config_index)));
       continue;
     }
 
