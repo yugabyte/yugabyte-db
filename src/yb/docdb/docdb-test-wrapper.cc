@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <thread>
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
 
@@ -24,6 +22,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/yb_partition.h"
 
 DECLARE_bool(ysql_enable_cdr_metadata);
@@ -1906,16 +1905,15 @@ TEST_P(DocDBTestWrapper, YB_DEBUG_ONLY_TEST(FlushedFrontierOfGroupCommittedEdits
   ConsensusFrontier with_hybrid_time;
   with_hybrid_time.set_hybrid_time(kHybridTime);
 
-  std::thread held_thread([&] { modify(held); });
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] { modify(held); });
   write_started.Wait();
-  std::thread op_id_thread([&] { modify(with_op_id); });
-  std::thread hybrid_time_thread([&] { modify(with_hybrid_time); });
+  thread_holder.AddThreadFunctor([&] { modify(with_op_id); });
+  thread_holder.AddThreadFunctor([&] { modify(with_hybrid_time); });
   // Both edits must be in the queue before the held write is released.
   queued.Wait();
   release_write.CountDown();
-  held_thread.join();
-  op_id_thread.join();
-  hybrid_time_thread.join();
+  thread_holder.JoinAll();
   SyncPoint::GetInstance()->DisableProcessing();
   SyncPoint::GetInstance()->ClearAllCallBacks();
   // The held write, then one write for both queued edits.
