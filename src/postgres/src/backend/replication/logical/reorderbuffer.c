@@ -109,6 +109,7 @@
 #include "utils/relfilenodemap.h"
 
 /* YB includes */
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
@@ -2516,6 +2517,14 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 				case YB_REORDER_BUFFER_CHANGE_DDL:
 					YBCInvalidateCachesForHistoricalReadContext();
+					/*
+					 * A DDL record without a table comes from a pg_namespace
+					 * change such as ALTER SCHEMA ... RENAME TO. The
+					 * namespace keeps its OID, so the cached pg_namespace row
+					 * would still give the RELATION message the old name.
+					 */
+					if (!OidIsValid(change->data.yb_ddl.table_oid))
+						CatalogCacheFlushCatalog(NamespaceRelationId);
 					/*
 					 * Inform the output plugin about the schema change so that
 					 * it can send the RELATION message to the client.
