@@ -27,6 +27,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_bool(TEST_disable_wal_retention_time);
@@ -6375,6 +6376,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       "DoProcessCDCSDKTabletDeletion::DeferredWaitingTable",
       [&deferred_hits](void*) { ++deferred_hits; });
   SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
 
   ASSERT_OK(conn.Execute("CREATE TABLE side_table (id INT PRIMARY KEY, value TEXT)"));
 
@@ -6417,8 +6422,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       [&deferred_hits]() -> bool { return deferred_hits.load() >= 3; },
       MonoDelta::FromSeconds(30 * kTimeMultiplier),
       "Deletion task never deferred the tablet of the waiting table"));
-  SyncPoint::GetInstance()->DisableProcessing();
-  SyncPoint::GetInstance()->ClearAllCallBacks();
   {
     auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
     auto table_info = ASSERT_RESULT(cm.FindTableById(old_table_id));
@@ -6458,7 +6461,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   auto elapsed = MonoDelta(CoarseMonoClock::Now() - start_time);
 
   // The call should complete within a reasonable time (not 60 seconds)
-  // Even if it fails, it shouldn't hang
   ASSERT_LT(elapsed.ToSeconds(), 10)
       << "UpdatePublicationTableList took too long: " << elapsed.ToSeconds()
       << " seconds. Old table likely DELETED instead of HIDDEN.";
@@ -6525,6 +6527,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       "DoProcessCDCSDKTabletDeletion::DeferredWaitingTable",
       [&deferred_hits](void*) { ++deferred_hits; });
   SyncPoint::GetInstance()->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([] {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
 
   ASSERT_OK(conn.Execute("CREATE TABLE side_table (id INT PRIMARY KEY, value TEXT)"));
   auto old_table_id = ASSERT_RESULT(
@@ -6552,8 +6558,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       [&deferred_hits]() -> bool { return deferred_hits.load() >= 3; },
       MonoDelta::FromSeconds(60 * kTimeMultiplier),
       "After the master restart, the deletion task never deferred the waiting table's tablet"));
-  SyncPoint::GetInstance()->DisableProcessing();
-  SyncPoint::GetInstance()->ClearAllCallBacks();
   ASSERT_TRUE(ASSERT_RESULT(is_old_table_hidden()))
       << "Old table " << old_table_id << " was deleted after the master restart";
 
