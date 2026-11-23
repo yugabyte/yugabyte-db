@@ -295,12 +295,13 @@ drop table baseline_scan_nodes;
 
 -- Block 4: ORDER BY and LIMIT under a Gather Merge.  A worker's rows reach
 -- the leader only when the worker has filled a quarter of its tuple queue or
--- finishes, and a worker whose scan the LIMIT bounds stops at the bound.  The
--- queries below keep one row in a hundred, so the bound's rows are far less
--- than a quarter of the queue and take several parallel ranges to find: every
--- request a worker makes comes before the leader's first row.  The Gather
--- Merge's startup cost has to pay for those requests, and the Limit above it
--- then has no run cost to charge (#36851).
+-- finishes.  The queries below keep one row in a hundred, so a worker's rows
+-- fill far less than a quarter of the queue and take several parallel ranges
+-- to find, and every request a worker makes before it stops comes before the
+-- leader's first row.  A worker stops at the LIMIT's rows under a plain LIMIT
+-- (700xx); with WITH TIES (71020) or under a Unique (72020) it does not get
+-- the bound and reads all of its ranges.  The Gather Merge's startup cost has
+-- to pay for those requests (#36851).
 -- "Requests" compares the requests of a worker before the first row as the
 -- Gather Merge's startup cost prices them, at the scan's cost per request and
 -- rounded up to whole requests, with the requests each worker made.  The
@@ -308,7 +309,7 @@ drop table baseline_scan_nodes;
 -- the workers share the ranges differs from run to run by a request or two,
 -- so the comparison allows 15%.
 create view check_gather_merge_limit_estimates as
-with plans as (
+with recursive plans as (
     select
         q.qid,
         js.explain_line::jsonb #> '{0,Plan}' lim
@@ -317,15 +318,28 @@ with plans as (
         explain_query_options opt,
         lateral explain_query_json(q.query, opt.with_analyze) js
 ),
+chain as (
+    select qid, 1 lvl, lim node from plans
+    union all
+    select qid, lvl + 1, node #> '{Plans,0}' from chain where node ? 'Plans'
+),
 nodes as (
-    select qid, lim, lim #> '{Plans,0}' gm, lim #> '{Plans,0,Plans,0}' scan
-    from plans
+    select
+        p.qid, p.lim,
+        (select string_agg(c.node->>'Node Type', ' / ' order by c.lvl)
+         from chain c where c.qid = p.qid) shape,
+        (select c.node from chain c
+         where c.qid = p.qid and c.node->>'Node Type' = 'Gather Merge'
+         order by c.lvl limit 1) gm,
+        (select c.node from chain c
+         where c.qid = p.qid and c.node ? 'Relation Name'
+         order by c.lvl limit 1) scan
+    from plans p
 ),
 estimates as (
     select
         qid,
-        lim->>'Node Type' || ' / ' || (gm->>'Node Type') || ' / ' ||
-            (scan->>'Node Type') shape,
+        shape,
         (lim->>'Total Cost')::numeric - (lim->>'Startup Cost')::numeric
             limit_run_cost,
         est.scan_requests est_scan_requests,
@@ -361,6 +375,11 @@ select 70000 + k,
        'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
        || ' order by pk limit ' || k
 from (values (10), (20), (40)) limits(k);
+insert into queries (qid, query) values
+    (71020, 'select pk, a from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk fetch first 20 rows with ties'),
+    (72020, 'select distinct pk from ce.r where pk between 1 and 12345 and b % 100 = 0'
+            ' order by pk limit 20');
 
 select * from queries order by qid;
 
@@ -371,8 +390,10 @@ set yb_parallel_range_size = 524288;
 
 update explain_query_options set with_analyze = true;
 
--- The plan's side: each worker is priced to make more requests before the
--- first row as the LIMIT grows, and the Limit charges no run cost.
+-- The plan's side: under a plain LIMIT each worker is priced to make more
+-- requests before the first row as the LIMIT grows, and the Limit charges no
+-- run cost; with WITH TIES or under a Unique each worker is priced to make
+-- all of its requests before the first row.
 select qid, shape, "Estimated Scan Requests",
        "Estimated Requests Before First Row", "Limit Run Cost"
 from check_gather_merge_limit_estimates

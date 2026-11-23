@@ -11661,8 +11661,17 @@ yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
  * leader when a quarter of it is filled or the worker finishes (tqueue.c
  * sends without force_flush, see shm_mq_sendv).  The leader therefore sees
  * none of a worker's rows until the worker has produced that many bytes of
- * rows, or all of its rows.  A worker whose scan the LIMIT bounds stops at
- * the bound and finishes.
+ * rows, or all of its rows.
+ *
+ * A worker stops at the LIMIT's rows and finishes only when the executor
+ * gives the Gather or Gather Merge the LIMIT's bound (ExecSetTupleBound),
+ * which passes through no node that can discard or combine rows, and which
+ * a LIMIT WITH TIES does not set.  The Gather must therefore be above the
+ * whole scan/join tree, either at the topmost scan/join rel or at an upper
+ * rel, with no DISTINCT above it; a Gather under a join or a Unique has
+ * workers that run on to their first flush.  yb_plan_limit_bound already
+ * returns 0 when grouping, aggregates, window functions or set-returning
+ * functions sit above the path.
  */
 static double
 yb_gather_flush_rows(PlannerInfo *root, Path *gather_path, Path *subpath)
@@ -11673,9 +11682,13 @@ yb_gather_flush_rows(PlannerInfo *root, Path *gather_path, Path *subpath)
 	/* a minimal tuple's header and the queue's length word */
 	double		tuple_bytes = subpath->pathtarget->width + 24;
 	double		flush_rows = ceil(flush_bytes / tuple_bytes);
+	RelOptInfo *rel = gather_path->parent;
 	Cardinality limit_bound = yb_plan_limit_bound(root, gather_path);
 
-	if (limit_bound > 0 && limit_bound < flush_rows)
+	if (limit_bound > 0 && limit_bound < flush_rows &&
+		root->parse->distinctClause == NIL &&
+		root->parse->limitOption != LIMIT_OPTION_WITH_TIES &&
+		(IS_UPPER_REL(rel) || bms_equal(rel->relids, root->all_baserels)))
 		flush_rows = limit_bound;
 
 	return fmin(flush_rows, subpath->rows);
