@@ -472,7 +472,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     readOnlyIntent.specificGFlags =
         SpecificGFlags.construct(
             Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-rr-pass"));
-    taskParams.upsertCluster(readOnlyIntent, null, null, UUID.randomUUID());
+    taskParams.upsertCluster(readOnlyIntent, null, UUID.randomUUID());
     Result result = sendAsyncCreateConfigureRequest((ObjectNode) Json.toJson(taskParams));
     assertOk(result);
     String body = contentAsString(result);
