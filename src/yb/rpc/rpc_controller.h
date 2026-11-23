@@ -45,6 +45,8 @@
 
 namespace yb {
 
+class LatencyLedgerPB;
+
 namespace rpc {
 
 class ErrorStatusPB;
@@ -79,6 +81,9 @@ class RpcController {
   // A call is finished if the server has responded, or if the call
   // has timed out.
   bool finished() const;
+
+  // The latency ledger the server returned with a successful response, or nullptr.
+  const LatencyLedgerPB* server_latency_ledger() const;
 
   // Return the current status of a call.
   //

@@ -17,6 +17,9 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common.pb.h"
 
 #include "yb/gutil/casts.h"
@@ -364,6 +367,11 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
     resp_hdr.set_crc(0);
   }
   sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
+  if (const auto& wait_state = this->wait_state()) {
+    if (auto* ledger = wait_state->latency_ledger()) {
+      ledger->Finish(ash::LedgerNowNanos(), resp_hdr.mutable_latency_ledger());
+    }
+  }
 
   size_t header_size;
   std::tie(response_buf_, header_size) = VERIFY_RESULT(SerializeResponse(

@@ -109,6 +109,12 @@ MetadataSerializer::MetadataSerializer(rpc::MetadataSerializationMode mode)
   }
 }
 
+void MetadataSerializer::SetLedgerStartNanos(int64_t start_nanos) {
+  metadata_.set_latency_ledger(true);
+  metadata_.set_ledger_start_mono_nanos(start_nanos);
+  serialized_size_ = metadata_.ByteSizeLong();
+}
+
 size_t MetadataSerializer::SerializedSize() {
   if (mode_ == rpc::MetadataSerializationMode::kSkipOnZero && serialized_size_ == 0) {
     return 0;

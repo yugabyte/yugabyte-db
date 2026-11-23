@@ -27,6 +27,7 @@ using uint64 = uint64_t;
 #endif
 
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_latency_ledger.h"
 
 #ifdef __cplusplus
 namespace yb::pggate {
@@ -110,6 +111,8 @@ void SetWebserverConfig(
     bool enable_access_logging, bool enable_tcmalloc_logging,
     int webserver_profiler_sample_period_bytes);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
+/* Serves the latency ledger ring at /latency-ledger. */
+void RegisterLatencyLedger(YbcLedgerRing *ring, YbcLedgerWaitEventNameFunc name_fn);
 void RegisterResetYsqlStatStatements(void (*fn)());
 void WriteStartObjectToJson(void *p1); /* Takes void *cb_arg argument */
 void WriteArrayBeginToJson(void *p1, const char* key);

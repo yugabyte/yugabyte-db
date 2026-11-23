@@ -20,6 +20,8 @@
 #include <mutex>
 #include <vector>
 
+#include "yb/ash/latency_ledger.h"
+
 #include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 
@@ -31,6 +33,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/util/usdt.h"
 
 DEPRECATE_FLAG(bool, ysql_yb_ash_enable_infra, "2024_12");
 
@@ -366,7 +369,7 @@ void AshMetadata::TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, plan_id, database_id,
-      user_id, rpc_request_id, client_host_port, addr_family, pid);
+      user_id, rpc_request_id, client_host_port, addr_family, pid, latency_ledger);
 }
 
 std::string AshAuxInfo::ToString() const {
@@ -389,8 +392,40 @@ WaitStateInfo::WaitStateInfo(int64_t rpc_request_id)
     : metadata_({ .rpc_request_id = rpc_request_id }) {
 }
 
+WaitStateInfo::~WaitStateInfo() {
+  YB_USDT1(yb, ash_free, this);
+  delete latency_ledger_.load(std::memory_order_acquire);
+}
+
+void WaitStateInfo::EnableLatencyLedger(
+    int64_t start_nanos, std::optional<uint32_t> initial_code) {
+  if (latency_ledger()) {
+    return;
+  }
+  auto ledger = std::make_unique<LatencyLedger>(
+      start_nanos, initial_code ? *initial_code : std::to_underlying(code()));
+  LatencyLedger* expected = nullptr;
+  if (latency_ledger_.compare_exchange_strong(
+          expected, ledger.get(), std::memory_order_acq_rel)) {
+    ledger.release();
+  }
+}
+
+void WaitStateInfo::LedgerNote(const WaitStateInfoPtr& wait_state, LedgerCode code) {
+  if (!wait_state) {
+    return;
+  }
+  if (auto* ledger = wait_state->latency_ledger()) {
+    ledger->Transition(code, LedgerNowNanos());
+  }
+}
+
 void WaitStateInfo::set_code(WaitStateCode code, const char* location) {
   auto prev_code = code_.exchange(code, std::memory_order_release);
+  YB_USDT2(yb, ash_code, this, std::to_underlying(code));
+  if (auto* ledger = latency_ledger()) {
+    ledger->Transition(std::to_underlying(code), LedgerNowNanos());
+  }
   if (FLAGS_TEST_trace_ash_wait_code_updates && prev_code != code) {
     if (FLAGS_tracing_level >= 1) {
       VTrace(1, yb::Format("$0 at $1", ash::ToString(code), location));
@@ -450,8 +485,16 @@ void WaitStateInfo::set_top_level_node_id(const Uuid &top_level_node_id) {
 }
 
 void WaitStateInfo::UpdateMetadata(const AshMetadata &meta) {
-  std::lock_guard lock(mutex_);
-  metadata_.UpdateFrom(meta);
+  {
+    std::lock_guard lock(mutex_);
+    metadata_.UpdateFrom(meta);
+  }
+  if (meta.query_id) {
+    YB_USDT2(yb, ash_query, this, meta.query_id);
+  }
+  if (meta.latency_ledger) {
+    EnableLatencyLedger(LedgerNowNanos());
+  }
 }
 
 void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
@@ -470,6 +513,7 @@ void WaitStateInfo::UpdateCurrentTabletId(TabletIdView tablet_id) {
 }
 
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
+  YB_USDT1(yb, ash_adopt, wait_state.get());
   threadlocal_wait_state_ = std::move(wait_state);
 }
 
@@ -579,6 +623,10 @@ ScopedWaitStatus::ScopedWaitStatus(WaitStateCode code, const char* location)
   if (!wait_state) {
     return;
   }
+  YB_USDT2(yb, ash_code, wait_state.get(), std::to_underlying(code));
+  if (auto* ledger = wait_state->latency_ledger()) {
+    ledger->Transition(std::to_underlying(code), LedgerNowNanos());
+  }
   if (FLAGS_TEST_trace_ash_wait_code_updates) {
     if (FLAGS_tracing_level >= 1) {
       wait_state->VTrace(1, yb::Format("$0 at $1", ash::ToString(code), location));
@@ -609,6 +657,10 @@ ScopedWaitStatus::~ScopedWaitStatus() {
         << ". Not expecting concurrent updates."
         << "\nTrace so far:" << wait_state->DumpTraceToString();
     return;
+  }
+  YB_USDT2(yb, ash_code, wait_state.get(), std::to_underlying(prev_code_));
+  if (auto* ledger = wait_state->latency_ledger()) {
+    ledger->Transition(std::to_underlying(prev_code_), LedgerNowNanos());
   }
 
   if (FLAGS_TEST_trace_ash_wait_code_updates) {

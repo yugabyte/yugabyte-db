@@ -17,6 +17,7 @@
 
 
 set(ASH_SRCS
+  latency_ledger.cc
   pg_wait_state.cc
   rpc_wait_state.cc
   wait_state.cc

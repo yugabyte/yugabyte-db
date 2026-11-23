@@ -119,6 +119,9 @@ message ResponseHeader {
   // is the first byte after the bytes for this protobuf.
   repeated uint32 sidecar_offsets = 3;
 
+  // Set when the request asked for a latency ledger (AshMetadataPB.latency_ledger).
+  optional LatencyLedgerPB latency_ledger = 5;
+
   // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
   optional fixed32 crc = 15;
 }

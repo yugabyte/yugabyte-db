@@ -48,6 +48,7 @@
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_internal_conn.h"
+#include "yb_latency_ledger.h"
 
 #define YSQL_METRIC_PREFIX "yb_ysqlserver_"
 #define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
@@ -695,6 +696,7 @@ webserver_worker_main(Datum unused)
 	conn_metrics.new_conn = yb_new_conn;
 
 	RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
+	RegisterLatencyLedger(YbLatencyLedgerRing(), YbLatencyLedgerWaitEventName);
 	HandleYBStatus(StartWebserver(webserver));
 
 	pqsignal(SIGHUP, ws_sighup_handler);

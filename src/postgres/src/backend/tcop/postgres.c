@@ -106,6 +106,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_dist_trace.h"
+#include "yb_latency_ledger.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -7007,6 +7008,10 @@ PostgresMain(const char *dbname, const char *username)
 		 */
 		debug_query_string = NULL;
 
+		/* YB: the error cleanup belongs to the round trip's abort phase */
+		if (IsYugaByteEnabled())
+			YbLatencyLedgerOnError();
+
 		/*
 		 * Abort the current transaction in order to recover.
 		 */
@@ -7228,6 +7233,10 @@ PostgresMain(const char *dbname, const char *username)
 				MyProc->yb_is_ash_metadata_set = false;
 			}
 
+			/* YB: the round trip ends when the client gets ReadyForQuery */
+			if (IsYugaByteEnabled())
+				YbLatencyLedgerEndRoundTrip();
+
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
 
@@ -7252,6 +7261,10 @@ PostgresMain(const char *dbname, const char *username)
 		 * STDIN doing the same thing.)
 		 */
 		DoingCommandRead = true;
+
+		/* YB: within a round trip, reading waits on the client */
+		if (IsYugaByteEnabled())
+			YbLatencyLedgerBeforeReadCommand();
 
 		/*
 		 * (3) read a command (loop blocks here)
@@ -7288,6 +7301,10 @@ PostgresMain(const char *dbname, const char *username)
 		 */
 		CHECK_FOR_INTERRUPTS();
 		DoingCommandRead = false;
+
+		/* YB: the first message after ReadyForQuery starts a round trip */
+		if (IsYugaByteEnabled())
+			YbLatencyLedgerStartRoundTrip();
 
 		/*
 		 * YB: A single TCP packet from the client might contain a series of messages -

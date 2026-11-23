@@ -610,6 +610,21 @@ DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
     "sampled. Requires otel_collector_traces_endpoint.");
 DEFINE_validator(ysql_yb_dist_trace_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
 
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_latency_ledger_buffer_size, 0,
+    "Number of round trips the YSQL latency ledger ring buffer holds, served by the YSQL "
+    "webserver at /latency-ledger. 0 turns the latency ledger off.");
+DEFINE_validator(ysql_yb_latency_ledger_buffer_size, FLAG_RANGE_VALIDATOR(0, 1048576));
+
+DEFINE_RUNTIME_PG_FLAG(double, yb_latency_ledger_sample_rate, 0.0,
+    "Fraction of YSQL backends that record the latency ledger of every round trip. Requires "
+    "ysql_yb_latency_ledger_buffer_size.");
+DEFINE_validator(ysql_yb_latency_ledger_sample_rate, FLAG_RANGE_VALIDATOR(0.0, 1.0));
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_latency_ledger_min_duration_ms, -1,
+    "Records the latency ledger of every YSQL round trip that takes at least this long. -1 "
+    "turns this off. Requires ysql_yb_latency_ledger_buffer_size.");
+DEFINE_validator(ysql_yb_latency_ledger_min_duration_ms, FLAG_GE_VALUE_VALIDATOR(-1));
+
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 

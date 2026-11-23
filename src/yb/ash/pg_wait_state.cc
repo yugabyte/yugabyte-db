@@ -12,6 +12,8 @@
 //
 #include "yb/ash/pg_wait_state.h"
 
+#include "yb/ash/latency_ledger.h"
+
 #include "yb/util/status_format.h"
 
 namespace yb::ash {
@@ -79,6 +81,7 @@ AshMetadata PgWaitStateInfo::metadata() {
       Slice(config_.metadata->root_request_id, sizeof(config_.metadata->root_request_id)));
   cached_metadata_.database_id = config_.metadata->database_id;
   cached_metadata_.user_id = config_.metadata->user_id;
+  cached_metadata_.latency_ledger = IsPgLatencyLedgerRequested();
 #ifndef NDEBUG
   const auto s = VerifyMetadata(cached_metadata_, config_);
   LOG_IF(DFATAL, !s.ok()) << "ASH metadata verification failed: " << s;

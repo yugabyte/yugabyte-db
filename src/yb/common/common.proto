@@ -853,6 +853,27 @@ message AshMetadataPB {
   optional uint32 database_id = 8;
   // YSQL user OID. This field will not be set for YCQL.
   optional uint32 user_id = 10;
+  // Asks every server that handles this request, and the RPCs it issues on its behalf, to return a
+  // latency ledger (see LatencyLedgerPB) in the response header.
+  optional bool latency_ledger = 12;
+  // CLOCK_MONOTONIC time at which a YSQL backend wrote this request into shared memory. Only
+  // meaningful to the local tserver that reads the request, so it is not propagated further.
+  optional int64 ledger_start_mono_nanos = 13;
+}
+
+// Exact time breakdown of one request, returned in rpc.ResponseHeader.latency_ledger. The request
+// spent nanos[i] in the interval identified by keys[i]. A key packs the hop depth (0 = the server
+// that produced the ledger, 1 = an RPC it issued, ...), the YSQL phase (set only by the YSQL
+// backend) and a wait state code; see yb/ash/latency_ledger.h.
+message LatencyLedgerPB {
+  // Time from the start of the request on this server until the ledger was finished.
+  optional int64 total_nanos = 1;
+  repeated fixed32 keys = 2 [packed = true];
+  repeated int64 nanos = 3 [packed = true];
+  // Number of child RPCs that reported a ledger. Only the one that finished last is in the entries.
+  optional uint32 num_children = 4;
+  // CLOCK_MONOTONIC time at which the ledger was finished. Only meaningful on the same host.
+  optional int64 finish_mono_nanos = 5;
 }
 
 // Some optional/additional fields that is collected in addition to the wait

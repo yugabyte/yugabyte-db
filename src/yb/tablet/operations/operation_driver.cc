@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include "yb/ash/latency_ledger.h"
+
 #include "yb/tablet/operations/operation_driver.h"
 
 #include <atomic>
@@ -344,6 +346,7 @@ void OperationDriver::ReplicationFinished(
     CHECK_EQ(replication_state_, REPLICATING);
     if (status.ok()) {
       replication_state_ = REPLICATED;
+      ash::WaitStateInfo::LedgerNote(wait_state(), ash::LedgerCode::kRaftApplyQueue);
     } else {
       replication_state_ = REPLICATION_FAILED;
     }

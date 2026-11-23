@@ -15,6 +15,11 @@
 
 #include "yb/rpc/local_call.h"
 
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
+
+#include "yb/common/common.pb.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -134,6 +139,14 @@ void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
     LOG(DFATAL) << "Outbound call is NULL during Respond, looks like double response. "
                 << "is_success: " << is_success;
     return;
+  }
+
+  if (const auto& wait_state = this->wait_state()) {
+    if (auto* ledger = wait_state->latency_ledger()) {
+      LatencyLedgerPB ledger_pb;
+      ledger->Finish(ash::LedgerNowNanos(), &ledger_pb);
+      call->SetLocalServerLedger(std::move(ledger_pb));
+    }
   }
 
   if (is_success) {

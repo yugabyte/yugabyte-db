@@ -20,6 +20,7 @@
 #include "opentelemetry/nostd/shared_ptr.h"
 #include "opentelemetry/trace/span.h"
 
+#include "yb/ash/latency_ledger.h"
 #include "yb/ash/rpc_wait_state.h"
 
 #include "yb/cdc/cdc_service.proxy.h"
@@ -58,6 +59,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
+#include "yb/yql/pggate/pg_latency_ledger.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
@@ -426,6 +428,10 @@ struct PgClientData : public FetchBigDataCallback {
   std::optional<Result<Slice>> exchange_result GUARDED_BY(exchange_mutex);
   bool fetching_big_data GUARDED_BY(exchange_mutex) = false;
   rpc::CallData big_call_data GUARDED_BY(exchange_mutex);
+  // CLOCK_MONOTONIC time the request was written to shared memory, when it asked for a latency
+  // ledger; 0 otherwise.
+  int64_t ledger_sent_nanos = 0;
+
   // Only the owning future accesses this span while starting or finishing the shared-memory
   // request. Exchange callbacks do not touch it, so it does not need exchange_mutex protection.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> otel_span;
@@ -555,6 +561,12 @@ struct PgClientData : public FetchBigDataCallback {
     RETURN_NOT_OK(call_data);
     auto response = std::make_shared<rpc::CallResponse>();
     RETURN_NOT_OK(response->ParseFrom(&*call_data));
+    if (ledger_sent_nanos) {
+      if (const auto* ledger = response->latency_ledger()) {
+        PgLedgerAddRequest(
+            ledger_sent_nanos, ash::LedgerNowNanos(), *ledger, /* shared_memory= */ true);
+      }
+    }
     RETURN_NOT_OK(resp.ParseFromSlice(response->serialized_response()));
     return response;
   }
@@ -1157,6 +1169,11 @@ class PgClient::Impl : public BigDataFetcher {
     auto data = std::make_shared<Data>(std::forward<Args>(args)...);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
+      int64_t ledger_sent_nanos = 0;
+      if (ash::IsPgLatencyLedgerRequested()) {
+        ledger_sent_nanos = ash::LedgerNowNanos();
+        metadata.SetLedgerStartNanos(ledger_sent_nanos);
+      }
       constexpr size_t kHeaderSize = sizeof(uint8_t) + sizeof(uint64_t);
       const size_t kMetadataSize = metadata.SerializedSize();
       // Sized before the span exists, so a too-large request falls back to RPC without having
@@ -1204,15 +1221,24 @@ class PgClient::Impl : public BigDataFetcher {
           data->promise.set_value(std::move(result));
           return data->promise.get_future();
         }
+        data->ledger_sent_nanos = ledger_sent_nanos;
         data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+    const auto ledger_sent_nanos =
+        ash::IsPgLatencyLedgerRequested() ? ash::LedgerNowNanos() : 0;
     method(
         &proxy_, data->req, &data->resp,
         SetupController<typename Data::RequestType>(&data->controller),
-        [data] {
+        [data, ledger_sent_nanos] {
+          if (ledger_sent_nanos) {
+            if (const auto* ledger = data->controller.server_latency_ledger()) {
+              PgLedgerAddRequest(
+                  ledger_sent_nanos, ash::LedgerNowNanos(), *ledger, /* shared_memory= */ false);
+            }
+          }
           data->promise.set_value(MakeExchangeResult(*data, data->controller.CheckedResponse()));
         });
     return data->promise.get_future();
@@ -2148,7 +2174,14 @@ class PgClient::Impl : public BigDataFetcher {
     LOG_IF_WITH_FUNC(INFO, log_detail) << GetTypeName<Req>() << ":\n " << req.ShortDebugString();
 
     auto watcher = wait_event_watcher_(wait_event, rpc_enum, 0 /* aux */);
+    const auto ledger_sent_nanos = ash::IsPgLatencyLedgerRequested() ? ash::LedgerNowNanos() : 0;
     const auto s = (proxy.*func)(req, &resp, controller);
+    if (ledger_sent_nanos) {
+      if (const auto* ledger = controller->server_latency_ledger()) {
+        PgLedgerAddRequest(
+            ledger_sent_nanos, ash::LedgerNowNanos(), *ledger, /* shared_memory= */ false);
+      }
+    }
 
     LOG_IF_WITH_FUNC(INFO, log_detail)
         << GetTypeName<Resp>() << " response:\n"
