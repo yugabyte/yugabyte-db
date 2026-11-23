@@ -142,7 +142,8 @@ public class UniverseEditNetworkingDefaultsTest {
 
     UniverseDefinitionTaskParams existing = new UniverseDefinitionTaskParams();
     existing.clusters = new ArrayList<>();
-    existing.upsertCluster(intent, null, null, clusterUuid, UniverseDefinitionTaskParams.ClusterType.PRIMARY);
+    existing.upsertCluster(
+        intent, null, null, clusterUuid, UniverseDefinitionTaskParams.ClusterType.PRIMARY);
     existing.communicationPorts = new CommunicationPorts();
     existing.communicationPorts.masterHttpPort = 7001;
     existing.universeSettings = new UniverseDefinitionTaskParams.UniverseSettings();
