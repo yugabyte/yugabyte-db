@@ -5756,9 +5756,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)
   expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id);
 
-  // Check that the stream's metadata has the newly added table_id.
-  auto resp = ASSERT_RESULT(GetDBStreamInfo(stream_id));
-  ASSERT_EQ(resp.table_info(0).table_id(), table_id);
+  // Master inserts cdc_state entries before committing the table to the stream metadata, so wait.
+  VerifyTablesInStreamMetadata(
+      stream_id, {table_id}, "Timed out waiting for table to be added to stream metadata");
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTable)) {
@@ -5802,16 +5802,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnNamespaceNoPKTa
   expected_tablet_ids.insert(kCDCSDKSlotEntryTabletId);
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client(), stream_id);
 
-  // Check that the stream's metadata has the newly added table_id. Master inserts cdc_state
-  // entries before committing the table to the stream metadata, so wait for it.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto resp = VERIFY_RESULT(GetDBStreamInfo(stream_id));
-        return resp.table_info_size() > 0;
-      },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Waiting for table in stream metadata"));
-  auto resp = ASSERT_RESULT(GetDBStreamInfo(stream_id));
-  ASSERT_EQ(resp.table_info(0).table_id(), table_id);
+  // Master inserts cdc_state entries before committing the table to the stream metadata, so wait.
+  VerifyTablesInStreamMetadata(
+      stream_id, {table_id}, "Timed out waiting for table to be added to stream metadata");
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentGCedWithTabletBootStrap)) {
