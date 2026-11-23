@@ -235,6 +235,8 @@ extern bool yb_check_extra_commands_to_retry_in_proc(char **newval,
 													 GucSource source);
 extern void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													   void *extra);
+extern void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval,
+																   void *extra);
 extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
 									  GucSource source);
 extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);
@@ -250,6 +252,8 @@ extern bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra,
 											   GucSource source);
 extern void yb_set_neg_catcache_ids(const char *newval, void *extra);
 extern void assign_yb_enable_cbo(int new_value, void *extra);
+extern void yb_set_cbo_dependent_defaults(int new_value);
+extern PGDLLIMPORT bool yb_initializing_guc_options;
 extern void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 extern void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 extern void assign_ysql_upgrade_mode(bool newval, void *extra);

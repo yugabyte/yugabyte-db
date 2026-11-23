@@ -55,6 +55,7 @@ yba universe [flags]
 * [yba universe run-script](yba_universe_run-script.md)	 - Execute a script on database nodes in a universe
 * [yba universe security](yba_universe_security.md)	 - Manage security settings for a universe
 * [yba universe support-bundle](yba_universe_support-bundle.md)	 - Support bundle operations on a YugabyteDB Anywhere universe
+* [yba universe support-bundlev2](yba_universe_support-bundlev2.md)	 - Support bundle v2 operations
 * [yba universe table](yba_universe_table.md)	 - Manage YugabyteDB Anywhere universe tables
 * [yba universe upgrade](yba_universe_upgrade.md)	 - Upgrade a YugabyteDB Anywhere universe
 

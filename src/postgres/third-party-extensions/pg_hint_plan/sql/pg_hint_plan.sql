@@ -1,9 +1,7 @@
--- YB_TODO_PG19MERGE: Expression pushdown is not yet functional on the PG19 merge
--- branch, so this test's plans show "Filter" instead of the expected "Storage
--- Filter" and the golden currently fails. Revisit and regenerate this expected
--- output once expression pushdown is restored.
 SET search_path TO public;
 SET client_min_messages TO log;
+-- YB: the regress harness runs with bitmap scans off.
+SET yb_enable_bitmapscan = true;
 \set SHOW_CONTEXT always
 
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -95,10 +93,12 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
+/* YB: YB tables have no ctid; enabling the TidScan tests is #38119.
 /*+TidScan(t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
 /*+NoTidScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+*/ -- YB
 
 /*+ NestLoop() */ SELECT 1;
 /*+ NestLoop(x) */ SELECT 1;
@@ -106,6 +106,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+-- YB: test the YB-only NoYbBatchedNL hint.
+SET yb_prefer_bnl to off;
+/*+NoYbBatchedNL(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+SET yb_prefer_bnl to on;
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -152,6 +157,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 
 -- single table scan hint test
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+-- YB: the primary key of t1 is hash-sharded, so add the ordered index that
+-- upstream's btree primary key provides for the bitmap scans.
+CREATE INDEX t1_bitmap_index ON t1(id ASC);
 /*+BitmapScan(v_1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 /*+BitmapScan(v_2)*/
@@ -166,9 +174,12 @@ EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+-- YB: drop the index added for the bitmap scan tests.
+DROP INDEX t1_bitmap_index;
 
 -- full scan hint pattern test
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+/* YB: these tests need ctid, which YB tables lack, or the inheritance children that init.sql does not create; enabling the outer join tests is #38127.
 /*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
 /*+IndexScan(t1)*/
@@ -486,6 +497,7 @@ EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 5
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
 /*+TidScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+*/ -- YB
 
 -- IndexScan is safe for unordered indexes
 CREATE TABLE ischk (a text, b tsvector) PARTITION BY LIST(a);
@@ -501,8 +513,12 @@ DROP TABLE ischk;
 EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
 
 -- duplicate hint test
+/* YB: YB tables have no ctid, so the copy below drops TidScan and the ctid quals.
 /*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+*/ -- YB
+/*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 -- sub query Leading hint test
 SET from_collapse_limit TO 100;
@@ -761,6 +777,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t
 
 -- inherite table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
+/* YB: these tests need ctid, which YB tables lack.
 /*+IndexScan(p2 p2_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
 /*+IndexScan(p2 p2_id_val_idx)*/
@@ -770,8 +787,10 @@ EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid =
 
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 
+*/ -- YB
 -- Inhibit parallel exection to avoid interfaring the hint
 set max_parallel_workers_per_gather to 0;
+/* YB: these tests need ctid, which YB tables lack.
 /*+ IndexScan(p2 p2_val)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 /*+IndexScan(p2 p2_pkey)*/
@@ -804,6 +823,7 @@ EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
 /*+IndexScan(p2 p2_val_idx p2_val_idx6)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
+*/ -- YB
 
 -- regular expression
 -- ordinary table
@@ -841,6 +861,7 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 
 -- Inheritance
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/* YB: these tests need the inheritance children that init.sql does not create.
 /*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 /*+ IndexScanRegexp(p1 p1_.*val2.*)*/
@@ -865,6 +886,7 @@ EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 /*+ BitmapScan(p1 p1_.*val2.*)*/
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+*/ -- YB
 
 -- Search from hint table
 SELECT get_query_id('SELECT * FROM t1 WHERE t1.id = 1') AS query_id \gset
@@ -988,6 +1010,7 @@ SELECT * FROM testfunc() LIMIT 1;
 DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
 
+/* YB: these tests need scan counts in pg_stat_user_tables or the inheritance children that init.sql does not create.
 -- Dynamic query in pl/pgsql
 CREATE OR REPLACE FUNCTION dynsql1(x int) RETURNS int AS $$
 DECLARE c int;
@@ -1111,6 +1134,7 @@ SELECT val::int FROM p2 WHERE id < 1000;
 EXPLAIN (COSTS off) SELECT val FROM p1 WHERE val < 1000
 UNION
 SELECT val::int FROM p2 WHERE id < 1000;
+*/ -- YB
 
 --
 -- Rows hint tests
@@ -1119,6 +1143,7 @@ SELECT val::int FROM p2 WHERE id < 1000;
 -- this test needs it enabled for get rows count. So do tests via psql
 -- and grep -v the mutable line.
 
+/* YB: the rows hint tests are not enabled yet.
 -- Parse error check
 /*+ Rows() */ SELECT 1;
 /*+ Rows(x) */ SELECT 1;
@@ -1183,6 +1208,7 @@ SELECT explain_filter('
 /*+ Rows(t1 t3 *10) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 ');
+*/ -- YB
 
 -- Query with join RTE and outer-join relids
 /*+Leading(ft_1 ft_2 t1)*/

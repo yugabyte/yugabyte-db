@@ -18,7 +18,11 @@ properties:
       type: string
     minItems: 1
   yb_admin_args:
-    description: Additional arguments after the subcommand.
+    description: |
+      Additional arguments after the subcommand. YBA replaces
+      them with the arguments its support bundle manifest lists for
+      component_name, and rejects a component_name the manifest doesn't
+      list.
     type: array
     items:
       type: string
@@ -28,6 +32,9 @@ properties:
       Must be a single file name of up to 128 characters from [A-Za-z0-9._-].
     type: string
   timeout_secs:
-    description: Command timeout in seconds.
+    description: |
+      Command timeout in seconds.
+      YBA uses the timeout its support bundle manifest gives
+      component_name instead.
     type: integer
     format: int64

@@ -272,11 +272,11 @@ TEST_P(BasicUpgradeTest, TestRollback) { ASSERT_OK(TestRollback()); }
 INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2026_1_4_0, BasicUpgradeTest, ::testing::Values(kBuild_2026_1_4_0));
 INSTANTIATE_TEST_SUITE_P(
-    UpgradeFrom_2_25_0_0, BasicUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
+    UpgradeFrom_2_31_0_1900, BasicUpgradeTest, ::testing::Values(kBuild_2_31_0_1900));
 
 class PartitionedTableUpgradeTest : public UpgradeTestBase {
  public:
-  PartitionedTableUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  PartitionedTableUpgradeTest() : UpgradeTestBase(kBuild_2_31_0_1900) {}
   virtual ~PartitionedTableUpgradeTest() override = default;
 };
 

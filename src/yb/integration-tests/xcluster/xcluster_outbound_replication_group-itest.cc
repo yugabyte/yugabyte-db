@@ -25,8 +25,11 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(cdc_wal_retention_time_secs);
@@ -440,6 +443,27 @@ TEST_F(XClusterOutboundReplicationGroupTest, IsBootstrapRequiredTableWithDeleted
   ASSERT_OK(CreateOutboundReplicationGroupSync());
 
   ASSERT_FALSE(ASSERT_RESULT(IsBootstrapRequired()));
+}
+
+// Tests that the master's /tasks page can be rendered soon after an outbound replication group is
+// deleted (i.e., while the group's checkpoint task is still tracked) and that it still lists that
+// task.
+TEST_F(XClusterOutboundReplicationGroupTest, TasksPageAfterDelete) {
+  ASSERT_OK(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(CreateOutboundReplicationGroupSync());
+  ASSERT_OK(XClusterClient().DeleteOutboundReplicationGroup(
+      kReplicationGroupId, /*target_master_addresses=*/{}));
+
+  // The deleted group is freed, but the tasks tracker keeps its checkpoint task for
+  // tasks_tracker_keep_time_multiplier * catalog_manager_bg_task_wait_ms (300 s by default), and
+  // rendering /tasks calls the task's description().  The tracker also holds at most
+  // tasks_tracker_num_tasks (100 by default) tasks, so this relies on fewer than that many tasks
+  // starting after the checkpoint task.
+  auto* master = ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster());
+  faststring content;
+  ASSERT_OK(EasyCurl().FetchURL(Format("http://$0/tasks", master->bound_http_addr()), &content));
+  ASSERT_STR_CONTAINS(
+      content.ToString(), Format("XClusterCheckpointNamespaceTask [$0]", kReplicationGroupId));
 }
 
 // Temporarily disabling this during semi-automatic mode due to a bug.

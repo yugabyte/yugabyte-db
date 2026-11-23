@@ -124,11 +124,13 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return impl().DoSearch(query_vector, options);
   }
 
-  std::vector<VectorWithDistance<DistanceResult>> SearchExact(
+  Result<std::vector<VectorWithDistance<DistanceResult>>> SearchExact(
       const Vector& query_vector, const SearchOptions& options) const {
     using Entry = VectorWithDistance<DistanceResult>;
     rocksdb::BinaryHeap<Entry> top;
-    for (const auto& entry : *this) {
+    auto it = this->CreateIterator();
+    for (; it->Valid(); it->Next()) {
+      const auto& entry = it->Entry();
       if (options.filter && !options.filter(entry.vector_id, entry.payload)) {
         continue;
       }
@@ -139,6 +141,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
         top.replace_top(element);
       }
     }
+    RETURN_NOT_OK(it->status());
     return MakeResult<DistanceResult>(options.max_num_results, top.data());
   }
 
@@ -201,8 +204,10 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
 // Payloads are indexed by the slot the implementation assigns to the vector, so instead of
 // Reserve/DoInsert/DoSaveToFile/DoLoadFromFile children implement DoReserve/DoInsertVector/
 // DoSaveIndex/DoLoadIndex, which deal with the index only, while this class handles the payloads.
-// DoInsertVector returns the slot assigned to the inserted vector. Children attach payloads to
-// search results themselves, since slots of the found vectors are only visible to them.
+// DoInsertVector returns the slot assigned to the inserted vector, and gets the payload only to
+// read data the index needs, e.g. the tenant. When the chunk stores payloads, it gets the stored
+// copy, which lives as long as the index. Children attach payloads to search results themselves,
+// since slots of the found vectors are only visible to them.
 //
 // Whether the chunk stores payloads is fixed at creation (see StoreVectorPayload) or, for loaded
 // chunks, determined by the presence of the payload file. A chunk that stores payloads expects a
@@ -235,14 +240,17 @@ class IndexWrapperWithExternalPayload : public IndexWrapperBase<Impl, Vector, Di
       return STATUS_FORMAT(
           ServiceUnavailable, "TEST: not enough memory to insert vector $0", vector_id);
     }
-    auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v));
     if (payloads_) {
       RSTATUS_DCHECK(
           !payload.empty(), InvalidArgument,
           "Vector $0 has no payload, while the chunk stores payloads", vector_id);
-      payloads_->Insert(slot, payload);
+      payload = payloads_->Store(payload);
     } else {
       DCHECK(payload.empty());
+    }
+    auto slot = VERIFY_RESULT(this->impl().DoInsertVector(vector_id, v, payload));
+    if (payloads_) {
+      payloads_->Assign(slot, payload);
     }
     return Status::OK();
   }

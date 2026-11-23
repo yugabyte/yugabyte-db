@@ -139,6 +139,7 @@ The fast-path COPY is applied only when all of the following conditions are met:
 2. The `ROWS_PER_TRANSACTION` option is not specified in the COPY command.
 3. The target table does not have any triggers, rules, or foreign key constraints defined.
 4. The COPY command is executed **outside** of an explicit transaction.
+5. The target table is not a partitioned table. A COPY directly into a partition can still use the fast path.
 
 With fast-path enabled, the unit of atomicity is determined by `ysql_session_max_batch_size` rather than `ROWS_PER_TRANSACTION`. For example, if `ysql_session_max_batch_size` is set to 3072, which means at most 3072 writes will be included in the same batch. For a table without indexes, this results in an atomic unit of 3072 rows. For a table with two indexes, the unit of atomicity will be 1024 rows which ensure the 1024 rows and their indexes are written atomically. Only use fast-path COPY if this level of atomicity aligns with your requirements.
 

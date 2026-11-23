@@ -145,7 +145,7 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
       validateFirewallTags(provider, apiClient, validationErrorsMap, gcpInfoJson);
 
       // Verify NTP server is valid IP/hostname
-      validateNtpServers(provider, detailsJson, validationErrorsMap);
+      validateNtpServers(provider, processedProvider, validationErrorsMap);
     }
 
     if (!validationErrorsMap.isEmpty()) {
@@ -557,19 +557,6 @@ public class GCPProviderValidator extends ProviderFieldsValidator {
           log.error("Failed to validate GCP Firewall Tags", e);
           validationErrorsMap.put(jsonPath, e.getMessage());
         }
-      }
-    }
-  }
-
-  private void validateNtpServers(
-      Provider provider, JsonNode detailsJson, SetMultimap<String, String> validationErrorsMap) {
-    if (provider.getDetails().ntpServers != null) {
-      try {
-        validateNTPServers(provider.getDetails().ntpServers);
-      } catch (PlatformServiceException e) {
-        log.error("Failed to validate GCP NTP Servers", e);
-        validationErrorsMap.put(
-            detailsJson.get("ntpServers").get(0).get("jsonPath").asText(), e.getMessage());
       }
     }
   }

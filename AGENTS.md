@@ -26,6 +26,8 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
 
+When working on YBA (`managed/`), refer to `managed/AGENTS.md`
+
 ### Meko datapacks (`MEKO.md`)
 
 A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's

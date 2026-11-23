@@ -465,19 +465,29 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 };
 
 // Checks that the pg_cron launcher, a long-lived background worker, takes a fresh origination
-// time for each of its transactions, so it keeps working after work that originated earlier
-// starts being refused.
+// time for each of its transactions rather than reusing its start time, so that once work that
+// originated earlier starts being refused, its later transactions are not refused.
 TEST_F(PgCronTest, LauncherStampsFreshOriginationTime) {
+  // The launchers started with the cluster, before this cutoff.  Refusal turns on only after at
+  // least two 1s job runs, so every launcher transaction still in flight then originated after it.
+  const auto cutoff_micros = GetCurrentTimeMicros();
   ASSERT_OK(ResultToStatus(Schedule1SecInsertJob()));
   ASSERT_OK(WaitForRowCountAbove(2));
   const auto launcher_pids = ASSERT_RESULT(GetLauncherPids());
+  // A launcher that restarted after the cutoff would not show a stale stamp.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", i));
+    ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(Format(
+        "SELECT backend_start < to_timestamp($0 / 1000000.0) FROM pg_stat_activity "
+        "WHERE backend_type = 'pg_cron launcher'", cutoff_micros))));
+  }
 
-  // Refuse work that originated before now.  The launchers started before now, so a launcher
-  // still stamping its start time would have its writes to cron.job_run_details refused, exit,
-  // and be restarted by the postmaster; the unchanged pids rule that out.
+  // Refuse work that originated before the cutoff.  A launcher still stamping its start time
+  // would have its writes to cron.job_run_details refused, exit, and be restarted by the
+  // postmaster; the unchanged pids rule that out.
   ASSERT_OK(cluster_->SetFlagOnTServers(
       "TEST_persistence_reject_stamped_before_ht",
-      std::to_string(HybridTime::FromMicros(GetCurrentTimeMicros()).ToUint64())));
+      std::to_string(HybridTime::FromMicros(cutoff_micros).ToUint64())));
   const auto row_count = ASSERT_RESULT(GetRowCount());
   ASSERT_OK(WaitForRowCountAbove(row_count + 3));
   ASSERT_EQ(ASSERT_RESULT(GetLauncherPids()), launcher_pids);

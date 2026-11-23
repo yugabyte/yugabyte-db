@@ -44,7 +44,8 @@ SUBDIRS = \
 	utils \
 	$(top_builddir)/src/timezone \
 	jit \
-	ybgate
+	ybgate \
+	yb_online_schema_change
 
 include $(srcdir)/common.mk
 

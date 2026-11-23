@@ -53,7 +53,7 @@ public class TestPgRegressIsolationWithoutWaitQueues extends BasePgRegressTest {
   // the Postgres port instead, like TestPgRegressLock.
   @BypassConnMgr(reason = BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED)
   public void testPgRegressWithoutSkipPrefixLocks() throws Exception {
-    runIsolationRegressTest("yb_without_wait_queues_schedule_skip_prefix_locks_off");
+    runIsolationRegressTest("yb_without_wait_queues_skip_prefix_locks_off_schedule");
   }
 
   @Test

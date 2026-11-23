@@ -424,6 +424,7 @@ typedef enum BackendType
 	YB_GLOBAL_VIEW_BACKEND,
 	YB_XCLUSTER_DDL_QUEUE_BACKEND,
 	YB_XCLUSTER_SETUP_BACKEND,
+	YB_OSC_BACKFILL_BACKEND,
 } BackendType;
 
 /*
@@ -431,10 +432,10 @@ typedef enum BackendType
  * other per-BackendType arrays are indexed by MyBackendType and built from
  * postmaster/proctypelist.h.
  * postmaster.c's BackendTypeMask is a uint32 bitmask, and requires
- * BACKEND_NUM_TYPES < 32. So there's room for one more type before the mask
- * needs widening.
+ * BACKEND_NUM_TYPES < 32. So the mask needs widening before another type is
+ * added.
  */
-#define BACKEND_NUM_TYPES (YB_XCLUSTER_SETUP_BACKEND + 1)
+#define BACKEND_NUM_TYPES (YB_OSC_BACKFILL_BACKEND + 1)
 
 extern PGDLLIMPORT BackendType MyBackendType;
 

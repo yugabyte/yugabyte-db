@@ -849,7 +849,10 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
-  } else if (CouldBeExecutedInParallel(req)) {
+  // A scan limited to one tablet by exec_params.partition_key must not go parallel: the parallel
+  // path ignores the partition boundary, so a backfill's resume key would fall outside its tablet
+  // and the backfill would never finish.
+  } else if (!exec_params_.partition_key && CouldBeExecutedInParallel(req)) {
     return PopulateParallelSelectOps();
   } else {
     // No optimization.
@@ -1409,10 +1412,8 @@ void PgDocReadOp::SetBackfillSpec() {
 }
 
 void PgDocReadOp::SetReadTimeForBackfill() {
-  if (exec_params_.is_index_backfill) {
+  if (exec_params_.backfill_read_time) {
     read_op_->read_request().set_is_for_backfill(true);
-    // TODO: Change to RSTATUS_DCHECK
-    DCHECK(exec_params_.backfill_read_time);
     read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
   }
 }

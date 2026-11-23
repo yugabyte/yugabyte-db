@@ -9,11 +9,12 @@ Migrations are run in a special YSQL upgrade mode that changes some expectations
 executed and allows some new grammar - see the next section for details.
 
 Migration scripts should be designed idempotent - i.e. in such a way so that re-running them
-multiple times would be okay. `upgrade_ysql` itself re-runs a whole script after a serialization
-failure (e.g. a read restart caused by concurrent DDL), so any prefix of a script may already have
-been committed when it runs. In particular, re-running a migration must not change any catalog
-OIDs: when a migration touches an object that already exists, modify it in place rather than
-dropping and recreating it (see "Note on modifying an existing catalog object" below).
+multiple times would be okay. `upgrade_ysql` itself re-runs a whole script after an error caused by
+concurrent activity - a serialization failure (e.g. a read restart caused by concurrent DDL) or a
+deadlock - so any prefix of a script may already have been committed when it runs. In particular,
+re-running a migration must not change any catalog OIDs: when a migration touches an object that
+already exists, modify it in place rather than dropping and recreating it (see "Note on modifying
+an existing catalog object" below).
 
 The script will be run in the scope of a single transaction, unless you explicitly start a migration
 with `BEGIN`. Unfortunately, according to YugabyteDB limitations, DDLs are executed in their own

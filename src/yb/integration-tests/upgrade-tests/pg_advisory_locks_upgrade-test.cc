@@ -23,19 +23,25 @@ namespace yb {
 class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
                                   public ::testing::WithParamInterface<uint32_t> {
  public:
-  PgAdvisoryLocksUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
+  PgAdvisoryLocksUpgradeTest() : UpgradeTestBase(kBuild_2_31_0_1900) {}
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     AddUnDefOkAndSetFlag(
         opts.extra_master_flags, "num_advisory_locks_tablets", Format("$0", GetParam()));
+    // A leader move while a backend is blocked on an advisory lock leaves the waiter in the old
+    // leader's wait queue, where pg_locks no longer reports it (#36672). Leaders can change after
+    // the load balancer has reported idle (e.g. via failure-detection elections after the rolling
+    // restart), leaving them unbalanced, so waiting for idle cannot prevent a later leader
+    // balancing move. Disable leader balancing until #36672 is fixed.
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "load_balancer_max_concurrent_moves", "0");
     UpgradeTestBase::SetUpOptions(opts);
   }
 
   Status TestBasicFunctionality() {
     // The pg_advisory_locks tablets are created before every tserver has registered, so right after
-    // startup the load balancer adds replicas and moves leaders. A leader move while a backend is
-    // blocked on an advisory lock strands the waiter in the old leader's wait queue until the
-    // acquire deadline, so let the cluster settle before taking any locks.
+    // startup the load balancer adds and removes replicas. Removing a leader replica steps the
+    // leader down even with load_balancer_max_concurrent_moves=0, which would leave a lock waiter
+    // in the old leader's wait queue, so let the cluster settle before taking any locks.
     RETURN_NOT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client_, 5min * kTimeMultiplier));
 
     auto conn1 = VERIFY_RESULT(cluster_->ConnectToDB());

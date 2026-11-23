@@ -173,7 +173,6 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {
@@ -930,11 +929,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status ExecuteYBAdminCommand(
       const std::string& command_name, const std::vector<string>& command_args);
 
+  Result<std::string> ExecuteYBAdminCommand(
+      const std::string& master_addresses, const std::string& command_name,
+      const std::vector<string>& command_args);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
 
   void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& slot_name);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

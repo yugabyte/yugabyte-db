@@ -282,6 +282,8 @@ ALTER EXTENSION pg_stat_statements UPDATE TO '1.13-yb-1.0';
  docdb_prevs                 | bigint                   |           |          | 
  docdb_read_time             | double precision         |           |          | 
  docdb_write_time            | double precision         |           |          | 
+ docdb_bloom_filter_useful   | bigint                   |           |          | 
+ docdb_bloom_filter_checked  | bigint                   |           |          | 
 
 SELECT count(*) >= 0 AS callable FROM pg_stat_statements;
  callable 

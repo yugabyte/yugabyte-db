@@ -9,3 +9,4 @@ test: pg_hint_plan
 # test: plpgsql
 test: hint_table
 test: yb.orig.hint_table
+test: yb.orig.leading

@@ -89,6 +89,8 @@ class XClusterPersistenceGateTest : public PgMiniTestBase {
         narrow_cast<uint32_t>(ToMilliseconds(kXClusterLeaseDuration));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_persistence_gate) = true;
+    // Tests here locate or move tablet leaders, or depend on status tablet leaders staying put.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -393,7 +395,6 @@ TEST_F(XClusterPersistenceGateTest, RefusesCommitReceivedBeforeStop) {
 // Checks that while the TServer that Postgres uses holds no lease, it refuses YSQL inserts, and
 // accepts them again once it regains its lease.
 TEST_F(XClusterPersistenceGateTest, SessionRefusesDmlWithoutLease) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   const auto database = ASSERT_RESULT(PrepareDatabase("yugabyte"));
   auto conn = ASSERT_RESULT(ConnectToDB(database.name));
   // Only Postgres's TServer (kPgTsIndex) will lose its lease in this test.  Move t's leader to
@@ -434,7 +435,6 @@ TEST_F(XClusterPersistenceGateTest, LeaderFailsClosedWithoutLease) {
   // Postgres's TServer (kPgTsIndex) keeps its lease in this test, so PgClientSession lets the
   // insert through to the leader.
   constexpr size_t kLeaderTsIndex = kPgTsIndex + 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(MoveTableLeader("t", kLeaderTsIndex));
   ASSERT_OK(MoveTableLeader(client::kTableName.table_name(), kLeaderTsIndex));
   const auto initial_tserver_refusals = SumTServerRefusals();
@@ -636,8 +636,9 @@ void XClusterPersistenceGateTest::TestAbortsTransactionWaitingForLock() {
 
   // Now we have the waiting connection wait on the advisory lock, causing it to queue up waiting
   // for that lock to be freed.
-  TestThreadHolder thread_holder;
+  // Declared before thread_holder so it outlives the thread on an early return.
   Status waiting_status;
+  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&waiting_conn, &waiting_status] {
     waiting_status = ResultToStatus(waiting_conn.Fetch("SELECT pg_advisory_xact_lock(1)"));
   });
@@ -802,6 +803,14 @@ TEST_F(XClusterPersistenceGateMultiMasterTest, CatalogWriteNotJudgedByEarlierTer
 
   // Another master blocks the database, then the first leader becomes leader again.
   ASSERT_OK(cluster_->StepDownMasterLeader());
+  // The step down is asynchronous; until it completes the first leader rejects catalog writes.
+  ASSERT_OK(WaitFor(
+      [this, &first_leader_uuid] {
+        // No leader is expected mid step-down; keep polling.
+        auto leader = cluster_->GetLeaderMiniMaster();
+        return leader.ok() && (*leader)->permanent_uuid() != first_leader_uuid;
+      },
+      30s * kTimeMultiplier, "Another master is leader"));
   ASSERT_OK(StopPersisting(database));
   ASSERT_OK(cluster_->StepDownMasterLeader(first_leader_uuid));
   auto* first_leader = ASSERT_RESULT(GetMiniMaster(first_leader_uuid));

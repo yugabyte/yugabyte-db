@@ -256,6 +256,11 @@ TEST_F_EX(SecureConnectionTest, Compression, SecureConnectionCompressionTest) {
 class SecureFIPSTest : public SecureConnectionTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_openssl_require_fips) = true;
+    // Load the FIPS config before YBTest::SetUp() runs curl_global_init(). Since curl 8.23.0
+    // that draws random bytes from OpenSSL, and any fetch before the FIPS config is loaded
+    // activates the non-FIPS "default" provider as a fallback. Servers are unaffected: they
+    // call InitOpenSSL() in Init(), before anything uses curl.
+    rpc::InitOpenSSL();
     SecureConnectionTest::SetUp();
   }
 };

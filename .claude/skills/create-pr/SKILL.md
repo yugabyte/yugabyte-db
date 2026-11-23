@@ -79,6 +79,7 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    If you find a candidate, surface it to the user and ask them to confirm it's the one to use *before* asking them to supply a fresh one. Only prompt for a new reference if no candidate is found or the user rejects the candidate. Acceptable forms are:
    - A GitHub issue number (e.g., `#31151`)
    - A JIRA ticket (e.g., `PLAT-20518`)
+   - Several of either, all GitHub or all JIRA, for a PR that fixes more than one issue
    - Offer to **auto-create** a GitHub issue or JIRA ticket if the user doesn't have one yet. If they accept, invoke the **`/create-issue`** skill to file it (GitHub issue for core DB code, JIRA ticket for `managed/` platform work), then capture the issue number / JIRA key it reports back. Since the issue tracks this PR's work, tell `/create-issue` to assign it to the invoker (`@me`) rather than leaving it unassigned.
 
    - Don't reuse an issue across multiple in-flight master PRs — create a fresh issue (via `/create-issue`) when starting unrelated work, even if a related closed/merged PR used a similar issue.
@@ -94,26 +95,29 @@ Infer as much as you can from context first, then **batch-confirm with the user 
    - `build-support/`, `cmake_modules/`, `.github/` → `Build`
    - mixed/cross-cutting → ask the user
 
-3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>] <Component>:` prefix if present). Confirm with the user.
+3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>,...] <Component>:` prefix if present). Confirm with the user.
 
 ### Step 4: Build the title
 
 Construct the title in the format:
 
 ```
-[<#GH issue> or <JIRA>] <Component>: <Title>
+[<issue>,...] <Component>: <Title>
 ```
+
+Each `<issue>` is a GitHub issue (`#NNNN`) or a JIRA key (`PROJECT-NNN`).  List every issue the change fixes, comma-separated with no spaces, all GitHub or all JIRA.
 
 Examples:
 - `[#31151] DocDB: Fix SamplingProfilerTest.EstimatedBytesAndCount in release`
+- `[#31151,#31152] DocDB: Fix two flakes in SamplingProfilerTest`
 - `[PLAT-20518] YBA: Fix full move edit universe to populate userIntentOverrides during configure call`
 
-**Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
+**Pass only the `<Component>: <Title>` part to `create-pr.sh -t`** — the script prepends `[<issue>,...] ` from `-i` automatically. The script validates both inputs and rejects invalid ones with `exit 1`:
 
 - `-i`: must be a GH issue (`#NNNN` or bare `NNNN`) or a JIRA key (`PROJECT-NNN`, where `PROJECT` is uppercase letters only — no digits). A **comma-separated list** is also accepted for a change that closes several issues (e.g. `31151,#31152`) — the script joins the tokens with `,` and renders them as `[#a,#b] <Component>: <Title>`. The list must be **all GH or all JIRA**; mixing them, or putting a space after the comma, is rejected by `.github/workflows/pr-title.yml` (which gates every PR that touches code — it carries `paths-ignore` for `README.md` and `docs/**`). Anything else is rejected by the script.
 - `-t`: must match `^[A-Za-z][A-Za-z0-9]+:[[:space:]].+` — i.e. a Component prefix (letter-led, alphanumeric, ≥2 chars), then `: `, then a non-empty description. Known components: `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build`.
 
-If the user supplies a title that already includes `[<issue>] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
+If the user supplies a title that already includes `[<issue>,...] ` or doesn't match the format, fix it before calling the script — don't rely on the script's auto-strip (it only handles the leading `[*] ` case) and don't surprise the user with an `exit 1` after they confirmed the metadata.
 
 ### Step 4b: Cut the prose the branch added
 
@@ -134,7 +138,7 @@ a dirty tree.
 
 > **Confidentiality — final scrub before publishing.** The repo and every PR are public. Before invoking the script, re-read the description, test plan, upgrade-rollback notes, the commit messages on the branch, **the branch name itself** (it becomes the public PR head ref), **and the test code being added**, and confirm none of the following appear: customer names or identifiers (universe UUIDs, account IDs, support cases, environment names, region/zone names); PII (real names / emails / phone numbers / postal addresses / IP addresses — use RFC 5737/3849 documentation ranges in tests); unanonymized customer schemas (table / column / query text / query plans / sample rows from a real customer — reconstruct a synthetic reproducer); credentials, tokens, certificates, private keys, or license keys; internal-only hostnames, URLs, Grafana/Slack/Linear links, or vault paths; unreleased internal information (roadmap, SLAs, embargoed security findings, internal infra hostnames). See the top of this skill and `src/AGENTS.md` § Confidentiality for the full rule. If unsure whether a string is sensitive, don't write it down — ask the user.
 
-Once you have the issue (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
+Once you have the issue or issues (Step 3.1), title (Step 4), and reviewers (Step 3 if user-supplied), write the description and test plan to **separate** temp files and hand everything to the script.
 
 Say **why**, always — a reviewer who has to reverse-engineer the motivation is the expensive case — then what changed, and whatever the reader must *act* on (new gflags, upgrade/rollback consequences, migration steps). Not a narration of the diff. Keep the test plan to what was actually run. See [`AGENTS.md` § Prose discipline](../../../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume).
 
@@ -153,7 +157,7 @@ The script runs `lint.sh --rev <upstream>/master` and refuses to push if it isn'
 
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
-- **`-t`**: title body **without** the `[<issue>] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
+- **`-t`**: title body **without** the `[<issue>,...] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
 - **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
@@ -208,19 +212,14 @@ The merge commit never reaches `master` (the repo squash-merges every PR), so it
 
 ## Stacked PRs
 
-A stack is for a feature that splits into several dependent changes. Reach for it only when the user asks for one; a single PR is the default.
-
-**Load the `gh-stack` skill** (`gh skill install github/gh-stack gh-stack --scope user` if it is missing) and follow it for building, editing, rebasing, syncing, and merging the stack. This section only covers what this repo adds to it:
-
-- **Name every layer `feature-stack/<feature-name>/<change-name>`.** That prefix is the only one the rulesets exempt from `Block Creations`, `Require PR`, and `yb-required`, and stack branches must live in `yugabyte/yugabyte-db` because GitHub has no cross-fork stacks. `git-push.sh` warns on a name that isn't this two-segment shape but still pushes.
-- **The remote is the one pointing at `yugabyte/yugabyte-db`**, never your fork. Pass it wherever `gh stack` takes `--remote`.
-- **Push with `git-push.sh`, not `gh stack push`.** For a stack branch it lints the whole stack from the top layer, then runs `gh stack push`. The no-rewrite rule in [Pushing follow-up commits](#pushing-follow-up-commits) does not apply: GitHub merges a stack only when its history is linear, so cascading rebases and lease-protected force-pushes are the normal update, even mid-review. Never `git merge` the trunk or another layer into a stack branch.
-- **Open PRs with `create-pr.sh`, not `gh stack submit`**, one layer at a time from the bottom up, because `submit`'s generated titles fail the pr-title check. Don't pass `-b`. The script opens the PR as a draft, links it into the stack with `gh stack link`, and then marks it ready unless you passed `-D`.
+A `feature-stack/<feature>/<change>` branch is a layer of a PR stack.  **Load the `stack-prs` skill
+first**; it holds this repo's stack rules (naming, remote, pushing, opening PRs bottom-up, and
+the history-rewrite exception) on top of the upstream `gh-stack` skill.
 
 ## Notes
 
 - **Never push to `yugabyte/yugabyte-db`, or use `gh pr create`.** Always use the create-pr.sh script. (A `feature-stack/<feature>/<change>` branch does go to upstream, through `git-push.sh` and `gh stack`. That is the sanctioned stacked-PR path; see [Stacked PRs](#stacked-prs).)
-- The title format is strict: `[<issue>] <Component>: <Title>`. Don't deviate.
+- The title format is strict: `[<issue>,...] <Component>: <Title>`. Don't deviate.
 - **Never rewrite a PR's history once it is ready for review** (see [Pushing follow-up commits](#pushing-follow-up-commits)); `git-push.sh` refuses such a push. Stack branches are the exception; see [Stacked PRs](#stacked-prs).
 - Jenkins does not start on push: some `bld-*` run waits for approval in the `jenkins` environment, and merge needs a passing build on the latest commit. Don't trigger it automatically; when the user says the PR is ready for CI, run `.agents/scripts/trigger-jenkins.sh <pr-number>` (or they click "Review deployments" -> Approve on the PR).
 - `gh pr create --repo yugabyte/yugabyte-db` opens the PR in the upstream repo even when the branch lives on a fork — the `head:` field is inferred from the tracking branch.

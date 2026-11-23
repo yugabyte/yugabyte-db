@@ -20,7 +20,7 @@ const MonoDelta kRpcTimeout = 5s * kTimeMultiplier;
 // Test upgrade and rollback with a simple workload with updates and selects.
 class AutoFlagUpgradeTest : public UpgradeTestBase {
  public:
-  AutoFlagUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  AutoFlagUpgradeTest() : UpgradeTestBase(kBuild_2_31_0_1900) {}
 
   Result<master::PromoteAutoFlagsResponsePB> PromoteAutoFlags(AutoFlagClass flag_class) {
     LOG(INFO) << "Promoting AutoFlags " << flag_class;

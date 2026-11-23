@@ -96,7 +96,21 @@ void BoundedRocksDbIterator::UseFastNext(bool value) {
 }
 
 void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
-  iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
+  // A split child may still contain parent keys below its lower bound until post-split compaction.
+  // Adjust seek_key up to the lower bound (the same way as Seek does), otherwise Entry() may return
+  // KeyValueEntry::Invalid(), which is treated as no more data by the caller. No upper bound clamp
+  // is required: this method is used only for forward scans (the merging iterator reports a DFATAL
+  // otherwise), where a key past the upper bound already means the end of data. Keep an empty
+  // seek_key unchanged, since it is used only to update the filter, not to position files.
+  iterator_->UpdateFilterKey(
+      user_key_for_filter, seek_key.empty() ? seek_key : ClampToLowerKeyBound(seek_key));
+}
+
+Slice BoundedRocksDbIterator::ClampToLowerKeyBound(Slice key) const {
+  if (!key_bounds_->lower.empty() && key.compare(key_bounds_->lower) < 0) {
+    return key_bounds_->lower;
+  }
+  return key;
 }
 
 }  // namespace yb::docdb

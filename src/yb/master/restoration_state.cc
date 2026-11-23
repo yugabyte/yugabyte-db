@@ -222,17 +222,28 @@ Status RestorationState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_ba
 
 Status RestorationState::StoreToKeyValuePair(docdb::KeyValuePairPB* pair) {
   ++version_;
+  SysRestorationEntryPB entry;
+  RETURN_NOT_OK(ToEntryPB(ForClient(FLAGS_TEST_update_aggregated_restore_state), &entry));
+  return EntryToKeyValuePair(entry, pair);
+}
+
+Status RestorationState::StoreCompletionToWriteBatch(
+    HybridTime complete_time, docdb::KeyValueWriteBatchPB* write_batch) {
+  SysRestorationEntryPB entry;
+  RETURN_NOT_OK(ToEntryPB(ForClient(FLAGS_TEST_update_aggregated_restore_state), &entry));
+  entry.set_complete_time_ht(complete_time.ToUint64());
+  // Higher version, so that applying the write replaces this entry.
+  entry.set_version(version_ + 1);
+  return EntryToKeyValuePair(entry, write_batch->add_write_pairs());
+}
+
+Status RestorationState::EntryToKeyValuePair(
+    const SysRestorationEntryPB& entry, docdb::KeyValuePairPB* pair) {
   dockv::KeyBytes encoded_key = VERIFY_RESULT(
       EncodedKey(SysRowEntryType::SNAPSHOT_RESTORATION, restoration_id_.AsSlice(), &context()));
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   faststring value;
   value.push_back(dockv::ValueEntryTypeAsChar::kString);
-  SysRestorationEntryPB entry;
-  ForClient for_client = ForClient::kFalse;
-  if (FLAGS_TEST_update_aggregated_restore_state) {
-    for_client = ForClient::kTrue;
-  }
-  RETURN_NOT_OK(ToEntryPB(for_client, &entry));
   RETURN_NOT_OK(pb_util::AppendToString(entry, &value));
   pair->set_value(value.data(), value.size());
   return Status::OK();
