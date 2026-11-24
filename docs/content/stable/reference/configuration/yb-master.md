@@ -1859,6 +1859,30 @@ Default: `900` (15 minutes)
 
 The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
+In v2026.2.0 and later, a long-running YSQL statement or transaction can instead pin its snapshot, which holds back history retention for its database beyond this interval. By default, only DDL statements pin. See [History retention for long-running transactions](../../../explore/transactions/history-retention/).
+
+##### --enable_db_history_retention_pins
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+Enables [history retention pins](../../../explore/transactions/history-retention/). When `false`, YB-TServers stop reporting pins and stop applying them, and history retention uses only [--timestamp_history_retention_interval_sec](#timestamp-history-retention-interval-sec). Set this flag to the same value on all YB-Masters and YB-TServers.
+
+##### --db_history_retention_pin_max_txn_age_sec
+
+{{% tags/wrap %}}
+
+Default: `86400` (24 hours)
+{{% /tags/wrap %}}
+
+Available in v2026.2.0 and later.
+
+The hard cap on history retention pins. History older than this is removed by compaction even if a pin covers it, and a transaction that reads at that history fails with `Snapshot too old`. YB-TServers apply the cap to the fixed retention interval too, so don't set this below `--timestamp_history_retention_interval_sec`. Set this flag to the same value on all YB-Masters and YB-TServers.
+
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
 {{% tags/wrap %}}
