@@ -3492,6 +3492,10 @@ public class PlacementInfoUtil {
   }
 
   public static UUID getDefaultRegion(Cluster cluster) {
+    if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+      // defaultRegion is only used for old geo-partitioning.
+      return null;
+    }
     if (cluster.clusterType == ClusterType.PRIMARY
         && cluster.placementInfo != null
         && !CollectionUtils.isEmpty(cluster.placementInfo.cloudList)) {

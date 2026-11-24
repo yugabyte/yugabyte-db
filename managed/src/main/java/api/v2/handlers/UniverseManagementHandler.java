@@ -1796,7 +1796,14 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
           new UniverseDefinitionTaskParams.PartitionInfo();
       partitionInfo.setDefaultPartition(true);
-      partitionInfo.setPlacement(cluster.getOverallPlacement());
+      PlacementInfo placement = cluster.getOverallPlacement();
+      if (placement != null) {
+        // Cloning placement.
+        placement = Json.fromJson(Json.toJson(placement), PlacementInfo.class);
+        // Clearing default regions.
+        placement.cloudList.forEach(cloud -> cloud.defaultRegion = null);
+      }
+      partitionInfo.setPlacement(placement);
       partitionInfo.setUuid(UUID.randomUUID());
       partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
       partitionInfo.setName("Default");
