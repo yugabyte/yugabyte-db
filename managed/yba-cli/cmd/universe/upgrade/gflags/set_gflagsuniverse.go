@@ -236,12 +236,12 @@ var setGflagsUniverseCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
+		masterDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-master-servers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
+		tserverDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-tservers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -299,10 +299,12 @@ func init() {
 	setGflagsUniverseCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart")
-	setGflagsUniverseCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
-	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+	setGflagsUniverseCmd.Flags().Int32("delay-between-master-servers", 0,
+		"[Optional] Wait after each Master server restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.")
+	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers", 0,
+		"[Optional] Wait after each TServer restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.")
 
 	universeutil.AddRollMaxBatchSizeFlags(setGflagsUniverseCmd)
 

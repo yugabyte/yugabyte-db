@@ -30,8 +30,8 @@ at **MEDIUM**.
 
 ## Change shape
 
-- One logical change per PR. Mechanical preparation (a Go client bump, a shared-helper refactor)
-  ships first, as its own PR.
+- One logical change per PR. A shared-helper refactor ships first, as its own PR. A Go client
+  bump ships with the feature that needs it.
 - A defect found in review is removed in the same change, or filed with a concrete fix plan. A
   disabled path left in the tree (a commented-out check, a flag that can never be set) is a
   finding.
@@ -46,9 +46,14 @@ Most CLI bugs that reach users are update commands that change more than the use
 - **Copy, do not rebuild.** Converting a response type into a request type field by field drops
   every field the conversion forgets, and every field added to the server later. Send the object
   as read, or convert with a helper that has a test which fails when a field is not copied.
-- **Only changed flags.** On update, set a field only when `cmd.Flags().Changed("<flag>")` is
-  true. A flag default (`""`, `0`, `false`, a hard-coded value) sent without that check
-  overwrites the stored value.
+- **Only changed flags.** On update, set a field only when the user gave its flag.
+  - Use `cmd.Flags().Changed("<flag>")` for a bool, a number, a list, and a string that the user
+    may clear to `""`. The flag's presence is the change request: `--enable-x=false` and
+    `--port 0` are values to send, not defaults to skip.
+  - A `util.IsEmptyString` guard is enough for a string that can never be empty on the server
+    (a name, a UUID, a password).
+  - A flag default (`""`, `0`, `false`, a hard-coded value) sent without one of these checks
+    overwrites the stored value.
 - **Server defaults.** For every field the request leaves out, read the server form class
   (`forms/`, `api/v2/models`) and check its default. A non-null default (default ports, a 24 h
   interval, `null` meaning "delete all") replaces the stored value. Send the current value, and
@@ -68,23 +73,34 @@ Most CLI bugs that reach users are update commands that change more than the use
   **exactly**. Substring match is for `list` and `describe` filters only.
 - Use the server's case rule. When the server compares with `ieq`, the CLI uses
   `strings.EqualFold`.
-- After filtering, require exactly one match. Zero is an error. More than one is an error that
-  lists the candidates. Taking `[0]` of a filtered list is a finding.
+- After filtering, zero matches is an error. Taking `[0]` is correct only after an exact match
+  on a name that YBA keeps unique per customer (universe, storage config, KMS config,
+  certificate label). After a substring match, or on a name that is not unique, more than one
+  match is an error that lists the candidates; taking `[0]` there is a finding.
 - Filter on every attribute that makes the object unique: name and CPU architecture for image
   bundles, platform and architecture for release artifacts, the type named by `--instance-type`
   rather than the provider's first type.
-- Every loop that pages through results rebuilds the request after it changes the offset, as
-  `cmd/alert/configuration/list_configuration.go` does. A second hand-written pager is a finding;
-  share one.
+- A command that reads a paged API (an offset and a limit) reads every page, not only the
+  first. Its loop rebuilds the request after it changes the offset, as
+  `cmd/alert/configuration/list_configuration.go` does. A loop that reuses the first request
+  fetches the first page again and again.
 
 ## Server contract
 
 - **Go client pin.** The CLI decodes responses through the pinned `platform-go-client` in
   `go.mod`. A field missing from that model is dropped on read and reset on write. When a command
-  sends back an object whose model is older than the server, update the client first, in a
-  separate change: run `sbt swaggerGen`, then `make publish` in `managed/client/go` (it opens a
-  draft PR in `platform-go-client`), and after that PR merges, `make updateclient` here. A CLI
-  workaround for a missing model field is a finding.
+  sends back an object whose model is older than the server, update the client: run
+  `sbt swaggerGen`, then `make publish` in `managed/client/go` (it opens a draft PR in
+  `platform-go-client`), and after that PR merges, `make updateclient` here, in the same change
+  as the feature. Every client PR needs a review from Deepti-yb; `make publish` requests it. A
+  bump to a client commit that Deepti-yb did not review is a finding.
+- **New APIs use the generated client.** A command for a new API calls it through the generated
+  client. A hand-written model or a call through `internal/client/rest.go` for a new API is a
+  finding; publish the client instead. The existing hand-written models and REST calls are for
+  older APIs that the client cannot decode.
+- **Client bump with API breaks.** The client PR body lists the Go API changes that break callers
+  (apidiff). A change that runs `make updateclient` fixes every listed break the CLI uses in the
+  same change. A listed break in a GA API with no reason in the yugabyte-db PR is a finding.
 - **Version gates.** The CLI supports YBA from `MinCLIStableVersion` and `MinCLIPreviewVersion`
   (`cmd/util/constants.go`). A command or flag that needs a newer API calls
   `CheckValidYBAVersionForCommand` (or a `*YBAVersionCheck` helper in `internal/client/`) with
@@ -131,8 +147,12 @@ Any answer but "the same thing" is a finding, unless the old behaviour changed s
 did not ask for. A note in the help text or the release notes does not make a change safe.
 
 - Command paths, flag names, short flags, flag defaults, JSON output (`-o json`) fields and exit
-  codes are used by scripts and the MCP server. Renaming or removing one is a finding. Add the
-  new name and keep the old one as a deprecated alias.
+  codes are used by scripts and the MCP server. To rename a GA flag, add the new name and keep
+  the old one with `MarkDeprecated`, whose message names the replacement. Remove a deprecated GA
+  flag only after a deprecation period that the PR states, with a "Breaking change" note (as
+  `--enable-volume-encryption` was, a year after its deprecation, in PLAT-23249). Removing a GA
+  flag or command without that deprecation is a finding. A preview flag or command may change
+  without it.
 - Changing a flag's default changes what every existing script does. It is a finding unless the
   old default was a bug that changed state the user did not ask for.
 - A command that starts a YBA task honours the global `--wait` flag (default true) and waits
@@ -147,9 +167,14 @@ did not ask for. A note in the help text or the release notes does not make a ch
 
 ## Errors, output and secrets
 
-- Failures go through `util.FatalHTTPError(resp, err, entity, operation)` for API errors and
-  `logrus.Fatalf` with `formatter.Colorize(..., formatter.RedColor)` otherwise. An API error
-  swallowed into a success message, or a `return` after a failed call that exits 0, is a finding.
+- API errors go through the helpers that decode YBA's error body. In a command's `Run`, a failed
+  call ends with `util.FatalHTTPError(resp, err, entity, operation)`. A helper that returns an
+  error, so its caller can fall back or add context, returns
+  `util.ErrorFromHTTPResponse(resp, err, entity, operation)`. Printing the raw `err` or response
+  body is a finding.
+- Other failures use `logrus.Fatalf` with `formatter.Colorize(..., formatter.RedColor)`. An API
+  error swallowed into a success message, or a `return` after a failed call that exits 0, is a
+  finding.
 - No unchecked type assertion on `map[string]interface{}` data from the server. A missing key
   panics; use `v, ok := ...` and treat a missing key as unset.
 - A secret (password, token, secret ID, kubeconfig, webhook URL, API key) is never printed in
@@ -178,9 +203,12 @@ did not ask for. A note in the help text or the release notes does not make a ch
 - **Flag names** are kebab-case (`--storage-config-name`). The short flags `-n` (name),
   `-u` (uuid), `-f` (force) and `-s` (skip-validations) mean the same thing on every command;
   a new flag does not reuse one of these letters for another meaning.
-- **PreRun checks input, Run calls the API.** `PreRun` reads the flags and, when a needed value
-  is missing, calls `cmd.Help()` and exits with a red error, before any API call. A version gate
-  runs before the first API call that needs it.
+- **PreRun checks input, Run calls the API.** A command with input that `MarkFlagRequired` cannot
+  check (an empty value, flags that exclude each other, a flag needed only with another) checks
+  it in `PreRun`. When a needed value is missing, it calls `cmd.Help()` and exits with a red
+  error, before any API call. A command whose only input is required flags, or none (most
+  `list` commands), needs no `PreRun`. A version gate runs before the first API call that needs
+  it.
 - **Copyright header.** Every new Go file starts with the `Copyright (c) YugabyteDB, Inc.` header.
 - **Flag usage text** starts with `[Required]` or `[Optional]`. An always-required flag also calls
   `MarkFlagRequired`. A flag that is required only in some cases is `[Optional]` and names the

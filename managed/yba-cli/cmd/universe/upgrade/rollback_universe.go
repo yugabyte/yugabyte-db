@@ -77,11 +77,11 @@ var upgradeRollbackCmd = &cobra.Command{
 		universeUUID := universe.GetUniverseUUID()
 
 		upgradeOption := util.MustGetFlagString(cmd, "upgrade-option")
-		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
+		masterDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-master-servers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
+		tserverDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-tservers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -142,9 +142,11 @@ func init() {
 	upgradeRollbackCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Rollback options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime)")
-	upgradeRollbackCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Delay between Master server restarts (in milliseconds).")
-	upgradeRollbackCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Delay between Tserver restarts (in milliseconds).")
+	upgradeRollbackCmd.Flags().Int32("delay-between-master-servers", 0,
+		"[Optional] Wait after each Master server restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.")
+	upgradeRollbackCmd.Flags().Int32("delay-between-tservers", 0,
+		"[Optional] Wait after each TServer restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.")
 	universeutil.AddRollMaxBatchSizeFlags(upgradeRollbackCmd)
 }

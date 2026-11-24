@@ -124,6 +124,27 @@ public class SwaggerGenTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void checkNullableFieldsOptional()
+      throws JsonProcessingException, NoSuchFieldException, IllegalAccessException {
+    getSwaggerSpec();
+    String error = nullableRequiredError();
+    if (error != null) {
+      fail(error);
+    }
+  }
+
+  // A @Nullable field that the spec lists as required becomes a required argument of the
+  // generated client constructor, which breaks every caller of that constructor.
+  private static String nullableRequiredError() {
+    if (PlatformModelConverter.nullableRequiredFields().isEmpty()) {
+      return null;
+    }
+    return "These @Nullable fields are required in the swagger spec. Add"
+        + " @ApiModelProperty(value = \"...\", required = false) to each:\n  "
+        + String.join("\n  ", PlatformModelConverter.nullableRequiredFields());
+  }
+
   // Any newly introduced date type of field in the YBA API should be in the RFC3339 format.
   // This unit test fails if there this is not conformed to.
   @Test
@@ -380,6 +401,10 @@ public class SwaggerGenTest extends FakeDBApplication {
       }
       System.out.println("Generating swagger spec:" + Arrays.toString(args));
       String swaggerSpec = swaggerGenTest.getSwaggerSpec();
+      String nullableError = nullableRequiredError();
+      if (nullableError != null) {
+        throw new IllegalStateException(nullableError);
+      }
       if (checkSwaggerHasChanged) {
         String expectedSwagger = getCurrentSpec(args[0]);
         if (expectedSwagger.length() == swaggerSpec.length()) {

@@ -160,12 +160,12 @@ var upgradeVMImageCmd = &cobra.Command{
 			})
 		}
 
-		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
+		masterDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-master-servers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
+		tserverDelay, err := util.GetInt32FlagIfChanged(cmd, "delay-between-tservers")
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -206,9 +206,11 @@ func init() {
 		"[Optional] Read replica cluster linux OS version name to be applied. "+
 			"Ignored if inherit-from-primary is set to true.")
 
-	upgradeVMImageCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
-	upgradeVMImageCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+	upgradeVMImageCmd.Flags().Int32("delay-between-master-servers", 0,
+		"[Optional] Wait after each Master server restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.")
+	upgradeVMImageCmd.Flags().Int32("delay-between-tservers", 0,
+		"[Optional] Wait after each TServer restart, in milliseconds. "+
+			"Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.")
 
 }

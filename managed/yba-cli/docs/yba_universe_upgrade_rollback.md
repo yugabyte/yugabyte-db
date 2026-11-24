@@ -29,8 +29,8 @@ yba universe upgrade rollback --name <universe-name>
 
 ```
       --upgrade-option string                [Optional] Rollback options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime) (default "Rolling")
-      --delay-between-master-servers int32   [Optional] Delay between Master server restarts (in milliseconds). (default 18000)
-      --delay-between-tservers int32         [Optional] Delay between Tserver restarts (in milliseconds). (default 18000)
+      --delay-between-master-servers int32   [Optional] Wait after each Master server restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.
+      --delay-between-tservers int32         [Optional] Wait after each TServer restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.
       --primary-batch-size int32             [Optional] Number of primary-cluster tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
       --read-replica-batch-size int32        [Optional] Number of read-replica tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
   -h, --help                                 help for rollback
