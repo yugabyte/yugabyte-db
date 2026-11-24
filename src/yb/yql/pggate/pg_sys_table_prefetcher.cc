@@ -354,17 +354,15 @@ class VersionInfoWriter {
 [[nodiscard]] PgSession::CacheOptions BuildCacheOptions(
     yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info,
-    bool completes_connection_prefetch, PrefetchHasStarted prefetch_has_started) {
+    PrefetchHasStarted prefetch_has_started) {
   return {
       .key_group = caching_info.db_oid,
       .key_value = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
       .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode),
       .catalog_version = caching_info.version_info.version,
       .lookup_only = caching_info.mode == PrefetchingCacheMode::TRUST_CACHE_LOOKUP_ONLY,
-      .completes_connection_prefetch = completes_connection_prefetch,
       .send_away_if_fill_in_flight =
-          caching_info.send_away_if_fill_in_flight && !prefetch_has_started,
-      .part_of_connection_prefetch = caching_info.part_of_connection_prefetch
+          caching_info.send_away_if_fill_in_flight && !prefetch_has_started
   };
 }
 
@@ -391,8 +389,10 @@ Result<rpc::CallResponsePtr> Run(
           options.caching_info
               ? std::optional(BuildCacheOptions(
                   arena, session->catalog_read_time(), ops, *options.caching_info,
-                  completes_connection_prefetch, prefetch_has_started))
-              : std::nullopt)),
+                  prefetch_has_started))
+              : std::nullopt,
+          {.part_of_connection_prefetch = options.part_of_connection_prefetch,
+           .completes_connection_prefetch = completes_connection_prefetch})),
       {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse,
        SingleRelationOid(ops, [](const OperationInfo& info) {
          return info.table->pg_table_id().object_oid; })});
@@ -562,7 +562,8 @@ std::string PrefetcherOptions::CachingInfo::ToString() const {
 }
 
 std::string PrefetcherOptions::ToString() const {
-  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit, kind, fetch_size_limit);
+  return YB_STRUCT_TO_STRING(
+      caching_info, fetch_row_limit, kind, fetch_size_limit, part_of_connection_prefetch);
 }
 
 class PgSysTablePrefetcher::Impl {
