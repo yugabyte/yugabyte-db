@@ -11,6 +11,9 @@ package com.yugabyte.yw.common.config;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import io.ebean.DB;
+import io.ebean.Transaction;
+import io.ebean.TransactionCallbackAdapter;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -43,9 +46,10 @@ public class RuntimeConfigCache {
           GlobalConfKeys.blockOperatorApiResources.getKey(),
           GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey());
 
-  // The change listener clears a key inside the transaction that writes it, before the commit, so
-  // a read in between can cache the old value until the next change. An expiry bounds that for the
-  // gflags API redaction key, which turns API redaction and the REDACTED merge-back on or off.
+  // The change listener clears a key, and clears it again when the transaction that writes it ends.
+  // Writes that don't notify the listener, such as RuntimeConfig.setValue or a database restore,
+  // leave the old value cached until the next change. An expiry bounds that for the gflags API
+  // redaction key, which turns API redaction and the REDACTED merge-back on or off.
   private static final Map<String, Integer> EXPIRY_SECONDS =
       Map.of(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), 60);
 
@@ -66,6 +70,29 @@ public class RuntimeConfigCache {
 
             public void processGlobal() {
               log.info("Removed {} from cache", key);
+              removeNowAndAfterTransaction(key);
+            }
+          });
+    }
+  }
+
+  // The listener runs inside the transaction that writes the key, before the commit, and a read on
+  // another connection in between loads the old value. Clearing the key again when the transaction
+  // ends drops that value. A load still running then isn't kept either: the cache stores a load's
+  // value only if the key still maps to that load when it completes.
+  private void removeNowAndAfterTransaction(String key) {
+    cache.remove(key);
+    Transaction transaction = DB.currentTransaction();
+    if (transaction != null && transaction.isActive()) {
+      transaction.register(
+          new TransactionCallbackAdapter() {
+            @Override
+            public void postCommit() {
+              cache.remove(key);
+            }
+
+            @Override
+            public void postRollback() {
               cache.remove(key);
             }
           });
