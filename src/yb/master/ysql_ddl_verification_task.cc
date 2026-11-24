@@ -144,6 +144,63 @@ GetPgCatalogTableScanIterator(
   return iter;
 }
 
+// Postgres' catalog of online schema change jobs (pg_yb_online_schema_change.h).
+constexpr PgOid kPgYbOnlineSchemaChangeTableOid = 8124;
+
+// The status column of online schema change job pg_job_id's row in its database's
+// pg_yb_online_schema_change, or nullopt if the job has no row.
+Result<std::optional<std::string>> PgOnlineSchemaChangeJobStatus(
+    SysCatalogTable* sys_catalog, PgOid database_oid, int64_t pg_job_id,
+    const ReadHybridTime& read_time, HybridTime* read_restart_ht) {
+  auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(
+      GetPgsqlTableId(database_oid, kPgYbOnlineSchemaChangeTableOid), read_time));
+  const auto job_id_col = VERIFY_RESULT(read_data.ColumnByName("job_id")).rep();
+  const auto status_col = VERIFY_RESULT(read_data.ColumnByName("status")).rep();
+  dockv::ReaderProjection projection;
+  projection.Init(read_data.schema(), {job_id_col, status_col});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  PgsqlConditionPB cond;
+  cond.add_operands()->set_column_id(job_id_col);
+  cond.set_op(QL_OP_EQUAL);
+  cond.add_operands()->mutable_value()->set_int64_value(pg_job_id);
+  const dockv::KeyEntryValues empty_key_components;
+  docdb::DocPgsqlScanSpec spec(
+      read_data.schema(), rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
+      docdb::PgsqlConditionPBPtr(&cond), std::nullopt /* hash_code */,
+      std::nullopt /* max_hash_code */);
+  RequestScope request_scope =
+      VERIFY_RESULT(VERIFY_RESULT(sys_catalog->Tablet())->CreateRequestScope());
+  RETURN_NOT_OK(iter->Init(spec));
+  qlexpr::QLTableRow row;
+  const bool found = VERIFY_RESULT(iter->FetchNext(&row));
+  *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
+  if (!found) {
+    return std::nullopt;
+  }
+  return row.GetValue(status_col)->get().string_value();
+}
+
+// The outcome of the online schema change step whose transaction enrolled `pb`, a source table,
+// without changing its schema (YsqlDdlTxnVerifierStatePB.contains_online_schema_change_op). No
+// schema comparison can tell, and the transaction's status is gone once it has applied, so the
+// job's row in pg_yb_online_schema_change, which the step writes, decides: a begin committed iff
+// the row exists.
+Result<std::optional<bool>> OnlineSchemaChangeStepCommitted(
+    SysCatalogTable* sys_catalog, const TableInfo& table, const SysTablesEntryPB& pb,
+    const ReadHybridTime& read_time, HybridTime* read_restart_ht) {
+  if (!pb.has_online_schema_change_job()) {
+    return std::nullopt;
+  }
+  const auto& job = pb.online_schema_change_job();
+  const auto status = VERIFY_RESULT(PgOnlineSchemaChangeJobStatus(
+      sys_catalog, VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table.id())), job.pg_job_id(),
+      read_time, read_restart_ht));
+  if (job.state() == OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN) {
+    return status.has_value();
+  }
+  return std::nullopt;
+}
+
 Result<bool> PgEntryExists(SysCatalogTable& sys_catalog,
                            const TableId& pg_table_id,
                            PgOid entry_oid,
@@ -384,6 +441,15 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     VLOG(3) << "Ysql Create transaction for " << table->ToString()
       << " detected to have succeeded as table found in PG catalog";
     *result = true;
+    return Status::OK();
+  }
+
+  if (!l->is_being_altered_by_ysql_ddl_txn()) {
+    // Enrolled by an online schema change step alone, which changes no schema.
+    *result = VERIFY_RESULT(
+        OnlineSchemaChangeStepCommitted(sys_catalog, *table, l->pb, read_time, read_restart_ht));
+    LOG(INFO) << "Online schema change step on " << table->ToString() << " detected to have "
+              << (result->has_value() ? (**result ? "committed" : "aborted") : "unknown outcome");
     return Status::OK();
   }
 

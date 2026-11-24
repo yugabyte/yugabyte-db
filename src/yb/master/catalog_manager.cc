@@ -7471,7 +7471,15 @@ Status CatalogManager::StartTableBackfill(
   job.set_database_name((*ns_info)->name());
   table_ids.ToJob(&job);
 
-  Status s = online_schema_change_->Start(source_table, job, epoch);
+  std::optional<TransactionMetadata> begin_txn;
+  std::optional<SubTransactionId> begin_sub_txn;
+  if (req->has_transaction()) {
+    begin_txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+    if (req->has_sub_transaction_id()) {
+      begin_sub_txn = req->sub_transaction_id();
+    }
+  }
+  Status s = online_schema_change_->Start(source_table, job, epoch, begin_txn, begin_sub_txn);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
   }

@@ -1487,6 +1487,11 @@ Status PgApiImpl::StartTableBackfill(
       lists.source_leaf_oids, lists.num_source_leaf_oids, req.mutable_source_leaf_table_oids());
   AssignOids(
       lists.target_leaf_oids, lists.num_target_leaf_oids, req.mutable_target_leaf_table_oids());
+  // Online schema change requires transactional DDL, so begin is the DDL of the user's
+  // transaction. The master ties the job to it through DDL verification, so the commit must report
+  // to the master and wait for that verification, as for a DDL that changes a DocDB schema.
+  RETURN_NOT_OK(pg_session_->SetupPerformOptionsForDdl(req.mutable_options()));
+  pg_session_->SetDdlHasSyscatalogChanges();
   // Unlike BackfillIndex, this RPC only starts the job and does not wait for the copy, so a DDL
   // deadline is enough.
   return pg_client_.StartTableBackfill(&req, DdlDeadline());

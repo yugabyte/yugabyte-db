@@ -664,11 +664,18 @@ void SetTableIdentifiers(
 Status YBClient::StartTableBackfill(
     const TableId& source_table_id, const TableId& target_table_id,
     uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
-    const OnlineSchemaChangeTableIdLists& lists, CoarseTimePoint deadline) {
+    const OnlineSchemaChangeTableIdLists& lists, const std::optional<TransactionMetadata>& txn,
+    std::optional<SubTransactionId> sub_transaction_id, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   }
   master::StartTableBackfillRequestPB req;
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
+  }
+  if (sub_transaction_id) {
+    req.set_sub_transaction_id(*sub_transaction_id);
+  }
   req.mutable_source_table()->set_table_id(source_table_id);
   req.mutable_target_table()->set_table_id(target_table_id);
   req.set_transform_fn_oid(transform_fn_oid);

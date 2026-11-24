@@ -377,6 +377,8 @@ class YBClient {
       const TableId& source_table_id, const TableId& target_table_id,
       uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
       const OnlineSchemaChangeTableIdLists& lists,
+      const std::optional<TransactionMetadata>& txn = std::nullopt,
+      std::optional<SubTransactionId> sub_transaction_id = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint());
 
   Status AbortTableBackfill(

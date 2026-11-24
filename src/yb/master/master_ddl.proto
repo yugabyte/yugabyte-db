@@ -405,6 +405,10 @@ message StartTableBackfillRequestPB {
   // leaves and their indexes. Empty lists mean the root alone.
   repeated TableIdentifierPB source_leaf_tables = 7;
   repeated TableIdentifierPB target_leaf_tables = 8;
+  // The begin's DDL transaction. The job waits in WAITING_FOR_BEGIN until it commits, and is
+  // aborted if it aborts.
+  optional TransactionMetadataPB transaction = 9;
+  optional uint32 sub_transaction_id = 10;
 }
 
 message StartTableBackfillResponsePB {

@@ -23,6 +23,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
@@ -38,8 +39,17 @@ namespace master {
 class CatalogManager;
 class OnlineSchemaChangeTest;
 
-// True for COMPUTING_READ_TIME and IN_PROGRESS, the states in which the job copies.
+// True for WAITING_FOR_BEGIN, COMPUTING_READ_TIME and IN_PROGRESS: the job is not finished.
 bool IsOnlineSchemaChangeJobResumable(OnlineSchemaChangeJobPB::State state);
+
+// True if `pb`, a source table's entry, holds a job waiting for begin's transaction `txn`.
+bool IsWaitingForBegin(const SysTablesEntryPB& pb, const TransactionId& txn);
+
+// Called by the DDL verifier once `txn` has ended, on the entry it is about to write. Moves a job
+// waiting for that begin to COMPUTING_READ_TIME if it committed, or to ABORTED. Returns true if it
+// changed `pb`.
+bool ResolveOnlineSchemaChangeBegin(
+    SysTablesEntryPB& pb, const TransactionId& txn, bool committed, HybridTime now);
 
 // Every field of OnlineSchemaChangeJobPB is optional, so a half-written entry would read as a
 // resumable IN_PROGRESS job with OID 0.
@@ -148,9 +158,12 @@ class OnlineSchemaChangeController {
   // Writes the durable entry of a new job, or finds the one an earlier attempt of the same request
   // wrote, sets the delete-marker retention pin, and starts driving the job.
   // Fails if another unfinished job reads `source_table`, or if this one has already finished.
+  // With `begin_txn`, the job waits in WAITING_FOR_BEGIN until that transaction commits, and is
+  // aborted if it aborts.
   Status Start(
       const TableInfoPtr& source_table, const OnlineSchemaChangeJobPB& job,
-      const LeaderEpoch& epoch);
+      const LeaderEpoch& epoch, const std::optional<TransactionMetadata>& begin_txn = std::nullopt,
+      std::optional<SubTransactionId> begin_sub_txn = std::nullopt);
 
   // Visits the job on `source_table` now, e.g. after a cancel or an abort has been written.
   void Reconcile(const TableInfoPtr& source_table, const LeaderEpoch& epoch);
