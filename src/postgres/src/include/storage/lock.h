@@ -396,6 +396,21 @@ typedef struct PROCLOCK
  * the shared lock object is neither held nor awaited, and hence is available
  * to be reclaimed.  If nLocks > 0 then these pointers must either be valid or
  * NULL, but when nLocks == 0 they should be considered garbage.
+ *
+ * YB: with object locking, a LOCALLOCKOWNER's yb_object_lock_skipped is set
+ * when the owner's entry was created by a grant made while catalog
+ * prefetching was active, without a tserver object lock (see
+ * YbSkipCatalogObjectLockDuringPrefetch in lock.c), and is cleared when the
+ * owner acquires the tserver object lock.  The flag is kept per owner so that
+ * it is released and merged together with the owner's grant.  Once no
+ * transactional owner holds an unskipped grant, a request made outside
+ * prefetching goes to the tserver even though nLocks > 0.
+ *
+ * An unskipped entry means only that its grant was not made by that skip, not
+ * that its owner holds a tserver object lock of its own.  The owner may have
+ * acquired the tserver object lock itself, or been granted the lock locally
+ * because another transactional owner already held it, in which case it
+ * relies on that owner's tserver object lock.
  */
 typedef struct LOCALLOCKTAG
 {
@@ -413,6 +428,9 @@ typedef struct LOCALLOCKOWNER
 	 */
 	struct ResourceOwnerData *owner;
 	int64		nLocks;			/* # of times held by this owner */
+
+	/* YB fields */
+	bool		yb_object_lock_skipped; /* granted by the catalog prefetch skip */
 } LOCALLOCKOWNER;
 
 typedef struct LOCALLOCK
