@@ -778,6 +778,11 @@ public enum TaskType {
       CustomerTask.TaskType.KubernetesToggleImmutableYbc,
       CustomerTask.TargetType.Universe),
 
+  EnableNodeToNodeClientCerts(
+      com.yugabyte.yw.commissioner.tasks.upgrade.EnableNodeToNodeClientCerts.class,
+      CustomerTask.TaskType.EnableNodeToNodeClientCerts,
+      CustomerTask.TargetType.Universe),
+
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
       CustomerTask.TaskType.OperatorImport,
@@ -1499,6 +1504,7 @@ public enum TaskType {
           .put(ConfigureExportTelemetryConfig, 59)
           .put(KubernetesConfigureExportTelemetryConfig, 65)
           .put(KubernetesToggleImmutableYbc, 60)
+          .put(EnableNodeToNodeClientCerts, 67)
           .put(UpgradeKubernetesYbcGFlags, 61)
           .put(UpdateYbcThrottleFlags, 62)
           .put(UpdateK8sYbcThrottleFlags, 63)

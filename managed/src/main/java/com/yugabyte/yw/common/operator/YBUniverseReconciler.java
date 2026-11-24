@@ -35,6 +35,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.EnableNodeToNodeClientCertsParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
@@ -920,6 +921,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
           taskUUID = toggleTlsYbUniverse(universeDetails, cust, ybUniverse);
+          // After the TLS toggle, which turns on the node-to-node encryption this needs.
+        } else if (!currentUserIntent.useNodeToNodeClientCerts
+            && Boolean.TRUE.equals(ybUniverse.getSpec().getUseNodeToNodeClientCerts())) {
+          log.info("Enabling node-to-node client certificates");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.EnableNodeToNodeClientCerts.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = enableNodeToNodeClientCertsYbUniverse(universeDetails, cust, ybUniverse);
           // Handle certificate rotation before any other edit/upgrade operation.
         } else if (operatorUtils.shouldRotateCerts(universe, ybUniverse, cust.getUuid())) {
           log.info("Rotating certificates");
@@ -1470,6 +1483,28 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
     log.info("Rotating certificates for universe {}", oldUniverse.getName());
     return upgradeUniverseHandler.rotateCerts(requestParams, cust, oldUniverse);
+  }
+
+  private UUID enableNodeToNodeClientCertsYbUniverse(
+      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    EnableNodeToNodeClientCertsParams requestParams;
+    try {
+      requestParams =
+          mapper.readValue(
+              mapper.writeValueAsString(taskParams), EnableNodeToNodeClientCertsParams.class);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create enable client certs params", e);
+    }
+    // Non-rolling only, so the spec's upgradeOption doesn't apply.
+    applyUpgradeOptions(requestParams, ybUniverse, UpgradeOption.NON_ROLLING_UPGRADE);
+    Universe oldUniverse = resolveExistingUniverseQuietly(cust, ybUniverse).orElseThrow();
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    return upgradeUniverseHandler.enableNodeToNodeClientCerts(requestParams, cust, oldUniverse);
   }
 
   private UUID toggleTlsYbUniverse(

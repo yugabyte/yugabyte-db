@@ -407,6 +407,7 @@ POST    /customers/:cUUID/universes/:uniUUID/audit_log_config                  c
 POST     /customers/:cUUID/universes/:uniUUID/upgrade/software/precheck        com.yugabyte.yw.controllers.UpgradeUniverseController.softwareUpgradePreCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/universes/:uniUUID/upgrade/finalize/info             com.yugabyte.yw.controllers.UpgradeUniverseController.finalizeUpgradeInfo(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/proxy_config              com.yugabyte.yw.controllers.UpgradeUniverseController.updateProxyConfig(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/node_to_node_client_certs com.yugabyte.yw.controllers.UpgradeUniverseController.enableNodeToNodeClientCerts(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/k8s_immutable_ybc         com.yugabyte.yw.controllers.UpgradeUniverseController.kubernetesToggleImmutableYbc(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Table Management API

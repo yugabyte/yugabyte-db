@@ -39,9 +39,10 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * The client cert YBA presents on RPCs to a universe whose servers require one. A universe opts in
- * at creation with userIntent.useNodeToNodeClientCerts, and KubernetesCommandExecutor sets
- * node_to_node_encryption_use_client_certificates from it. Servers only check that the cert chains
- * to their root CA, so one client cert per CA serves every universe on it.
+ * with userIntent.useNodeToNodeClientCerts, at creation or with the EnableNodeToNodeClientCerts
+ * upgrade, and KubernetesCommandExecutor sets node_to_node_encryption_use_client_certificates from
+ * it. Servers only check that the cert chains to their root CA, so one client cert per CA serves
+ * every universe on it.
  *
  * <p>The cert and key sit in the CA's directory, as CertificateHelper.getClientCertFile names them,
  * and in the DB like the CA itself. They are loaded when a client is built: from disk, else from
@@ -84,10 +85,14 @@ public class RpcClientCert {
 
   /** Rejects turning on client cert auth for a universe YBA can't get a client cert for. */
   public static void validate(UniverseDefinitionTaskParams details) {
-    UserIntent intent = details.getPrimaryCluster().userIntent;
-    if (!intent.useNodeToNodeClientCerts) {
-      return;
+    if (details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts) {
+      validateSupported(details);
     }
+  }
+
+  /** Rejects a universe that can't have client cert auth, whether or not it has it now. */
+  public static void validateSupported(UniverseDefinitionTaskParams details) {
+    UserIntent intent = details.getPrimaryCluster().userIntent;
     if (!intent.getAllCloudTypes().stream().allMatch(t -> t == CloudType.kubernetes)) {
       throw invalid("is only supported on Kubernetes universes");
     }
