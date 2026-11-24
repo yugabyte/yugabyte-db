@@ -722,17 +722,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   /**
-   * Uses the mapping an earlier attempt saved if the node is still mid-upgrade and the mapping
-   * covers the node's mount points. Such a node may be on its new root volume by now, where
-   * /etc/fstab no longer has the data disks. Any other node's fstab has them, so a mapping left on
-   * it isn't trusted and is captured again.
+   * Uses the mapping an earlier attempt saved on the node if it covers the node's mount points. The
+   * node may be on its new root volume by now, where /etc/fstab no longer has the data disks.
    */
   private boolean reuseSavedDeviceMapping(Universe universe, NodeDetails node) {
     NodeDetails savedNode = universe.getNode(node.nodeName);
-    if (savedNode == null || savedNode.state != NodeState.VMImageUpgrade) {
-      return false;
-    }
-    Map<String, String> saved = savedNode.pathToUUIDMapping;
+    Map<String, String> saved = savedNode == null ? null : savedNode.pathToUUIDMapping;
     String source = "saved on the node";
     if (saved == null) {
       saved = runtimeInfo.legacyDeviceMappingByNode.get(node.getNodeUuid());

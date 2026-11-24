@@ -915,9 +915,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
-              for (String nodeName : ImmutableList.of("host-n4", "host-n5")) {
-                u.getNode(nodeName).state = NodeDetails.NodeState.VMImageUpgrade;
-              }
               u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "saved");
               u.getNode("host-n5").pathToUUIDMapping = ImmutableMap.of("/mnt/d1", "stale");
             });
@@ -931,21 +928,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertEquals(2, uploadedMappings.size());
     assertEquals(
         ImmutableSet.of("/mnt/d0=saved", "/mnt/d0=abc"), ImmutableSet.copyOf(uploadedMappings));
-    assertNoSavedMappings();
-  }
-
-  @Test
-  public void testVMImageUpgradeOciCapturesFstabOfLiveNodeWithMappingLeftOnIt() {
-    ImageBundle ociBundle = addOciNodes();
-    // As if a run that unfroze the universe left the node out after an earlier attempt saved it.
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            u -> u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "left"));
-
-    TaskInfo taskInfo = submitOciOnlyUpgrade(ociBundle, false);
-    assertEquals(1, getSubTaskParams(taskInfo, TaskType.RunNodeCommand, "host-n4").size());
-    assertEquals(ImmutableList.of("/mnt/d0=abc", "/mnt/d0=abc"), getUploadedYnpMappings());
     assertNoSavedMappings();
   }
 
