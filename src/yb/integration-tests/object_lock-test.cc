@@ -2491,11 +2491,36 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
 
   auto added_ts = cluster_->tablet_server(1);
   auto added_ts_proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(1);
-  auto future = ReleaseLockAtAsync(
-      &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
-      /* apply_after */ std::nullopt, MonoDelta::FromSeconds(10));
-  ASSERT_OK(LogWaiter(added_ts, "Waiting until object lock manager is bootstrapped")
-                .WaitFor(MonoDelta::FromSeconds(2)));
+  // Register before sending the release, the tserver may log this right away.
+  LogWaiter log_waiter(added_ts, "Waiting until object lock manager is bootstrapped");
+  // The lease refresher starts only after initdb on the new tserver, so the release must outlive
+  // initdb.
+  std::future<Result<tserver::ReleaseObjectLockResponsePB>> future;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        if (!future.valid()) {
+          future = ReleaseLockAtAsync(
+              &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
+              /* apply_after */ std::nullopt, 60s * kTimeMultiplier);
+        }
+        if (log_waiter.IsEventOccurred()) {
+          return true;
+        }
+        if (future.wait_for(100ms) != std::future_status::ready) {
+          return false;
+        }
+        // The tserver may still be starting up (e.g. the RPC server comes up before the lock
+        // manager is created); resend on such errors.
+        auto result = future.get();
+        SCHECK(!result.ok(), IllegalState, "Release completed before lock manager bootstrap");
+        const auto& s = result.status();
+        if (s.IsNetworkError() || s.IsServiceUnavailable() || s.IsTimedOut() ||
+            (s.IsIllegalState() && s.message().Contains("TSLocalLockManager not found"))) {
+          return false;
+        }
+        return s;
+      },
+      30s * kTimeMultiplier, "Wait for release to block until bootstrap"));
   ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
       << "Expected release request to block at tserver that has not acquired a lease yet";
 
