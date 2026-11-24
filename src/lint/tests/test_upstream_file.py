@@ -17,6 +17,7 @@ Run with `python3 -m pytest src/lint/tests/`.  Not wired into CI yet (#38807).
 """
 
 import email.message
+import errno
 import http.client
 import io
 import socket
@@ -51,8 +52,8 @@ class _Response(io.BytesIO):
         return False
 
 
-def _http_error(code):
-    return urllib.error.HTTPError("https://x", code, "msg", email.message.Message(), None)
+def _http_error(code, fp=None):
+    return urllib.error.HTTPError("https://x", code, "msg", email.message.Message(), fp)
 
 
 @pytest.fixture
@@ -92,6 +93,13 @@ class _ReadFailure:
     urllib.error.URLError(ConnectionRefusedError(111, "Connection refused")),
     _ReadFailure(TimeoutError("The read operation timed out")),
     _ReadFailure(ConnectionResetError(104, "Connection reset by peer")),
+    urllib.error.URLError(OSError(errno.ENETUNREACH, "Network is unreachable")),
+    urllib.error.URLError(OSError(errno.EHOSTUNREACH, "No route to host")),
+    urllib.error.URLError(ssl.SSLEOFError(8, "EOF occurred in violation of protocol")),
+    _ReadFailure(ssl.SSLEOFError(8, "EOF occurred in violation of protocol")),
+    _ReadFailure(http.client.IncompleteRead(b"partial", 10)),
+    urllib.error.URLError(OSError("Tunnel connection failed: 503 Service Unavailable")),
+    _http_error(408),
     _http_error(500),
     _http_error(503),
 ])
@@ -103,13 +111,30 @@ def test_a_transient_failure_is_tried_again(server, failure):
 
 
 def test_the_wait_doubles_and_the_last_failure_is_raised(server, capsys):
-    server.answers = [_http_error(502)] * upstream_file.FETCH_ATTEMPTS
-    with pytest.raises(urllib.error.HTTPError):
+    server.answers = [_http_error(502), _http_error(503), _http_error(504)]
+    with pytest.raises(urllib.error.HTTPError) as raised:
         upstream_file.fetch_url("https://x")
+    assert raised.value is server.answers[-1]
     assert server.calls == upstream_file.FETCH_ATTEMPTS == 3
     assert server.sleeps == [1.0, 2.0]
     # one line on stdout, so arc lint shows why the file failed
-    assert capsys.readouterr().out == "HTTPError: HTTP Error 502: msg\n"
+    assert capsys.readouterr().out == "HTTPError: HTTP Error 504: msg\n"
+
+
+def test_a_5xx_response_is_closed_before_the_wait(server):
+    response = io.BytesIO(b"Service Unavailable")
+    server.answers = [_http_error(503, response), b"contents"]
+    assert upstream_file.fetch_url("https://x") == b"contents"
+    assert response.closed
+
+
+def test_a_429_is_transient_but_not_tried_again(server):
+    error = _http_error(429)
+    assert upstream_file._is_transient(error)
+    server.answers = [error]
+    with pytest.raises(urllib.error.HTTPError):
+        upstream_file.fetch_url("https://x")
+    assert server.calls == 1
 
 
 def test_a_404_is_not_found_without_a_retry(server):
