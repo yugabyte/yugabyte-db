@@ -991,16 +991,21 @@ dumpRoles(PGconn *conn)
 
 		/*
 		 * postgres, yugabyte, and built-in yb_* roles already exist on the new
-		 * cluster. initdb creates postgres and yugabyte; migrations insert the
-		 * yb_* roles with fixed OIDs. Emit ALTER ROLE, COMMENT, and security
+		 * cluster. initdb creates postgres and yugabyte, and loads the yb_*
+		 * roles from pg_authid.dat. Migrations only add those roles to clusters
+		 * created before they existed. Emit ALTER ROLE, COMMENT, and security
 		 * labels so changes made on the old cluster are kept. Do not emit
 		 * CREATE ROLE (the role exists, and binary upgrade stops on the first
 		 * error) or binary_upgrade_set_next_pg_authid_oid
 		 * (the next CREATE ROLE would consume that OID).
 		 *
-		 * yb_superuser is created outside initdb, so it is dumped in full.
-		 * Match the whole name. New built-in yb_* roles must also be excluded
-		 * in yb_check_yb_role_prefix() in check.c.
+		 * yb_superuser is created outside initdb and is excluded from
+		 * yb_check_yb_role_prefix(), so it is dumped in full. Any other role
+		 * excluded from that precheck must be dumped in full the same way.
+		 * Every other yb_* name is treated as already existing, so the dump
+		 * emits ALTER ROLE without CREATE ROLE and the ON_ERROR_STOP restore
+		 * fails if the role is absent. Built-in yb_* roles have fixed OIDs
+		 * less than 16384 and need no precheck exclusion.
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
 			(strcmp(rolename, "postgres") == 0 ||
