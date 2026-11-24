@@ -135,6 +135,7 @@ DECLARE_int32(index_backfill_rpc_max_retries);
 DECLARE_uint64(online_schema_change_backfill_rows_per_chunk);
 DECLARE_uint32(TEST_online_schema_change_backfill_replay_chunks_per_tablet);
 DECLARE_bool(TEST_online_schema_change_backfill_pause_controller);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -1871,6 +1872,14 @@ void ReleaseFence(MiniCluster& cluster, int64_t job_id) {
       ->ReleaseLocksForTxn(docdb::OnlineSchemaChangeFenceId(job_id));
 }
 
+Result<TableId> YsqlTableId(PGConn* conn, const std::string& table) {
+  const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto relfilenode = VERIFY_RESULT(conn->FetchRow<PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE oid = '$0'::regclass", table)));
+  return GetPgsqlTableId(db_oid, relfilenode);
+}
+
 }  // namespace
 
 // A SHARE UPDATE EXCLUSIVE fence (an online schema change's source) fails DDL at once and lets
@@ -1931,6 +1940,132 @@ TEST_F(PgMiniOnlineSchemaChangeTest, ObjectLockFenceOnTarget) {
   ASSERT_OK(WaitFor(
       [&conn]() -> Result<bool> { return conn.Execute("INSERT INTO t VALUES (2, 2)").ok(); },
       30s, "INSERT after the fence is released"));
+}
+
+// The master copies nothing until begin's transaction commits. Once COMMIT returns, the job has
+// left WAITING_FOR_BEGIN: the commit waits for the DDL verification that moves it on.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCopyWaitsForBeginCommit) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  const auto source_id = ASSERT_RESULT(YsqlTableId(&conn, "t1"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_EQ(ASSERT_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state(),
+            master::OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN);
+  SleepFor(2s);
+  ASSERT_EQ(ASSERT_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state(),
+            master::OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN);
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_NE(ASSERT_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state(),
+            master::OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN);
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
+}
+
+// A begin that rolls back aborts its job: nothing is copied, and the next begin can start.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBeginRollbackAbortsTheJob) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  const auto source_id = ASSERT_RESULT(YsqlTableId(&conn, "t1"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state() ==
+               master::OnlineSchemaChangeJobPB::ABORTED;
+      },
+      30s, "job aborted"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't1'::regclass")), 0);
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
+}
+
+// A rollback to a savepoint taken before begin aborts the job, although the transaction commits.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBeginRolledBackToSavepoint) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  const auto source_id = ASSERT_RESULT(YsqlTableId(&conn, "t1"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT s"));
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state() ==
+               master::OnlineSchemaChangeJobPB::ABORTED;
+      },
+      30s, "job aborted"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+// Without Postgres' report of begin's outcome, the master's own verification decides it. The
+// transaction's status cannot tell a commit from an abort once it has applied, and begin changes
+// no schema, so the job's row in pg_yb_online_schema_change decides.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBeginDecidedWithoutPgReport) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = true;
+  });
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  const auto source_id = ASSERT_RESULT(YsqlTableId(&conn, "t1"));
+  auto wait_for_state = [&](int64_t job_id, master::OnlineSchemaChangeJobPB::State state) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          const auto job = VERIFY_RESULT(client_->GetTableBackfillStatus(source_id, job_id));
+          return job.state() == state;
+        },
+        60s, Format("job $0 reaches $1", job_id,
+                    master::OnlineSchemaChangeJobPB::State_Name(state)));
+  };
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto aborted_job = ASSERT_RESULT(
+      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(wait_for_state(aborted_job, master::OnlineSchemaChangeJobPB::ABORTED));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
+  ASSERT_EQ(ASSERT_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state(),
+            master::OnlineSchemaChangeJobPB::SUCCESS);
+}
+
+// The tie between the job and begin's transaction is durable: a master restart while begin is
+// still open neither loses the job nor starts its copy early.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBeginSurvivesMasterRestart) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  const auto source_id = ASSERT_RESULT(YsqlTableId(&conn, "t1"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto job_id = ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(cluster_->mini_master(0)->Restart());
+  ASSERT_OK(cluster_->mini_master(0)->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  SleepFor(2s);
+  ASSERT_EQ(ASSERT_RESULT(client_->GetTableBackfillStatus(source_id, job_id)).state(),
+            master::OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN);
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
 }
 
 // A cutover whose commit fails leaves the job "ready", and can be retried.

@@ -65,6 +65,9 @@ message OnlineSchemaChangeJobPB {
     COMPUTING_READ_TIME = 4;
     // Set by yb_abort_mirror_table.
     ABORTED = 5;
+    // Recorded by a begin that has not committed yet. The DDL verifier moves the job to
+    // COMPUTING_READ_TIME when begin_transaction_id commits, and to ABORTED when it aborts.
+    WAITING_FOR_BEGIN = 6;
   }
   optional State state = 1;
   // In COMPUTING_READ_TIME, the client's lower bound for the read time. In every later state, the
@@ -97,6 +100,9 @@ message OnlineSchemaChangeJobPB {
   optional fixed64 finished_at = 18;
   // The DocDB table id of the target, which the master looks the target up by.
   optional string target_table_id = 19;
+  // The transaction of the begin that started the job. The source table is enrolled in its DDL
+  // verification (YsqlDdlTxnVerifierStatePB.contains_online_schema_change_op).
+  optional bytes begin_transaction_id = 20;
 }
 
   message YsqlDdlTxnVerifierStatePB {
@@ -109,6 +115,10 @@ message OnlineSchemaChangeJobPB {
     optional int32 previous_next_column_id = 6;
 
     optional uint32 sub_transaction_id = 7;
+
+    // An online schema change begin of this transaction recorded its job on this table. It changes
+    // no schema: commit and abort only resolve the job (OnlineSchemaChangeJobPB.WAITING_FOR_BEGIN).
+    optional bool contains_online_schema_change_op = 8;
   }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for

@@ -2226,6 +2226,21 @@ class PgClientSession::Impl {
       PgStartTableBackfillResponsePB* resp,
       rpc::RpcContext* context) {
     const auto database_oid = req.source_table_id().database_oid();
+    std::optional<TransactionMetadata> txn;
+    std::optional<SubTransactionId> sub_txn;
+    if (req.has_options()) {
+      RETURN_NOT_OK(SetupSessionForDdl(
+          /* use_regular_transaction_block= */ true, req.options(), context->GetClientDeadline()));
+      const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+          /* use_transaction= */ true, /* use_regular_transaction_block= */ true,
+          context->GetClientDeadline(),
+          IsTxnUsingTableLocks(req.options().using_table_locks_globally()), GetDeferReadPoint(req),
+          req.options().origination_ht()));
+      if (metadata) {
+        txn = *metadata;
+        sub_txn = req.options().active_sub_transaction_id();
+      }
+    }
     return client_.StartTableBackfill(
         PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
         PgObjectId::GetYbTableIdFromPB(req.target_table_id()), req.transform_fn_oid(),
@@ -2234,7 +2249,7 @@ class PgClientSession::Impl {
             .source_leaves = TableIdsFromOids(database_oid, req.source_leaf_table_oids()),
             .target_leaves = TableIdsFromOids(database_oid, req.target_leaf_table_oids()),
         },
-        context->GetClientDeadline());
+        txn, sub_txn, context->GetClientDeadline());
   }
 
   Status AbortTableBackfill(

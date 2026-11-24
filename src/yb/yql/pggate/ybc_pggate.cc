@@ -521,6 +521,7 @@ std::pair<int32_t, std::string> GetCDCColumnKey(const DatumMessagePB& datum, boo
 YbcPgTableBackfillStatus ToTableBackfillStatus(const master::TableBackfillStatusPB& pb) {
   YbcPgTableBackfillState state = YB_TABLE_BACKFILL_RUNNING;
   switch (pb.state()) {
+    case master::OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN:
     case master::OnlineSchemaChangeJobPB::COMPUTING_READ_TIME:
     case master::OnlineSchemaChangeJobPB::IN_PROGRESS:
       state = YB_TABLE_BACKFILL_RUNNING;

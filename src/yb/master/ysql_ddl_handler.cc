@@ -19,6 +19,7 @@
 #include "yb/master/master.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/object_lock_info_manager.h"
+#include "yb/master/online_schema_change.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
@@ -476,6 +477,19 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
     .ddl_txn_id = txn_id
   };
 
+  // An online schema change job waiting for this begin is resolved in the write that ends the
+  // table's enrollment (a commit below, or RollbackYsqlTxnDdlStates).
+  // The verifier decides an online schema change step from the job's row in Postgres, so its
+  // outcome is known; the job is left alone otherwise.
+  const bool resolves_osc_begin = IsWaitingForBegin(metadata, txn_id);
+  LOG_IF(WARNING, resolves_osc_begin && !success.has_value())
+      << "Unknown outcome of transaction " << txn_id
+      << ", leaving the online schema change job on " << table->ToString() << " waiting";
+  if (resolves_osc_begin && success.value_or(false)) {
+    ResolveOnlineSchemaChangeBegin(
+        metadata, txn_id, /* committed= */ true, master_->clock()->Now());
+  }
+
   if (success.has_value()) {
     if (*success) {
       RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(txn_data));
@@ -491,6 +505,15 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
     VLOG(3) << "Ysql DDL transaction " << txn_id << " for table " << table->ToString()
             << " is ambiguous, treating it as a success";
     RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(txn_data));
+  }
+  if (resolves_osc_begin) {
+    // The job's next step does not wait for the bg tasks tick.
+    WARN_NOT_OK(
+        background_tasks_thread_pool_->SubmitFunc(
+            [this, source_table = TableInfoPtr(table), epoch] {
+              online_schema_change_->Reconcile(source_table, epoch);
+            }),
+        "Failed to submit the online schema change visit");
   }
   return Status::OK();
 }
@@ -561,6 +584,19 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
           .contains_create_table_op();
   const YsqlDdlTxnVerifierStatePB& first_ddl_state =
       mutable_pb.ysql_ddl_txn_verifier_state(rollback_till_ddl_state_index);
+
+  // An online schema change begin rolled back with this segment aborts its job, in the write that
+  // rolls the segment back.
+  bool segment_has_alter = false;
+  for (int idx = rollback_till_ddl_state_index; idx < mutable_pb.ysql_ddl_txn_verifier_state_size();
+       ++idx) {
+    const auto& state = mutable_pb.ysql_ddl_txn_verifier_state(idx);
+    segment_has_alter = segment_has_alter || state.contains_alter_table_op();
+    if (state.contains_online_schema_change_op()) {
+      ResolveOnlineSchemaChangeBegin(
+          mutable_pb, txn_data.ddl_txn_id, /* committed= */ false, master_->clock()->Now());
+    }
+  }
   if (table_created_in_txn_segment) {
     RSTATUS_DCHECK_EQ(
         rollback_till_ddl_state_index, 0, IllegalState,
@@ -574,7 +610,13 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
     return DropXClusterStreamsOfTables({txn_data.table->id()});
   }
 
-  if (!first_ddl_state.contains_alter_table_op()) {
+  if (first_ddl_state.contains_online_schema_change_op() && !segment_has_alter &&
+      !first_ddl_state.contains_drop_table_op()) {
+    // Only an online schema change begin: no schema to restore.
+    return ClearYsqlDdlTxnState(txn_data, rollback_till_ddl_state_index, /*is_success=*/false);
+  }
+
+  if (!first_ddl_state.contains_alter_table_op() && !segment_has_alter) {
     // The first_ddl_state is neither a CREATE nor an ALTER. So it must be DELETE and a single such
     // state should be present.
     RSTATUS_DCHECK(
@@ -590,8 +632,10 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
 
   // There might be more than one YsqlDdlTxnVerifierStatePB with alter table op but since we are
   // rolling back the transaction, we need the schema of the table at the start of the transaction
-  // which is stored in the previous_schema field of the first ddl state.
-  DCHECK(first_ddl_state.contains_alter_table_op());
+  // which is stored in the previous_schema field of the first ddl state. A first state recorded by
+  // an online schema change begin holds it too (EnrollInBeginVerification).
+  DCHECK(first_ddl_state.contains_alter_table_op() ||
+         first_ddl_state.contains_online_schema_change_op());
   std::vector<DdlLogEntry> ddl_log_entries;
   ddl_log_entries.emplace_back(
       master_->clock()->Now(),

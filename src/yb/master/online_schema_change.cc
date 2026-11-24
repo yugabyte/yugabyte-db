@@ -69,6 +69,42 @@ server::MonitoredTaskState MonitoredStateFor(OnlineSchemaChangeJobPB::State stat
   }
 }
 
+// Enrolls `pb`, the source table's entry, in the DDL verification of begin's transaction, the way
+// an ALTER TABLE in that transaction would, but changing no schema. Returns true if the table was
+// not enrolled in it yet, so the verifier must be scheduled.
+Result<bool> EnrollInBeginVerification(
+    SysTablesEntryPB& pb, const TransactionMetadata& txn,
+    std::optional<SubTransactionId> sub_txn) {
+  bool new_enrollment = false;
+  bool add_state = false;
+  if (pb.ysql_ddl_txn_verifier_state_size() > 0) {
+    const auto current = VERIFY_RESULT(TransactionMetadata::FromPB(pb.transaction()));
+    if (current.transaction_id != txn.transaction_id) {
+      return STATUS_FORMAT(
+          TryAgain, "Table $0 is still in the DDL verification of transaction $1", pb.name(),
+          current.transaction_id);
+    }
+    add_state = sub_txn && pb.ysql_ddl_txn_verifier_state(
+        pb.ysql_ddl_txn_verifier_state_size() - 1).sub_transaction_id() != *sub_txn;
+  } else {
+    txn.ToPB(pb.mutable_transaction());
+    new_enrollment = add_state = true;
+  }
+  if (add_state) {
+    auto* state = pb.add_ysql_ddl_txn_verifier_state();
+    // Unused unless a later DDL of the transaction alters the table, whose rollback then restores
+    // the schema from the segment's first state.
+    *state->mutable_previous_schema() = pb.schema();
+    state->set_previous_table_name(pb.name());
+    if (sub_txn) {
+      state->set_sub_transaction_id(*sub_txn);
+    }
+  }
+  pb.mutable_ysql_ddl_txn_verifier_state(pb.ysql_ddl_txn_verifier_state_size() - 1)
+      ->set_contains_online_schema_change_op(true);
+  return new_enrollment;
+}
+
 std::optional<OnlineSchemaChangeJobPB> ReadJobEntry(const TableInfo& source_table) {
   auto l = source_table.LockForRead();
   if (!l->pb.has_online_schema_change_job()) {
@@ -90,8 +126,35 @@ std::string JobPrefix(const TableInfo& source_table, int64_t pg_job_id) {
 
 }  // namespace
 
+bool IsWaitingForBegin(const SysTablesEntryPB& pb, const TransactionId& txn) {
+  if (!pb.has_online_schema_change_job()) {
+    return false;
+  }
+  const auto& job = pb.online_schema_change_job();
+  return job.state() == OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN &&
+         Slice(job.begin_transaction_id()) == Slice(txn.data(), txn.size());
+}
+
+bool ResolveOnlineSchemaChangeBegin(
+    SysTablesEntryPB& pb, const TransactionId& txn, bool committed, HybridTime now) {
+  if (!IsWaitingForBegin(pb, txn)) {
+    return false;
+  }
+  auto& job = *pb.mutable_online_schema_change_job();
+  LOG(INFO) << "Online schema change job " << job.pg_job_id() << " on " << pb.name()
+            << ": begin transaction " << txn << (committed ? " committed" : " aborted");
+  if (committed) {
+    job.set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
+  } else {
+    job.set_state(OnlineSchemaChangeJobPB::ABORTED);
+    job.set_finished_at(now.ToUint64());
+  }
+  return true;
+}
+
 bool IsOnlineSchemaChangeJobResumable(OnlineSchemaChangeJobPB::State state) {
   switch (state) {
+    case OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN:
     case OnlineSchemaChangeJobPB::COMPUTING_READ_TIME:
     case OnlineSchemaChangeJobPB::IN_PROGRESS:
       return true;
@@ -393,9 +456,23 @@ void OnlineSchemaChangeController::Forget(
 
 Status OnlineSchemaChangeController::Start(
     const TableInfoPtr& source_table, const OnlineSchemaChangeJobPB& job_pb,
-    const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch, const std::optional<TransactionMetadata>& begin_txn,
+    std::optional<SubTransactionId> begin_sub_txn) {
   RETURN_NOT_OK(ValidateOnlineSchemaChangeJob(job_pb));
   const auto pg_job_id = job_pb.pg_job_id();
+  // A previous job that has ended may still hold its pin: one the DDL verifier aborted is released
+  // by a later visit, unlike a user abort, which releases inline. Release it first, so that this
+  // job's pin does not collide with it.
+  if (const auto previous = ReadJobEntry(*source_table);
+      previous && previous->pg_job_id() != pg_job_id &&
+      !IsOnlineSchemaChangeJobResumable(previous->state())) {
+    if (auto old_job = FindJob(source_table, epoch, /* add = */ true)) {
+      ReconcileJob(old_job, epoch);
+      std::unique_lock lock(mutex_);
+      pass_done_.wait(lock, [&old_job] { return !old_job->running; });
+    }
+  }
+  bool schedule_verification = false;
   {
     auto l = source_table->LockForWrite();
     auto& pb = l.mutable_data()->pb;
@@ -420,6 +497,16 @@ Status OnlineSchemaChangeController::Start(
       auto* entry = pb.mutable_online_schema_change_job();
       *entry = job_pb;
       entry->set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
+      if (begin_txn) {
+        // The job starts copying only once begin commits. Until then it is only recorded, together
+        // with the source's enrollment in begin's DDL verification, in this one write, so that the
+        // verifier resolves the job however the transaction ends, on this leader or the next.
+        entry->set_state(OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN);
+        entry->set_begin_transaction_id(
+            begin_txn->transaction_id.data(), begin_txn->transaction_id.size());
+        schedule_verification =
+            VERIFY_RESULT(EnrollInBeginVerification(pb, *begin_txn, begin_sub_txn));
+      }
       dirty = true;
     }
     if (dirty) {
@@ -428,6 +515,10 @@ Status OnlineSchemaChangeController::Start(
           "Failed to persist online schema change job.");
       l.Commit();
     }
+  }
+  if (schedule_verification) {
+    RETURN_NOT_OK(
+        catalog_manager_->ScheduleYsqlTxnVerification(source_table, *begin_txn, epoch));
   }
 
   auto job = FindJob(source_table, epoch, /* add = */ true);
@@ -547,6 +638,10 @@ Result<bool> OnlineSchemaChangeController::ReconcileOnce(
   }
   if (entry->cancel_requested()) {
     return WriteTerminal(job, OnlineSchemaChangeJobPB::CANCELLED, Status::OK(), epoch);
+  }
+  if (entry->state() == OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN) {
+    // The DDL verifier of begin's transaction moves the job on.
+    return false;
   }
   if (entry->state() == OnlineSchemaChangeJobPB::COMPUTING_READ_TIME) {
     return ComputeReadTime(job_ptr, *entry, epoch);
