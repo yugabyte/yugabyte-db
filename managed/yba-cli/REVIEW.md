@@ -81,8 +81,9 @@ Most CLI bugs that reach users are update commands that change more than the use
   sends back an object whose model is older than the server, update the client: run
   `sbt swaggerGen`, then `make publish` in `managed/client/go` (it opens a draft PR in
   `platform-go-client`), and after that PR merges, `make updateclient` here, in the same change
-  as the feature. Every client PR needs a review from Deepti-yb; `make publish` requests it. A
-  bump to a client commit that Deepti-yb did not review is a finding.
+  as the feature. Every client PR needs an approval from Deepti-yb; `make publish` requests it.
+  When Deepti-yb opened the client PR, another YBA engineer approves it. A bump to a client commit
+  that no one approved is a finding.
 - **New APIs use the generated client.** A command for a new API calls it through the generated
   client. A hand-written model or a call through `internal/client/rest.go` for a new API is a
   finding; publish the client instead. The existing hand-written models and REST calls are for

@@ -305,7 +305,8 @@ universe adds up until the JVM runs out of heap or the host runs out of threads,
   only in some cases) needs `@ApiModelProperty(..., required = false)`. Otherwise the generated
   clients make it a required constructor argument, which breaks every Go caller of that
   constructor (PLAT-19555 broke Terraform this way). Check the field against the model's
-  `required` list in `swagger.json`.
+  `required` list in `swagger-all.json`, the spec the Go client is generated from (`sbt swaggerGen`
+  writes it; it is not committed). `swaggerGen` fails on a `@Nullable` field that is required.
 
 ## YBA high availability
 

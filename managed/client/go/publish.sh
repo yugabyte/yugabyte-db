@@ -37,6 +37,28 @@ grep -q '^package ywclient$' "$GEN_DIR/v1/client.go" \
 grep -qx 'module github.com/yugabyte/platform-go-client' "$GEN_DIR/v1/go.mod" \
   || die "v1/go.mod has the wrong module path. Run sbt swaggerGen."
 
+# The generated trees and their input specs are gitignored, so git status cannot see that they
+# are stale. A checkout, merge or rebase rewrites the files it changes, so a tracked source newer
+# than the spec, or a generated file older than it, means the client does not match HEAD.
+stale_client() {
+  local v="$1" spec="$2"; shift 2
+  [[ -f "$spec" ]] || { echo "$spec is missing"; return; }
+  local newer
+  newer="$(cd "$MANAGED_DIR" && git ls-files -z -- "$@" \
+    | xargs -0 -r sh -c 'find "$@" -newer "$0" -print -quit' "$spec")"
+  [[ -z "$newer" ]] || { echo "${newer%%$'\n'*} is newer than $spec"; return; }
+  newer="$(find "$GEN_DIR/$v" -name '*.go' ! -newer "$spec" -print -quit)"
+  [[ -z "$newer" ]] || echo "$newer is older than $spec"
+}
+STALE="$(stale_client v1 "$MANAGED_DIR/src/main/resources/swagger-all.json" \
+  src/main/java src/main/resources/routes swagger/src)
+$(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/openapi.json" \
+  src/main/resources/openapi)"
+if [[ -n "${STALE//$'\n'/}" ]]; then
+  $DRY_RUN || die "The generated client is stale. Run sbt swaggerGen. ${STALE//$'\n'/ }"
+  echo "WARNING: the generated client is stale: ${STALE//$'\n'/ }" >&2
+fi
+
 git -C "$CLIENT_REPO" rev-parse --git-dir >/dev/null 2>&1 \
   || die "$CLIENT_REPO is not a git clone."
 git -C "$CLIENT_REPO" remote get-url origin | grep -q 'yugabyte/platform-go-client' \
