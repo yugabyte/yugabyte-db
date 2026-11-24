@@ -1094,11 +1094,12 @@ static inline int od_backend_startup(od_server_t *server,
 					 * startup packet.
 					 * See od_frontend_setup_params() for more details.
 					 */
-					kiwi_vars_update(
+					yb_kiwi_vars_update_reported(
 						&client->yb_external_client
 							 ->yb_vars_startup,
 						name, name_len, value,
-						value_len);
+						value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 				}
 			} else if ((name_len != sizeof("session_authorization") ||
 				strncmp(name, "session_authorization", name_len))) {
@@ -1108,14 +1109,16 @@ static inline int od_backend_startup(od_server_t *server,
 				if (flags &
 
 				     YB_PARAM_STATUS_SOURCE_STARTUP)
-					kiwi_vars_update(
+					yb_kiwi_vars_update_reported(
 						&server->yb_vars_default, name,
-						name_len, value, value_len);
+						name_len, value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 				else if (flags &
 					 YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
-					kiwi_vars_update(
+					yb_kiwi_vars_update_reported(
 						&server->yb_vars_session, name,
-						name_len, value, value_len);
+						name_len, value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -1678,23 +1681,26 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	 */
 
 	if (flags & YB_PARAM_STATUS_SOURCE_STARTUP)
-		kiwi_vars_update(&server->yb_vars_default, name, name_len,
-				 value, value_len);
+		yb_kiwi_vars_update_reported(&server->yb_vars_default, name, name_len,
+				 value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 	else if (flags & YB_PARAM_STATUS_DEFAULT_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_default, name,
 					      name_len);
 
 	if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
-		kiwi_vars_update(&server->yb_vars_session, name, name_len,
-				 value, value_len);
+		yb_kiwi_vars_update_reported(&server->yb_vars_session, name, name_len,
+				 value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 	else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_session, name,
 					      name_len);
 
 	if (!server_only) {
 		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
-			kiwi_vars_update(&client->yb_vars_session, name,
-					 name_len, value, value_len);
+			yb_kiwi_vars_update_reported(&client->yb_vars_session, name,
+					 name_len, value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 		else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
 						      name, name_len);

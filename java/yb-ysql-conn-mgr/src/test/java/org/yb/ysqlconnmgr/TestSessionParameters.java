@@ -1267,6 +1267,29 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // Client B sets temp_buffers. Client A then writes to a temp table on the only backend and rolls
+  // back, so the backend keeps its local buffers but A isn't sticky. B's next query replays
+  // temp_buffers on that backend and must still succeed.
+  @Test
+  public void testTempBuffersReplayAfterRolledBackTempTable() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection connB = builder.connect();
+         Statement stmtB = connB.createStatement();
+         Connection connA = builder.connect();
+         Statement stmtA = connA.createStatement()) {
+      stmtB.execute("SET temp_buffers = 2000");
+
+      stmtA.execute("BEGIN");
+      stmtA.execute("CREATE TEMP TABLE cm_temp_buffers_tbl (a int)");
+      stmtA.execute("INSERT INTO cm_temp_buffers_tbl VALUES (1)");
+      stmtA.execute("ROLLBACK");
+
+      assertSettingValues(stmtB, new String[] {"temp_buffers", "16000kB"});
+    }
+  }
+
   // The client sets values that SQL would need to quote or escape. A second client takes the only
   // backend, then the client's next query replays them on it. They must come back unchanged.
   @Test

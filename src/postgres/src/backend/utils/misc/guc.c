@@ -920,6 +920,7 @@ static char *yb_neg_catcache_ids_string;
 static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 static bool yb_conn_mgr_replaying = false;
+static const char *yb_conn_mgr_skip_check_name = NULL;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
@@ -5050,7 +5051,6 @@ static struct config_int ConfigureNamesInt[] =
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
 			NULL,
-			GUC_YB_CONN_MGR_REPLAY_CHECK |
 			GUC_UNIT_BLOCKS | GUC_EXPLAIN
 		},
 		&num_temp_buffers,
@@ -8993,8 +8993,8 @@ static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **
 static const char *YbFormatConfigValue(struct config_generic *record,
 									   const union config_var_val *val,
 									   char *buffer, size_t bufsize);
-static bool yb_conn_mgr_skip_check_hook(struct config_generic *gconf,
-										bool has_assign_hook);
+static bool yb_conn_mgr_skip_check_hook(struct config_generic *gconf);
+static bool YbDbAdminCanSetVariable(const char *name);
 
 
 /*
@@ -10447,6 +10447,10 @@ YbSetYsqlConnMgrGucDefaults(const char *data, int len)
 			break;
 		ptr++;					/* skip null terminator */
 
+		if (ptr >= end)
+			break;
+		bool		skip_check = *ptr++ != 0;
+
 		GucContext	gucctx = superuser() ? PGC_SU_BACKEND : PGC_BACKEND;
 
 		/*
@@ -10456,11 +10460,13 @@ YbSetYsqlConnMgrGucDefaults(const char *data, int len)
 		PG_TRY();
 		{
 			yb_conn_mgr_modifying_defaults = true;
+			yb_conn_mgr_skip_check_name = skip_check ? name : NULL;
 			SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
 		}
 		PG_FINALLY();
 		{
 			yb_conn_mgr_modifying_defaults = false;
+			yb_conn_mgr_skip_check_name = NULL;
 		}
 		PG_END_TRY();
 	}
@@ -10495,7 +10501,6 @@ YbSetYsqlConnMgrSessionState(const char *data, int len)
 {
 	const char *ptr = data;
 	const char *end = data + len;
-	GucContext	gucctx = superuser() ? PGC_SUSET : PGC_USERSET;
 
 	PG_TRY();
 	{
@@ -10510,17 +10515,23 @@ YbSetYsqlConnMgrSessionState(const char *data, int len)
 				break;
 			value = ++ptr;
 			ptr = memchr(ptr, '\0', end - ptr);
-			if (ptr == NULL)
+			if (ptr == NULL || ptr + 1 >= end)
 				break;
 			ptr++;
 
-			(void) set_config_option(name, value, gucctx, PGC_S_SESSION,
-									 GUC_ACTION_SET, true, 0, false);
+			yb_conn_mgr_skip_check_name = *ptr++ != 0 ? name : NULL;
+			(void) set_config_option(name, value,
+									 (superuser() ||
+									  YbDbAdminCanSetVariable(name) ?
+									  PGC_SUSET : PGC_USERSET),
+									 PGC_S_SESSION, GUC_ACTION_SET, true, 0,
+									 false);
 		}
 	}
 	PG_FINALLY();
 	{
 		yb_conn_mgr_replaying = false;
+		yb_conn_mgr_skip_check_name = NULL;
 	}
 	PG_END_TRY();
 }
@@ -11088,6 +11099,10 @@ ReportGUCOption(struct config_generic *record)
 
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			if (record->extra == NULL &&
+				!(record->flags & GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK))
+				flags |= YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY;
 
 			if (record->status & YB_GUC_VALUE_RESET)
 				flags |= YB_PARAM_STATUS_SESSION_VAL_RESET;
@@ -13793,21 +13808,7 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
-	bool		YbDbAdminCanSet = false;
-
-	if (IsYbDbAdminUser(GetUserId()))
-	{
-		for (size_t i = 0;
-			 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
-			 i++)
-		{
-			if (stmt->name && strcmp(YbDbAdminVariables[i], stmt->name) == 0)
-			{
-				YbDbAdminCanSet = true;
-				break;
-			}
-		}
-	}
+	bool		YbDbAdminCanSet = YbDbAdminCanSetVariable(stmt->name);
 
 	/*
 	 * Workers synchronize these parameters at the start of the parallel
@@ -16765,7 +16766,7 @@ call_bool_check_hook(struct config_bool *conf, bool *newval, void **extra,
 		return true;
 
 	/* YB */
-	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -16803,7 +16804,7 @@ call_int_check_hook(struct config_int *conf, int *newval, void **extra,
 		return true;
 
 	/* YB */
-	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -16875,7 +16876,7 @@ call_real_check_hook(struct config_real *conf, double *newval, void **extra,
 		return true;
 
 	/* YB */
-	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -16915,7 +16916,7 @@ call_string_check_hook(struct config_string *conf, char **newval, void **extra,
 		return true;
 
 	/* YB */
-	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/*
@@ -16967,7 +16968,7 @@ call_enum_check_hook(struct config_enum *conf, int *newval, void **extra,
 		return true;
 
 	/* YB */
-	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+	if (yb_conn_mgr_skip_check_hook(&conf->gen))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -19102,12 +19103,26 @@ YbIsValidConfigFileName(const char *name)
 }
 
 static bool
-yb_conn_mgr_skip_check_hook(struct config_generic *gconf, bool has_assign_hook)
+yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
 {
-	return (yb_conn_mgr_replaying || yb_conn_mgr_modifying_defaults) &&
-		!has_assign_hook &&
-		!(gconf->flags & GUC_YB_CONN_MGR_REPLAY_CHECK) &&
-		strchr(gconf->name, GUC_QUALIFIER_SEPARATOR) == NULL;
+	return yb_conn_mgr_skip_check_name != NULL &&
+		guc_name_compare(gconf->name, yb_conn_mgr_skip_check_name) == 0;
+}
+
+static bool
+YbDbAdminCanSetVariable(const char *name)
+{
+	if (name == NULL || !IsYbDbAdminUser(GetUserId()))
+		return false;
+
+	for (size_t i = 0;
+		 i < sizeof(YbDbAdminVariables) / sizeof(YbDbAdminVariables[0]);
+		 i++)
+	{
+		if (strcmp(YbDbAdminVariables[i], name) == 0)
+			return true;
+	}
+	return false;
 }
 
 #include "guc-file.c"

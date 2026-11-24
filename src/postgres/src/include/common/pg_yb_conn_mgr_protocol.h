@@ -30,6 +30,7 @@
 #define YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION (1 << 2)
 #define YB_PARAM_STATUS_DEFAULT_VAL_RESET				(1 << 3)
 #define YB_PARAM_STATUS_SESSION_VAL_RESET				(1 << 4)
+#define YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY			(1 << 5)
 
 /* Constants used by Connection Manager and also required in Postgres */
 
