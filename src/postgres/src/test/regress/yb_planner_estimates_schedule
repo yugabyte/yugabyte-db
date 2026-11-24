@@ -20,6 +20,7 @@ test: yb.orig.roundtrip_estimate_setup
 test: yb.orig.roundtrip_estimate
 test: yb.orig.roundtrip_estimate_parallel
 test: yb.orig.roundtrip_estimate_limit
+test: yb.orig.parallel_launch_estimate
 
 # Dependency for the BNL inner scan estimate, BNL cost parity and Append rescan
 # estimate tests

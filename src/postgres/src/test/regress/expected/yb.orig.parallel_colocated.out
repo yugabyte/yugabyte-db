@@ -27,6 +27,7 @@ set enable_bitmapscan = false;
 -- since the "hard" option of Parallel hint is broken. (#26181)
 set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
+set yb_parallel_setup_cost_per_relation=0;
 -- Parallel sequential scan
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)

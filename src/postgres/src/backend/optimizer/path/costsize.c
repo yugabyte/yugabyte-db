@@ -184,6 +184,7 @@ double		yb_local_roundtrip_cost = YB_DEFAULT_LOCAL_ROUNDTRIP_COST;
 double		yb_local_transfer_cost = YB_DEFAULT_LOCAL_TRANSFER_COST;
 double		yb_merge_scan_row_cost_factor = YB_DEFAULT_MERGE_SCAN_ROW_COST_FACTOR;
 double		yb_merge_scan_stream_cost_factor = YB_DEFAULT_MERGE_SCAN_STREAM_COST_FACTOR;
+double		yb_parallel_setup_cost_per_relation = YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
 
 
 double		recursive_worktable_factor = DEFAULT_RECURSIVE_WORKTABLE_FACTOR;
@@ -287,6 +288,9 @@ static Cardinality yb_plan_limit_bound(PlannerInfo *root, Path *path);
 static double yb_gather_flush_rows(PlannerInfo *root, Path *gather_path,
 								   Path *subpath);
 static bool yb_params_select_one_partition(RelOptInfo *rel, List *clauses);
+static int	yb_count_scan_relations(Path *path);
+static Cost yb_parallel_catalog_setup_cost(Path *subpath);
+static int	yb_count_bitmap_indexes(Path *bitmapqual);
 
 
 /*
@@ -520,6 +524,10 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 
 	/* Parallel setup and communication cost. */
 	startup_cost += parallel_setup_cost;
+
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows;
 
 	/*
@@ -616,6 +624,10 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	 * For lack of a better idea, charge an extra 5%.
 	 */
 	startup_cost += parallel_setup_cost;
+
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
+
 	run_cost += parallel_tuple_cost * path->path.rows * 1.05;
 
 	/*
@@ -11950,4 +11962,187 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 	apath->path.startup_cost = startup_cost;
 	apath->path.total_cost = total_cost +
 		cpu_tuple_cost * APPEND_CPU_COST_MULTIPLIER * apath->path.rows;
+}
+
+/*
+ * yb_count_scan_relations
+ *	  Count the relations the given path tree scans: each table, and each
+ *	  index that a scan of the table uses.
+ *
+ * A parallel worker starts with empty catalog caches, so each of these costs
+ * it a relcache build against the master before its first fetch.  An index
+ * is a relation of its own: a worker reads as much of the catalog for the
+ * index as for the table.  Only the partitions left after plan-time pruning
+ * are in the tree; run-time pruning is not modeled.
+ */
+static int
+yb_count_scan_relations(Path *path)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (path == NULL)
+		return 0;
+
+	switch (nodeTag(path))
+	{
+		case T_Path:
+		case T_ForeignPath:
+			if (path->parent->rtekind == RTE_RELATION)
+				count = 1;
+			break;
+		case T_IndexPath:
+			/* the table and the index */
+			count = 2;
+			break;
+		case T_BitmapHeapPath:
+			count = 1 +
+				yb_count_bitmap_indexes(((BitmapHeapPath *) path)->bitmapqual);
+			break;
+		case T_YbBitmapTablePath:
+			count = 1 +
+				yb_count_bitmap_indexes(((YbBitmapTablePath *) path)->bitmapqual);
+			break;
+		case T_TidPath:
+		case T_TidRangePath:
+			count = 1;
+			break;
+		case T_AppendPath:
+			foreach(lc, ((AppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_MergeAppendPath:
+			foreach(lc, ((MergeAppendPath *) path)->subpaths)
+				count += yb_count_scan_relations((Path *) lfirst(lc));
+			break;
+		case T_HashPath:
+		case T_MergePath:
+		case T_NestPath:
+			count = yb_count_scan_relations(((JoinPath *) path)->outerjoinpath) +
+				yb_count_scan_relations(((JoinPath *) path)->innerjoinpath);
+			break;
+		case T_AggPath:
+			count = yb_count_scan_relations(((AggPath *) path)->subpath);
+			break;
+		case T_GroupPath:
+			count = yb_count_scan_relations(((GroupPath *) path)->subpath);
+			break;
+		case T_IncrementalSortPath:
+			count = yb_count_scan_relations(((IncrementalSortPath *) path)->spath.subpath);
+			break;
+		case T_LimitPath:
+			count = yb_count_scan_relations(((LimitPath *) path)->subpath);
+			break;
+		case T_MaterialPath:
+			count = yb_count_scan_relations(((MaterialPath *) path)->subpath);
+			break;
+		case T_MemoizePath:
+			count = yb_count_scan_relations(((MemoizePath *) path)->subpath);
+			break;
+		case T_ProjectSetPath:
+			count = yb_count_scan_relations(((ProjectSetPath *) path)->subpath);
+			break;
+		case T_ProjectionPath:
+			count = yb_count_scan_relations(((ProjectionPath *) path)->subpath);
+			break;
+		case T_SortPath:
+			count = yb_count_scan_relations(((SortPath *) path)->subpath);
+			break;
+		case T_SubqueryScanPath:
+			count = yb_count_scan_relations(((SubqueryScanPath *) path)->subpath);
+			break;
+		case T_UniquePath:
+			count = yb_count_scan_relations(((UniquePath *) path)->subpath);
+			break;
+		case T_UpperUniquePath:
+			count = yb_count_scan_relations(((UpperUniquePath *) path)->subpath);
+			break;
+		default:
+			break;
+	}
+
+	return count;
+}
+
+/*
+ * yb_count_bitmap_indexes
+ *	  Count the index scans under the bitmapqual of a bitmap scan.
+ */
+static int
+yb_count_bitmap_indexes(Path *bitmapqual)
+{
+	int			count = 0;
+	ListCell   *lc;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		foreach(lc, ((BitmapAndPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		foreach(lc, ((BitmapOrPath *) bitmapqual)->bitmapquals)
+			count += yb_count_bitmap_indexes((Path *) lfirst(lc));
+	}
+	else
+		count = 1;
+
+	return count;
+}
+
+/*
+ * yb_parallel_catalog_setup_cost
+ *	  Startup cost of the catalog data the workers of a Gather or Gather
+ *	  Merge load before their first fetch.
+ *
+ * A worker is a new backend, so its catalog caches start empty.  Without
+ * catalog preloading, a worker builds a relcache entry for every table and
+ * index its plan opens, each a few round trips to the master, and the charge
+ * is per relation of the plan.
+ *
+ * Where a new backend preloads its caches (YbCatalogPreloadRequired), a
+ * worker repeats the preload this backend did, and its plan's relations are
+ * in the caches by then.  The delay follows what is preloaded: the relations,
+ * attributes and statistics rows of the database, and the function names
+ * when pg_proc is preloaded.  This backend's own preload counted them
+ * (YbGetCatalogCachePreloadedRows), and a count, unlike the time the preload
+ * took, is the same in every backend of the database.  A cache that was not
+ * preloaded counts nothing.  A minimal preload leaves user relations out, so
+ * both charges apply.
+ *
+ * The preload terms are scaled with yb_parallel_setup_cost_per_relation, so
+ * that setting it to 0 removes the whole charge.  The workers load
+ * concurrently, so the delay before the first tuple grows with the preload
+ * and the relation count rather than with the worker count.
+ */
+static Cost
+yb_parallel_catalog_setup_cost(Path *subpath)
+{
+	Cost		cost = 0;
+	bool		preload = IsYugaByteEnabled() && YbCatalogPreloadRequired();
+
+	if (preload)
+	{
+		double		relations = YbGetCatalogCachePreloadedRows(RELOID);
+		double		attributes = YbGetCatalogCachePreloadedRows(ATTNUM);
+		double		statistics = YbGetCatalogCachePreloadedRows(STATRELATTINH);
+		double		proc_names = YbGetCatalogCachePreloadedLists(PROCOID);
+		Cost		preload_cost;
+
+		preload_cost = YB_PARALLEL_PRELOAD_COST_BASE +
+			YB_PARALLEL_PRELOAD_COST_PER_RELATION * relations +
+			YB_PARALLEL_PRELOAD_COST_PER_ATTRIBUTE * attributes +
+			YB_PARALLEL_PRELOAD_COST_PER_STATISTIC * statistics +
+			YB_PARALLEL_PRELOAD_COST_PER_PROC_NAME_PAIR *
+			proc_names * proc_names / 2;
+
+		cost += preload_cost * yb_parallel_setup_cost_per_relation /
+			YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
+	}
+
+	if (!preload || YbUseMinimalCatalogCachesPreload())
+		cost += yb_parallel_setup_cost_per_relation *
+			yb_count_scan_relations(subpath);
+
+	return cost;
 }

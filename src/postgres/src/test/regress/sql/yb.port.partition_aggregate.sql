@@ -272,6 +272,8 @@ SET parallel_setup_cost TO 0;
 
 -- YB: enable parallelism for the smallest partition
 SET yb_parallel_range_rows TO 1999;
+-- YB: parallel_setup_cost is 0 here, so remove the cost per relation as well
+SET yb_parallel_setup_cost_per_relation TO 0;
 
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
@@ -302,6 +304,8 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
 -- wins as we add it first. This parallel_setup_cost plays a vital role in
 -- costing such plans.
 SET parallel_setup_cost TO 10;
+-- YB: charge the cost per relation again
+RESET yb_parallel_setup_cost_per_relation;
 
 CREATE TABLE pagg_tab_para(x int, y int) PARTITION BY RANGE(x);
 CREATE TABLE pagg_tab_para_p1 PARTITION OF pagg_tab_para FOR VALUES FROM (0) TO (12);
