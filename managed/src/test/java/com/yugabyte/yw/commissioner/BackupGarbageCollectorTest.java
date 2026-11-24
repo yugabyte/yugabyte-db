@@ -357,7 +357,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteCustomerConfigSuccessWithBackupsError() {
+  public void testQueuedCustomerConfigKeptWhileABackupFailedToDelete() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.getConfigUUID();
@@ -369,13 +369,28 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         .validateStorageConfig(any());
     customerConfig.updateState(ConfigState.QueuedForDeletion);
     backupGC.scheduleRunner();
+    backup.refresh();
+    assertEquals(BackupState.FailedToDelete, backup.getState());
+    // The backup's files are still in the storage: the config stays, so that a later delete of
+    // the backup can remove them.
+    assertEquals(
+        ConfigState.QueuedForDeletion,
+        customerConfigService
+            .getOrBadRequest(defaultCustomer.getUuid(), customerConfig.getConfigUUID())
+            .getState());
+
+    // Once the backup is gone (here, deleted by force), the config goes with the next run.
+    backup.transitionState(BackupState.QueuedForDeletion);
+    backup.transitionState(BackupState.QueuedForForcedDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () -> Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID()));
     assertThrows(
         PlatformServiceException.class,
         () ->
             customerConfigService.getOrBadRequest(
                 defaultCustomer.getUuid(), customerConfig.getConfigUUID()));
-    backup.refresh();
-    assertEquals(BackupState.FailedToDelete, backup.getState());
   }
 
   @Test

@@ -95,8 +95,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
     flagMap.put("tserver_unresponsive_timeout_ms",
         String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
-    flagMap.put("xcluster_guarded_lease_duration_ms",
-        String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS));
     return flagMap;
   }
 
@@ -423,6 +421,44 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       waitForNotification(listenerConn, channel, "after_restart");
       LOG.info("New notification received after poller restart");
+    }
+  }
+
+  /**
+   * pg_cancel_backend() on the notifications poller must not stop notification delivery. The
+   * poller ignores SIGINT: it has no query to cancel, and exiting with code 0 would make the
+   * postmaster unregister it, leaving every listener on the node without notifications.
+   */
+  @Test
+  public void testCancelPollerKeepsDeliveringNotifications() throws Exception {
+    final String channel = "poller_cancel";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+
+      int pollerPid = getPollerPid(listenerStmt);
+      LOG.info("Notifications poller PID: " + pollerPid);
+
+      Row cancelled = getSingleRow(listenerStmt,
+          "SELECT pg_cancel_backend(" + pollerPid + ")");
+      assertTrue("pg_cancel_backend should signal the poller", cancelled.getBoolean(0));
+
+      // Give a poller that wrongly reacted to SIGINT time to exit.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      List<Row> pollers = getRowList(listenerStmt,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("The poller should keep running after pg_cancel_backend",
+          1, pollers.size());
+      assertEquals("The poller should not have been restarted",
+          pollerPid, pollers.get(0).getInt(0).intValue());
+
+      try (Connection notifierConn = getConnectionBuilder().connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", 'after_cancel'");
+      }
+
+      waitForNotification(listenerConn, channel, "after_cancel");
     }
   }
 
@@ -2296,6 +2332,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Test
   public void testSlotCleanupOnTServerDecommission() throws Exception {
     final String channel = "decommission_test";
+    // Only this test needs the short lease. Set for the whole class, it expires on every TServer
+    // whenever the master stalls longer, e.g. the multi-second snapshot flush in
+    // testListenNotifyWithDbClone on sanitizer builds, and their OID allocations fail.
+    restartClusterWithFlags(
+        Collections.singletonMap("xcluster_guarded_lease_duration_ms",
+            String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS)),
+        Collections.emptyMap());
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
     YBClient client = miniCluster.getClient();
 
     markClusterNeedsRecreation();

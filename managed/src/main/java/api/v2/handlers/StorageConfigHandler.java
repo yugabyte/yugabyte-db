@@ -34,6 +34,7 @@ import api.v2.models.YBATask;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.DeleteStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.EditStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -57,6 +58,7 @@ import io.ebean.PagedList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -186,15 +188,7 @@ public class StorageConfigHandler {
       throw new PlatformServiceException(NOT_FOUND, "No storage config with UUID " + scUUID);
     }
     if (!stored.isActive()) {
-      ObjectNode error = Json.newObject();
-      error.put("code", NOT_ACTIVE);
-      error.put(
-          "message",
-          String.format("Storage config %s is %s and can't be edited", scUUID, stored.getState()));
-      error.put(
-          "storage_config_state",
-          StorageConfigMapper.INSTANCE.toStorageConfigInfo(stored).getState().toString());
-      throw new PlatformServiceException(CONFLICT, error);
+      throw notActive(stored, "edited");
     }
     if (ifMatch != null
         && confGetter.getGlobalConf(GlobalConfKeys.conditionalGetEnabled)
@@ -233,6 +227,71 @@ public class StorageConfigHandler {
         CustomerTask.TaskType.Edit,
         edited.getConfigName());
     return new YBATask().taskUuid(taskUUID).resourceUuid(scUUID);
+  }
+
+  public YBATask deleteStorageConfig(UUID cUUID, UUID scUUID, boolean deleteBackups) {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    CustomerConfig stored = CustomerConfig.get(cUUID, scUUID);
+    if (stored == null || stored.getType() != ConfigType.STORAGE) {
+      throw new PlatformServiceException(NOT_FOUND, "No storage config with UUID " + scUUID);
+    }
+    // A repeated delete gets the task of the delete that queued the config, or is deleting it.
+    if (stored.getState() == ConfigState.QueuedForDeletion || deleteInProgress(scUUID)) {
+      Optional<CustomerTask> earlier =
+          CustomerTask.maybeGetByTargetUUIDTaskTypeTargetType(
+              cUUID,
+              scUUID,
+              CustomerTask.TaskType.Delete,
+              CustomerTask.TargetType.CustomerConfiguration);
+      if (earlier.isPresent()) {
+        return new YBATask().taskUuid(earlier.get().getTaskUUID()).resourceUuid(scUUID);
+      }
+    }
+    if (!stored.isActive()) {
+      throw notActive(stored, "deleted");
+    }
+    checkNoEditInProgress(scUUID);
+    ObjectNode inUse = StorageConfigDeletion.inUseError(cUUID, scUUID, deleteBackups);
+    if (inUse != null) {
+      throw new PlatformServiceException(CONFLICT, inUse);
+    }
+    DeleteStorageConfig.Params params = new DeleteStorageConfig.Params();
+    params.customerUUID = cUUID;
+    params.configUUID = scUUID;
+    params.deleteBackups = deleteBackups;
+    UUID taskUUID = commissioner.submit(TaskType.DeleteStorageConfig, params);
+    log.info(
+        "Submitted task {} to delete storage config {} (delete_backups={})",
+        taskUUID,
+        scUUID,
+        deleteBackups);
+    CustomerTask.create(
+        customer,
+        scUUID,
+        taskUUID,
+        CustomerTask.TargetType.CustomerConfiguration,
+        CustomerTask.TaskType.Delete,
+        stored.getConfigName());
+    return new YBATask().taskUuid(taskUUID).resourceUuid(scUUID);
+  }
+
+  private static boolean deleteInProgress(UUID scUUID) {
+    return CustomerTask.findIncompleteByTargetUUID(scUUID).stream()
+        .anyMatch(task -> task.getType() == CustomerTask.TaskType.Delete);
+  }
+
+  private static PlatformServiceException notActive(CustomerConfig stored, String verb) {
+    ObjectNode error = Json.newObject();
+    error.put("code", NOT_ACTIVE);
+    error.put(
+        "message",
+        String.format(
+            "Storage config %s is %s and can't be %s",
+            stored.getConfigUUID(), stored.getState(), verb));
+    error.put(
+        "storage_config_state",
+        StorageConfigMapper.INSTANCE.toStorageConfigInfo(stored).getState().toString());
+    return new PlatformServiceException(CONFLICT, error);
   }
 
   public StorageConfig getStorageConfig(UUID cUUID, UUID scUUID) {
