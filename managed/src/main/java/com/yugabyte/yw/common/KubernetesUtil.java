@@ -1679,11 +1679,11 @@ public class KubernetesUtil {
           ? UserIntentcpuCoreCount
           : Quantity.getAmountInBytes(new Quantity(azOverrides.toString())).doubleValue();
     } catch (Exception e) {
+      // The overrides can hold secrets, so they are not logged.
       log.warn(
-          "Failed to get core count for node {} with user intent {} and overrides {}",
+          "Failed to get core count for node {} with user intent {}",
           nodeDetails.nodeName,
           userIntent,
-          finalUniverseOverridesAZMap,
           e);
       return UserIntentcpuCoreCount;
     }

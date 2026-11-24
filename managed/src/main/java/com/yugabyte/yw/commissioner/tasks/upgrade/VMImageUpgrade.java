@@ -660,7 +660,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                 "No cluster available with UUID: " + node.placementUuid);
           }
           UserIntent userIntent = cluster.userIntent;
-          fillCreateParamsForNode(params, userIntent, node);
+          fillCreateParamsForNode(cluster.getProviderUUIDForNode(node), params, userIntent, node);
           params.numVolumes = numVolumes;
           params.setMachineImage(machineImage);
           params.bootDisksPerNodePerZone = this.replacementRootVolumes;

@@ -32,6 +32,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -53,8 +54,10 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
@@ -73,11 +76,14 @@ DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
 DECLARE_uint64(TEST_delay_release_locks_ms);
+DECLARE_double(TEST_inject_read_restart_with_probability);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
@@ -320,6 +326,55 @@ TEST_F(PgObjectLocksTestRF1, TestSanity) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
+// DML on a temp table must not take global object locks. Temp tables are PG heap relations, so
+// INSERT ... ON CONFLICT takes a speculative insertion lock per new key, and GIN pending list
+// cleanup takes a page lock. Both are in ExclusiveLock mode and used to be sent to the master as
+// global object locks (GH #36323).
+TEST_F(PgObjectLocksTestRF1, TempTableDmlTakesNoGlobalLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE t (k INT PRIMARY KEY, v INT, a INT[])"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t USING gin (a)"));
+  ASSERT_OK(WaitFor(
+      [this] { return NumGrantedLocksOnMaster() == 0; }, 5s * kTimeMultiplier,
+      "Wait for the DDLs to release their global locks"));
+
+  // Keep the transaction open: a global lock would stay granted on the master until commit.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT g, 0, ARRAY[g] FROM generate_series(1, 10) g "
+      "ON CONFLICT (k) DO UPDATE SET v = t.v + 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 0) ON CONFLICT (k) DO UPDATE SET v = t.v + 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (11, 0) ON CONFLICT (k) DO NOTHING"));
+  ASSERT_OK(conn.Fetch("SELECT gin_clean_pending_list('t_a_idx'::regclass)"));
+  ASSERT_EQ(NumGrantedLocksOnMaster(), 0);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 11);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT sum(v) FROM t")), 1);
+}
+
+// COPY into a temp table extends its free space map, and fsm_extend takes a relation extension
+// lock even on temp relations. It used to be sent to the master as a global ExclusiveLock on the
+// relation's own lock ID.
+TEST_F(PgObjectLocksTestRF1, TempTableCopyTakesNoGlobalLocks) {
+  const auto in_file = GetTestPath("copy_in.csv");
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "COPY (SELECT g, 0 FROM generate_series(1, 2000) g) TO '$0' CSV", in_file));
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(WaitFor(
+      [this] { return NumGrantedLocksOnMaster() == 0; }, 5s * kTimeMultiplier,
+      "Wait for the DDLs to release their global locks"));
+
+  // Keep the transaction open: a global lock would stay granted on the master until commit.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("COPY t FROM '$0' CSV", in_file));
+  ASSERT_EQ(NumGrantedLocksOnMaster(), 0);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 2000);
+}
+
 TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   CreateTestTable();
 
@@ -339,6 +394,373 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   ASSERT_OK(conn.CommitTransaction());
   ASSERT_OK(status_future.get());
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
+}
+
+class PgObjectLocksImplicitTablegroupTest : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    PgObjectLocksTestRF1::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLESPACE ts LOCATION '/data'"));
+    ASSERT_OK(conn.Execute("CREATE TABLESPACE ts2 LOCATION '/data'"));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kDbName));
+  }
+
+  std::string CreateTableStmt(const std::string& table, bool in_tablespace = true) {
+    return Format(
+        "CREATE TABLE $0 (k INT PRIMARY KEY)$1", table, in_tablespace ? " TABLESPACE ts" : "");
+  }
+
+  Status WaitForLockWaiter() {
+    return WaitFor([&]() {
+      return NumWaitingLocks() >= 1 || NumWaitingLocksOnMaster() >= 1;
+    }, 10s * kTimeMultiplier, "Timed out waiting for a lock waiter");
+  }
+
+  void CheckUsableInSingleTablegroup(PGConn& conn, const std::string& table) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 1);
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT COUNT(*) FROM $0", table))), 1);
+  }
+
+  void TestConcurrentFirstCreates(bool in_tablespace) {
+    auto first = ASSERT_RESULT(ConnectToDB(kDbName));
+    auto second = ASSERT_RESULT(ConnectToDB(kDbName));
+
+    ASSERT_OK(first.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(first.Execute(CreateTableStmt("t1", in_tablespace)));
+    auto create_future = std::async(std::launch::async, [&]() {
+      return second.Execute(CreateTableStmt("t2", in_tablespace));
+    });
+    ASSERT_OK(WaitForLockWaiter());
+    ASSERT_OK(first.CommitTransaction());
+    ASSERT_OK(create_future.get());
+
+    ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(first, "t1"));
+    ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(second, "t2"));
+  }
+
+  Result<std::string> TablegroupOf(PGConn& conn, const std::string& table) {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT grpname FROM pg_yb_tablegroup WHERE oid = "
+        "(SELECT tablegroup_oid FROM yb_table_properties('$0'::regclass))", table));
+  }
+
+  Result<std::string> TablespaceOf(PGConn& conn, const std::string& table) {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT COALESCE(s.spcname, 'pg_default') FROM pg_class c "
+        "LEFT JOIN pg_tablespace s ON s.oid = c.reltablespace WHERE c.oid = '$0'::regclass",
+        table));
+  }
+
+  Status SetColocatedTablesWithTablespaces(PGConn& conn, bool enabled) {
+    RETURN_NOT_OK(SET_FLAG(ysql_yb_enable_colocated_tables_with_tablespaces, enabled));
+    return WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_colocated_tables_with_tablespaces")) == (enabled ? "on" : "off");
+    }, 10s * kTimeMultiplier, "Timed out waiting for the setting to reach postgres");
+  }
+
+  static constexpr auto kDbName = "colo";
+  static constexpr auto kMoveTablegroupStmt =
+      "ALTER TABLE ALL IN TABLESPACE ts SET TABLESPACE ts2 CASCADE";
+  static constexpr auto kCreateInTargetTablespaceStmt =
+      "CREATE TABLE t2 (k INT PRIMARY KEY) TABLESPACE ts2";
+};
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, DropOfLastTableWaitsForCreate) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto dropper = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto drop_future = std::async(std::launch::async, [&]() {
+    return dropper.Execute("DROP TABLE t1");
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_OK(drop_future.get());
+
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateWaitsForDropOfLastTable) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto dropper = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(dropper.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(dropper.Execute("DROP TABLE t1"));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(CreateTableStmt("t2"));
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(dropper.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, DropOfLastTableProceedsAfterCreateRollsBack) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto dropper = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto drop_future = std::async(std::launch::async, [&]() {
+    return dropper.Execute("DROP TABLE t1");
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.RollbackTransaction());
+  ASSERT_OK(drop_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 0);
+  ASSERT_OK(creator.Execute(CreateTableStmt("t3")));
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t3"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateIndexWaitsForDropOfLastIndex) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto dropper = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t1", false /* in_tablespace */)));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t2", false /* in_tablespace */)));
+  ASSERT_OK(dropper.Execute("CREATE INDEX i1 ON t1 (k) TABLESPACE ts"));
+
+  ASSERT_OK(dropper.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(dropper.Execute("DROP INDEX i1"));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute("CREATE INDEX i2 ON t2 (k) TABLESPACE ts");
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(dropper.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  // The default tablegroup, and a new one for the tablespace.
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 2);
+  ASSERT_OK(creator.Execute("INSERT INTO t2 VALUES (1)"));
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM t2")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, ConcurrentDropsOfLastTablesDropTablegroup) {
+  auto first = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto second = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(first.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(first.Execute(CreateTableStmt("t2")));
+
+  ASSERT_OK(first.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(first.Execute("DROP TABLE t1"));
+  auto drop_future = std::async(std::launch::async, [&]() {
+    return second.Execute("DROP TABLE t2");
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(first.CommitTransaction());
+  ASSERT_OK(drop_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(first.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 0);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, ConcurrentFirstCreatesShareDefaultTablegroup) {
+  ASSERT_NO_FATALS(TestConcurrentFirstCreates(false /* in_tablespace */));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, ConcurrentFirstCreatesShareTablespaceTablegroup) {
+  ASSERT_NO_FATALS(TestConcurrentFirstCreates(true /* in_tablespace */));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, EmptyDefaultTablegroupIsKept) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto dropper = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(dropper.Execute(CreateTableStmt("t1", false /* in_tablespace */)));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2", false /* in_tablespace */)));
+  ASSERT_OK(dropper.Execute("DROP TABLE t1"));
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+
+  ASSERT_OK(dropper.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(dropper.Execute("DROP TABLE t2"));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t3", false /* in_tablespace */)));
+  ASSERT_OK(dropper.CommitTransaction());
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t3"));
+
+  ASSERT_OK(creator.Execute("DROP TABLE t3"));
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_tablegroup WHERE grpname = 'default'")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, DefaultTablegroupInTablespaceIsKept) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // While the feature is off, the first table puts the default tablegroup in its tablespace.
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, false));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, true));
+  ASSERT_OK(conn.Execute("DROP TABLE t1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_tablegroup "
+      "WHERE grpname = 'default' AND grptablespace != 0")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupWaitsForCreate) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_OK(move_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts2");
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateWaitsForMoveOfTablegroup) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(kMoveTablegroupStmt));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(CreateTableStmt("t2"));
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  // The tablegroup of t1 left ts, so t2 is in a new one.
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t1")), "ts2");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 2);
+  ASSERT_OK(creator.Execute("INSERT INTO t2 VALUES (1)"));
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM t2")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, FirstCreateInTargetTablespaceWaitsForMoveOfTablegroup) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(kMoveTablegroupStmt));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(kCreateInTargetTablespaceStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupWaitsForFirstCreateInTargetTablespace) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(kCreateInTargetTablespaceStmt));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_NOK_STR_CONTAINS(move_future.get(), "as it contains existing colocated relation");
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t1")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 2);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateDoesNotWaitForMoveByNonOwner) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(creator.Execute("CREATE ROLE non_owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON TABLESPACE ts2 TO non_owner"));
+
+  ASSERT_OK(mover.Execute("SET ROLE non_owner"));
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(
+      "ALTER TABLE ALL IN TABLESPACE ts OWNED BY non_owner SET TABLESPACE ts2 CASCADE"));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(CreateTableStmt("t2"));
+  });
+  const auto create_status = create_future.wait_for(10s * kTimeMultiplier);
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_EQ(create_status, std::future_status::ready);
+  ASSERT_OK(create_future.get());
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupByOwnerWaitsForCreate) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(creator.Execute("CREATE ROLE owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON SCHEMA public TO owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON TABLESPACE ts, ts2 TO owner"));
+  ASSERT_OK(creator.Execute("SET ROLE owner"));
+  ASSERT_OK(mover.Execute("SET ROLE owner"));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_OK(move_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts2");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfDefaultTablegroupIsRefused) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1", false /* in_tablespace */)));
+  ASSERT_OK(conn.Execute("CREATE ROLE owner"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO owner"));
+
+  for (const auto* stmt : {
+      "ALTER TABLE ALL IN TABLESPACE pg_default COLOCATED WITH t1 SET TABLESPACE ts CASCADE",
+      "ALTER TABLE ALL IN TABLESPACE pg_default OWNED BY owner SET TABLESPACE ts CASCADE",
+      "ALTER TABLE ALL IN TABLESPACE pg_default OWNED BY owner SET TABLESPACE ts"}) {
+    SCOPED_TRACE(stmt);
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), "cannot move the default tablegroup");
+  }
+  ASSERT_EQ(ASSERT_RESULT(TablegroupOf(conn, "t1")), "default");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "pg_default");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveToDefaultTablespaceIsRefused) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE ALL IN TABLESPACE ts SET TABLESPACE pg_default CASCADE"),
+      "cannot move colocated relations to the database default tablespace");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "ts");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveSeesDefaultTablegroupInTablespace) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // While the feature is off, the first table puts the default tablegroup in its tablespace.
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, false));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, true));
+
+  ASSERT_NOK_STR_CONTAINS(conn.Execute(kMoveTablegroupStmt), "cannot move the default tablegroup");
+  ASSERT_OK(conn.Execute(kCreateInTargetTablespaceStmt));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE ALL IN TABLESPACE ts2 SET TABLESPACE ts CASCADE"),
+      "as it contains existing colocated relation");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t2")), "ts2");
 }
 
 // A DDL blocked on a conflicting object lock used to fail with a transport timeout naming neither
@@ -3512,6 +3934,45 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
+// Forces a full relcache preload on every new connection.
+class PgObjectLocksTestRF1FullPreload : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+// The relcache preload reads catalogs at a versioned catalog snapshot and must not take object
+// locks on them, so a new connection must not wait on a conflicting catalog lock. Catalog reads
+// outside the preload still lock.
+TEST_F(PgObjectLocksTestRF1FullPreload, RelcachePreloadDoesNotTakeCatalogObjectLocks) {
+  // pg_index is read under AccessShareLock by YBUpdateRelationsIndicies during the preload.
+  auto lock_holder = ASSERT_RESULT(Connect());
+  ASSERT_OK(lock_holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(lock_holder.Execute("LOCK TABLE pg_index IN ACCESS EXCLUSIVE MODE"));
+
+  auto connect_future = std::async(std::launch::async, [this] { return Connect(); });
+  const auto connect_status = connect_future.wait_for(std::chrono::seconds(30 * kTimeMultiplier));
+  if (connect_status != std::future_status::ready) {
+    // Unblock the connection so the future's destructor does not wait out the RPC timeout.
+    ASSERT_OK(lock_holder.CommitTransaction());
+  }
+  ASSERT_EQ(connect_status, std::future_status::ready)
+      << "New connection blocked on the catalog lock held by another session";
+  auto conn = ASSERT_RESULT(connect_future.get());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  // A catalog read outside the preload still takes its lock and waits on the holder.
+  ASSERT_OK(conn.Execute("SET lock_timeout = '2s'"));
+  auto status = conn.Fetch("SELECT count(*) FROM pg_index");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.status().ToString(), "canceling statement due to lock timeout");
+
+  ASSERT_OK(lock_holder.CommitTransaction());
+  ASSERT_OK(conn.Fetch("SELECT count(*) FROM pg_index"));
+}
+
 class PgObjectLocksBothPathsTest : public PgObjectLocksTestRF1,
                                    public ::testing::WithParamInterface<bool> {
  protected:
@@ -3675,6 +4136,452 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
     ASSERT_OK(conn.CommitTransaction());
   }
 }
+
+// GH #35007, #36262: a statement that is transparently retried must still hold its table locks
+// afterwards, so a conflicting DDL waits for it. Applying a txn restart on the tserver releases all
+// of the session's fastpath locks, so it must happen before the retry re-acquires them.
+class PgObjectLocksRetryTest : public PgObjectLocksTestRF1,
+                               public ::testing::WithParamInterface<bool> {
+ protected:
+  struct RetryCase {
+    IsolationLevel isolation;
+    bool in_txn_block;
+    bool after_first_statement = false;
+
+    std::string ToString() const {
+      return Format(
+          "{ isolation: $0 in_txn_block: $1 after_first_statement: $2 }",
+          IsolationLevel_Name(isolation), in_txn_block, after_first_statement);
+    }
+  };
+
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+    // PgMiniTestBase turns online index backfill off; production has it on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
+  }
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgObjectLocksTestRF1::SetUp();
+    if (GetParam()) {
+      auto& shared_object = *cluster_->mini_tablet_server(0)->server()->shared_object().get();
+      ASSERT_OK(shared_object.WaitAllocatorsInitialized());
+    }
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO hot VALUES (1, 0)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v INT)"));
+    // A fan-out read runs at a read time picked by the client, so an injected restart reaches
+    // postgres instead of being retried inside DocDB.
+    ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+    ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
+  }
+
+  void DoTearDown() override {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    SyncPoint::GetInstance()->ClearTrace();
+    PgObjectLocksTestRF1::DoTearDown();
+  }
+
+  Result<PGConn> ConnectWriter(bool simple_query_protocol = false) {
+    auto conn = VERIFY_RESULT(PGConnBuilder(MakeConnSettings()).Connect(simple_query_protocol));
+    RETURN_NOT_OK(SetupConnection(&conn));
+    // QPM explains a newly seen plan at ExecutorEnd, which re-opens its tables with ACCESS SHARE
+    // after the retry and would block the DDL on its own, hiding a lost ROW EXCLUSIVE lock.
+    RETURN_NOT_OK(conn.Execute("SET yb_pg_stat_plans_track = 'none'"));
+    return conn;
+  }
+
+  static constexpr auto kT2Ddl = "ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID";
+
+  void AssertDdlWaitsForWriter(const std::string& ddl = kT2Ddl) {
+    auto ddl_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
+    ASSERT_NOK_STR_CONTAINS(ddl_conn.Execute(ddl), "statement timeout");
+  }
+
+  static Status WaitForWaitEvent(PGConn& conn, int writer_pid, const std::string& wait_event) {
+    return WaitFor(
+        [&conn, writer_pid, &wait_event]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<PGUint64>(Format(
+              "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND wait_event = '$1'",
+              writer_pid, wait_event))) == 1;
+        },
+        30s * kTimeMultiplier, Format("writer waiting on $0", wait_event));
+  }
+
+  // Runs stmt_format on the writer as retry_case dictates and asserts that ddl still waits for the
+  // writer afterwards. stmt_format's $0 is a filter that, outside a txn block, makes the
+  // statement sleep at its end, so the lock is checked while the statement still holds it.
+  // before_statement runs just before the statement, while_running while it runs.
+  void RunRetriedStatement(
+      PGConn& writer, const RetryCase& retry_case, const std::string& stmt_format,
+      const std::function<void()>& before_statement,
+      const std::function<void(PGConn&, int)>& while_running,
+      const std::string& ddl = kT2Ddl) {
+    SCOPED_TRACE(retry_case.ToString());
+    LOG(INFO) << "Case: " << retry_case.ToString();
+    auto conn = ASSERT_RESULT(Connect());
+    const auto writer_pid = ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    if (retry_case.in_txn_block) {
+      ASSERT_OK(writer.StartTransaction(retry_case.isolation));
+      if (retry_case.after_first_statement) {
+        ASSERT_OK(writer.Fetch("SELECT * FROM hot"));
+      }
+    } else {
+      ASSERT_OK(writer.ExecuteFormat(
+          "SET default_transaction_isolation = '$0'", PgIsolationName(retry_case.isolation)));
+    }
+    before_statement();
+    TestThreadHolder thread_holder;
+    const auto stmt =
+        Format(stmt_format, retry_case.in_txn_block ? "true" : "pg_sleep(10) IS NOT NULL");
+    thread_holder.AddThreadFunctor([&writer, &stmt] {
+      if (stmt.starts_with("SELECT")) {
+        ASSERT_OK(writer.Fetch(stmt));
+      } else {
+        ASSERT_OK(writer.Execute(stmt));
+      }
+    });
+    while_running(conn, writer_pid);
+    if (!retry_case.in_txn_block) {
+      ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "PgSleep"));
+      AssertDdlWaitsForWriter(ddl);
+    }
+    thread_holder.JoinAll();
+    if (retry_case.in_txn_block) {
+      AssertDdlWaitsForWriter(ddl);
+      ASSERT_OK(writer.CommitTransaction());
+    }
+    ASSERT_OK(writer.Execute("DELETE FROM t2"));
+  }
+
+  static std::string_view PgIsolationName(IsolationLevel isolation) {
+    switch (isolation) {
+      case IsolationLevel::READ_COMMITTED: return "read committed";
+      case IsolationLevel::SNAPSHOT_ISOLATION: return "repeatable read";
+      case IsolationLevel::SERIALIZABLE_ISOLATION: return "serializable";
+      default: break;
+    }
+    LOG(FATAL) << "Unexpected isolation level " << isolation;
+    return {};
+  }
+};
+
+TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  std::atomic<int> restarts{0};
+  SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransactionForRetry", [&](void*) {
+    ++restarts;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+  const auto inject_restart = [] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+  };
+  const auto wait_for_restart = [&restarts](PGConn&, int) {
+    ASSERT_OK(WaitFor(
+        [&restarts] { return restarts.load() >= 1; }, 30s * kTimeMultiplier,
+        "read restart retry"));
+  };
+
+  for (const auto& retry_case : {
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ false},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true,
+                     /* after_first_statement= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ false}}) {
+    restarts = 0;
+    RunRetriedStatement(
+        writer, retry_case,
+        /* stmt_format= */
+        "INSERT INTO t2 SELECT 1, n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
+        /* before_statement= */ inject_restart, /* while_running= */ wait_for_restart);
+  }
+
+  // A read-only autocommit statement runs without a distributed transaction.
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    restarts = 0;
+    RunRetriedStatement(
+        writer, RetryCase{isolation, /* in_txn_block= */ false},
+        /* stmt_format= */ "SELECT n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
+        /* before_statement= */ inject_restart, /* while_running= */ wait_for_restart,
+        /* ddl= */ "ALTER TABLE gate ADD COLUMN extra INT");
+  }
+}
+
+TEST_P(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  // An injected restart lands no later than the current time, so every retry is restarted again
+  // until the clock passes the capped global limit, up to max_clock_skew after the first attempt.
+  // How many retries that takes depends on how fast each one is, so bound the statement by time
+  // instead: a retry whose window is not capped never converges and hits the timeout.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000000"));
+  ASSERT_OK(writer.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
+
+  std::atomic<int> restarts{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::RestartTransactionForRetry", [&](void*) { ++restarts; });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    SCOPED_TRACE(IsolationLevel_Name(isolation));
+    restarts = 0;
+    ASSERT_OK(writer.StartTransaction(isolation));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+    auto status = writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+    ASSERT_OK(status);
+    ASSERT_OK(writer.CommitTransaction());
+    LOG(INFO) << IsolationLevel_Name(isolation) << " restarts: " << restarts.load();
+    ASSERT_GE(restarts.load(), 1);
+    ASSERT_OK(writer.Execute("DELETE FROM t2"));
+  }
+}
+
+// A tablet restarts a statement at most once. The retry reads that tablet with the local limit
+// the failed attempt learned, so a write that commits while the retry runs is not in doubt.
+TEST_P(PgObjectLocksRetryTest, ReadRestartRetryKeepsLocalLimits) {
+  constexpr auto kNumTablets = 3;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE lim (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO $0 TABLETS", kNumTablets));
+  ASSERT_OK(conn.Execute("INSERT INTO lim SELECT s, 0 FROM generate_series(1, 30) AS s"));
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
+
+  std::atomic<int> restarts{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::RestartTransactionForRetry", [&](void*) { ++restarts; });
+  // Each tablet's read of the statement first commits a write to every tablet of lim. The write
+  // lands after the statement's read time was picked and before this tablet is read.
+  std::mutex mutex;
+  std::atomic<bool> write_before_read{false};
+  SyncPoint::GetInstance()->SetCallBack(
+      "Tablet::DoHandlePgsqlReadRequest::Aggregate", [&](void*) {
+        if (!write_before_read) {
+          return;
+        }
+        std::lock_guard lock(mutex);
+        ASSERT_OK(conn.Execute("UPDATE lim SET v = v + 1"));
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  write_before_read = true;
+  auto count = writer.FetchRow<PGUint64>("SELECT COUNT(*) FROM lim");
+  write_before_read = false;
+  ASSERT_OK(count);
+  LOG(INFO) << "restarts: " << restarts.load();
+  ASSERT_LE(restarts.load(), kNumTablets);
+  ASSERT_OK(writer.CommitTransaction());
+}
+
+// A read in a transaction that starts after the retried statement commits has an uncertainty
+// window, like any other read. An injected restart fires only on a read that has one.
+TEST_P(PgObjectLocksRetryTest, ReadRestartRetryLimitsEndWithTheTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE leak (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO leak SELECT generate_series(1, 30)"));
+  // The first read is restarted, so the CALL is retried.
+  ASSERT_OK(conn.Execute(
+      "CREATE PROCEDURE p_retried() LANGUAGE plpgsql AS $$ DECLARE n INT; BEGIN "
+      "SELECT COUNT(*) INTO n FROM leak; COMMIT; "
+      "SELECT COUNT(*) INTO n FROM leak; END $$"));
+  // The same post-commit read, with no retry before it.
+  ASSERT_OK(conn.Execute(
+      "CREATE PROCEDURE p_control() LANGUAGE plpgsql AS $$ DECLARE n INT; BEGIN "
+      "COMMIT; SELECT COUNT(*) INTO n FROM leak; END $$"));
+
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  // p_retried's first read converges only once the clock passes the capped global limit, so bound
+  // it by time rather than by a retry count that depends on how fast each retry is.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000000"));
+  ASSERT_OK(writer.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
+  ASSERT_OK(writer.Execute("SET default_transaction_isolation = 'read committed'"));
+
+  std::atomic<int> retries{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::RestartTransactionForRetry", [&](void*) { ++retries; });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto call_with_injection = [&](const std::string& proc) {
+    retries = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+    auto status = writer.ExecuteFormat("CALL $0()", proc);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+    LOG(INFO) << proc << ": " << status << ", retries: " << retries.load();
+    return status;
+  };
+
+  // The post-commit read is restarted, and a restart after a COMMIT is not retried.
+  for (const auto& proc : {"p_control", "p_retried"}) {
+    const auto status = call_with_injection(proc);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Restart read required");
+    ASSERT_STR_NOT_CONTAINS(status.ToString(), "exhausted");
+  }
+}
+
+// Two writers, one per query protocol, keep updating the same rows, each statement at a random
+// isolation level and in autocommit or a txn block at random, while another session creates, checks
+// and drops an index on the table. The writers' statements are retried after injected read
+// restarts and wait queue conflicts, and every index must stay consistent with the retried writes.
+TEST_P(PgObjectLocksRetryTest, IndexStaysConsistentUnderRetriedWrites) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE stress (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO stress SELECT generate_series(1, 30), 0"));
+
+  std::atomic<int> retries{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::RestartTransactionForRetry", [&retries](void*) { ++retries; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0.02;
+
+  constexpr std::array kIsolations = {"repeatable read", "read committed", "serializable"};
+  std::array<std::atomic<int>, kIsolations.size()> writes{};
+  std::array<std::atomic<int>, kIsolations.size()> aborts{};
+  TestThreadHolder thread_holder;
+  for (const auto simple_query_protocol : {true, false}) {
+    thread_holder.AddThreadFunctor(
+        [this, simple_query_protocol, &kIsolations, &writes, &aborts,
+         &stop = thread_holder.stop_flag()] {
+      auto writer = ASSERT_RESULT(ConnectWriter(simple_query_protocol));
+      while (!stop.load()) {
+        const auto i = RandomUniformInt<size_t>(0, kIsolations.size() - 1);
+        const auto in_txn_block = RandomUniformBool();
+        if (in_txn_block) {
+          ASSERT_OK(writer.ExecuteFormat("BEGIN ISOLATION LEVEL $0", kIsolations[i]));
+        } else {
+          ASSERT_OK(writer.ExecuteFormat(
+              "SET default_transaction_isolation = '$0'", kIsolations[i]));
+        }
+        // Scans every tablet, so the read time is picked by the client and an injected read
+        // restart reaches the query layer.
+        auto status = writer.Execute("UPDATE stress SET v = v + 1 WHERE k % 3 = 0");
+        if (status.ok() && in_txn_block) {
+          status = writer.Execute("COMMIT");
+        }
+        if (status.ok()) {
+          ++writes[i];
+          continue;
+        }
+        // Serialization failures (including schema version mismatches from the online index
+        // build) and deadlocks are left to the client, e.g. when they hit a statement that can't
+        // be retried.
+        const auto message = status.ToString();
+        ASSERT_TRUE(message.find("pgsql error 40001") != std::string::npos ||
+                    message.find("pgsql error 40P01") != std::string::npos) << message;
+        ++aborts[i];
+        if (in_txn_block) {
+          ASSERT_OK(writer.Execute("ROLLBACK"));
+        }
+      }
+    });
+  }
+
+  for (int i = 0; i < 20; ++i) {
+    ASSERT_OK(conn.Execute("CREATE INDEX stress_v ON stress (v)"));
+    ASSERT_OK(conn.Fetch("SELECT yb_index_check('stress_v'::regclass)"));
+    ASSERT_OK(conn.Execute("DROP INDEX stress_v"));
+  }
+  thread_holder.Stop();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+  for (size_t i = 0; i < kIsolations.size(); ++i) {
+    LOG(INFO) << kIsolations[i] << " writes: " << writes[i].load()
+              << ", aborts: " << aborts[i].load();
+  }
+  LOG(INFO) << "retries: " << retries.load();
+  ASSERT_GE(retries.load(), 1);
+}
+
+// After a read restart, the probe function reads only retry_reads: it reads the 3-tablet gate
+// table on its first call only, counted with a sequence, which retries don't roll back. An injected
+// restart fires only on a read that has an uncertainty window, so the retry must succeed on its
+// first attempt when retry_reads has none.
+class PgObjectLocksRetryReadTimeTest : public PgObjectLocksRetryTest {
+ protected:
+  void CreateProbe(PGConn& conn, int id, const std::string& retry_reads) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE SEQUENCE attempt_seq_$0", id));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION probe_$0() RETURNS BIGINT LANGUAGE plpgsql AS $$$$ "
+        "DECLARE n BIGINT := 0; BEGIN "
+        "IF nextval('attempt_seq_$0') = 1 THEN SELECT COUNT(*) INTO n FROM gate; "
+        "ELSE $1 END IF; RETURN n; END $$$$",
+        id, retry_reads));
+  }
+
+  Status RunWithInjection(PGConn& writer, const std::string& stmt, int* retries) {
+    std::atomic<int> count{0};
+    SyncPoint::GetInstance()->SetCallBack(
+        "PgClientSession::RestartTransactionForRetry", [&count](void*) { ++count; });
+    SyncPoint::GetInstance()->EnableProcessing();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+    auto status =
+        stmt.starts_with("SELECT") ? ResultToStatus(writer.Fetch(stmt)) : writer.Execute(stmt);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    *retries = count.load();
+    LOG(INFO) << stmt << ": " << status << ", retries: " << *retries;
+    return status;
+  }
+};
+
+// A catalog read keeps its clamped read time, with no uncertainty window, in a read restart retry.
+TEST_P(PgObjectLocksRetryReadTimeTest, ClampedCatalogReadInRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  int id = 0;
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    SCOPED_TRACE(IsolationLevel_Name(isolation));
+    CreateProbe(conn, ++id, "SELECT COUNT(*) INTO n FROM pg_class WHERE relname = 'gate';");
+    ASSERT_OK(writer.StartTransaction(isolation));
+    int retries = 0;
+    ASSERT_OK(RunWithInjection(writer, Format("SELECT probe_$0()", id), &retries));
+    ASSERT_EQ(retries, 1);
+    ASSERT_OK(writer.CommitTransaction());
+  }
+}
+
+// A non-transactional write gets its read time from the storage layer in a read restart retry.
+TEST_P(PgObjectLocksRetryReadTimeTest, NonTransactionalWriteInRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto writer = ASSERT_RESULT(ConnectWriter());
+  ASSERT_OK(writer.Execute("SET yb_disable_transactional_writes = true"));
+  int id = 0;
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    SCOPED_TRACE(IsolationLevel_Name(isolation));
+    CreateProbe(conn, ++id, "NULL;");
+    ASSERT_OK(writer.ExecuteFormat(
+        "SET default_transaction_isolation = '$0'", PgIsolationName(isolation)));
+    int retries = 0;
+    ASSERT_OK(RunWithInjection(
+        writer, Format("INSERT INTO t2 SELECT $0, probe_$0()", id), &retries));
+    ASSERT_EQ(retries, 1);
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Fastpath, PgObjectLocksRetryReadTimeTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RPC";
+    });
+
+INSTANTIATE_TEST_CASE_P(
+    Fastpath, PgObjectLocksRetryTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RPC";
+    });
 
 TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {
   auto conn = ASSERT_RESULT(Connect());
@@ -4293,7 +5200,7 @@ class PgObjectLocksWaitForBackendsIndexValid
     ASSERT_OK(create_index_future.get());
 
     ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet_rpc=4"));
-    LogWaiter log_waiter_failed_read(ts1, "backfill metadata not yet applied locally");
+    LogWaiter log_waiter_failed_read(ts1, "birth time not yet finalized locally");
     auto status_future = std::async(std::launch::async, [&]() {
       return conn_rr.FetchMatrix("SELECT * FROM test WHERE v = 1", 1 /* rows */, 2 /* columns */);
     });

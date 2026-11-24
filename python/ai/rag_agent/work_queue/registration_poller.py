@@ -39,7 +39,7 @@ this design.
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from psycopg import sql
 
@@ -66,6 +66,26 @@ def _qualified_table(registration: ColumnEmbeddingRegistration) -> sql.Composed:
         sql.Identifier(registration.destination_schema),
         sql.Identifier(registration.destination_table),
     )
+
+
+def _key_predicate(
+    registration: ColumnEmbeddingRegistration, tenant: Optional[Any], pk_expr: sql.Composable
+) -> Tuple[sql.Composable, List[Any]]:
+    """WHERE fragment locating destination rows by key, plus its leading
+    params (the caller appends the pk value(s)).
+
+    The key is compared in its own type, never ``pk::text``: a cast on the
+    column rules out every index, so each lookup became a full scan of the
+    destination table. When the registration names a tenant column it is
+    added as an equality too, because a table keyed ``(tenant HASH, id ASC)``
+    (e.g. ``datapacks.conversation_history_search``) can only seek on the
+    PK when the hash column is bound.
+    """
+    pk = sql.Identifier(registration.destination_pk_column)
+    if registration.destination_tenant_column and tenant is not None:
+        tenant_col = sql.Identifier(registration.destination_tenant_column)
+        return sql.SQL("{} = %s AND {} = {}").format(tenant_col, pk, pk_expr), [tenant]
+    return sql.SQL("{} = {}").format(pk, pk_expr), []
 
 
 _PROGRESS_STATE_CLAIMABLE = sql.SQL(
@@ -96,17 +116,21 @@ class RegistrationPoller:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
 
-            candidate_pks = self._find_candidates(cursor, registration)
-            if not candidate_pks:
+            candidates = self._find_candidates(cursor, registration)
+            if not candidates:
                 connection.commit()
                 return []
 
-            won_pks = self._claim_candidates(cursor, registration, candidate_pks, worker_id)
+            won_pks = self._claim_candidates(
+                cursor, registration, list(candidates), worker_id
+            )
             connection.commit()
             if not won_pks:
                 return []
 
-            rows = self._fetch_rows(cursor, registration, won_pks)
+            rows = self._fetch_rows(
+                cursor, registration, {pk: candidates[pk] for pk in won_pks}
+            )
             connection.commit()
 
             claimed_at = datetime.now(timezone.utc)
@@ -129,7 +153,9 @@ class RegistrationPoller:
 
     def _find_candidates(
         self, cursor, registration: ColumnEmbeddingRegistration
-    ) -> List[str]:
+    ) -> Dict[str, Tuple[Any, Any]]:
+        """Candidate rows as ``{pk_text: (native_pk, tenant_or_None)}``, in
+        claim order."""
         dest = _qualified_table(registration)
         pk = sql.Identifier(registration.destination_pk_column)
         embedding_col = sql.Identifier(registration.destination_embedding_column)
@@ -137,24 +163,31 @@ class RegistrationPoller:
             "reg_id": str(registration.id),
             "stale_seconds": registration.destination_stale_claim_seconds,
         }
+        # Text form for the progress table; native pk (and tenant, when
+        # configured) so later reads/writes can seek on the destination's PK.
+        select_cols = sql.SQL("d.{pk}::text, d.{pk}").format(pk=pk)
+        if registration.destination_tenant_column:
+            select_cols = sql.SQL("{}, d.{}").format(
+                select_cols, sql.Identifier(registration.destination_tenant_column)
+            )
 
         if not registration.destination_priority_column:
             # No priority tiering configured -- one plain query, no split.
             query = sql.SQL(
-                "SELECT d.{pk}::text FROM {dest} d"
+                "SELECT {select_cols} FROM {dest} d"
                 " LEFT JOIN dist_rag.column_embedding_progress p"
                 "   ON p.registration_id = %(reg_id)s AND p.dest_row_pk_in_text = d.{pk}::text"
                 " WHERE d.{embedding_col} IS NULL AND {progress_state}"
                 " ORDER BY d.{pk} LIMIT %(limit)s"
             ).format(
-                pk=pk, dest=dest, embedding_col=embedding_col,
+                pk=pk, dest=dest, embedding_col=embedding_col, select_cols=select_cols,
                 progress_state=_PROGRESS_STATE_CLAIMABLE,
             )
             cursor.execute(query, {**params, "limit": registration.destination_claim_batch_size})
-            return [row[0] for row in cursor.fetchall()]
+            return self._candidate_keys(cursor.fetchall())
 
         priority = sql.Identifier(registration.destination_priority_column)
-        candidate_pks: List[str] = []
+        candidates: Dict[str, Tuple[Any, Any]] = {}
 
         live_limit = max(
             registration.destination_claim_batch_size
@@ -163,7 +196,7 @@ class RegistrationPoller:
         )
         if live_limit > 0:
             query_a = sql.SQL(
-                "SELECT d.{pk}::text FROM {dest} d"
+                "SELECT {select_cols} FROM {dest} d"
                 " LEFT JOIN dist_rag.column_embedding_progress p"
                 "   ON p.registration_id = %(reg_id)s AND p.dest_row_pk_in_text = d.{pk}::text"
                 " WHERE d.{embedding_col} IS NULL"
@@ -172,14 +205,15 @@ class RegistrationPoller:
                 " ORDER BY d.{pk} LIMIT %(limit)s"
             ).format(
                 pk=pk, dest=dest, embedding_col=embedding_col, priority=priority,
+                select_cols=select_cols,
                 progress_state=_PROGRESS_STATE_CLAIMABLE,
             )
             cursor.execute(query_a, {**params, "limit": live_limit})
-            candidate_pks.extend(row[0] for row in cursor.fetchall())
+            candidates.update(self._candidate_keys(cursor.fetchall()))
 
         if registration.destination_reserved_backfill_slots > 0:
             query_b = sql.SQL(
-                "SELECT d.{pk}::text FROM {dest} d"
+                "SELECT {select_cols} FROM {dest} d"
                 " LEFT JOIN dist_rag.column_embedding_progress p"
                 "   ON p.registration_id = %(reg_id)s AND p.dest_row_pk_in_text = d.{pk}::text"
                 " WHERE d.{embedding_col} IS NULL"
@@ -188,15 +222,20 @@ class RegistrationPoller:
                 " ORDER BY d.{priority} ASC, d.{pk} LIMIT %(limit)s"
             ).format(
                 pk=pk, dest=dest, embedding_col=embedding_col, priority=priority,
+                select_cols=select_cols,
                 progress_state=_PROGRESS_STATE_CLAIMABLE,
             )
             cursor.execute(
                 query_b,
                 {**params, "limit": registration.destination_reserved_backfill_slots},
             )
-            candidate_pks.extend(row[0] for row in cursor.fetchall())
+            candidates.update(self._candidate_keys(cursor.fetchall()))
 
-        return candidate_pks
+        return candidates
+
+    @staticmethod
+    def _candidate_keys(rows) -> Dict[str, Tuple[Any, Any]]:
+        return {row[0]: (row[1], row[2] if len(row) > 2 else None) for row in rows}
 
     def _claim_candidates(
         self,
@@ -230,16 +269,27 @@ class RegistrationPoller:
         return [row[0] for row in cursor.fetchall()]
 
     def _fetch_rows(
-        self, cursor, registration: ColumnEmbeddingRegistration, won_pks: List[str]
+        self,
+        cursor,
+        registration: ColumnEmbeddingRegistration,
+        won: Dict[str, Tuple[Any, Any]],
     ) -> List[Dict[str, Any]]:
+        """Read the won rows by key, one point-lookup query per tenant."""
         dest = _qualified_table(registration)
-        pk = sql.Identifier(registration.destination_pk_column)
-        query = sql.SQL("SELECT * FROM {dest} WHERE {pk}::text = ANY(%(pks)s)").format(
-            dest=dest, pk=pk
-        )
-        cursor.execute(query, {"pks": won_pks})
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        by_tenant: Dict[Any, List[Any]] = {}
+        for native_pk, tenant in won.values():
+            by_tenant.setdefault(tenant, []).append(native_pk)
+
+        rows: List[Dict[str, Any]] = []
+        for tenant, native_pks in by_tenant.items():
+            where, lead = _key_predicate(registration, tenant, sql.SQL("ANY(%s)"))
+            cursor.execute(
+                sql.SQL("SELECT * FROM {dest} WHERE {where}").format(dest=dest, where=where),
+                lead + [native_pks],
+            )
+            columns = [desc[0] for desc in cursor.description]
+            rows.extend(dict(zip(columns, row)) for row in cursor.fetchall())
+        return rows
 
     def finalize_success(self, claimed_row: ClaimedRow, embedding: List[float]) -> None:
         """Write the embedding to the destination row and delete its
@@ -252,14 +302,20 @@ class RegistrationPoller:
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-            update_query = sql.SQL(
-                "UPDATE {dest} SET {embedding_col} = %s WHERE {pk}::text = %s"
-            ).format(
+            tenant = (
+                claimed_row.row.get(registration.destination_tenant_column)
+                if registration.destination_tenant_column else None
+            )
+            where, lead = _key_predicate(registration, tenant, sql.SQL("%s"))
+            update_query = sql.SQL("UPDATE {dest} SET {embedding_col} = %s WHERE {where}").format(
                 dest=_qualified_table(registration),
                 embedding_col=sql.Identifier(registration.destination_embedding_column),
-                pk=sql.Identifier(registration.destination_pk_column),
+                where=where,
             )
-            cursor.execute(update_query, (embedding, row_pk))
+            cursor.execute(
+                update_query,
+                [embedding, *lead, claimed_row.row[registration.destination_pk_column]],
+            )
             cursor.execute(
                 "DELETE FROM dist_rag.column_embedding_progress"
                 " WHERE registration_id = %s AND dest_row_pk_in_text = %s",

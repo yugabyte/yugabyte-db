@@ -3,6 +3,8 @@ package com.yugabyte.yw.api.v2;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -10,6 +12,8 @@ import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.MetricsExportConfig;
 import api.v2.models.UniverseMetricsExporterConfig;
+import api.v2.models.UniverseVMImageUpgradeSpec;
+import api.v2.models.VMImageClusterSpec;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -22,6 +26,8 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.ImageBundleUpgradeInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -37,6 +43,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -174,5 +181,50 @@ public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
         submittedExporters = submitted.getMetricsExportConfig().getUniverseMetricsExporterConfig();
     assertEquals(1, submittedExporters.size());
     assertEquals(metricsExporterUuid, submittedExporters.get(0).getExporterUuid());
+  }
+
+  /**
+   * Regression test: vmImageUpgrade built its params from scratch, so they had no universe UUID,
+   * clusters or nodes, and VMImageUpgrade.validateParams threw a NullPointerException at task
+   * submit.
+   */
+  @Test
+  public void testVmImageUpgradeStartsFromUniverseDetails() throws Exception {
+    // addNodesToUniverse gives the nodes private IPs 127.0.0.1 to 127.0.0.3, and no names.
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 3);
+    UUID clusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID providerUuid = UUID.randomUUID();
+    UUID imageBundleUuid = UUID.randomUUID();
+    ArgumentCaptor<VMImageUpgradeParams> captor =
+        ArgumentCaptor.forClass(VMImageUpgradeParams.class);
+    when(v1Handler.upgradeVMImage(captor.capture(), any(), any(Universe.class)))
+        .thenReturn(UUID.randomUUID());
+
+    UniverseVMImageUpgradeSpec spec =
+        new UniverseVMImageUpgradeSpec()
+            .forceUpgrade(true)
+            .addImageBundlesItem(
+                new VMImageClusterSpec()
+                    .clusterUuid(clusterUuid)
+                    .providerUuid(providerUuid)
+                    .imageBundleUuid(imageBundleUuid));
+    handler.vmImageUpgrade(createRequest(), customer.getUuid(), universe.getUniverseUUID(), spec);
+
+    VMImageUpgradeParams submitted = captor.getValue();
+    assertEquals(universe.getUniverseUUID(), submitted.getUniverseUUID());
+    assertEquals(clusterUuid, submitted.getPrimaryCluster().uuid);
+    assertEquals(
+        Set.of("127.0.0.1", "127.0.0.2", "127.0.0.3"),
+        submitted.nodeDetailsSet.stream()
+            .map(node -> node.cloudInfo.private_ip)
+            .collect(Collectors.toSet()));
+    assertNotNull(submitted.creatingUser);
+    assertTrue(submitted.forceVMImageUpgrade);
+    assertEquals(
+        List.of(new ImageBundleUpgradeInfo(clusterUuid, imageBundleUuid, providerUuid)),
+        submitted.imageBundles);
+    assertTrue(submitted.machineImages.isEmpty());
+    // Only the request sets it; the universe's version must not turn this into a software upgrade.
+    assertNull(submitted.ybSoftwareVersion);
   }
 }

@@ -38,6 +38,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3712,6 +3713,10 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		if (index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{
@@ -5144,15 +5149,28 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 		Expr	   *generation_expr = NULL;
 		AttrNumber	attnum = index->indexkeys[i];
 		List	   *rinfos = NIL;
+		Node	   *index_expr = NULL;
+
+		/* An expression key takes the next index expression. */
+		if (attnum == InvalidAttrNumber)
+		{
+			Assert(expr_lc != NULL);
+			index_expr = (Node *) lfirst(expr_lc);
+			expr_lc = lnext(index->indexprs, expr_lc);
+		}
+
+		/*
+		 * If there is an existing equality condition on the key, we won't
+		 * derive another condition for it.
+		 */
+		if (yb_equality_index_clause(index, clauseset->indexclauses[i], i))
+			continue;
 
 		if (attnum == InvalidAttrNumber)
 		{
 			/* expression index */
-			Assert(expr_lc != NULL);
-			Node	   *index_expr = copyObject(lfirst(expr_lc));
-
+			index_expr = copyObject(index_expr);
 			ChangeVarNodes(index_expr, 1, rel->relid, 0);
-			expr_lc = lnext(index->indexprs, expr_lc);
 
 			/*
 			 * A constant index expression (no Vars) would yield a trivial

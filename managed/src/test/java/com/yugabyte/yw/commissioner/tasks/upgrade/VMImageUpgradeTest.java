@@ -802,7 +802,11 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     params.verifyParams(defaultUniverse, true);
   }
 
-  /** Builds the params the way the v2 vm-image API does. */
+  /**
+   * Maps a v2 vm-image spec onto params, leaving machineImages empty as the v2 API does. The API
+   * also starts from the universe's details; verifyParams takes the universe directly, so that part
+   * is covered by UniverseUpgradesManagementHandlerTest.
+   */
   private static VMImageUpgradeParams v2VMImageUpgradeParams(VMImageClusterSpec bundle) {
     UniverseVMImageUpgradeSpec spec = new UniverseVMImageUpgradeSpec().addImageBundlesItem(bundle);
     VMImageUpgradeParams params = new VMImageUpgradeParams();

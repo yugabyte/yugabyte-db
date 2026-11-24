@@ -169,6 +169,8 @@ func BuildZoneMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "zone")
 		}
 	}
 	if _, ok := zone["name"]; !ok {
@@ -294,6 +296,12 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		case "longitude":
+			if !util.IsEmptyString(val) {
+				region["longitude"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
 		case "config-file-path":
 			if !util.IsEmptyString(val) {
 				region["config-file-path"] = val
@@ -342,6 +350,8 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "region")
 		}
 	}
 	if _, ok := region["name"]; !ok {
@@ -422,6 +432,8 @@ func BuildImageBundleMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {
@@ -482,6 +494,8 @@ func BuildImageBundleRegionOverrideMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle region override")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {

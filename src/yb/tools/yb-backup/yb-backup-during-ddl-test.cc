@@ -56,6 +56,7 @@ DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(enable_pg_anonymizer);
 DECLARE_bool(ysql_beta_features);
+DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
 
 namespace yb {
 namespace tools {
@@ -110,6 +111,21 @@ class YBBackupDuringDdl : public pgwrapper::PgMiniTestBase, public YBBackupTestB
     YsqlshRunner ysqlsh_runner =
         VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(cluster_->YsqlHostport()));
     return ysqlsh_runner.ExecuteSqlScript(sql_script, "ysql_dump" /* tmp_file_prefix */);
+  }
+
+  // Takes a snapshot of the whole database and returns it as exported for a backup.
+  Result<master::SnapshotInfoPB> SnapshotDatabaseForBackup(const std::string& db_name) {
+    YBTableName namespace_info(YQL_DATABASE_PGSQL);
+    namespace_info.set_namespace_name(db_name);
+    master::GetNamespaceInfoResponsePB namespace_resp;
+    RETURN_NOT_OK(client_->GetNamespaceInfo(db_name, YQL_DATABASE_PGSQL, &namespace_resp));
+    namespace_info.set_namespace_id(namespace_resp.namespace_().id());
+    auto snapshot_id = VERIFY_RESULT(snapshot_util_->CreateSnapshot(namespace_info));
+    auto snapshot_infos = VERIFY_RESULT(snapshot_util_->ListSnapshots(
+        snapshot_id, client::ListDeleted::kTrue, client::PrepareForBackup::kTrue,
+        client::IncludeDdlInProgressTables::kTrue));
+    SCHECK_EQ(snapshot_infos.size(), 1, IllegalState, "Unexpected number of snapshots");
+    return snapshot_infos[0];
   }
 
   // Log the contents of a directory recursively for debugging backup artifacts.
@@ -1067,6 +1083,118 @@ TEST_F(YBBackupOfColocatedCloneTest, BackupRestoreOfClone) {
 
   auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
   ASSERT_EQ(ASSERT_RESULT(restored_conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 10);
+}
+
+class YBBackupEmptyDefaultTablegroupTest : public YBBackupDuringDdl {
+ public:
+  void SetUp() override {
+    // With this off, the default tablegroup stays when its last table is dropped.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_colocated_tables_with_tablespaces) = false;
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
+    CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
+    auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+    ASSERT_OK(conn.Execute("CREATE TABLE in_default (k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE not_colocated (k INT PRIMARY KEY) WITH (COLOCATION = false)"));
+    ASSERT_OK(conn.Execute("INSERT INTO not_colocated SELECT generate_series(1, 10)"));
+    ASSERT_OK(conn.Execute("DROP TABLE in_default"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 1);
+  }
+};
+
+TEST_F(YBBackupEmptyDefaultTablegroupTest, ImportSnapshot) {
+  auto ysql_dump_output =
+      ASSERT_RESULT(DumpSchemaForRestoreAsOfTime(kBackupSourceDbName, kBackupSourceDbName));
+  auto snapshot = ASSERT_RESULT(SnapshotDatabaseForBackup(kBackupSourceDbName));
+  // The snapshot has the parent table of the empty default tablegroup.
+  bool has_parent_table = false;
+  for (const auto& backup_entry : snapshot.backup_entries()) {
+    has_parent_table |= IsColocationParentTableId(backup_entry.entry().id());
+  }
+  ASSERT_TRUE(has_parent_table);
+
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kBackupSourceDbName));
+  ASSERT_RESULT(ExecuteSqlScript(ysql_dump_output, "restore" /* tmp_file_prefix */));
+  // Import skips that parent table and maps only not_colocated.
+  auto tables_meta = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshot));
+  ASSERT_EQ(tables_meta.size(), 1);
+  ASSERT_FALSE(IsColocationParentTableId(tables_meta[0].table_ids().old_id()));
+}
+
+// A parent table that has a table in the snapshot is not skipped: import fails on it when the
+// restoring database has no such tablegroup.
+TEST_F(YBBackupEmptyDefaultTablegroupTest, ImportSnapshotWithUnmatchedParentTable) {
+  auto ysql_dump_output =
+      ASSERT_RESULT(DumpSchemaForRestoreAsOfTime(kBackupSourceDbName, kBackupSourceDbName));
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.Execute("CREATE TABLE in_default (k INT PRIMARY KEY)"));
+  auto snapshot = ASSERT_RESULT(SnapshotDatabaseForBackup(kBackupSourceDbName));
+
+  conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kBackupSourceDbName));
+  ASSERT_RESULT(ExecuteSqlScript(ysql_dump_output, "restore" /* tmp_file_prefix */));
+  auto import_result = snapshot_util_->StartImportSnapshot(snapshot);
+  ASSERT_NOK(import_result);
+  ASSERT_STR_CONTAINS(import_result.status().ToString(), "colocation.parent.uuid");
+}
+
+TEST_F(YBBackupEmptyDefaultTablegroupTest, BackupRestore) {
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kBackupSourceDbName),
+       "create"},
+      cluster_.get()));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
+       "restore"},
+      cluster_.get()));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM not_colocated")), 10);
+}
+
+// A tablespace gives a colocated database a second implicit tablegroup. The snapshot lists both
+// parent tables before the other tables, and import maps both.
+TEST_F(YBBackupDuringDdl, ImportSnapshotWithSeveralTablegroups) {
+  CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE ts LOCATION '/data'"));
+  // Created first, so that its id sorts before the ids of both parent tables.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE not_colocated (k INT PRIMARY KEY) WITH (COLOCATION = false)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE in_default (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE in_ts (k INT PRIMARY KEY) TABLESPACE ts"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 2);
+
+  auto ysql_dump_output =
+      ASSERT_RESULT(DumpSchemaForRestoreAsOfTime(kBackupSourceDbName, kBackupSourceDbName));
+  auto snapshot = ASSERT_RESULT(SnapshotDatabaseForBackup(kBackupSourceDbName));
+  int num_parent_tables = 0;
+  bool seen_other_table = false;
+  for (const auto& backup_entry : snapshot.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() != master::SysRowEntryType::TABLE) {
+      continue;
+    }
+    if (IsColocationParentTableId(entry.id())) {
+      ASSERT_FALSE(seen_other_table) << "Parent table " << entry.id() << " follows another table";
+      ++num_parent_tables;
+    } else {
+      seen_other_table = true;
+    }
+  }
+  ASSERT_EQ(num_parent_tables, 2);
+
+  conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kBackupSourceDbName));
+  ASSERT_RESULT(ExecuteSqlScript(ysql_dump_output, "restore" /* tmp_file_prefix */));
+  auto tables_meta = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshot));
+  num_parent_tables = 0;
+  for (const auto& table_meta : tables_meta) {
+    num_parent_tables += IsColocationParentTableId(table_meta.table_ids().old_id());
+  }
+  ASSERT_EQ(num_parent_tables, 2);
 }
 
 }  // namespace tools

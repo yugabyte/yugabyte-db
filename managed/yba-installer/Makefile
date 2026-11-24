@@ -39,7 +39,7 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.8.0-b14
+PERF_ADVISOR_VERSION ?= 1.8.0-b16
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 PA_BINARY_SHA_URL := $(PA_BINARY_URL).sha
@@ -51,7 +51,7 @@ SHA1SUM ?= $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo sh
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.15.1
+PROMETHEUS_VERSION ?= 3.16.0
 
 # Node Exporter Version
 NODE_EXPORTER_VERSION ?= 1.12.1-fips

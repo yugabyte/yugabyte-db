@@ -39,6 +39,7 @@ import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
@@ -48,6 +49,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,6 +176,15 @@ public class CustomerConfig extends Model {
   @Column(name = "is_kubernetes_operator_controlled")
   @ApiModelProperty(hidden = true)
   private boolean isKubernetesOperatorControlled = false;
+
+  // Advanced on every Ebean save/update; bulk updates set it themselves. The revision of a storage
+  // config in the v2 API: its ETag, and what an edit's task checks before applying the edit. Not
+  // part of the v1 config JSON.
+  @WhenModified
+  @Column(nullable = false)
+  @JsonIgnore
+  @ApiModelProperty(hidden = true)
+  private Date updateTime;
 
   public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
     this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
@@ -396,6 +407,7 @@ public class CustomerConfig extends Model {
             .query()
             .asUpdate()
             .set("state", newState)
+            .set("updateTime", new Date())
             .where()
             .idEq(configUUID)
             .eq("state", ConfigState.Validating)
@@ -501,6 +513,22 @@ public class CustomerConfig extends Model {
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  /**
+   * The data as {@link #getDataObject} parses it, but read with the shared mapper, which ignores
+   * unknown properties: data saved by an older YBA may carry a field that was removed since.
+   */
+  @JsonIgnore
+  public CustomerConfigData getDataObjectLenient() {
+    Class<? extends CustomerConfigData> dataClass = getDataClass(getType(), getName());
+    if (dataClass == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unknown data type in configuration data. Type %s, name %s.", getType(), getName()));
+    }
+    return Json.fromJson(getData(), dataClass);
   }
 
   // TODO: Should be removed later if we remove "ObjectNode data" and use

@@ -192,6 +192,8 @@ using GetTabletLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
+using BackfillIndexCallback = std::function<void(Result<const TableId&>&&)>;
+using IsBackfillIndexInProgressCallback = std::function<void(Result<bool>&&)>;
 
 // Defined in yb/client/transaction_status_tablets.h. Forward-declared here so this header
 // does not need to drag in yb/common/common_net.pb.h (and the rest of the common.pb.h chain)
@@ -359,11 +361,13 @@ class YBClient {
   Status TruncateTables(const TableIds& table_ids, bool wait = true);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
-  Status BackfillIndex(
-      const TableId& table_id,
-      std::optional<TransactionMetadata> requester_transaction,
-      bool wait = true,
-      CoarseTimePoint deadline = CoarseTimePoint());
+  void BackfillIndexAsync(
+      TableIdView table_id, const std::optional<TransactionMetadata>& requester_transaction,
+      CoarseTimePoint deadline, BackfillIndexCallback&& callback);
+
+  void IsBackfillIndexInProgressAsync(
+      TableIdView table_id, TableIdView index_id, CoarseTimePoint deadline,
+      IsBackfillIndexInProgressCallback&& callback);
 
   Status StartTableBackfill(
       const TableId& source_table_id, uint32_t target_table_oid,
@@ -1079,8 +1083,10 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
-  // Provide the completion status of 'txn' to the YB-Master.
-  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
+  // Provide the completion status of 'txn' to the YB-Master. propagated_hybrid_time is the caller's
+  // hybrid time; it should be >= the commit time of 'txn' when is_committed is true.
+  Status ReportYsqlDdlTxnStatus(
+      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 

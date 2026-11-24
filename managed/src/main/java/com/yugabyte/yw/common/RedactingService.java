@@ -205,6 +205,14 @@ public class RedactingService {
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
+  // Kubernetes overrides YAML text: the v1 userIntent and KubernetesOverridesUpgradeParams, node
+  // details (the node's live helm values or its stored overrides), and the v2 ClusterProviderSpec.
+  private static final Set<String> K8S_OVERRIDES_FIELDS =
+      Set.of("universeOverrides", "helm_overrides", "kubernetesOverrides");
+  // The same, per AZ. userIntentOverrides.azOverrides shares the name but holds objects.
+  private static final Set<String> K8S_AZ_OVERRIDES_FIELDS =
+      Set.of("azOverrides", "az_helm_overrides");
+
   /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
   private static final List<String> GFLAG_CHANGE_FIELDS = List.of("old", "new", "default");
 
@@ -311,6 +319,8 @@ public class RedactingService {
         } catch (Exception e) {
           log.warn("Gflags sensitive data API redaction failed; skipping it.", e);
         }
+        // Outside the try, which skips the rest of the redaction on any exception.
+        redactKubernetesOverrides(afterJsonPath);
       }
     }
 
@@ -419,9 +429,7 @@ public class RedactingService {
   /** A text value holding serialized JSON is redacted as a tree; any other as free text. */
   private static String redactTextValue(String text, Set<String> names) {
     // JSON in the text matches field names by canonical name, so a mixed spelling must get there.
-    String canonicalText = GFlagsUtil.canonicalGFlagName(text);
-    if (!HbaConfRedactor.mentionsLdapBindPasswd(text)
-        && names.stream().noneMatch(canonicalText::contains)) {
+    if (!mentionsSecret(GFlagsUtil.canonicalGFlagName(text), names)) {
       return text;
     }
     String trimmed = text.trim();
@@ -441,6 +449,11 @@ public class RedactingService {
       }
     }
     return redactSensitiveInfoInString(text, names);
+  }
+
+  /** Whether text names a secret: one of names, or an ldapbindpasswd of ysql_hba_conf_csv. */
+  static boolean mentionsSecret(String text, Collection<String> names) {
+    return HbaConfRedactor.mentionsLdapBindPasswd(text) || names.stream().anyMatch(text::contains);
   }
 
   /** Redacts all sensitive field values (LDAP passwords, sensitive gflags) found in a string. */
@@ -493,8 +506,7 @@ public class RedactingService {
    * GFlagsUtil#canonicalGFlagName}, and a text scan by {@link #spellingsIn}, so both cover a name
    * spelled with any mix of dashes and underscores.
    */
-  private static Set<String> sensitiveNames(
-      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+  static Set<String> sensitiveNames(String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     Set<String> names = new HashSet<>();
     names.add("ldapbindpasswd");
     names.add("ldapBindPassword");
@@ -1361,6 +1373,45 @@ public class RedactingService {
   }
 
   /**
+   * Redacts the LDAP secrets in Kubernetes overrides in API response JSON. The redactor hides
+   * overrides it can't redact whole instead of throwing, and nothing else here throws, so no
+   * exception leaves overrides unredacted.
+   */
+  private static void redactKubernetesOverrides(JsonNode node) {
+    if (node == null) {
+      return;
+    }
+    if (node.isObject()) {
+      ObjectNode objNode = (ObjectNode) node;
+      objNode
+          .fieldNames()
+          .forEachRemaining(
+              fieldName -> {
+                JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue.isTextual() && K8S_OVERRIDES_FIELDS.contains(fieldName)) {
+                  objNode.put(fieldName, KubernetesOverridesRedactor.redact(fieldValue.asText()));
+                } else if (fieldValue.isObject() && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
+                  ObjectNode azs = (ObjectNode) fieldValue;
+                  azs.fieldNames()
+                      .forEachRemaining(
+                          az -> {
+                            JsonNode azValue = azs.get(az);
+                            if (azValue.isTextual()) {
+                              azs.put(az, KubernetesOverridesRedactor.redact(azValue.asText()));
+                            } else {
+                              redactKubernetesOverrides(azValue);
+                            }
+                          });
+                } else {
+                  redactKubernetesOverrides(fieldValue);
+                }
+              });
+    } else if (node.isArray()) {
+      node.forEach(RedactingService::redactKubernetesOverrides);
+    }
+  }
+
+  /**
    * Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON, and the values of
    * ycql_ldap_bind_passwd spelled with dashes, which the JSON path doesn't match.
    */
@@ -1387,18 +1438,34 @@ public class RedactingService {
           .forEachRemaining(
               fieldName -> {
                 JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue == null) {
+                  return;
+                }
                 String canonicalName = GFlagsUtil.canonicalGFlagName(fieldName);
                 if (canonicalName.equals(YCQL_LDAP_BIND_PASSWD)) {
-                  if (fieldValue != null && !fieldValue.isNull()) {
+                  if (!fieldValue.isNull()) {
                     objNode.put(fieldName, SECRET_REPLACEMENT);
                   }
-                } else if (fieldValue != null && fieldValue.isTextual()) {
-                  if (canonicalName.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
-                    String originalValue = fieldValue.asText();
-                    String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
-                    objNode.put(fieldName, redactedValue);
+                } else if (canonicalName.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+                  if (fieldValue.isTextual()) {
+                    objNode.put(
+                        fieldName, redactAllLdapBindPasswdHbaFormattedValues(fieldValue.asText()));
+                  } else if (fieldValue.isObject()) {
+                    // A universe state transition delta holds the old and new values in an object.
+                    ObjectNode values = (ObjectNode) fieldValue;
+                    values
+                        .fieldNames()
+                        .forEachRemaining(
+                            name -> {
+                              JsonNode value = values.get(name);
+                              if (value.isTextual()) {
+                                values.put(
+                                    name,
+                                    redactAllLdapBindPasswdHbaFormattedValues(value.asText()));
+                              }
+                            });
                   }
-                } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
+                } else if (fieldValue.isObject() || fieldValue.isArray()) {
                   redactLdapBindPasswdRecursive(fieldValue);
                 }
               });
