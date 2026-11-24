@@ -95,12 +95,6 @@ EXECUTE order_query(100, 2);
 (1 row)
 
 -- An equality the query already has on the bucket key is not derived again
-SELECT $$
-:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
-$$ AS query \gset
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
 EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
@@ -114,12 +108,6 @@ SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_i
         1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
 (1 row)
 
-SELECT $$
-:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
-$$ AS query \gset
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
 EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
@@ -145,10 +133,6 @@ CREATE TABLE orders_hash (
 );
 INSERT INTO orders_hash SELECT i, 100 + i % 10 FROM generate_series(1, 20) i;
 ANALYZE orders_hash;
-\set query ':P SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
 EXPLAIN (COSTS OFF) SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
@@ -671,11 +655,8 @@ $$ AS query \gset
 
 -- An OR arm that already has an equality on the bucket key does not get a
 -- derived one.  The other arm still does.
-\set query ':P :hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
+\set query ':hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id'
+:explain1run1
                                                         QUERY PLAN                                                         
 ---------------------------------------------------------------------------------------------------------------------------
  Sort
@@ -689,7 +670,6 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE
                      Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
 (9 rows)
 
-/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
  order_id | user_id | bucket_id 
 ----------+---------+-----------
         1 |      50 |         0
@@ -1054,12 +1034,9 @@ ANALYZE t_mixed_expr;
 -- stop the derivation for the second one.
 CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
     ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
-\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
-\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
-\i :run_query
-\set _echo_run_query :ECHO
-\set ECHO none
-EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
+\set hint1 '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query 'SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a'
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Sort
@@ -1069,7 +1046,6 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FR
          Storage Filter: (b = 4)
 (5 rows)
 
-/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
  a | b 
 ---+---
  2 | 4

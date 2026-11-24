@@ -44,15 +44,11 @@ EXPLAIN (COSTS OFF) EXECUTE order_query(100, 2);
 EXECUTE order_query(100, 2);
 
 -- An equality the query already has on the bucket key is not derived again
-SELECT $$
-:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
-$$ AS query \gset
-\i :run_query
+EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
 
-SELECT $$
-:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
-$$ AS query \gset
-\i :run_query
+EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+/*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
 
 -- An equality condition on yb_hash_code(bucket_id) is pushed down as
 -- YB_SK_SEARCHHASHCODE.  It is kept with the index clauses on bucket_id, but
@@ -67,8 +63,8 @@ CREATE TABLE orders_hash (
 INSERT INTO orders_hash SELECT i, 100 + i % 10 FROM generate_series(1, 20) i;
 ANALYZE orders_hash;
 
-\set query ':P SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;'
-\i :run_query
+EXPLAIN (COSTS OFF) SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
+SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
 
 DROP TABLE orders, orders_hash;
 
@@ -225,8 +221,8 @@ $$ AS query \gset
 
 -- An OR arm that already has an equality on the bucket key does not get a
 -- derived one.  The other arm still does.
-\set query ':P :hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;'
-\i :run_query
+\set query ':hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id'
+:explain1run1
 
 -- TODO(#31672): within an OR arm an equality is only followed one step.
 -- bucket_id is computed from z, so deriving it needs a constant value for z.
@@ -406,9 +402,9 @@ ANALYZE t_mixed_expr;
 -- stop the derivation for the second one.
 CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
     ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
-\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
-\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
-\i :run_query
+\set hint1 '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query 'SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a'
+:explain1run1
 
 DROP TABLE t_const_expr;
 DROP TABLE t_mixed_expr;
