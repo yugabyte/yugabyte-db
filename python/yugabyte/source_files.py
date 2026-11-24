@@ -16,11 +16,10 @@ from enum import Enum
 from typing import Any, Set
 
 
-# As of August 2019, there is nothing in the "bin", "managed" and "www" directories that
-# is being used by tests.
-# If that changes, this needs to be updated. Note that the "bin" directory here is the
-# yugabyte/bin directory in the source tree, not the "bin" directory under the build
-# directory, so it only has scripts and not yb-master / yb-tserver binaries.
+# Tests use no files in these directories, except FILES_USED_BY_TESTS and bin/yugabyted (see
+# get_file_category). Note that the "bin" directory here is the yugabyte/bin directory in the
+# source tree, not the "bin" directory under the build directory, so it only has scripts and not
+# yb-master / yb-tserver binaries.
 DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS = [
     'architecture',
     'bin',
@@ -31,6 +30,18 @@ DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS = [
     'sample',
     'www',
 ]
+
+# Files in DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS that tests use. The test environment installs the
+# YB Controller version from ybc_version.conf with download_ybc.sh (prep_ybc_testing in
+# build-support/common-test-env.sh), and backup tests run yb_backup.py, yb-ctl and ycqlsh.
+# The paths-ignore list of .github/workflows/bld-db.yml must not skip these files.
+FILES_USED_BY_TESTS = {
+    'bin/yb-ctl',
+    'bin/ycqlsh',
+    'managed/devops/bin/yb_backup.py',
+    'managed/download_ybc.sh',
+    'managed/src/main/resources/ybc_version.conf',
+}
 
 
 class SourceFileCategory(Enum):
@@ -82,6 +93,10 @@ def get_file_category(rel_path: str) -> SourceFileCategory:
 
     >>> get_file_category('src/postgres/src/backend/executor/execScan.c').value
     'postgres'
+    >>> get_file_category('managed/src/main/resources/ybc_version.conf').value
+    'build_scripts'
+    >>> get_file_category('managed/src/main/resources/application.common.conf').value
+    'does_not_affect_tests'
 
     """
     if os.path.isabs(rel_path):
@@ -92,6 +107,10 @@ def get_file_category(rel_path: str) -> SourceFileCategory:
     # DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS which contains the bin directory.
     if rel_path.startswith('bin/yugabyted'):
         return SourceFileCategory.JAVA
+
+    # No test depends on these files in the dependency graph, so rerun all tests.
+    if rel_path in FILES_USED_BY_TESTS:
+        return SourceFileCategory.BUILD_SCRIPTS
 
     if rel_path.split(os.sep)[0] in DIRECTORIES_THAT_DO_NOT_AFFECT_TESTS:
         return SourceFileCategory.DOES_NOT_AFFECT_TESTS
