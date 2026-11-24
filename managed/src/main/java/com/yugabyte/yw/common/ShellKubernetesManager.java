@@ -1576,11 +1576,11 @@ public class ShellKubernetesManager extends KubernetesManager {
     // to all pods within a single namespace across all AZs. Similar policies will be created
     // for different namespaces within the same cluster or namespaces with the same name
     // across different clusters.
-    Map<UUID, String> namespacePerAZ = new HashMap<>();
-    Map<String, List<UUID>> azsPerNamespace = new HashMap<>();
+    Map<UUID, String> clusterNamespacePerAZ = new HashMap<>();
+    Map<String, List<UUID>> azsPerClusterNamespace = new HashMap<>();
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
-      String namespace =
+      String clusterNamespace =
           KubernetesUtil.getKubernetesNamespace(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
@@ -1588,21 +1588,25 @@ public class ShellKubernetesManager extends KubernetesManager {
               entry.getValue(),
               universe.getUniverseDetails().useNewHelmNamingStyle,
               isReadOnlyCluster,
-              false /* addKubeClusterPrefix */);
-      namespacePerAZ.put(entry.getKey(), namespace);
-      azsPerNamespace.computeIfAbsent(namespace, ns -> new ArrayList<>()).add(entry.getKey());
+              true /* addKubeClusterPrefix */);
+      clusterNamespacePerAZ.put(entry.getKey(), clusterNamespace);
+      azsPerClusterNamespace
+          .computeIfAbsent(clusterNamespace, ns -> new ArrayList<>())
+          .add(entry.getKey());
     }
-    Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+    Map<String, Map<String, String>> labelsPerClusterNamespace = new HashMap<>();
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       Map<String, String> config = entry.getValue();
-      String namespace = namespacePerAZ.get(entry.getKey());
-      // AZs sharing a namespace share the PDB, which gets the helm commonLabels of all of them.
+      String clusterNamespace = clusterNamespacePerAZ.get(entry.getKey());
+      String namespace = KubernetesUtil.getNamespaceFromClusterNamespaceKey(clusterNamespace);
+      // The AZs in one Kubernetes cluster that share a namespace share the PDB, which gets the helm
+      // commonLabels of all of them.
       Map<String, String> labels =
-          labelsPerNamespace.computeIfAbsent(
-              namespace,
+          labelsPerClusterNamespace.computeIfAbsent(
+              clusterNamespace,
               ns ->
                   KubernetesUtil.getHelmCommonLabels(
-                      primaryIntent, universe.getConfig(), azsPerNamespace.get(ns)));
+                      primaryIntent, universe.getConfig(), azsPerClusterNamespace.get(ns)));
       String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType, labels);
       List<String> commandList =
           ImmutableList.of("kubectl", "apply", "-f", pdbPolicyYaml, "--namespace", namespace);

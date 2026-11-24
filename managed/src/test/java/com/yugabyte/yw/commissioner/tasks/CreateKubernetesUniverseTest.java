@@ -50,7 +50,9 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import java.nio.file.Files;
@@ -768,8 +770,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         .applySecret(any(), eq(ns), eq("/path/to/pull-secret.yml"), eq(labels));
   }
 
-  @Test
-  public void testCreateKubernetesUniverseLabelsSharedNamespaceTheSameForEachAZ() {
+  // A three-AZ universe with the new naming style and the AZs' overrides giving them different
+  // commonLabels.
+  private void setupUniverseMultiAZWithLabels() {
     setupUniverseMultiAZ(
         false /* setMasters */,
         true /* enabledYEDIS */,
@@ -792,10 +795,19 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
               u.setUniverseDetails(details);
             },
             false);
+  }
+
+  private TaskInfo submitTaskWithNewNamingStyle() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.useNewHelmNamingStyle = true;
+    return submitTask(taskParams);
+  }
 
-    TaskInfo taskInfo = submitTask(taskParams);
+  @Test
+  public void testCreateKubernetesUniverseLabelsSharedNamespaceTheSameForEachAZ() {
+    setupUniverseMultiAZWithLabels();
+
+    TaskInfo taskInfo = submitTaskWithNewNamingStyle();
 
     assertEquals(Success, taskInfo.getTaskState());
     // The AZs share the namespace, and each AZ's subtask gives it the labels of all of them, the
@@ -803,6 +815,51 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     verify(mockKubernetesManager, times(3))
         .createNamespace(
             any(), eq(ns1), eq(ImmutableMap.of("team", "db", "tier", "one", "rack", "r2")));
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseLabelsNamespaceOfEachKubernetesCluster() {
+    setupUniverseMultiAZWithLabels();
+    // AZ 1 is in one Kubernetes cluster, and AZs 2 and 3 in another. Each cluster has its own
+    // namespace of the same name. A legacy provider's kubeconfig would override the zones'.
+    KubernetesInfo providerInfo = CloudInfoInterface.get(kubernetesProvider);
+    providerInfo.setKubeConfig(null);
+    kubernetesProvider.save();
+    az1.updateConfig(ImmutableMap.of("KUBECONFIG", createKubeConfig("cluster-1")));
+    az1.save();
+    String kubeConfig2 = createKubeConfig("cluster-2");
+    az2.updateConfig(ImmutableMap.of("KUBECONFIG", kubeConfig2));
+    az2.save();
+    az3.updateConfig(ImmutableMap.of("KUBECONFIG", kubeConfig2));
+    az3.save();
+
+    TaskInfo taskInfo = submitTaskWithNewNamingStyle();
+
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(mockKubernetesManager, times(1))
+        .createNamespace(any(), eq(ns1), eq(ImmutableMap.of("team", "db", "tier", "one")));
+    verify(mockKubernetesManager, times(2))
+        .createNamespace(
+            any(), eq(ns1), eq(ImmutableMap.of("team", "db", "tier", "two", "rack", "r2")));
+  }
+
+  // A kubeconfig whose current context is in the given cluster.
+  private static String createKubeConfig(String clusterName) {
+    return TestHelper.createTempFile(
+        String.join(
+            "\n",
+            "apiVersion: v1",
+            "kind: Config",
+            "current-context: ctx",
+            "contexts:",
+            "- name: ctx",
+            "  context:",
+            "    cluster: " + clusterName,
+            "clusters:",
+            "- name: " + clusterName,
+            "  cluster:",
+            "    server: https://192.0.2.1",
+            ""));
   }
 
   @Test
