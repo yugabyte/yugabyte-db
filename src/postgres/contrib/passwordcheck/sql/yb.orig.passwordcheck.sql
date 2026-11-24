@@ -1,4 +1,3 @@
-LOAD 'passwordcheck';
 CREATE USER regress_user1;
 
 -- Pre-hashed SCRAM passwords, as a ysql_dumpall script sets them
