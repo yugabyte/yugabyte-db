@@ -188,7 +188,8 @@ func applyS3Keys(
 		return nil
 	}
 	if !keyFlagSet {
-		hasStored := util.HasValue(data[util.AWSAccessKeyEnv])
+		hasStored := util.HasValue(data[util.AWSAccessKeyEnv]) &&
+			util.HasValue(data[util.AWSSecretAccessKeyEnv])
 		if !updateCreds && (!wasIAM || hasStored) {
 			return nil
 		}
