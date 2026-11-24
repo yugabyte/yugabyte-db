@@ -1904,7 +1904,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
     return new CheckResizeOptionsResp()
         .options(res)
-        .resizeRestrictions(updateOptionsState.getResizeRestrictions().stream().sorted().toList())
-        .fullMoveReasons(updateOptionsState.getFullMoveReasons().stream().sorted().toList());
+        .resizeRestrictions(updateOptionsState.getResizeRestrictions().stream().sorted().toList());
   }
 }
