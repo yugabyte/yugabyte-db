@@ -109,6 +109,25 @@ public class RuntimeConfigCacheTest extends FakeDBApplication {
   }
 
   @Test
+  public void readBeforeTheChangeRollsBackIsDroppedWhenItRollsBack() throws Exception {
+    RuntimeConfService runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
+    assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
+
+    try (Transaction transaction = DB.beginTransaction()) {
+      runtimeConfService.setKey(customer.getUuid(), GLOBAL_SCOPE_UUID, REDACTION_KEY, "true", true);
+      assertFalse(
+          executor
+              .submit(() -> runtimeConfigCache.getBoolean(REDACTION_KEY))
+              .get(10, TimeUnit.SECONDS));
+      assertTrue(expiration.getExpiresAfter(REDACTION_KEY).isPresent());
+      transaction.rollback();
+    }
+    // The rollback clears the key again, so nothing loaded during the transaction stays cached.
+    assertFalse(expiration.getExpiresAfter(REDACTION_KEY).isPresent());
+    assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
+  }
+
+  @Test
   public void writeThatSkipsTheListenerIsReadWithinSixtySeconds() throws Exception {
     assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
 
