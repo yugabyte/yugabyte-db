@@ -3342,9 +3342,11 @@ public class PlacementInfoUtil {
   }
 
   /**
-   * Combine placement trees using only the fields already stored on those trees. Clouds, regions,
-   * and AZs are matched by UUID. Placements should be disjoint in terms of AZs. The
-   * IllegalStateException is thrown when the repeated AZ is encountered.
+   * Combine placement trees using only the fields already stored on those trees.
+   * Clouds, regions, and AZs are matched by UUID.
+   * The default region is ignored.
+   * Placements should be disjoint in terms of AZs.
+   * The IllegalStateException is thrown when the repeated AZ is encountered.
    */
   public static PlacementInfo mergePlacements(Collection<PlacementInfo> allPlacements) {
     PlacementInfo result = new PlacementInfo();
@@ -3384,15 +3386,11 @@ public class PlacementInfoUtil {
                   PlacementCloud created = new PlacementCloud();
                   created.uuid = srcCloud.uuid;
                   created.code = srcCloud.code;
-                  created.defaultRegion = srcCloud.defaultRegion;
                   result.cloudList.add(created);
                   return created;
                 });
     if (cloud.code == null) {
       cloud.code = srcCloud.code;
-    }
-    if (cloud.defaultRegion == null) {
-      cloud.defaultRegion = srcCloud.defaultRegion;
     }
     return cloud;
   }

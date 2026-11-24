@@ -5220,7 +5220,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementCloud mergedCloud = merged.cloudList.get(0);
     assertEquals(cloudUuid, mergedCloud.uuid);
     assertEquals("aws", mergedCloud.code);
-    assertEquals(region1Uuid, mergedCloud.defaultRegion);
+    assertNull(mergedCloud.defaultRegion); // Default region is ignored.
     assertEquals(2, mergedCloud.regionList.size());
     assertEquals("lb.example.com", mergedCloud.regionList.get(0).lbFQDN);
 
