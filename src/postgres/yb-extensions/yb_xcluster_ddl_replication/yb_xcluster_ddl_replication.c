@@ -343,7 +343,7 @@ ValidateExtensionScriptStatement(CommandTag command_tag)
 	char	   *extension_name = get_extension_name(CurrentExtensionObject);
 
 	if (extension_name != NULL &&
-		strcmp(extension_name, EXTENSION_NAME) == 0)
+		strcmp(extension_name, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0)
 		return;
 
 	if (IsPassThroughDdlCommandSupported(command_tag))
@@ -451,7 +451,7 @@ InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 	appendStringInfo(&query_buf,
 					 "INSERT INTO %s.%s (ddl_end_time, query_id, yb_data) values "
 					 "($1,$2,$3)",
-					 EXTENSION_NAME, table_name);
+					 YB_XCLUSTER_DDL_REPLICATION_NAME, table_name);
 
 	arg_types[0] = INT8OID;
 	arg_vals[0] = Int64GetDatum(ddl_end_time);
@@ -488,7 +488,8 @@ InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
-	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
+	InsertIntoTable(YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME, ddl_end_time,
+					query_id, jsonb);
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
@@ -556,7 +557,8 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
 		int64		query_id = random();
 
-		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+		InsertIntoTable(YB_XCLUSTER_DDL_QUEUE_TABLE_NAME, epoch_time, query_id,
+						jsonb);
 
 		/*
 		 * Also insert into the replicated_ddls table to handle switchovers.
@@ -779,7 +781,7 @@ DetectSelfExtensionDdl(CommandTag command_tag)
 	char	   *extension_name = GetExtensionName(command_tag);
 
 	if (extension_name != NULL &&
-		strcmp(extension_name, EXTENSION_NAME) == 0 &&
+		strcmp(extension_name, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0 &&
 		self_extension_ddl_depth == 0)
 		self_extension_ddl_depth = current_process_utility_depth;
 }
@@ -942,7 +944,8 @@ HandleSourceAnalyzeEnd(Oid relid)
 		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
 		int64		query_id = random();
 
-		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+		InsertIntoTable(YB_XCLUSTER_DDL_QUEUE_TABLE_NAME, epoch_time, query_id,
+						jsonb);
 
 		/*
 		 * Also insert into the replicated_ddls table to handle switchovers, see
@@ -978,7 +981,7 @@ XClusterAnalyzeRelEnd(Oid relid)
 						YBCGetXClusterRole(MyDatabaseId));
 
 	if (role == XCLUSTER_ROLE_UNAVAILABLE &&
-		OidIsValid(get_extension_oid(EXTENSION_NAME, true)))
+		OidIsValid(get_extension_oid(YB_XCLUSTER_DDL_REPLICATION_NAME, true)))
 		ereport(ERROR,
 				(errcode(ERRCODE_YB_ERROR),
 				 errmsg("cannot replicate this ANALYZE: xCluster DDL replication is "
