@@ -63,7 +63,10 @@ func TestWriteSecretEnvFile(t *testing.T) {
 func TestCheckCredentialsRejectsLineBreak(t *testing.T) {
 	cases := map[string]*pb.InstallOtelCollectorInput{
 		"secret env": {OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key\n"}},
-		"aws secret": {OtelColAwsAccessKey: "AKIA", OtelColAwsSecretKey: "x\rcredential_process=id"},
+		"aws secret": {
+			OtelColAwsAccessKey: "AKIA",
+			OtelColAwsSecretKey: "x\rcredential_process=id",
+		},
 	}
 	for name, input := range cases {
 		if err := NewInstallOtelCollectorHandler(input, "").checkCredentials(); err == nil {
