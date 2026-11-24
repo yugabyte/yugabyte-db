@@ -363,6 +363,8 @@ YbcPgStatement
 YbcPgSysColumns
 YbcPgSysTablePrefetchKind
 YbcPgSysTablePrefetcherCacheMode
+YbcPgTableBackfillState
+YbcPgTableBackfillStatus
 YbcPgTableDesc
 YbcPgTableLocalityInfo
 YbcPgTabletsDescriptor
