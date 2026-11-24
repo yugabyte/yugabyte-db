@@ -270,16 +270,19 @@ func hbaTextLine(text string, p int) (next, end int) {
 	return next, end
 }
 
-// hbaGflagValueStart is where the value starts if line is a --ysql_hba_conf_csv= gflag, else -1.
+// hbaGflagValueStart is where the value starts if line is a --ysql_hba_conf_csv= gflag, its name
+// spelled with any mix of dashes and underscores, else -1.
 func hbaGflagValueStart(line string) int {
 	k := 0
 	for k < len(line) && isHbaBlank(line[k]) {
 		k++
 	}
-	if !strings.HasPrefix(line[k:], hbaGflagLinePrefix) {
+	end := k + len(hbaGflagLinePrefix)
+	if end > len(line) || !strings.HasPrefix(line[k:], "--") ||
+		canonicalFlagName(line[k+2:end]) != hbaGflagLinePrefix[2:] {
 		return -1
 	}
-	return k + len(hbaGflagLinePrefix)
+	return end
 }
 
 func hbaConfFields(value string) []csvField {
