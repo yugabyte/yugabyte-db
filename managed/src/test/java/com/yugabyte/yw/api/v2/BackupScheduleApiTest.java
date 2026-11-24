@@ -304,9 +304,17 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     Schedule otherSchedule =
         createBackupSchedule(other, "other", UUID.randomUUID(), UUID.randomUUID());
     assertEquals(404, getError(otherSchedule.getScheduleUUID()));
+  }
 
-    // Nor a Redis one, which v2 has no backup type for.
-    assertEquals(404, getError(createRedisSchedule().getScheduleUUID()));
+  @Test
+  public void getsAnOlderRedisSchedule() throws ApiException {
+    Schedule schedule = createRedisSchedule();
+    assertEquals(
+        BackupScheduleTableType.BackupScheduleTableTypeREDIS,
+        backupScheduleApi
+            .getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID())
+            .getSpec()
+            .getBackupType());
   }
 
   private Schedule createRedisSchedule() {
@@ -360,7 +368,6 @@ public class BackupScheduleApiTest extends FakeDBApplication {
         TimeUnit.HOURS,
         "script");
     createBackupSchedule(ModelFactory.testCustomer("other-customer"), "other", universe1, config1);
-    createRedisSchedule();
 
     List<String> all = list(null);
     assertEquals(4, all.size());

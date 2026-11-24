@@ -6068,16 +6068,22 @@ components:
         version 2026.2.0.0 that could change.</b></p>BackupScheduleTableType
 
 
-        API whose tables a backup schedule backs up: YSQL or YCQL. Part of BackupScheduleSpec.
+        API whose tables a backup schedule backs up: YSQL or YCQL. REDIS appears only
+        on schedules an
+
+        older YBA created for YEDIS tables; a new schedule can''t use it. Part of
+        BackupScheduleSpec.
 
         '
       type: string
       enum:
       - YSQL
       - YCQL
+      - REDIS
       x-enum-varnames:
       - BackupScheduleTableTypeYSQL
       - BackupScheduleTableTypeYCQL
+      - BackupScheduleTableTypeREDIS
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
     BackupScheduleKeyspace:

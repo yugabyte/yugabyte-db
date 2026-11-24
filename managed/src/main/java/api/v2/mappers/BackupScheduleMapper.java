@@ -192,6 +192,9 @@ public interface BackupScheduleMapper {
     if ("YQL_TABLE_TYPE".equals(v1TableType)) {
       return BackupScheduleTableType.BackupScheduleTableTypeYCQL;
     }
+    if ("REDIS_TABLE_TYPE".equals(v1TableType)) {
+      return BackupScheduleTableType.BackupScheduleTableTypeREDIS;
+    }
     return null;
   }
 

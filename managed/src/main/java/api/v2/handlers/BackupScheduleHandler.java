@@ -34,7 +34,10 @@ public class BackupScheduleHandler {
 
   private static final String BACKUP_TYPE_PARAM = "task_params->>'backupType'";
   private static final List<String> V2_BACKUP_TYPES =
-      List.of(TableType.PGSQL_TABLE_TYPE.name(), TableType.YQL_TABLE_TYPE.name());
+      List.of(
+          TableType.PGSQL_TABLE_TYPE.name(),
+          TableType.YQL_TABLE_TYPE.name(),
+          TableType.REDIS_TABLE_TYPE.name());
 
   public BackupSchedule getBackupSchedule(UUID cUUID, UUID bsUUID) {
     Schedule schedule = backupSchedules(cUUID).idEq(bsUUID).findOne();
@@ -78,8 +81,8 @@ public class BackupScheduleHandler {
   }
 
   /**
-   * The backup schedules of a customer. Schedules of other table types (Redis, in older YBAs) are
-   * left out: v2 has no backup type for them.
+   * The backup schedules of a customer. Params without a known backup type, which back up nothing,
+   * are left out: backup_type is required.
    */
   private static ExpressionList<Schedule> backupSchedules(UUID cUUID) {
     return Schedule.find
