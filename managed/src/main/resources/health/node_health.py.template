@@ -64,6 +64,12 @@ POSTMASTER = "yb-postmaster"
 # real value; _merge_proc_results keeps it through summation.
 PSS_UNAVAILABLE = -1
 PSS_INTERVAL_SLACK_SECS = 10
+# /proc/<pid>/status fields used for the PSS lower bound estimate when PSS is not collected.
+RSS_BREAKDOWN_KEYS = {
+    'RssAnon:': 'rss_anon_kb',
+    'RssShmem:': 'rss_shmem_kb',
+    'RssFile:': 'rss_file_kb'
+}
 POSTGRES = "postgres"
 OTEL_COLLECTOR = "otelcol-contrib"
 OTEL_COLLECTOR_HEALTH_ENDPOINT = "http://localhost:13133/health"
@@ -2222,6 +2228,28 @@ class NodeChecker():
             values['backend_p95'] = 0
         return values
 
+    def _is_pss_lowerbound_due(self):
+        # Cheap estimate from /proc/<pid>/status, reported in place of PSS when PSS collection
+        # is disabled. Same source rules as PSS, so both runs don't write the series.
+        return self.pss_collection_interval_secs < 0 and self._is_pss_source()
+
+    def _get_pss_lowerbound(self, res):
+        """sum(RssAnon) + max(RssShmem) + max(RssFile) over the postgres tree, in kb.
+
+        Anonymous memory is mostly private, so it is summed. Shared memory (shared_buffers,
+        DSM) and file-backed pages (binary, libraries) are mapped into every process, so
+        taking the max counts them once. The union of pages touched by all processes can be
+        larger than the max, hence a lower bound for total PSS. None if not available.
+        """
+        stats = [pid_info['stats'] for pid_info in res['process_map'].values()]
+        if not stats:
+            return None
+        if any(s.get('rss_anon_kb', 0) < 0 for s in stats):
+            return None
+        return (sum(s.get('rss_anon_kb', 0) for s in stats)
+                + max(s.get('rss_shmem_kb', 0) for s in stats)
+                + max(s.get('rss_file_kb', 0) for s in stats))
+
     def _get_last_pss_values(self, prev, res):
         if not self._is_pss_source() or self.pss_collection_interval_secs < 0:
             return None
@@ -2271,6 +2299,11 @@ class NodeChecker():
             if pss and pss['total'] is not None:
                 metrics[1].add_value(pss['total'], labels=[
                     process, Label('type', 'proportional')])
+            if process_name == POSTMASTER and self._is_pss_lowerbound_due():
+                pss_lowerbound = self._get_pss_lowerbound(res)
+                if pss_lowerbound is not None:
+                    metrics[1].add_value(pss_lowerbound, labels=[
+                        process, Label('type', 'proportional_lowerbound')])
             metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
                                                                        Label('type', 'virtual')])
             metrics[2].add_value(stat['io_write_kb'], labels=[process,
@@ -2648,7 +2681,11 @@ class NodeChecker():
             'resident_memory_kb': 0,
             'proportional_memory_kb': 0,
             'virtual_memory_kb': 0,
-            'open_files': 0
+            'open_files': 0,
+            # RssAnon/RssShmem/RssFile from /proc/<pid>/status, read only on runs without PSS.
+            'rss_anon_kb': 0,
+            'rss_shmem_kb': 0,
+            'rss_file_kb': 0
         }
 
     def _invert_prev_pid_stats(self, stat):
@@ -2658,7 +2695,7 @@ class NodeChecker():
 
     def _clear_gauge_stats(self, stat):
         for k in ['resident_memory_kb', 'virtual_memory_kb', 'proportional_memory_kb',
-                  'open_files']:
+                  'open_files', 'rss_anon_kb', 'rss_shmem_kb', 'rss_file_kb']:
             stat[k] = 0
 
     def _merge_proc_results(self, stat1, stat2):
@@ -2687,7 +2724,11 @@ class NodeChecker():
         # PSS needs a page table walk under the mmap lock, so only collect it when requested.
         # Otherwise VmRSS from status is a plain counter read.
         if with_pss:
-            cmd = 'cat /proc/{}/smaps_rollup'.format(pid)
+            # smaps_rollup appeared in Linux 4.14. Before that, smaps lists the same Rss: and
+            # Pss: fields per mapping, and the loop below sums them. It costs the same page
+            # table walk, with more output to parse.
+            cmd = ('if [ -e /proc/{0}/smaps_rollup ]; then cat /proc/{0}/smaps_rollup; '
+                   'else cat /proc/{0}/smaps; fi').format(pid)
             rss_key, pss_key = 'Rss:', 'Pss:'
         else:
             cmd = 'cat /proc/{}/status'.format(pid)
@@ -2695,6 +2736,7 @@ class NodeChecker():
         stat = self._check_output(cmd).strip()
         rss_found = False
         pss_found = False
+        rss_breakdown_found = set()
         for line in stat.split('\n'):
             lst = line.split()
             if len(lst) < 3:
@@ -2705,6 +2747,9 @@ class NodeChecker():
             elif lst[0] == pss_key:
                 res['proportional_memory_kb'] += int(lst[1])
                 pss_found = True
+            elif not with_pss and lst[0] in RSS_BREAKDOWN_KEYS:
+                res[RSS_BREAKDOWN_KEYS[lst[0]]] = int(lst[1])
+                rss_breakdown_found.add(lst[0])
         if with_pss and not pss_found:
             # A backend that exited since we listed it is not a failure to read PSS. Its mm is
             # released at exit, so status has no VmRSS, though /proc/<pid>/stat still answers
@@ -2712,9 +2757,13 @@ class NodeChecker():
             status = self._check_output('cat /proc/{}/status'.format(pid))
             if any(line.startswith('VmRSS:') for line in status.split('\n')):
                 res['proportional_memory_kb'] = PSS_UNAVAILABLE
+        if (not with_pss and rss_found
+                and len(rss_breakdown_found) < len(RSS_BREAKDOWN_KEYS)):
+            # Live process without the breakdown (Linux < 4.5): the estimate can't be computed.
+            res['rss_anon_kb'] = PSS_UNAVAILABLE
         if not rss_found:
-            # smaps_rollup is unreadable for processes of another user, and missing before
-            # Linux 4.14. Less precise, but works for any process.
+            # smaps_rollup and smaps are unreadable for processes of another user.
+            # Less precise, but works for any process.
             psstat = self._check_output("ps -o rss -p {} --no-headers".format(pid)).strip()
             lst = psstat.split(' ')
             if len(lst) > 0 and lst[0].isdigit():
