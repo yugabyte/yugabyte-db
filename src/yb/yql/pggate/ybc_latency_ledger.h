@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-#define YB_LEDGER_MAX_ENTRIES 48
+#define YB_LEDGER_MAX_ENTRIES 64
 
 // Entry durations are stored in units of 64 ns (up to ~274 s).
 #define YB_LEDGER_DURATION_SHIFT 6

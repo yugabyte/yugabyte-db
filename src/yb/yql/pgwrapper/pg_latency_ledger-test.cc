@@ -210,7 +210,7 @@ TEST_F(PgLatencyLedgerTest, RoundTripsAddUp) {
       found_insert = true;
       ASSERT_TRUE(record.Has(1, "ShmemRequest"));
       ASSERT_TRUE(record.Has(1, "ShmemResponse"));
-      ASSERT_TRUE(record.Has(2, "Transport"));
+      ASSERT_TRUE(record.Has(2, "ClientReactorQueue"));
       ASSERT_TRUE(record.Has(2, "OnCpu_Active"));
       ASSERT_GT(record.Sum(2, YB_LEDGER_PHASE_EXECUTE), 0);
     }
@@ -224,6 +224,42 @@ TEST_F(PgLatencyLedgerTest, RoundTripsAddUp) {
   }
   ASSERT_TRUE(found_insert);
   ASSERT_TRUE(found_commit);
+}
+
+// RPCs split the time outside their server into reactor steps on both sides, and writes account
+// for Raft replication through the ack that made them majority replicated.
+TEST_F(PgLatencyLedgerTest, TransportAndRaftSteps) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 3 TABLETS"));
+  // The first ledger call on a connection turns on kernel receive timestamps for later ones.
+  for (int i = 0; i != 50; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $0)", i));
+  }
+  const auto insert_id = ASSERT_RESULT(QueryId(conn, "INSERT INTO t"));
+  const auto dump = ASSERT_RESULT(WaitForQuery(insert_id));
+
+  bool found_reactor_steps = false;
+  bool found_wakeup = false;
+  bool found_follower_ack = false;
+  bool found_majority_notify = false;
+  for (const auto& record : dump.records) {
+    if (record.query_id != insert_id) {
+      continue;
+    }
+    SCOPED_TRACE(record.ToString());
+    for (uint32_t depth = 1; depth <= 4; ++depth) {
+      ASSERT_LE(record.Sum(depth), record.Sum(depth - 1) + 100'000);
+    }
+    found_reactor_steps |= record.Has(2, "ServerSendQueue") && record.Has(2, "ClientRecvReactor");
+    found_wakeup |= record.Has(2, "ServerRecvWakeup") || record.Has(2, "ClientRecvWakeup");
+    found_majority_notify |= record.Has(3, "RaftMajorityNotify");
+    // The UpdateConsensus RPC to the follower comes with the follower's own ledger.
+    found_follower_ack |= record.Has(3, "RaftPeerWait") && record.Has(3, "ServiceQueue");
+  }
+  ASSERT_TRUE(found_reactor_steps);
+  ASSERT_TRUE(found_wakeup);
+  ASSERT_TRUE(found_majority_notify);
+  ASSERT_TRUE(found_follower_ack);
 }
 
 // Unsampled backends record only the round trips that take at least the minimum duration.

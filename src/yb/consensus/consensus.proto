@@ -42,6 +42,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/backup.proto";
 import "yb/tserver/tserver_types.proto";
@@ -637,6 +638,8 @@ service ConsensusService {
   // Analogous to AppendEntries in Raft, but only used for followers.
   rpc UpdateConsensus(ConsensusRequestPB) returns (ConsensusResponsePB) {
     option (yb.rpc.lightweight_method).sides = BOTH;
+    // Only sent while the leader times operations that keep a latency ledger.
+    option (yb.rpc.send_metadata) = true;
   };
 
   // Similar to UpdateConsensus but takes a batch of ConsensusRequestPB

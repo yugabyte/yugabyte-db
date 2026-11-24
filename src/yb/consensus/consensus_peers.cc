@@ -34,9 +34,13 @@
 
 #include <algorithm>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "yb/ash/latency_ledger.h"
+#include "yb/ash/wait_state.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -44,6 +48,7 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/raft_ack_ledger.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/multi_raft_batcher.h"
 
@@ -428,6 +433,18 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   performing_update_lock.release();
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
+  ledger_carrier_ = nullptr;
+  if (!update_request_->ops().empty() &&
+      queue_->HasLedgerOpsFrom(update_request_->ops().begin()->id().index())) {
+    // The RPC folds its ledger, and the follower's, into the carrier's ledger.
+    ledger_carrier_ = std::make_shared<ash::WaitStateInfo>();
+    ledger_carrier_->UpdateMetadata({.latency_ledger = true});
+    ledger_sent_nanos_ = ash::LedgerNowNanos();
+  }
+  std::optional<ash::ScopedAdoptWaitState> adopt_carrier;
+  if (ledger_carrier_) {
+    adopt_carrier.emplace(ledger_carrier_);
+  }
   proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
                       std::bind(&Peer::ProcessResponse, retain_self, trace));
 }
@@ -443,7 +460,8 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
 }
 
 bool Peer::ProcessResponseWithStatus(const Status& status,
-                                     LWConsensusResponsePB* response) {
+                                     LWConsensusResponsePB* response,
+                                     const RaftAckLedger* ack_ledger) {
   if (!status.ok()) {
     if (status.IsRemoteError()) {
       // Most controller errors are caused by network issues or corner cases like shutdown and
@@ -507,7 +525,7 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
   }
 
   failed_attempts_ = 0;
-  return queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), *response);
+  return queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), *response, ack_ledger);
 }
 
 void Peer::ProcessResponse(TracePtr trace) {
@@ -525,12 +543,22 @@ void Peer::ProcessResponse(TracePtr trace) {
         "Received response from $0:\nBEGIN UpdateConsensus\n$1END UpdateConsensus",
         peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
   }
+  RaftAckLedger ack_ledger;
+  const RaftAckLedger* ack_ledger_ptr = nullptr;
+  if (auto carrier = std::move(ledger_carrier_)) {
+    ack_ledger.sent_nanos = ledger_sent_nanos_;
+    ack_ledger.acked_nanos = ash::LedgerNowNanos();
+    if (auto* ledger = carrier->latency_ledger()) {
+      ack_ledger.rpc_entries = ledger->TakeChildEntries();
+    }
+    ack_ledger_ptr = &ack_ledger;
+  }
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
     return;
   }
-  bool more_pending = ProcessResponseWithStatus(status, update_response_);
+  bool more_pending = ProcessResponseWithStatus(status, update_response_, ack_ledger_ptr);
 
   if (more_pending) {
     processing_lock.unlock();

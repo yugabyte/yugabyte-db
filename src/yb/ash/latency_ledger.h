@@ -49,10 +49,13 @@ constexpr uint32_t kLedgerMaxPhase = 15;
 enum class LedgerCode : uint32_t {
   // An inbound call waited in the service queue for a handler thread.
   kServiceQueue = 0xF0000001U,
-  // An outbound call was created but not yet written to its connection.
+  // An outbound call was queued on its connection by the reactor until its last byte was written
+  // to the socket.
   kClientSend,
-  // An outbound call was written to its connection until its response arrived, minus the time
-  // the server reported in its ledger: network, reactors and (de)serialization on both sides.
+  // On the wire: from the client writing the request until the server's kernel received it, plus
+  // from the server's reactor picking up the response until the client's kernel received it.
+  // Includes the kernel network stacks, and on either side the reactor work that the steps below do
+  // not cover when the socket does not report receive timestamps.
   kTransport,
   // The response of an outbound call arrived until its callback started.
   kCallbackDelay,
@@ -66,6 +69,27 @@ enum class LedgerCode : uint32_t {
   kUnattributed,
   // A Raft operation was majority replicated but its apply had not started.
   kRaftApplyQueue,
+  // An outbound call was created (and its request serialized) until the reactor queued it on its
+  // connection.
+  kClientReactorQueue,
+  // The server's kernel received the request until the server's reactor read it.
+  kServerRecvWakeup,
+  // The server's reactor read the request until it parsed it, e.g. behind other calls of the read.
+  kServerRecvReactor,
+  // The server finished the response until its reactor picked the response up.
+  kServerSendQueue,
+  // The client's kernel received the response until the client's reactor read it.
+  kClientRecvWakeup,
+  // The client's reactor read the response until it parsed it.
+  kClientRecvReactor,
+  // A Raft operation was added to the leader until the request that carried it to the follower
+  // whose ack made it majority replicated was sent.
+  kRaftPeerWait,
+  // A Raft operation was added to the leader until the leader's own WAL append finished, when that
+  // append made it majority replicated.
+  kRaftLocalWal,
+  // The ack that made a Raft operation majority replicated arrived until the operation was told.
+  kRaftMajorityNotify,
 };
 
 constexpr uint32_t CompressLedgerCode(uint32_t code) {
@@ -106,6 +130,37 @@ constexpr uint32_t ShiftLedgerKey(uint32_t key, uint32_t depth_offset, uint32_t 
 
 // CLOCK_MONOTONIC in nanoseconds. Comparable across processes on the same host.
 int64_t LedgerNowNanos();
+
+// Converts a CLOCK_REALTIME time in nanoseconds, e.g. a kernel socket timestamp, to the
+// LedgerNowNanos() clock, given mono_now and the time it was taken at. Capped at mono_now.
+int64_t LedgerMonoFromRealtime(int64_t realtime_nanos, int64_t mono_now);
+
+// When the bytes a reactor thread is processing were read. An RPC stream sets them while it handles
+// a read, and inbound and outbound calls parsed from those bytes pick them up.
+struct ReactorReadStamps {
+  // The read returned the bytes.
+  int64_t read_nanos = 0;
+  // The kernel received the last packet of the bytes. 0 when the socket does not report it.
+  int64_t kernel_rx_nanos = 0;
+  // Set by a consumer that found kernel_rx_nanos missing: asks the stream to turn on kernel
+  // receive timestamps for its socket.
+  bool want_kernel_rx = false;
+};
+
+// The stamps of the read the current thread handles, or nullptr.
+ReactorReadStamps* CurrentReactorReadStamps();
+
+class ScopedReactorReadStamps {
+ public:
+  ScopedReactorReadStamps();
+  ~ScopedReactorReadStamps();
+
+  ReactorReadStamps& stamps() { return stamps_; }
+
+ private:
+  ReactorReadStamps stamps_;
+  ReactorReadStamps* const prev_;
+};
 
 struct LedgerEntry {
   uint32_t key;
@@ -150,12 +205,22 @@ class LatencyLedger {
   // later transitions start from now.
   void Finish(int64_t now, LatencyLedgerPB* out);
 
-  int64_t start_nanos() const { return start_nanos_; }
+  // Moves the start of the ledger back to start_nanos and charges the time up to the old start to
+  // code. For time that passed before the request was known to want a ledger.
+  void Backdate(int64_t start_nanos, uint32_t code);
+  void Backdate(int64_t start_nanos, LedgerCode code) {
+    Backdate(start_nanos, static_cast<uint32_t>(code));
+  }
+
+  // Removes and returns the entries of the child that finished last.
+  LedgerEntries TakeChildEntries();
+
+  int64_t start_nanos() const;
 
  private:
-  const int64_t start_nanos_;
+  int64_t start_nanos_ GUARDED_BY(mutex_);
 
-  simple_spinlock mutex_;
+  mutable simple_spinlock mutex_;
   int64_t interval_start_ GUARDED_BY(mutex_);
   uint32_t current_code_ GUARDED_BY(mutex_);
   LedgerEntries entries_ GUARDED_BY(mutex_);

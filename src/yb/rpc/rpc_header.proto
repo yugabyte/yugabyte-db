@@ -122,6 +122,11 @@ message ResponseHeader {
   // Set when the request asked for a latency ledger (AshMetadataPB.latency_ledger).
   optional LatencyLedgerPB latency_ledger = 5;
 
+  // Set with latency_ledger: nanoseconds from finishing the ledger until the server's reactor
+  // picked the response up. The reactor overwrites the serialized value in place, so it must stay a
+  // fixed-size field placed right before crc.
+  optional fixed64 ledger_send_queue_nanos = 6;
+
   // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
   optional fixed32 crc = 15;
 }

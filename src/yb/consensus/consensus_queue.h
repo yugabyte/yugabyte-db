@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
@@ -359,9 +360,20 @@ class PeerMessageQueue {
   void NotifyPeerIsResponsiveDespiteError(const std::string& peer_uuid);
 
   // Updates the request queue with the latest response of a peer, returns whether this peer has
-  // more requests pending.
+  // more requests pending. ack_ledger describes how the response was obtained when some operation
+  // keeps a latency ledger.
   virtual bool ResponseFromPeer(const std::string& peer_uuid,
-                                const LWConsensusResponsePB& response);
+                                const LWConsensusResponsePB& response,
+                                const RaftAckLedger* ack_ledger = nullptr);
+
+  // Records that the operation with the given index keeps a latency ledger, so that the acks that
+  // replicate it are timed. Must be called before the operation is appended.
+  void NoteLedgerOp(int64_t index);
+
+  // Whether an operation with the given or a higher index keeps a latency ledger.
+  bool HasLedgerOpsFrom(int64_t index) const {
+    return last_ledger_op_index_.load(std::memory_order_acquire) >= index;
+  }
 
   void RequestWasNotSent(const std::string& peer_uuid);
 
@@ -670,6 +682,9 @@ class PeerMessageQueue {
   const RaftPeerPB local_peer_pb_;
   const yb::PeerId local_peer_uuid_;
 
+  // Index of the last operation that keeps a latency ledger, -1 if none.
+  std::atomic<int64_t> last_ledger_op_index_{-1};
+
   const TabletId tablet_id_;
 
   QueueState queue_state_ GUARDED_BY(queue_lock_);
@@ -716,6 +731,8 @@ struct MajorityReplicatedData {
   CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
   uint64_t num_sst_files;
+  // The ack that advanced op_id, when some of the operations it covers keep a latency ledger.
+  RaftAckLedgerPtr ack_ledger;
 
   std::string ToString() const;
 };

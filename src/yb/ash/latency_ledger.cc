@@ -35,12 +35,33 @@ constexpr size_t kMaxChildEntries = 64;
 
 std::atomic<bool> pg_latency_ledger_requested{false};
 
+thread_local ReactorReadStamps* current_reactor_read_stamps = nullptr;
+
 } // namespace
 
 int64_t LedgerNowNanos() {
   timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+}
+
+int64_t LedgerMonoFromRealtime(int64_t realtime_nanos, int64_t mono_now) {
+  timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  const auto real_now = static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+  return mono_now - std::max<int64_t>(real_now - realtime_nanos, 0);
+}
+
+ReactorReadStamps* CurrentReactorReadStamps() {
+  return current_reactor_read_stamps;
+}
+
+ScopedReactorReadStamps::ScopedReactorReadStamps() : prev_(current_reactor_read_stamps) {
+  current_reactor_read_stamps = &stamps_;
+}
+
+ScopedReactorReadStamps::~ScopedReactorReadStamps() {
+  current_reactor_read_stamps = prev_;
 }
 
 void AddLedgerEntry(LedgerEntries* entries, uint32_t key, int64_t nanos) {
@@ -112,6 +133,15 @@ std::string LedgerCodeName(uint32_t code) {
     case LedgerCode::kOverflow: return "Overflow";
     case LedgerCode::kUnattributed: return "Unattributed";
     case LedgerCode::kRaftApplyQueue: return "RaftApplyQueue";
+    case LedgerCode::kClientReactorQueue: return "ClientReactorQueue";
+    case LedgerCode::kServerRecvWakeup: return "ServerRecvWakeup";
+    case LedgerCode::kServerRecvReactor: return "ServerRecvReactor";
+    case LedgerCode::kServerSendQueue: return "ServerSendQueue";
+    case LedgerCode::kClientRecvWakeup: return "ClientRecvWakeup";
+    case LedgerCode::kClientRecvReactor: return "ClientRecvReactor";
+    case LedgerCode::kRaftPeerWait: return "RaftPeerWait";
+    case LedgerCode::kRaftLocalWal: return "RaftLocalWal";
+    case LedgerCode::kRaftMajorityNotify: return "RaftMajorityNotify";
   }
   const char* name = ToCString(static_cast<WaitStateCode>(code));
   // Wait state names carry the enum's "k" prefix.
@@ -166,6 +196,28 @@ void LatencyLedger::Finish(int64_t now, LatencyLedgerPB* out) {
     out->add_keys(entry.key);
     out->add_nanos(entry.nanos);
   }
+}
+
+void LatencyLedger::Backdate(int64_t start_nanos, uint32_t code) {
+  std::lock_guard lock(mutex_);
+  if (start_nanos >= start_nanos_) {
+    return;
+  }
+  AddLedgerEntry(&entries_, MakeLedgerKey(0, 0, code), start_nanos_ - start_nanos);
+  start_nanos_ = start_nanos;
+}
+
+LedgerEntries LatencyLedger::TakeChildEntries() {
+  std::lock_guard lock(mutex_);
+  child_end_nanos_ = 0;
+  auto result = std::move(child_entries_);
+  child_entries_.clear();
+  return result;
+}
+
+int64_t LatencyLedger::start_nanos() const {
+  std::lock_guard lock(mutex_);
+  return start_nanos_;
 }
 
 void SetPgLatencyLedgerRequested(bool requested) {

@@ -115,6 +115,25 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
   std::string ToString() const;
 
+  // Set by the operation, when it keeps a latency ledger, to when it was added to the leader.
+  void set_ledger_added_nanos(int64_t nanos) {
+    ledger_added_nanos_ = nanos;
+  }
+
+  int64_t ledger_added_nanos() const {
+    return ledger_added_nanos_;
+  }
+
+  // The ack that made this round majority replicated, when ledger_added_nanos() is set. Valid in
+  // the replication finished callback.
+  void set_majority_ack_ledger(RaftAckLedgerPtr ledger) {
+    majority_ack_ledger_ = std::move(ledger);
+  }
+
+  const RaftAckLedgerPtr& majority_ack_ledger() const {
+    return majority_ack_ledger_;
+  }
+
  private:
   friend class RaftConsensusQuorumTest;
   friend class RefCountedThreadSafe<ConsensusRound>;
@@ -133,6 +152,9 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   int64_t bound_term_ = OpId::kUnknownTerm;
 
   bool replication_deferrable_ = false;
+
+  int64_t ledger_added_nanos_ = 0;
+  RaftAckLedgerPtr majority_ack_ledger_;
 
   ConsensusRoundCallback* callback_ = nullptr;
   std::unique_ptr<ConsensusRoundCallback> callback_holder_;

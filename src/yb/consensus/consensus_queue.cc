@@ -48,6 +48,7 @@
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/raft_ack_ledger.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
@@ -426,7 +427,13 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id, const Status& sta
   }
 
   if (is_leader) {
-    ResponseFromPeer(local_peer_uuid_, fake_response);
+    RaftAckLedger ack_ledger;
+    const bool timed = HasLedgerOpsFrom(0);
+    if (timed) {
+      ack_ledger.local = true;
+      ack_ledger.acked_nanos = ash::LedgerNowNanos();
+    }
+    ResponseFromPeer(local_peer_uuid_, fake_response, timed ? &ack_ledger : nullptr);
   } else {
     log_cache_.EvictThroughOp(evict_index);
   }
@@ -1590,8 +1597,16 @@ void PeerMessageQueue::RequestWasNotSent(const std::string& peer_uuid) {
 }
 
 
+void PeerMessageQueue::NoteLedgerOp(int64_t index) {
+  auto last = last_ledger_op_index_.load(std::memory_order_acquire);
+  while (last < index &&
+         !last_ledger_op_index_.compare_exchange_weak(last, index, std::memory_order_acq_rel)) {
+  }
+}
+
 bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
-                                        const LWConsensusResponsePB& response) {
+                                        const LWConsensusResponsePB& response,
+                                        const RaftAckLedger* ack_ledger) {
   MajorityReplicatedData majority_replicated;
   Mode mode_copy;
   bool result = false;
@@ -1743,6 +1758,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {
+      const auto old_majority_index = queue_state_.majority_replicated_op_id.index;
       auto new_majority_replicated_opid = OpIdWatermark();
       if (new_majority_replicated_opid != OpId::Min()) {
         if (new_majority_replicated_opid.index == MaximumOpId().index()) {
@@ -1756,6 +1772,13 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       peer->leader_ht_lease_expiration.OnReplyFromFollower();
 
       majority_replicated.op_id = queue_state_.majority_replicated_op_id;
+      if (ack_ledger && majority_replicated.op_id.index > old_majority_index &&
+          HasLedgerOpsFrom(old_majority_index + 1)) {
+        auto ledger = std::make_shared<RaftAckLedger>(*ack_ledger);
+        ledger->from_index = old_majority_index;
+        ledger->to_index = majority_replicated.op_id.index;
+        majority_replicated.ack_ledger = std::move(ledger);
+      }
       majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
       majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
       majority_replicated.num_sst_files = NumSSTFilesWatermark();

@@ -156,7 +156,13 @@ class Socket {
   Result<size_t> Recv(uint8_t* buf, ssize_t amt);
 
   // Receives into multiple buffers, returns number of bytes received.
-  Result<size_t> Recvv(IoVecs* vecs);
+  // When rx_realtime_nanos is not null, also sets it to the CLOCK_REALTIME time at which the kernel
+  // received the last packet read, or to 0 if the socket did not report it (see
+  // EnableReceiveTimestamps).
+  Result<size_t> Recvv(IoVecs* vecs, int64_t* rx_realtime_nanos = nullptr);
+
+  // Makes the kernel timestamp received packets (SO_TIMESTAMPNS).
+  Status EnableReceiveTimestamps();
 
   // Blocking Recv call, returns IOError unless requested amt bytes are read.
   // Underlying Socket expected to be in blocking mode. Fails if any Recv() reads 0 bytes.

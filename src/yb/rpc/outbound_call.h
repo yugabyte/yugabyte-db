@@ -203,6 +203,12 @@ class CallResponse {
     return header_.has_latency_ledger() ? &header_.latency_ledger() : nullptr;
   }
 
+  // Time from the server finishing its latency ledger until its reactor picked the response up.
+  int64_t ledger_send_queue_nanos() const {
+    DCHECK(parsed_);
+    return static_cast<int64_t>(header_.ledger_send_queue_nanos());
+  }
+
  private:
   // True once ParseFrom() is called.
   bool parsed_;

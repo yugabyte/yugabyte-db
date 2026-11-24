@@ -290,9 +290,12 @@ class ReplicaState {
   // Sets last_applied_op_id to the ID of last operation applied.
   //
   // If this advanced the committed index, sets *committed_op_id_changed to true.
+  //
+  // ack_ledger, when set, is handed to the rounds it made majority replicated that keep a latency
+  // ledger.
   Status UpdateMajorityReplicatedUnlocked(
       const OpId& majority_replicated, OpId* committed_op_id, bool* committed_op_id_changed,
-      OpId* last_applied_op_id);
+      OpId* last_applied_op_id, RaftAckLedgerPtr ack_ledger = nullptr);
 
   // Advances the committed index.
   // This is a no-op if the committed index has not changed.
@@ -529,6 +532,9 @@ class ReplicaState {
 
   // Used to wait for safe op id during apply of committed entries.
   SafeOpIdWaiter* safe_op_id_waiter_;
+
+  // Set during UpdateMajorityReplicatedUnlocked, see there.
+  RaftAckLedgerPtr majority_ack_ledger_;
 
   // The id of the last received operation, which corresponds to the last entry
   // written to the local log. Operations whose id is lower than or equal to
