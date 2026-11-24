@@ -122,7 +122,7 @@ When the publication changes, a replication stream applies the change to the set
 - **Immediate effect**, called [implicit publication](#implicit-publication). The change takes effect at the commit point of the `ALTER PUBLICATION` or `CREATE TABLE`.
 - **Refresh interval**, called [periodic publication](#periodic-publication). The change takes effect at the next scheduled refresh of the publication's table list.
 
-Implicit publication is the default. [Slot behavior by version](../slot-behavior-by-version/#publication-change-detection) lists the default in each release. The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
+Implicit publication is the default. [Slot behavior by version](../slot-behavior-by-version/#publication-changes) lists the default in each release. The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
 
 ### Implicit publication
 
