@@ -602,12 +602,6 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100
     "in case the last poll returned no notifications.");
 DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poller_retry_timeout_ms, 300000,  // 5 min
-    "Time in milliseconds for which the notifications poller process keeps restarting while "
-    "its restarts fail before it gives up and terminates the node's listening sessions. "
-    "0 terminates them on the first error. Keep it well below cdc_intent_retention_ms.");
-DEFINE_validator(ysql_yb_notifications_poller_retry_timeout_ms, FLAG_GE_VALUE_VALIDATOR(0));
-
 DEFINE_RUNTIME_PG_FLAG(double, yb_dist_trace_sample_rate, 0.0,
     "Fraction (0 to 1) of YSQL protocol cycles (simple query, Parse, Bind, Execute) that arrive "
     "without a traceparent and are distributed-traced. Each cycle is drawn independently and "

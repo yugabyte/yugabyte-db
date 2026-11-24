@@ -84,7 +84,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
-  private static final String DEFAULT_POLLER_RETRY_TIMEOUT_MS = "300000";
   private static final String SHORT_POLLER_RETRY_TIMEOUT_MS = "5000";
   // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
   private static final String RETRIED_UPDATE =
@@ -2045,7 +2044,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Test
   public void testPollerErrorHoldingQueueLock() throws Exception {
     Map<HostAndPort, String> originalPgConf = new HashMap<>();
-    setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
+    Map<HostAndPort, String> timeoutConf = setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2062,7 +2061,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertConnectionDead(listener, "listener");
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
-      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+      restorePgConfOnAllTServers(timeoutConf);
     }
 
     verifyListenNotifyWorks();
@@ -2134,7 +2133,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testHealthyPollerEndsFailedRestartRun() throws Exception {
     final String channel = "healthy_ends_run";
     final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
-    setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
+    Map<HostAndPort, String> timeoutConf = setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2157,7 +2156,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       stmt.execute("NOTIFY " + channel + ", 'b'");
       waitForNotification(listener, channel, "b");
     } finally {
-      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+      restorePgConfOnAllTServers(timeoutConf);
     }
   }
 
@@ -2167,7 +2166,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    */
   @Test
   public void testRestartedPollerInitFailureTerminatesListeners() throws Exception {
-    setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
+    Map<HostAndPort, String> timeoutConf = setPollerRetryTimeoutMs(SHORT_POLLER_RETRY_TIMEOUT_MS);
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2181,7 +2180,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertConnectionDead(listener, "listener");
     } finally {
       setVirtualWalLimit("5");
-      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+      restorePgConfOnAllTServers(timeoutConf);
     }
 
     verifyListenNotifyWorks();
@@ -2196,7 +2195,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testAckEndsFailedRestartRun() throws Exception {
     final String channel = "ack_ends_run";
     final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
-    setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
+    Map<HostAndPort, String> timeoutConf = setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
@@ -2225,7 +2224,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertEquals("Expected the notification exactly once", 1, received.size());
       assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
     } finally {
-      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
+      restorePgConfOnAllTServers(timeoutConf);
     }
   }
 
@@ -2282,10 +2281,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     public void reportErrorsAtEnd() {}
   }
 
-  private void setPollerRetryTimeoutMs(String value) throws Exception {
-    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      setServerFlag(tserver, "ysql_yb_notifications_poller_retry_timeout_ms", value);
-    }
+  /** Returns the ysql_pg_conf_csv values to restore with restorePgConfOnAllTServers. */
+  private Map<HostAndPort, String> setPollerRetryTimeoutMs(String value) throws Exception {
+    Map<HostAndPort, String> original = new HashMap<>();
+    appendToPgConfOnAllTServers("yb_notifications_poller_retry_timeout_ms=" + value, original);
+    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+    return original;
   }
 
   private void setCdcIntentRetentionMs(String value) throws Exception {
