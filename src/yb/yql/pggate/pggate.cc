@@ -2219,13 +2219,11 @@ Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RecreateTransaction();
+  return pg_txn_manager_->RecreateTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::RestartTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RestartTransaction();
+  return pg_txn_manager_->RestartTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {
@@ -2237,11 +2235,15 @@ Status PgApiImpl::EnsureReadPoint() {
 }
 
 Status PgApiImpl::RestartReadPoint() {
-  return pg_txn_manager_->RestartReadPoint();
+  return pg_txn_manager_->RestartReadPoint(ClearSessionState());
 }
 
-bool PgApiImpl::IsRestartReadPointRequested() {
-  return pg_txn_manager_->IsRestartReadPointRequested();
+void PgApiImpl::ResetRetryReadLimitCaps() {
+  pg_txn_manager_->ResetRetryReadLimitCaps();
+}
+
+bool PgApiImpl::IsReadRestartRetryInProgress() const {
+  return pg_txn_manager_->IsReadRestartRetryInProgress();
 }
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
