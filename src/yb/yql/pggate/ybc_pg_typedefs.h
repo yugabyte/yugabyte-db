@@ -727,7 +727,7 @@ typedef struct {
 // caller frees it by resetting that context in PreProcessBeforeFetchingNextBatch.
 typedef struct {
   const char* column_name;
-  // When TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
+  // When ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
   // column_attr_num and column_name is NULL. Otherwise it is identified by column_name and
   // column_attr_num is 0.
   int column_attr_num;

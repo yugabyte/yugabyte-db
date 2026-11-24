@@ -17,6 +17,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -65,6 +66,7 @@ DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_drop_bootstrap_producer_response);
 DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
@@ -309,6 +311,7 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
   }
 
   void TestNonTransactionalVectorUpdates();
+  void TestColocationParentCreatedAfterSetup();
 };
 
 class XClusterDBScopedAutomaticModeTest : public XClusterDBScopedTest {
@@ -627,6 +630,33 @@ TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointReadsOpIdsAfterSpli
 TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointResolvesTabletsAfterSplit) {
   TestOldLeaderCheckpointFinishesAfterSplit(
       "XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
+}
+
+// Tests that a checkpoint succeeds when a local peer is tombstoned during BootstrapProducer.
+TEST_F(XClusterDBScopedAutomaticModeTest, CheckpointWithTombstonedLocalPeer) {
+  ASSERT_OK(SetUpClusters());
+  // Stop the leader from remote bootstrapping the tombstoned peer back before the run reads it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+
+  // After the run reads the tablet locations, tombstone a follower peer on its tserver, as the
+  // load balancer would.
+  SyncPointScope sync_point;
+  sync_point->SetCallBack(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [this](void* arg) {
+        const auto ts_uuid = static_cast<cdc::CDCServiceContext*>(arg)->permanent_uuid();
+        const auto followers = ListTableTabletPeers(
+            producer_cluster(), producer_table_->id(), ListPeersFilter::kNonLeaders);
+        const auto follower = std::ranges::find_if(
+            followers, [&](const auto& peer) { return peer->permanent_uuid() == ts_uuid; });
+        ASSERT_NE(follower, followers.end());
+        auto* ts = ASSERT_NOTNULL(producer_cluster()->find_tablet_server(ts_uuid));
+        ASSERT_OK(ts->DeleteTablet((*follower)->tablet_id(), tablet::TABLET_DATA_TOMBSTONED));
+      });
+  sync_point->EnableProcessing();
+
+  StringWaiterLogSink fallback_sink("from its leader, since the local peer cannot serve");
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_TRUE(fallback_sink.IsEventOccurred());
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on
@@ -1873,6 +1903,50 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().tables_size(), 2 + OverheadStreamsCount());
+}
+
+// The first colocated table of a tablespace creates a colocation parent table. The target accepts
+// one only at setup, so the source refuses it once the database is replicated.
+void XClusterDBScopedTest::TestColocationParentCreatedAfterSetup() {
+  namespace_name = "colocated_db";
+  SetupParams param;
+  param.is_colocated = true;
+  ASSERT_OK(SetUpClusters(param));
+
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  for (auto* conn : {&p_conn, &c_conn}) {
+    ASSERT_OK(conn->Execute("CREATE TABLESPACE tsp1 LOCATION '/data'"));
+    ASSERT_OK(conn->Execute(
+        "CREATE TABLE coloc_tbl (k int PRIMARY KEY) WITH (colocation_id = 44444)"));
+  }
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NOK_STR_CONTAINS(
+      p_conn.Execute("CREATE TABLE coloc_tsp_tbl (k int PRIMARY KEY) TABLESPACE tsp1"),
+      "Cannot create a new colocation tablegroup");
+  ASSERT_EQ(ASSERT_RESULT(p_conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 1);
+
+  // The database keeps replicating, and a tablegroup that was there at setup takes new tables.
+  constexpr auto kNewTable =
+      "CREATE TABLE coloc_tbl2 (k int PRIMARY KEY) WITH (colocation_id = 44445)";
+  ASSERT_OK(p_conn.Execute(kNewTable));
+  if (!UseAutomaticMode()) {
+    ASSERT_OK(c_conn.Execute(kNewTable));
+  }
+  ASSERT_OK(p_conn.Execute("INSERT INTO coloc_tbl2 SELECT generate_series(1, 10)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(c_conn.FetchRow<int64_t>("SELECT count(*) FROM coloc_tbl2")), 10);
+}
+
+TEST_F(XClusterDBScopedTest, ColocationParentCreatedAfterSetup) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
+}
+
+TEST_F_EX(XClusterDBScopedTest, ColocationParentCreatedAfterSetupAutomaticMode,
+          XClusterDBScopedAutomaticModeTest) {
+  ASSERT_NO_FATALS(TestColocationParentCreatedAfterSetup());
 }
 
 // When disable_xcluster_db_scoped_new_table_processing is set make sure we do not checkpoint new

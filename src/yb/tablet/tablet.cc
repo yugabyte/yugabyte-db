@@ -576,11 +576,13 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
+// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
+// largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
-  HybridTime min_ht = log_ht;
-  HybridTime max_ht = log_ht;
+  HybridTime min_ht = log_ht ? log_ht : commit_ht;
+  HybridTime max_ht = min_ht;
   if (commit_ht) {
     min_ht = std::min(min_ht, commit_ht);
     max_ht = std::max(max_ht, commit_ht);
@@ -2836,6 +2838,16 @@ const std::string* Tablet::NextReadPartitionKey(
   return &partition_key;
 }
 
+bool Tablet::SwitchToNextTablet(
+    const PgsqlReadRequestMsg& pgsql_read_request, const PgsqlResponseMsg& response) const {
+  if (response.has_paging_state()) {
+    const auto& paging_state = response.paging_state();
+    VLOG_WITH_FUNC(3) << "Paging state: " << paging_state.ShortDebugString();
+    return !paging_state.has_next_partition_key();
+  }
+  return true;
+}
+
 namespace {
 
 void SetBackfillSpecForYsqlBackfill(
@@ -2880,12 +2892,19 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_re
   if (MayTargetMultipleTablets(pgsql_read_request, row_count)) {
     const auto* next_partition_key = NextReadPartitionKey(pgsql_read_request);
     if (next_partition_key) {
-      if (!response->has_paging_state()) {
-        // DocDB has done with the current tablet, time to switch to the next one
+      if (SwitchToNextTablet(pgsql_read_request, *response)) {
         response->mutable_paging_state()->dup_next_partition_key(*next_partition_key);
       }
       response->mutable_paging_state()->dup_next_tablet_bound(*next_partition_key);
     }
+  }
+
+  // Next partition/row key hasn't been added, neither by the DocDB nor by the above logic, remove
+  // the paging state to prevent further pagination.
+  if (response->has_paging_state() &&
+      !response->paging_state().has_next_partition_key() &&
+      !response->paging_state().has_next_row_key()) {
+    response->clear_paging_state();
   }
 
   // If there is a paging state, update the total number of rows read so far.
@@ -3025,8 +3044,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
 
-  if (TEST_sleep_before_apply_intents_) {
-    std::this_thread::sleep_for(TEST_sleep_before_apply_intents_.ToSteadyDuration());
+  if (auto sleep = TEST_sleep_before_apply_intents_.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(sleep.ToSteadyDuration());
   }
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test

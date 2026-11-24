@@ -1050,6 +1050,11 @@ public class MiniYBCluster implements AutoCloseable {
       master = restart(master);
       masterProcesses.put(master.getHostAndPort(), master);
     }
+    // Make sure master RPC ports are bound before the client connects to them.
+    long startupDeadlineMs = System.currentTimeMillis() + 120000;
+    for (MiniYBDaemon master : masterProcesses.values()) {
+      master.waitForServerStartLogMessage(startupDeadlineMs);
+    }
 
     startSyncClient(waitForMasterLeader);
 

@@ -417,6 +417,12 @@ message PgsqlPagingStatePB {
   // To hint PgGate about upcoming tablet switch
   // may be expected in cross tablet scan, or may indicate tablet split
   optional bytes next_tablet_bound = 9;
+
+  // Requests to fetch a batch of keys return the number of keys processed so far to quickly
+  // position in the batch to read the next page.
+  optional uint64 batch_keys_processed = 10;
+
+  repeated uint64 batch_keys_missing = 11;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
