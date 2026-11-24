@@ -26,10 +26,12 @@ func TestApplyAzureSASToken(t *testing.T) {
 		env         *string
 		want        string
 		wantErr     string
+		emptyFlag   bool
 	}{
 		{name: "rename only keeps stored token", want: masked},
 		{name: "rename with an env token set keeps stored token", env: ptr(envToken), want: masked},
 		{name: "flag replaces stored token", sasToken: newToken, want: newToken},
+		{name: "empty flag", emptyFlag: true, wantErr: "must be non-empty"},
 		{
 			name:        "flag wins over update-credentials",
 			sasToken:    newToken,
@@ -71,7 +73,8 @@ func TestApplyAzureSASToken(t *testing.T) {
 			if tc.iam {
 				data[util.UseAzureIAM] = "true"
 			}
-			err := applyAzureSASToken(data, tc.sasToken, tc.updateCreds)
+			err := applyAzureSASToken(
+				data, tc.sasToken, tc.sasToken != "" || tc.emptyFlag, tc.updateCreds)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("got error %v, want one containing %q", err, tc.wantErr)

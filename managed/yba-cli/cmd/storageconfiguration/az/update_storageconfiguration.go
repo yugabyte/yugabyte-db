@@ -119,7 +119,7 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		err = applyAzureSASToken(data, sasToken, updateCreds)
+		err = applyAzureSASToken(data, sasToken, cmd.Flags().Changed("sas-token"), updateCreds)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -148,8 +148,13 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 
 // applyAzureSASToken writes the SAS token into data. Without --sas-token the stored token is
 // kept, or read from the environment with --update-credentials; IAM configs ignore that flag.
-func applyAzureSASToken(data map[string]interface{}, sasToken string, updateCreds bool) error {
-	if !util.IsEmptyString(sasToken) {
+func applyAzureSASToken(
+	data map[string]interface{}, sasToken string, tokenFlagSet, updateCreds bool,
+) error {
+	if tokenFlagSet {
+		if util.IsEmptyString(sasToken) {
+			return fmt.Errorf("--sas-token must be non-empty")
+		}
 		data[util.AzureStorageSasTokenEnv] = sasToken
 		return nil
 	}
