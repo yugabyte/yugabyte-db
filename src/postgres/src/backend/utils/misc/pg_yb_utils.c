@@ -3027,7 +3027,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * the hint table's, runs while its statement's write has not been flushed
 	 * yet. A conflict of that write must surface before the transaction has
 	 * DDL state, when the query layer can still retry the statement: after,
-	 * yb_is_retry_possible refuses the retry (#39047).
+	 * yb_is_retry_possible refuses the retry unless the statement runs in a
+	 * READ COMMITTED transaction block (#39047).
 	 */
 	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeforeCatalogChange());
 

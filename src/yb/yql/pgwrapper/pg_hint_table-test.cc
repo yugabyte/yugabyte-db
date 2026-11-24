@@ -271,7 +271,19 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
 //    Depending on whether conn_first's write has reached DocDB, conn_second either commits first
 //    (conn_first's write then conflicts) or waits on conn_first (and conflicts once it commits).
 // 3. Both statements must succeed: the losing one is retried.
-TEST_F(PgHintTableTest, ConflictingHintUpsertIsRetried) {
+//
+// The refused retry needs transactional DDL, which is on by default only in release builds, so the
+// fixture turns it on.
+class PgHintTableTestTxnDdl : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    ToggleDDLMode(options->extra_tserver_flags, /* use_legacy = */ false);
+    ToggleDDLMode(options->extra_master_flags, /* use_legacy = */ false);
+  }
+};
+
+TEST_F_EX(PgHintTableTest, ConflictingHintUpsertIsRetried, PgHintTableTestTxnDdl) {
   constexpr auto kFirstHint = "MergeJoin(pg_class pg_attribute)";
   constexpr auto kSecondHint = "YbBatchedNL(pg_class pg_attribute)";
   auto conn_first = ASSERT_RESULT(ConnectWithHintTable());
