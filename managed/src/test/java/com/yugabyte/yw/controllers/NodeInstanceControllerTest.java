@@ -25,12 +25,15 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -256,6 +259,63 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     String expectedError = "Cannot find universe " + uuid;
     assertBadRequest(r, expectedError);
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  // Creates a kubernetes universe (host-n1..n3, host-n1 in AZ "az-1") with the given overrides
+  // persisted on the primary cluster's UserIntent, mimicking an operator-managed universe.
+  // The universe must be created on a kubernetes provider: cloud type is read from that provider,
+  // not from a providerType stamped onto an unrelated provider.
+  private Universe createK8sUniverseWithOverrides(
+      String universeName, String universeOverrides, Map<String, String> azOverrides) {
+    if (Provider.get(customer.getUuid(), CloudType.kubernetes).isEmpty()) {
+      Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+      Region k8sRegion = Region.create(k8sProvider, "test-region", "Test Region", "yb-image-1");
+      AvailabilityZone.createOrThrow(k8sRegion, "az-1", "AZ 1", "subnet-1");
+    }
+    Universe u =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(universeName, customer.getId(), CloudType.kubernetes)
+                .getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater("host", CloudType.kubernetes));
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.universeOverrides = universeOverrides;
+          details.getPrimaryCluster().userIntent.azOverrides = azOverrides;
+          universe.setUniverseDetails(details);
+        });
+  }
+
+  private String getKubernetesOverrides(Universe universe, String nodeName) {
+    Result r = getNodeDetails(universe.getUniverseUUID(), nodeName);
+    checkOk(r);
+    return parseResult(r).get("kubernetesOverrides").asText();
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInLiveHelmValues() {
+    // Off by default on this branch.
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenReturn(
+            "gflags:\n"
+                + "  tserver:\n"
+                + "    ycql_ldap_bind_passwd: dummy-bind-pass\n"
+                + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+                + " ldapbindpasswd=dummy-hba-pass ldapserver=ldap.example.com\"\n");
+
+    assertEquals(
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: REDACTED\n"
+            + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=REDACTED ldapserver=ldap.example.com\"\n",
+        getKubernetesOverrides(u, "host-n1"));
   }
 
   @Test

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.Common;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,12 +27,15 @@ import java.util.List;
 import java.util.Map;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class SupportBundleUtilTest extends FakeDBApplication {
@@ -45,9 +50,24 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   public static final String ybc_logs_regex_pattern =
       "((?:.*)(?:yb-)(?:controller(?:-server)?)(?:.*))(\\d{8}-\\d{6})(?:\\..*)?";
 
+  private Path overriddenConfigTestDir;
+
   @Before
   public void setup() {
     MockitoAnnotations.initMocks(this);
+    try {
+      overriddenConfigTestDir =
+          Files.createTempDirectory("support-bundle-overridden-runtime-config-test");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @After
+  public void tearDownOverriddenConfigTestDir() throws IOException {
+    if (overriddenConfigTestDir != null) {
+      FileUtils.deleteDirectory(overriddenConfigTestDir.toFile());
+    }
   }
 
   @Test
@@ -528,5 +548,125 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     assertEquals(
         "service-account",
         supportBundleUtil.getServiceAccountName(testProvider, mockKubernetesManager, envConfig));
+  }
+
+  private String writeAndRead(String content) throws IOException {
+    String path = overriddenConfigTestDir.resolve("k8s_output.yaml").toString();
+    assertTrue(supportBundleUtil.writeKubectlOutputToFile(content, path));
+    return Files.readString(Paths.get(path));
+  }
+
+  private static void assertNoLdapSecrets(String written) {
+    for (String secret : List.of("master-secret", "tserver-secret", "hba-secret")) {
+      assertFalse(written, written.contains(secret));
+    }
+  }
+
+  // The metadata JSON is tree-redacted before saveMetadata; the free-text pass would cut the HBA
+  // value, with its closing quote and comma, from ldapbindpasswd to the end of the line.
+  @Test
+  public void testSaveMetadataKeepsTreeRedactedHbaJsonParseable() throws IOException {
+    JsonNode metadata =
+        RedactingService.filterSecretFields(
+            Json.parse(
+                "{\"tserverGFlags\": {\"ysql_hba_conf_csv\": \"host all all 0.0.0.0/0 ldap"
+                    + " ldapserver=ldap.example.com ldapbindpasswd=hba-secret"
+                    + " ldapsearchattribute=uid\"}}"),
+            RedactingService.RedactionTarget.LOGS);
+    supportBundleUtil.saveMetadata(
+        ModelFactory.testCustomer(),
+        overriddenConfigTestDir.toString(),
+        metadata,
+        "universes.json");
+    String written = Files.readString(overriddenConfigTestDir.resolve("universes.json"));
+    assertEquals(metadata, Json.parse(written));
+    assertNoLdapSecrets(written);
+  }
+
+  @Test
+  public void testWriteKubectlOutputToFileHandlesNullAndRedactionFailure() throws IOException {
+    String path = overriddenConfigTestDir.resolve("k8s_output.yaml").toString();
+    // NativeKubernetesManager returns null for these commands.
+    assertTrue(supportBundleUtil.writeKubectlOutputToFile(null, path));
+    assertEquals("", Files.readString(Paths.get(path)));
+
+    try (org.mockito.MockedStatic<HbaConfRedactor> redactor =
+        org.mockito.Mockito.mockStatic(
+            HbaConfRedactor.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+      redactor
+          .when(() -> HbaConfRedactor.redactFreeText(org.mockito.ArgumentMatchers.anyString()))
+          .thenThrow(new RuntimeException("dummy"));
+      assertFalse(supportBundleUtil.writeKubectlOutputToFile("ycql_ldap_bind_passwd: s\n", path));
+    }
+    assertEquals(
+        "Output withheld: redaction failed, see the YBA log.\n", Files.readString(Paths.get(path)));
+  }
+
+  @Test
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInHelmValues() throws IOException {
+    String helmValues =
+        String.join(
+            "\n",
+            "gflags:",
+            "  master:",
+            "    ycql_ldap_bind_passwd: master-secret",
+            "  tserver:",
+            "    ycql_ldap_bind_passwd: tserver-secret",
+            "    ysql_enable_auth: \"true\"",
+            "    ysql_hba_conf_csv: '\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+                + " ldapbinddn=\"\"cn=admin,dc=example,dc=com\"\" ldapbindpasswd=hba-secret"
+                + " ldapsearchattribute=uid\"'",
+            "istioCompatibility:",
+            "  enabled: false",
+            "");
+    String written = writeAndRead(helmValues);
+    assertNoLdapSecrets(written);
+    assertTrue(written, written.contains("ycql_ldap_bind_passwd: REDACTED"));
+    assertTrue(written, written.contains("ldapserver=ldap.example.com"));
+    assertTrue(written, written.contains("ysql_enable_auth: \"true\""));
+    assertTrue(written, written.contains("istioCompatibility:\n  enabled: false"));
+  }
+
+  // Charts before PLAT-13974 pass the gflags as yb-tserver arguments in the container command,
+  // which kubectl prints as a block scalar or as one double-quoted string.
+  @Test
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInPodSpecBlockScalar()
+      throws IOException {
+    String podSpec =
+        String.join(
+            "\n",
+            "    containers:",
+            "    - command:",
+            "      - /sbin/tini",
+            "      - --",
+            "      - /bin/bash",
+            "      - -c",
+            "      - |",
+            "        exec ${YB_HOME}/bin/yb-tserver \\",
+            "          --fs_data_dirs=/mnt/disk0 \\",
+            "          --ycql_ldap_bind_passwd=\"tserver-secret\" \\",
+            "          --ysql_hba_conf_csv=\"host all all 0.0.0.0/0 ldap"
+                + " ldapserver=ldap.example.com ldapbindpasswd=hba-secret\" \\",
+            "          --placement_cloud=kubernetes",
+            "      image: quay.io/yugabyte/yugabyte:2.20.0.0-b1",
+            "");
+    String written = writeAndRead(podSpec);
+    assertNoLdapSecrets(written);
+    assertTrue(written, written.contains("--fs_data_dirs=/mnt/disk0"));
+    assertTrue(written, written.contains("image: quay.io/yugabyte/yugabyte:2.20.0.0-b1"));
+  }
+
+  @Test
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInPodSpecQuotedString()
+      throws IOException {
+    String podSpec =
+        "      - \"exec ${YB_HOME}/bin/yb-tserver \\\\\\n  --fs_data_dirs=/mnt/disk0 \\\\\\n"
+            + "  --ycql_ldap_bind_passwd=\\\"tserver-secret\\\" \\\\\\n"
+            + "  --ysql_hba_conf_csv=\\\"host all all 0.0.0.0/0 ldap ldapbindpasswd=hba-secret\\\""
+            + " \\\\\\n  --placement_cloud=kubernetes\"\n"
+            + "      image: quay.io/yugabyte/yugabyte:2.20.0.0-b1\n";
+    String written = writeAndRead(podSpec);
+    assertNoLdapSecrets(written);
+    assertTrue(written, written.contains("image: quay.io/yugabyte/yugabyte:2.20.0.0-b1"));
   }
 }

@@ -15,6 +15,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -23,12 +24,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -46,10 +51,12 @@ import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
@@ -58,16 +65,19 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -102,6 +112,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -119,6 +130,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -343,6 +355,164 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  // KubernetesOverridesUpgradeParams.verifyParams walks placement + kubeconfig via
+  // KubernetesUtil.validateUpgradeServiceEndpoints. A bare ModelFactory k8s universe has
+  // null/empty placement and no KUBECONFIG, which NPEs or throws "No config found".
+  private Universe prepareK8sUniverseForOverridesUpgrade(String universeName) {
+    Universe universe = createUniverse(universeName, customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.setConfigMap(ImmutableMap.of("KUBECONFIG", "test"));
+    provider.save();
+    Region region = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              PlacementInfo placementInfo = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az.getUuid(), placementInfo, 1, 1, false);
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.regionList = ImmutableList.of(region.getUuid());
+              details.upsertPrimaryCluster(userIntent, placementInfo);
+              u.setUniverseDetails(details);
+            });
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+    return universe;
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private Universe prepareK8sUniverseWithLdapOverrides(String universeName) {
+    when(mockConfig.getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade(universeName);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = K8S_OVERRIDES;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", K8S_OVERRIDES));
+        });
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRestoresRedactedLdapSecrets() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides LDAP Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = redacted + edit;
+              p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    assertEquals(K8S_OVERRIDES + edit, argCaptor.getValue().universeOverrides);
+    assertEquals(Map.of("az-1", K8S_OVERRIDES), argCaptor.getValue().azOverrides);
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithRedactedOverridesUnchanged() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides Unchanged Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    // Restored first, they equal the stored overrides.
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.universeOverrides = redacted;
+                      p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+                    },
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "No kubernetes overrides modified.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRejectsRedactedInNewAz() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides New AZ Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.azOverrides = new HashMap<>(Map.of("az-1", redacted, "az-2", redacted)),
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesResizeRestoresRedactedOverrides() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpdateKubernetesDiskSize);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Resize LDAP Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.setForceResizeNode(true);
+              UserIntent userIntent = p.getPrimaryCluster().userIntent;
+              userIntent.universeOverrides = redacted;
+              userIntent.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            ResizeNodeParams.class,
+            "resize_node");
+    assertOk(result);
+
+    // The resize task runs the edit's overrides check and applies the request's overrides.
+    ArgumentCaptor<ResizeNodeParams> argCaptor = ArgumentCaptor.forClass(ResizeNodeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.UpdateKubernetesDiskSize), argCaptor.capture());
+    UserIntent submitted = argCaptor.getValue().getPrimaryCluster().userIntent;
+    assertEquals(K8S_OVERRIDES, submitted.universeOverrides);
+    assertEquals(Map.of("az-1", K8S_OVERRIDES), submitted.azOverrides);
+  }
+
+  @Test
+  public void testKubernetesResizeRejectsRedactedOverridesInANewAz() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Resize New AZ Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.setForceResizeNode(true);
+                      p.getPrimaryCluster().userIntent.azOverrides =
+                          new HashMap<>(Map.of("az-1", redacted, "az-2", redacted));
+                    },
+                    ResizeNodeParams.class,
+                    "resize_node"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test
@@ -1349,6 +1519,64 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testCertsRotateByTlsConfigUpdateLogsNoSecrets()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForCertsRotate(false);
+    String ysqlPassword = "dummy-ysql-password";
+    String ycqlSecret = "dummy-ycql-bind-secret";
+    String hbaSecret = "dummy-hba-bind-secret";
+    Universe.saveDetails(
+        universeUUID,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ysqlPassword = ysqlPassword;
+          details.getPrimaryCluster().userIntent.specificGFlags =
+              SpecificGFlags.construct(
+                  new HashMap<>(),
+                  ImmutableMap.of(
+                      "ycql_ldap_bind_passwd",
+                      ycqlSecret,
+                      "ysql_hba_conf_csv",
+                      "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd="
+                          + hbaSecret));
+          universe.setUniverseDetails(details);
+        });
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls";
+    ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
+    bodyJson.put("enableNodeToNodeEncrypt", "true");
+    bodyJson.put("enableClientToNodeEncrypt", "true");
+    bodyJson.put("rootAndClientRootCASame", "false");
+
+    Logger handlerLogger = (Logger) LoggerFactory.getLogger(UniverseCRUDHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    handlerLogger.addAppender(appender);
+    Result result;
+    try {
+      result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    } finally {
+      handlerLogger.detachAppender(appender);
+    }
+
+    assertOk(result);
+    List<String> paramLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.startsWith("tlsConfigUpdate: ") || m.startsWith("CertsRotateParams : "))
+            .toList();
+    assertEquals(2, paramLogs.size());
+    for (String logged : paramLogs) {
+      assertFalse(logged, logged.contains(ysqlPassword));
+      assertFalse(logged, logged.contains(ycqlSecret));
+      assertFalse(logged, logged.contains(hbaSecret));
+      assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
+    }
   }
 
   @Test

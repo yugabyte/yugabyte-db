@@ -21,9 +21,11 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -40,6 +42,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
@@ -1709,7 +1712,7 @@ public class GFlagsUtil {
       try {
         fileName = FileUtils.computeHashForAFile(jsonNode, 10);
       } catch (NoSuchAlgorithmException e) {
-        LOG.warn("Error generating the hash for a file, {}", e.getMessage());
+        LOG.warn("Error generating the hash for a file: ", e);
         // Generate a random string in case of failure.
         fileName = UUID.randomUUID().toString();
       }
@@ -1813,7 +1816,7 @@ public class GFlagsUtil {
       try {
         Files.createDirectory(localGflagFilePath);
       } catch (IOException e) {
-        LOG.error("Error while creating gflag directory: {}", e);
+        LOG.error("Error while creating gflag directory: ", e);
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format("Failed to create tmp gflag directory: %s", e.getMessage()));
@@ -2204,5 +2207,326 @@ public class GFlagsUtil {
         });
 
     return result;
+  }
+
+  /**
+   * Sensitive gflags in newFlags that still appear as REDACTED (whole value) or contain it (e.g.
+   * ldap password inside ysql_hba_conf_csv)
+   */
+  private static String describeRedactedSensitiveGFlagsInPayload(
+      Map<String, String> newFlags, Set<String> sensitiveGFlagNames) {
+    if (newFlags == null || newFlags.isEmpty()) {
+      return "None (Empty gflags map in request)";
+    }
+    LinkedHashSet<String> found = new LinkedHashSet<>();
+    for (String name : sensitiveGFlagNames) {
+      if (RedactingService.SECRET_REPLACEMENT.equals(newFlags.get(name))) {
+        found.add(name);
+      }
+    }
+    String hbaCsv = newFlags.get("ysql_hba_conf_csv");
+    if (hbaCsv != null && hbaCsv.contains(RedactingService.SECRET_REPLACEMENT)) {
+      found.add("ysql_hba_conf_csv");
+    }
+    return found.isEmpty() ? String.join(", ", sensitiveGFlagNames) : String.join(", ", found);
+  }
+
+  /**
+   * A new cluster, in a new universe or added to one, has no stored value to put back in place of
+   * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
+   * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
+   * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
+   * Other gflags may contain the word. Kubernetes overrides get the same check from
+   * KubernetesOverridesRedactor.restore with nothing stored.
+   */
+  public static void checkNoRedactedGFlagsOnCreate(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String ybSoftwareVersion,
+      GFlagsValidation gFlagsValidation) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    Set<String> redactedGFlags =
+        new HashSet<>(
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation));
+    redactedGFlags.add(YSQL_HBA_CONF_CSV);
+    for (Map.Entry<String, Map<String, String>> gflags : getUserGFlagMaps(userIntent).entrySet()) {
+      if (gflags.getValue() == null) {
+        continue;
+      }
+      for (Map.Entry<String, String> gflag : gflags.getValue().entrySet()) {
+        if (redactedGFlags.contains(gflag.getKey())
+            && RedactingService.isGFlagRedacted(gflag.getValue())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "GFlag %s in %s contains %s: a new cluster has no stored value to restore it"
+                      + " from. Submit the actual value.",
+                  gflag.getKey(), gflags.getKey(), RedactingService.SECRET_REPLACEMENT));
+        }
+      }
+    }
+    KubernetesOverridesRedactor.restore(
+        null, userIntent.universeOverrides, "Kubernetes universe overrides");
+    KubernetesOverridesRedactor.restoreAz(null, userIntent.azOverrides);
+  }
+
+  /** A user intent's gflag maps, keyed by where they come from, for error messages. */
+  private static Map<String, Map<String, String>> getUserGFlagMaps(
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    Map<String, Map<String, String>> result = new LinkedHashMap<>();
+    if (userIntent.specificGFlags == null) {
+      // Create still accepts the deprecated maps and converts them to specificGFlags only after
+      // the checks run.
+      result.put("master gflags", userIntent.masterGFlags);
+      result.put("tserver gflags", userIntent.tserverGFlags);
+    } else if (!userIntent.specificGFlags.isInheritFromPrimary()) {
+      Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+      if (userIntent.specificGFlags.getPerAZ() != null) {
+        azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+      }
+      for (UUID azUuid : azUuids) {
+        String az =
+            azUuid == null
+                ? ""
+                : " of AZ "
+                    + AvailabilityZone.maybeGet(azUuid)
+                        .map(AvailabilityZone::getCode)
+                        .orElse(azUuid.toString());
+        result.put(
+            "master gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.MASTER));
+        result.put(
+            "tserver gflags" + az, userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER));
+      }
+    }
+    return result;
+  }
+
+  // Merges sensitive gflags, preserving actual values when REDACTED is received.
+  public static Map<String, String> mergeSensitiveGFlags(
+      Map<String, String> existingGFlags,
+      Map<String, String> newGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (newGFlags == null) {
+      return null;
+    }
+    if (existingGFlags == null) {
+      existingGFlags = Collections.emptyMap();
+    }
+
+    Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
+
+    try {
+      Set<String> sensitiveGFlagFields =
+          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+
+      for (String sensitiveFlag : sensitiveGFlagFields) {
+        if (sensitiveFlag.equals(YSQL_HBA_CONF_CSV)) {
+          continue;
+        }
+        String newValue = newGFlags.get(sensitiveFlag);
+        String existingValue = existingGFlags.get(sensitiveFlag);
+
+        if (RedactingService.isGFlagRedacted(newValue)) {
+          if (existingValue == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                sensitiveFlag
+                    + " cannot be submitted as "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + ": the universe stores no value for it in the same place (server type,"
+                    + " and AZ for an AZ override) to restore it from."
+                    + " Provide the actual value in the request.");
+          }
+          if (existingValue.equals(RedactingService.SECRET_REPLACEMENT)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "The stored value of "
+                    + sensitiveFlag
+                    + " is already "
+                    + RedactingService.SECRET_REPLACEMENT
+                    + "; the real value cannot be recovered."
+                    + " Provide the actual value in the request.");
+          }
+          mergedGFlags.put(sensitiveFlag, existingValue);
+          LOG.debug(
+              "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
+        }
+      }
+
+      String newYsqlHbaConf = newGFlags.get(YSQL_HBA_CONF_CSV);
+      String existingYsqlHbaConf = existingGFlags.get(YSQL_HBA_CONF_CSV);
+
+      if (RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
+        if (existingYsqlHbaConf == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "ysql_hba_conf_csv cannot be submitted with "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd: the universe stores no value for it in the same place"
+                  + " (server type, and AZ for an AZ override) to restore the password from."
+                  + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "The stored ysql_hba_conf_csv already contains "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd; the real password cannot be recovered."
+                  + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input. Gflags
+        // upgrades trim the values they receive, and the stored value may be untrimmed.
+        String existingRedacted =
+            RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
+        if (!existingRedacted.trim().equals(newYsqlHbaConf.trim())) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "ysql_hba_conf_csv contains "
+                  + RedactingService.SECRET_REPLACEMENT
+                  + " in ldapbindpasswd but differs from the stored value in other fields."
+                  + " To apply HBA changes alongside a new password, submit the full"
+                  + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
+        }
+        mergedGFlags.put(YSQL_HBA_CONF_CSV, existingYsqlHbaConf);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      // Exception here means merging failed and there is risk of writing redacted gflags during
+      // gflag upgrade.
+      LOG.error("Failure in merging sensitive gflags during gflags upgrade task.", e);
+      Set<String> sensitiveForMsg;
+      try {
+        sensitiveForMsg =
+            RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+      } catch (Exception secondary) {
+        LOG.warn(
+            "Could not list sensitive gflags while building merge error message; omitting list.",
+            secondary);
+        sensitiveForMsg = Set.of();
+      }
+      String redactedInPayload =
+          describeRedactedSensitiveGFlagsInPayload(newGFlags, sensitiveForMsg);
+      PlatformServiceException pse =
+          new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "Merging sensitive gflags failed: "
+                  + e.getMessage()
+                  + ". Provide original (non-REDACTED) values in the request for sensitive gflags"
+                  + " that were sent redacted; in this payload they include: "
+                  + redactedInPayload
+                  + ".");
+      pse.initCause(e);
+      throw pse;
+    }
+
+    return mergedGFlags;
+  }
+
+  // Merges sensitive SpecificGFlags, preserving actual values when REDACTED is received.
+  public static SpecificGFlags mergeSensitiveSpecificGFlags(
+      SpecificGFlags existingSpecificGFlags,
+      SpecificGFlags newSpecificGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (newSpecificGFlags == null) {
+      return null;
+    }
+    if (existingSpecificGFlags == null) {
+      existingSpecificGFlags = new SpecificGFlags();
+    }
+
+    // Merge per-process flags
+    SpecificGFlags mergedSpecificGFlags = newSpecificGFlags.clone();
+    if (mergedSpecificGFlags.getPerProcessFlags() != null
+        && mergedSpecificGFlags.getPerProcessFlags().value != null) {
+      for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> entry :
+          new ArrayList<>(mergedSpecificGFlags.getPerProcessFlags().value.entrySet())) {
+        UniverseTaskBase.ServerType serverType = entry.getKey();
+        Map<String, String> newProcessFlags = entry.getValue();
+        Map<String, String> existingProcessFlags =
+            existingSpecificGFlags.getPerProcessFlags() != null
+                ? existingSpecificGFlags.getPerProcessFlags().value.get(serverType)
+                : null;
+
+        Map<String, String> mergedProcessFlags =
+            mergeSensitiveGFlags(
+                existingProcessFlags, newProcessFlags, gFlagsValidation, ybSoftwareVersion);
+        mergedSpecificGFlags.getPerProcessFlags().value.put(serverType, mergedProcessFlags);
+        if (!Objects.equals(mergedProcessFlags, newProcessFlags)) {
+          LOG.debug("Merged sensitive gflags for server type {}", serverType);
+        }
+      }
+    }
+
+    // Merge per-AZ flags
+    if (mergedSpecificGFlags.getPerAZ() != null) {
+      for (Map.Entry<UUID, SpecificGFlags.PerProcessFlags> entry :
+          new ArrayList<>(mergedSpecificGFlags.getPerAZ().entrySet())) {
+        UUID azUuid = entry.getKey();
+        SpecificGFlags.PerProcessFlags newAZFlags = entry.getValue();
+        SpecificGFlags.PerProcessFlags existingAZFlags =
+            existingSpecificGFlags.getPerAZ() != null
+                ? existingSpecificGFlags.getPerAZ().get(azUuid)
+                : null;
+
+        if (newAZFlags == null) {
+          mergedSpecificGFlags.getPerAZ().put(azUuid, new SpecificGFlags.PerProcessFlags());
+          continue;
+        }
+        if (newAZFlags.value != null) {
+          for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> serverEntry :
+              new ArrayList<>(newAZFlags.value.entrySet())) {
+            UniverseTaskBase.ServerType serverType = serverEntry.getKey();
+            Map<String, String> newServerFlags = serverEntry.getValue();
+            Map<String, String> existingServerFlags =
+                existingAZFlags != null && existingAZFlags.value != null
+                    ? existingAZFlags.value.get(serverType)
+                    : null;
+
+            Map<String, String> mergedServerFlags =
+                mergeSensitiveGFlags(
+                    existingServerFlags, newServerFlags, gFlagsValidation, ybSoftwareVersion);
+            newAZFlags.value.put(serverType, mergedServerFlags);
+            if (!Objects.equals(mergedServerFlags, newServerFlags)) {
+              LOG.debug("Merged sensitive gflags for AZ {} server type {}", azUuid, serverType);
+            }
+          }
+        }
+      }
+    }
+
+    return mergedSpecificGFlags;
+  }
+
+  /** Returns a copy with the sensitive values of its per-process and per-AZ gflags redacted. */
+  public static SpecificGFlags redactSensitiveSpecificGFlags(
+      SpecificGFlags specificGFlags, GFlagsValidation gFlagsValidation, String ybSoftwareVersion) {
+    if (specificGFlags == null) {
+      return null;
+    }
+    SpecificGFlags redacted = specificGFlags.clone();
+    redactPerProcessFlags(redacted.getPerProcessFlags(), gFlagsValidation, ybSoftwareVersion);
+    if (redacted.getPerAZ() != null) {
+      redacted
+          .getPerAZ()
+          .values()
+          .forEach(azFlags -> redactPerProcessFlags(azFlags, gFlagsValidation, ybSoftwareVersion));
+    }
+    return redacted;
+  }
+
+  private static void redactPerProcessFlags(
+      SpecificGFlags.PerProcessFlags flags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (flags == null || flags.value == null) {
+      return;
+    }
+    flags.value.replaceAll(
+        (serverType, gflags) ->
+            RedactingService.redactGFlags(gflags, ybSoftwareVersion, gFlagsValidation));
   }
 }

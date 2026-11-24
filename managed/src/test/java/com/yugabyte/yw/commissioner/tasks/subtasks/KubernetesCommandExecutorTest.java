@@ -10,17 +10,23 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
@@ -39,6 +45,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -75,6 +82,7 @@ import org.mockito.ArgumentCaptor;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
+import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -1256,6 +1264,80 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals(overrides.get("bar"), "foo");
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
+  }
+
+  private static final String LDAP_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private KubernetesCommandExecutor helmInstallTask(Map<String, Object> universeOverrides) {
+    when(kubernetesManager.helmShowValues(any(), any())).thenReturn("tls:\n  enabled: false\n");
+    defaultUniverse = updateUniverseDetails("dev");
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        AbstractTaskBase.createTask(KubernetesCommandExecutor.class);
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.ybSoftwareVersion = ybSoftwareVersion;
+    params.providerUUID = defaultProvider.getUuid();
+    params.commandType = KubernetesCommandExecutor.CommandType.HELM_INSTALL;
+    params.config = config;
+    params.universeName = defaultUniverse.getName();
+    params.helmReleaseName = defaultUniverse.getUniverseDetails().nodePrefix;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.universeConfig = defaultUniverse.getConfig();
+    params.universeDetails = defaultUniverse.getUniverseDetails();
+    params.namespace = namespace;
+    params.universeOverrides = universeOverrides;
+    kubernetesCommandExecutor.initialize(params);
+    return kubernetesCommandExecutor;
+  }
+
+  private static List<ILoggingEvent> captureTraceLogs(Runnable runnable) {
+    Logger logger = (Logger) LoggerFactory.getLogger(KubernetesCommandExecutor.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.TRACE);
+    try {
+      runnable.run();
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    return appender.list;
+  }
+
+  private static void assertNoLogMentions(List<ILoggingEvent> events, String secret) {
+    for (ILoggingEvent event : events) {
+      assertFalse(event.getFormattedMessage(), event.getFormattedMessage().contains(secret));
+    }
+  }
+
+  @Test
+  public void testHelmInstallTraceLogsNoOverrideSecrets() {
+    KubernetesCommandExecutor task = helmInstallTask(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    List<ILoggingEvent> events = captureTraceLogs(task::run);
+    verify(kubernetesManager, times(1))
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Running validations on merged")));
+    assertNoLogMentions(events, "dummy-bind-pass");
+  }
+
+  @Test
+  public void testUnserializableOverridesErrorLogsNoOverrideSecrets() {
+    Map<String, Object> universeOverrides =
+        new HashMap<>(HelmUtils.convertYamlToMap(LDAP_OVERRIDES));
+    // Jackson can't serialize a plain Object, so the overrides fail to convert.
+    universeOverrides.put("unserializable", new Object());
+    KubernetesCommandExecutor task = helmInstallTask(universeOverrides);
+    List<ILoggingEvent> events =
+        captureTraceLogs(() -> assertThrows(RuntimeException.class, task::run));
+    verify(kubernetesManager, never()).helmInstall(any(), any(), any(), any(), any(), any(), any());
+    assertTrue(
+        events.stream()
+            .anyMatch(e -> e.getFormattedMessage().startsWith("Error in writing overrides map")));
+    assertNoLogMentions(events, "dummy-bind-pass");
   }
 
   @Test
