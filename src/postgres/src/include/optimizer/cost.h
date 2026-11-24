@@ -325,5 +325,7 @@ extern List *yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel,
 extern double yb_path_first_batch_rows(Path *path);
 extern Cost yb_run_cost_for_rows(Cost run_cost, double path_rows,
 								 double first_batch_rows, double rows);
+extern void yb_cost_append_for_one_partition(PlannerInfo *root,
+											 AppendPath *apath);
 
 #endif							/* COST_H */
