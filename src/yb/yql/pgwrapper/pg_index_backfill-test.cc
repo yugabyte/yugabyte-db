@@ -17,6 +17,7 @@
 #include <mutex>
 #include <optional>
 #include <regex>
+#include <semaphore>
 #include <set>
 #include <span>
 #include <string>
@@ -33,41 +34,58 @@
 
 #include "yb/consensus/consensus.proxy.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 
+#include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rpc/messenger.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/thread_pool.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_bool(TEST_block_do_backfill);
+DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_string(ysql_yb_test_block_index_phase);
 
 METRIC_DECLARE_entity(cluster);
 METRIC_DECLARE_counter(backfill_aborted);
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterDdl_BackfillIndex);
 
-using std::string;
-
-using namespace std::chrono_literals;
 using namespace std::literals;
 
 namespace yb::pgwrapper {
@@ -3897,7 +3915,7 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillReadBeforeConcurrentUpdate, ::testing::
 //       (insert (1, i=1) to index)
 //   - indisvalid=true
 TEST_P(PgIndexBackfillReadBeforeConcurrentUpdate, ExpressionIndex) {
-  const string kExprIndex = "idx_expr_j";
+  const std::string kExprIndex = "idx_expr_j";
   std::atomic<int> updates(0);
 
   // Initiate creation of the expression index that will block after acquiring backfill safe time.
@@ -3926,7 +3944,7 @@ TEST_P(PgIndexBackfillReadBeforeConcurrentUpdate, ExpressionIndex) {
 
 // A similar test to the ExpressionIndex above, but for partial indexes.
 TEST_P(PgIndexBackfillReadBeforeConcurrentUpdate, PartialIndex) {
-  const string kPartialIndex = "idx_partial_j";
+  const std::string kPartialIndex = "idx_partial_j";
   std::atomic<int> updates(0);
   int key = 2;
 
@@ -5118,6 +5136,142 @@ TEST_F(PgSchemaVersionMismatchBackfillTest, BackfillSurfacesAsSerializationFailu
   const auto pg_error = PgsqlError::ValueFromStatus(create_index_status);
   ASSERT_TRUE(pg_error.has_value()) << create_index_status;
   ASSERT_EQ(*pg_error, YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << create_index_status;
+}
+
+class PgIndexBackfillRPCWorkersUsageTest : public PgMiniTestBase {
+  static constexpr auto kIndexPrefix = "idx_with_long_prefix_";
+
+ protected:
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    PgMiniTestBase::OverrideMiniClusterOptions(options);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 32;
+    ToggleDDLMode(/* use_legacy = */ false);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_disable_wait_for_backends_catalog_version) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  void RunTest() {
+    constexpr auto kFreeWorkers = 4;
+    constexpr auto kNumBackfills = kFreeWorkers + 2;
+    auto conn = ASSERT_RESULT(Connect());
+    for (auto idx : std::views::iota(0, kNumBackfills)) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE t_$0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", idx));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t_$0 VALUES(1, 1)", idx));
+    }
+    ASSERT_OK(RunProbeQuery(conn));
+    TestThreadHolder thread_holder;
+    const auto rpc_blockers_count = make_unsigned(FLAGS_rpc_workers_limit);
+    std::counting_semaphore<0xFFFF> free_blockers{rpc_blockers_count};
+    CountDownLatch rpc_blockers{rpc_blockers_count}, rpc_block{1}, rpc_short_block{1};
+    const auto cleanup = ScopeExit([&rpc_block, rpc_blockers_count, &free_blockers] {
+      rpc_block.CountDown();
+      for ([[maybe_unused]] auto _ : std::views::iota(0U, rpc_blockers_count)) {
+        free_blockers.acquire();
+      }
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_do_backfill) = false;
+    });
+    auto backfill_phase_unblocker = std::optional(ScopeExit([this] {
+      ASSERT_OK(UpdateIndexBlockPhase(std::nullopt));
+    }));
+    ASSERT_OK(UpdateIndexBlockPhase("backfill"));
+    for (auto idx : std::views::iota(0, kNumBackfills)) {
+      thread_holder.AddThread([this, idx] {
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.ExecuteFormat(
+            "CREATE UNIQUE INDEX $0$1 ON t_$1(v) SPLIT INTO 1 TABLETS", kIndexPrefix, idx));
+      });
+    }
+
+    ASSERT_OK(WaitFor(
+        [&conn]() -> Result<bool> {
+          return VERIFY_RESULT(ReadyIndicesCount(conn)) == kNumBackfills;
+        },
+        30s, "Wait for indices ready"));
+    ASSERT_EQ(ASSERT_RESULT(BackfillingIndicesCount(conn)), 0);
+    ASSERT_OK(RunProbeQuery(conn));
+
+    auto rpc_short_block_unblocker = std::optional(ScopeExit([&rpc_short_block] {
+      rpc_short_block.CountDown();
+    }));
+    auto& rpc_pool = GetTServerRPCWorkerPool();
+    for (auto idx : std::views::iota(0U, rpc_blockers_count)) {
+      free_blockers.acquire();
+      ASSERT_TRUE(rpc_pool.EnqueueFunctor(
+          [idx, &rpc_blockers, &block = idx < kFreeWorkers ? rpc_short_block : rpc_block,
+           guard = MakeSharedFromMoveOnly(
+               ScopeExit([&free_blockers] { free_blockers.release(); }))] {
+            LOG(INFO) << "Start RPC worker occupation " << idx;
+            rpc_blockers.CountDown();
+            block.Wait();
+            LOG(INFO) << "Finish RPC worker occupation " << idx;
+          }));
+    }
+    ASSERT_TRUE(rpc_blockers.WaitFor(5s));
+    // Make sure RPC workers occupation mechanism works as expected (i.e. no RPCs can be handled).
+    ASSERT_NOK_PG_ERROR_CODE(RunProbeQuery(conn), YBPgErrorCode::YB_PG_QUERY_CANCELED);
+    rpc_short_block_unblocker.reset();
+    ASSERT_EQ(ASSERT_RESULT(BackfillingIndicesCount(conn)), 0);
+    ASSERT_OK(RunProbeQuery(conn));
+
+    auto master_backfill_calls =
+        METRIC_handler_latency_yb_master_MasterDdl_BackfillIndex.Instantiate(
+            cluster_->mini_master()->master()->metric_entity());
+    const auto initial_calls_count = master_backfill_calls->TotalCount();
+    backfill_phase_unblocker.reset();
+    // Make sure backfill is started and some RPCs reached the master.
+    ASSERT_OK(WaitFor(
+        [&conn, &master_backfill_calls, initial_calls_count]() -> Result<bool> {
+          return (master_backfill_calls->TotalCount() >= initial_calls_count + kFreeWorkers) &&
+                 VERIFY_RESULT(BackfillingIndicesCount(conn)) == kNumBackfills;
+        },
+        30s, "Wait for backfilling"));
+
+    ASSERT_OK(RunProbeQuery(conn));
+    ASSERT_EQ(ASSERT_RESULT(BackfillingIndicesCount(conn)), kNumBackfills);
+  }
+
+  Status UpdateIndexBlockPhase(const std::optional<std::string>& phase) {
+    return SET_FLAG(ysql_yb_test_block_index_phase, phase.value_or("none"));
+  }
+
+  rpc::ThreadPool& GetTServerRPCWorkerPool() {
+    return cluster_->mini_tablet_servers().front()->server()->messenger()->ThreadPool();
+  }
+
+  static Result<uint64_t> ReadyIndicesCount(PGConn& conn) {
+    return conn.FetchRow<PGUint64>(Format(
+        "SELECT COUNT(*) FROM pg_index AS i JOIN pg_class AS c ON c.oid = i.indexrelid "
+        "WHERE i.indisready AND c.relname LIKE '$0%'", kIndexPrefix));
+  }
+
+  static Result<uint64_t> BackfillingIndicesCount(PGConn& conn) {
+    return conn.FetchRow<PGUint64>(
+        "SELECT COUNT(*) FROM pg_stat_progress_create_index WHERE phase = 'backfilling'");
+  }
+
+  static Status RunProbeQuery(PGConn& conn) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.ExecuteFormat("SET LOCAL statement_timeout = $0", ToMilliseconds(3s)));
+    auto status = ResultToStatus(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_class LIMIT 1"));
+    RETURN_NOT_OK(conn.RollbackTransaction());
+    return status;
+  }
+};
+
+// The test checks index backfilling doesn't occupy RPC workers on local t-server for
+// too long (till the end of backfilling) and server can handle another RPCs well during
+// the backfilling.
+// Note: Running in TSAN/ASAN is not necessary. Unit test code flow is very common and it is tested
+//       well by other basic backfill tests.
+TEST_F(PgIndexBackfillRPCWorkersUsageTest, YB_DISABLE_TEST_IN_SANITIZERS(RPCWorkersUsage)) {
+  RunTest();
 }
 
 } // namespace yb::pgwrapper
