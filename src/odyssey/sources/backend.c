@@ -268,6 +268,9 @@ void yb_od_backend_close_connection(od_server_t *server,
 			    server->yb_slot_claimed) {
 				server->yb_exiting_fd =
 					dup(machine_fd(server->io.io));
+				if (server->yb_exiting_fd != -1)
+					shutdown(server->yb_exiting_fd,
+						 SHUT_WR);
 			}
 		}
 	}

@@ -384,11 +384,13 @@ static void od_cron(void *arg)
 		 * This is only needed with multi route pooling as only that has the logic
 		 * of waiting for exiting backend's socket to close.
 		 */
-		if (yb_backend_release_slots_of_exited(cron->global->router) > 0) {
-			assert(instance->config.yb_enable_multi_route_pool);
+		int yb_released =
+			yb_backend_release_slots_of_exited(cron->global->router);
+		assert(yb_released == 0 ||
+		       instance->config.yb_enable_multi_route_pool);
+		for (int i = 0; i < yb_released; i++)
 			yb_signal_all_routes(cron->global->router, NULL,
 					     instance->config.yb_enable_multi_route_pool);
-		}
 
 		/* update statistics */
 		if (++stats_tick >= instance->config.stats_interval) {

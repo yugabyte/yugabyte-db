@@ -1062,6 +1062,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
 	bool yb_slot_claimed = false;
+	bool yb_eviction_pending = false;
 
 	const char *is_warmup_needed_flag = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE");
 	bool is_warmup_needed = false;
@@ -1260,9 +1261,12 @@ od_router_status_t od_router_attach(od_router_t *router,
 					(uint32_t)instance->config.yb_ysql_max_connections /
 						num_active_routes;
 				od_server_t *idle_server =
-					yb_get_idle_server_to_close(
-						router, route, per_route_quota,
-						connections_in_pool);
+					yb_eviction_pending ?
+						NULL :
+						yb_get_idle_server_to_close(
+							router, route,
+							per_route_quota,
+							connections_in_pool);
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;
@@ -1288,6 +1292,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 						yb_slot_claimed = true;
 					} else {
 						yb_hold_backend_slot(idle_server);
+						yb_eviction_pending = true;
 					}
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
