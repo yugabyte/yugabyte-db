@@ -526,6 +526,8 @@ message SysObjectLockEntryPB {
     map<uint32, ObjectLocksListPB> subtxns = 1;
     optional bytes status_tablet = 2;
     optional bytes background_transaction_id = 3;
+    // The owner is an online schema change fence (AcquireObjectLockRequestPB.fence).
+    optional bool fence = 4;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...

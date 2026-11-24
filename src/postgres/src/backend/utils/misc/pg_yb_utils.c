@@ -499,6 +499,68 @@ YbOscIsInternalDdl(void)
 	return yb_osc_internal_ddl_depth > 0;
 }
 
+static int64 yb_object_lock_fence_job_id = 0;
+static bool yb_object_lock_pass_any_fence = false;
+
+static void
+YbResetObjectLockFenceOptions(void)
+{
+	if (yb_object_lock_fence_job_id == 0 && !yb_object_lock_pass_any_fence)
+		return;
+	yb_object_lock_fence_job_id = 0;
+	yb_object_lock_pass_any_fence = false;
+	YBCSetObjectLockFenceOptions(0, false);
+}
+
+static void
+YbFenceOptionsXactCallback(XactEvent event, void *arg)
+{
+	if (event == XACT_EVENT_ABORT || event == XACT_EVENT_PARALLEL_ABORT)
+		YbResetObjectLockFenceOptions();
+}
+
+static void
+YbFenceOptionsSubXactCallback(SubXactEvent event, SubTransactionId mySubid,
+							  SubTransactionId parentSubid, void *arg)
+{
+	if (event == SUBXACT_EVENT_ABORT_SUB)
+		YbResetObjectLockFenceOptions();
+}
+
+/*
+ * The object locks this backend requests from here on may pass the fence of
+ * online schema change job jobId (0 for none): the job's own writers.  A
+ * (sub)transaction abort resets it, so a caller interrupted by an error never
+ * leaves the backend passing the fence.
+ */
+void
+YbSetObjectLockFenceJob(int64 jobId)
+{
+	static bool callbacks_registered = false;
+
+	if (!callbacks_registered)
+	{
+		RegisterXactCallback(YbFenceOptionsXactCallback, NULL);
+		RegisterSubXactCallback(YbFenceOptionsSubXactCallback, NULL);
+		callbacks_registered = true;
+	}
+	yb_object_lock_fence_job_id = jobId;
+	YBCSetObjectLockFenceOptions(yb_object_lock_fence_job_id,
+								 yb_object_lock_pass_any_fence);
+}
+
+/*
+ * The object locks this backend requests from here on may pass any online
+ * schema change fence: for statements that change no schema, such as ANALYZE.
+ */
+void
+YbSetObjectLockPassAnyFence(bool pass)
+{
+	yb_object_lock_pass_any_fence = pass;
+	YBCSetObjectLockFenceOptions(yb_object_lock_fence_job_id,
+								 yb_object_lock_pass_any_fence);
+}
+
 bool
 IsYugaByteEnabled()
 {

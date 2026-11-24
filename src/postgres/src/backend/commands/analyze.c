@@ -185,9 +185,23 @@ analyze_rel(Oid relid, RangeVar *relation,
 	 *
 	 * Make sure to generate only logs for ANALYZE in this case.
 	 */
-	onerel = vacuum_open_relation(relid, relation, params->options & ~(VACOPT_VACUUM),
-								  params->log_min_duration >= 0,
-								  ShareUpdateExclusiveLock);
+	/*
+	 * YB: ANALYZE changes no schema, so it may run during an online schema
+	 * change, whose fence on the table blocks other ShareUpdateExclusiveLock
+	 * takers.
+	 */
+	YbSetObjectLockPassAnyFence(true);
+	PG_TRY();
+	{
+		onerel = vacuum_open_relation(relid, relation, params->options & ~(VACOPT_VACUUM),
+									  params->log_min_duration >= 0,
+									  ShareUpdateExclusiveLock);
+	}
+	PG_FINALLY();
+	{
+		YbSetObjectLockPassAnyFence(false);
+	}
+	PG_END_TRY();
 
 	/* leave if relation could not be opened or locked */
 	if (!onerel)

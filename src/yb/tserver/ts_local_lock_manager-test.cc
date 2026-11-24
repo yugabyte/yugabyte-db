@@ -169,6 +169,55 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
         owner, database_id, {relation_id}, {lock_type}, deadline, state_map, bg_txn);
   }
 
+  struct FenceOptions {
+    bool fence = false;
+    TransactionId co_owner = TransactionId::Nil();
+    bool pass_any = false;
+    TransactionId bg_txn = TransactionId::Nil();
+  };
+
+  // Locks `relation_ids` of kDatabase1 in `lock_type`, with the given fence options. A fence owner
+  // has no status tablet.
+  Status LockRelationsWithFenceOptions(
+      const ObjectLockOwner& owner, const std::vector<uint32_t>& relation_ids,
+      TableLockType lock_type, const FenceOptions& options,
+      CoarseTimePoint deadline = CoarseTimePoint()) {
+    if (deadline == CoarseTimePoint()) {
+      deadline = CoarseMonoClock::Now() + 1s * kTimeMultiplier;
+    }
+    tserver::AcquireObjectLockRequestPB req;
+    owner.PopulateLockRequest(&req);
+    if (!options.fence) {
+      req.set_status_tablet(kDefaultTestStatusTabletId);
+    }
+    for (auto relation_id : relation_ids) {
+      auto* lock = req.add_object_locks();
+      lock->set_database_oid(kDatabase1);
+      lock->set_relation_oid(relation_id);
+      lock->set_object_oid(kDefaultObjectId);
+      lock->set_object_sub_oid(kDefaultObjectSubId);
+      lock->set_lock_type(lock_type);
+    }
+    req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    req.set_fence(options.fence);
+    if (!options.co_owner.IsNil()) {
+      req.set_fence_co_owner_txn_id(options.co_owner.data(), options.co_owner.size());
+    }
+    req.set_pass_any_fence(options.pass_any);
+    if (!options.bg_txn.IsNil()) {
+      req.set_background_transaction_id(options.bg_txn.data(), options.bg_txn.size());
+    }
+    Synchronizer synchronizer;
+    lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
+    return synchronizer.Wait();
+  }
+
+  Status LockRelationWithFenceOptions(
+      const ObjectLockOwner& owner, uint32_t relation_id, TableLockType lock_type,
+      const FenceOptions& options, CoarseTimePoint deadline = CoarseTimePoint()) {
+    return LockRelationsWithFenceOptions(owner, {relation_id}, lock_type, options, deadline);
+  }
+
   Status ReleaseLocksForSubtxn(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
@@ -1430,6 +1479,160 @@ TEST_F(TSLocalLockManagerTest, NamedReleaseKeepsDeadlineForReleaseAll) {
       *client, lock_manager, txn_id, subtxn_id,
       std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>());
   ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), std::nullopt);
+}
+
+
+// A request that conflicts with a fence fails at once instead of waiting for it, leaves no waiter
+// behind, and releases what it took earlier in its batch. Requests that do not conflict go through.
+TEST_F(TSLocalLockManagerTest, FenceFailsConflictingRequestsAtOnce) {
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(LockRelationWithFenceOptions(
+      fence, kObject2, TableLockType::SHARE_UPDATE_EXCLUSIVE, {.fence = true}));
+
+  const auto start = CoarseMonoClock::Now();
+  auto status = LockRelationsWithFenceOptions(
+      kTxn1, {kObject1, kObject2}, TableLockType::ACCESS_EXCLUSIVE, {},
+      CoarseMonoClock::Now() + 10s * kTimeMultiplier);
+  ASSERT_NOK(status);
+  ASSERT_LT(CoarseMonoClock::Now() - start, 2s * kTimeMultiplier);
+  ASSERT_STR_CONTAINS(status.ToString(), "locked by online schema change job");
+  ASSERT_EQ(WaitingLocksSize(), 0);
+  // kObject1, locked first in the failed batch, was released.
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+
+  // DML does not conflict with a SHARE UPDATE EXCLUSIVE fence.
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject2, TableLockType::ROW_EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+
+  // Released fences leave nothing behind.
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject2, TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+}
+
+// Only requests that name the fence pass it.
+TEST_F(TSLocalLockManagerTest, FenceCoOwnerPasses) {
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(LockRelationWithFenceOptions(
+      fence, kObject1, TableLockType::EXCLUSIVE, {.fence = true}));
+
+  ASSERT_NOK_STR_CONTAINS(
+      LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE),
+      "locked by online schema change job");
+  ASSERT_NOK_STR_CONTAINS(
+      LockRelationWithFenceOptions(
+          kTxn1, kObject1, TableLockType::ROW_EXCLUSIVE,
+          {.co_owner = TransactionId::GenerateRandom()}),
+      "locked by online schema change job");
+  ASSERT_OK(LockRelationWithFenceOptions(
+      kTxn1, kObject1, TableLockType::ROW_EXCLUSIVE, {.co_owner = fence.txn_id}));
+  ASSERT_OK(LockRelationWithFenceOptions(
+      kTxn2, kObject1, TableLockType::ROW_EXCLUSIVE, {.co_owner = fence.txn_id}));
+  // Plain reads never conflict with an EXCLUSIVE fence.
+  ASSERT_OK(LockRelation(kTxn3, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+}
+
+// A request that may pass any fence (ANALYZE) passes the fence, but still conflicts with other
+// holders.
+TEST_F(TSLocalLockManagerTest, PassAnyFence) {
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(LockRelationWithFenceOptions(
+      fence, kObject1, TableLockType::SHARE_UPDATE_EXCLUSIVE, {.fence = true}));
+
+  ASSERT_NOK_STR_CONTAINS(
+      LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::SHARE_UPDATE_EXCLUSIVE),
+      "locked by online schema change job");
+  ASSERT_OK(LockRelationWithFenceOptions(
+      kTxn1, kObject1, TableLockType::SHARE_UPDATE_EXCLUSIVE, {.pass_any = true}));
+  // A second ANALYZE waits for the first, as without a fence.
+  auto status = LockRelationWithFenceOptions(
+      kTxn2, kObject1, TableLockType::SHARE_UPDATE_EXCLUSIVE, {.pass_any = true},
+      CoarseMonoClock::Now() + 500ms);
+  ASSERT_NOK(status);
+  ASSERT_STR_NOT_CONTAINS(status.ToString(), "online schema change");
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+}
+
+// Passing a fence does not jump the queue: a co-owner's writer queues behind a waiting co-owner's
+// ACCESS EXCLUSIVE (a job's cutover), so the cutover is not starved by a stream of writers.
+TEST_F(TSLocalLockManagerTest, FenceCoOwnerQueuesBehindWaitingCoOwner) {
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(LockRelationWithFenceOptions(
+      fence, kObject1, TableLockType::EXCLUSIVE, {.fence = true}));
+  const FenceOptions co_owner{.co_owner = fence.txn_id};
+  ASSERT_OK(LockRelationWithFenceOptions(kTxn1, kObject1, TableLockType::ROW_EXCLUSIVE, co_owner));
+
+  auto cutover = std::async(std::launch::async, [&] {
+    return LockRelationWithFenceOptions(
+        kTxn2, kObject1, TableLockType::ACCESS_EXCLUSIVE, co_owner,
+        CoarseMonoClock::Now() + 10s * kTimeMultiplier);
+  });
+  ASSERT_OK(WaitFor(
+      [&] { return WaitingLocksSize() >= 1; }, 5s * kTimeMultiplier, "cutover waits"));
+
+  ASSERT_NOK(LockRelationWithFenceOptions(
+      kTxn3, kObject1, TableLockType::ROW_EXCLUSIVE, co_owner, CoarseMonoClock::Now() + 500ms));
+  ASSERT_NE(cutover.wait_for(0s), std::future_status::ready);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  ASSERT_OK(cutover.get());
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+}
+
+// A fence request never waits: it fails on any conflicting holder and keeps nothing.
+TEST_F(TSLocalLockManagerTest, FenceRequestNeverWaits) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject2, TableLockType::ROW_EXCLUSIVE));
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  const auto start = CoarseMonoClock::Now();
+  ASSERT_NOK(LockRelationsWithFenceOptions(
+      fence, {kObject1, kObject2}, TableLockType::EXCLUSIVE, {.fence = true},
+      CoarseMonoClock::Now() + 10s * kTimeMultiplier));
+  ASSERT_LT(CoarseMonoClock::Now() - start, 2s * kTimeMultiplier);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  // Nothing of the failed fence is left on kObject1.
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_EQ(GrantedLocksSize(), 0);
+}
+
+// A fence taken with the locking transaction as its background transaction does not conflict with
+// it: this is how a job's begin hands its locks over to the job's fence. Once the transaction
+// releases, the fence alone holds the object.
+TEST_F(TSLocalLockManagerTest, FenceTakesOverFromBackgroundTransaction) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+  const auto fence = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(LockRelationWithFenceOptions(
+      fence, kObject1, TableLockType::SHARE_UPDATE_EXCLUSIVE,
+      {.fence = true, .bg_txn = kTxn1.txn_id}));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+
+  ASSERT_NOK_STR_CONTAINS(
+      LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE),
+      "locked by online schema change job");
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_OK(ReleaseLocksForOwner(fence));
+  ASSERT_EQ(GrantedLocksSize(), 0);
 }
 
 } // namespace yb::tserver

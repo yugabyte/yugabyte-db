@@ -27,6 +27,7 @@
 #include <boost/multi_index/mem_fun.hpp>
 
 #include "yb/ash/wait_state.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/docdb/local_waiting_txn_registry.h"
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
@@ -45,6 +46,7 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
@@ -111,6 +113,21 @@ const Status kWaitForLockersError = STATUS(
 
 YB_DEFINE_ENUM(LocksMapType, (kGranted)(kWaiting));
 YB_STRONGLY_TYPED_BOOL(IsLockRetry);
+YB_DEFINE_ENUM(LockSingleEntryResult, (kAcquired)(kWaiting)(kWouldBlock));
+
+Status FencedError(const ObjectLockPrefix& key, const TransactionId& fence_owner) {
+  const auto job = OnlineSchemaChangeJobOfFence(fence_owner);
+  return STATUS_EC_FORMAT(
+      IllegalState, PgsqlError(YBPgErrorCode::YB_PG_OBJECT_IN_USE),
+      "Object $0 is locked by online schema change job $1", key,
+      job ? std::to_string(*job) : AsString(fence_owner));
+}
+
+Status FenceWouldBlockError(const ObjectLockPrefix& key) {
+  return STATUS_EC_FORMAT(
+      IllegalState, PgsqlError(YBPgErrorCode::YB_PG_LOCK_NOT_AVAILABLE),
+      "Fence lock on object $0 conflicts with a lock already held", key);
+}
 
 using LockStateBlockersMap = std::unordered_map<LockState, std::shared_ptr<ConflictDataManager>>;
 
@@ -187,6 +204,8 @@ struct TrackedTransactionLockEntry {
   TabletId status_tablet GUARDED_BY(mutex);
   TxnBlockedTableLockRequests was_a_blocker GUARDED_BY(mutex) = TxnBlockedTableLockRequests::kFalse;
   std::vector<std::function<void()>> release_all_callbacks GUARDED_BY(mutex);
+  // The owner is a fence (LockData::fence).
+  bool is_fence GUARDED_BY(mutex) = false;
 };
 
 using TrackedTxnLockEntryPtr = std::shared_ptr<TrackedTransactionLockEntry>;
@@ -297,6 +316,12 @@ struct ObjectLockedBatchEntry {
   std::atomic<uint32_t> version{0};
 
   std::atomic<LockState> waiters_in_resuming_state{0};
+
+  // The part of num_holding held by fence owners (LockData::fence), and the fence that holds it.
+  // Two fences cannot hold the same key: a fence request fails on any conflict, and every fence
+  // mode conflicts with itself.
+  std::atomic<LockState> fence_state{0};
+  TransactionId fence_owner GUARDED_BY(mutex) = TransactionId::Nil();
 
   std::string ToString() const {
     return Format("{ ref_count: $0 lock_state: $1 num_waiters: $2 }",
@@ -501,10 +526,23 @@ class ObjectLockManagerImpl {
       size_t resume_it_offset = 0, Status resume_with_status = Status::OK())
       EXCLUDES(global_mutex_, transaction_entry->mutex);
 
-  MUST_USE_RESULT bool DoLockSingleEntry(
+  // passed_fence_state is the part of existing_state that is a fence's locks the request may pass
+  // (CheckFence). It lets the request through those locks, but not past waiters in the queue.
+  MUST_USE_RESULT LockSingleEntryResult DoLockSingleEntry(
       TrackedTxnLockEntryPtr& transaction_entry, LockData& data, LockState existing_state,
-      LockBatchEntries<ObjectLockManager>::iterator lock_entry_it,
+      LockState passed_fence_state, LockBatchEntries<ObjectLockManager>::iterator lock_entry_it,
       IsLockRetry is_retry) REQUIRES(transaction_entry->mutex);
+
+  // The fence locks on the entry's key that the request may pass, or an error if a fence it may
+  // not pass conflicts with it.
+  Result<LockState> CheckFence(
+      const LockData& data, const LockBatchEntry<ObjectLockManager>& lock_entry);
+
+  // Fails an acquire at lock_entry_it, releasing the batch's entries before it.
+  void FailAcquire(
+      std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
+      const LockData& data, LockBatchEntries<ObjectLockManager>::iterator lock_entry_it,
+      IsLockRetry is_retry) REQUIRES(transaction_entry->mutex) EXCLUDES(global_mutex_);
 
   void DoLockSingleEntryWithoutConflictCheck(
       const LockBatchEntry<ObjectLockManager>& lock_entry,
@@ -525,8 +563,8 @@ class ObjectLockManagerImpl {
   void RegisterWaiters(ObjectLockedBatchEntry* locked_batch_entry) EXCLUDES(global_mutex_);
 
   void DoReleaseTrackedLock(
-      const ObjectLockPrefix& object_id, TrackedLockEntry& entry, LockStateMap& lockstates_map)
-      REQUIRES(global_mutex_);
+      const ObjectLockPrefix& object_id, TrackedLockEntry& entry, LockStateMap& lockstates_map,
+      bool fence = false) REQUIRES(global_mutex_);
 
   void UnblockPotentialWaiters(ObjectLockedBatchEntry* entry);
 
@@ -939,21 +977,47 @@ void ObjectLockManagerImpl::DoLock(
     if (!is_retry) {
       transaction_entry->status_tablet = data.status_tablet;
     }
+    if (data.fence) {
+      transaction_entry->is_fence = true;
+    }
     while (it != data.key_to_lock.lock_batch.end()) {
       // Ignore conflicts with self.
       auto& existing_state = existing_states[it - data.key_to_lock.lock_batch.begin()];
       existing_state += transaction_entry->GetLockStateForKeyUnlocked(it->key);
+      // Checked on every attempt, including one resumed from the wait queue: a fence taken while
+      // the request waited fails it too.
+      LockState passed_fence_state = 0;
+      if (!data.fence) {
+        auto fence_check = CheckFence(data, *it);
+        if (!fence_check.ok()) {
+          FailAcquire(GetLockForCondition(txn_lock), transaction_entry, data, it, is_retry);
+          data.callback(fence_check.status());
+          return;
+        }
+        passed_fence_state = *fence_check;
+        existing_state += passed_fence_state;
+      }
       VLOG(4) << "Locking key : " << AsString(it->key)
               << " with intent types : " << AsString(it->intent_types)
               << " and owner : " << AsString(data.object_lock_owner)
               << " with existing state: " << LockStateDebugString(existing_state);
       auto* locked_batch_entry = it->locked;
-      if (!DoLockSingleEntry(transaction_entry, data, existing_state, it, is_retry)) {
-        WARN_NOT_OK(
-            thread_pool_token_->SubmitFunc(
-                std::bind(&ObjectLockManagerImpl::RegisterWaiters, this, locked_batch_entry)),
-            "Failure in submitting task to register waiters with deadlock detector");
-        return;
+      switch (DoLockSingleEntry(
+          transaction_entry, data, existing_state, passed_fence_state, it, is_retry)) {
+        case LockSingleEntryResult::kAcquired:
+          break;
+        case LockSingleEntryResult::kWaiting:
+          WARN_NOT_OK(
+              thread_pool_token_->SubmitFunc(
+                  std::bind(&ObjectLockManagerImpl::RegisterWaiters, this, locked_batch_entry)),
+              "Failure in submitting task to register waiters with deadlock detector");
+          return;
+        case LockSingleEntryResult::kWouldBlock: {
+          auto key = it->key;
+          FailAcquire(GetLockForCondition(txn_lock), transaction_entry, data, it, is_retry);
+          data.callback(FenceWouldBlockError(key));
+          return;
+        }
       }
       ++it;
       is_retry = IsLockRetry::kFalse;
@@ -963,9 +1027,61 @@ void ObjectLockManagerImpl::DoLock(
   data.callback(Status::OK());
 }
 
-bool ObjectLockManagerImpl::DoLockSingleEntry(
+Result<LockState> ObjectLockManagerImpl::CheckFence(
+    const LockData& data, const LockBatchEntry<ObjectLockManager>& lock_entry) {
+  auto& entry = *lock_entry.locked;
+  const auto fence_state = entry.fence_state.load(std::memory_order_acquire);
+  if (PREDICT_TRUE(fence_state == 0)) {
+    return 0;
+  }
+  if (data.pass_any_fence) {
+    return fence_state;
+  }
+  TransactionId fence_owner;
+  {
+    std::lock_guard l(entry.mutex);
+    fence_owner = entry.fence_owner;
+  }
+  if (!data.fence_co_owner.IsNil() && fence_owner == data.fence_co_owner) {
+    return fence_state;
+  }
+  if (fence_state & IntentTypeSetConflict(lock_entry.intent_types)) {
+    VLOG(1) << AsString(data.object_lock_owner) << " failed against the fence on "
+            << AsString(lock_entry.key);
+    return FencedError(lock_entry.key, fence_owner);
+  }
+  return 0;
+}
+
+void ObjectLockManagerImpl::FailAcquire(
+    std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
+    const LockData& data, LockBatchEntries<ObjectLockManager>::iterator it,
+    IsLockRetry is_retry) {
+  if (is_retry) {
+    // The entry was resumed from the wait queue (DoLockSingleEntry decrements this when it
+    // acquires or waits again).
+    it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
+    DoSignal(it->locked);
+  }
+  const auto& lock_batch = data.key_to_lock.lock_batch;
+  while (it != lock_batch.begin()) {
+    --it;
+    if (data.fence) {
+      it->locked->fence_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
+    }
+    if (UnlockSingleEntry(*it)) {
+      DoSignal(it->locked);
+    }
+    transaction_entry->AddReleasedLockUnlocked(*it, data.object_lock_owner, LocksMapType::kGranted);
+  }
+  txn_lock.unlock();
+  DoCleanup(lock_batch);
+}
+
+LockSingleEntryResult ObjectLockManagerImpl::DoLockSingleEntry(
     TrackedTxnLockEntryPtr& transaction_entry, LockData& data, LockState existing_state,
-    LockBatchEntries<ObjectLockManager>::iterator lock_entry_it, IsLockRetry is_retry) {
+    LockState passed_fence_state, LockBatchEntries<ObjectLockManager>::iterator lock_entry_it,
+    IsLockRetry is_retry) {
   TRACE_FUNC();
   auto& lock_entry = *lock_entry_it;
   auto& entry = lock_entry.locked;
@@ -978,21 +1094,32 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
   auto old_value = entry->num_holding.load();
   auto add = IntentTypeSetAdd(lock_entry.intent_types);
   auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
+  // Holding the key lets the request past waiters, but passing a fence does not: a writer the
+  // fence lets through must still queue behind a waiting co-owner, such as a job's cutover.
+  const bool holds_key = existing_state != passed_fence_state;
   for (;;) {
     auto should_check_wq = !is_retry && (entry->waiting_state & conflicting_lock_state) != 0 &&
-                           !existing_state;
+                           !holds_key;
     if (!should_check_wq && ((old_value ^ existing_state) & conflicting_lock_state) == 0) {
       auto new_value = old_value + add;
       if (entry->num_holding.compare_exchange_weak(
               old_value, new_value, std::memory_order_acq_rel)) {
         VLOG(4) << AsString(object_lock_owner) << " acquired lock " << AsString(lock_entry);
+        if (data.fence) {
+          entry->fence_state.fetch_add(add, std::memory_order_acq_rel);
+          std::lock_guard l(entry->mutex);
+          entry->fence_owner = object_lock_owner.txn_id;
+        }
         transaction_entry->AddAcquiredLockUnlocked(
             lock_entry, object_lock_owner, LocksMapType::kGranted);
         IncrementCounter(metric_num_acquires_);
         decrement_waiters_in_resuming_state(add);
-        return true;
+        return LockSingleEntryResult::kAcquired;
       }
       continue;
+    }
+    if (data.fence) {
+      return LockSingleEntryResult::kWouldBlock;
     }
     // Realese thread signals for the object when num_waiters > 0, and the resumption thread checks
     // the wait-queue under a mutex. Increment num_waiters under mutex to avoid the race where
@@ -1013,7 +1140,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
       entry->wait_queue.insert(std::make_shared<WaiterEntry>(
           std::move(transaction_entry), std::move(data),
           lock_entry_it - data.key_to_lock.lock_batch.begin()));
-      return false;
+      return LockSingleEntryResult::kWaiting;
     }
     entry->num_waiters.fetch_sub(1);
   }
@@ -1072,6 +1199,7 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
     key_conflict_masks[entry.key] |= IntentTypeSetConflict(entry.intent_types);
   }
 
+  Status fenced_status;
   std::shared_ptr<WaitForLockersContext> tracker(
       new WaitForLockersContext(std::move(callback), deadline));
   std::shared_ptr<ConflictDataManager> blockers;
@@ -1090,14 +1218,21 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
       std::lock_guard txn_lock(txn_entry->mutex);
 
       bool is_conflicting_with_txn = false;
+      std::optional<ObjectLockPrefix> conflicting_key;
 
       // Check granted locks via existing_states.
       for (const auto& [key, conflict_mask] : key_conflict_masks) {
         auto it = txn_entry->existing_states.find(key);
         if (it != txn_entry->existing_states.end() && (it->second & conflict_mask)) {
           is_conflicting_with_txn = true;
+          conflicting_key = key;
           break;
         }
+      }
+      // A fence is released only when its job ends, so waiting for it would wait for the job.
+      if (is_conflicting_with_txn && txn_entry->is_fence) {
+        fenced_status = FencedError(*conflicting_key, txn_id);
+        break;
       }
 
       if (is_conflicting_with_txn && !txn_entry->released_all_locks) {
@@ -1118,9 +1253,13 @@ void ObjectLockManagerImpl::WaitForConflictingLockers(
         found_active_conflicts = true;
       }
     }
-    if (found_active_conflicts) {
+    if (found_active_conflicts && fenced_status.ok()) {
       wait_for_lockers_trackers_.push_back(tracker);
     }
+  }
+  if (!fenced_status.ok()) {
+    tracker->RespondIfAllDone(fenced_status);
+    return;
   }
 
   if (blockers && blockers->NumActiveTransactions()) {
@@ -1205,7 +1344,7 @@ void ObjectLockManagerImpl::DoUnlock(
     }
     for (auto itr = subtxn_itr->second.begin(); itr != subtxn_itr->second.end(); itr++) {
       existing_states[itr->first] -= itr->second.state;
-      DoReleaseTrackedLock(itr->first, itr->second, lockstates_map);
+      DoReleaseTrackedLock(itr->first, itr->second, lockstates_map, txn_entry->is_fence);
     }
     locks_map.erase(subtxn_itr);
     return;
@@ -1213,7 +1352,7 @@ void ObjectLockManagerImpl::DoUnlock(
   for (auto locks_itr = locks_map.begin(); locks_itr != locks_map.end(); locks_itr++) {
     for (auto itr = locks_itr->second.begin(); itr != locks_itr->second.end(); itr++) {
       existing_states[itr->first] -= itr->second.state;
-      DoReleaseTrackedLock(itr->first, itr->second, lockstates_map);
+      DoReleaseTrackedLock(itr->first, itr->second, lockstates_map, txn_entry->is_fence);
     }
   }
 }
@@ -1389,10 +1528,14 @@ void ObjectLockManagerImpl::UnblockPotentialWaiters(ObjectLockedBatchEntry* entr
 }
 
 void ObjectLockManagerImpl::DoReleaseTrackedLock(
-    const ObjectLockPrefix& object_id, TrackedLockEntry& entry, LockStateMap& lockstates_map) {
+    const ObjectLockPrefix& object_id, TrackedLockEntry& entry, LockStateMap& lockstates_map,
+    bool fence) {
   VLOG(4) << "Removing granted lock on object : " << AsString(object_id)
           << " with delta { state : " << LockStateDebugString(entry.state)
           << " ref_count : " << entry.ref_count << " }";
+  if (fence) {
+    entry.locked_batch_entry.fence_state.fetch_sub(entry.state, std::memory_order_acq_rel);
+  }
   if (DoUnlockSingleEntry(object_id, entry.locked_batch_entry, entry.state)) {
     DoSignal(&entry.locked_batch_entry);
   }
@@ -1463,7 +1606,8 @@ void ObjectLockManagerImpl::DoPopulateLockStateBlockersMap(
   std::lock_guard lock(global_mutex_);
   for (const auto& [id, txn_entry] : txn_locks_) {
     std::lock_guard txn_lock(txn_entry->mutex);
-    if (txn_entry->released_all_locks) {
+    // A waiter is never blocked by a fence: one it may not pass fails it instead of making it wait.
+    if (txn_entry->released_all_locks || txn_entry->is_fence) {
       continue;
     }
     for (auto state_it = lockstate_blocker_map.begin(); state_it != lockstate_blocker_map.end();

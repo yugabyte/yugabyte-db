@@ -89,6 +89,17 @@ class ObjectLockInfoManager {
 
   void ReleaseLocksForTxn(const TransactionId& txn_id);
 
+  // Takes `locks` for an online schema change fence: a lock owner, `fence_id`, that is not a
+  // transaction and holds its locks until ReleaseLocksForTxn(fence_id). The locks are kept under a
+  // host of their own, whose lease never expires, so they survive any tserver's lease and are
+  // replayed on every tserver that gets one. The locks of `background_txn` (the job's begin) do not
+  // conflict with them, which lets the fence take over from it. Fails, instead of waiting, if any
+  // other holder conflicts.
+  void LockOnlineSchemaChangeFence(
+      const TransactionId& fence_id, const TransactionId& background_txn,
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& locks,
+      CoarseTimePoint deadline, StdStatusCallback&& callback);
+
   Status RefreshYsqlLease(
       const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
       const LeaderEpoch& epoch);

@@ -144,6 +144,16 @@ using tserver::TabletServerErrorPB;
 
 namespace {
 
+// The host under which online schema change fences keep their locks. It is not a tserver: it has
+// no lease, its locks are exported to every tserver regardless of leases, and lease cleanup leaves
+// it alone.
+constexpr auto kOnlineSchemaChangeFenceHost = "online-schema-change-fence";
+constexpr uint64_t kOnlineSchemaChangeFenceLeaseEpoch = 1;
+
+bool IsOnlineSchemaChangeFenceHost(const std::string& uuid) {
+  return uuid == kOnlineSchemaChangeFenceHost;
+}
+
 Status ValidateLockRequest(
     const AcquireObjectLockRequestPB& req,
     const std::optional<uint64_t>& requestor_latest_lease_epoch) {
@@ -273,6 +283,14 @@ class ObjectLockInfoManager::Impl {
 
   void LockObject(
       AcquireObjectLockRequestPB&& req, CoarseTimePoint deadline, StdStatusCallback&& callback);
+  void LockOnlineSchemaChangeFence(
+      const TransactionId& fence_id, const TransactionId& background_txn,
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& locks,
+      CoarseTimePoint deadline, StdStatusCallback&& callback);
+  // LockObject after the requestor's validation.
+  void DoLockObject(
+      AcquireObjectLockRequestPB&& req, TransactionId txn_id, CoarseTimePoint deadline,
+      std::optional<uint64_t> requestor_latest_lease_epoch, StdStatusCallback&& callback);
 
   // A release that carries no catalog versions would let tservers unlock before invalidating
   // their caches, so an error here defers the release instead of sending it without them.
@@ -683,6 +701,12 @@ AcquireObjectLockRequestPB TserverRequestFor(
   if (master_request.has_background_transaction_id()) {
     req.set_background_transaction_id(master_request.background_transaction_id());
   }
+  if (master_request.has_fence_co_owner_txn_id()) {
+    req.set_fence_co_owner_txn_id(master_request.fence_co_owner_txn_id());
+  }
+  if (master_request.pass_any_fence()) {
+    req.set_pass_any_fence(true);
+  }
   return req;
 }
 
@@ -881,6 +905,14 @@ void ObjectLockInfoManager::ReleaseLocksForTxn(const TransactionId& txn_id) {
   impl_->UnlockObject(txn_id);
 }
 
+void ObjectLockInfoManager::LockOnlineSchemaChangeFence(
+    const TransactionId& fence_id, const TransactionId& background_txn,
+    const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& locks,
+    CoarseTimePoint deadline, StdStatusCallback&& callback) {
+  impl_->LockOnlineSchemaChangeFence(
+      fence_id, background_txn, locks, deadline, std::move(callback));
+}
+
 Status ObjectLockInfoManager::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
@@ -1028,6 +1060,9 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   if (req.has_background_transaction_id()) {
     subtxns_map.set_background_transaction_id(req.background_transaction_id());
   }
+  if (req.fence()) {
+    subtxns_map.set_fence(true);
+  }
   auto& object_locks_list = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   object_locks_list.mutable_locks()->MergeFrom(req.object_locks());
   RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
@@ -1128,14 +1163,16 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
   tserver::DdlLockEntriesPB entries;
   for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
     auto l = per_host_entry->LockForRead();
-    if (!l->pb.lease_info().has_lease_epoch()) {
+    const bool fence_host = IsOnlineSchemaChangeFenceHost(host_uuid);
+    if (!fence_host && !l->pb.lease_info().has_lease_epoch()) {
       continue;
     }
-    if (!include_in_progress_releases && !l->pb.lease_info().live_lease()) {
+    if (!fence_host && !include_in_progress_releases && !l->pb.lease_info().live_lease()) {
       continue;
     }
     for (const auto& [lease_epoch, txns_map] : l->pb.lease_epochs()) {
-      if (!include_in_progress_releases && lease_epoch != l->pb.lease_info().lease_epoch()) {
+      if (!fence_host && !include_in_progress_releases &&
+          lease_epoch != l->pb.lease_info().lease_epoch()) {
         continue;
       }
       for (const auto& [txn_id_str, subtxns_map] : txns_map.transactions()) {
@@ -1158,6 +1195,10 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
           lock_entries_pb->mutable_object_locks()->MergeFrom(object_locks_list.locks());
           if (subtxns_map.has_background_transaction_id()) {
             lock_entries_pb->set_background_transaction_id(subtxns_map.background_transaction_id());
+          }
+          if (subtxns_map.fence()) {
+            lock_entries_pb->set_fence(true);
+            lock_entries_pb->set_lease_epoch(lease_epoch);
           }
         }
       }
@@ -1233,7 +1274,35 @@ void ObjectLockInfoManager::Impl::LockObject(
     callback(validation_status);
     return;
   }
+  DoLockObject(
+      std::move(req), std::move(txn_id), deadline, requestor_latest_lease_epoch,
+      std::move(callback));
+}
 
+void ObjectLockInfoManager::Impl::LockOnlineSchemaChangeFence(
+    const TransactionId& fence_id, const TransactionId& background_txn,
+    const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& locks,
+    CoarseTimePoint deadline, StdStatusCallback&& callback) {
+  AcquireObjectLockRequestPB req;
+  req.set_txn_id(fence_id.data(), fence_id.size());
+  req.set_subtxn_id(1);
+  *req.mutable_object_locks() = locks;
+  req.set_session_host_uuid(kOnlineSchemaChangeFenceHost);
+  req.set_lease_epoch(kOnlineSchemaChangeFenceLeaseEpoch);
+  req.set_propagated_hybrid_time(clock_->Now().ToUint64());
+  req.set_fence(true);
+  if (!background_txn.IsNil()) {
+    req.set_background_transaction_id(background_txn.data(), background_txn.size());
+  }
+  LOG(INFO) << "Taking online schema change fence " << fence_id << ": "
+            << req.ShortDebugString();
+  DoLockObject(
+      std::move(req), fence_id, deadline, kOnlineSchemaChangeFenceLeaseEpoch, std::move(callback));
+}
+
+void ObjectLockInfoManager::Impl::DoLockObject(
+    AcquireObjectLockRequestPB&& req, TransactionId txn_id, CoarseTimePoint deadline,
+    std::optional<uint64_t> requestor_latest_lease_epoch, StdStatusCallback&& callback) {
   // Get leader lock and local lock manager
   LeaderEpoch epoch;
   std::shared_ptr<tserver::TSLocalLockManager> local_lock_manager;
@@ -1659,6 +1728,9 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
   std::unordered_map<std::string, TServerLeaseInfo> result;
   const auto now = MonoTime::Now();
   for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+    if (IsOnlineSchemaChangeFenceHost(uuid)) {
+      continue;
+    }
     result[uuid] = TServerLeaseInfo{
         .lease_info = object_info->LockForRead()->pb.lease_info(),
         .time_to_lease_deadline = object_info->ysql_lease_deadline() - now,
@@ -1683,7 +1755,11 @@ Result<TSDescriptorVector> ObjectLockInfoManager::Impl::PopulateLeaseEpochFloors
   std::vector<std::string> uuids_without_descriptor;
   {
     LockGuard lock(mutex_);
+    requestor_lease_live = IsOnlineSchemaChangeFenceHost(req.session_host_uuid());
     for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+      if (IsOnlineSchemaChangeFenceHost(uuid)) {
+        continue;
+      }
       auto l = object_info->LockForRead();
       const auto& lease_info = l->pb.lease_info();
       AddLeaseEpochFloor(uuid, lease_info, floors);
@@ -2012,7 +2088,11 @@ void ObjectLockInfoManager::Impl::CleanupExpiredLeaseEpochs(const LeaderEpoch& l
       infos_with_expired_lease_epochs;
   {
     LockGuard lock(mutex_);
-    for (const auto& [_, object_info] : object_lock_infos_map_) {
+    for (const auto& [uuid, object_info] : object_lock_infos_map_) {
+      // Fences have no lease; only their release ends them.
+      if (IsOnlineSchemaChangeFenceHost(uuid)) {
+        continue;
+      }
       auto object_info_lock = object_info->LockForRead();
       if (object_info_lock->pb.lease_info().live_lease() &&
           current_time > object_info->ysql_lease_deadline()) {

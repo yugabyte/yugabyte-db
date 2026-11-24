@@ -1715,6 +1715,17 @@ Request AcquireRequestFor(
 }
 
 template <typename Request>
+void SetFenceOptions(const PgAcquireObjectLockRequestMsg& pg_req, Request& req) {
+  if (pg_req.fence_co_owner_job_id()) {
+    const auto fence_id = docdb::OnlineSchemaChangeFenceId(pg_req.fence_co_owner_job_id());
+    req.set_fence_co_owner_txn_id(fence_id.data(), fence_id.size());
+  }
+  if (pg_req.pass_any_fence()) {
+    req.set_pass_any_fence(true);
+  }
+}
+
+template <typename Request>
 Request ReleaseRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id,
     std::optional<SubTransactionId> subtxn_id, uint64_t lease_epoch = 0,
@@ -3208,6 +3219,7 @@ class PgClientSession::Impl {
           instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
           data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
+      SetFenceOptions(data->req, lock_req);
       client_.AcquireObjectLocksGlobalAsync(
           lock_req, std::move(callback), deadline,
           [txn = primary_session_data->transaction]() -> Status {
@@ -3220,6 +3232,7 @@ class PgClientSession::Impl {
         instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
         data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
+    SetFenceOptions(data->req, lock_req);
     AcquireObjectLockLocallyWithRetries(
         ts_lock_manager(), std::move(lock_req), deadline, std::move(callback),
         [session_impl = this, txn = primary_session_data->transaction, locality]

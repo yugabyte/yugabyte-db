@@ -31,6 +31,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/docdb/object_lock_data.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
@@ -46,6 +47,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/pg_catalog_versions_cache.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -69,6 +71,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
@@ -1835,6 +1838,99 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverAfterMasterRestart
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(FinishOnlineSchemaChange(&conn2, "t1", "t2"));
   ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn2)), "finished");
+}
+
+namespace {
+
+// Takes a fence for job `job_id` on `table` in `lock_type`, through the master, as an online
+// schema change job does.
+Status LockFenceOnTable(
+    MiniCluster& cluster, PGConn* conn, int64_t job_id, const std::string& table,
+    TableLockType lock_type) {
+  const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  const auto rel_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(
+      Format("SELECT '$0'::regclass::oid", table)));
+  google::protobuf::RepeatedPtrField<docdb::ObjectLockPB> locks;
+  auto* lock = locks.Add();
+  lock->set_database_oid(db_oid);
+  lock->set_relation_oid(rel_oid);
+  lock->set_object_oid(0);
+  lock->set_object_sub_oid(0);
+  lock->set_lock_type(lock_type);
+  Synchronizer synchronizer;
+  cluster.mini_master()->master()->catalog_manager_impl()->object_lock_info_manager()
+      ->LockOnlineSchemaChangeFence(
+          docdb::OnlineSchemaChangeFenceId(job_id), TransactionId::Nil(), locks,
+          CoarseMonoClock::Now() + 30s, synchronizer.AsStdStatusCallback());
+  return synchronizer.Wait();
+}
+
+void ReleaseFence(MiniCluster& cluster, int64_t job_id) {
+  cluster.mini_master()->master()->catalog_manager_impl()->object_lock_info_manager()
+      ->ReleaseLocksForTxn(docdb::OnlineSchemaChangeFenceId(job_id));
+}
+
+}  // namespace
+
+// A SHARE UPDATE EXCLUSIVE fence (an online schema change's source) fails DDL at once and lets
+// DML, reads and ANALYZE through.
+TEST_F(PgMiniOnlineSchemaChangeTest, ObjectLockFenceOnSource) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  ASSERT_OK(LockFenceOnTable(
+      *cluster_, &conn, 42, "t", TableLockType::SHARE_UPDATE_EXCLUSIVE));
+
+  for (const auto* ddl : {
+           "ALTER TABLE t ADD COLUMN w INT", "CREATE INDEX ON t (v)", "TRUNCATE t",
+           "CREATE TRIGGER tg BEFORE INSERT ON t FOR EACH ROW "
+           "EXECUTE FUNCTION suppress_redundant_updates_trigger()",
+           "COMMENT ON TABLE t IS 'x'"}) {
+    const auto start = CoarseMonoClock::Now();
+    auto status = conn.Execute(ddl);
+    ASSERT_NOK(status) << ddl;
+    ASSERT_STR_CONTAINS(status.ToString(), "is locked by online schema change job");
+    ASSERT_LT(CoarseMonoClock::Now() - start, 5s) << ddl;
+  }
+
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (2, 2)"));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 3 WHERE k = 1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 2);
+  ASSERT_OK(conn.Execute("ANALYZE t"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ANALYZE t"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ReleaseFence(*cluster_, 42);
+  ASSERT_OK(WaitFor(
+      [&conn]() -> Result<bool> { return conn.Execute("ALTER TABLE t ADD COLUMN w INT").ok(); },
+      30s, "ALTER after the fence is released"));
+}
+
+// An EXCLUSIVE fence (an online schema change's target) also fails writes, and lets reads and
+// ANALYZE through. A failed ANALYZE does not leave the backend passing fences.
+TEST_F(PgMiniOnlineSchemaChangeTest, ObjectLockFenceOnTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  ASSERT_OK(LockFenceOnTable(*cluster_, &conn, 43, "t", TableLockType::EXCLUSIVE));
+
+  for (const auto* stmt : {
+           "INSERT INTO t VALUES (2, 2)", "UPDATE t SET v = 2", "DELETE FROM t",
+           "SELECT * FROM t FOR UPDATE", "ALTER TABLE t ADD COLUMN w INT"}) {
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), "is locked by online schema change job");
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 1);
+  ASSERT_OK(conn.Execute("ANALYZE t"));
+  ASSERT_NOK(conn.Execute("ANALYZE t (no_such_column)"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t ADD COLUMN w INT"), "is locked by online schema change job");
+
+  ReleaseFence(*cluster_, 43);
+  ASSERT_OK(WaitFor(
+      [&conn]() -> Result<bool> { return conn.Execute("INSERT INTO t VALUES (2, 2)").ok(); },
+      30s, "INSERT after the fence is released"));
 }
 
 // A cutover whose commit fails leaves the job "ready", and can be retried.

@@ -53,6 +53,33 @@ struct ObjectLockOwner {
   }
 };
 
+// The lock owner id of the fence of online schema change job `pg_job_id`. Every server derives it
+// from the job id, so Postgres names the fence by the job. The leading bytes cannot occur in a
+// random (version 4) transaction id.
+inline TransactionId OnlineSchemaChangeFenceId(int64_t pg_job_id) {
+  boost::uuids::uuid id{};
+  constexpr char kTag[] = "osc-fnce";
+  std::copy(kTag, kTag + 8, id.begin());
+  for (int i = 0; i < 8; ++i) {
+    id.data[15 - i] = static_cast<uint8_t>(static_cast<uint64_t>(pg_job_id) >> (8 * i));
+  }
+  return TransactionId(Uuid(id));
+}
+
+// The job whose fence OnlineSchemaChangeFenceId(job) is `fence_id`, or nullopt for another owner.
+inline std::optional<int64_t> OnlineSchemaChangeJobOfFence(const TransactionId& fence_id) {
+  constexpr char kTag[] = "osc-fnce";
+  const auto* data = fence_id.data();
+  if (!std::equal(kTag, kTag + 8, data)) {
+    return std::nullopt;
+  }
+  uint64_t job = 0;
+  for (int i = 8; i < 16; ++i) {
+    job = (job << 8) | data[i];
+  }
+  return static_cast<int64_t>(job);
+}
+
 // ObjectLockPrefix is the entity for which the ts_local_lock_manager acquires locks. In context of
 // object/table locks, when a session requests lock(s) on an object oid corresponding to a database
 // oid, an 'ObjectLockPrefix' in formed which is then passed to the ObjectLockManager.

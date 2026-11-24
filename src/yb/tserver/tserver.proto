@@ -502,6 +502,11 @@ message AcquireObjectLockRequestPB {
   // Source lease-epoch floors derived from master's lease view and applied on the recipient before
   // lock processing to fence stale source epochs.
   repeated LeaseEpochFloorPB lease_epoch_floors = 12;
+  // See docdb::LockData: the owner is a fence (txn_id is the fence's id, it has no status tablet);
+  // the request may pass the fence whose id is fence_co_owner_txn_id; it may pass any fence.
+  optional bool fence = 13;
+  optional bytes fence_co_owner_txn_id = 14;
+  optional bool pass_any_fence = 15;
 }
 
 message AcquireObjectLockResponsePB {

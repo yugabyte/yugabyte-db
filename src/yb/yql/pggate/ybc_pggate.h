@@ -1194,6 +1194,9 @@ void YBCPgClearExportedTxnSnapshots();
 
 YbcStatus YBCAcquireObjectLock(
     YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+// The object lock requests that follow may pass the fence of online schema change job
+// fence_co_owner_job_id (0 for none), or any fence. Stays in effect until set again.
+void YBCSetObjectLockFenceOptions(int64_t fence_co_owner_job_id, bool pass_any_fence);
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 YbcStatus YBCWaitForLockersMultiple(

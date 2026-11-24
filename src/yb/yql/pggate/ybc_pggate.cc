@@ -3650,6 +3650,10 @@ YbcStatus YBCAcquireObjectLock(
   return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode, is_session_lock));
 }
 
+void YBCSetObjectLockFenceOptions(int64_t fence_co_owner_job_id, bool pass_any_fence) {
+  pgapi->SetObjectLockFenceOptions(fence_co_owner_job_id, pass_any_fence);
+}
+
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
   return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }

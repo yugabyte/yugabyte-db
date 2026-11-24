@@ -440,6 +440,10 @@ class TSLocalLockManager::Impl {
       background_transaction_id = VERIFY_RESULT(
           FullyDecodeTransactionId(req.background_transaction_id()));
     }
+    TransactionId fence_co_owner = TransactionId::Nil();
+    if (!req.fence_co_owner_txn_id().empty()) {
+      fence_co_owner = VERIFY_RESULT(FullyDecodeTransactionId(req.fence_co_owner_txn_id()));
+    }
     docdb::ObjectLockOwner object_lock_owner(txn, req.subtxn_id());
     VLOG(3) << object_lock_owner.ToString() << " Acquiring lock : " << req.ShortDebugString();
     if (wait) {
@@ -466,7 +470,8 @@ class TSLocalLockManager::Impl {
     }
     lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
 
-    LOG_IF_WITH_FUNC(DFATAL, req.status_tablet().empty())
+    // A fence has no status tablet. It never waits, so the deadlock detector never probes it.
+    LOG_IF_WITH_FUNC(DFATAL, req.status_tablet().empty() && !req.fence())
         << "Expected non-empty status tablet for lock req: " << req.ShortDebugString()
         << ". Could lead to tserver crash if this lock blocks other requests.";
     object_lock_manager_.Lock(
@@ -479,6 +484,9 @@ class TSLocalLockManager::Impl {
           .status_tablet = req.status_tablet(),
           .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
           .background_transaction_id = background_transaction_id,
+          .fence = req.fence(),
+          .fence_co_owner = fence_co_owner,
+          .pass_any_fence = req.pass_any_fence(),
           .callback = [this, lock_contexts = std::move(lock_contexts),
                        cb = std::move(callback)](Status status) -> void {
             if (status.ok()) {

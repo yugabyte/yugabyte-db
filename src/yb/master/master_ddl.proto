@@ -906,6 +906,9 @@ message AcquireObjectLocksGlobalRequestPB {
   optional bytes status_tablet = 9;
   // Used for ignoring conflicts between transactional object locks and host session object locks.
   optional bytes background_transaction_id = 10;
+  // See tserver AcquireObjectLockRequestPB.
+  optional bytes fence_co_owner_txn_id = 11;
+  optional bool pass_any_fence = 12;
 }
 
 message AcquireObjectLocksGlobalResponsePB {

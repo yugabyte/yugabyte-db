@@ -206,6 +206,14 @@ extern int	yb_osc_internal_ddl_depth;
 extern bool YbOscIsInternalDdl(void);
 
 /*
+ * Whether the object locks this backend requests may pass an online schema
+ * change fence: the given job's (0 for none), or any.  Callers restore the
+ * previous setting in PG_FINALLY.
+ */
+extern void YbSetObjectLockFenceJob(int64 jobId);
+extern void YbSetObjectLockPassAnyFence(bool pass);
+
+/*
  * Errors out of a partition-topology change under parent_oid while an online
  * schema change job on it or on an ancestor is active.  ddl is the verb phrase
  * for the message, e.g. "add a partition to".  Defined in yb_osc_catalog.c.
