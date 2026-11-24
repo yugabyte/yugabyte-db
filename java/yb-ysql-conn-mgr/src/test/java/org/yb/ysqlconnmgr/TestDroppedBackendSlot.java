@@ -56,12 +56,22 @@ public class TestDroppedBackendSlot extends BaseYsqlConnMgr {
     builder.addCommonTServerFlag("ysql_conn_mgr_enable_multi_route_pool", "true");
   }
 
-  private static class CancelLimitCounter implements LogErrorListener {
+  @Override
+  protected boolean shouldRestartMiniClusterBetweenTests() {
+    return true;
+  }
+
+  private static class LogLineCounter implements LogErrorListener {
     final AtomicInteger count = new AtomicInteger();
+    private final String needle;
+
+    LogLineCounter(String needle) {
+      this.needle = needle;
+    }
 
     @Override
     public void handleLine(String line) {
-      if (line.contains("server cancel limit reached")) {
+      if (line.contains(needle)) {
         count.incrementAndGet();
       }
     }
@@ -77,10 +87,25 @@ public class TestDroppedBackendSlot extends BaseYsqlConnMgr {
   }
 
   private Connection connectAsUser() throws Exception {
+    return connectAs(USER);
+  }
+
+  private Connection connectAs(String user) throws Exception {
     return getConnectionBuilder()
         .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-        .withUser(USER)
+        .withUser(user)
         .connect();
+  }
+
+  private List<Integer> idleBackendPids(Statement stmt, String user) throws Exception {
+    List<Integer> pids = new ArrayList<>();
+    try (ResultSet rs = stmt.executeQuery(
+        "SELECT pid FROM pg_stat_activity WHERE usename = '" + user + "' AND state = 'idle'")) {
+      while (rs.next()) {
+        pids.add(rs.getInt(1));
+      }
+    }
+    return pids;
   }
 
   private List<Integer> sleepingBackendPids(Statement stmt) throws Exception {
@@ -125,7 +150,7 @@ public class TestDroppedBackendSlot extends BaseYsqlConnMgr {
       TestUtils.waitFor(() -> sleepingBackendPids(pgStmt).size() == NUM_SLEEPERS, 60000);
       pids.addAll(sleepingBackendPids(pgStmt));
 
-      CancelLimitCounter cancelLimits = new CancelLimitCounter();
+      LogLineCounter cancelLimits = new LogLineCounter("server cancel limit reached");
       connMgrTServer().getLogPrinter().addErrorListener(cancelLimits);
       signal("-STOP", pids);
       for (Connection conn : sleepers) {
@@ -155,6 +180,78 @@ public class TestDroppedBackendSlot extends BaseYsqlConnMgr {
       signal("-CONT", pids);
       pids.clear();
       for (Future<?> f : newClients) {
+        f.get(60, TimeUnit.SECONDS);
+      }
+    } finally {
+      if (!pids.isEmpty()) {
+        signal("-CONT", pids);
+      }
+      pool.shutdownNow();
+    }
+  }
+
+  // Leave 10 idle servers on one route, freeze their backends with SIGSTOP, then connect 10
+  // clients as another user. Those clients evict the idle servers, whose frozen backends cannot
+  // exit, so the evicted slots must stay held instead of going to new backends that Postgres
+  // would refuse with "too many clients". The clients must get through once the backends resume.
+  @Test
+  public void testEvictedIdleServerSlotHeldUntilBackendExits() throws Exception {
+    final String donor = "evict_donor";
+    final String recipient = "evict_recipient";
+    final int numDonors = 10;
+    final int numRecipients = 10;
+    try (Connection conn = connectToPostgres();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE ROLE " + donor + " LOGIN");
+      stmt.execute("CREATE ROLE " + recipient + " LOGIN");
+    }
+
+    List<Connection> donors = new ArrayList<>();
+    for (int i = 0; i < numDonors; i++) {
+      Connection conn = connectAs(donor);
+      donors.add(conn);
+      Statement stmt = conn.createStatement();
+      stmt.execute("BEGIN");
+      stmt.execute("SELECT 1");
+    }
+    for (Connection conn : donors) {
+      conn.createStatement().execute("COMMIT");
+      conn.close();
+    }
+
+    ExecutorService pool = Executors.newCachedThreadPool();
+    List<Integer> pids = new ArrayList<>();
+    try (Connection pgConn = connectToPostgres();
+         Statement pgStmt = pgConn.createStatement()) {
+      TestUtils.waitFor(() -> idleBackendPids(pgStmt, donor).size() == numDonors, 30000);
+      pids.addAll(idleBackendPids(pgStmt, donor));
+
+      LogLineCounter heldSlots = new LogLineCounter("holding its connection slot until it does");
+      connMgrTServer().getLogPrinter().addErrorListener(heldSlots);
+      signal("-STOP", pids);
+
+      List<Future<?>> recipients = new ArrayList<>();
+      for (int i = 0; i < numRecipients; i++) {
+        recipients.add(pool.submit(() -> {
+          try (Connection conn = connectAs(recipient);
+               Statement stmt = conn.createStatement()) {
+            stmt.execute("SELECT 1");
+          }
+          return null;
+        }));
+      }
+
+      Thread.sleep(10000);
+      for (Future<?> f : recipients) {
+        if (f.isDone()) {
+          f.get();
+        }
+      }
+      assertGreaterThan(heldSlots.count.get(), 0);
+
+      signal("-CONT", pids);
+      pids.clear();
+      for (Future<?> f : recipients) {
         f.get(60, TimeUnit.SECONDS);
       }
     } finally {
