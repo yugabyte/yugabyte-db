@@ -65,6 +65,7 @@ DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
+DECLARE_bool(enable_cdc_state_table_caching);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
@@ -15305,9 +15306,9 @@ TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStreamDuringPitrRestore) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  // Restart the master as an upgrade does, so that it has not cached the cdc_state table yet.
-  ASSERT_OK(
-      test_cluster()->mini_master()->Restart(/* wait_until_catalog_manager_is_leader */ true));
+  // Without the cache, every cdc_state write sends IsCreateTableDone, as the first one after a
+  // master restart does.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdc_state_table_caching) = false;
 
   client::SnapshotTestUtil snapshot_util;
   snapshot_util.SetProxy(&test_client()->proxy_cache());
