@@ -215,8 +215,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     // When new UI is turned on, initializing single partition if needed.
     if (isNewUI()) {
-      for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        initPartitions(cluster);
+      if (!isOldGeoPartitioned(universe.getUniverseDetails())) {
+        for (Cluster cluster : universe.getUniverseDetails().clusters) {
+          initPartitions(cluster);
+        }
+      } else {
+        log.warn("Universe {} is old geo-partitioned," +
+            "cannot convert it automatically", universe.getUniverseUUID());
       }
     }
     // get v1 Universe
@@ -597,6 +602,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       Request request, UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
     Customer customer = Customer.getOrNotFound(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+    boolean oldGeoPartitioned = isOldGeoPartitioned(dbUniverse.getUniverseDetails());
     log.info("Add cluster to Universe with v2 spec: {}", prettyPrint(clusterAddSpec));
 
     UniverseConfigureTaskParams v1Params =
@@ -641,9 +647,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       if (newReadReplica.getOverallPlacement() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Placement should be provided");
       }
-      initPartitions(newReadReplica);
+      if (!oldGeoPartitioned) {
+        initPartitions(newReadReplica);
+      }
     }
-
     universeCRUDHandler.configure(customer, v1Params);
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
@@ -1788,6 +1795,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   private boolean isNewUI() {
     return confGetter.getGlobalConf(GlobalConfKeys.editUniverseV2UiEnabled);
+  }
+
+  private boolean isOldGeoPartitioned(UniverseDefinitionTaskParams universe) {
+    Cluster primaryCluster = universe.getPrimaryCluster();
+    return CollectionUtils.isEmpty(primaryCluster.getPartitions())
+        && PlacementInfoUtil.getDefaultRegion(primaryCluster) != null;
   }
 
   private void initPartitions(Cluster cluster) {

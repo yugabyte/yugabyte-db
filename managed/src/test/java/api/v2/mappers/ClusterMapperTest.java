@@ -58,7 +58,7 @@ public class ClusterMapperTest {
   }
 
   @Test
-  public void toV2ClusterSpecClearsDefaultRegionInPartitions() {
+  public void toV2PartitionSpecClearsDefaultRegionInPartitions() {
     UUID regionUuid = UUID.randomUUID();
     PlacementInfo.PlacementCloud cloud = new PlacementInfo.PlacementCloud();
     cloud.uuid = UUID.randomUUID();

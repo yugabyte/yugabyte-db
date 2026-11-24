@@ -638,6 +638,61 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     runEditUniverseV2(universeEditSpec);
   }
 
+  private ClusterSpec getPrimaryClusterSpec(UniverseSpec universeSpec) {
+    return universeSpec.getClusters().stream()
+        .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+        .findAny()
+        .orElseThrow();
+  }
+
+  @Test
+  public void testGetUniverseV2NewUIInitsDefaultPartition() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    ClusterSpec primary =
+        getPrimaryClusterSpec(
+            new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec());
+
+    assertThat(primary.getPartitionsSpec().size(), is(1));
+    ClusterPartitionSpec partition = primary.getPartitionsSpec().get(0);
+    assertThat(partition.getDefaultPartition(), is(true));
+    assertThat(partition.getName(), is("Default"));
+    assertThat(
+        partition.getPlacement().getCloudList().get(0).getUuid(),
+        is(primary.getPlacementSpec().getCloudList().get(0).getUuid()));
+    // Not persisted: getUniverse only converts in memory.
+    assertTrue(
+        CollectionUtils.isEmpty(
+            Universe.getOrBadRequest(universeUuid)
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .getPartitions()));
+  }
+
+  @Test
+  public void testGetUniverseV2NewUISkipsPartitionsForOldGeoPartitioning() throws ApiException {
+    UUID defaultRegionUuid = Region.getByProvider(providerUuid).get(0).getUuid();
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
+          primary.placementInfo.cloudList.get(0).defaultRegion = defaultRegionUuid;
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+
+    ClusterSpec primary =
+        getPrimaryClusterSpec(
+            new UniverseApi().getUniverse(customer.getUuid(), universeUuid).getSpec());
+
+    assertTrue(CollectionUtils.isEmpty(primary.getPartitionsSpec()));
+    assertThat(
+        primary.getPlacementSpec().getCloudList().get(0).getDefaultRegion(),
+        is(defaultRegionUuid));
+  }
+
   @Test
   public void testEditUniverseV2GeoEditPlacement() throws ApiException {
     when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
