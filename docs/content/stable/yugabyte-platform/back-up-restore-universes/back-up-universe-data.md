@@ -105,7 +105,7 @@ The allowed values for the parallel and buffer settings depend on the vCPU count
 
 | Setting | What it limits | Default | Allowed values |
 | :------ | :------------- | :------ | :------------- |
-| Number of parallel uploads per node | How many uploads YB Controller runs at the same time on that node | 2 | 1 through vCPU count + 1 |
+| Number of parallel uploads per node | How many uploads run at the same time on each node | 2 | 1 through vCPU count + 1 |
 | Number of buffers per upload per node | How many buffers each upload keeps in its pool while it reads data from disk and sends it to backup storage | Half the rounded vCPU count, rounded down, plus 1 | 1 through vCPU count + 1 |
 | Disk read bytes per second to throttle disk usage during backups | How fast YB Controller reads backup data from the node disks, in MB/s | 0 (no limit) | 0 (no limit), or 1 MB/s or greater |
 
@@ -113,13 +113,13 @@ The allowed values for the parallel and buffer settings depend on the vCPU count
 
 | Setting | What it limits | Default | Allowed values |
 | :------ | :------------- | :------ | :------------- |
-| Number of parallel downloads per node | How many downloads YB Controller runs at the same time on that node | 2 | 1 through vCPU count + 1 |
+| Number of parallel downloads per node | How many downloads run at the same time on each node | 2 | 1 through vCPU count + 1 |
 | Number of buffers per download per node | How many buffers each download keeps in its pool while it receives data and writes it to disk | Half the rounded vCPU count, rounded down, plus 1 | 1 through vCPU count + 1 |
 | Disk write bytes per second to throttle disk usage during restore | How fast YB Controller writes restored data to the node disks, in MB/s | 0 (no limit) | 0 (no limit), or 1 MB/s or greater |
 
 The disk settings cap the local disk IO of backup and restore operations. Transfer speed still depends on the path to the bucket or NFS share. Lower the disk limits when backup and restore operations share the disks with a live workload. Incremental backups make this more relevant, because the operations run often.
 
-To configure throttle parameters:
+To configure throttle parameters, do the following:
 
 1. Navigate to the universe and select the **Backups** tab.
 
@@ -129,7 +129,7 @@ To configure throttle parameters:
 
 1. Click **Save**.
 
-YugabyteDB Anywhere applies the new values to YB Controller on the running nodes. You don't need to restart anything, and the values persist across restarts.
+YugabyteDB Anywhere applies the new values to the running nodes.
 
 ## Disable backups for a universe
 
