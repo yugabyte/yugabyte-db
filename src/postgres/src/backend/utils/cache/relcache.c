@@ -7578,8 +7578,21 @@ YbTriggerInternalRelcacheBuild()
 {
 	const char *dbname = YBCGetDatabaseName(MyDatabaseId);
 	MemoryContext oldcxt;
-
 	int			i;
+
+	/*
+	 * This is the first live (non-prefetched) read of pg_database during
+	 * connection startup. The post-lock recheck in InitPostgres reads the
+	 * prefetched copy, which predates the database lock, so a DROP DATABASE
+	 * that committed while this backend was starting is first visible here.
+	 * Fail just this connection with FATAL, as that recheck does.
+	 */
+	if (dbname == NULL)
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database %u does not exist", MyDatabaseId),
+				 errdetail("It seems to have just been dropped.")));
+
 	for (i = 0; i < 20; i++)
 	{
 		/* Trigger an internal connection to rebuild the relcache file. */
