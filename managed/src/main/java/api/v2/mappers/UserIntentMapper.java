@@ -956,17 +956,6 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
-  // Used by ClusterMapper.deepCopyInheritableClusterEditSpec when inheriting
-  // primary ClusterSpec networking into ClusterEditSpec.
-  default ClusterNetworkingEditSpec toClusterNetworkingEditSpec(ClusterNetworkingSpec source) {
-    if (source == null) {
-      return null;
-    }
-    ClusterNetworkingEditSpec editSpec = new ClusterNetworkingEditSpec();
-    editSpec.setEnableExposingService(source.getEnableExposingService());
-    return editSpec;
-  }
-
   default UserIntent fillUserIntentFromUpdateProxyConfigSpec(
       UpdateProxyConfigSpec updateProxyConfigSpec, UserIntent userIntent) {
     if (updateProxyConfigSpec == null) {
