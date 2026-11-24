@@ -831,9 +831,10 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 					 * same impact as the client's startup packet.
 					 * See od_frontend_setup_params() for more details.
 					 */
-					kiwi_vars_update(
+					yb_kiwi_vars_update_reported(
 						&client->yb_vars_startup, name,
-						name_len, value, value_len);
+						name_len, value, value_len,
+				flags & YB_PARAM_STATUS_SKIP_CHECK_ON_REPLAY);
 				}
 			}
 

@@ -251,7 +251,7 @@ typedef enum
 												 * Manager connection sticky */
 #define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
 												 * Connection Manager */
-#define GUC_YB_CONN_MGR_REPLAY_CHECK	0x10000000	/* YB: run the check hook
+#define GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK	0x10000000	/* YB: run the check hook
 													 * on Connection Manager
 													 * replay */
 
