@@ -91,3 +91,23 @@ select * from pg_class;
  Seq Scan on pg_class
 (1 row)
 
+---------------------------------------------------------------------------------
+-- reset all after a change to a GUC whose default yb_enable_cbo sets (#39154) --
+---------------------------------------------------------------------------------
+-- The test configuration file turns yb_explain_hide_non_deterministic_fields
+-- on, and reset all brings that value back.
+show yb_explain_hide_non_deterministic_fields;
+ yb_explain_hide_non_deterministic_fields 
+------------------------------------------
+ on
+(1 row)
+
+set yb_enable_bitmapscan = on;
+set yb_explain_hide_non_deterministic_fields = off;
+reset all;
+show yb_explain_hide_non_deterministic_fields;
+ yb_explain_hide_non_deterministic_fields 
+------------------------------------------
+ on
+(1 row)
+

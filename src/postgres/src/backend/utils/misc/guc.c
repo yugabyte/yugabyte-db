@@ -1528,6 +1528,8 @@ InitializeGUCOptions(void)
 	HASH_SEQ_STATUS status;
 	GUCHashEntry *hentry;
 
+	struct config_generic *yb_enable_cbo_gconf = NULL;
+
 	/*
 	 * Before log_line_prefix could possibly receive a nonempty setting, make
 	 * sure that timezone processing is minimally alive (see elog.c).
@@ -1549,8 +1551,26 @@ InitializeGUCOptions(void)
 		/* Check mapping between initial and default value */
 		Assert(check_GUC_init(hentry->gucvar));
 
+		/* YB: yb_enable_cbo is initialized after the loop. */
+		if (strcmp(hentry->gucvar->name, "yb_enable_cbo") == 0)
+		{
+			yb_enable_cbo_gconf = hentry->gucvar;
+			continue;
+		}
+
 		InitializeOneGUCOption(hentry->gucvar);
 	}
+
+	/*
+	 * YB: Initialize yb_enable_cbo after every other variable.  Its assign
+	 * hook sets the dynamic defaults of other variables, which links them
+	 * into guc_nondef_list.  InitializeOneGUCOption() of a variable the hook
+	 * has already set would reset its source to PGC_S_DEFAULT without
+	 * unlinking it, and the next change of its source would then link it a
+	 * second time and cut off the rest of the list.
+	 */
+	Assert(yb_enable_cbo_gconf != NULL);
+	InitializeOneGUCOption(yb_enable_cbo_gconf);
 
 	reporting_enabled = false;
 
