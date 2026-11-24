@@ -4896,10 +4896,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
           "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.replicated_ddls");
+      Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
       stmt.execute("INSERT INTO t1 VALUES (2)");
     }
-    /* BEGIN, RELATION, INSERT and COMMIT, as the publication change resends RELATION. */
-    assertTrue(receiveMessage(stream, 4).contains(insertMessage("2")));
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(stream, 3).contains(insertMessage("2")));
     stream.close();
     conn.close();
   }
