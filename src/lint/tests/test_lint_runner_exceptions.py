@@ -11,7 +11,10 @@
 # under the License.
 
 """Tests for build-support/lint.py's main(): a linter runner that raises is reported as an error,
-so lint.py exits 1 instead of passing the files that linter never checked."""
+so lint.py exits 1 instead of passing the files that linter didn't finish checking.
+
+Run with `python3 -m pytest src/lint/tests/`.
+"""
 
 import importlib.util
 import sys
@@ -19,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load(name, path):
