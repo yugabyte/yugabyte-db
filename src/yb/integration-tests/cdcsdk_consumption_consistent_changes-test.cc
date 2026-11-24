@@ -4820,12 +4820,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALSafeTimeWithDynamicTableA
   // Sleep for pub refresh interval.
   SleepFor(MonoDelta::FromSeconds(30 * kTimeMultiplier));
 
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
-  ASSERT_TRUE(
-      change_resp.has_needs_publication_table_list_refresh() &&
-      change_resp.needs_publication_table_list_refresh() &&
-      change_resp.has_publication_refresh_time());
+  // A leader change after the last call leaves a NO_OP in the WAL; the call that reads it
+  // returns the NO_OP's time as the safe time, so the refresh comes one call later.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        SCHECK_EQ(change_resp.cdc_sdk_proto_records_size(), 0, IllegalState, "Unexpected records");
+        return change_resp.has_needs_publication_table_list_refresh() &&
+               change_resp.needs_publication_table_list_refresh() &&
+               change_resp.has_publication_refresh_time();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the publication refresh"));
   ASSERT_GT(change_resp.publication_refresh_time(), 0);
 
   // Add test2 to the polling list.
