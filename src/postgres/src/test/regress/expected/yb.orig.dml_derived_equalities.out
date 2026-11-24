@@ -100,6 +100,7 @@ SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_i
         1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
 (1 row)
 
+\set hint '/*+ IndexScan(orders orders_created_idx) */'
 SELECT $$
 :P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
 $$ AS query \gset

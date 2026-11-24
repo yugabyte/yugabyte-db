@@ -51,6 +51,7 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
+\set hint '/*+ IndexScan(orders orders_created_idx) */'
 SELECT $$
 :P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
 $$ AS query \gset
