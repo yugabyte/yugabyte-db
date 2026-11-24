@@ -308,19 +308,18 @@ $$ AS query \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                           QUERY PLAN                            
+-----------------------------------------------------------------
  SetOp Intersect
    ->  Sort
-         Sort Key: "*SELECT* 1".i, "*SELECT* 1".v
-         ->  Append
-               ->  Subquery Scan on "*SELECT* 1"
-                     ->  Index Scan using vectors_v_idx on vectors
-                           Index Cond: (v @@ '''a'''::tsquery)
-               ->  Subquery Scan on "*SELECT* 2"
-                     ->  Index Scan using vectors_v_idx on vectors vectors_1
-                           Index Cond: (v @@ '''bb'''::tsquery)
-(10 rows)
+         Sort Key: vectors.i, vectors.v
+         ->  Index Scan using vectors_v_idx on vectors
+               Index Cond: (v @@ '''a'''::tsquery)
+   ->  Sort
+         Sort Key: vectors_1.i, vectors_1.v
+         ->  Index Scan using vectors_v_idx on vectors vectors_1
+               Index Cond: (v @@ '''bb'''::tsquery)
+(9 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
  i |                  v                   
@@ -383,14 +382,17 @@ EXPLAIN (costs off) SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vec
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique
-   ->  Sort
+   ->  Merge Append
          Sort Key: vectors.i, vectors.v
-         ->  Append
+         ->  Sort
+               Sort Key: vectors.i, vectors.v
                ->  Index Scan using vectors_v_idx on vectors
                      Index Cond: (v @@ '''a'''::tsquery)
+         ->  Sort
+               Sort Key: vectors_1.i, vectors_1.v
                ->  Index Scan using vectors_v_idx on vectors vectors_1
                      Index Cond: (v @@ '''c'''::tsquery)
-(8 rows)
+(11 rows)
 
 SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
  i |                  v                   
