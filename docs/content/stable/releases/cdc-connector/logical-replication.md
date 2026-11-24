@@ -20,13 +20,24 @@ The YugabyteDB connector for logical replication is based on Debezium and is pub
 
 [Logical replication connector on GitHub](https://github.com/yugabyte/debezium/) {{<icon/github>}}.
 
-The connector is the Kafka Connect plugin `yugabytedb-source-connector-<version>-jar-with-dependencies.jar`, attached to each GitHub release. Releases `dz.2.5.2.yb.2024.2.4` and earlier name the file `debezium-connector-yugabytedb-<version>-jar-with-dependencies.jar`.
+The connector is the Kafka Connect plugin `yugabytedb-source-connector-<version>-jar-with-dependencies.jar`. JARs are published to the Yugabyte Maven repository and attached to each GitHub release. Releases `dz.2.5.2.yb.2024.2.4` and earlier attach `debezium-connector-yugabytedb-<version>-jar-with-dependencies.jar` on GitHub.
 
 For compatibility and configuration, see [YugabyteDB connector](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
+## dz.2.5.2.yb.2026.1.3.0.1 - November 19, 2026 {#dz.2.5.2.yb.2026.1.3.0.1}
+
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1.3.0.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2026.1.3.0.1/yugabytedb-source-connector-dz.2.5.2.yb.2026.1.3.0.1-jar-with-dependencies.jar)
+
+### What's changed
+
+* DBZ-PGYB: Allow TLS 1.3 in the connector image. ([#205](https://github.com/yugabyte/debezium/pull/205))
+* DBZ-PGYB: Fix reported CVEs by upgrading jackson and pgjdbc, and move jdbc-yugabytedb to 42.7.3-yb-7. {{<issue 37716>}} ([#206](https://github.com/yugabyte/debezium/pull/206))
+
+**Full changelog**: [dz.2.5.2.yb.2026.1.2.0.1...dz.2.5.2.yb.2026.1.3.0.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2026.1.2.0.1...dz.2.5.2.yb.2026.1.3.0.1)
+
 ## dz.2.5.2.yb.2026.1.2.0.1 - September 30, 2026 {#dz.2.5.2.yb.2026.1.2.0.1}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1.2.0.1)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1.2.0.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2026.1.2.0.1/yugabytedb-source-connector-dz.2.5.2.yb.2026.1.2.0.1-jar-with-dependencies.jar)
 
 ### Versioning change
 
@@ -42,7 +53,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2026.1 - July 7, 2026 {#dz.2.5.2.yb.2026.1}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2026.1/yugabytedb-source-connector-dz.2.5.2.yb.2026.1-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -58,7 +69,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2025.2.3 - February 24, 2026 {#dz.2.5.2.yb.2025.2.3}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.3)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.3) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.2.3/yugabytedb-source-connector-dz.2.5.2.yb.2025.2.3-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -68,7 +79,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2025.2.2 - February 12, 2026 {#dz.2.5.2.yb.2025.2.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.2)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.2.2/yugabytedb-source-connector-dz.2.5.2.yb.2025.2.2-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -78,7 +89,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2025.2 - February 1, 2026 {#dz.2.5.2.yb.2025.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.2/yugabytedb-source-connector-dz.2.5.2.yb.2025.2-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -92,7 +103,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2025.1.2 - November 12, 2025 {#dz.2.5.2.yb.2025.1.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1.2)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.1.2/yugabytedb-source-connector-dz.2.5.2.yb.2025.1.2-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -102,7 +113,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2025.1 - October 15, 2025 {#dz.2.5.2.yb.2025.1}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.1/yugabytedb-source-connector-dz.2.5.2.yb.2025.1-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -113,7 +124,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.2.5 - July 31, 2025 {#dz.2.5.2.yb.2024.2.5}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.5)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.5) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.2.5/yugabytedb-source-connector-dz.2.5.2.yb.2024.2.5-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -124,7 +135,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.2.4 - June 13, 2025 {#dz.2.5.2.yb.2024.2.4}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.4)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.4) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.2.4/yugabytedb-source-connector-dz.2.5.2.yb.2024.2.4-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -135,7 +146,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.2.3 - March 18, 2025 {#dz.2.5.2.yb.2024.2.3}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.3)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.3) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.2.3/yugabytedb-source-connector-dz.2.5.2.yb.2024.2.3-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -151,7 +162,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.2.2 - February 4, 2025 {#dz.2.5.2.yb.2024.2.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.2)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.2.2/yugabytedb-source-connector-dz.2.5.2.yb.2024.2.2-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -163,7 +174,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.2 - December 26, 2024 {#dz.2.5.2.yb.2024.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.2/yugabytedb-source-connector-dz.2.5.2.yb.2024.2-jar-with-dependencies.jar)
 
 ### What's changed
 
@@ -178,7 +189,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ## dz.2.5.2.yb.2024.1 - August 8, 2024 {#dz.2.5.2.yb.2024.1}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2024.1/yugabytedb-source-connector-dz.2.5.2.yb.2024.1-jar-with-dependencies.jar)
 
 ### What's changed
 

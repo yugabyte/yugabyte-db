@@ -19,7 +19,7 @@ The YugabyteDB CDC connectors are based on the Debezium platform, and published 
 
   {{<index/item
     title="Logical replication"
-    body="Release notes and downloads for the logical replication connector. Plugin JARs are attached to each GitHub release."
+    body="Release notes and downloads for the logical replication connector. JARs are published to the Yugabyte Maven repository."
     href="logical-replication/"
     icon="fa-thin fa-arrows-left-right">}}
 

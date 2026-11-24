@@ -39,7 +39,7 @@ This connector release supports all YugabyteDB 2026.1 and earlier releases, as w
 * DBZ: Stop advancing the snapshot explicit checkpoint past the acknowledged key. {{<issue 35465>}} ([#432](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/432))
 * DBZ: Stop one colocated table's acknowledgements from advancing another table's checkpoint. {{<issue 35827>}} {{<issue 35831>}} ([#433](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/433))
 * DBZ: Stop advancing the streaming explicit checkpoint past a partly acknowledged transaction. {{<issue 36626>}} ([#434](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/434))
-* DBZ: Fix reported CVEs by upgrading netty, jackson, guava, and pgjdbc, and move the base image to Kafka 4.3.2. #DB-24003 ([#437](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/437))
+* DBZ: Fix reported CVEs by upgrading netty, jackson, guava, and pgjdbc, and move the base image to Kafka 4.3.2. ([#437](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/437))
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.2.0.2...vdz.1.9.5.yb.grpc.2026.1.2.0.3](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.2.0.2...vdz.1.9.5.yb.grpc.2026.1.2.0.3)
 
