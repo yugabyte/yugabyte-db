@@ -58,8 +58,9 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    // A retry finishes a resume that passed the check, and its key push can use the YBA cache.
-    if (isFirstTry()) {
+    // A retry skips the check only if the key push can use the YBA cache, which a YBA restart
+    // empties.
+    if (isFirstTry() || !isActiveUniverseKeyCached(universe)) {
       createCheckUniverseKeyInKmsTask(universe);
     }
     runtimeInfo = getRuntimeInfo(RuntimeInfo.class);

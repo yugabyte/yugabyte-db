@@ -176,6 +176,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -1217,6 +1218,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
+  }
+
+  /** Whether the YBA cache holds the active universe key, so a key push needs no KMS call. */
+  protected boolean isActiveUniverseKeyCached(Universe universe) {
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
+    return activeKey != null
+        && EncryptionAtRestUtil.getUniverseKeyCacheEntry(
+                universe.getUniverseUUID(), Base64.getDecoder().decode(activeKey.getUuid().keyRef))
+            != null;
   }
 
   public SubTaskGroup createDestroyEncryptionAtRestTask() {

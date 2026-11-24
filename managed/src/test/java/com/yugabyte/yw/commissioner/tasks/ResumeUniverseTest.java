@@ -582,11 +582,30 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 
-  // A retry finishes a resume that passed the check, so a KMS outage must not block it.
+  // A retry with the key in the YBA cache skips the check, so a KMS outage does not block it.
   @Test
   public void testResumeRetrySkipsKmsCheck() {
+    TaskInfo taskInfo = submitResumeRetryWithKmsDown(true /* keyCached */);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
+
+  // A YBA restart empties the cache, so the retry checks the key before it starts masters.
+  @Test
+  public void testResumeRetryWithEmptyKeyCacheRunsKmsCheck() {
+    TaskInfo taskInfo = submitResumeRetryWithKmsDown(false /* keyCached */);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+  }
+
+  private TaskInfo submitResumeRetryWithKmsDown(boolean keyCached) {
     setupUniverse(false, 1);
     setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    if (keyCached) {
+      cacheUniverseKey(defaultUniverse.getUniverseUUID());
+    }
     UUID previousTaskUUID = UUID.randomUUID();
     TaskInfo previousTask = new TaskInfo(TaskType.ResumeUniverse, previousTaskUUID);
     previousTask.setTaskParams(Json.newObject());
@@ -601,10 +620,6 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.setPreviousTaskUUID(previousTaskUUID);
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
-    assertTrue(
-        taskInfo.getSubTasks().stream()
-            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+    return submitTask(taskParams);
   }
 }

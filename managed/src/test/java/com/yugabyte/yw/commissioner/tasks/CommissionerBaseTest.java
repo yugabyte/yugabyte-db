@@ -1748,6 +1748,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     return keyService;
   }
 
+  /** Puts the key from setUpUniverseKeyInKms in the YBA cache, as a key push does. */
+  protected void cacheUniverseKey(UUID universeUUID) {
+    EncryptionAtRestUtil.setUniverseKeyCacheEntry(
+        universeUUID, "some_key_ref".getBytes(), "some_key_val".getBytes());
+  }
+
   /** Asserts that the KMS precheck ran and failed with the KMS error. */
   protected void assertKmsCheckFailed(TaskInfo taskInfo) {
     TaskInfo check =

@@ -861,7 +861,23 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
 
   @Test
   public void testRollbackRetrySkipsKmsCheck() throws InterruptedException {
-    // A started rollback must finish, so a KMS outage after the first try must not block it.
+    // A started rollback must finish, so a KMS outage with the key in the cache must not block it.
+    TaskInfo retryInfo = retryRollbackWithKmsDown(true /* keyCached */);
+    assertEquals(Success, retryInfo.getTaskState());
+    assertFalse(
+        retryInfo.getSubTasks().stream()
+            .anyMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
+
+  @Test
+  public void testRollbackRetryWithEmptyKeyCacheRunsKmsCheck() throws InterruptedException {
+    // A YBA restart empties the cache, so the retry checks the key before it restarts a node.
+    TaskInfo retryInfo = retryRollbackWithKmsDown(false /* keyCached */);
+    assertEquals(Failure, retryInfo.getTaskState());
+    assertKmsCheckFailed(retryInfo);
+  }
+
+  private TaskInfo retryRollbackWithKmsDown(boolean keyCached) throws InterruptedException {
     seedFailedResize(/* changeInstance */ true, /* growVolume */ false, /* changeIops */ false);
     EncryptionAtRestService<?> keyService =
         setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), true);
@@ -869,14 +885,12 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     verify(keyService, times(1)).retrieveKeyFromKms(any(), any(), any(), any());
     when(keyService.retrieveKeyFromKms(any(), any(), any(), any()))
         .thenThrow(new RuntimeException("KMS key disabled"));
-
+    if (keyCached) {
+      cacheUniverseKey(defaultUniverse.getUniverseUUID());
+    }
     CustomerTask retryTask =
         customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
-    TaskInfo retryInfo = waitForTask(retryTask.getTaskUUID());
-    assertEquals(Success, retryInfo.getTaskState());
-    assertFalse(
-        retryInfo.getSubTasks().stream()
-            .anyMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+    return waitForTask(retryTask.getTaskUUID());
   }
 
   @Test
