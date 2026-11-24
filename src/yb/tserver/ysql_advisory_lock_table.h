@@ -56,6 +56,9 @@ class YsqlAdvisoryLocksTable {
 
   Result<std::vector<client::YBOperationPtr>> MakeUnlockAllOps(uint32_t db_oid) EXCLUDES(mutex_);
 
+  // The master doesn't create the table until a YSQL major upgrade is finalized.
+  Result<bool> TableExists() EXCLUDES(mutex_);
+
   auto TEST_GetTable() { return GetTable(); }
 
   Result<std::vector<client::internal::RemoteTabletPtr>> LookupAllTablets(

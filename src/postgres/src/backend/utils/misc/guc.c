@@ -342,8 +342,6 @@ static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource
 static bool check_yb_dist_tracecontext(char **newval, void **extra, GucSource source);
 static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 
-static bool check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
-																GucSource source);
 static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
 static bool check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
@@ -2576,13 +2574,16 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
-			gettext_noop("Deprecated. This is no-op."),
-			NULL,
+			gettext_noop("Make advisory lock functions succeed without locking while "
+						 "advisory locks are unavailable."),
+			gettext_noop("Advisory locks are unavailable on a cluster upgraded from a "
+						 "release without them until the upgrade is finalized. Once they "
+						 "are available, this parameter has no effect."),
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_silence_advisory_locks_not_supported_error,
 		false,
-		check_yb_silence_advisory_locks_not_supported_error, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -18646,16 +18647,6 @@ check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source)
 			(errmsg("the parameter \"yb_enable_advisory_locks\" is deprecated, "
 					"toggle the runtime flag \"ysql_yb_enable_advisory_locks\" instead.")));
 	return true;				/* still allow usage, but warn */
-}
-
-static bool
-check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
-													GucSource source)
-{
-	ereport(WARNING,
-			(errmsg("the parameter \"yb_silence_advisory_locks_not_supported_error\" is "
-					"deprecated and has no effect. ")));
-	return true;
 }
 
 static void

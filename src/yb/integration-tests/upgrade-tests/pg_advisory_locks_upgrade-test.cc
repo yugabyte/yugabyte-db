@@ -12,6 +12,7 @@
 //
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -23,7 +24,8 @@ namespace yb {
 class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
                                   public ::testing::WithParamInterface<uint32_t> {
  public:
-  PgAdvisoryLocksUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
+  explicit PgAdvisoryLocksUpgradeTest(const std::string& from_version = kBuild_2025_1_1_0)
+      : UpgradeTestBase(from_version) {}
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     AddUnDefOkAndSetFlag(
@@ -130,5 +132,109 @@ TEST_P(PgAdvisoryLocksUpgradeTest, TestBasicFunctionality) {
 }
 
 INSTANTIATE_TEST_CASE_P(NumAdvisoryLockTablets, PgAdvisoryLocksUpgradeTest, testing::Values(1, 3));
+
+// yb_silence_advisory_locks_not_supported_error only applies while advisory locks are unavailable.
+// The source version already has them, so the GUC must not turn locks into no-ops at any point of
+// the upgrade, including before finalize.
+class PgAdvisoryLocksSilenceGucUpgradeTest : public PgAdvisoryLocksUpgradeTest {
+ public:
+  PgAdvisoryLocksSilenceGucUpgradeTest() : PgAdvisoryLocksUpgradeTest(kBuild_2026_1_2_0) {}
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    PgAdvisoryLocksUpgradeTest::SetUpOptions(opts);
+    opts.extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_silence_advisory_locks_not_supported_error=true");
+  }
+};
+
+TEST_P(PgAdvisoryLocksSilenceGucUpgradeTest, LocksTakenBeforeFinalize) {
+  ASSERT_OK(StartClusterInOldVersion());
+  ASSERT_NO_FATALS(ASSERT_OK(TestBasicFunctionality()));
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
+  ASSERT_NO_FATALS(ASSERT_OK(TestBasicFunctionality()));
+  ASSERT_OK(FinalizeUpgrade());
+  ASSERT_NO_FATALS(ASSERT_OK(TestBasicFunctionality()));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    NumAdvisoryLockTablets, PgAdvisoryLocksSilenceGucUpgradeTest, testing::Values(1));
+
+// Releases without DocDB advisory locks turn every advisory lock function into a successful no-op
+// when yb_silence_advisory_locks_not_supported_error is set. On a YSQL major upgrade from such a
+// release, advisory locks stay unavailable until finalize, so the no-op has to continue until then.
+class PgAdvisoryLocksSilencedMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
+ public:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    YsqlMajorUpgradeTestBase::SetUpOptions(opts);
+    opts.extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_silence_advisory_locks_not_supported_error=true");
+  }
+
+ protected:
+  Status ValidateSilencedNoOp(std::optional<size_t> ts_id) {
+    auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
+    for (const auto* query : {
+             "SELECT pg_advisory_lock(1)", "SELECT pg_advisory_lock(1, 1)",
+             "SELECT pg_advisory_lock_shared(2)", "SELECT pg_advisory_unlock_all()"}) {
+      RETURN_NOT_OK(conn.Fetch(query));
+    }
+    for (const auto* query : {
+             "SELECT pg_try_advisory_lock(1)", "SELECT pg_try_advisory_lock_shared(2)",
+             "SELECT pg_advisory_unlock(1)", "SELECT pg_advisory_unlock(1, 1)",
+             "SELECT pg_advisory_unlock_shared(2)"}) {
+      SCHECK(VERIFY_RESULT(conn.FetchRow<bool>(query)), IllegalState,
+             Format("Expected $0 to return true", query));
+    }
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Fetch("SELECT pg_advisory_xact_lock(3)"));
+    SCHECK(VERIFY_RESULT(conn.FetchRow<bool>("SELECT pg_try_advisory_xact_lock_shared(3)")),
+           IllegalState, "Expected pg_try_advisory_xact_lock_shared to return true");
+    return conn.CommitTransaction();
+  }
+
+  Status ValidateDisabledWithoutSilence(size_t ts_id) {
+    auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
+    RETURN_NOT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = off"));
+    auto s = conn.Fetch("SELECT pg_advisory_lock(1)");
+    SCHECK(!s.ok(), IllegalState, "Expected advisory lock to fail without the silence GUC");
+    SCHECK_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are disabled");
+    return Status::OK();
+  }
+};
+
+TEST_F(PgAdvisoryLocksSilencedMajorUpgradeTest, NoOpUntilFinalize) {
+  ASSERT_OK(ValidateSilencedNoOp(kAnyTserver));
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg15));
+  ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg11));
+  ASSERT_OK(ValidateDisabledWithoutSilence(kMixedModeTserverPg15));
+
+  ASSERT_OK(UpgradeAllTserversFromMixedMode());
+  ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg15));
+  ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg11));
+
+  ASSERT_OK(FinalizeUpgrade());
+
+  // Finalize promotes ysql_yb_enable_advisory_locks and the master then creates the advisory locks
+  // table, both asynchronously. Once a tserver takes a lock without the GUC, the GUC has no effect
+  // there and locks conflict across tservers.
+  for (size_t ts_id = 0; ts_id < cluster_->num_tablet_servers(); ++ts_id) {
+    auto conn = ASSERT_RESULT(CreateConnToTs(ts_id));
+    ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = off"));
+    ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+      auto s = conn.Fetch("SELECT pg_advisory_lock(1)");
+      WARN_NOT_OK(ResultToStatus(s), "Advisory locks not available yet");
+      return s.ok();
+    }, 60s * kTimeMultiplier, "Wait for advisory locks to become available"));
+    ASSERT_OK(conn.Fetch("SELECT pg_advisory_unlock(1)"));
+  }
+  auto conn1 = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg15));
+  auto conn2 = ASSERT_RESULT(CreateConnToTs(kMixedModeTserverPg11));
+  ASSERT_OK(conn1.Fetch("SELECT pg_advisory_lock(1)"));
+  ASSERT_FALSE(ASSERT_RESULT(conn2.FetchRow<bool>("SELECT pg_try_advisory_lock(1)")));
+  ASSERT_TRUE(ASSERT_RESULT(conn1.FetchRow<bool>("SELECT pg_advisory_unlock(1)")));
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>("SELECT pg_try_advisory_lock(1)")));
+}
 
 } // namespace yb
