@@ -354,6 +354,17 @@ public class NodeAgentPoller {
         // Return to schedule on the live executor.
         return;
       }
+      // A second server on the node would undo the upgrade (PLAT-24106), so do not start one. It
+      // is checked before new certs are generated. An UPGRADED agent must still be finalized.
+      if (response.getServerInfo().getDuplicateServerUnit()
+          && (nodeAgent.getState() == State.UPGRADE
+              || (nodeAgent.getState() == State.READY && maybeGetDeployType(nodeAgent) != null))) {
+        log.error(
+            "Cannot upgrade node agent {} because a system-level yb-node-agent unit also runs on"
+                + " the node. Disable and remove that unit to allow the upgrade.",
+            nodeAgent);
+        return;
+      }
       switch (nodeAgent.getState()) {
         case READY:
           if (maybeGetDeployType(nodeAgent) == null) {
@@ -361,16 +372,6 @@ public class NodeAgentPoller {
           }
           // Fall-thru to complete in single cycle.
         case UPGRADE:
-          // A second server on the node would undo the upgrade (PLAT-24106). Skip before new
-          // certs are generated and uploaded. UPGRADED is past the point of no return.
-          if (response.getServerInfo().getDuplicateServerUnit()) {
-            log.warn(
-                "Skipping upgrade of node agent {} as a system-level yb-node-agent unit also runs"
-                    + " on the node. Remove that unit to allow the upgrade.",
-                nodeAgent);
-            return;
-          }
-          // Fall-thru.
         case UPGRADED:
           if (!isUpgrading.compareAndSet(false, true)) {
             log.info("Node agent {} is being upgraded", nodeAgent);
