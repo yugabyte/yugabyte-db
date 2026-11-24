@@ -394,8 +394,20 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Explicitly requested specs and specs of clusters not changed by the request are kept as is
       // (the mapper clears them when the node spec is passed without them).
       if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
-        KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
-            cluster.clusterType, cluster.userIntent, false, /* overwrite */ confGetter);
+        if (Util.isKubernetesBased(cluster)) {
+          KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+              cluster.clusterType, cluster.userIntent, false, /* overwrite */ confGetter);
+          UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
+
+          if (cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID) == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Tserver resource spec is required");
+          }
+          if (cluster.clusterType == ClusterType.PRIMARY
+              && cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID) == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Master resource spec is required");
+          }
+        }
+
       }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));

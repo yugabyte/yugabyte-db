@@ -1967,7 +1967,8 @@ public class KubernetesUtil {
 
   /**
    * Sets k8s resource specs of every cluster from its instance type, replacing existing specs.
-   * Clusters without an instance type are left untouched.
+   * Clusters without both instance type and master instance type
+   * (if applicable) are left untouched.
    */
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
       UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
