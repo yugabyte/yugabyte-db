@@ -2231,11 +2231,22 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       setServerFlag(tserver, "ysql_yb_conn_mgr_reversible_stickiness_exclusions", value);
     }
-    String expected = value.contains("listen") ? "on" : "off";
-    try (Connection conn = getConnectionBuilder().connect()) {
-      waitForCondition(conn,
-          "SELECT CASE WHEN current_setting('yb_conn_mgr_listen_permanent_sticky') = '"
-          + expected + "' THEN 1 ELSE 0 END");
+    Set<String> expected = new HashSet<>();
+    for (String token : value.split(",")) {
+      if (!token.trim().isEmpty()) {
+        expected.add("yb_conn_mgr_" + token.trim().toLowerCase() + "_permanent_sticky");
+      }
+    }
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      TestUtils.waitFor(() -> {
+        Set<String> on = new HashSet<>();
+        for (Row row : getRowList(stmt, "SELECT name FROM pg_settings"
+            + " WHERE name LIKE 'yb_conn_mgr_%_permanent_sticky' AND setting = 'on'")) {
+          on.add(row.getString(0));
+        }
+        return on.equals(expected);
+      }, 30000);
     }
   }
 
