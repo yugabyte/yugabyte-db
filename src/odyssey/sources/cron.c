@@ -380,9 +380,12 @@ static void od_cron(void *arg)
 		od_cron_expire(cron);
 
 		/*
-		 * YB: Check if exiting backends have exited, signal routes if they did.
-		 * This is only needed with multi route pooling as only that has the logic
-		 * of waiting for exiting backend's socket to close.
+		 * YB: Release the slots of held backends that have exited, and signal
+		 * once per released slot, since each signal wakes one waiter per
+		 * route. Only multi-route pooling claims slots, so only it holds any.
+		 *
+		 * TODO(#28097): Each call walks every route, so this is O(released *
+		 * routes) per tick.
 		 */
 		int yb_released =
 			yb_backend_release_slots_of_exited(cron->global->router);

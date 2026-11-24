@@ -267,9 +267,9 @@ void yb_od_backend_close_connection(od_server_t *server,
 			int errno_ = errno;
 			server->yb_backend_exited =
 				errno_ == EPIPE || errno_ == ECONNRESET;
-			od_debug(&instance->logger, "backend", NULL, server,
-				 "failed to send Terminate, errno=%d, skipping drain",
-				 errno_);
+			od_log(&instance->logger, "backend", NULL, server,
+			       "failed to send Terminate, errno=%d, skipping drain",
+			       errno_);
 		} else {
 			/*
 			 * YB: Wait for backend to close socket. Dup the fd and save it so
