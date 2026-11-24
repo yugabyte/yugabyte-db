@@ -125,6 +125,9 @@ class PgQosCgroupsTest : public PgCgroupsTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 250;
     ASSERT_OK(tserver::TServerCgroupManager::CgroupManagementInit(/*is_tserver=*/true));
     PgCgroupsTest::SetUp();
+    // TestQosCallbackPool slows the single client callback thread to seconds, which makes an
+    // in-flight bootstrap slow enough to overlap the test.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
   }
 
   Result<Cgroup&> db_cgroup(PGConn& conn) {

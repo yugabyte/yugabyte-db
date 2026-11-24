@@ -38,6 +38,7 @@ class YsqlMajorUpgradeTest : public YsqlMajorUpgradeTestBase {
   constexpr static auto kYugabyte = "yugabyte";
   constexpr static auto kPostgres = "postgres";
   constexpr static auto kSystemPlatform = "system_platform";
+  constexpr static auto kYbSystem = "yb_system";
 
   // Stops the tserver running on the yb-master leader node.
   // The tserver must be restarted before the test completes for it to succeed the shutdown in the
@@ -515,7 +516,7 @@ TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
                                    const std::optional<size_t> ts_id, const int count) {
     int db_number = 0;
     for (const auto& [db_name, db_info] : dbs) {
-      if (db_name.starts_with("template"))
+      if (db_name.starts_with("template") || db_name == kYbSystem)
         continue;
 
       auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name, ts_id));
@@ -583,6 +584,11 @@ TEST_F(YsqlMajorUpgradeTest, YB_RELEASE_ONLY_TEST(MultipleDatabases)) {
   ASSERT_NO_FATALS(add_row_check_rows(db_map, kMixedModeTserverPg15, ++inserted_row_count));
 
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  // The bootstrap is suppressed during the upgrade, so yb_system appears only now.
+  ASSERT_OK(pgwrapper::WaitForListenNotifyBootstrap(
+      [this] { return cluster_->ConnectToDB(kYbSystem); }));
+  db_map[kYbSystem] = DbInfo();
 
   ASSERT_NO_FATALS(check_dbs(kAnyTserver));
 

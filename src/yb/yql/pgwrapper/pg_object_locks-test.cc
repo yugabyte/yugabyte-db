@@ -118,6 +118,8 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
+    // The tests assert absolute object lock counts.
+    ASSERT_OK(WaitForListenNotifyBootstrap());
     Init();
   }
 
@@ -3505,6 +3507,10 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
   const auto ts2_idx = 2;
   auto* ts1 = cluster_->tablet_server(ts1_idx);
   auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  // The test waits for the node's object lock count to reach zero within a fixed budget, and
+  // TEST_block_acquires_to_simulate_out_of_order blocks every acquire on ts2, the bootstrap's too.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
 
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
   auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));

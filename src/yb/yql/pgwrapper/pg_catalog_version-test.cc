@@ -15,6 +15,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/util.h"
+#include "yb/master/master_defaults.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/backoff_waiter.h"
@@ -584,7 +585,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_EQ(result, expected);
   }
 
-  static size_t CountRelCacheInitFiles(const string& dirpath) {
+  static size_t CountRelCacheInitFiles(const string& dirpath, const string& skip_prefix) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
                                                CloseDir);
@@ -594,6 +595,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     while ((entry = readdir(d.get())) != nullptr) {
       if (strstr(entry->d_name, "pg_internal.init")) {
         LOG(INFO) << "found rel cache init file " << dirpath << "/" << entry->d_name;
+        if (strncmp(entry->d_name, skip_prefix.c_str(), skip_prefix.size()) == 0) {
+          continue;
+        }
         count++;
       }
     }
@@ -604,6 +608,9 @@ class PgCatalogVersionTest : public LibPqTestBase {
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
     RestartClusterWithDBCatalogVersionMode();
     conn_yugabyte = ASSERT_RESULT(Connect());
+    // The bootstrap backend leaves yb_system's init file after every restart; exclude it.
+    const auto yb_system_prefix = Format("$0_", ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(
+        Format("SELECT oid FROM pg_database WHERE datname = '$0'", master::kYbSystemDbName))));
     // Under per-database catalog version mode, there is one shared rel
     // cache init file for each database. Test this by making a second
     // connection to the template1 database.
@@ -611,16 +618,16 @@ class PgCatalogVersionTest : public LibPqTestBase {
     auto data_root = cluster_->data_root();
     auto pg_data_root = JoinPathSegments(data_root, "ts-1", "pg_data");
     auto pg_data_global = JoinPathSegments(pg_data_root, "global");
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 2);
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 2);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global, yb_system_prefix), 2);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root, yb_system_prefix), 2);
 
     // Restart the cluster. The rel cache init files should be removed
     // during postmaster startup.
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
 
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global), 0);
-    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root), 0);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_global, yb_system_prefix), 0);
+    ASSERT_EQ(CountRelCacheInitFiles(pg_data_root, yb_system_prefix), 0);
   }
 
   void VerifyCatCacheRefreshMetricsHelper(
@@ -2424,6 +2431,9 @@ DROP TABLE tempTable2;
 
   auto ts_index = static_cast<int>(RandomUniformInt(0UL, cluster_->num_tablet_servers() - 1));
   auto hostport = cluster_->ysql_hostport(ts_index);
+  // ysqlsh does not retry its connect, so it can still see "the database system is starting up".
+  // Connect once with retries first.
+  ASSERT_RESULT(ConnectToTsForDB(*cluster_->tablet_server(ts_index), "postgres"));
   YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
   auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
       sample_ddl_script, "sample_ddl" /* tmp_file_prefix */,
@@ -2440,11 +2450,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80746U);
-    ASSERT_EQ(fingerprint, 15353702351801463433UL);
+    ASSERT_EQ(result.size(), 81203U);
+    ASSERT_EQ(fingerprint, 12064643112462199543UL);
   } else {
-    ASSERT_EQ(result.size(), 80692U);
-    ASSERT_EQ(fingerprint, 4661495031371014786UL);
+    ASSERT_EQ(result.size(), 81149U);
+    ASSERT_EQ(fingerprint, 16593107344753565685UL);
   }
 }
 
@@ -3329,6 +3339,8 @@ INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerOnlyTest, ::testing::Values
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
+  // Keep the bootstrap's master reads out of the RPC-count windows below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
   // Create the first logical connection to warm up the tserver cache
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
@@ -3389,7 +3401,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRelCacheInitRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
-  RestartClusterWithInvalMessageEnabled({ "--ysql_use_relcache_file=false" });
+  // Let the first bootstrap finish, then keep the restarted master from re-running it. A wait
+  // cannot tell when a re-run ends, and its master reads would land in the windows below.
+  ASSERT_OK(WaitForListenNotifyBootstrap());
+  RestartClusterWithInvalMessageEnabled(
+      { "--ysql_use_relcache_file=false" }, { "--ysql_yb_enable_listen_notify=false" });
   // Create the first logical connection to warm up the tserver cache
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
@@ -4294,6 +4310,14 @@ COMMIT;
 
 class PgCatalogVersionMasterCacheTest : public PgCatalogVersionTest {
  protected:
+  // The tests restart the master right away. A bootstrap that has not finished by then runs its
+  // CREATE TABLE after the restart, and that DDL's status report refreshes the catalog version
+  // cache past the failure injection the tests rely on.
+  void SetUp() override {
+    PgCatalogVersionTest::SetUp();
+    ASSERT_OK(WaitForListenNotifyBootstrap());
+  }
+
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgCatalogVersionTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--enable_heartbeat_pg_catalog_versions_cache=true");

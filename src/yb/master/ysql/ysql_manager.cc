@@ -626,11 +626,14 @@ Status YsqlManager::CreateYbSystemDBIfNeeded() {
     return Status::OK();
   }
 
-  auto statement = Format("CREATE DATABASE $0", kYbSystemDbName);
+  std::vector<std::string> statements;
+  statements.emplace_back(Format("CREATE DATABASE $0", kYbSystemDbName));
+  statements.emplace_back(Format(
+      "COMMENT ON DATABASE $0 IS 'system database for YugabyteDB internal use'", kYbSystemDbName));
   auto failure_warn_prefix = Format("Failed to create database $0", kYbSystemDbName);
 
   return ExecuteStatementsAsync(
-      "yugabyte", {statement}, catalog_manager_, failure_warn_prefix,
+      "yugabyte", statements, catalog_manager_, failure_warn_prefix,
       &creating_listen_notify_objects_, &yb_system_db_created_);
 }
 
@@ -644,6 +647,10 @@ Status YsqlManager::CreateListenNotifyObjects() {
   }
 
   std::vector<std::string> statements;
+  // Prevent catalog version increments from system object creation so that
+  // yb_system's catalog version stays deterministic regardless of bg task timing.
+  statements.emplace_back("SET yb_enable_invalidation_messages = false");
+  statements.emplace_back("SET yb_make_next_ddl_statement_nonincrementing = true");
   statements.emplace_back(Format(
       R"(CREATE TABLE IF NOT EXISTS $0 (
            notif_uuid uuid NOT NULL,
@@ -656,6 +663,7 @@ Status YsqlManager::CreateListenNotifyObjects() {
            CONSTRAINT $0_pkey PRIMARY KEY (notif_uuid HASH)
          ) SPLIT INTO 1 TABLETS)",
       kPgYbNotificationsTableName));
+  statements.emplace_back("SET yb_make_next_ddl_statement_nonincrementing = true");
   statements.emplace_back(Format(
       R"(DO $$$$
         BEGIN

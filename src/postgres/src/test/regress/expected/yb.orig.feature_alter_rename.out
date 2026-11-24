@@ -108,6 +108,7 @@ ERROR:  database "postgres" already exists
                  |          |          |         |             |            |                 | postgres=CTc/postgres
  test_rename1    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            | 
  test_rename2    | yugabyte | UTF8     | C       | en_US.UTF-8 |            | libc            | 
+ yb_system       | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | 
  yugabyte        | postgres | UTF8     | C       | en_US.UTF-8 |            | libc            | 
-(7 rows)
+(8 rows)
 
