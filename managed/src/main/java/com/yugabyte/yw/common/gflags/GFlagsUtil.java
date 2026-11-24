@@ -2219,16 +2219,31 @@ public class GFlagsUtil {
       return "None (Empty gflags map in request)";
     }
     LinkedHashSet<String> found = new LinkedHashSet<>();
-    for (String name : sensitiveGFlagNames) {
-      if (RedactingService.SECRET_REPLACEMENT.equals(newFlags.get(name))) {
-        found.add(name);
-      }
-    }
-    String hbaCsv = newFlags.get("ysql_hba_conf_csv");
-    if (hbaCsv != null && hbaCsv.contains(RedactingService.SECRET_REPLACEMENT)) {
-      found.add("ysql_hba_conf_csv");
-    }
+    newFlags.forEach(
+        (name, value) -> {
+          if (value == null) {
+            return;
+          }
+          String canonicalName = canonicalGFlagName(name);
+          boolean redacted =
+              canonicalName.equals(YSQL_HBA_CONF_CSV)
+                  ? value.contains(RedactingService.SECRET_REPLACEMENT)
+                  : sensitiveGFlagNames.contains(canonicalName)
+                      && value.equals(RedactingService.SECRET_REPLACEMENT);
+          if (redacted) {
+            found.add(name);
+          }
+        });
     return found.isEmpty() ? String.join(", ", sensitiveGFlagNames) : String.join(", ", found);
+  }
+
+  /**
+   * gflags reads a dash in a flag name as an underscore, and YBA passes names to the DB as typed,
+   * so {@code ycql-ldap-bind-passwd} sets {@code ycql_ldap_bind_passwd}. Compare gflag names, such
+   * as against the sensitive gflags, by this spelling.
+   */
+  public static String canonicalGFlagName(String name) {
+    return name.replace('-', '_');
   }
 
   /**
@@ -2255,7 +2270,7 @@ public class GFlagsUtil {
         continue;
       }
       for (Map.Entry<String, String> gflag : gflags.getValue().entrySet()) {
-        if (redactedGFlags.contains(gflag.getKey())
+        if (redactedGFlags.contains(canonicalGFlagName(gflag.getKey()))
             && RedactingService.isGFlagRedacted(gflag.getValue())) {
           throw new PlatformServiceException(
               BAD_REQUEST,
@@ -2321,12 +2336,19 @@ public class GFlagsUtil {
       Set<String> sensitiveGFlagFields =
           RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
 
-      for (String sensitiveFlag : sensitiveGFlagFields) {
-        if (sensitiveFlag.equals(YSQL_HBA_CONF_CSV)) {
+      for (Map.Entry<String, String> newGFlag : newGFlags.entrySet()) {
+        String sensitiveFlag = newGFlag.getKey();
+        String canonicalName = canonicalGFlagName(sensitiveFlag);
+        if (canonicalName.equals(YSQL_HBA_CONF_CSV)) {
+          mergeRedactedYsqlHbaConf(
+              existingGFlags, sensitiveFlag, newGFlag.getValue(), mergedGFlags);
           continue;
         }
-        String newValue = newGFlags.get(sensitiveFlag);
-        String existingValue = existingGFlags.get(sensitiveFlag);
+        if (!sensitiveGFlagFields.contains(canonicalName)) {
+          continue;
+        }
+        String newValue = newGFlag.getValue();
+        String existingValue = storedGFlagValue(existingGFlags, sensitiveFlag);
 
         if (RedactingService.isGFlagRedacted(newValue)) {
           if (existingValue == null) {
@@ -2353,43 +2375,6 @@ public class GFlagsUtil {
           LOG.debug(
               "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
         }
-      }
-
-      String newYsqlHbaConf = newGFlags.get(YSQL_HBA_CONF_CSV);
-      String existingYsqlHbaConf = existingGFlags.get(YSQL_HBA_CONF_CSV);
-
-      if (RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
-        if (existingYsqlHbaConf == null) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "ysql_hba_conf_csv cannot be submitted with "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd: the universe stores no value for it in the same place"
-                  + " (server type, and AZ for an AZ override) to restore the password from."
-                  + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "The stored ysql_hba_conf_csv already contains "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd; the real password cannot be recovered."
-                  + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input. Gflags
-        // upgrades trim the values they receive, and the stored value may be untrimmed.
-        String existingRedacted =
-            RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
-        if (!existingRedacted.trim().equals(newYsqlHbaConf.trim())) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "ysql_hba_conf_csv contains "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in ldapbindpasswd but differs from the stored value in other fields."
-                  + " To apply HBA changes alongside a new password, submit the full"
-                  + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
-        }
-        mergedGFlags.put(YSQL_HBA_CONF_CSV, existingYsqlHbaConf);
       }
     } catch (PlatformServiceException e) {
       throw e;
@@ -2423,6 +2408,62 @@ public class GFlagsUtil {
     }
 
     return mergedGFlags;
+  }
+
+  /** Restores ldapbindpasswd in a ysql_hba_conf_csv that came back with it REDACTED. */
+  private static void mergeRedactedYsqlHbaConf(
+      Map<String, String> existingGFlags,
+      String hbaFlag,
+      String newYsqlHbaConf,
+      Map<String, String> mergedGFlags) {
+    if (!RedactingService.isGFlagRedacted(newYsqlHbaConf)) {
+      return;
+    }
+    String existingYsqlHbaConf = storedGFlagValue(existingGFlags, hbaFlag);
+    if (existingYsqlHbaConf == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "ysql_hba_conf_csv cannot be submitted with "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd: the universe stores no value for it in the same place"
+              + " (server type, and AZ for an AZ override) to restore the password from."
+              + " Submit the full ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    if (existingYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "The stored ysql_hba_conf_csv already contains "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd; the real password cannot be recovered."
+              + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input. Gflags
+    // upgrades trim the values they receive, and the stored value may be untrimmed.
+    String existingRedacted =
+        RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
+    if (!existingRedacted.trim().equals(newYsqlHbaConf.trim())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "ysql_hba_conf_csv contains "
+              + RedactingService.SECRET_REPLACEMENT
+              + " in ldapbindpasswd but differs from the stored value in other fields."
+              + " To apply HBA changes alongside a new password, submit the full"
+              + " ysql_hba_conf_csv with the actual ldapbindpasswd.");
+    }
+    mergedGFlags.put(hbaFlag, existingYsqlHbaConf);
+  }
+
+  /** The stored value of a gflag, under the request's spelling of its name or another spelling. */
+  private static String storedGFlagValue(Map<String, String> storedGFlags, String name) {
+    if (storedGFlags.containsKey(name)) {
+      return storedGFlags.get(name);
+    }
+    String canonicalName = canonicalGFlagName(name);
+    return storedGFlags.entrySet().stream()
+        .filter(stored -> canonicalGFlagName(stored.getKey()).equals(canonicalName))
+        .findFirst()
+        .map(Map.Entry::getValue)
+        .orElse(null);
   }
 
   // Merges sensitive SpecificGFlags, preserving actual values when REDACTED is received.

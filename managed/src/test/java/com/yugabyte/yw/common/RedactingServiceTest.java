@@ -12,12 +12,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.commissioner.tasks.LdapUnivSync;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -866,7 +869,12 @@ public class RedactingServiceTest {
 
   @Test
   public void testFilterSecretFieldsForLogsReplacesFallbackNamingLdapGFlag() {
-    for (String name : List.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv")) {
+    for (String name :
+        List.of(
+            "ycql_ldap_bind_passwd",
+            "ysql_hba_conf_csv",
+            "ycql-ldap-bind-passwd",
+            "ysql-hba-conf-csv")) {
       ObjectNode fallback =
           Json.newObject()
               .put("_redactionParseError", true)
@@ -887,6 +895,168 @@ public class RedactingServiceTest {
     assertEquals(
         otherFallback,
         RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
+  }
+
+  /** gflags reads a dash in a flag name as an underscore, so these name the same secrets. */
+  @Test
+  public void testSensitiveGFlagNamesWithDashes() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pw ldaptls=0";
+    String redactedHba =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0";
+
+    ObjectNode gflags =
+        Json.newObject()
+            .put("ycql-ldap-bind-passwd", "dummy-ycql-pw")
+            .put("ycql_ldap-bind_passwd", "dummy-mixed-pw")
+            .put("ysql-hba-conf-csv", hba)
+            .put("webserver-port", "9000");
+    ObjectNode details = Json.newObject();
+    ArrayNode changes = details.putObject("gflags").putArray("tserver");
+    changes.addObject().put("name", "ycql-ldap-bind-passwd").put("new", "dummy-ycql-pw");
+    changes.addObject().put("name", "ysql-hba-conf-csv").put("new", hba);
+    changes.addObject().put("name", "webserver-port").put("new", "9000");
+    for (RedactionTarget target : List.of(RedactionTarget.APIS, RedactionTarget.LOGS)) {
+      JsonNode redacted = RedactingService.filterSecretFields(gflags, target, null, null, true);
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql-ldap-bind-passwd").asText());
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql_ldap-bind_passwd").asText());
+      assertEquals(target.name(), redactedHba, redacted.get("ysql-hba-conf-csv").asText());
+      assertEquals(target.name(), "9000", redacted.get("webserver-port").asText());
+
+      JsonNode redactedChanges =
+          RedactingService.filterSecretFields(details, target, null, null, true)
+              .get("gflags")
+              .get("tserver");
+      assertEquals(target.name(), SECRET_REPLACEMENT, redactedChanges.get(0).get("new").asText());
+      assertEquals(target.name(), redactedHba, redactedChanges.get(1).get("new").asText());
+      assertEquals(target.name(), "9000", redactedChanges.get(2).get("new").asText());
+    }
+
+    assertEquals(
+        Map.of(
+            "ycql-ldap-bind-passwd", SECRET_REPLACEMENT,
+            "ysql-hba-conf-csv", redactedHba,
+            "webserver-port", "9000"),
+        RedactingService.redactGFlags(
+            Map.of(
+                "ycql-ldap-bind-passwd", "dummy-ycql-pw",
+                "ysql-hba-conf-csv", hba,
+                "webserver-port", "9000"),
+            null,
+            null));
+    assertEquals(
+        List.of(
+            "yb-tserver",
+            "--ycql_ldap-bind_passwd=" + SECRET_REPLACEMENT,
+            "--ysql-hba-conf-csv=" + redactedHba),
+        RedactingService.redactGFlagCommand(
+            List.of(
+                "yb-tserver",
+                "--ycql_ldap-bind_passwd=dummy-ycql-pw",
+                "--ysql-hba-conf-csv=" + hba),
+            null,
+            null));
+    String text = "--ycql-ldap-bind-passwd=dummy-ycql-pw\n--webserver-port=9000";
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
+  /**
+   * A universe state transition delta holds a changed gflag's old and new values in an object. API
+   * redaction redacts ldapbindpasswd in each, however ysql_hba_conf_csv is spelled.
+   */
+  @Test
+  public void testHbaDeltaValuesForApisWithAnySpelling() {
+    String oldHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-old-pw ldaptls=0";
+    String newHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-new-pw ldaptls=1";
+    for (String name : List.of("ysql_hba_conf_csv", "ysql-hba-conf-csv", "ysql_hba-conf_csv")) {
+      ObjectNode delta = Json.newObject();
+      delta
+          .putObject("tserverGFlags")
+          .putObject(name)
+          .put("$oldValue", oldHba)
+          .put("$newValue", newHba)
+          .put("$deltaType", "REPLACE");
+      JsonNode values =
+          RedactingService.filterSecretFields(delta, RedactionTarget.APIS, null, null, true)
+              .get("tserverGFlags")
+              .get(name);
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+          values.get("$oldValue").asText());
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=1",
+          values.get("$newValue").asText());
+      assertEquals(name, "REPLACE", values.get("$deltaType").asText());
+    }
+  }
+
+  /** Text matches a gflag name spelled with any mix of dashes and underscores. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInText() {
+    String text =
+        "--ycql_ldap-bind_passwd=dummy-mixed-pw\n"
+            + "--ycql-ldap_bind-passwd=\"dummy-quoted-pw\"\n"
+            + "{\"ycql_ldap-bind_passwd\":\"dummy-json-pw\"}\n"
+            + "ycql-ldap-bind_passwd: dummy-yaml-pw\n"
+            + "--webserver-port=9000";
+    String want =
+        "--ycql_ldap-bind_passwd="
+            + SECRET_REPLACEMENT
+            + "\n--ycql-ldap_bind-passwd=\""
+            + SECRET_REPLACEMENT
+            + "\"\n{\"ycql_ldap-bind_passwd\":\""
+            + SECRET_REPLACEMENT
+            + "\"}\nycql-ldap-bind_passwd: "
+            + SECRET_REPLACEMENT
+            + "\n--webserver-port=9000";
+    assertEquals(want, RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(want, RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
+  /** JSON held in a text value matches a gflag name in any spelling, as the tree around it does. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInJsonText() {
+    ObjectNode payload =
+        Json.newObject()
+            .put(
+                "details",
+                "{\"ycql_ldap-bind_passwd\":\"dummy-mixed-pw\",\"webserver_port\":\"9000\"}");
+    JsonNode embedded =
+        Json.parse(
+            RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, true)
+                .get("details")
+                .asText());
+    assertEquals(SECRET_REPLACEMENT, embedded.get("ycql_ldap-bind_passwd").asText());
+    assertEquals("9000", embedded.get("webserver_port").asText());
+  }
+
+  /** Log redaction without a DB version knows a release's sensitive gflags by JSON path. */
+  @Test
+  public void testReleaseSensitiveGFlagPathsMatchDashedNames() {
+    Set<JsonPath> before = Set.copyOf(RedactingService.SECRET_JSON_PATHS_LOGS);
+    try {
+      RedactingService.addSensitiveGFlagPathsForLogs(Set.of("$..release_secret_flag"));
+      ObjectNode gflags =
+          Json.newObject()
+              .put("release_secret_flag", "dummy-pw")
+              .put("release-secret-flag", "dummy-pw")
+              .put("webserver-port", "9000");
+      JsonNode redacted =
+          RedactingService.filterSecretFields(gflags, RedactionTarget.LOGS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release_secret_flag").asText());
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release-secret-flag").asText());
+      assertEquals("9000", redacted.get("webserver-port").asText());
+    } finally {
+      RedactingService.SECRET_JSON_PATHS_LOGS.retainAll(before);
+    }
   }
 
   @Test

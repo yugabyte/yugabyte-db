@@ -54,11 +54,21 @@ func TestRedactOutput(t *testing.T) {
 	}
 }
 
+func TestRedactOutputDashedFlagName(t *testing.T) {
+	input := "--ycql-ldap-bind-passwd=dummy-dashed-secret\n--ycql_ldap-bind_passwd=dummy-mixed\n"
+	expected := "--ycql-ldap-bind-passwd=REDACTED\n--ycql_ldap-bind_passwd=REDACTED\n"
+	if output := RedactOutput(input); output != expected {
+		t.Fatalf("Expected %q, got %q", expected, output)
+	}
+}
+
 func TestRedactOutputMatchesRegexp(t *testing.T) {
-	reference := regexp.MustCompile(`((?:ycql_ldap_bind_passwd|ldapbindpasswd)\s*=)[^\r\n]*`)
+	reference := regexp.MustCompile(
+		`((?:ycql[-_]ldap[-_]bind[-_]passwd|ldapbindpasswd)\s*=)[^\r\n]*`)
 	tokens := []string{
-		"ldapbindpasswd", "ycql_ldap_bind_passwd", "passwd", "ldapbind", "ycql_ldap_bind_",
-		"LDAPBINDPASSWD", "=", " ", "\t", "\f", "\n", "\r", "\r\n", `"`, ",", "x", "--",
+		"ldapbindpasswd", "ycql_ldap_bind_passwd", "ycql-ldap-bind-passwd", "passwd", "ldapbind",
+		"ycql_ldap_bind_", "ycql-ldap_bind-", "LDAPBINDPASSWD", "=", " ", "\t", "\f", "\n", "\r",
+		"\r\n", `"`, ",", "x", "--", "-", "_",
 	}
 	rnd := rand.New(rand.NewSource(1))
 	for i := 0; i < 20000; i++ {
