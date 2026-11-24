@@ -2501,7 +2501,7 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
         if (!future.valid()) {
           future = ReleaseLockAtAsync(
               &added_ts_proxy, ts->uuid(), kTxn1, kLeaseEpoch, /* clock */ nullptr,
-              /* apply_after */ std::nullopt, MonoDelta::FromSeconds(60));
+              /* apply_after */ std::nullopt, 60s * kTimeMultiplier);
         }
         if (log_waiter.IsEventOccurred()) {
           return true;
@@ -2509,18 +2509,18 @@ TEST_F(ExternalObjectLockTestOneTS, ReleaseBlocksUntilBootstrap) {
         if (future.wait_for(100ms) != std::future_status::ready) {
           return false;
         }
-        // The RPC server comes up before the lock manager is created; resend if the release
-        // arrived in between.
+        // The tserver may still be starting up (e.g. the RPC server comes up before the lock
+        // manager is created); resend on such errors.
         auto result = future.get();
         SCHECK(!result.ok(), IllegalState, "Release completed before lock manager bootstrap");
-        if (!result.status().IsIllegalState() ||
-            result.status().message().ToBuffer().find("TSLocalLockManager not found") ==
-                std::string::npos) {
-          return result.status();
+        const auto& s = result.status();
+        if (s.IsNetworkError() || s.IsServiceUnavailable() || s.IsTimedOut() ||
+            (s.IsIllegalState() && s.message().Contains("TSLocalLockManager not found"))) {
+          return false;
         }
-        return false;
+        return s;
       },
-      MonoDelta::FromSeconds(30), "Wait for release to block until bootstrap"));
+      30s * kTimeMultiplier, "Wait for release to block until bootstrap"));
   ASSERT_EQ(future.wait_for(0s), std::future_status::timeout)
       << "Expected release request to block at tserver that has not acquired a lease yet";
 
