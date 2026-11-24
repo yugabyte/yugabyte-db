@@ -28,6 +28,9 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pgwrapper/pg_mem_report.h"
 
 using namespace std::literals;
 
@@ -41,6 +44,7 @@ DECLARE_int32(index_backfill_rpc_max_retries);
 DECLARE_int32(retrying_ts_rpc_max_delay_ms);
 DECLARE_int32(rpc_reactor_task_timeout_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_bool(TEST_ysql_pg_mem_report);
 
 ///////////////////////////////////////////////////
 // YBMiniClusterTestBase
@@ -48,9 +52,33 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 
 namespace yb {
 
+namespace {
+
+void CheckPgMemReport() {
+  auto& collector = pgwrapper::PgMemReportCollector::Get();
+  WARN_NOT_OK(collector.WaitForSourcesClosed(10s * kTimeMultiplier),
+              "Not all postgres output was collected");
+  auto report = collector.Report();
+  collector.Stop();
+  if (report.enforce && !report.violations.empty()) {
+    ADD_FAILURE() << report.ToString();
+  } else if (!report.empty()) {
+    LOG(WARNING) << report.ToString();
+  }
+}
+
+}  // namespace
+
+// Set here rather than in SetUp() so that a test can turn it off before calling SetUp().
+template <class T>
+YBMiniClusterTestBase<T>::YBMiniClusterTestBase() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_pg_mem_report) = true;
+}
+
 template <class T>
 void YBMiniClusterTestBase<T>::SetUp() {
   YBTest::SetUp();
+  pgwrapper::PgMemReportCollector::Get().Start();
   HybridTime::TEST_SetPrettyToString(true);
 
   // Save default value of use_priority_thread_pool_for_flushes flag for tests that aim to test
@@ -100,8 +128,9 @@ template <class T>
 void YBMiniClusterTestBase<T>::DoTearDown() {
   if (cluster_) {
     cluster_->Shutdown();
-    cluster_.reset();
   }
+  CheckPgMemReport();
+  cluster_.reset();
   YBTest::TearDown();
 }
 

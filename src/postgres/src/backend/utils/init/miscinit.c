@@ -58,6 +58,7 @@
 
 /* YB includes */
 #include "yb_internal_conn.h"
+#include "yb_mem_report.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <pg_yb_utils.h>
 
@@ -170,6 +171,8 @@ InitPostmasterChild(void)
 
 	/* Request a signal if the postmaster dies, if possible. */
 	PostmasterDeathSignalInit();
+
+	YbMemReportInitChild();
 }
 
 /*

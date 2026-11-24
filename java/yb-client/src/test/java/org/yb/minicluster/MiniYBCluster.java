@@ -102,6 +102,12 @@ public class MiniYBCluster implements AutoCloseable {
   // List of threads that print log messages.
   private final List<LogPrinter> logPrinters = new ArrayList<>();
 
+  // Collects the YB_PG_MEM_* lines of the postgres processes of all tservers.
+  private final PgMemReportCollector pgMemReportCollector = new PgMemReportCollector();
+
+  // How long shutdown waits for postgres processes to finish logging.
+  private static final long PG_MEM_REPORT_WAIT_MS = BuildTypeUtil.adjustTimeout(10 * 1000);
+
   // Map of host/port pairs to master servers.
   private final Map<HostAndPort, MiniYBDaemon> masterProcesses = new ConcurrentHashMap<>();
 
@@ -709,6 +715,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false",
         "--TEST_process_info_dir=" + getProcessInfoDir(),
+        "--TEST_ysql_pg_mem_report=true",
         "--never_fsync=true");
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
@@ -734,6 +741,7 @@ public class MiniYBCluster implements AutoCloseable {
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
         tserverBindAddress, rpcPort, webPort, pgsqlWebPort,
         cqlWebPort, redisWebPort, dataDirPath, tserverEnvVars);
+    pgMemReportCollector.attach(daemon.getLogPrinter());
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
@@ -1013,6 +1021,9 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Restarting process: {}", Joiner.on(" ").join(command));
     daemon = daemon.restart();
     logPrinters.add(daemon.getLogPrinter());
+    if (daemon.getType() == MiniYBDaemonType.TSERVER) {
+      pgMemReportCollector.attach(daemon.getLogPrinter());
+    }
 
     Process proc = daemon.getProcess();
     Thread.sleep(300);
@@ -1255,6 +1266,10 @@ public class MiniYBCluster implements AutoCloseable {
     }
   }
 
+  public PgMemReportCollector getPgMemReportCollector() {
+    return pgMemReportCollector;
+  }
+
   private String getProcessInfoDir() {
     Path path = Paths.get(TestUtils.getBaseTmpDir()).resolve("process_info");
     path.toFile().mkdirs();
@@ -1292,6 +1307,7 @@ public class MiniYBCluster implements AutoCloseable {
     boolean mastersGraceful = shutdownDaemons(masterProcesses.values(),
                                               gracefulShutdownDeadlineNs,
                                               processWaitTimeNs);
+    String pgMemFailure = pgMemReportCollector.check(PG_MEM_REPORT_WAIT_MS);
     for (LogPrinter logPrinter : logPrinters) {
       logPrinter.stop();
     }
@@ -1309,6 +1325,9 @@ public class MiniYBCluster implements AutoCloseable {
     }
     if (!crashes.isEmpty()) {
       fail(String.join("\n", crashes));
+    }
+    if (pgMemFailure != null) {
+      fail(pgMemFailure);
     }
     if (!(workersGraceful && mastersGraceful)) {
       final String errorMessage =

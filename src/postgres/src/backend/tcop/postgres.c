@@ -106,6 +106,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_dist_trace.h"
+#include "yb_mem_report.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -7237,6 +7238,7 @@ PostgresMain(const char *dbname, const char *username)
 			 */
 			if (IsYugaByteEnabled())
 				YbReleaseTCMallocMemoryAfterStatement();
+			YbMemReportAfterStatement();
 
 			yb_refresh_stats_before_exec = true;
 

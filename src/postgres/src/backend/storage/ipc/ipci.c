@@ -52,6 +52,7 @@
 /* YB includes */
 #include "common/pg_yb_common.h"
 #include "yb_ash.h"
+#include "yb_mem_report.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
@@ -163,6 +164,8 @@ CalculateShmemSize(int *num_semaphores)
 
 	/* include additional shmem for yb_terminated_queries */
 	size = add_size(size, YbTerminatedQueriesShmemSize());
+
+	size = add_size(size, YbMemReportShmemSize());
 
 	/* include additional requested shmem from preload libraries */
 	size = add_size(size, total_addin_request);
@@ -324,6 +327,8 @@ CreateSharedMemoryAndSemaphores(void)
 
 	/* Setting up yb_terminated_queries shared memory space. */
 	YbTerminatedQueriesShmemInit();
+
+	YbMemReportShmemInit();
 
 #ifdef EXEC_BACKEND
 
