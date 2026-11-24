@@ -45,7 +45,7 @@ If you have high multiplexity (many more client connections than server connecti
 
 {{< note title="Note" >}}
 
-A consistently high `avg_wait_time_ns` metric for the `control_connection` pool indicates that the connection acquisition (authentication) latency induced by the workload might be high. Consider setting `ysql_conn_mgr_use_auth_backend=false`. Contact {{% support-general %}} about the suitability of this setting for your workload.
+A consistently high `avg_wait_time_ns` metric for the `control_connection` pool indicates that the connection acquisition (authentication) latency induced by the workload might be high. Verify that `ysql_conn_mgr_use_auth_backend` is set to its default of `false` (authentication passthrough), which reduces authentication latency. Contact {{% support-general %}} before attempting to change this setting.
 
 {{</note>}}
 

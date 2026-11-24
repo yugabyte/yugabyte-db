@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -365,7 +366,11 @@ class PollerTest {
     UUID idA = UUID.fromString("77777777-7777-7777-7777-777777777777");
     UUID idB = UUID.fromString("88888888-8888-8888-8888-888888888888");
     QueuedHttpRequestData a =
-        new QueuedHttpRequestData().id(idA).method("GET").uri("http://localhost/a");
+        new QueuedHttpRequestData()
+            .id(idA)
+            .method("GET")
+            .uri("http://localhost/a")
+            .timeoutOn(OffsetDateTime.now().plusSeconds(1));
     QueuedHttpRequestData b =
         new QueuedHttpRequestData().id(idB).method("GET").uri("http://localhost/b");
     stubPending(List.of(a, b));
@@ -380,15 +385,61 @@ class PollerTest {
               return httpResponse;
             });
 
-    // Posting the first response fails (e.g. 413); it must not abort the batch or crash run().
+    // Each post of the first response fails (e.g. 413); it must not abort the batch or crash run().
     ApiException postFail = new ApiException("Payload Too Large", 413, Map.of(), "");
     doThrow(postFail).when(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
 
     poller.run();
 
     // Both posts are attempted; the second still succeeds despite the first failing.
-    verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(idA), any());
+    verify(requestApi, timeout(5000).atLeastOnce()).postQueuedHttpRequestResponse(eq(idA), any());
     verify(requestApi, timeout(5000)).postQueuedHttpRequestResponse(eq(idB), any());
+
+    // The retries of the first post stop at the request's deadline.
+    executor.shutdown();
+    assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+  }
+
+  @Test
+  void run_postFails_retriesPostWithoutCallingYbaAgain() throws Exception {
+    UUID requestId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    CountDownLatch firstPostFailed = new CountDownLatch(1);
+    CountDownLatch offeredAgain = new CountDownLatch(1);
+    QueuedHttpRequestData pendingItem =
+        new QueuedHttpRequestData()
+            .id(requestId)
+            .method("POST")
+            .uri("http://localhost/write")
+            .timeoutOn(OffsetDateTime.now().plusSeconds(30));
+    stubPending(List.of(pendingItem));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(invocation -> okResponse(URI.create("http://localhost/write")));
+    doAnswer(
+            invocation -> {
+              firstPostFailed.countDown();
+              throw new ApiException(new ConnectException("refused"));
+            })
+        .doAnswer(
+            invocation -> {
+              assertTrue(offeredAgain.await(5, TimeUnit.SECONDS));
+              return null;
+            })
+        .when(requestApi)
+        .postQueuedHttpRequestResponse(eq(requestId), any());
+
+    poller.run();
+    assertTrue(firstPostFailed.await(5, TimeUnit.SECONDS));
+    // apiserver has no answer yet, so it gives the request out again.
+    poller.run();
+    offeredAgain.countDown();
+
+    ArgumentCaptor<PostQueuedHttpRequestResponseRequestSpec> specCaptor =
+        ArgumentCaptor.forClass(PostQueuedHttpRequestResponseRequestSpec.class);
+    verify(requestApi, timeout(5000).times(2))
+        .postQueuedHttpRequestResponse(eq(requestId), specCaptor.capture());
+    assertEquals(200, specCaptor.getValue().getResponseStatusCode());
+    assertEquals("ok", specCaptor.getValue().getResponseBody());
+    verify(httpClient).send(any(HttpRequest.class), any());
   }
 
   @Test

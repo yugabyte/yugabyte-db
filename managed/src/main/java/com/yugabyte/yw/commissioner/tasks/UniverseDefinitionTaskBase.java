@@ -76,6 +76,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
@@ -1472,7 +1473,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void fillCreateParamsForNode(
-      AnsibleCreateServer.Params params, UserIntent userIntent, NodeDetails node) {
+      UUID providerUUID,
+      AnsibleCreateServer.Params params,
+      UserIntent userIntent,
+      NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
     params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
@@ -1493,12 +1497,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.assignPublicIP = cloudInfo.assignPublicIP;
     params.assignStaticPublicIP = userIntent.assignStaticPublicIP;
     params.setMachineImage(node.machineImage);
-    params.imageBundleUUID =
-        userIntent.getImageBundleUUIDForProvider(Util.getProviderByAz(node.azUuid).getUuid());
+    params.imageBundleUUID = userIntent.getImageBundleUUIDForProvider(providerUUID);
     params.sshUserOverride = node.sshUserOverride;
     params.sshPortOverride = node.sshPortOverride;
     params.setCmkArn(taskParams().getCmkArn());
-    params.ipArnString = userIntent.awsArnString;
+    params.ipArnString = userIntent.getAwsInstanceProfileForProvider(providerUUID);
     params.useSpotInstance = userIntent.useSpotInstance;
     params.spotPrice = userIntent.spotPrice;
   }
@@ -1548,7 +1551,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UserIntent userIntent = cluster.userIntent;
       UUID providerUUID = cluster.getProviderUUIDForNode(node);
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
-      fillCreateParamsForNode(params, userIntent, node);
+      fillCreateParamsForNode(providerUUID, params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
       params.tags = userIntent.getInstanceTagsForProvider(providerUUID);
@@ -1926,11 +1929,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               String newAZOverridesStr = newAZsOverrides.get(az);
               Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
               if (!curAZOverrides.equals(newAZOverrides)) {
+                // The overrides can hold secrets, and this goes to the client and the log.
                 throw new IllegalArgumentException(
                     String.format(
                         "Kubernetes overrides can't be modified during the edit operation. "
                             + "For AZ %s, previous overrides: %s, new overrides: %s",
-                        az, curAZOverridesStr, newAZOverridesStr));
+                        az,
+                        KubernetesOverridesRedactor.redact(curAZOverridesStr),
+                        KubernetesOverridesRedactor.redact(newAZOverridesStr)));
               }
             }
           }
@@ -4757,6 +4763,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  /**
+   * Retries the delete of load balancers whose cluster is gone, which a forced read replica delete
+   * leaves when its cloud delete fails. Errors are ignored, so the caller can't fail on a load
+   * balancer it doesn't use, and the entry stays for the next try.
+   */
+  protected void createDeleteOrphanedManagedLoadBalancerTasks() {
+    Universe universe = getUniverse();
+    createDeleteManagedLoadBalancerTasks(
+        lb -> universe.getCluster(lb.getClusterUuid()) == null, true /* ignoreErrors */);
   }
 
   /**

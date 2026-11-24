@@ -7,13 +7,13 @@ import './QueriesViewer.scss';
 
 const SLOW_QUERIES_TAB = 'slow-queries';
 const LIVE_QUERIES_TAB = 'live-queries';
-const RECOMMENDATIONS_TAB = 'perf-advisor';
+const OPTIMIZE_TAB = 'perf-advisor';
 
 const QueriesViewerComponent = ({ isLegacyPAEnabled, location, router }) => {
   const tabs = [
     { key: SLOW_QUERIES_TAB, title: 'Slow Queries' },
     { key: LIVE_QUERIES_TAB, title: 'Live Queries' },
-    ...(isLegacyPAEnabled ? [{ key: RECOMMENDATIONS_TAB, title: 'Recommendations' }] : [])
+    ...(isLegacyPAEnabled ? [{ key: OPTIMIZE_TAB, title: 'Optimize' }] : [])
   ];
   const queryTab = location?.query?.tab;
   const selectedTab = tabs.some((tab) => tab.key === queryTab) ? queryTab : SLOW_QUERIES_TAB;
@@ -37,7 +37,7 @@ const QueriesViewerComponent = ({ isLegacyPAEnabled, location, router }) => {
       <div className="queries-viewer__content">
         {selectedTab === SLOW_QUERIES_TAB && <SlowQueries />}
         {selectedTab === LIVE_QUERIES_TAB && <LiveQueries />}
-        {selectedTab === RECOMMENDATIONS_TAB && <PerfAdvisor />}
+        {selectedTab === OPTIMIZE_TAB && <PerfAdvisor />}
       </div>
     </div>
   );

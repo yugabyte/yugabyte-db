@@ -337,16 +337,19 @@ class TypedPBRpcContextHolder {
     return down_cast<Params&>(context_.params()).response();
   }
 
-  RpcContext* operator->() {
-    return &context_;
+  template <typename Self>
+  auto* operator->(this Self& self) {
+    return &self.context_;
   }
 
-  RpcContext& operator*() {
-    return context_;
+  template <typename Self>
+  auto& operator*(this Self& self) {
+    return self.context_;
   }
 
-  RpcContext& context() {
-    return context_;
+  template <typename Self>
+  auto& context(this Self& self) {
+    return self.context_;
   }
 
  private:

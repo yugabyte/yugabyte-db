@@ -108,6 +108,7 @@
 #include "yb/tserver/tablet_flusher.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tier_migration_reconciler.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_fwd.h"
@@ -374,6 +375,10 @@ TAG_FLAG(ysql_debug_log_write_requests, unsafe);
 
 DEFINE_test_flag(bool, cdc_fail_before_setting_barrier, false,
   "Fail CreateTablet before setting CDC retention barriers");
+
+DEFINE_test_flag(int32, mark_non_concurrent_index_done_delay_ms, 0,
+    "Delay handling a MarkNonConcurrentIndexDone RPC by this many milliseconds before submitting "
+    "it.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -751,16 +756,39 @@ std::string TabletServiceAdminImpl::LogPrefix() const {
 void TabletServiceAdminImpl::BackfillDone(
     const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
     rpc::RpcContext context) {
-  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "BackfillDone", req, resp, &context)) {
+  SubmitChangeMetadataOnLeader("BackfillDone", req, resp, &context);
+}
+
+void TabletServiceAdminImpl::MarkNonConcurrentIndexDone(
+    const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+    rpc::RpcContext context) {
+  // Reject anything else here, where failing is safe: once replicated, a change metadata operation
+  // that fails to apply is fatal.
+  if (!req->has_mark_non_concurrent_index_done()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(InvalidArgument, "mark_non_concurrent_index_done is not set"),
+        &context);
     return;
   }
-  DVLOG(3) << "Received BackfillDone RPC: " << req->DebugString();
+  if (FLAGS_TEST_mark_non_concurrent_index_done_delay_ms > 0) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_mark_non_concurrent_index_done_delay_ms));
+  }
+  SubmitChangeMetadataOnLeader("MarkNonConcurrentIndexDone", req, resp, &context);
+}
+
+void TabletServiceAdminImpl::SubmitChangeMetadataOnLeader(
+    const char* method_name, const tablet::ChangeMetadataRequestPB* req,
+    ChangeMetadataResponsePB* resp, rpc::RpcContext* context) {
+  if (!CheckUuidMatchOrRespond(server_->tablet_manager(), method_name, req, resp, context)) {
+    return;
+  }
+  DVLOG(3) << "Received " << method_name << " RPC: " << req->DebugString();
 
   server::UpdateClock(*req, server_->Clock());
 
   // For now, we shall only allow this RPC on the leader.
   auto tablet =
-      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+      LookupLeaderTabletOrRespond(server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
   if (!tablet) {
     return;
   }
@@ -770,9 +798,9 @@ void TabletServiceAdminImpl::BackfillDone(
   operation->AllocateRequest()->CopyFrom(*req);
 
   operation->set_completion_callback(
-      MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
+      MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock()));
 
-  // Submit the alter schema op. The RPC will be responded to asynchronously.
+  // Submit the change metadata op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
@@ -996,7 +1024,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   for (const auto& idx : req->indexes()) {
     index_ids.push_back(idx.table_id());
     if (is_pg_table) {
-      indexes_to_backfill.emplace_back(idx);
+      indexes_to_backfill.emplace_back(idx, HybridTime::kInvalid);
       continue;
     }
     auto result = index_map->FindIndex(idx.table_id());
@@ -1933,7 +1961,9 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->namespace_id(),
       req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
-      req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
+      req->has_index_info()
+          ? std::make_optional<qlexpr::IndexInfo>(req->index_info(), HybridTime::kInvalid)
+          : std::nullopt,
       0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
       tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
 
@@ -2229,35 +2259,6 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
 }
 
 namespace {
-
-TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus::State state) {
-  switch (state) {
-    case tablet::TierMigrationStatus::State::kNone:
-      return TierMigrationStatusPB::NONE;
-    case tablet::TierMigrationStatus::State::kInProgress:
-      return TierMigrationStatusPB::IN_PROGRESS;
-    case tablet::TierMigrationStatus::State::kDone:
-      return TierMigrationStatusPB::DONE;
-    case tablet::TierMigrationStatus::State::kFailed:
-      return TierMigrationStatusPB::FAILED;
-  }
-  FATAL_INVALID_ENUM_VALUE(tablet::TierMigrationStatus::State, state);
-}
-
-void FillTierMigrationStatusPB(
-    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
-  pb->set_state(ToTierMigrationStatePB(status.state));
-  pb->set_migration_pass_in_flight(status.migration_pass_in_flight);
-  pb->set_files_total(status.files_total);
-  pb->set_files_moved(status.files_moved);
-  pb->set_files_failed(status.files_failed);
-  pb->set_files_deferred(status.files_deferred);
-  pb->set_obsoleted(status.obsoleted);
-  pb->set_consecutive_failed_passes(status.consecutive_failed_passes);
-  if (!status.last_error.ok()) {
-    pb->set_last_error(status.last_error.ToString());
-  }
-}
 
 // Tiered storage is a preview feature. Its admin RPCs are refused, not silently ignored, so a
 // caller never believes a migration was started or reads tier info that nothing maintains.

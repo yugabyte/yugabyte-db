@@ -110,6 +110,13 @@ DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
                         true,
                         "If 'true', before image is populated for the intra-transactional DMLs.");
 
+DEFINE_RUNTIME_bool(cdc_process_change_metadata_op_below_request_safe_time, true,
+                    "If 'true', GetChanges processes a CHANGE_METADATA_OP at or below the request "
+                    "safe time, but above the consistent snapshot time, instead of skipping it as "
+                    "already streamed. Such an op can still be uncommitted when an earlier "
+                    "response's safe time passes it, and skipping it leaves a stale cached "
+                    "schema.");
+
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
                     "subtransactions (rolled-back savepoints). This prevents CDC consumers "
@@ -123,7 +130,7 @@ DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -672,7 +679,7 @@ Result<size_t> DoPopulatePackedRows(
     auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
         col.marked_for_deletion()) {
       continue;
     }
@@ -963,7 +970,7 @@ Result<std::pair<SchemaVersion, Schema>> GetSchemaAndVersion(
     auto it = cached_schema_details->find(table_id);
     if (it != cached_schema_details->end() &&
         (resolve_schema_packing_from_sys_catalog ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           it->second.schema_version != pr_schema_version))) {
       (*cached_schema_details).erase(it);
     }
@@ -1326,7 +1333,7 @@ Status PopulateCDCSDKIntentRecord(
 
         if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId) {
           auto column = schema.column_by_id(column_id_opt->GetColumnId());
-          if (!column.ok() && FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+          if (!column.ok() && FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
               IsColumnIdNotFound(column.status())) {
             std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
                 tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),
@@ -1924,7 +1931,7 @@ void FillBeginRecord(
   }
   // The walsender's catalog reads within the transaction need it to skip the intents of
   // subtransactions rolled back to a savepoint.
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
       request_source == CDCSDKRequestSource::WALSENDER && !aborted.IsEmpty()) {
     aborted.ToPB(row_message->mutable_aborted_subtxns()->mutable_set());
   }
@@ -3103,15 +3110,22 @@ Status GetChangesForCDCSDK(
         // In case of a connector failure we may get a wal_segment_index that is obsolete.
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
-        // safe_hybrid_time_req.
+        // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time
+        // (all of them if the stream has no consistent snapshot time): they are not MVCC-tracked,
+        // so a previous response's safe time can pass one that was not yet committed. Skipping it
+        // would leave a stale schema in cached_schema_details. Processing one again only resends
+        // its DDL record.
         uint64_t commit_time_threshold =
             GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
+        const auto commit_time = GetTransactionCommitTime(msg);
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
-        VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
+        VLOG(3) << "Txn commit time       = " << commit_time;
 
-        if (FLAGS_cdc_enable_consistent_records &&
-            GetTransactionCommitTime(msg) <= commit_time_threshold &&
-            msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
+        if (FLAGS_cdc_enable_consistent_records && commit_time <= commit_time_threshold &&
+            msg->op_type() != yb::consensus::OperationType::SPLIT_OP &&
+            (msg->op_type() != yb::consensus::OperationType::CHANGE_METADATA_OP ||
+             !FLAGS_cdc_process_change_metadata_op_below_request_safe_time ||
+             (consistent_snapshot_time && commit_time <= *consistent_snapshot_time))) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
                  " Will ignore this message. consistent_stream_safe_time: "

@@ -815,7 +815,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newMasterPodAddrs,
             newPlacement,
             curPlacement,
-            false /* enableYbc */,
+            universe.isYbcEnabled(),
             // Use previous gflags checksum only if can use and no pod restart is required. A retry
             // always keeps it, even with a master resource change: its list can differ from the
             // earlier attempt's, and the masters that attempt added are above the partition, so a
@@ -862,7 +862,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // MASTERS_SETTLED is recorded once the master full move has finished. Its helm upgrades render
     // the pre-edit tserver counts, so rerunning it would scale back tservers added since.
     if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) && stage != MasterMoveStage.MASTERS_SETTLED) {
-      // Ybc is not present on master-only nodes currently
       createFullMoveTasks(
           universe,
           curPlacement,
@@ -875,8 +874,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           newNamingStyle,
           masterAddresses,
-          false /* enableYbc */,
-          null /* ybcSoftwareVersion */,
+          universe.isYbcEnabled(),
+          ybcManager.getStableYbcVersion(),
           mastersRunningWith.apply(
               mastersToAddAzMap.values().stream()
                   .flatMap(Set::stream)

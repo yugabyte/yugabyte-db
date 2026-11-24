@@ -44,6 +44,8 @@
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -112,6 +114,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(ysql_sequence_cache_method);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
@@ -147,6 +150,7 @@ DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_bool(TEST_xcluster_wal_anchor_deletion_skip_marker_clear);
+DECLARE_uint64(initial_seqno);
 
 using namespace std::chrono_literals;
 
@@ -3097,6 +3101,47 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingSequenceBump) 
     auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
     auto final = ASSERT_RESULT(conn_B.FetchRow<int64_t>("SELECT last_value FROM my_sequence;"));
     EXPECT_EQ(final, kInitialSequenceValue + 9);
+  }
+}
+
+// After A fills the TServer sequence cache, switchover to B, advance the sequence on B past A's
+// cached range, then switchover back to A. Becoming primary again must invalidate A's stale
+// server-side cache so nextval() continues past B's values rather than replaying the old range.
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverInvalidatesServerSequenceCache) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sequence_cache_method) = "server";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sequence_cache_minval) = 100;
+
+  const int64_t kInitialSequenceValue = 5000;
+  ASSERT_OK(SetUpClustersAndReplication());
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn_A.ExecuteFormat(
+        "CREATE SEQUENCE my_sequence START WITH $0;", kInitialSequenceValue));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Fetch one value; with server cache this also caches a block of 100 on A's TServer.
+    auto first = ASSERT_RESULT(conn_A.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    ASSERT_EQ(first, kInitialSequenceValue);
+  }
+
+  ASSERT_OK(Switchover());
+  int64_t last_on_b = 0;
+  {
+    auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    // Advance past the range still held in A's TServer cache (values after the first nextval).
+    for (int i = 0; i < 150; i++) {
+      last_on_b = ASSERT_RESULT(conn_B.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    }
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(SwitchoverBack());
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    auto next_on_a = ASSERT_RESULT(conn_A.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    // Without invalidate, A would return a stale cached value below last_on_b.
+    LOG(INFO) << "next_on_a=" << next_on_a << " last_on_b=" << last_on_b;
+    ASSERT_GT(next_on_a, last_on_b);
   }
 }
 
@@ -7058,9 +7103,10 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
 TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
   const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
-  // Commit while replication is paused, so the consumer gets the intents of the transaction
-  // together with its apply and never writes them to the intents DB. An intents DB write would
-  // disable advancing the intents DB flushed OpId for the tablet.
+  // Commit and wait for the producer to apply the transaction while replication is paused, so the
+  // consumer gets the intents of the transaction together with its apply and never writes them to
+  // the intents DB. CommitTransaction returns before the producer writes the APPLY op. An intents
+  // DB write would disable advancing the intents DB flushed OpId for the tablet.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
   ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
@@ -7074,6 +7120,9 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
         "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
   }
   ASSERT_OK(producer_conn_->CommitTransaction());
+  const auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+  ASSERT_OK(WaitForTableIntentsApplied(producer_cluster(), producer_table.table_id(), kTimeout));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
@@ -7082,17 +7131,21 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
       ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
 
   {
-    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
-    // check after the restart.
-    auto indexes = ListVectorIndexes(consumer_cluster());
-    ASSERT_EQ(indexes.size(), 1);
-    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
-
     const auto consumer_table = ASSERT_RESULT(
         GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
     auto peers = ListTableActiveTabletPeers(consumer_cluster(), consumer_table.table_id());
     ASSERT_EQ(peers.size(), 1);
     auto consumer_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+    // Fails if the consumer polled the intents without their apply, e.g. split across batches.
+    // An intents DB that was never written stays at the initial sequence number.
+    ASSERT_EQ(consumer_tablet->intents_db()->GetLatestSequenceNumber(), FLAGS_initial_seqno)
+        << "Consumer wrote external intents to its intents DB";
+
+    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
+    // check after the restart.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
 
     // The intents DB flushed OpId starts below the vector index one, so the wait below only
     // succeeds if the flush advances it.
