@@ -37,10 +37,16 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
         return 1800;
     }
 
+    // Without LOAD support, a test that needs sessions without passwordcheck restarts the cluster
+    // without it.
+    private boolean preloadPasswordcheck = true;
+
     @Override
     protected Map<String, String> getTServerFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
-        appendToYsqlPgConf(flagMap, "shared_preload_libraries='passwordcheck'");
+        if (preloadPasswordcheck) {
+            appendToYsqlPgConf(flagMap, "shared_preload_libraries='passwordcheck'");
+        }
         return flagMap;
     }
 
@@ -77,7 +83,7 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("DROP ROLE " + role);
         }
-        restoreRoles(dumpFile, true /* loadPasswordcheck */, 0 /* expectedExitCode */);
+        restoreRoles(dumpFile, 0 /* expectedExitCode */);
 
         try (Statement stmt = connection.createStatement()) {
             assertRow(dumped, getSingleRow(stmt, roleQuery));
@@ -96,36 +102,41 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
         final String rolesQuery = "SELECT rolname, rolcanlogin, rolpassword FROM pg_authid" +
                 " WHERE rolname IN ('" + role + "', 'yugabyte') ORDER BY rolname";
         List<Row> dumped;
+        // Only a cluster without passwordcheck accepts these passwords.
+        restartWithPasswordcheck(false);
         try (Statement stmt = connection.createStatement()) {
-            // This session does not load passwordcheck, so it accepts these passwords.
             stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
             stmt.execute("CREATE ROLE " + role + " LOGIN PASSWORD '" + role + "'");
             dumped = getRowList(stmt, rolesQuery);
         }
 
         String dumpFile = dumpRoles("passwordcheck_name_roles_dump.sql");
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("DROP ROLE " + role);
-        }
 
+        // Restore into a new cluster with passwordcheck.
+        restartWithPasswordcheck(true);
         // ysqlsh exits with 3 when ON_ERROR_STOP stops the script.
-        String output = restoreRoles(dumpFile, true /* loadPasswordcheck */, 3);
+        String output = restoreRoles(dumpFile, 3);
         assertTrue(output, output.contains("ERROR:  password must not contain user name"));
         try (Statement stmt = connection.createStatement()) {
             // The restore stopped at the role's ALTER ROLE, after its CREATE ROLE, so the role is
-            // left without LOGIN or a password. A rerun skips roles that exist, so drop it first.
+            // left without LOGIN or a password.
             assertRow(new Row(false, null), getSingleRow(stmt,
                     "SELECT rolcanlogin, rolpassword FROM pg_authid WHERE rolname = '" + role +
                     "'"));
-            stmt.execute("DROP ROLE " + role);
         }
 
-        restoreRoles(dumpFile, false /* loadPasswordcheck */, 0 /* expectedExitCode */);
+        // The workaround: restore into a new cluster without passwordcheck.
+        restartWithPasswordcheck(false);
+        restoreRoles(dumpFile, 0 /* expectedExitCode */);
         try (Statement stmt = connection.createStatement()) {
             assertRows(dumped, getRowList(stmt, rolesQuery));
-            // Don't leave this role behind for the other tests.
-            stmt.execute("DROP ROLE " + role);
         }
+    }
+
+    /** Replaces the cluster with a new, empty one, with or without passwordcheck. */
+    private void restartWithPasswordcheck(boolean load) throws Exception {
+        preloadPasswordcheck = load;
+        restartCluster();
     }
 
     /** Dumps the roles the way a YugabyteDB Anywhere backup does. */
@@ -144,15 +155,11 @@ public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
      * first error, and ignore_existing_roles skips the roles that already exist. Returns the
      * output.
      */
-    private String restoreRoles(String dumpFile, boolean loadPasswordcheck, int expectedExitCode)
-            throws Exception {
+    private String restoreRoles(String dumpFile, int expectedExitCode) throws Exception {
         List<String> args = new ArrayList<>(Arrays.asList(
                 new File(PgRegressBuilder.getPgBinDir(), "ysqlsh").toString(),
                 "-h", getPgHost(0), "-p", Integer.toString(getPgPort(0)), "-U", DEFAULT_PG_USER,
                 "-v", "ON_ERROR_STOP=1", "-v", "ignore_existing_roles=1"));
-        if (loadPasswordcheck) {
-            args.addAll(Arrays.asList("-c", "LOAD 'passwordcheck'"));
-        }
         args.addAll(Arrays.asList("-f", dumpFile));
         Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
         String output = IOUtils.toString(process.getInputStream(), StandardCharsets.UTF_8);
