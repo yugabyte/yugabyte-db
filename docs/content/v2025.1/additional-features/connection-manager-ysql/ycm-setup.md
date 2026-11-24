@@ -232,6 +232,7 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - Creating TEMP tables.
 - Declaring a CURSOR using the WITH HOLD attribute.
 - Using a PREPARE query (not to be confused with protocol-level preparation of statements).
+- Calling the `hll_set_max_sparse()` function of the `hll` extension (v2025.1.3.0 and later).
 - Superuser connections; if you want superuser connections to not be sticky, set the `ysql_conn_mgr_superuser_sticky` flag to false.
 - Using a SEQUENCE with `ysql_conn_mgr_sequence_support_mode` set to `session`. (Other values for this flag provide lesser support without stickiness.)
 - Replication connections.
