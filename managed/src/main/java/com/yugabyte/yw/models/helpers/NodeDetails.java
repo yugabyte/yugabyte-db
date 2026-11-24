@@ -102,9 +102,10 @@ public class NodeDetails {
   public boolean migrationPending;
 
   // Mount path to filesystem UUID of the data disks, read from /etc/fstab before a VM image upgrade
-  // replaces the root volume, whose new fstab doesn't have them. Kept until the node's upgrade
-  // finishes, so that a retry or rerun can remount the disks on a node already on its new root
-  // volume. Not cloned: the UUIDs belong to this node's disks.
+  // replaces the root volume, whose new fstab doesn't have them. A retry or rerun reuses it only
+  // while the node is in state VMImageUpgrade, to remount the disks on a node that may already be
+  // on its new root volume; it's cleared once the node's upgrade finishes. Not cloned: the UUIDs
+  // belong to this node's disks.
   @ApiModelProperty(hidden = true, value = "YbaApi Internal. Data disk mount path to fs UUID")
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public Map<String, String> pathToUUIDMapping;

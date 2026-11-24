@@ -915,6 +915,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
+              for (String nodeName : ImmutableList.of("host-n4", "host-n5")) {
+                u.getNode(nodeName).state = NodeDetails.NodeState.VMImageUpgrade;
+              }
               u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "saved");
               u.getNode("host-n5").pathToUUIDMapping = ImmutableMap.of("/mnt/d1", "stale");
             });
@@ -929,6 +932,77 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         ImmutableSet.of("/mnt/d0=saved", "/mnt/d0=abc"), ImmutableSet.copyOf(uploadedMappings));
     assertNoSavedMappings();
+  }
+
+  @Test
+  public void testVMImageUpgradeOciCapturesFstabOfLiveNodeWithMappingLeftOnIt() {
+    ImageBundle ociBundle = addOciNodes();
+    // As if a run that unfroze the universe left the node out after an earlier attempt saved it.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "left"));
+
+    TaskInfo taskInfo = submitOciOnlyUpgrade(ociBundle, false);
+    assertEquals(1, getSubTaskParams(taskInfo, TaskType.RunNodeCommand, "host-n4").size());
+    assertEquals(ImmutableList.of("/mnt/d0=abc", "/mnt/d0=abc"), getUploadedYnpMappings());
+    assertNoSavedMappings();
+  }
+
+  @Test
+  public void testVMImageUpgradeOciRetryReusesMappingInOlderRuntimeInfo() throws Exception {
+    ImageBundle ociBundle = addOciNodes();
+    AtomicBoolean failReplacement = new AtomicBoolean(true);
+    AtomicReference<String> failedNode = new AtomicReference<>();
+    doAnswer(
+            inv -> {
+              if (failReplacement.get()) {
+                failedNode.set(((ReplaceRootVolume.Params) inv.getArgument(1)).nodeName);
+                return ShellResponse.create(1, "Failed to update the boot volume");
+              }
+              return new ShellResponse();
+            })
+        .when(mockNodeManager)
+        .nodeCommand(eq(NodeCommandType.Replace_Root_Volume), any());
+    TaskInfo failedTask = submitOciOnlyUpgradeTask(ociBundle, false);
+    assertEquals(TaskInfo.State.Failure, failedTask.getTaskState());
+
+    // As a YBA that kept the mapping in the task's runtime info would have left a node it had
+    // already moved to its new root volume.
+    UUID nodeUuid =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getNode(failedNode.get())
+            .getNodeUuid();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getNode(failedNode.get()).pathToUUIDMapping = null);
+    ObjectNode runtimeInfo = Json.newObject();
+    runtimeInfo
+        .putObject("deviceMappingByNode")
+        .putObject(nodeUuid.toString())
+        .put("/mnt/d0", "legacy");
+    runtimeInfo.putArray("volumeReplacedNodes").add(nodeUuid.toString());
+    failedTask.setRuntimeInfo(runtimeInfo);
+    failedTask.save();
+    failFstabReads(Collections.singleton(failedNode.get()));
+    failReplacement.set(false);
+    Mockito.clearInvocations(mockNodeManager);
+
+    VMImageUpgradeParams retryParams =
+        Json.fromJson(failedTask.getTaskParams(), VMImageUpgradeParams.class);
+    retryParams.setPreviousTaskUUID(failedTask.getUuid());
+    retryParams.expectedUniverseVersion = -1;
+    retryParams.creatingUser = defaultUser;
+    TaskInfo retry = waitForTask(commissioner.submit(TaskType.VMImageUpgrade, retryParams));
+    if (retry.getTaskState() != TaskInfo.State.Success) {
+      throw new IllegalStateException(
+          "Retry failed " + LocalProviderUniverseTestBase.getAllErrorsStr(retry));
+    }
+    assertTrue(getSubTaskParams(retry, TaskType.RunNodeCommand, failedNode.get()).isEmpty());
+    assertFalse(getReplaceRootVolumeParams().containsKey(failedNode.get()));
+    assertEquals("legacy", getYnpMount(retry, failedNode.get()));
+    assertNoSavedMappings();
+    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
   }
 
   private void failFstabReads(Set<String> nodeNames) {

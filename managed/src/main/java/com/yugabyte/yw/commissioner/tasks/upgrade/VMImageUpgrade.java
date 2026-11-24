@@ -106,6 +106,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     @JsonProperty("replacementCompletedNodes")
     Set<UUID> replacementCompletedNodes = ConcurrentHashMap.newKeySet();
+
+    // Node UUID -> (mount path -> disk UUID), where older YBA versions kept the fstab mapping. Read
+    // but never written: a retry inherits it, so a retry of such a task can still remount the data
+    // disks of a node already on its new root volume.
+    @JsonProperty("deviceMappingByNode")
+    Map<UUID, Map<String, String>> legacyDeviceMappingByNode = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -714,12 +720,20 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   /**
-   * Uses the mapping an earlier attempt saved on the node if it covers the node's mount points. The
-   * node may be on its new root volume by now, where /etc/fstab no longer has the data disks.
+   * Uses the mapping an earlier attempt saved if the node is still mid-upgrade and the mapping
+   * covers the node's mount points. Such a node may be on its new root volume by now, where
+   * /etc/fstab no longer has the data disks. Any other node's fstab has them, so a mapping left on
+   * it isn't trusted and is captured again.
    */
   private boolean reuseSavedDeviceMapping(Universe universe, NodeDetails node) {
     NodeDetails savedNode = universe.getNode(node.nodeName);
-    Map<String, String> saved = savedNode == null ? null : savedNode.pathToUUIDMapping;
+    if (savedNode == null || savedNode.state != NodeState.VMImageUpgrade) {
+      return false;
+    }
+    Map<String, String> saved = savedNode.pathToUUIDMapping;
+    if (saved == null) {
+      saved = runtimeInfo.legacyDeviceMappingByNode.get(node.getNodeUuid());
+    }
     if (saved == null) {
       return false;
     }
