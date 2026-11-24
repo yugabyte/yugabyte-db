@@ -63,11 +63,19 @@ export function serverUrl(hostPort: string, path = ''): string {
   return `${window.location.protocol}//${hostPort}${path}`;
 }
 
-// A server URL from the JSON as the browser can follow it.
-export function serverLink(url: string): string {
-  if (!PROXY_PREFIX) return url;
+// A server URL from the JSON as a link the browser can follow, or null if it is not one. Through
+// the YBA proxy it arrives rewritten: the proxy replaces every "http://" in the body with its
+// prefix.
+export function serverLink(url: string): { href: string; host: string } | null {
+  if (PROXY_PREFIX && url.startsWith(PROXY_PREFIX)) {
+    return { href: url, host: url.slice(PROXY_PREFIX.length).split('/')[0] };
+  }
+  if (!/^https?:\/\//.test(url)) return null;
   const u = new URL(url);
-  return serverUrl(u.host, u.pathname + u.search + u.hash);
+  return {
+    href: PROXY_PREFIX ? serverUrl(u.host, u.pathname + u.search + u.hash) : url,
+    host: u.host,
+  };
 }
 
 const LOOPBACK = /^(localhost|127(\.\d+){3}|\[::1\])$/;

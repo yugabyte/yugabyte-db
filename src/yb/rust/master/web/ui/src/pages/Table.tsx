@@ -14,11 +14,11 @@ function Location({ loc }: { loc: TabletLocation }) {
   const role =
     loc.role === 'LEADER' ? <Badge kind="info">LEADER</Badge> : <span className="role">{loc.role}</span>;
   let target: ReactNode = <Mono>{loc.uuid}</Mono>;
-  if (/^https?:\/\//.test(loc.location)) {
-    const host = new URL(loc.location).host;
+  const link = serverLink(loc.location);
+  if (link) {
     target = (
-      <a href={serverLink(loc.location)} title={loc.uuid}>
-        {host}
+      <a href={link.href} title={loc.uuid}>
+        {link.host}
       </a>
     );
   }
