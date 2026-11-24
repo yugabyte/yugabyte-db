@@ -257,7 +257,8 @@ TEST_F(TabletSplitTest, SplitTablet) {
     }
 
     // Compacted split tablet should hold only its share of rows, which is not exactly
-    // 1/kNumSplits. 10% and 4KB cover data block rounding.
+    // 1/kNumSplits. 10% covers per-child variance in compacted output size, 4KB covers data
+    // block rounding.
     const auto split_size = split_tablet->regular_db()->GetCurrentVersionDataSstFilesSize();
     LOG(INFO) << split_tablet->tablet_id() << " compacted size: " << split_size
               << ", rows: " << split_rows;
