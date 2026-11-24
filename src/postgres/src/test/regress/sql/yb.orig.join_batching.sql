@@ -1,11 +1,11 @@
 --
 -- Batched nested loop joins that must be built and must run correctly
 --
--- The prelude forces the batched join the pre-hint way: every other join
--- method off, yb_prefer_bnl on; the tests at the end of the file switch to
--- the cost model and the YbBatchedNL hints.  The tables shared with
--- yb.orig.join_batching_negative come from yb.orig.join_batching_setup; a
--- test whose data carries a key type, a physical layout or a property of
+-- The prelude leaves the batched join the one join method enabled, with
+-- yb_prefer_bnl off so that YbBatchedNL and NestLoop hints are followed; the
+-- tests at the end of the file switch to the cost model.  The tables shared
+-- with yb.orig.join_batching_negative come from yb.orig.join_batching_setup;
+-- a test whose data carries a key type, a physical layout or a property of
 -- its own creates a table of its own, and no table is dropped.
 --
 
@@ -14,7 +14,7 @@ SET enable_hashjoin = off;
 SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
-SET yb_prefer_bnl = on;
+SET yb_prefer_bnl = off;
 SET enable_nestloop = off;
 
 SET yb_bnl_batch_size = 3;
@@ -99,8 +99,8 @@ explain (costs off) select * from char_key, vchar_key where char_key.a = vchar_k
 select * from char_key, vchar_key where char_key.a = vchar_key.a::text and char_key.b = vchar_key.b::text;
 
 -- Expected: the varchar keys of vchar_key are batched into char_key's bpchar key.
-explain (costs off) /*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) Set(yb_prefer_bnl off) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
-/*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) Set(yb_prefer_bnl off) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
+explain (costs off) /*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
+/*+ Leading((vchar_key char_key)) YbBatchedNL(char_key vchar_key) IndexScan(char_key) */select * from char_key, vchar_key where char_key.a = vchar_key.a and char_key.b = vchar_key.b;
 
 explain (costs off) /*+ Leading((char_key vchar_key)) IndexScan(vchar_key) */select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
 /*+ Leading((char_key vchar_key)) IndexScan(vchar_key) */select * from char_key, vchar_key where char_key.a::text = vchar_key.a and char_key.b::text = vchar_key.b;
@@ -234,7 +234,6 @@ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a (t2b t2a))))
@@ -255,7 +254,6 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a (t2b t2a))))
@@ -277,14 +275,15 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
-  Set(yb_bnl_batch_size 1)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
   SeqScan(t1b)
   IndexScan(t2a p5_pkey)
   IndexScan(t2b p5_pkey)
+  NestLoop(t1a t1b t2a t2b)
+  NestLoop(t1a t2a t2b)
+  NestLoop(t2a t2b)
 */
 EXPLAIN (COSTS OFF)
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
@@ -295,14 +294,15 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
-  Set(yb_bnl_batch_size 1)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
   SeqScan(t1b)
   IndexScan(t2a p5_pkey)
   IndexScan(t2b p5_pkey)
+  NestLoop(t1a t1b t2a t2b)
+  NestLoop(t1a t2a t2b)
+  NestLoop(t2a t2b)
 */
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
  WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
@@ -330,7 +330,6 @@ ANALYZE p5_part;
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
@@ -350,7 +349,6 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
@@ -369,7 +367,6 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
@@ -389,7 +386,6 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
@@ -410,13 +406,13 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
-  Set(yb_bnl_batch_size 1)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
   SeqScan(t1b)
   IndexScan(t2b p5_pkey)
+  NestLoop(t1a t1b t2b)
+  NestLoop(t1a t2b)
 */
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
  WHERE t2b.a = t1b.b + t1a.b AND t2b.a = t1a.a AND t2b.b = t1b.b
@@ -448,8 +444,8 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
 -- batch of s1.a and the plain parameter s2.b in the same index condition:
 -- s2's rows are not batched into a join whose outer, s1, cannot pass a batch
 -- on (#15156).
-/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
-/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s2 s3) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s2 s3) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
 
 -- The batched key is a placeholder value, the NULL constant the subquery
 -- supplies: the batched index condition is built from it as from a column,
@@ -749,8 +745,8 @@ create table int4table(a int4, primary key(a asc));
 insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
 insert into int4table select i from generate_series(1,20) i where i % 3 = 0;
 -- Expected: the int4 keys of int4table are batched into oidtable's oid key.
-/*+ Set(yb_bnl_batch_size 3) Set(yb_prefer_bnl off) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */explain (costs off) select * from oidtable, int4table where oidtable.a = int4table.a;
-/*+ Set(yb_bnl_batch_size 3) Set(yb_prefer_bnl off) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */ select * from oidtable, int4table where oidtable.a = int4table.a;
+/*+ Set(yb_bnl_batch_size 3) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */explain (costs off) select * from oidtable, int4table where oidtable.a = int4table.a;
+/*+ Set(yb_bnl_batch_size 3) Leading((int4table oidtable)) YbBatchedNL(int4table oidtable) SeqScan(int4table) IndexScan(oidtable oidtable_pkey) */ select * from oidtable, int4table where oidtable.a = int4table.a;
 
 CREATE TABLE p_inner(a int, b text, PRIMARY KEY(b asc, a asc));
 CREATE TABLE p_outer(a bigint, b text);
@@ -1181,10 +1177,10 @@ ANALYZE w1, w2, w3, w4;
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
   IndexScan(w3)
+  NestLoop(w1 w2 w3)
   YbBatchedNL(w1 w3)
 */
 EXPLAIN (COSTS OFF)
@@ -1197,10 +1193,10 @@ SELECT w1.a, w2.j FROM w1, w2, w3
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
   IndexScan(w3)
+  NestLoop(w1 w2 w3)
   YbBatchedNL(w1 w3)
 */
 SELECT w1.a, w2.j FROM w1, w2, w3
@@ -1213,11 +1209,11 @@ SELECT w1.a, w2.j FROM w1, w2, w3
   Set(enable_hashjoin off)
   Set(enable_mergejoin off)
   Set(enable_material off)
-  Set(yb_bnl_batch_size 1)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
   IndexScan(w3)
+  NestLoop(w1 w2 w3)
+  NestLoop(w1 w3)
 */
 EXPLAIN (COSTS OFF)
 SELECT w1.a, w2.j FROM w1, w2, w3
@@ -1228,11 +1224,11 @@ SELECT w1.a, w2.j FROM w1, w2, w3
   Set(enable_hashjoin off)
   Set(enable_mergejoin off)
   Set(enable_material off)
-  Set(yb_bnl_batch_size 1)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
   IndexScan(w3)
+  NestLoop(w1 w2 w3)
+  NestLoop(w1 w3)
 */
 SELECT w1.a, w2.j FROM w1, w2, w3
  WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
@@ -1242,13 +1238,12 @@ SELECT w1.a, w2.j FROM w1, w2, w3
 -- which has no equality condition to hash on.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin on)
   Set(enable_mergejoin off)
-  Set(enable_nestloop off)
   Set(enable_material off)
   Set(enable_seqscan on)
-  Set(yb_bnl_batch_size 1)
   Leading((w2 (w1 w3)))
+  NestLoop(w1 w2 w3)
+  HashJoin(w1 w3)
 */
 EXPLAIN (COSTS OFF)
 SELECT w1.a, w2.j FROM w1, w2, w3
@@ -1256,13 +1251,12 @@ SELECT w1.a, w2.j FROM w1, w2, w3
  ORDER BY 1, 2;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin on)
   Set(enable_mergejoin off)
-  Set(enable_nestloop off)
   Set(enable_material off)
   Set(enable_seqscan on)
-  Set(yb_bnl_batch_size 1)
   Leading((w2 (w1 w3)))
+  NestLoop(w1 w2 w3)
+  HashJoin(w1 w3)
 */
 SELECT w1.a, w2.j FROM w1, w2, w3
  WHERE w3.k = w1.a AND w3.j <= w2.j AND w3.v < w1.b + w2.c
@@ -1276,10 +1270,11 @@ SELECT w1.a, w2.j FROM w1, w2, w3
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
   IndexScan(w3)
+  NestLoop(w1 w2 w3 w4)
+  YbBatchedNL(w1 w3 w4)
   YbBatchedNL(w1 w3)
 */
 EXPLAIN (COSTS OFF)
@@ -1291,10 +1286,11 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
   IndexScan(w3)
+  NestLoop(w1 w2 w3 w4)
+  YbBatchedNL(w1 w3 w4)
   YbBatchedNL(w1 w3)
 */
 SELECT COUNT(*) FROM w1, w2, w3, w4
@@ -1307,10 +1303,11 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
   IndexScan(w3)
+  NestLoop(w1 w2 w3 w4)
+  NestLoop(w1 w3 w4)
   YbBatchedNL(w1 w3)
 */
 EXPLAIN (COSTS OFF)
@@ -1322,23 +1319,22 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
   Set(enable_mergejoin off)
   Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_nestloop on)
   Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
   IndexScan(w3)
+  NestLoop(w1 w2 w3 w4)
+  NestLoop(w1 w3 w4)
   YbBatchedNL(w1 w3)
 */
 SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
 
--- Nested loops over a partitioned inner relation, forced with the BNL hint and
--- GUC (yb_prefer_bnl off, yb_enable_batchednl on, nested loops off from the
--- top of the file, YbBatchedNL or NestLoop) rather than the pre-hint way.
--- Under the cost-based optimizer the partitioned table needs two
--- parameterized Appends for the same outer relation: one whose children all
--- take the batch, for the batched nested loop, and one whose children take
--- one outer row, for the classic one.  Without the first, YbBatchedNL is not
--- followed; the NestLoop statements check that the second is still built.
+-- Nested loops over a partitioned inner relation.  Under the cost-based
+-- optimizer the partitioned table needs two parameterized Appends for the
+-- same outer relation: one whose children all take the batch, for the batched
+-- nested loop, and one whose children take one outer row, for the classic
+-- one.  Without the first, YbBatchedNL is not followed; the NestLoop
+-- statements check that the second is still built.
 -- Legacy costing builds the batched one only, so the batched join is checked
 -- there too.  In p5_subparts one partition is itself partitioned: that
 -- partition builds its own Appends, which the top-level Appends take and
@@ -1346,8 +1342,6 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 -- Expected: a YB Batched Nested Loop over an Append of batched index scans in
 -- both cost modes, a Nested Loop over an Append of parameterized index scans
 -- for the NestLoop hint, and 300 rows each.
-SET yb_prefer_bnl = off;
-SET yb_enable_batchednl = on;
 CREATE TABLE p5_parts (a int, b int, c varchar, primary key(a asc, b asc))
   PARTITION BY RANGE (a);
 CREATE TABLE p5_parts_lo PARTITION OF p5_parts FOR VALUES FROM (MINVALUE) TO (30);
@@ -1384,14 +1378,12 @@ EXPLAIN (COSTS OFF)
 SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
 /*+ Set(yb_enable_cbo on) Leading((t1a t2b)) SeqScan(t1a) IndexScan(t2b) NestLoop(t1a t2b) */
 SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
-RESET yb_enable_batchednl;
-SET yb_prefer_bnl = on;
 
 -- Batched nested loop over a partitioned inner relation under the cost
 -- model, forced the pre-hint way (#25078): each scanned partition takes the
 -- batch, the partitions outside p.i <= 201 are pruned, and no Memoize sits
--- under the batched join (#25251).  It keeps yb_prefer_bnl on with nested
--- loops enabled.
+-- under the batched join (#25251).  Its hint turns yb_prefer_bnl and nested
+-- loops on.
 CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
 CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
 CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);
@@ -1416,16 +1408,14 @@ ANALYZE t_nopart;
   SeqScan(np)
   IndexScan(p)
   Set(enable_nestloop on)
+  Set(yb_prefer_bnl on)
   Set(yb_bnl_batch_size 1024)
   Set(yb_enable_cbo on)
 */
 EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;
 
--- The tests from here to the end of the file run under the cost model and
--- force the batched join with YbBatchedNL hints, which are ignored while
--- yb_prefer_bnl is on.
+-- The tests from here to the end of the file run under the cost model.
 SET yb_enable_cbo = on;
-SET yb_prefer_bnl = off;
 
 -- #35565: a Unique outer child of BNL must not return a key twice. Unique
 -- remembers its last returned tuple in its result slot, and BNL must not
