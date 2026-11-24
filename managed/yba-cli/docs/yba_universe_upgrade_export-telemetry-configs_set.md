@@ -20,13 +20,11 @@ yba universe upgrade export-telemetry-configs set -n <universe-name> \
 ### Options
 
 ```
-      --telemetry-config string              [Optional] Telemetry export configuration to be set. Use the modified output of "yba universe upgrade export-telemetry-configs get" as the flag value. Quote the string with single quotes. Provide either telemetry-config or telemetry-config-file-path
-      --telemetry-config-file-path string    [Optional] Path to the modified json output file of "yba universe upgrade export-telemetry-configs get". Provide either telemetry-config or telemetry-config-file-path
-      --upgrade-option string                [Optional] Upgrade option, defaults to Rolling. Allowed values (case insensitive): Rolling, Non-Rolling (involves DB downtime). (default "Rolling")
-      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in milliseconds). (default 18000)
-      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in milliseconds). (default 18000)
-      --dry-run                              [Optional] Only validate the input and report what would change.
-  -h, --help                                 help for set
+      --telemetry-config string             [Optional] Telemetry export configuration to be set. Use the modified output of "yba universe upgrade export-telemetry-configs get" as the flag value. Quote the string with single quotes. Provide either telemetry-config or telemetry-config-file-path
+      --telemetry-config-file-path string   [Optional] Path to the modified json output file of "yba universe upgrade export-telemetry-configs get". Provide either telemetry-config or telemetry-config-file-path
+      --upgrade-option string               [Optional] Upgrade option. Allowed values (case insensitive): Rolling, Non-Rolling (involves DB downtime). When omitted, YBA picks: on a VM universe, a YBA build that supports it skips the node restart if no changed export type needs one; otherwise YBA does a Rolling restart.
+      --dry-run                             [Optional] Only validate the input and report what would change.
+  -h, --help                                help for set
 ```
 
 ### Options inherited from parent commands

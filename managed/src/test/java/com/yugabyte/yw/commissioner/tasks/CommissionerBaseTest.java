@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -287,6 +288,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CapacityReservationMetrics reservationMetrics =
       Mockito.mock(CapacityReservationMetrics.class);
 
+  /** An upgraded node-agent, as the OTEL install payload requires. */
+  protected static NodeAgent upgradedNodeAgent(String ip) {
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setUuid(UUID.randomUUID());
+    nodeAgent.setIp(ip);
+    nodeAgent.setVersion(Util.getYbaVersion());
+    return nodeAgent;
+  }
+
   @Before
   public void setUpBase() {
     UUID yugawareUuid = UUID.randomUUID();
@@ -404,9 +414,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    lenient()
+        .when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString()))
+        .thenAnswer(inv -> upgradedNodeAgent(inv.getArgument(0)));
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
+    when(mockBaseTaskDependencies.getAuditService()).thenReturn(mock(AuditService.class));
     releaseMetadata =
         ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
     ybcReleaseMetadata =

@@ -62,6 +62,14 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
     return replicate_msg_;
   }
 
+  bool replication_deferrable() const {
+    return replication_deferrable_;
+  }
+
+  void set_replication_deferrable(bool value) {
+    replication_deferrable_ = value;
+  }
+
   // Returns the id of the (replicate) operation this context
   // refers to. This is only set _after_ Consensus::Replicate(context).
   OpId id() const;
@@ -123,6 +131,8 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   //
   // Set to -1 if no term has been bound.
   int64_t bound_term_ = OpId::kUnknownTerm;
+
+  bool replication_deferrable_ = false;
 
   ConsensusRoundCallback* callback_ = nullptr;
   std::unique_ptr<ConsensusRoundCallback> callback_holder_;

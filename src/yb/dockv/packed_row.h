@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <limits>
 #include <optional>
 #include <unordered_map>
 
@@ -86,6 +87,9 @@ class PackableValue {
 
   virtual ~PackableValue() = default;
 };
+
+// Passing this as tail_size makes AddValue ignore packed_size_limit, so the value is always packed.
+constexpr ssize_t kUnlimitedTail = std::numeric_limits<ssize_t>::min();
 
 class RowPackerBase {
  public:

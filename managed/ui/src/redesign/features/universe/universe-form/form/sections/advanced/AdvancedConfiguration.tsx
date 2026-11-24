@@ -85,7 +85,7 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <IPV6Field disabled={!isCreatePrimary} />
           </Box>
           <Box display="flex" width="100%" mt={2}>
-            <NetworkAccessField disabled={!isCreatePrimary} />
+            <NetworkAccessField disabled={!isPrimary && !isCreateMode} />
           </Box>
         </>
       )}

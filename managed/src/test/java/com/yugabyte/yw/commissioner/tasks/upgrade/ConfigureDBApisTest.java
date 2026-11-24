@@ -5,23 +5,42 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
@@ -122,6 +141,14 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     params.ysqlPassword = "foo";
     params.ycqlPassword = "foo";
     params.communicationPorts.ysqlServerRpcPort = 5434;
+    // Refused before it starts while a load balancer can't forward the new ports.
+    doThrow(new PlatformServiceException(BAD_REQUEST, "add port 5434"))
+        .doNothing()
+        .when(cloudAPI)
+        .validateManagedLoadBalancerPorts(any(), eq("region-1"), any(), eq(List.of(5434, 9042)));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> submitTask(params, TaskType.ConfigureDBApis, commissioner, -1));
 
     TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
 
@@ -151,6 +178,64 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     verify(cloudAPI)
         .ensureManagedLoadBalancer(
             any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
+  }
+
+  @Test
+  public void testPortChangeReconcilesReadReplicaManagedLoadBalancer() {
+    UserIntent primaryIntent = defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = new UserIntent();
+    TestUtils.copyProviderFields(primaryIntent, userIntent, confGetter);
+    userIntent.numNodes = 3;
+    userIntent.ybSoftwareVersion = primaryIntent.ybSoftwareVersion;
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+    config.setEnablePrivate(true);
+    userIntent.setManagedLoadBalancer(config);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    // An add-on cluster runs no tserver, so its setting makes and fills no load balancer.
+    Cluster addOn = new Cluster(ClusterType.ADDON, userIntent.clone());
+    addOn.placementInfo = pi;
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().clusters.add(addOn));
+    String lbName =
+        ManagedLoadBalancerUtil.getPrivateName(
+            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid);
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    params.enableYCQLAuth = true;
+    params.ysqlPassword = "foo";
+    params.ycqlPassword = "foo";
+    params.communicationPorts.ysqlServerRpcPort = 5434;
+
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(cloudAPI)
+        .validateManagedLoadBalancerPorts(
+            any(), eq("region-1"), eq(lbName), eq(List.of(5434, 9042)));
+    verify(cloudAPI)
+        .ensureManagedLoadBalancer(
+            any(), eq("region-1"), eq(lbName), any(), eq(List.of(5434, 9042)), any());
+    verify(cloudAPI, times(1)).validateManagedLoadBalancerPorts(any(), any(), any(), any());
+    verify(cloudAPI, times(1)).ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any());
+    verify(cloudAPI, never())
+        .manageNodeGroup(
+            any(),
+            any(),
+            eq(ManagedLoadBalancerUtil.getPrivateName(addOn.uuid)),
+            any(),
+            any(),
+            any());
   }
 
   // The collector's yugabyte scrape targets depend on the node's API flags and ports, so each
@@ -240,6 +325,42 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
         .addTasks(TaskType.ChangeAdminPassword)
         .addTasks(TaskType.ChangeAdminPassword)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  // The multi-tenancy restart rewrites each server's conf after the API step. It must keep the
+  // API settings from this request, not the ones the universe had before it.
+  @Test
+  public void testMultiTenancyChangeKeepsNewYsqlAuth() {
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQLAuth = true;
+    params.enableYSQL = true;
+    params.ysqlPassword = "foo";
+    MultiTenancyConfig mtConfig = new MultiTenancyConfig();
+    mtConfig.setQosMaxDbCount(5);
+    params.multiTenancy = mtConfig;
+    // The controller copies the universe clusters into the params; the MT step reads them.
+    params.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+    assertEquals(
+        taskInfo.getErrorMessage()
+            + taskInfo.getSubTasks().stream()
+                .filter(t -> t.getTaskState() == Failure)
+                .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+                .collect(Collectors.toList()),
+        Success,
+        taskInfo.getTaskState());
+
+    List<TaskInfo> mtConfigureTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
+            .filter(t -> t.getTaskParams().path("gflags").has(GFlagsUtil.QOS_MAX_DB_COUNT))
+            .collect(Collectors.toList());
+    assertFalse(mtConfigureTasks.isEmpty());
+    for (TaskInfo task : mtConfigureTasks) {
+      assertTrue(task.getTaskParams().get("enableYSQLAuth").asBoolean());
+      assertTrue(task.getTaskParams().get("enableYSQL").asBoolean());
+      assertFalse(task.getTaskParams().get("enableYCQL").asBoolean());
+    }
   }
 
   private MockUpgrade initMockUpgrade() {

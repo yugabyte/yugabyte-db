@@ -737,6 +737,8 @@ static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
 													 Relation rel,
 													 AlterTableCmd *cmd,
 													 LOCKMODE lockmode);
+static void YbCheckAlterTypeOfVectorIndexColumn(Oid indoid,
+												const char *colName);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -7916,6 +7918,29 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		if (!rawEnt->missingMode)
 			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+
+		/*
+		 * YB: Existing rows of a YB table come from DocDB, which never sees
+		 * attmissingval.  If PG stored a missing value but
+		 * YBCPrepareAlterTableCmd did not give DocDB one, those rows would
+		 * read NULL for the new column, and the NOT NULL check below would
+		 * be skipped.  Fill them by rewriting the table instead.  This only
+		 * guards against the PG and YB missing-value decisions drifting
+		 * apart.  If yb_enable_alter_table_rewrite is off, ATRewriteTables
+		 * fails the ALTER instead, which is still better than NULL rows.
+		 *
+		 * It does not apply when yb_enable_add_column_missing_default is off.
+		 * That AutoFlag is held back during an upgrade until external peers
+		 * such as xCluster targets have upgraded, and ADD COLUMN must keep its
+		 * legacy, rewrite-free behavior then.  In that mode existing rows
+		 * still read NULL for the new column, even if it is NOT NULL; see
+		 * #38681.
+		 */
+		if (IsYBRelation(rel) && yb_enable_add_column_missing_default &&
+			TupleDescAttr(rel->rd_att, attribute.attnum - 1)->atthasmissing &&
+			!YbAddColumnUsesDocdbMissingValue((Expr *) build_column_default(rel,
+																		  attribute.attnum)))
+			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
 	}
 
 	/*
@@ -13054,7 +13079,8 @@ validateForeignKeyConstraint(char *conname,
 	 * of a child row that the check passed and leave that child orphaned.
 	 */
 	if ((!IsYBRelation(rel) ||
-		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		 (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		  yb_enable_batchednl)) &&
 		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
@@ -14169,6 +14195,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 						relKind == RELKIND_PARTITIONED_INDEX)
 					{
 						Assert(foundObject.objectSubId == 0);
+						if (IsYBRelation(rel))
+							YbCheckAlterTypeOfVectorIndexColumn(foundObject.objectId,
+																colName);
 						RememberIndexForRebuilding(foundObject.objectId, tab);
 					}
 					else if (relKind == RELKIND_SEQUENCE)
@@ -16471,10 +16500,23 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	/* Get the orig and new tablespace OIDs */
 	orig_tablespaceoid = get_tablespace_oid(stmt->orig_tablespacename, false);
 	new_tablespaceoid = get_tablespace_oid(stmt->new_tablespacename, false);
-	yb_orig_tablegroup_name = get_implicit_tablegroup_name(orig_tablespaceoid);
+
+yb_lookup_tablegroups:
 	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
-	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
-	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+	/* YB: Found by tablespace, since the name need not be colocation_<oid>. */
+	if (MyDatabaseColocated)
+	{
+		/* Relations with no tablespace are in the default tablegroup. */
+		if (orig_tablespaceoid == MyDatabaseTableSpace)
+			yb_orig_tablegroup_oid =
+				get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+		else
+			shdepFindImplicitTablegroup(orig_tablespaceoid,
+										&yb_orig_tablegroup_oid);
+		shdepFindImplicitTablegroup(new_tablespaceoid,
+									&yb_new_tablegroup_oid);
+	}
+	yb_orig_tablegroup_name = get_tablegroup_name(yb_orig_tablegroup_oid);
 	/*
 	 * YB: If a relation name is passed with the ALTER TABLE ALL ... COLOCATED
 	 * WITH ... SET TABLESPACE ... CASCADE command then we get the relation
@@ -16502,6 +16544,22 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 				 errmsg("cannot move colocated relations to tablespace %s,"
 						" as it contains existing colocated relation",
 						stmt->new_tablespacename)));
+
+	/* YB: A move renames the tablegroup, and the default is found by name. */
+	if (MyDatabaseColocated && yb_orig_tablegroup_name != NULL &&
+		strcmp(yb_orig_tablegroup_name, DEFAULT_TABLEGROUP_NAME) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move the default tablegroup"
+						" to another tablespace")));
+
+	/* YB: The tablegroup would have to become or join the default one. */
+	if (MyDatabaseColocated && OidIsValid(yb_orig_tablegroup_oid) &&
+		new_tablespaceoid == MyDatabaseTableSpace)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move colocated relations to the database"
+						" default tablespace")));
 
 	/*
 	 * YB: If CASCADE is not specified and the original tablespace contains
@@ -16553,6 +16611,16 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   get_tablespace_name(new_tablespaceoid));
 	}
+
+	/*
+	 * YB: The checks passed, so lock the tablegroup that moves and the
+	 * tablespace it moves to. If that took a lock, look up and check again.
+	 */
+	if (yb_cascade && MyDatabaseColocated &&
+		OidIsValid(yb_orig_tablegroup_oid) &&
+		YbLockImplicitTablegroupForMove(yb_orig_tablegroup_oid,
+										new_tablespaceoid))
+		goto yb_lookup_tablegroups;
 
 	/*
 	 * Now that the checks are done, check if we should set either to
@@ -21267,6 +21335,9 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 								   RelationGetRelationName(partIdx))));
 		}
 
+		/* YB: xCluster source cannot attach an invalid index. */
+		YbCheckAttachedIndexIsValid(partIdx);
+
 		/* All good -- do it */
 		IndexSetParentIndex(partIdx, RelationGetRelid(parentIdx));
 		if (OidIsValid(constraintOid))
@@ -24062,7 +24133,13 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 			heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
 
-			/* Update attribute type-related fields. */
+			/*
+			 * Update attribute type-related fields, but not attcollation.
+			 * The index's collation can differ from the table's, so setting it
+			 * to the table's collation would be incorrect. Moreover, the index
+			 * collation does not change on reuse, so there is no need to update
+			 * it.
+			 */
 			do_replace[Anum_pg_attribute_atttypid - 1] = true;
 			new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
 			do_replace[Anum_pg_attribute_atttypmod - 1] = true;
@@ -24075,8 +24152,6 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 			new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
 			do_replace[Anum_pg_attribute_attstorage - 1] = true;
 			new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
-			do_replace[Anum_pg_attribute_attcollation - 1] = true;
-			new_values[Anum_pg_attribute_attcollation - 1] = ObjectIdGetDatum(heap_att->attcollation);
 		}
 
 		newTuple = heap_modify_tuple(attrTup, RelationGetDescr(pg_attribute),
@@ -24131,4 +24206,37 @@ YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
 
 	ObjectAddressSet(address, RelationRelationId, index_oid);
 	return address;
+}
+
+/*
+ * Subroutine for ATExecAlterColumnType: reject the ALTER if the column is
+ * used by a vector index (e.g. ybhnsw).
+ *
+ * A vector index is built for a fixed number of dimensions, which DocDB keeps
+ * from CREATE INDEX.  Without a rewrite (e.g. vector(4) -> vector), the index
+ * would be kept while its column loses the dimensions.  Type changes that
+ * rewrite the table are refused too, to keep the rule simple: drop the index
+ * first.  See #36753.
+ */
+static void
+YbCheckAlterTypeOfVectorIndexColumn(Oid indoid, const char *colName)
+{
+	Relation	indexRel = index_open(indoid, AccessShareLock);
+	bool		is_vector_index = (indexRel->rd_indam &&
+								   indexRel->rd_indam->yb_amiscopartitioned);
+
+	index_close(indexRel, AccessShareLock);
+
+	if (is_vector_index)
+	{
+		ObjectAddress obj;
+
+		ObjectAddressSet(obj, RelationRelationId, indoid);
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot alter type of a column used by a vector index"),
+				 errdetail("%s depends on column \"%s\"",
+						   getObjectDescription(&obj, false), colName),
+				 errhint("Drop the index first, or add a new column with the new type.")));
+	}
 }

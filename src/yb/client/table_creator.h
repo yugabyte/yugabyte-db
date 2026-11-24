@@ -142,6 +142,10 @@ class YBTableCreator {
   // For index table: sets whether this is a unique index.
   YBTableCreator& is_unique_index(bool is_unique_index);
 
+  // For YSQL index table built with backfill: the origination time of the CREATE INDEX statement
+  // creating it.  See IndexInfoPB.backfill_origination_ht.
+  YBTableCreator& backfill_origination_ht(HybridTime origination_ht);
+
   // For index table: should backfill be deferred for batching.
   YBTableCreator& is_backfill_deferred(bool is_backfill_deferred);
 

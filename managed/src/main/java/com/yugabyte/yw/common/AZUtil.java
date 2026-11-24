@@ -715,9 +715,13 @@ public class AZUtil implements CloudUtil {
     try (BlobInputStream blobIS = blobClient.openInputStream()) {
       blobIS.read(data);
     } catch (IOException e) {
-      throw new PlatformServiceException(
-          EXPECTATION_FAILED,
-          "Error reading test blob " + fileName + ", exception occurred: " + getStackTrace(e));
+      PlatformServiceException error =
+          new PlatformServiceException(
+              EXPECTATION_FAILED,
+              "Error reading test blob " + fileName + ", exception occurred: " + getStackTrace(e));
+      // Lets the v2 storage config API classify the error by Azure's answer.
+      error.initCause(e);
+      throw error;
     }
     return new String(data);
   }

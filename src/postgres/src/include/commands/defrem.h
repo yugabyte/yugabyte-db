@@ -167,5 +167,6 @@ extern char *YbChooseExtendedStatisticName(const char *name1,
 										   const char *name2,
 										   const char *label, Oid namespaceid);
 extern List *YbComputeIndexExpressions(Oid heapRelid, IndexStmt *stmt);
+extern void YbCheckAttachedIndexIsValid(Relation cldidx);
 
 #endif							/* DEFREM_H */

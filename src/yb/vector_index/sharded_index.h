@@ -90,15 +90,10 @@ class ShardedVectorIndex : public VectorIndexIf<Vector, DistanceResult> {
     return Vector();  // Return an empty vector if not found.
   }
 
-  // TODO(vector_index): define begin and end methods to iterate over all shareded indexes.
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> BeginImpl() const override {
+  // TODO(vector_index): chain the iterators of all shards, this returns only the first shard's.
+  std::unique_ptr<VectorIndexIterator<Vector>> CreateIterator() const override {
     CHECK(!indexes_.empty());
-    return indexes_[0]->BeginImpl();
-  }
-
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<Vector>>> EndImpl() const override {
-    CHECK(!indexes_.empty());
-    return indexes_[0]->EndImpl();
+    return indexes_[0]->CreateIterator();
   }
 
   // Search for the closest vectors across all shards.
@@ -175,6 +170,10 @@ class ShardedVectorIndexTraits : public VectorIndexTraitsIf<Vector, DistanceResu
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
     // The byte budget is shared across all shards, see ShardedVectorIndex.
     return index_traits_->EstimateNumVectorsForBytes(bytes_limit / num_shards_) * num_shards_;
+  }
+
+  const VectorTenantExtractor& tenant_extractor() const override {
+    return index_traits_->tenant_extractor();
   }
 
  private:

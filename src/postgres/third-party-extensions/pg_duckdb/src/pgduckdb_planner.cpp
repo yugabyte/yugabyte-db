@@ -66,6 +66,12 @@ CreatePlan(Query *query, bool throw_error) {
 	duckdb::unique_ptr<duckdb::PreparedStatement> prepared_query = DuckdbPrepare(query);
 
 	if (prepared_query->HasError()) {
+		/* YB: see YbLakeIoMissingExtensionDetail */
+		char *yb_detail = pgduckdb::YbLakeIoMissingExtensionDetail(prepared_query->GetErrorObject());
+		if (yb_detail) {
+			pgduckdb::YbReportUnsupportedExtension(elevel, yb_detail);
+			return nullptr;
+		}
 		elog(elevel, "(PGDuckDB/CreatePlan) Prepared query returned an error: %s", prepared_query->GetError().c_str());
 		return nullptr;
 	}

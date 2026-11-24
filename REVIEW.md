@@ -10,19 +10,29 @@ A **backport** is a PR whose title starts with `[BACKPORT <release-branch>]`, e.
 Original commit: <SHA> / #<PR>
 ```
 
-placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number) that already passed full review when its original PR merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
+placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number, or ` / D<id>` if the original landed via Phorge) that already passed full review when it merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
 
 When you review a backport PR, **switch to backport mode**:
 
 1. **Locate the originating commit** at the SHA from the `Original commit:` line. Compare its diff (`git show <SHA>`) against the backport PR's diff.
 2. **The expected outcome is byte-identical except for documented conflict resolutions.** Hunks differ only when the release branch's surrounding code differs from `master` and the cherry-pick had to adapt.
-3. **Documented resolutions live under a `## Merge conflicts` section in the PR body**, formatted as `<path>:<line> — <one-line description>` entries. If the section is absent, the backport is a clean cherry-pick — every hunk should match the original.
+3. **Documented resolutions live under a `## Merge conflicts` section in the PR body**, as `<path>:<line> — [<reason>] <one-line description>` entries under a `### <from> --> <to>` heading for each cherry-pick step. `<reason>` is a short code such as `adjacent-lines` or `missing-prerequisite`. A backport chained from another branch's backport lists every cherry-pick step, starting with the one onto its own branch and ending with the one from `master`, so the section covers every hunk that differs from the original. If the section is absent, the backport is a clean cherry-pick — every hunk should match the original. Example, for a 2025.2 backport chained from the 2026.1 backport:
+
+   ```
+   ## Merge conflicts
+
+   ### 2026.1 --> 2025.2
+   No conflicts.
+
+   ### master --> 2026.1
+   - `src/yb/master/catalog_manager.h:412` — [missing-prerequisite] dropped the `epoch` argument, which 2026.1's signature lacks
+   ```
 4. **Do not flag any hunk that is byte-identical to the originating commit.** That code already passed review at merge time. Re-flagging it adds review noise, slows the backport, and risks blocking a release-branch fix on issues that were already accepted on `master`.
 5. **Flag only**:
    - Hunks that diverge from the originating commit AND are *not* documented in the `## Merge conflicts` section. Either the backport author silently changed the behavior, or the conflicts section is incomplete.
    - Documented conflict resolutions that appear logically incorrect (e.g., the release branch lost a parameter and the backport elided a check that the original had).
    - Mismatched commit metadata (subject doesn't reference the right issue, or the `Original commit:` line is missing/wrong).
-6. **If the backport diff is byte-identical to the originating commit and there is no `## Merge conflicts` section, leave a single approval-style comment confirming the clean cherry-pick.** No further review is necessary — the repo's CI will validate that the build still passes on the release branch.
+6. **If the backport diff is byte-identical to the originating commit and its `## Merge conflicts` section is absent or every step in it says `No conflicts.`, leave a single approval-style comment confirming the clean cherry-pick.** No further review is necessary — the repo's CI will validate that the build still passes on the release branch.
 
 This mode exists because backports re-traverse code that was already reviewed; treating them as fresh PRs creates duplicate review work for changes that were already accepted upstream.
 
@@ -48,6 +58,8 @@ Specifically, **do not** flag:
 - Anything that contradicts a comment, docstring, or commit message in the same diff.
 - Non-ASCII characters in new source code or comments, unless the file is test data that needs them.
 - Under `src/yb/`, departures from the conventions in [`src/yb/REVIEW.md`](src/yb/REVIEW.md).
+- Under `src/postgres/`, what [`src/postgres/REVIEW.md`](src/postgres/REVIEW.md) asks to flag.
+- Under `managed/`, what [`managed/REVIEW.md`](managed/REVIEW.md) asks to flag.
 
 Default comment severity threshold: **MEDIUM**. Suppress LOW-severity nits unless they reveal an underlying correctness issue.
 
@@ -118,7 +130,7 @@ Regardless of PR type, give these areas extra attention:
 - **`src/yb/tablet/`** and **`src/yb/docdb/`** — write/read path, MVCC, transaction handling.
 - **`src/yb/cdc/`** and **`src/yb/cdc_consumer/`** — replication-stream correctness, idempotency.
 - **`src/postgres/`** — PostgreSQL-fork merges; double-check that upstream Postgres semantics are preserved. Also check the diff against the fork conventions in `.claude/skills/pg-code-style-guide/SKILL.md`: YB additions yb-prefixed and clustered behind `/* YB ... */` marker comments, upstream-owned lines left byte-identical (no style fixes or rewrapping), and regress test changes respecting the upstream-named / `yb.port.*` / `yb.orig.*` taxonomy. Flag violations — they surface as merge conflicts on the next PG major-version merge.
-- **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops.
+- **`managed/`** (YBA platform) — orchestration logic, especially around node lifecycle and cluster-wide ops. See [`managed/REVIEW.md`](managed/REVIEW.md).
 
 ## Catalog manager changes
 
@@ -149,6 +161,12 @@ Inversions to flag at HIGH:
 - A COW lock taken before `CatalogManager::mutex_` on the same thread, or a `SCOPED_LEADER_SHARED_LOCK` taken while `mutex_` or a COW lock is held.
 - Several objects of one kind locked without sorting by id.
 - A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
+
+## Review comments are public
+
+A review comment on a PR is as public as the code. Don't write in one how a defect could be used against YugabyteDB, or which releases, branches, images or components lack a fix. If a finding needs that context, state the code-level problem and ask the author to continue in the linked JIRA ticket.
+
+This matters most for security fixes, whose descriptions are plain on purpose (`src/AGENTS.md` § Security and customer-sensitive changes). Don't ask the author to add the motivation or the impact to such a PR.
 
 ## What to ignore entirely
 

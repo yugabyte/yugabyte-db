@@ -58,6 +58,9 @@ class XClusterCheckpointNamespaceTask : public MultiStepCatalogEntityTask {
   MonoDelta GetDelayWithBackoff();
 
   const NamespaceId namespace_id_;
+  // The tasks tracker keeps this task, and calls description(), for a while after the group has
+  // been deleted and freed, so description() must not use outbound_replication_group_.
+  const xcluster::ReplicationGroupId replication_group_id_;
   XClusterOutboundReplicationGroup& outbound_replication_group_;
   MonoDelta delay_with_backoff_ = MonoDelta::FromMilliseconds(100);
 };

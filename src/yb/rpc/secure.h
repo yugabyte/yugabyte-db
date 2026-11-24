@@ -34,9 +34,24 @@ Result<std::unique_ptr<SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, MessengerBuilder* builder);
 
+// Also records the node certificate it loads, for SetupRemoteUniverseSecureContext.
 Result<std::unique_ptr<SecureContext>> SetupInternalSecureContext(
     const std::string& local_hosts, const std::string& root_dir,
     MessengerBuilder* messenger_builder);
+
+// Sets up the secure context of a client that connects to another universe (xCluster).
+// remote_certs_dir holds that universe's ca.crt, and optionally node.<node name>.{crt,key} to
+// present to it, where <node name> is the one this server's node certificate is named by. Without
+// those, the local node certificate is presented if
+// --node_to_node_encryption_use_client_certificates is set. An empty remote_certs_dir means the
+// remote universe uses the local certs directory.
+Result<std::unique_ptr<SecureContext>> SetupRemoteUniverseSecureContext(
+    const std::string& remote_certs_dir, MessengerBuilder* builder);
+
+// Reloads the CA and certificate SetupRemoteUniverseSecureContext would pick now, including
+// whether to present one at all, for connections opened afterwards.
+Status ReloadRemoteUniverseSecureContext(
+    SecureContext* context, const std::string& remote_certs_dir);
 
 YB_STRONGLY_TYPED_BOOL(UseClientCerts);
 

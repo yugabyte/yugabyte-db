@@ -70,9 +70,13 @@ using std::string;
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
+// We do not support user tablets with this flag disabled: the master assumes every tablet except
+// the sys catalog tablet maps its hosted tables by parent id. Do not disable it outside of an
+// emergency.
 DEFINE_RUNTIME_AUTO_bool(use_parent_table_id_field, kLocalPersisted, false, true,
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
+TAG_FLAG(use_parent_table_id_field, hidden);
 
 namespace yb::master {
 
@@ -105,17 +109,23 @@ string TabletReplica::ToString() const {
       "member_type: $3, "
       "should_disable_lb_move: $4, "
       "fs_data_dir: $5, "
-      "total_space_used (excluding snapshots): $6, "
-      "total_space_used (including snapshots): $7, "
-      "full_compaction_state: $8, "
-      "last_full_compaction_time: $9, "
-      "time since update: $10ms }",
+      "storage_tier: $6, "
+      "target_storage_tier: $7, "
+      "tier_migration_state: $8, "
+      "total_space_used (excluding snapshots): $9, "
+      "total_space_used (including snapshots): $10, "
+      "full_compaction_state: $11, "
+      "last_full_compaction_time: $12, "
+      "time since update: $13ms }",
       ts_uuid,
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
       should_disable_lb_move,
       fs_data_dir,
+      current_storage_tier,
+      target_storage_tier,
+      tserver::TierMigrationStatusPB::State_Name(tier_migration_state),
       drive_info.sst_files_size + drive_info.wal_files_size,
       drive_info.total_size,
       tablet::FullCompactionState_Name(full_compaction_status.full_compaction_state),
@@ -129,8 +139,21 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
   fs_data_dir = source.fs_data_dir;
+  UpdateStorageTierInfo(&source);
   full_compaction_status = source.full_compaction_status;
   time_updated = MonoTime::Now();
+}
+
+void TabletReplica::UpdateStorageTierInfo(const TabletReplica* source) {
+  if (!source) {
+    current_storage_tier.clear();
+    target_storage_tier.clear();
+    tier_migration_state = tserver::TierMigrationStatusPB::NONE;
+    return;
+  }
+  current_storage_tier = source->current_storage_tier;
+  target_storage_tier = source->target_storage_tier;
+  tier_migration_state = source->tier_migration_state;
 }
 
 void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
@@ -204,14 +227,41 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
   }
 }
 
-TabletInfo::~TabletInfo() = default;
+TabletInfo::~TabletInfo() {
+  StopCountingReplicaLoad();
+}
+
+namespace {
+
+void AddReplicaLoad(const TabletReplicaMap& replicas, int64_t delta) {
+  for (const auto& [_, replica] : replicas) {
+    if (auto ts_desc = replica.ts_desc.lock()) {
+      ts_desc->AddReplicaLoad(delta);
+    }
+  }
+}
+
+}  // namespace
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
   std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
+  if (counts_replica_load_) {
+    // Add before removing so a concurrent reader never sees the count dip below the true value.
+    AddReplicaLoad(*replica_locations, 1);
+    AddReplicaLoad(*replica_locations_, -1);
+  }
   replica_locations_ = replica_locations;
+}
+
+void TabletInfo::StopCountingReplicaLoad() {
+  std::lock_guard l(lock_);
+  if (counts_replica_load_) {
+    AddReplicaLoad(*replica_locations_, -1);
+    counts_replica_load_ = false;
+  }
 }
 
 Status TabletInfo::CheckRunning() const {
@@ -716,6 +766,13 @@ Status TableInfo::AddTabletUnlocked(
   }
 
   auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
+  if (old_tablet == tablet) {
+    // Defensive: a table id listed twice in a tablet's table_ids used to add the same tablet twice
+    // on load (github issue 34672). TabletLoader::Visit now drops repeated ids, so this is not
+    // expected, but adding the same tablet again is harmless.
+    LOG_WITH_PREFIX(WARNING) << "Tablet " << tablet->id() << " was already added to this table";
+    return Status::OK();
+  }
   auto old_tablet_lock = old_tablet->LockForRead();
   const auto old_split_depth = old_tablet_lock->pb.split_depth();
   if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
@@ -978,12 +1035,16 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-Result<TabletInfos> TableInfo::GetTabletsIncludeInactive() const {
+Result<TabletInfos> TableInfo::GetTabletsIncludeInactive(SkipFreedTablets skip_freed) const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
   result.reserve(tablets_.size());
   for (const auto& [_, tablet_weak_ptr] : tablets_) {
-    result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
+    auto tablet =
+        skip_freed ? tablet_weak_ptr.lock() : VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (tablet) {
+      result.push_back(std::move(tablet));
+    }
   }
   return result;
 }
@@ -1052,7 +1113,7 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {
     if (index_info_pb.table_id() == index_id) {
-      return qlexpr::IndexInfo(index_info_pb);
+      return qlexpr::IndexInfo(index_info_pb, HybridTime::kInvalid);
     }
   }
   return qlexpr::IndexInfo();
@@ -1664,6 +1725,15 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
   xcluster_rpc_tasks_ = rpc_task;
   master_addrs_ = master_addrs;
   return rpc_task;
+}
+
+Status UniverseReplicationInfoBase::ReloadCertificates() {
+  std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks;
+  {
+    std::lock_guard l(lock_);
+    xcluster_rpc_tasks = xcluster_rpc_tasks_;
+  }
+  return xcluster_rpc_tasks ? xcluster_rpc_tasks->ReloadCertificates() : Status::OK();
 }
 
 // ================================================================================================

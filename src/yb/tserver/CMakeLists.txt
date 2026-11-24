@@ -453,6 +453,7 @@ set(YB_TEST_LINK_LIBS
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_response_cache-test)
 ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)
@@ -482,3 +483,4 @@ ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)
 ADD_YB_TEST(xcluster_ddl_queue_handler-test)
 
 ADD_YB_TEST(pg_request_sequencer-test)
+ADD_YB_TEST(pg_sequence_cache-test)

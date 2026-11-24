@@ -1202,10 +1202,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
-										YbAuthPrefetchKind());
+										YbAuthPrefetchKind(), false, false);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
+			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind(), false);
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1664,6 +1664,22 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
 										&YbTablegroupCatalogExists));
 
+	/*
+	 * YB: Test-only delay after the database recheck and before
+	 * RelationCacheInitializePhase3, so that a test can drop the database in
+	 * between. The test waits for the log line to know the delay has begun.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms > 0)
+	{
+		uint32_t	delay_ms = *YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms;
+
+		ereport(LOG,
+				(errmsg("delaying %u ms before RelationCacheInitializePhase3 "
+						"for database %u", delay_ms, MyDatabaseId)));
+		pg_usleep(delay_ms * 1000L);
+	}
+
 	RelationCacheInitializePhase3();
 
 	/* Before anything below reads the catalog for a decision that lasts the session. */
@@ -1966,7 +1982,16 @@ YbAuthPassthroughSetupGUCAndReport(Oid dboid)
 	 * to do here since this is what sets the GUC values sent to the client.
 	 */
 	if (MyProcPort != NULL)
+	{
 		process_startup_options(MyProcPort, superuser_arg(GetSessionUserId()));
+
+		/*
+		 * A reserved name in "options" has failed this logical connection,
+		 * see process_postgres_switches().
+		 */
+		if (MyProcPort->yb_has_auth_passthrough_finished)
+			return;
+	}
 
 	if (YBIsDBLogicalClientVersionMode())
 	{

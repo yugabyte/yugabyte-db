@@ -23,12 +23,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Test;
@@ -83,6 +86,41 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
             () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void validateChecksOnlyNodesInThisCluster() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(false, false, false, Common.CloudType.aws);
+    NodeDetails thisClusterNode = node(cluster.uuid, "m5.large");
+    NodeDetails otherClusterEphemeral = node(UUID.randomUUID(), "i3.xlarge");
+
+    // i3 on another cluster is ephemeral; it must not fail this cluster's GP2 storage check.
+    cluster.validate(false, false, false, false, Set.of(thisClusterNode, otherClusterEphemeral));
+
+    NodeDetails thisClusterEphemeral = node(cluster.uuid, "i3.xlarge");
+    PlatformServiceException storageEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, false, Set.of(thisClusterEphemeral)));
+    assertTrue(storageEx.getMessage().contains("ephemeral storage"));
+
+    UserIntent userIntent = new UserIntent();
+    TestUtils.specificationProviderInitializer(userIntent, UUID.randomUUID())
+        .setProviderType(Common.CloudType.gcp)
+        .setInstanceType("n1-standard-2")
+        .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
+    Cluster multicloud = new Cluster(ClusterType.PRIMARY, userIntent);
+    multicloud.uuid = UUID.randomUUID();
+    multicloud.placementInfo = new PlacementInfo();
+
+    multicloud.validate(false, false, false, false, Set.of(node(UUID.randomUUID(), "m5.large")));
+
+    assertThrows(
+        NoSuchElementException.class,
+        () ->
+            multicloud.validate(
+                false, false, false, false, Set.of(node(multicloud.uuid, "m5.large"))));
   }
 
   @Test
@@ -662,6 +700,16 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
 
     // Verify: azOverrides should be null since cgroupSize was the only value
     assertNull(overrides.getAzOverrides());
+  }
+
+  private static NodeDetails node(UUID placementUuid, String instanceType) {
+    NodeDetails node = new NodeDetails();
+    node.placementUuid = placementUuid;
+    node.nodeName = "n-" + UUID.randomUUID();
+    node.azUuid = UUID.randomUUID();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.instance_type = instanceType;
+    return node;
   }
 
   private Cluster buildClusterForMasterFieldsValidation(

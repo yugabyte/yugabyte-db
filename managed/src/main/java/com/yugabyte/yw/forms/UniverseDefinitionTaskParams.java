@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DeltaEvaluator.DeltaRetainLatest;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -143,18 +144,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // TODO: Add a version number to prevent stale updates.
   // Set to true when an create/edit/destroy intent on the universe is started.
-  @ApiModelProperty public boolean updateInProgress = false;
+  @DeltaRetainLatest @ApiModelProperty public boolean updateInProgress = false;
 
   // Type of task which set updateInProgress flag.
-  @ApiModelProperty public TaskType updatingTask = null;
+  @DeltaRetainLatest @ApiModelProperty public TaskType updatingTask = null;
 
   // UUID of task which set updateInProgress flag.
-  @ApiModelProperty public UUID updatingTaskUUID = null;
+  @DeltaRetainLatest @ApiModelProperty public UUID updatingTaskUUID = null;
 
   // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
-  @ApiModelProperty public boolean updateSucceeded = true;
+  @DeltaRetainLatest @ApiModelProperty public boolean updateSucceeded = true;
 
   // Set to true the first time a CreateUniverse task successfully finishes on this universe. Once
   // true it is never reset, so it distinguishes "universe was brought up at least once" from "the
@@ -168,7 +169,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public boolean universePaused = false;
 
   // UUID of last failed task that applied modification to cluster state.
-  @ApiModelProperty public UUID placementModificationTaskUuid = null;
+  @DeltaRetainLatest @ApiModelProperty public UUID placementModificationTaskUuid = null;
 
   // Indicates whether automatic rollback was performed by the last update task.
   @ApiModelProperty public boolean autoRollbackPerformed = false;
@@ -258,6 +259,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // local value for sequence number
   @ApiModelProperty(hidden = true)
+  @DeltaRetainLatest
   public int sequenceNumber = -1;
 
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
@@ -335,10 +337,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "YbaApi Internal. Install node agent in background if it is true")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
+  @DeltaRetainLatest
   public boolean installNodeAgent = false;
 
   @ApiModelProperty(value = "YbaApi Internal. True if a node agent for missing in any of the nodes")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.4.0")
+  @DeltaRetainLatest
   public boolean nodeAgentMissing = false;
 
   @ApiModelProperty(value = "YbaApi Internal. State for additional services")
@@ -366,7 +370,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Getter
   @ApiModelProperty(
       hidden = true,
-      value = "YbaApi Internal. Load balancers that YBA created for this universe.")
+      value = "YbaApi Internal. Load balancers that YBA created or took over for this universe.")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
   private ManagedLoadBalancerState managedLoadBalancerState;
 
@@ -374,6 +378,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Getter
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @DeltaRetainLatest
   private UUID paCollectorUuid = null;
 
   /**
@@ -386,6 +391,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Setter
   @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @DeltaRetainLatest
   private UUID paEndpointUuid = null;
 
   @Data
@@ -466,6 +472,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
+  public enum MasterMoveStage {
+    STARTED,
+    // The masters the edit adds outside a master full move run, and may be in the Raft config.
+    ADDED_MASTERS_RUNNING,
+    // Those masters are in the Raft config. Recorded only before a master full move, which then
+    // creates its pods.
+    ADDED_MASTERS_JOINED,
+    // The master full move's new masters run too, and may be in the Raft config.
+    FULL_MOVE_MASTERS_RUNNING,
+    OLD_MASTERS_REMOVED,
+    // Every master step is over. From here tserver pods change, so a retry renders and pushes no
+    // master list: one at the pre-edit pod counts would undo those changes.
+    MASTERS_SETTLED
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -538,6 +560,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "YbaApi Internal. Saved full move batch index for Master")
     private int currentMasterFullMoveBatchIndex = -1;
 
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. How far a K8s master move got")
+    private MasterMoveStage masterMoveStage;
+
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter
     @Setter
@@ -598,9 +625,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (!userIntent.isMulticloudSupport()) {
         return userIntent.providerType;
       }
-      UUID providerUUID = getProviderUUIDForNode(nodeDetails);
-      return userIntent.getProviderSpecProperty(
-          providerUUID, spec -> spec.providerType, u -> u.providerType);
+      Optional<ProviderSpecification> providerOpt =
+          searchProviderUUIDByAz(nodeDetails.azUuid)
+              .map(uuid -> userIntent.getProviderSpecification(uuid));
+      if (!providerOpt.isPresent()) {
+        return Util.getProviderByAz(nodeDetails.azUuid).getCloudCode();
+      } else {
+        return providerOpt.get().providerType;
+      }
     }
 
     /**
@@ -700,10 +732,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
+      // Callers pass the universe node set. Storage, AZ, and proxy checks are per cluster.
+      Set<NodeDetails> clusterNodes =
+          CollectionUtils.isEmpty(nodes)
+              ? Collections.emptySet()
+              : nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
       if (userIntent.isMulticloudSupport()) {
-        Util.validateSpecificationsIfPresent(userIntent.providerSpecifications, false);
+        Util.validateSpecificationsIfPresent(
+            userIntent.dedicatedNodes, userIntent.providerSpecifications, false);
         Map<UUID, List<NodeDetails>> byAzUUID =
-            nodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
+            clusterNodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
         byAzUUID.forEach(
             (azUUID, nds) -> {
               UUID providerUUID = searchProviderUUIDByAz(azUUID).orElseThrow();
@@ -739,7 +777,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + "master and tserver are selected.");
       } else {
         validateDeviceInfo(
-            userIntent.providerType, userIntent.deviceInfo, userIntent.masterDeviceInfo, nodes);
+            userIntent.providerType,
+            userIntent.deviceInfo,
+            userIntent.masterDeviceInfo,
+            clusterNodes);
       }
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
@@ -755,7 +796,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
         userIntent.specificGFlags.validateConsistency();
       }
-      validateProxyConfig(userIntent, nodes);
+      validateProxyConfig(userIntent, clusterNodes);
     }
 
     public void validateProxyConfig(UserIntent userIntent, Collection<NodeDetails> nodeDetails) {
@@ -881,30 +922,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonIgnore
     public PlacementInfo getOverallPlacement() {
       if (!CollectionUtils.isEmpty(partitions)) {
-        PlacementInfo result = new PlacementInfo();
-        // TODO Sort?
+        Collection<PlacementInfo> allPlacements = new ArrayList<>();
+        Set<UUID> defaultPartitionAzs = new HashSet<>();
         for (PartitionInfo partition : partitions) {
-          partition
-              .getPlacement()
-              .azStream()
-              .forEach(
-                  az -> {
-                    int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfo.PlacementAZ mergedAz =
-                        PlacementInfoUtil.addPlacementZone(
-                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
-                    // AZs are disjoint across partitions, so each AZ is added exactly once
-                    // and it is safe to copy the K8s statefulset indices directly. These
-                    // indices must be preserved: master addresses and pod names computed
-                    // from the overall placement (e.g. during a K8s full move) rely on them,
-                    // and dropping them would generate stale/incorrect master addresses.
-                    mergedAz.masterStsIndex = az.masterStsIndex;
-                    mergedAz.tsStsIndex = az.tsStsIndex;
-                    // addPlacementZone does not set leaderPreference, so rankings would
-                    // otherwise reset to 0.
-                    mergedAz.leaderPreference = az.leaderPreference;
-                  });
+          allPlacements.add(partition.placement);
+          if (partition.defaultPartition && partition.placement != null) {
+            defaultPartitionAzs.addAll(partition.placement.getAllAZUUIDs());
+          }
         }
+        PlacementInfo result = PlacementInfoUtil.mergePlacements(allPlacements);
+        result
+            .azStream()
+            .forEach(
+                az -> {
+                  // AZs are disjoint across partitions.
+                  if (!defaultPartitionAzs.contains(az.uuid)) {
+                    // For non-default partition RF should be zero.
+                    az.replicationFactor = 0;
+                  }
+                });
         return result;
       }
       return placementInfo;
@@ -1230,9 +1266,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     /**
      * Validates all the required fields for ProviderSpecification.
      *
+     * @param isDedicated Whether it is dedicated masters mode.
      * @param isPartialUpdate Whether that state would be used to partially update basic state.
      */
-    public void validate(boolean isPartialUpdate) {
+    public void validate(boolean isDedicated, boolean isPartialUpdate) {
       if (providerUUID == null) {
         throw new PlatformServiceException(BAD_REQUEST, "providerUUID must be set");
       }
@@ -1242,10 +1279,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (nodesSpecs == null) {
         throw new PlatformServiceException(BAD_REQUEST, "nodesSpecs must be set");
       }
+      HierarchicalNodesSpec.NodeSpec tserverSpecification = nodesSpecs.getTserverSpecification();
+      HierarchicalNodesSpec.NodeSpec masterSpecification = nodesSpecs.getMasterSpecification();
+
       if (!isPartialUpdate) {
-        if (nodesSpecs.getTserverSpecification() == null) {
+        if (tserverSpecification == null) {
           throw new PlatformServiceException(
               BAD_REQUEST, "nodesSpecs.tserverSpecification must be set");
+        }
+        if (tserverSpecification.getInstanceType() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base instance type for tserver");
+        }
+        if (tserverSpecification.getDeviceInfo() == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for tserver");
+        }
+        if (isDedicated) {
+          if (masterSpecification == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                "nodesSpecs.masterSpecification must be set for dedicated masters mode");
+          }
+          if (masterSpecification.getInstanceType() == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Specify base instance type for master");
+          }
+          if (masterSpecification.getDeviceInfo() == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Specify base device info for master");
+          }
+        }
+      }
+
+      if (!isDedicated) {
+        if (masterSpecification != null && !masterSpecification.isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
         }
       }
       nodesSpecs.validate();
@@ -1442,7 +1510,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
-    @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
+    @DeltaRetainLatest @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
     // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
@@ -1601,8 +1669,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(
         value =
             "WARNING: This is a preview API that could change. Load balancers that YBA creates,"
-                + " manages and deletes. Set when the universe is created. When set, it must"
-                + " enable at least one load balancer.")
+                + " manages and deletes. Set when the universe is created. An edit can turn it on"
+                + " or off. When it turns it on, YBA takes over the load balancer that the zones of"
+                + " a region name with lbName. At create, it must enable at least one load"
+                + " balancer; in an edit, one that enables none turns it off and leaving it out"
+                + " keeps it.")
     private ManagedLoadBalancerConfig managedLoadBalancer;
 
     @ApiModelProperty(
@@ -1819,6 +1890,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
           },
           u -> u.tserverK8SNodeResourceSpec);
+    }
+
+    public String getAwsInstanceProfileForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID, spec -> spec.awsInstanceProfile, u -> u.awsArnString);
     }
 
     public void setProviderInstanceTags(UUID providerUUID, Map<String, String> instanceTags) {
@@ -2487,6 +2563,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     clusters.remove(cluster);
   }
 
+  /** Changes the managed load balancer state; an empty state is saved as null. */
+  public void updateManagedLoadBalancerState(Consumer<ManagedLoadBalancerState> updater) {
+    ManagedLoadBalancerState state =
+        managedLoadBalancerState == null
+            ? new ManagedLoadBalancerState()
+            : managedLoadBalancerState;
+    updater.accept(state);
+    managedLoadBalancerState = state.isEmpty() ? null : state;
+  }
+
   /**
    * Helper API to retrieve the Primary Cluster in the Universe represented by these Params.
    *
@@ -2574,6 +2660,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  /**
+   * Sets each cluster's {@code ybcFlags} to those of the cluster with the same uuid in {@code
+   * source}. A cluster with no match keeps its own.
+   */
+  public void copyYbcFlagsFrom(UniverseDefinitionTaskParams source) {
+    for (Cluster cluster : clusters) {
+      Cluster sourceCluster = source.getClusterByUuid(cluster.uuid);
+      if (sourceCluster != null) {
+        cluster.userIntent.ybcFlags = sourceCluster.userIntent.ybcFlags;
+      }
+    }
   }
 
   public UUID searchProviderUUIDByAz(UUID azUUID) {
@@ -2850,6 +2949,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public boolean isUniverseBusyByTask() {
+    return isUniverseBusyByTask(updateInProgress, updatingTask);
+  }
+
+  /** Whether a universe with these update fields is busy with a task other than a backup. */
+  public static boolean isUniverseBusyByTask(boolean updateInProgress, TaskType updatingTask) {
     return updateInProgress
         && updatingTask != TaskType.BackupTable
         && updatingTask != TaskType.MultiTableBackup

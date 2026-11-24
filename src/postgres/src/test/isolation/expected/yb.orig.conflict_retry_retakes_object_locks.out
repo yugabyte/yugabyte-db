@@ -1,0 +1,147 @@
+Parsed test spec with 5 sessions
+
+starting permutation: s2_begin_rr s1_begin s1_update s2_write s1_commit s4_add_check s2_commit
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_write: 
+  WITH u AS (UPDATE hot SET v = v + (SELECT COUNT(*) FROM gate) WHERE k = 1 RETURNING v)
+  INSERT INTO t2 SELECT 1, v FROM u;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_write: <... completed>
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s2_commit: COMMIT;
+step s4_add_check: <... completed>
+
+starting permutation: s3_lock s2_autocommit_rr s1_begin s1_update s2_write_then_wait s1_commit s4_add_check s3_unlock
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s2_autocommit_rr: SET default_transaction_isolation = 'repeatable read';
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_write_then_wait: 
+  WITH u AS (UPDATE hot SET v = v + (SELECT COUNT(*) FROM gate) WHERE k = 1 RETURNING v)
+  INSERT INTO t2 SELECT 1, v FROM u WHERE wait_for_gate();
+ <waiting ...>
+step s1_commit: COMMIT;
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s2_write_then_wait: <... completed>
+step s4_add_check: <... completed>
+
+starting permutation: s2_begin_rc s1_begin s1_update s2_write s1_commit s4_add_check s2_commit
+step s2_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_write: 
+  WITH u AS (UPDATE hot SET v = v + (SELECT COUNT(*) FROM gate) WHERE k = 1 RETURNING v)
+  INSERT INTO t2 SELECT 1, v FROM u;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_write: <... completed>
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s2_commit: COMMIT;
+step s4_add_check: <... completed>
+
+starting permutation: s2_begin_rc s2_read_hot s1_begin s1_update s2_write s1_commit s4_add_check s2_commit
+step s2_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s2_read_hot: SELECT v FROM hot WHERE k = 1;
+v
+-
+0
+(1 row)
+
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_write: 
+  WITH u AS (UPDATE hot SET v = v + (SELECT COUNT(*) FROM gate) WHERE k = 1 RETURNING v)
+  INSERT INTO t2 SELECT 1, v FROM u;
+ <waiting ...>
+step s1_commit: COMMIT;
+step s2_write: <... completed>
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s2_commit: COMMIT;
+step s4_add_check: <... completed>
+
+starting permutation: s3_lock s2_autocommit_rc s1_begin s1_update s2_write_then_wait s1_commit s4_add_check s3_unlock
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s2_autocommit_rc: SET default_transaction_isolation = 'read committed';
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_write_then_wait: 
+  WITH u AS (UPDATE hot SET v = v + (SELECT COUNT(*) FROM gate) WHERE k = 1 RETURNING v)
+  INSERT INTO t2 SELECT 1, v FROM u WHERE wait_for_gate();
+ <waiting ...>
+step s1_commit: COMMIT;
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s2_write_then_wait: <... completed>
+step s4_add_check: <... completed>
+
+starting permutation: s2_begin_rr s1_begin s1_update s2_advisory_write s1_commit s4_try_advisory s2_commit s4_try_advisory
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_advisory_write: SELECT xact_lock_and_update(); <waiting ...>
+step s1_commit: COMMIT;
+step s2_advisory_write: <... completed>
+xact_lock_and_update
+--------------------
+                    
+(1 row)
+
+step s4_try_advisory: SELECT pg_try_advisory_xact_lock(42);
+pg_try_advisory_xact_lock
+-------------------------
+f                        
+(1 row)
+
+step s2_commit: COMMIT;
+step s4_try_advisory: SELECT pg_try_advisory_xact_lock(42);
+pg_try_advisory_xact_lock
+-------------------------
+t                        
+(1 row)
+
+
+starting permutation: s2_begin_rr s1_begin s1_update s2_exclusive_write s1_commit s4_add_check s5_read_t3 s2_commit
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_begin: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_update: UPDATE hot SET v = v + 1 WHERE k = 1;
+step s2_exclusive_write: SELECT lock_and_update(); <waiting ...>
+step s1_commit: COMMIT;
+step s2_exclusive_write: <... completed>
+lock_and_update
+---------------
+               
+(1 row)
+
+step s4_add_check: ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID; <waiting ...>
+step s5_read_t3: SELECT * FROM t3; <waiting ...>
+step s2_commit: COMMIT;
+step s4_add_check: <... completed>
+step s5_read_t3: <... completed>
+k
+-
+(0 rows)
+

@@ -87,6 +87,17 @@ const YbInternalConnKindDescriptor
 		.use_minimal_preload = false,
 		.preload_lists_in_minimal_mode = false,
 	},
+	[YB_INTERNAL_CONN_KIND_OSC_BACKFILL] = {
+		.wire_name = "online_schema_change_backfill",
+		.backend_type = YB_OSC_BACKFILL_BACKEND,
+		.backend_desc = "yb online schema change backfill backend",
+		/*
+		 * The online schema change backfill backend runs a real INSERT ...
+		 * SELECT, so it preloads normally rather than minimally.
+		 */
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
 };
 
 YbInternalConnKind

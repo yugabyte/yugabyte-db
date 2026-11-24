@@ -11,6 +11,8 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.atLeastOnce;
@@ -18,6 +20,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,7 +82,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -416,6 +425,157 @@ public class HealthCheckerTest extends FakeDBApplication {
     assertTrue(publishedMetricNames(u).contains("yb_node_ysql_connect"));
   }
 
+  @Test
+  public void testHealthCheckRecordsCompletionTime() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    long before = Instant.now().getEpochSecond();
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    assertTrue(lastCompletedTime(u).getValue() >= before);
+  }
+
+  @Test
+  public void testFirstHealthCheckStartsTheClockBeforeItCompletes() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    AtomicReference<Metric> duringCheck = new AtomicReference<>();
+    doAnswer(
+            i -> {
+              duringCheck.compareAndSet(null, lastCompletedTime(u));
+              return null;
+            })
+        .when(mockNodeUniverseManager)
+        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    // A check that hangs from here on is reported once this time is old enough.
+    assertNotNull(duringCheck.get());
+  }
+
+  @Test
+  public void testUniverseThatIsNotCheckedHasNoHealthCheckClock() throws Exception {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(), univ -> univ.getUniverseDetails().creationSucceeded = false);
+    AlertingData alertingData = setupAlertingData(null, false, false);
+
+    healthChecker.checkAllUniverses(defaultCustomer, alertingData, false, false);
+
+    // Started when the check was queued, and dropped when the check skipped the universe.
+    long deadline = System.currentTimeMillis() + 30000;
+    while (lastCompletedTime(u) != null && System.currentTimeMillis() < deadline) {
+      Thread.sleep(50);
+    }
+    assertNull(lastCompletedTime(u));
+  }
+
+  @Test
+  public void testRemovedUniverseGetsNoCompletionTime() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    doAnswer(
+            i -> {
+              // As RemoveUniverseEntry does while the check runs.
+              metricService.delete(MetricFilter.builder().sourceUuid(u.getUniverseUUID()).build());
+              Universe.delete(u.getUniverseUUID());
+              return null;
+            })
+        .when(mockNodeUniverseManager)
+        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    assertNull(lastCompletedTime(u));
+  }
+
+  @Test
+  public void testScheduleRunnerExportsInterval() {
+    healthChecker.scheduleRunner();
+
+    AssertHelper.assertMetricValue(
+        metricService,
+        MetricKey.builder().name(PlatformMetrics.HEALTH_CHECK_INTERVAL.getMetricName()).build(),
+        300.0);
+  }
+
+  @Test
+  public void testNodeKeepsScriptsThatReportTheUploadedFingerprint() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    Map<String, String> fingerprints = recordUploadedFingerprints();
+    mockReportWithFingerprint(fingerprints::get);
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    verifyNodeUniverseManager(u.getNodes().size() * 2, u.getNodes().size() * 2);
+  }
+
+  @Test
+  public void testNodeReportingOtherScriptsGetsThemAgain() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    Map<String, String> fingerprints = recordUploadedFingerprints();
+    mockReportWithFingerprint(node -> "other");
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    verifyNodeUniverseManager(u.getNodes().size() * 4, u.getNodes().size() * 2);
+    assertEquals(u.getNodes().size(), fingerprints.size());
+    fingerprints.values().forEach(f -> assertTrue(f.matches("[0-9a-f]{64}")));
+  }
+
+  // Records the fingerprint written into the node_health.py last uploaded to each node.
+  private Map<String, String> recordUploadedFingerprints() {
+    Map<String, String> fingerprints = new ConcurrentHashMap<>();
+    Pattern pattern = Pattern.compile("SCRIPT_FINGERPRINT = '([^']*)'");
+    doAnswer(
+            i -> {
+              String target = i.getArgument(3);
+              if (target.endsWith("node_health.py")) {
+                Matcher m = pattern.matcher(Files.readString(Paths.get((String) i.getArgument(2))));
+                assertTrue(m.find());
+                fingerprints.put(((NodeDetails) i.getArgument(0)).nodeName, m.group(1));
+              }
+              return null;
+            })
+        .when(mockNodeUniverseManager)
+        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+    return fingerprints;
+  }
+
+  private void mockReportWithFingerprint(Function<String, String> fingerprintByNode) {
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(
+            i ->
+                ShellResponse.create(
+                    0,
+                    "Command output:\n"
+                        + Json.newObject()
+                            .put(
+                                HealthChecker.SCRIPT_FINGERPRINT_FIELD,
+                                fingerprintByNode.apply(((NodeDetails) i.getArgument(0)).nodeName))
+                            .set("data", Json.newArray())));
+  }
+
+  private HealthChecker.CheckSingleUniverseParams checkParams(Universe u) {
+    return new HealthChecker.CheckSingleUniverseParams(
+        u, defaultCustomer, true, false, false, null, false /*runImmediately*/);
+  }
+
+  private Metric lastCompletedTime(Universe u) {
+    return metricService.get(
+        MetricKey.builder()
+            .customerUuid(defaultCustomer.getUuid())
+            .name(PlatformMetrics.HEALTH_CHECK_LAST_COMPLETED_TIME.getMetricName())
+            .sourceUuid(u.getUniverseUUID())
+            .build());
+  }
+
   private void runHealthCheck(Universe u) {
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
@@ -573,6 +733,39 @@ public class HealthCheckerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
     verifyNodeUniverseManager(12, 6);
+  }
+
+  @Test
+  public void testScheduleRunner_ChecksAllUniversesAndLoadsCustomerDataOnce() {
+    setupUniverse("univ1");
+    setupUniverse("univ2");
+    setupAlertingData("test@example.com", false, false);
+    Customer customerWithoutUniverses = ModelFactory.testCustomer("tc2", "Customer 2");
+    when(mockEmailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(List.of("test@example.com"));
+
+    healthChecker.scheduleRunner();
+
+    // Both universes of the default customer are checked (3 nodes each).
+    verifyNodeUniverseManager(12, 6);
+    // The destinations are read once for the customer, not once per universe, and not at all for
+    // the customer without universes.
+    verify(mockEmailHelper, times(1)).getDestinations(defaultCustomer.getUuid());
+    verify(mockEmailHelper, never()).getDestinations(customerWithoutUniverses.getUuid());
+    // The maintenance windows are listed once per run.
+    verify(mockMaintenanceService, times(1)).listActiveWindows();
+  }
+
+  @Test
+  public void testCheckCustomer_SkipsUniverseWhoseCheckIsStillRunning() {
+    Universe u = setupUniverse("univ1");
+    CompletableFuture<Void> running = new CompletableFuture<>();
+    healthChecker.runningHealthChecks.put(u.getUniverseUUID(), running);
+
+    healthChecker.checkCustomer(defaultCustomer);
+
+    verifyNodeUniverseManager(0, 0);
+    assertEquals(running, healthChecker.runningHealthChecks.get(u.getUniverseUUID()));
   }
 
   @Test
@@ -1085,6 +1278,41 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCanHealthCheckUniverse_LockedByBackup() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.CreateBackup;
+          univ.setUniverseDetails(details);
+        });
+    assertTrue(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByOtherTask() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.EditUniverse;
+          univ.setUniverseDetails(details);
+        });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_NullDetails() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(u.getUniverseUUID(), univ -> univ.setUniverseDetails(null));
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
   public void testCheckSingleUniverse_EmailNotSentIfMetricsOnly() throws MessagingException {
     Universe u = setupUniverse("test");
     when(mockEmailHelper.getSmtpData(defaultCustomer.getUuid()))
@@ -1246,6 +1474,26 @@ public class HealthCheckerTest extends FakeDBApplication {
             .collect(Collectors.toSet());
 
     enableNodeAgentHealthChecker(Duration.ofMinutes(5).toMillis());
+    Set<String> second =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    assertTrue(Collections.disjoint(first, second));
+  }
+
+  @Test
+  public void testNodeAgentHealthCheckGenerationIdChangesWithEachUpload() {
+    enableNodeAgentHealthChecker(Duration.ofMinutes(3).toMillis());
+    Universe u = setupUniverse("univ-na-reupload");
+
+    Set<String> first =
+        runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
+            .map(HealthCheckInput::getGenerationId)
+            .collect(Collectors.toSet());
+
+    // The same scripts again, which the agent has to snapshot anew.
+    healthChecker.markUniverseForReUpload(u.getUniverseUUID());
     Set<String> second =
         runNodeAgentHealthCheck(u, false /*runImmediately*/).stream()
             .map(HealthCheckInput::getGenerationId)

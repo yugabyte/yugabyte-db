@@ -1869,6 +1869,7 @@ ReadCommonScan(Scan *local_node)
 
 	/* YB */
 	READ_STRING_FIELD(ybScannedObjectName);
+	READ_NODE_FIELD(ybOptions);
 }
 
 /*

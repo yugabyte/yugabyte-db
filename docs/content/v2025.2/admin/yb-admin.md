@@ -215,7 +215,9 @@ yb-admin \
 
 #### list_all_masters
 
-Displays a list of all YB-Master servers in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), and role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`).
+Displays a list of all YB-Master servers in a table listing the master UUID, RPC host and port, state (`ALIVE` or `DEAD`), role (`LEADER`, `FOLLOWER`, or `UNKNOWN_ROLE`), broadcast host and port, and lag.
+
+The `Lag(ms)` column (v2025.2.9.0 and later) shows the time, in milliseconds, since the Raft leader last successfully exchanged a heartbeat with that YB-Master. It measures only leader-to-follower reachability: a large or steadily growing value indicates that the leader has not recently been able to communicate with that follower. A small value does not by itself mean the follower is caught up, because a follower can respond to heartbeats and still be behind on replicating the sys catalog. The value is `N/A` for the leader's own row, because the leader does not track itself, and for all rows if the command is served by a non-leader. A follower that has never been reached starts with a small value that then grows, so it is not reported as a distinct "never reached" value.
 
 **Syntax**
 
@@ -236,10 +238,10 @@ yb-admin \
 ```
 
 ```output
-Master UUID         RPC Host/Port          State      Role
-...                   node8:7100           ALIVE     FOLLOWER
-...                   node9:7100           ALIVE     FOLLOWER
-...                   node7:7100           ALIVE     LEADER
+Master UUID         RPC Host/Port          State      Role       Broadcast Host/Port    Lag(ms)
+...                   node8:7100           ALIVE     FOLLOWER   node8:7100             120
+...                   node9:7100           ALIVE     FOLLOWER   node9:7100             95
+...                   node7:7100           ALIVE     LEADER     node7:7100             N/A
 ```
 
 #### list_replica_type_counts
@@ -619,7 +621,7 @@ yb-admin \
 * *keyspace*: The namespace, or name of the database or keyspace.
 * *table-name*: The name of the table.
 * *table-id*: The unique UUID associated with the table whose placement policy is being changed.
-* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify minimum and maximum replica counts using the format *cloud*.*region*.*zone*:*min*:*max*; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
 * *replication-factor*: The number of replicas for each tablet.
 * *placement-id*: Identifier of the primary cluster. Optional. If set, it has to match the placement ID specified for the primary cluster in the cluster configuration.
 
@@ -1650,6 +1652,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *placement-info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, you can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, if you specify a placement multiple times, the total count from all mentions is taken.
+    In v2025.2.8.1 and later, you can also specify a maximum replica count (`max_num_replicas`) as a second colon-separated value, using the format *cloud*.*region*.*zone*:*min*:*max* (for example, `aws.us-east-1.us-east-1a:1:2`). The maximum is an upper bound on the number of replicas of each tablet in that placement block, and must be at least the minimum. When omitted, the upper bound is the replication factor. If any placement block specifies a maximum, every block must name a specific cloud, region, and zone — wildcard (`*`) blocks cannot be combined with a maximum — and you cannot repeat the same placement.
 * *replication-factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement-info*.
 * *placement-id*: The identifier of the primary cluster, which can be any unique string. Optional; if not set, a randomly-generated ID is used.
 
@@ -1878,7 +1881,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify a maximum replica count using the format `<cloud.region.zone>:<min>:<max>`; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
     Read replica availability zones must be uniquely different from the primary availability zones. To use the same cloud, region, and availability zone for a read replica as a primary cluster, you can suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1` vs `c1.r1.z1_rr:1`.
 * *replication-factor*: The total number of read replicas.
 * *placement-id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
@@ -1896,7 +1899,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *placement-info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`.
+* *placement-info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default is `cloud1.datacenter1.rack1`. In v2025.2.8.1 and later, each placement can also specify minimum and maximum replica counts using the format *cloud*.*region*.*zone*:*min*:*max*; see [modify_placement_info](#modify-placement-info) for the rules that apply when a maximum is specified.
 * *replication-factor*: The number of replicas.
 * *placement-id*: The identifier of the read replica cluster.
 
@@ -2396,6 +2399,10 @@ yb-admin \
 * *replication-group-id*: The replication group identifier.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
+{{< note title="Note" >}}
+In v2025.2.9.0, for xCluster replication with automatic DDL mode, avoid disabling replication (`0`) while DDL statements are being replicated. A DDL in progress on the target when replication is paused is terminated. This behavior is specific to v2025.2.9.0 and does not occur in earlier versions. The issue will be fixed in a later release.
+{{< /note >}}
+
 #### get_xcluster_safe_time
 
 Reports the current xCluster safe time for each namespace, which is the time at which reads will be performed.
@@ -2454,7 +2461,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *stream-ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* `minus <interval>`: The same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [restore_snapshot_schedule](#restore-snapshot-schedule).
+* `minus <interval>`: The same format as described in [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
 

@@ -176,6 +176,19 @@ public class KmsConfig extends Model {
     return KmsConfig.find.query().where().eq("version", SCHEMA_VERSION).findList();
   }
 
+  /**
+   * Lists all KMS configs without their auth config, which is decrypted in the database for every
+   * row that loads it. Use {@link #getKMSAuthObj(UUID)} for the auth config of a returned config.
+   */
+  public static List<KmsConfig> listAllKMSConfigsWithoutAuthConfig() {
+    return KmsConfig.find
+        .query()
+        .select("configUUID, name, customerUUID, keyProvider, version")
+        .where()
+        .eq("version", SCHEMA_VERSION)
+        .findList();
+  }
+
   public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {
     KmsConfig existingConfig = get(configUUID);
     if (existingConfig == null) return null;

@@ -17,10 +17,11 @@ const universe = (providerType: string, nodeExporterSidecarScraped?: boolean) =>
 const renderBody = (
   selectedUniverse: any,
   currentSelectedNodeType: string = NodeType.ALL,
-  nodeName = 'all'
+  nodeName = 'all',
+  origin: string = MetricOrigin.UNIVERSE
 ) =>
   PanelBody({
-    origin: MetricOrigin.UNIVERSE,
+    origin,
     selectedUniverse,
     nodePrefixes: ['yb-1'],
     width: 1000,
@@ -36,19 +37,38 @@ const renderBody = (
     printMode: false
   } as any) as any;
 
-const tabElements = (body: any): any[] => ([] as any[]).concat(body.props.children);
+// Universe metrics render in the Monitoring card, which takes tab descriptors; other origins
+// render react-bootstrap Tabs.
+const tabsOf = (body: any): { key: string; content: any }[] =>
+  body.props.tabs
+    ? body.props.tabs.map((tab: any) => ({ key: tab.key, content: tab.content }))
+    : ([] as any[])
+        .concat(body.props.children)
+        .map((tab: any) => ({ key: tab.props.eventKey, content: tab.props.children }));
 
-const tabsFor = (selectedUniverse: any, currentSelectedNodeType: string = NodeType.ALL) =>
-  tabElements(renderBody(selectedUniverse, currentSelectedNodeType)).map(
-    (tab: any) => tab.props.eventKey
+const tabsFor = (
+  selectedUniverse: any,
+  currentSelectedNodeType: string = NodeType.ALL,
+  origin: string = MetricOrigin.UNIVERSE
+) =>
+  tabsOf(renderBody(selectedUniverse, currentSelectedNodeType, 'all', origin)).map(
+    (tab) => tab.key
   );
 
-const diskIoKeysFor = (selectedUniverse: any, nodeName: string): string[] => {
-  const tab = tabElements(renderBody(selectedUniverse, NodeType.ALL, nodeName)).find(
-    (t: any) => t.props.eventKey === MetricTypes.DISK_IO
+const tabKeysFor = (
+  selectedUniverse: any,
+  type: string,
+  nodeName = 'all',
+  origin: string = MetricOrigin.UNIVERSE
+): string[] => {
+  const tab = tabsOf(renderBody(selectedUniverse, NodeType.ALL, nodeName, origin)).find(
+    (t) => t.key === type
   );
-  return tab.props.children.props.metricsKey;
+  return tab!.content.props.metricsKey;
 };
+
+const diskIoKeysFor = (selectedUniverse: any, nodeName: string): string[] =>
+  tabKeysFor(selectedUniverse, MetricTypes.DISK_IO, nodeName);
 
 describe('PanelBody tabs on Kubernetes', () => {
   it('shows Resource and Disk I/O when YBA scrapes the node_exporter sidecar', () => {
@@ -60,15 +80,26 @@ describe('PanelBody tabs on Kubernetes', () => {
   });
 
   it.each([false, undefined])(
-    'hides Resource and Disk I/O when the sidecar is not scraped (%s)',
+    'shows Resource and Disk I/O when the sidecar is not scraped (%s)',
     (scraped) => {
       const tabs = tabsFor(universe('kubernetes', scraped));
-      expect(tabs).not.toContain(MetricTypes.SERVER);
-      expect(tabs).not.toContain(MetricTypes.DISK_IO);
+      expect(tabs).toContain(MetricTypes.SERVER);
+      expect(tabs).toContain(MetricTypes.DISK_IO);
       expect(tabs).toContain(MetricTypes.CONTAINER);
       expect(tabs).not.toContain(MetricTypes.PER_PROCESS);
     }
   );
+
+  it('shows the sidecar panels only when the sidecar is scraped', () => {
+    const scraped = tabKeysFor(universe('kubernetes', true), MetricTypes.SERVER);
+    expect(scraped).toContain('disk_iops');
+    expect(scraped).toContain('k8s_node_exporter_memory_usage');
+
+    const notScraped = tabKeysFor(universe('kubernetes', false), MetricTypes.SERVER);
+    expect(notScraped).not.toContain('disk_iops');
+    expect(notScraped).not.toContain('k8s_node_exporter_memory_usage');
+    expect(notScraped).toContain('k8s_cpu_usage');
+  });
 
   it('shows Disk I/O for the Master node type', () => {
     expect(tabsFor(universe('kubernetes', true), NodeType.MASTER)).toContain(MetricTypes.DISK_IO);
@@ -100,5 +131,17 @@ describe('PanelBody Disk I/O keys for a selected node', () => {
     const keys = diskIoKeysFor(universe('aws'), 'yb-15-yb-master-prod-n3');
     expect(keys).toContain('lsm_rocksdb_flush_size');
     expect(keys).not.toContain('master_lsm_rocksdb_flush_size');
+  });
+});
+
+describe('PanelBody tabs on the customer metrics page', () => {
+  it('applies the same Kubernetes rules to its tabs', () => {
+    const tabs = tabsFor(universe('kubernetes', true), NodeType.ALL, MetricOrigin.CUSTOMER);
+    expect(tabs).toContain(MetricTypes.SERVER);
+    expect(tabs).toContain(MetricTypes.DISK_IO);
+    expect(tabs).toContain(MetricTypes.CONTAINER);
+    expect(
+      tabKeysFor(universe('kubernetes', true), MetricTypes.SERVER, 'all', MetricOrigin.CUSTOMER)
+    ).toContain('disk_iops');
   });
 });

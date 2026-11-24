@@ -15,7 +15,7 @@ type: docs
 
 Connect to your cluster database using any modern browser with Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.
 
-When you connect to your cluster using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
+When you connect to your cluster using Cloud Shell with the YSQL API, the shell window also incorporates a quick start guide, with a series of pre-built queries for you to run.
 
 ## Command line interface
 

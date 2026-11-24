@@ -52,7 +52,7 @@ class TserverXClusterContextIf;
     (ActiveSessionHistory) \
     (AlterDatabase) \
     (AlterTable) \
-    (BackfillIndex) \
+    (StartTableBackfill) \
     (CancelTransaction) \
     (CheckIfPitrActive) \
     (CreateDatabase) \
@@ -91,6 +91,7 @@ class TserverXClusterContextIf;
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
+    (RestartTransactionForRetry) \
     (ServersMetrics) \
     (TabletsMetadata) \
     (GetTabletForKey) \
@@ -130,6 +131,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (BackfillIndex) \
     (FinishTransaction) \
     (IsDatabaseColocated) \
     (OpenTable) \
@@ -163,6 +165,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
       rpc::RpcContext context) override;
 
   void InvalidateTableCache(const std::optional<PgTableCacheInvalidationFilter>& filter);
+
+  // Advance the per-database sequence-cache epoch.
+  void BumpDatabaseSequenceCacheEpoch(PgOid db_oid);
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
@@ -313,6 +318,14 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
   rw_spinlock mutex_;
 
   Handle SetMock(const std::string& method, SharedFunctor&& mock);
+};
+
+struct PgClientServiceHolder {
+  template <class... Args>
+  explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
+
+  std::optional<PgClientServiceMockImpl> mock;
+  PgClientServiceImpl impl;
 };
 
 }  // namespace tserver

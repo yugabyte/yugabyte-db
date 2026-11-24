@@ -82,11 +82,11 @@ for header in "${headers[@]}"; do
 done
 
 # Function calls to get URL and headers
-if test -f "{{ tmp_directory }}/create_provider.json"; then
+if test -f "{{ yba_payload_dir }}/create_provider.json"; then
     create_provider_endpoint=$(_create_provider_url $yba_url $customer_uuid)
 
     # Create the provider in case the provider create payload exists.
-    provider_data=$(cat "{{ tmp_directory }}/create_provider.json")
+    provider_data=$(cat "{{ yba_payload_dir }}/create_provider.json")
     response=$(curl -s -w "%{http_code}" -o response.txt -X POST \
         "${header_options[@]}" -d "$provider_data" \
         $tls_verify_option "$create_provider_endpoint")
@@ -132,12 +132,12 @@ if test -f "{{ tmp_directory }}/create_provider.json"; then
     echo "Provider created successfully"
 fi
 
-if test -f "{{ tmp_directory }}/update_provider.json"; then
+if test -f "{{ yba_payload_dir }}/update_provider.json"; then
     # Update the provider
     update_provider_endpoint=$(_update_provider_url $yba_url $customer_uuid $provider_id)
 
     # Create the provider in case the provider create payload exists.
-    provider_data=$(cat "{{ tmp_directory }}/update_provider.json")
+    provider_data=$(cat "{{ yba_payload_dir }}/update_provider.json")
     response=$(curl -s -w "%{http_code}" -o response.txt -X PUT \
         "${header_options[@]}" -d "$provider_data" \
         $tls_verify_option "$update_provider_endpoint")
@@ -183,9 +183,9 @@ if test -f "{{ tmp_directory }}/update_provider.json"; then
     echo "Provider updated successfully"
 fi
 
-if test -f "{{ tmp_directory }}/create_instance.json"; then
+if test -f "{{ yba_payload_dir }}/create_instance.json"; then
     # Create the instance type
-    instance_data=$(cat "{{ tmp_directory }}/create_instance.json")
+    instance_data=$(cat "{{ yba_payload_dir }}/create_instance.json")
     instance_data=$(echo "$instance_data" | sed "s/\\\$provider_id/$provider_id/")
 
     create_instance_url=$(_instance_create_url $yba_url $customer_uuid $provider_id)
@@ -251,11 +251,19 @@ if systemctl list-units --all 2>/dev/null | grep -qF yb-node-agent.service; then
 fi
 
 # Install node agent as a systemd service.
+# Base64 keeps the label from rendering as code: pasted as is, na-x$(touch /tmp/m2) would run touch.
 {% if certificate_name is defined and certificate_name %}
-certificate_name_flag="--certificate_name {{ certificate_name }}"
+certificate_name=$(printf '%s' "{{ certificate_name | base64_encode }}" | base64 --decode)
 {% else %}
-certificate_name_flag=""
+certificate_name=""
 {% endif %}
+certificate_name_args=()
+certificate_name_flag=""
+if [ -n "$certificate_name" ]; then
+    certificate_name_args=(--certificate_name "$certificate_name")
+    # su -c parses its command string again, so quote the value for that shell.
+    printf -v certificate_name_flag -- '--certificate_name %q' "$certificate_name"
+fi
 if [ "$SUDO_ACCESS" = "true" ]; then
     su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
         -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
@@ -269,7 +277,7 @@ else
         --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
         --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
         --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag $fips_flag \
-        --install_path {{ yb_home_dir }} $certificate_name_flag
+        --install_path {{ yb_home_dir }} "${certificate_name_args[@]}"
 fi
 
 if [ $? -eq 0 ]; then
@@ -279,7 +287,7 @@ else
     exit 1
 fi
 
-if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
+if test -f "{{ yba_payload_dir }}/add_node_to_provider.json"; then
     get_nodes_in_provider=$(_get_nodes_in_provider $yba_url $customer_uuid $provider_id)
     # Perform GET request to fetch all the nodes associated with provider
     response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
@@ -342,7 +350,7 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
                 exit 1
             fi
 
-            add_node_data=$(cat "{{ tmp_directory }}/add_node_to_provider.json")
+            add_node_data=$(cat "{{ yba_payload_dir }}/add_node_to_provider.json")
             add_node_url=$(_add_node_to_provider $yba_url $customer_uuid $zone_uuid)
             response=$(curl -s -w "%{http_code}" -o response.txt -X POST \
                 "${header_options[@]}" -d "$add_node_data" \
@@ -364,20 +372,20 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
 fi
 
 function cleanup() {
-    if test -f "{{ tmp_directory }}/create_provider.json"; then
-        rm "{{ tmp_directory }}/create_provider.json"
+    if test -f "{{ yba_payload_dir }}/create_provider.json"; then
+        rm "{{ yba_payload_dir }}/create_provider.json"
     fi
 
-    if test -f "{{ tmp_directory }}/update_provider.json"; then
-        rm "{{ tmp_directory }}/update_provider.json"
+    if test -f "{{ yba_payload_dir }}/update_provider.json"; then
+        rm "{{ yba_payload_dir }}/update_provider.json"
     fi
 
-    if test -f "{{ tmp_directory }}/create_instance.json"; then
-        rm "{{ tmp_directory }}/create_instance.json"
+    if test -f "{{ yba_payload_dir }}/create_instance.json"; then
+        rm "{{ yba_payload_dir }}/create_instance.json"
     fi
 
-    if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
-        rm "{{ tmp_directory }}/add_node_to_provider.json"
+    if test -f "{{ yba_payload_dir }}/add_node_to_provider.json"; then
+        rm "{{ yba_payload_dir }}/add_node_to_provider.json"
     fi
 
     rm -rf "{{ yb_home_dir }}/.install"

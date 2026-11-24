@@ -17,9 +17,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,8 +40,11 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +64,16 @@ import org.mockito.Mockito;
 import play.libs.Json;
 
 public class GFlagsUtilTest extends FakeDBApplication {
+
+  /**
+   * ysql_pg_conf_csv for user log_statement=DDL, new install yb_enable_cbo=on, and query logging
+   * with log_statement=MOD and other defaults. The gflags file and the in-memory value must both
+   * have this exact string (GFlagsUpgradeTest checks the in-memory one).
+   */
+  public static final String USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV =
+      "log_statement=MOD,yb_enable_cbo=on,log_duration=OFF,debug_print_plan=OFF,"
+          + "log_connections=OFF,log_disconnections=OFF,log_min_error_statement=ERROR,"
+          + "log_error_verbosity=DEFAULT,log_min_duration_statement=-1";
 
   @Mock private GFlagsValidation gFlagsValidation;
 
@@ -274,6 +288,69 @@ public class GFlagsUtilTest extends FakeDBApplication {
     k8sUniverse.updateConfig(
         ImmutableMap.of(Universe.K8S_APPLY_NEW_INSTALL_GFLAGS, Boolean.toString(true)));
     assertTrue(GFlagsUtil.areNewInstallGFlagsApplied(k8sUniverse));
+  }
+
+  @Test
+  public void testDefaultGFlagsMergeQueryLogPgConfWithNewInstallPgConf() {
+    Customer customer = ModelFactory.testCustomer();
+    Provider provider = ModelFactory.awsProvider(customer);
+    Region region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    Universe universe = ModelFactory.createUniverse("pg-conf-universe", customer.getId());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              Cluster primary = details.getPrimaryCluster();
+              primary.userIntent.provider = provider.getUuid().toString();
+              primary.userIntent.enableYSQL = true;
+              NodeDetails node = ApiUtils.getDummyNodeDetails(1);
+              node.azUuid = az.getUuid();
+              node.placementUuid = primary.uuid;
+              node.isTserver = true;
+              details.nodeDetailsSet = new HashSet<>(Set.of(node));
+              u.setUniverseDetails(details);
+            });
+    PerProcessFlags newInstallGFlags = new PerProcessFlags();
+    newInstallGFlags.value.put(
+        ServerType.TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+    universe.setNewInstallGFlags(newInstallGFlags);
+    universe.save();
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        "yb_enable_cbo=on",
+        universe.getNewInstallGFlags(ServerType.TSERVER).get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.azUuid = az.getUuid();
+    params.placementUuid = node.placementUuid;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = "/mnt/d0";
+    params.enableYSQL = true;
+    params.setProperty("processType", ServerType.TSERVER.toString());
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+
+    Map<String, String> gflags =
+        GFlagsUtil.getAllDefaultGFlags(
+            params,
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            false /* useHostname */,
+            app.injector().instanceOf(RuntimeConfGetter.class));
+
+    String pgConfCsv = gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
   }
 
   @Test
@@ -691,13 +768,14 @@ public class GFlagsUtilTest extends FakeDBApplication {
                       existingGFlags3, newGFlags3, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex3.getHttpStatus());
 
-      // Test case 4: Double-quote CSV format with special characters (real user case)
+      // Test case 4: Double-quote CSV format with special characters (real user case). The # is
+      // outside quotes, so Postgres reads a comment, which is redacted too.
       String originalYsqlHbaConf4 =
           "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
               + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
       String newYsqlHbaConf4 =
-          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
-              + "ldapbindpasswd=\"\"REDACTED\"\"";
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+              + " ldapbindpasswd=\"REDACTED\"#REDACTED";
 
       Map<String, String> existingGFlags4 = new HashMap<>();
       existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);
@@ -734,6 +812,158 @@ public class GFlagsUtilTest extends FakeDBApplication {
               () -> GFlagsUtil.mergeSensitiveGFlags(existing, newFlags, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex.getHttpStatus());
       assertTrue(ex.getMessage().contains("ycql_ldap_bind_passwd"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveGFlagsRedactedWithNoStoredValueThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      Map<String, String> newFlags = Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT);
+      String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT;
+
+      for (Map<String, String> existing : Arrays.asList(null, Map.of("webserver_port", "9000"))) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () ->
+                    GFlagsUtil.mergeSensitiveGFlags(existing, newFlags, gFlagsValidation, "2.18"));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+        assertTrue(ex.getMessage(), ex.getMessage().contains("ycql_ldap_bind_passwd"));
+      }
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      null, Map.of(YSQL_HBA_CONF_CSV, hba), gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      assertTrue(ex.getMessage(), ex.getMessage().contains(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> plain = Map.of("webserver_port", "9100");
+      assertEquals(plain, GFlagsUtil.mergeSensitiveGFlags(null, plain, gFlagsValidation, "2.18"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveSpecificGFlagsRedactedWithNoStoredGFlagsThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      SpecificGFlags newSpecificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(), new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT)));
+
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveSpecificGFlags(
+                      null, newSpecificGFlags, gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    }
+  }
+
+  @Test
+  public void testCheckNoRedactedGFlagsOnCreate() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      UserIntent legacy = new UserIntent();
+      legacy.tserverGFlags = new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      UserIntent specific = new UserIntent();
+      specific.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(
+                  Map.of(
+                      YSQL_HBA_CONF_CSV,
+                      "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT)),
+              new HashMap<>());
+
+      for (UserIntent userIntent : List.of(legacy, specific)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+
+      UserIntent real = new UserIntent();
+      real.tserverGFlags =
+          new HashMap<>(
+              Map.of(
+                  "ycql_ldap_bind_passwd",
+                  "ycql-bind-secret-xyz",
+                  "ysql_pg_conf_csv",
+                  "application_name=" + SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+
+      // Create rebuilds the deprecated maps from specificGFlags, so a REDACTED there is unused.
+      UserIntent copiedFromGet = new UserIntent();
+      copiedFromGet.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(),
+              new HashMap<>(Map.of("ycql_ldap_bind_passwd", "ycql-bind-secret-xyz")));
+      copiedFromGet.tserverGFlags =
+          new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(copiedFromGet, "2.25.0.0", null);
+    }
+  }
+
+  @Test
+  public void testCheckNoRedactedGFlagsOnCreateChecksKubernetesOverrides() {
+    String redacted =
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT + "\n";
+    UserIntent universeLevel = new UserIntent();
+    universeLevel.universeOverrides = redacted;
+    UserIntent azLevel = new UserIntent();
+    azLevel.azOverrides = new HashMap<>(Map.of("az-1", "tserver:\n  cpu: 2\n", "az-2", redacted));
+    UserIntent hiddenWhole = new UserIntent();
+    hiddenWhole.universeOverrides = SECRET_REPLACEMENT;
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      for (UserIntent userIntent : List.of(universeLevel, azLevel, hiddenWhole)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+      PlatformServiceException azEx =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(azLevel, "2.25.0.0", null));
+      assertTrue(azEx.getMessage(), azEx.getMessage().contains("Kubernetes overrides of AZ az-2"));
+
+      UserIntent real = new UserIntent();
+      real.universeOverrides = redacted.replace(SECRET_REPLACEMENT, "dummy-bind-pass");
+      // Only a secret can't be REDACTED.
+      real.azOverrides =
+          new HashMap<>(
+              Map.of(
+                  "az-1", "# " + SECRET_REPLACEMENT + "\ntserver:\n  note: " + SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+    }
+    // With the redaction off, a client gets the overrides unredacted and nothing is checked.
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(false);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(universeLevel, "2.25.0.0", null);
     }
   }
 
@@ -898,7 +1128,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
       };
 
       for (String password : passwords) {
-        String encoded = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, password);
+        String encoded = "\"\"" + password.replace("\"", "\"\"") + "\"\"";
         String hbaOriginal =
             "host all all 0.0.0.0/0 ldap ldapserver="
                 + ldapHost
@@ -982,6 +1212,70 @@ public class GFlagsUtilTest extends FakeDBApplication {
               () ->
                   GFlagsUtil.mergeSensitiveGFlags(
                       existingGFlags, newGFlags, gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    }
+  }
+
+  @Test
+  public void testRedactSensitiveSpecificGFlags() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812";
+    UUID azUuid = UUID.randomUUID();
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value =
+        ImmutableMap.of(
+            ServerType.TSERVER, ImmutableMap.of("ycql_ldap_bind_passwd", "dummy-az-lr23812"));
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("m", "1"),
+            ImmutableMap.of(
+                "ycql_ldap_bind_passwd", "dummy-lr23812", YSQL_HBA_CONF_CSV, hba, "t", "1"));
+    specificGFlags.setPerAZ(ImmutableMap.of(azUuid, azFlags));
+    specificGFlags.setGflagGroups(List.of(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY));
+
+    SpecificGFlags redacted =
+        GFlagsUtil.redactSensitiveSpecificGFlags(specificGFlags, gFlagsValidation, "2.18");
+
+    Map<String, String> tserver = redacted.getPerProcessFlags().value.get(ServerType.TSERVER);
+    assertEquals(SECRET_REPLACEMENT, tserver.get("ycql_ldap_bind_passwd"));
+    assertEquals(
+        hba.replace("dummy-hba-lr23812", SECRET_REPLACEMENT), tserver.get(YSQL_HBA_CONF_CSV));
+    assertEquals("1", tserver.get("t"));
+    assertEquals("1", redacted.getPerProcessFlags().value.get(ServerType.MASTER).get("m"));
+    assertEquals(
+        SECRET_REPLACEMENT,
+        redacted.getPerAZ().get(azUuid).value.get(ServerType.TSERVER).get("ycql_ldap_bind_passwd"));
+    assertEquals(specificGFlags.getGflagGroups(), redacted.getGflagGroups());
+    assertEquals(
+        hba,
+        specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get(YSQL_HBA_CONF_CSV));
+  }
+
+  @Test
+  public void testMergeSensitiveGFlagsYsqlHbaRedactedIgnoresSurroundingWhitespace() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+
+      String existing = "\n host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+      Map<String, String> existingGFlags = Map.of(YSQL_HBA_CONF_CSV, existing);
+      String trimmedRedacted =
+          RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existing).trim();
+
+      Map<String, String> merged =
+          GFlagsUtil.mergeSensitiveGFlags(
+              existingGFlags, Map.of(YSQL_HBA_CONF_CSV, trimmedRedacted), gFlagsValidation, "2.18");
+      assertEquals(existing, merged.get(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> changed =
+          Map.of(YSQL_HBA_CONF_CSV, trimmedRedacted.replace("0.0.0.0/0", "192.0.2.0/24"));
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      existingGFlags, changed, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex.getHttpStatus());
     }
   }
@@ -1205,6 +1499,136 @@ public class GFlagsUtilTest extends FakeDBApplication {
     GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, null);
 
     assertEquals(Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"), userGFlags);
+  }
+
+  @Test
+  public void testProcessUserGFlagsTelemetryPgConfWinsOverUserPgConf() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
+    Map<String, String> userGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all,yb_enable_cbo=off"));
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.mergeCSVs(
+                    GFlagsUtil.getYsqlPgConfCsv(params), "yb_enable_cbo=on", true)));
+
+    GFlagsUtil.processUserGFlags(node, userGFlags, platformGFlags, false, null, params);
+
+    String pgConfCsv = userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV);
+    assertTrue(pgConfCsv, pgConfCsv.contains("log_statement=MOD"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("log_statement=all"));
+    // User entries still win over non-telemetry platform defaults.
+    assertTrue(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=off"));
+    assertFalse(pgConfCsv, pgConfCsv.contains("yb_enable_cbo=on"));
+
+    // Without YSQL, getYSQLGFlags adds no telemetry entries, so the user value stays as is.
+    params.enableYSQL = false;
+    userGFlags = new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=all"));
+    GFlagsUtil.processUserGFlags(node, userGFlags, new HashMap<>(), false, null, params);
+    assertEquals("log_statement=all", userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+  }
+
+  @Test
+  public void testProcessUserGFlagsPgConfOrderMatchesInMemoryOrder() {
+    NodeDetails node = new NodeDetails();
+    node.nodeName = "host-n1";
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    params.telemetryConfig = TelemetryConfig.builder().queryLogConfig(queryLogConfig).build();
+    params.enableYSQL = true;
+    // Platform value as getAllDefaultGFlags builds it: new install entries, then telemetry.
+    Map<String, String> platformGFlags =
+        new HashMap<>(
+            Map.of(
+                GFlagsUtil.YSQL_PG_CONF_CSV,
+                GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+                    "yb_enable_cbo=on", GFlagsUtil.getYsqlPgConfCsv(params))));
+    // A case variant of a telemetry key gives the same value: PostgreSQL ignores the case.
+    for (String userPgConfCsv : List.of("log_statement=DDL", "Log_Statement=all")) {
+      Map<String, String> userGFlags =
+          new HashMap<>(Map.of(GFlagsUtil.YSQL_PG_CONF_CSV, userPgConfCsv));
+
+      GFlagsUtil.processUserGFlags(
+          node, userGFlags, new HashMap<>(platformGFlags), false, null, params);
+
+      assertEquals(
+          USER_DDL_CBO_AND_QUERY_LOG_MOD_PG_CONF_CSV, userGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV));
+    }
+  }
+
+  @Test
+  public void testOverrideWithTelemetryYsqlPgConfCsv() {
+    // No conflict: the base keeps its exact string and new keys are appended.
+    String base = mergeCSVs("yb_enable_cbo=off,log_statement=MOD", "", true);
+    assertEquals(base, GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(base, "log_statement=MOD"));
+    assertEquals(
+        "yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("yb_enable_cbo=off", "log_duration=ON"));
+    // Conflict: the telemetry value replaces the base one in place.
+    assertEquals(
+        "log_statement=MOD,yb_enable_cbo=off,log_duration=ON",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "log_statement=all,yb_enable_cbo=off", "log_statement=MOD,log_duration=ON"));
+    // PostgreSQL setting names are case-insensitive: a telemetry key replaces the first base
+    // entry for it in any case and drops the later ones.
+    assertEquals(
+        "log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("Log_Statement=all", "log_statement=MOD"));
+    assertEquals(
+        "log_statement=MOD,work_mem=4MB",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "log_statement=ddl,work_mem=4MB,Log_Statement=all", "log_statement=MOD"));
+    // Other keys match exactly and, as in mergeCSVs, the first base entry for a key wins.
+    assertEquals(
+        "work_mem=4MB,Work_Mem=8MB,log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(
+            "work_mem=4MB,Work_Mem=8MB,work_mem=64MB", "log_statement=MOD"));
+    assertEquals(
+        "log_statement=MOD",
+        GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, "log_statement=MOD"));
+    // With no telemetry entries, the base is printed as mergeCSVs prints it.
+    assertEquals("a=1", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv("a=1", ""));
+    assertEquals("", GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(null, null));
+    String userCsv = "work_mem=4MB,work_mem=64MB,\"log_line_prefix='%m [%p] '\"";
+    assertEquals(
+        mergeCSVs(userCsv, "", true), GFlagsUtil.overrideWithTelemetryYsqlPgConfCsv(userCsv, ""));
+  }
+
+  @Test
+  public void testGetLogLinePrefixPrefersQueryLogConfig() {
+    String userCsv = mergeCSVs("\"log_line_prefix='%m user '\"", "", true);
+    YSQLQueryLogConfig ysqlQueryLogConfig = new YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogLinePrefix("%m api ");
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+
+    assertEquals("%m api ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    // getYsqlPgConfCsv emits nothing for a disabled config, so the user value is in effect.
+    ysqlQueryLogConfig.setEnabled(false);
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(queryLogConfig, userCsv));
+    assertEquals("%m user ", GFlagsUtil.getLogLinePrefix(null, userCsv));
+    // PostgreSQL ignores the case of setting names.
+    assertEquals(
+        "%m upper ",
+        GFlagsUtil.getLogLinePrefix(null, mergeCSVs("\"LOG_LINE_PREFIX='%m upper '\"", "", true)));
+    assertEquals(
+        GFlagsUtil.getLogLinePrefix(null, ""),
+        GFlagsUtil.getLogLinePrefix(queryLogConfig, "yb_enable_cbo=on"));
   }
 
   @Test

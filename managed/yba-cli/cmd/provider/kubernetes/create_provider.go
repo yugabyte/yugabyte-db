@@ -27,8 +27,7 @@ var createK8sProviderCmd = &cobra.Command{
 	Example: `yba provider k8s create -n <provider-name> --type gke \
 	--pull-secret-file <pull-secret-file-path> \
 	--region region-name=us-west1 \
-	--zone zone-name=us-west1-b::region-name=us-west1::storage-class=<storage-class>::\
-	overrirdes-file-path=<overrirdes-file-path> \
+	--zone zone-name=us-west1-b::region-name=us-west1::storage-class=<storage-class>::overrides-file-path=<overrides-file-path> \
 	--zone zone-name=us-west1-a::region-name=us-west1::storage-class=<storage-class> \
 	--zone zone-name=us-west1-c::region-name=us-west1::storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -40,6 +39,17 @@ var createK8sProviderCmd = &cobra.Command{
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to create\n", formatter.RedColor))
+		}
+		regions, err := cmd.Flags().GetStringArray("region")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		zones, err := cmd.Flags().GetStringArray("zone")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if err := providerutil.ValidateCreateZoneRegions(regions, zones); err != nil {
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
