@@ -23,6 +23,7 @@
  * the PG backend to close its socket
  */
 #define YB_BACKEND_DRAIN_SLEEP_US 1000u
+#define YB_EXITING_BACKEND_MAX_READS_PER_TICK 64
 
 void od_backend_close(od_server_t *server)
 {
@@ -162,6 +163,10 @@ void yb_hold_backend_slot(od_server_t *server)
 	if (server->yb_exiting_fd != -1)
 		backend = malloc(sizeof(*backend));
 	if (backend == NULL) {
+		od_error(&instance->logger, "backend", NULL, server,
+			 "cannot track exit of backend (%s), releasing its connection slot now",
+			 server->yb_exiting_fd == -1 ? "dup failed" :
+						       "out of memory");
 		if (server->yb_exiting_fd != -1)
 			close(server->yb_exiting_fd);
 		server->yb_exiting_fd = -1;
@@ -193,9 +198,13 @@ int yb_backend_release_slots_of_exited(od_router_t *router)
 		yb_exiting_backend_t *backend =
 			od_container_of(i, yb_exiting_backend_t, link);
 		ssize_t rc;
+		int reads = 0;
 		while ((rc = recv(backend->fd, buf, sizeof(buf),
-				  MSG_DONTWAIT)) > 0)
+				  MSG_DONTWAIT)) > 0 &&
+		       ++reads < YB_EXITING_BACKEND_MAX_READS_PER_TICK)
 			;
+		if (rc > 0)
+			continue;
 		if (rc == -1 && (errno == EAGAIN || errno == EWOULDBLOCK ||
 				 errno == EINTR))
 			continue;
