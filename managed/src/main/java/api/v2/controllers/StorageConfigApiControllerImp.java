@@ -35,6 +35,23 @@ public class StorageConfigApiControllerImp extends StorageConfigApiControllerImp
   }
 
   @Override
+  public YBATask editStorageConfig(
+      Http.Request request,
+      UUID cUUID,
+      UUID scUUID,
+      StorageConfigSpec storageConfigSpec,
+      String ifMatch) {
+    return storageConfigHandler.editStorageConfig(cUUID, scUUID, storageConfigSpec, ifMatch);
+  }
+
+  @Override
+  public YBATask deleteStorageConfig(
+      Http.Request request, UUID cUUID, UUID scUUID, Boolean deleteBackups) {
+    return storageConfigHandler.deleteStorageConfig(
+        cUUID, scUUID, Boolean.TRUE.equals(deleteBackups));
+  }
+
+  @Override
   public StorageConfig getStorageConfig(Http.Request request, UUID cUUID, UUID scUUID) {
     return storageConfigHandler.getStorageConfig(cUUID, scUUID);
   }

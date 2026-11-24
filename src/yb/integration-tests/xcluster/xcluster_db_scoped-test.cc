@@ -17,6 +17,7 @@
 
 #include <gmock/gmock.h>
 
+#include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -65,6 +66,7 @@ DECLARE_bool(vector_index_store_payload);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_drop_bootstrap_producer_response);
 DECLARE_bool(TEST_xcluster_fail_record_stream_bootstrap_info);
+DECLARE_bool(TEST_enable_remote_bootstrap);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
@@ -628,6 +630,33 @@ TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointReadsOpIdsAfterSpli
 TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointResolvesTabletsAfterSplit) {
   TestOldLeaderCheckpointFinishesAfterSplit(
       "XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
+}
+
+// Tests that a checkpoint succeeds when a local peer is tombstoned during BootstrapProducer.
+TEST_F(XClusterDBScopedAutomaticModeTest, CheckpointWithTombstonedLocalPeer) {
+  ASSERT_OK(SetUpClusters());
+  // Stop the leader from remote bootstrapping the tombstoned peer back before the run reads it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
+
+  // After the run reads the tablet locations, tombstone a follower peer on its tserver, as the
+  // load balancer would.
+  SyncPointScope sync_point;
+  sync_point->SetCallBack(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [this](void* arg) {
+        const auto ts_uuid = static_cast<cdc::CDCServiceContext*>(arg)->permanent_uuid();
+        const auto followers = ListTableTabletPeers(
+            producer_cluster(), producer_table_->id(), ListPeersFilter::kNonLeaders);
+        const auto follower = std::ranges::find_if(
+            followers, [&](const auto& peer) { return peer->permanent_uuid() == ts_uuid; });
+        ASSERT_NE(follower, followers.end());
+        auto* ts = ASSERT_NOTNULL(producer_cluster()->find_tablet_server(ts_uuid));
+        ASSERT_OK(ts->DeleteTablet((*follower)->tablet_id(), tablet::TABLET_DATA_TOMBSTONED));
+      });
+  sync_point->EnableProcessing();
+
+  StringWaiterLogSink fallback_sink("from its leader, since the local peer cannot serve");
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_TRUE(fallback_sink.IsEventOccurred());
 }
 
 // The only place kDiverged is reached against two real universes; every other verify test runs on
