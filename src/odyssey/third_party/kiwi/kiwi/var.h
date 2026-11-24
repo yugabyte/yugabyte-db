@@ -58,6 +58,7 @@ struct kiwi_var {
 	char value_buf[KIWI_MAX_VAR_SIZE];
 	char *value;
 	int value_len;
+	int yb_skip_check;
 };
 
 struct kiwi_vars {
@@ -83,6 +84,7 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 	var->name_len = name_len;
 	var->value = var->value_buf;
 	var->value_len = 0;
+	var->yb_skip_check = 0;
 }
 
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -225,6 +227,7 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 	var->name_len = name_len;
 	var->value = var->value_buf;
 	var->value_len = 0;
+	var->yb_skip_check = 0;
 	if (yb_kiwi_var_set(var, value, value_len) == -1)
 		vars->size--;
 }
@@ -401,13 +404,26 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 #else
 	/* Act as a "safe" set. (find and update, else push new value) */
 	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
-	if (var != NULL)
+	if (var != NULL) {
 		yb_kiwi_var_set(var, value, value_len);
-	else
+		var->yb_skip_check = 0;
+	} else
 		yb_kiwi_var_push(vars, name, name_len, value, value_len);
 #endif
 	return 0;
 }
+
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+static inline void yb_kiwi_vars_update_reported(kiwi_vars_t *vars, char *name,
+						int name_len, char *value,
+						int value_len, int skip_check)
+{
+	kiwi_vars_update(vars, name, name_len, value, value_len);
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
+	if (var != NULL)
+		var->yb_skip_check = skip_check != 0;
+}
+#endif
 
 static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
 						 int name_len)

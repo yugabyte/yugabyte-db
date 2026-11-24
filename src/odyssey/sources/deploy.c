@@ -48,7 +48,7 @@ int yb_set_client_id(od_client_t *client, od_server_t *server)
 /*
  * Send a 'G' packet carrying every var in client_vars that differs from
  * server_vars. Subtype 'D' sets startup-packet defaults, 'S' session values.
- * Format: subtype key1\0value1\0key2\0value2\0...
+ * Format: subtype key1\0value1\0skip1 key2\0value2\0skip2...
  * Returns number of packets to ignore (1 for ReadyForQuery), or -1 on error.
  */
 static int yb_send_guc_state(od_client_t *client, od_server_t *server,
@@ -83,7 +83,7 @@ static int yb_send_guc_state(od_client_t *client, od_server_t *server,
 		if (kiwi_var_compare(client_var, server_var))
 			continue;
 
-		if (pos + client_var->name_len + client_var->value_len >
+		if (pos + client_var->name_len + client_var->value_len + 1 >
 		    yb_max_query_size + 1) {
 			od_error(
 				&instance->logger, "deploy", client, server,
@@ -98,6 +98,7 @@ static int yb_send_guc_state(od_client_t *client, od_server_t *server,
 		pos += client_var->name_len;
 		memcpy(data + pos, client_var->value, client_var->value_len);
 		pos += client_var->value_len;
+		data[pos++] = client_var->yb_skip_check ? 1 : 0;
 	}
 
 	if (num_vars_in_pkt == 0) {
