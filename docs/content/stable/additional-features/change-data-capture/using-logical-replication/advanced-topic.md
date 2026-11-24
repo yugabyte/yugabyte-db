@@ -195,7 +195,7 @@ For architectural details, see [Table rewrite and DROP TABLE handling](../../../
 
 ### What the client receives
 
-The replication protocol has no message for a table rewrite, a truncate, or a drop. The consumer sees only ordinary change records and relation metadata, so it has to infer the DDL from them. For each DDL, the records the consumer receives, and the open issue tracking the gap, are as follows.
+The replication protocol has no message for a table rewrite, a truncate, or a drop. The consumer sees only ordinary change records and relation metadata, so it has to infer the DDL from them. For each DDL, the records the consumer receives, and the open issue tracking the gap, are as follows:
 
 - **Rewriting `ALTER TABLE`**: the updated relation metadata, as for any [column change](#column-changes), followed by every existing row streamed again from the new tablets. Consumers must tolerate rows they have already received, for example by applying inserts as upserts. Tracked in {{<issue 31636>}}.
 - **`TRUNCATE`**: no truncate record. Changes committed before the truncate that were not yet streamed are delivered first, followed by changes made after the truncate. The consumer cannot tell where the truncate happened, so an insert after the truncate that reuses a primary key arrives as an insert of a key the consumer already holds. Tracked in {{<issue 29674>}}.
