@@ -27,7 +27,9 @@
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
@@ -40,6 +42,7 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_uint64(tablet_split_limit_per_table);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_bool(TEST_xcluster_block_first_poll);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
@@ -189,6 +192,103 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
+  }
+
+  // Short intervals for what deletes a hidden tablet: the task that finds that no stream needs it
+  // any more, and the one that deletes what nothing keeps.
+  void SetHiddenTabletDeletionTestFlags() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 500;
+  }
+
+  // For the tests that compact away the history that no stream holds on to. The history barrier
+  // of a tablet follows its row in cdc_state closely, from the start.
+  void SetHistoryRetentionTestFlags() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  }
+
+  // Whether the master keeps the tablet, hidden, for the stream.
+  bool IsTabletRetained(const TabletId& tablet_id) {
+    return test_cluster()
+        ->mini_master()
+        ->catalog_manager_impl()
+        .GetTabletHideTime(tablet_id)
+        .ok();
+  }
+
+  Result<bool> IsTabletDeleted(const TabletId& tablet_id) {
+    auto tablet = test_cluster()->mini_master()->catalog_manager_impl().GetTabletInfo(tablet_id);
+    if (!tablet.ok()) {
+      // The master forgets a deleted tablet after a while.
+      if (tablet.status().IsNotFound() || tablet.status().IsDeleted()) {
+        return true;
+      }
+      return tablet.status();
+    }
+    return (*tablet)->LockForRead()->is_deleted();
+  }
+
+  // The tablets are hidden and kept for the stream, and still are after several passes of the
+  // task that lets go of the ones that no stream needs.
+  void VerifyTabletsStayRetained(const std::vector<TabletId>& tablet_ids) {
+    ASSERT_OK(LoggedWaitFor(
+        [&] {
+          return std::ranges::all_of(
+              tablet_ids, [&](const auto& tablet_id) { return IsTabletRetained(tablet_id); });
+        },
+        kTimeout, Format("Wait for tablets $0 to be hidden", AsString(tablet_ids))));
+    SleepFor(5s * kTimeMultiplier);
+    for (const auto& tablet_id : tablet_ids) {
+      ASSERT_TRUE(IsTabletRetained(tablet_id)) << tablet_id;
+      ASSERT_FALSE(ASSERT_RESULT(IsTabletDeleted(tablet_id))) << tablet_id;
+    }
+  }
+
+  // Waits until the master has deleted the tablets. Their rows in cdc_state go with them.
+  Status WaitForTabletsDeleted(const std::vector<TabletId>& tablet_ids) {
+    RETURN_NOT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          for (const auto& tablet_id : tablet_ids) {
+            if (IsTabletRetained(tablet_id) || !VERIFY_RESULT(IsTabletDeleted(tablet_id))) {
+              return false;
+            }
+          }
+          return true;
+        },
+        kTimeout, Format("Wait for tablets $0 to be deleted", AsString(tablet_ids))));
+    for (const auto& tablet_id : tablet_ids) {
+      const auto row = VERIFY_RESULT(ReadFromCdcStateTable(stream_id_, tablet_id));
+      // What ReadFromCdcStateTable returns for a tablet without a row.
+      SCHECK_EQ(
+          row.op_id, OpId::Max(), IllegalState,
+          Format("Tablet $0 still has a row in cdc_state", tablet_id));
+    }
+    return Status::OK();
+  }
+
+  // The history barrier of every replica of the tablet.
+  Result<std::vector<HybridTime>> HistoryBarriers(const TabletId& tablet_id) {
+    std::vector<HybridTime> result;
+    for (const auto& peer : VERIFY_RESULT(ListTabletPeers(test_cluster(), tablet_id))) {
+      result.push_back(peer->get_cdc_sdk_safe_time());
+    }
+    SCHECK_EQ(
+        result.size(), test_cluster()->num_tablet_servers(), IllegalState,
+        Format("Tablet $0 does not have a replica on every tserver", tablet_id));
+    return result;
+  }
+
+  // Per kind of change of the table that table_filter selects: the value of v before and after,
+  // and how many changes there are of it.
+  Result<std::string> ChangesByValues(
+      pgwrapper::PGConn& conn, const std::string& table_filter = "true") {
+    return conn.FetchAllAsString(Format(
+        "SELECT op, COALESCE($1, '-'), COALESCE($2, '-'), count(*) FROM $0 WHERE $3 "
+        "GROUP BY 1, 2, 3 ORDER BY 1, 2, 3",
+        master::kPgYbCdcChangesTableName, StringValue("before", kValueAttnum),
+        StringValue("after", kValueAttnum), table_filter));
   }
 
   // The current tablets of the table, in partition order.
@@ -494,6 +594,8 @@ class CDCSDKCdcTableTest : public CDCSDKYsqlTest {
     RETURN_NOT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE id % 11 = 0", table_name));
     return conn.Execute("COMMIT");
   }
+
+  void TestBeforeImagesOfSplitTablet(bool restart_master);
 
   // Of the slot, in the tests that ask the master about it.
   xrepl::StreamId stream_id_ = xrepl::StreamId::Nil();
@@ -1230,7 +1332,7 @@ TEST_F(CDCSDKCdcTableTest, TabletSplitWithBeforeImages) {
 
 // The master restarts between the split of a tablet and the hand-over to its children. The new
 // master does not know where the poller of the split tablet stopped, and has the children polled
-// from their own rows in cdc_state.
+// from their own rows in cdc_state, or from the row of the split tablet where that is ahead.
 TEST_F(CDCSDKCdcTableTest, TabletSplitAcrossMasterRestart) {
   SetTabletSplitTestFlags();
   ASSERT_OK(SetUpCluster());
@@ -2362,9 +2464,11 @@ TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteOfUnpublishedTable) {
 
 // The tablet of a table is split and the table is rewritten, all before the poller of the tablet
 // has read its last changes or has been told about the split. A master that has just started
-// finds the children as the tablets of a dropped table, and has them polled to the end.
+// finds the children as the tablets of a dropped table, and has them polled to the end. All the
+// tablets of the dropped table are deleted after that.
 TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteOfSplitTable) {
   SetTabletSplitTestFlags();
+  SetHiddenTabletDeletionTestFlags();
   ASSERT_OK(SetUpCluster());
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
@@ -2407,6 +2511,7 @@ TEST_P(CDCSDKCdcTableDdlModeTest, TableRewriteOfSplitTable) {
   ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
   ASSERT_OK(WaitForPollers(old_tablets, false /* polled */));
   ASSERT_OK(WaitForPolling(new_table, true /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(old_tablets));
   thread_holder.Stop();
 
   ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, old_table.filter, 1, 60)), 60);
@@ -2546,6 +2651,629 @@ TEST_P(CDCSDKCdcTableDdlModeTest, TableRewrittenAgainAtOnce) {
   ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, third_table.filter, 1, 30)), 30);
   ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, third_table.filter)), 30);
   VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The tablets of a dropped table are kept, hidden, until the CDC table has the changes of the
+// table, and are deleted then. Nothing moves the restart time of the slot, which is what hidden
+// tablets otherwise wait for: see CdcsdkManager::GetTimeDoneWithHiddenTable.
+TEST_P(CDCSDKCdcTableDdlModeTest, DroppedTableIsDeletedOnceRead) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  const auto before_drop = Now();
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  // Its pollers have not read the table to the end.
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(t2.tablet_ids));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), before_drop);
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(t2.tablet_ids));
+
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 30);
+  ASSERT_EQ(
+      ASSERT_RESULT(CountChanges(
+          conn, Format("$0 AND commit_time <= $1", t1.filter, safe_time.ToUint64()))),
+      20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table is rewritten twice while the pollers of its first tablets are behind. The tablets of
+// both tables that it had before are kept until the CDC table has their changes: those of the
+// second one too, although its pollers have read it to the end, since the CDC safe time waits
+// for the first. All of them are deleted once it has moved on.
+TEST_P(CDCSDKCdcTableDdlModeTest, RewrittenTablesAreDeletedOnceRead) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1, t2"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto first_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, first_table.filter));
+
+  PausePollersOf(first_table.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  const auto before_rewrites = Now();
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD COLUMN c INT DEFAULT random()"));
+  const auto second_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 21, 30));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ALTER COLUMN c TYPE BIGINT"));
+  const auto third_table = ASSERT_RESULT(GetCurrentTestTable(conn, "t1"));
+  ASSERT_OK(InsertRows(conn, "t1", 31, 40));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 30, second_table.filter));
+  ASSERT_OK(WaitForChanges(conn, 40, third_table.filter));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  auto old_tablets = first_table.tablet_ids;
+  old_tablets.insert(
+      old_tablets.end(), second_table.tablet_ids.begin(), second_table.tablet_ids.end());
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(old_tablets));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, first_table.filter)), 10);
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(first_table.table_id)));
+  ASSERT_TRUE(ASSERT_RESULT(IsTablePolled(second_table.table_id)));
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), before_rewrites);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(first_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(second_table, false /* polled */));
+  ASSERT_OK(WaitForPolling(third_table, true /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(old_tablets));
+
+  // The pollers of the tables that are left are not disturbed by that.
+  ASSERT_OK(InsertRows(conn, "t1", 41, 50));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, first_table.filter, 1, 20)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, first_table.filter)), 20);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, second_table.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, second_table.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, third_table.filter, 1, 50)), 50);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, third_table.filter)), 50);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table is published, written to, and dropped, all before the poller of the sys catalog tablet
+// reads the first of that. The master does not have the table polled when it is dropped. Its
+// tablets are kept nonetheless: the CDC safe time has not got to the time that they were hidden
+// at. When the master gets to see what happened, it finds them, and has them polled for the time
+// that the table was published.
+TEST_P(CDCSDKCdcTableDdlModeTest, DroppedTableSeenLate) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  PausePollerOf(master::kSysCatalogTabletId);
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub ADD TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t2", 11, 20));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  const auto after_drop = Now();
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(t2.tablet_ids));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_drop);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(t2.tablet_ids));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 11, 20)), 10);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The same for a table of a publication for all tables that is created, written to and dropped
+// before the poller of the sys catalog tablet reads that it was created.
+TEST_P(CDCSDKCdcTableDdlModeTest, TableCreatedAndDroppedSeenLate) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  PausePollerOf(master::kSysCatalogTabletId);
+  ASSERT_OK(CreateTestTable(conn, "t3", 1 /* num_tablets */));
+  const auto t3 = ASSERT_RESULT(GetTestTable("t3"));
+  ASSERT_OK(ChangeRows(conn, "t3", 1));
+  const auto rows = ASSERT_RESULT(TableRows(conn, "t3"));
+  ASSERT_FALSE(rows.empty());
+  ASSERT_OK(conn.Execute("DROP TABLE t3"));
+  const auto after_drop = Now();
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(t3.tablet_ids));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(t3.table_id)));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t3.filter)), 0);
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_drop);
+
+  ResumePollers();
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_OK(WaitForPolling(t3, false /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(t3.tablet_ids));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(ReplayChanges(conn, t3.filter)), rows);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The master restarts after a table is dropped, while the pollers of the table are behind. The
+// tablets are still kept, and polled to the end, and deleted after that.
+TEST_F(CDCSDKCdcTableTest, DroppedTableAcrossMasterRestart) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  // The master has seen the drop.
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  ASSERT_OK(test_cluster()->mini_master()->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(WaitForChanges(conn, 20, t1.filter));
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(t2.tablet_ids));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+  ASSERT_OK(WaitForPolling(t2, true /* polled */));
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+  ASSERT_OK(WaitForPolling(t2, false /* polled */));
+  ASSERT_OK(WaitForTabletsDeleted(t2.tablet_ids));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table that no publication has is dropped. Nothing polls it, and its tablets are still kept
+// until the CDC safe time is past the time they were hidden at: before that, the master may not
+// have been served a change that published the table. They are deleted then.
+TEST_F(CDCSDKCdcTableTest, DropOfTableThatIsNotPolled) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  // Holds the CDC safe time back.
+  PausePollersOf(t1.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  const auto after_drop = Now();
+
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(t2.tablet_ids));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+  ASSERT_LT(ASSERT_RESULT(CdcSafeTime(0, database_oid)), after_drop);
+
+  ResumePollers();
+  ASSERT_OK(WaitForTabletsDeleted(t2.tablet_ids));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+}
+
+// The tablet of a table is split and the table is dropped, all before the poller of the tablet
+// has read its last changes or has been told about the split. The split tablet and its children
+// are kept until the children have been polled to the end, and all three are deleted then.
+TEST_F(CDCSDKCdcTableTest, DroppedSplitTableIsDeletedOnceRead) {
+  SetTabletSplitTestFlags();
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+  ASSERT_EQ(t2.tablet_ids.size(), 1);
+  const auto parent = t2.tablet_ids[0];
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t2", 1, 30));
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+
+  PausePollerOf(parent);
+  ASSERT_OK(InsertRows(conn, "t2", 31, 45));
+  SplitTablet("t2", parent, 2);
+  auto old_tablets = ASSERT_RESULT(TabletIds("t2"));
+  ASSERT_EQ(old_tablets.size(), 2);
+  old_tablets.push_back(parent);
+  ASSERT_OK(InsertRows(conn, "t2", 46, 60));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+
+  ASSERT_NO_FATALS(VerifyTabletsStayRetained(old_tablets));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 30);
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 60, t2.filter));
+  ASSERT_OK(WaitForTabletsDeleted(old_tablets));
+  ASSERT_FALSE(ASSERT_RESULT(IsTablePolled(t2.table_id)));
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 60)), 60);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 60);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// A table of a tablegroup is dropped while the poller of the tablet that it shares with the other
+// tables of the group is behind. The table is kept, hidden, in the tablet until the CDC table has
+// its changes, and is removed from the tablet then. The tablet stays polled for the tables that
+// are left.
+//
+// A tablegroup, since a slot cannot be created in a colocated database: the CDC table is hash
+// partitioned, which a table of a colocated database cannot be.
+TEST_F(CDCSDKCdcTableTest, DroppedColocatedTableIsDeletedOnceRead) {
+  SetHiddenTabletDeletionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg"));
+  // The table that is dropped below comes first. The master takes the tablet up for the first of
+  // its polled tables, and must not let go of it when that one leaves.
+  for (const auto* table_name : {"t2", "t1"}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id INT PRIMARY KEY, v TEXT) TABLEGROUP tg", table_name));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", table_name));
+  }
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+  ASSERT_EQ(t1.tablet_ids, t2.tablet_ids);
+  ASSERT_EQ(t1.tablet_ids.size(), 1);
+  ASSERT_LT(t2.table_id, t1.table_id);
+  auto& catalog_manager = test_cluster()->mini_master()->catalog_manager_impl();
+  const auto is_deleted = [&catalog_manager](const TableId& table_id) {
+    auto table = catalog_manager.GetTableInfo(table_id);
+    return !table || table->is_deleted();
+  };
+
+  std::map<HybridTime, int64_t> changes_up_to;
+  TestThreadHolder thread_holder;
+  StartSafeTimeSampling(&thread_holder, database_oid, &changes_up_to);
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(InsertRows(conn, "t2", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10, t1.filter));
+  ASSERT_OK(WaitForChanges(conn, 10, t2.filter));
+
+  PausePollersOf(t2.tablet_ids);
+  ASSERT_OK(InsertRows(conn, "t2", 11, 30));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  // For the master to get to see the drop, and for several passes of the task that lets go of
+  // the hidden tables that no stream needs.
+  SleepFor(8s * kTimeMultiplier);
+  ASSERT_FALSE(is_deleted(t2.table_id));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 10);
+
+  ResumePollers();
+  ASSERT_OK(WaitForChanges(conn, 30, t2.filter));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return !VERIFY_RESULT(IsTablePolled(t2.table_id)); }, kTimeout,
+      "Wait for the dropped table to be no longer polled"));
+  ASSERT_OK(LoggedWaitFor(
+      [&] { return is_deleted(t2.table_id); }, kTimeout, "Wait for the dropped table to go"));
+
+  ASSERT_OK(InsertRows(conn, "t1", 11, 20));
+  ASSERT_OK(WaitForChanges(conn, 20, t1.filter));
+  ASSERT_OK(WaitForPollers(t1.tablet_ids, true /* polled */));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  thread_holder.Stop();
+
+  ASSERT_EQ(ASSERT_RESULT(CountInserts(conn, t2.filter, 1, 30)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t2.filter)), 30);
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn, t1.filter)), 20);
+  VerifySampledSafeTimes(conn, changes_up_to);
+}
+
+// The history that the tablets of a polled table keep for before images follows the positions of
+// their pollers in cdc_state, although nothing moves the restart time of the slot. A table that
+// is not polled keeps its history from where its row in cdc_state is, and the sys catalog from
+// the restart time.
+TEST_F(CDCSDKCdcTableTest, HistoryRetentionFollowsPollers) {
+  SetHistoryRetentionTestFlags();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_NO_FATALS(SetUpTwoTables(conn, "TABLE t1"));
+  const auto t1 = ASSERT_RESULT(GetTestTable("t1"));
+  const auto t2 = ASSERT_RESULT(GetTestTable("t2"));
+  const auto restart_time =
+      ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id_))->record_id_commit_time;
+  ASSERT_TRUE(restart_time.is_valid());
+  const auto t2_row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, t2.tablet_ids[0]));
+
+  ASSERT_OK(ChangeRows(conn, "t1", 1));
+  ASSERT_OK(ChangeRows(conn, "t2", 1));
+  const auto after_changes = Now();
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return std::ranges::all_of(
+            VERIFY_RESULT(HistoryBarriers(t1.tablet_ids[0])),
+            [&](const auto& barrier) { return barrier.is_valid() && barrier > after_changes; });
+      },
+      kTimeout, "Wait for the history barrier of the polled tablet to pass the changes"));
+
+  // Never ahead of the row, which only moves forward.
+  const auto barriers = ASSERT_RESULT(HistoryBarriers(t1.tablet_ids[0]));
+  const auto t1_row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, t1.tablet_ids[0]));
+  for (const auto& barrier : barriers) {
+    ASSERT_LE(barrier, t1_row.cdc_sdk_safe_time);
+  }
+
+  ASSERT_EQ(
+      ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id_))->record_id_commit_time, restart_time);
+  ASSERT_EQ(
+      ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, t2.tablet_ids[0])).cdc_sdk_safe_time,
+      t2_row.cdc_sdk_safe_time);
+  for (const auto& barrier : ASSERT_RESULT(HistoryBarriers(t2.tablet_ids[0]))) {
+    ASSERT_EQ(barrier, t2_row.cdc_sdk_safe_time);
+  }
+  const auto sys_catalog_barrier =
+      test_cluster()->mini_master()->tablet_peer()->get_cdc_sdk_safe_time();
+  ASSERT_TRUE(sys_catalog_barrier.is_valid());
+  ASSERT_LE(sys_catalog_barrier, restart_time);
+}
+
+// The leader of a tablet moves while the position of the tablet in cdc_state is far behind its
+// poller, and so behind the CDC safe time. The poller on the new leader reads the changes after
+// that position again, and has to find their before images: the tablet keeps its history from
+// that position on, not from the CDC safe time, whatever is compacted.
+TEST_F(CDCSDKCdcTableTest, BeforeImagesAfterLeaderChangeAndCompaction) {
+  SetHistoryRetentionTestFlags();
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "t1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 10));
+  ASSERT_OK(WaitForChanges(conn, 10));
+
+  // From here on the position of the tablet in cdc_state stays where it is.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 3600 * 1000;
+  // For a GetChanges that was already under way.
+  SleepFor(2s * kTimeMultiplier);
+  const auto row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, tablet_id));
+  ASSERT_TRUE(row.cdc_sdk_safe_time.is_valid());
+
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b'"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'c' WHERE id <= 5"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id > 8"));
+  const auto expected_changes = "D, b, -, 2; I, -, a, 10; U, a, b, 10; U, b, c, 5";
+  ASSERT_OK(WaitForChanges(conn, 27));
+  ASSERT_EQ(ASSERT_RESULT(ChangesByValues(conn)), expected_changes);
+  const auto safe_time = ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, tablet_id)).op_id, row.op_id);
+  ASSERT_LT(row.cdc_sdk_safe_time, safe_time);
+
+  // Every replica keeps its history from that position on, and what is older goes.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return std::ranges::all_of(
+            VERIFY_RESULT(HistoryBarriers(tablet_id)),
+            [&](const auto& barrier) { return barrier == row.cdc_sdk_safe_time; });
+      },
+      kTimeout, "Wait for the history barrier to be at the position in cdc_state"));
+  ASSERT_OK(test_cluster()->CompactTablets());
+
+  // What the poller wrote for the changes after the position is removed, so that what is found
+  // in the end is what the next poller writes.
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE op <> 'I'", master::kPgYbCdcChangesTableName));
+  ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 10);
+
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+
+  ASSERT_OK(WaitForChanges(conn, 27));
+  ASSERT_EQ(ASSERT_RESULT(ChangesByValues(conn)), expected_changes);
+
+  // The new poller goes on from there.
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'd' WHERE id = 1"));
+  ASSERT_OK(WaitForChanges(conn, 28));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  ASSERT_EQ(
+      ASSERT_RESULT(ChangesByValues(conn)),
+      "D, b, -, 2; I, -, a, 10; U, a, b, 10; U, b, c, 5; U, c, d, 1");
+}
+
+// A tablet is polled on, and compacted, between the time that its split is registered and the
+// time that it is applied. The rows of its children in cdc_state are copies of its row from when
+// the split was registered, and the children got its history as it was when the split was
+// applied: without what the changes in between need for their before images. The pollers of the
+// children must not start from the children's own rows: they would read those changes again, and
+// write them without their before images.
+//
+// With restart_master, the master restarts before it has handed the tablet over to its children,
+// and no longer knows where the poller of the tablet stopped. The pollers of the children then
+// start from the row of the split tablet.
+void CDCSDKCdcTableTest::TestBeforeImagesOfSplitTablet(bool restart_master) {
+  SetTabletSplitTestFlags();
+  SetHistoryRetentionTestFlags();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ASSERT_OK(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(CreateTestTable(conn, "t1", 1 /* num_tablets */));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR TABLE t1"));
+  const auto database_oid = ASSERT_RESULT(DatabaseOid(conn));
+  stream_id_ = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  ASSERT_OK(WaitForCdcSafeTimeOnAllTservers(database_oid));
+  const auto parent = ASSERT_RESULT(TabletIds("t1"))[0];
+
+  ASSERT_OK(InsertRows(conn, "t1", 1, 20));
+  ASSERT_OK(WaitForChanges(conn, 20));
+
+  // The split stops right after the master has given the children their rows in cdc_state.
+  std::atomic<bool> split_registered{false};
+  std::atomic<bool> continue_split{false};
+  SyncPointScope sync_point;
+  sync_point->SetCallBack("Tabletsplit::AddedChildrenTabletStateTableEntries", [&](void*) {
+    split_registered = true;
+    while (!continue_split) {
+      SleepFor(10ms);
+    }
+  });
+  sync_point->EnableProcessing();
+  TestThreadHolder split_thread;
+  // Before the thread is joined, also when the test fails halfway.
+  auto continue_split_at_exit = ScopeExit([&continue_split] { continue_split = true; });
+  split_thread.AddThreadFunctor([this, &parent] { SplitTablet("t1", parent, 2); });
+  ASSERT_OK(LoggedWaitFor(
+      [&] { return split_registered.load(); }, kTimeout, "Wait for the split to be registered"));
+
+  std::vector<TabletId> children;
+  {
+    auto parent_info = ASSERT_RESULT(
+        test_cluster()->mini_master()->catalog_manager_impl().GetTabletInfo(parent));
+    const auto& split_tablet_ids = parent_info->LockForRead()->pb.split_tablet_ids();
+    children.assign(split_tablet_ids.begin(), split_tablet_ids.end());
+  }
+  ASSERT_EQ(children.size(), 2);
+  const auto child_row = ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, children[0]));
+  ASSERT_NE(child_row.op_id, OpId::Max());
+
+  // The tablet is polled on, and its row and its history barrier follow.
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b'"));
+  ASSERT_OK(WaitForChanges(conn, 40));
+  const auto after_updates = Now();
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        return std::ranges::all_of(
+            VERIFY_RESULT(HistoryBarriers(parent)),
+            [&](const auto& barrier) { return barrier.is_valid() && barrier > after_updates; });
+      },
+      kTimeout, "Wait for the history barrier of the tablet to pass the updates"));
+  ASSERT_GT(
+      ASSERT_RESULT(ReadFromCdcStateTable(stream_id_, parent)).op_id, child_row.op_id);
+  // What the rows held before the updates goes.
+  ASSERT_OK(test_cluster()->CompactTablets());
+
+  if (restart_master) {
+    // This master does not get to hand over to the children.
+    PausePollerOf(parent);
+  }
+  continue_split = true;
+  split_thread.JoinAll();
+  ASSERT_EQ(ASSERT_RESULT(TabletIds("t1")).size(), 2);
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'c' WHERE id <= 10"));
+  if (restart_master) {
+    ASSERT_EQ(ASSERT_RESULT(CountChanges(conn)), 40);
+    ASSERT_OK(WaitForPollers(children, false /* polled */));
+    ASSERT_OK(test_cluster()->mini_master()->Restart());
+    ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+  }
+
+  ASSERT_OK(WaitForPollersOfCurrentTablets("t1"));
+  ASSERT_OK(WaitForChanges(conn, 50));
+  ASSERT_RESULT(WaitForCdcSafeTime(0, database_oid, Now()));
+  // Not read again by the children, whose own rows are from before the first updates.
+  SleepFor(3s * kTimeMultiplier);
+  ASSERT_EQ(ASSERT_RESULT(ChangesByValues(conn)), "I, -, a, 20; U, a, b, 20; U, b, c, 10");
+}
+
+TEST_F(CDCSDKCdcTableTest, YB_DEBUG_ONLY_TEST(BeforeImagesOfSplitTablet)) {
+  ASSERT_NO_FATALS(TestBeforeImagesOfSplitTablet(false /* restart_master */));
+}
+
+TEST_F(CDCSDKCdcTableTest, YB_DEBUG_ONLY_TEST(BeforeImagesOfSplitTabletAcrossMasterRestart)) {
+  ASSERT_NO_FATALS(TestBeforeImagesOfSplitTablet(true /* restart_master */));
 }
 
 TEST_F(CDCSDKCdcTableTest, VirtualWalIsBlocked) {

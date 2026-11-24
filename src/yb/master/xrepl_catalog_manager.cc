@@ -6199,7 +6199,7 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
 }
 
 Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
-    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+    const std::unordered_set<xrepl::StreamId>& stream_ids, const TableId& hidden_table_id) {
   if (stream_ids.empty()) {
     return HybridTime::kInvalid;
   }
@@ -6218,6 +6218,13 @@ Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
 
   HybridTime min_restart_time_across_all_slots;
   for (const auto& stream_id : stream_ids) {
+    if (const auto stream = FindPtrOrNull(cdc_stream_map_, stream_id)) {
+      const auto time = cdcsdk_manager_->GetTimeDoneWithHiddenTable(*stream, hidden_table_id);
+      if (time) {
+        min_restart_time_across_all_slots = std::min(min_restart_time_across_all_slots, *time);
+        continue;
+      }
+    }
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
         {kCDCSDKSlotEntryTabletId, stream_id},
         cdc::CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
@@ -6683,7 +6690,8 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
+      min_restart_time_across_slots =
+          VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids, hidden_tablet.table_id_));
       if (min_restart_time_across_slots.is_valid()) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
@@ -6820,7 +6828,8 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
+      min_restart_time_across_slots =
+          VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids, table_id));
       if (min_restart_time_across_slots.is_valid()) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }

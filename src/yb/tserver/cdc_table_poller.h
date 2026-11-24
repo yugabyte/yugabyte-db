@@ -15,6 +15,7 @@
 
 #include <optional>
 #include <unordered_set>
+#include <vector>
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -49,12 +50,12 @@ class CdcTablePoller : public XClusterPoller {
       cdc::CDCStateTable& cdc_state_table);
 
   // Changes of tables other than published_table_ids are not written. nullopt writes all.
-  // start_position is set for a tablet that came out of a split: where the poller of its parent
-  // stopped.
+  // For start_position and split_ancestor_tablet_ids see CdcTableTabletStartPB.
   void InitCdcTablePoller(
       rocksdb::RateLimiter* rate_limiter,
       std::optional<std::unordered_set<TableId>> published_table_ids,
-      std::optional<cdc::CdcTablePollerPositionPB> start_position);
+      std::optional<cdc::CdcTablePollerPositionPB> start_position,
+      std::vector<TabletId> split_ancestor_tablet_ids);
 
   // Set once the CDC service has told this poller that its tablet has been split: what this poller
   // has applied, which is where the pollers of the two children have to continue from.
@@ -88,8 +89,9 @@ class CdcTablePoller : public XClusterPoller {
   };
 
   // The checkpoint the stream has in cdc_state for the tablet: where the last poller got to, or
-  // where the stream starts.
-  Result<NextRequest> ReadCheckpointFromCdcState();
+  // where the stream starts. For a tablet that came out of a split, the furthest of that and of
+  // the checkpoints of the tablets it descends from.
+  Result<NextRequest> ReadCheckpointFromCdcState() REQUIRES(data_mutex_);
 
   cdc::CDCStateTable& cdc_state_table_;
 
@@ -97,6 +99,7 @@ class CdcTablePoller : public XClusterPoller {
   std::optional<NextRequest> next_request_ GUARDED_BY(data_mutex_);
 
   std::optional<cdc::CdcTablePollerPositionPB> start_position_ GUARDED_BY(data_mutex_);
+  std::vector<TabletId> split_ancestor_tablet_ids_ GUARDED_BY(data_mutex_);
 
   bool applied_a_response_ GUARDED_BY(data_mutex_) = false;
 

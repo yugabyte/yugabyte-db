@@ -468,9 +468,15 @@ void XClusterConsumer::StartCdcTablePoller(
       thread_pool_.get(), rpcs_.get(), local_client_, this, leader_term,
       std::move(get_leader_term), ts_uuid_, *cdc_state_table_);
   std::optional<cdc::CdcTablePollerPositionPB> start_position;
+  std::vector<TabletId> split_ancestor_tablet_ids;
   for (const auto& tablet_start : stream->tablet_starts()) {
     if (tablet_start.tablet_id() == producer_tablet_info.tablet_id) {
-      start_position = tablet_start.position();
+      if (tablet_start.has_position()) {
+        start_position = tablet_start.position();
+      }
+      split_ancestor_tablet_ids.assign(
+          tablet_start.split_ancestor_tablet_ids().begin(),
+          tablet_start.split_ancestor_tablet_ids().end());
       break;
     }
   }
@@ -481,7 +487,7 @@ void XClusterConsumer::StartCdcTablePoller(
           ? std::nullopt
           : std::make_optional<std::unordered_set<TableId>>(
                 stream->published_table_ids().begin(), stream->published_table_ids().end()),
-      std::move(start_position));
+      std::move(start_position), std::move(split_ancestor_tablet_ids));
 
   LOG_WITH_PREFIX(INFO) << "Start polling tablet " << producer_tablet_info.tablet_id
                         << " of stream " << producer_tablet_info.stream_id

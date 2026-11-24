@@ -195,6 +195,51 @@ std::optional<PgOid> CdcsdkManager::RelationOid(const TableId& table_id) const {
   return relation_oid.ok() ? std::optional<PgOid>(*relation_oid) : std::nullopt;
 }
 
+std::vector<TabletId> CdcsdkManager::SplitAncestors(const TabletId& tablet_id) const {
+  std::vector<TabletId> result;
+  auto tablet = catalog_manager_.GetTabletInfo(tablet_id);
+  while (tablet.ok()) {
+    const auto parent_id = (*tablet)->LockForRead()->pb.split_parent_tablet_id();
+    if (parent_id.empty()) {
+      break;
+    }
+    tablet = catalog_manager_.GetTabletInfo(parent_id);
+    // A split tablet is deleted before its children are, so nothing above it is left either.
+    if (!tablet.ok() || (*tablet)->LockForRead()->is_deleted()) {
+      break;
+    }
+    result.push_back(parent_id);
+  }
+  return result;
+}
+
+std::optional<HybridTime> CdcsdkManager::GetTimeDoneWithHiddenTable(
+    const CDCStreamInfo& stream, const TableId& table_id) const {
+  if (!FLAGS_TEST_cdcsdk_enable_cdc_table ||
+      !stream.LockForRead()->pb.has_cdc_table_polled_tables()) {
+    return std::nullopt;
+  }
+
+  // Read before the polled tables. A table that is found not to be polled after the safe time
+  // has passed its hide time has left for good. The other way around, it could be a table whose
+  // pollers have read it to the end and whose tablets are still in the registry.
+  auto safe_time = HybridTime::kMin;
+  {
+    const auto safe_times =
+        catalog_manager_.GetXClusterManagerImpl()->GetXClusterNamespaceToSafeTimeMap();
+    const auto it = safe_times.find(stream.namespace_id());
+    if (it != safe_times.end() && it->second.is_valid() && !it->second.is_special()) {
+      safe_time = it->second;
+    }
+  }
+
+  auto l = stream.LockForRead();
+  const bool is_polled = std::ranges::any_of(
+      l->pb.cdc_table_polled_tables().tables(),
+      [&table_id](const auto& table) { return table.table_id() == table_id; });
+  return is_polled ? HybridTime::kMin : safe_time;
+}
+
 Result<bool> CdcsdkManager::UpdatePolledTablesAsOf(
     const CDCStreamInfo& stream, HybridTime time, CdcTablePolledTablesPB* polled_tables) {
   const auto published = VERIFY_RESULT(ReadPublishedTables(stream, time));
@@ -404,10 +449,24 @@ Status CdcsdkManager::ProcessSysCatalogChanges(
 Status CdcsdkManager::UpdateCdcTablePolledTablets(
     const xrepl::StreamId& stream_id, const CdcTablePolledTablesPB& polled_tables,
     const CdcTableSplitReports& split_reports, CdcTablePolledTablets* polled) {
+  std::set<TableId> polled_table_ids;
+  for (const auto& polled_table : polled_tables.tables()) {
+    polled_table_ids.insert(polled_table.table_id());
+  }
+
   if (polled->initialized) {
     // A polled tablet that no longer exists was not handed over to its children, for example
     // because its table was dropped.
-    for (const auto& [tablet_id, _] : polled->tablets) {
+    for (const auto& [tablet_id, polled_tablet] : polled->tablets) {
+      // The tablets of a table that left are removed below. Once the table has left, the master
+      // may delete them, see GetTimeDoneWithHiddenTable.
+      const bool is_polled = std::ranges::any_of(
+          polled_tablet.table_ids, [&polled_table_ids](const auto& table_id) {
+            return polled_table_ids.contains(table_id);
+          });
+      if (!is_polled) {
+        continue;
+      }
       auto tablet = catalog_manager_.GetTabletInfo(tablet_id);
       if (!tablet.ok() || (*tablet)->LockForRead()->is_deleted()) {
         LOG(WARNING) << "Polled tablet " << tablet_id << " of stream " << stream_id
@@ -421,17 +480,16 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
   if (!polled->initialized) {
     // The tablets are added again below, each polled from its own row in cdc_state. For a tablet
     // whose parent was polled, that row is a copy the master made of the parent's row when the
-    // split was registered, so nothing is skipped. The parent may have been polled further since,
-    // and those changes are read again.
+    // split was registered, so nothing is skipped. The parent may have been polled further since.
+    // Its row says how far at least, and its children start from there while it exists (see
+    // SplitAncestors). The changes after that are read again.
     polled->tablets.clear();
     polled->tables.clear();
     polled->initialized = true;
   }
 
-  std::set<TableId> polled_table_ids;
   for (const auto& polled_table : polled_tables.tables()) {
     const auto& table_id = polled_table.table_id();
-    polled_table_ids.insert(table_id);
     if (polled->tables.contains(table_id)) {
       continue;
     }
@@ -452,9 +510,12 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
         if (tablet->LockForRead()->is_deleted()) {
           continue;
         }
-        polled->tablets.emplace(
-            tablet->id(),
-            CdcTablePolledTablets::Tablet{.table_id = table_id, .start_position = start_position});
+        // A colocated tablet that is polled for another table already stays as it is.
+        auto [it, inserted] = polled->tablets.try_emplace(tablet->id());
+        if (inserted) {
+          it->second.start_position = start_position;
+        }
+        it->second.table_ids.insert(table_id);
       }
     } else {
       // Dropped, and nothing of it is left to poll. It leaves once the CDC safe time, which it
@@ -468,8 +529,11 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
   std::erase_if(polled->tables, [&polled_table_ids](const auto& table_id) {
     return !polled_table_ids.contains(table_id);
   });
-  std::erase_if(polled->tablets, [&polled_table_ids](const auto& tablet) {
-    return !polled_table_ids.contains(tablet.second.table_id);
+  std::erase_if(polled->tablets, [&polled_table_ids](auto& tablet) {
+    std::erase_if(tablet.second.table_ids, [&polled_table_ids](const auto& table_id) {
+      return !polled_table_ids.contains(table_id);
+    });
+    return tablet.second.table_ids.empty();
   });
 
   for (const auto& [stream_and_tablet, position] : split_reports) {
@@ -504,11 +568,11 @@ Status CdcsdkManager::UpdateCdcTablePolledTablets(
     LOG(INFO) << "Tablet " << tablet_id << " of stream " << stream_id
               << " has been split. Its children " << AsString(children)
               << " are polled from where its poller stopped: " << position.ShortDebugString();
-    const auto table_id = polled->tablets[tablet_id].table_id;
+    const auto table_ids = polled->tablets[tablet_id].table_ids;
     polled->tablets.erase(tablet_id);
     for (const auto& child : children) {
       polled->tablets[child] =
-          CdcTablePolledTablets::Tablet{.table_id = table_id, .start_position = position};
+          CdcTablePolledTablets::Tablet{.table_ids = table_ids, .start_position = position};
     }
   }
   return Status::OK();
@@ -584,10 +648,17 @@ Status CdcsdkManager::DoRefreshCdcTableRegistry(const LeaderEpoch& epoch) {
     RETURN_NOT_OK(UpdateCdcTablePolledTablets(stream_id, polled_tables, split_reports, &polled));
     for (const auto& [tablet_id, tablet] : polled.tablets) {
       entry->add_tablet_ids(tablet_id);
+      const auto split_ancestors = SplitAncestors(tablet_id);
+      if (!tablet.start_position && split_ancestors.empty()) {
+        continue;
+      }
+      auto* tablet_start = entry->add_tablet_starts();
+      tablet_start->set_tablet_id(tablet_id);
       if (tablet.start_position) {
-        auto* tablet_start = entry->add_tablet_starts();
-        tablet_start->set_tablet_id(tablet_id);
         *tablet_start->mutable_position() = *tablet.start_position;
+      }
+      for (const auto& ancestor : split_ancestors) {
+        tablet_start->add_split_ancestor_tablet_ids(ancestor);
       }
     }
   }

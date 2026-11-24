@@ -42,9 +42,11 @@ CdcTablePoller::CdcTablePoller(
 void CdcTablePoller::InitCdcTablePoller(
     rocksdb::RateLimiter* rate_limiter,
     std::optional<std::unordered_set<TableId>> published_table_ids,
-    std::optional<cdc::CdcTablePollerPositionPB> start_position) {
+    std::optional<cdc::CdcTablePollerPositionPB> start_position,
+    std::vector<TabletId> split_ancestor_tablet_ids) {
   std::lock_guard l(data_mutex_);
   start_position_ = std::move(start_position);
+  split_ancestor_tablet_ids_ = std::move(split_ancestor_tablet_ids);
   output_client_ = std::make_shared<CdcTableOutputClient>(
       this, consumer_tablet_info_.table_id, local_client_, rate_limiter,
       std::move(published_table_ids));
@@ -67,6 +69,32 @@ Result<CdcTablePoller::NextRequest> CdcTablePoller::ReadCheckpointFromCdcState()
   next.checkpoint.set_write_id(0);
   if (entry->cdc_sdk_safe_time) {
     next.safe_hybrid_time = *entry->cdc_sdk_safe_time;
+  }
+
+  for (const auto& ancestor_tablet_id : split_ancestor_tablet_ids_) {
+    auto ancestor_entry = VERIFY_RESULT(cdc_state_table_.TryFetchEntry(
+        {ancestor_tablet_id, producer_tablet_info_.stream_id},
+        cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeCDCSDKSafeTime()));
+    // The master deletes the row of a split tablet once both its children have been polled, and
+    // the checkpoint is OpId::Max in a row that is being removed from the stream.
+    if (!ancestor_entry || !ancestor_entry->checkpoint || !ancestor_entry->checkpoint->valid() ||
+        *ancestor_entry->checkpoint == OpId::Max()) {
+      continue;
+    }
+    // The tablet has a copy of the WAL of each of them, so their checkpoints are positions in its
+    // own WAL. Everything up to them is in the CDC table: a row holds what a poller has applied.
+    if (*ancestor_entry->checkpoint > OpId(next.checkpoint.term(), next.checkpoint.index())) {
+      LOG_WITH_PREFIX(INFO) << "Polling from the checkpoint " << *ancestor_entry->checkpoint
+                            << " of split tablet " << ancestor_tablet_id
+                            << ", which is ahead of the tablet's own, "
+                            << next.checkpoint.ShortDebugString();
+      next.checkpoint.set_term(ancestor_entry->checkpoint->term);
+      next.checkpoint.set_index(ancestor_entry->checkpoint->index);
+    }
+    if (ancestor_entry->cdc_sdk_safe_time) {
+      next.safe_hybrid_time = std::max(
+          next.safe_hybrid_time, static_cast<int64_t>(*ancestor_entry->cdc_sdk_safe_time));
+    }
   }
   return next;
 }

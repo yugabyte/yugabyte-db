@@ -3425,9 +3425,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
 
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
-  // across them.
+  // across them. For a stream whose changes are written to a CDC table, the time that
+  // CdcsdkManager::GetTimeDoneWithHiddenTable has for hidden_table_id takes the place of the
+  // restart time, and no slot entry is read.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
-      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+      const std::unordered_set<xrepl::StreamId>& stream_ids, const TableId& hidden_table_id)
+      REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)

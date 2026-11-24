@@ -2726,8 +2726,15 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
        tablet_peer->tablet_metadata()->IsSysCatalog())) {
     // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
     // acknowledged commit time among all the slots on the namespace.
+    //
+    // Not when the changes are written to a CDC table: no slot is consumed then, and that time
+    // never moves. The tablet's own row is used, as for a gRPC stream. A CDC table poller that
+    // starts on the tablet reads from that row, and asks for the before images of the changes that
+    // commit after its safe time. The CDC safe time of the database would not do: it follows what
+    // the pollers have applied, and is ahead of the row by up to
+    // cdc_state_checkpoint_update_interval_ms.
     if (stream_metadata.IsLogicalReplicationStream() &&
-        FLAGS_ysql_yb_enable_replication_slot_consumption) {
+        FLAGS_ysql_yb_enable_replication_slot_consumption && !FLAGS_TEST_cdcsdk_enable_cdc_table) {
       if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
         // This is possible when Update Peers and Metrics thread comes into action before the slot
         // entry is added to the cdc_state table.
@@ -3880,6 +3887,13 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     info.cdc_sdk_safe_time = std::min(info.cdc_sdk_safe_time, safe_time);
   }
 
+  // Also when the changes are written to a CDC table, although nothing moves the restart time then
+  // (see ProcessEntryForCdcsdk for the user tablets). A walsender that reads the CDC table reads
+  // the catalog as of its restart time, and as of the commit time of every DDL after that. Once
+  // one exists, the barrier has to be the lower of the restart times and of what the pollers still
+  // read as of a past time: the schemas of the tables as of the changes they return, and the
+  // publications as of the changes to them (CdcsdkManager::ProcessSysCatalogChanges). That is the
+  // lowest cdc_sdk_safe_time of the polled tablets' rows, not the CDC safe time.
   for (const auto& [stream_id, restart_time] : logical_replication_stream_to_restart_time) {
     if (streams_expired.contains(stream_id) || !streams_not_expired.contains(stream_id)) {
       continue;

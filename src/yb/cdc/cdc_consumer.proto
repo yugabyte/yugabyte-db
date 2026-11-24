@@ -106,9 +106,17 @@ message CdcTablePollerPositionPB {
 //   the rest of that WAL is only read through the children, which have a copy.
 // - A tablet of a table that was added to a publication has a safe time only: the changes that
 //   committed before the table was published are not wanted.
+// - A tablet that came out of a split, for as long as the tablets it descends from exist, starts
+//   no earlier than their rows in cdc_state. The master only knows the position above until its
+//   leader changes, and the tablet's own row is a copy of its parent's row from when the split
+//   was registered. The parent's row can have moved on before the split was applied, and with it
+//   the history that the parent kept for the before images of the changes after its row. That
+//   history is all that the tablet got.
 message CdcTableTabletStartPB {
   string tablet_id = 1;
+  // Not set if the tablet only has ancestors.
   CdcTablePollerPositionPB position = 2;
+  repeated string split_ancestor_tablet_ids = 3;
 }
 
 // Sent by a tserver to the master while one of its pollers is being told by the CDC service that

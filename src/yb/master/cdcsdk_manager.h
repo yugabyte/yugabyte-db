@@ -19,6 +19,7 @@
 #include <set>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/xrepl_types.h"
@@ -78,6 +79,22 @@ class CdcsdkManager : public CdcsdkManagerIf {
       const xrepl::StreamId& stream_id, const cdc::GetChangesResponsePB& resp)
       EXCLUDES(cdc_table_mutex_, cdc_table_registry_mutex_);
 
+  // A table that was dropped or rewritten, and a tablet that was split, are kept hidden for a
+  // CDCSDK stream until the restart time of its slot is past the time they were hidden at. Nothing
+  // moves that restart time for a stream whose changes are written to a CDC table. This is the
+  // time that decides in its place: the CDC safe time of the database once the table is no longer
+  // polled, and the minimum time until then. Returns nullopt for any other stream.
+  //
+  // Neither condition is enough by itself:
+  // - While the table is polled, its pollers still read its tablets.
+  // - A table that is not polled can be one that was published and dropped by changes to the
+  //   catalog that the master has not been served yet, see ProcessSysCatalogChanges. The CDC safe
+  //   time cannot get past the commit time of a change before the master has applied it. So once
+  //   it is past the hide time, the table has been polled for every time that it was published,
+  //   given that a table is only hidden after the changes that published it have committed.
+  std::optional<HybridTime> GetTimeDoneWithHiddenTable(
+      const CDCStreamInfo& stream, const TableId& table_id) const;
+
  private:
   // The position that the poller of a split tablet reported, by stream and tablet.
   using CdcTableSplitReports =
@@ -86,7 +103,8 @@ class CdcsdkManager : public CdcsdkManagerIf {
   // The tablets polled for a stream.
   struct CdcTablePolledTablets {
     struct Tablet {
-      TableId table_id;
+      // The polled tables that the tablet holds. More than one for a colocated tablet.
+      std::set<TableId> table_ids;
       // Where its poller starts, if not from the tablet's own row in cdc_state alone: see
       // CdcTableTabletStartPB.
       std::optional<cdc::CdcTablePollerPositionPB> start_position;
@@ -123,6 +141,10 @@ class CdcsdkManager : public CdcsdkManagerIf {
   // The PG relation that the table stores, or nullopt if the table is gone. A relation that is
   // rewritten keeps its oid and gets another table.
   std::optional<PgOid> RelationOid(const TableId& table_id) const;
+
+  // The split tablets that the tablet descends from and that still exist, nearest first. See
+  // CdcTableTabletStartPB for what a poller of the tablet does with them.
+  std::vector<TabletId> SplitAncestors(const TabletId& tablet_id) const;
 
   // Makes polled_tables what it has to be after a change to the publications, or to the tables
   // of the published relations, that committed at the given time. Returns whether it changed.
