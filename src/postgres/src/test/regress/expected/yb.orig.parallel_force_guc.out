@@ -528,8 +528,8 @@ EXPLAIN (costs off)
 /*+YbBatchedNL(pctest1 pctest2)*/
 SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
-                                    QUERY PLAN                                    
-----------------------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
    ->  Sort
@@ -539,7 +539,7 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
                ->  Parallel Index Scan using pctest1_c_idx on pctest1
                      Index Cond: (c = 42)
                ->  Index Scan using pctest2_pkey on pctest2
-                     Index Cond: (k = ANY (ARRAY[pctest1.k, $1, $2, ..., $1023]))
+                     Index Cond: (k = ANY (ARRAY[pctest1.k, ...]))
 (10 rows)
 
 /*+YbBatchedNL(pctest1 pctest2)*/
@@ -5593,8 +5593,8 @@ EXPLAIN (costs off)
 /*+YbBatchedNL(pctest_h1 pctest_h2)*/
 SELECT pctest_h1.*, pctest_h2.k FROM pctest_h1, pctest_h2
   WHERE pctest_h1.c = 42 AND pctest_h1.k = pctest_h2.k ORDER BY pctest_h1.k;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
  Gather Merge
    Workers Planned: 2
    ->  Sort
@@ -5604,7 +5604,7 @@ SELECT pctest_h1.*, pctest_h2.k FROM pctest_h1, pctest_h2
                ->  Parallel Index Scan using pctest_h1_c_idx on pctest_h1
                      Index Cond: (c = 42)
                ->  Index Scan using pctest_h2_pkey on pctest_h2
-                     Index Cond: (k = ANY (ARRAY[pctest_h1.k, $1, $2, ..., $1023]))
+                     Index Cond: (k = ANY (ARRAY[pctest_h1.k, ...]))
 (10 rows)
 
 /*+YbBatchedNL(pctest_h1 pctest_h2)*/

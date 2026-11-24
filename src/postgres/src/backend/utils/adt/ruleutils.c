@@ -529,6 +529,16 @@ static void get_batched_expr(YbBatchedExpr *var,
 static int	yb_decompile_pk_column_index_array(Datum column_index_array,
 											   Oid relId, Oid indexId,
 											   StringInfo buf);
+static bool yb_get_batched_param(Param *param, deparse_context *context,
+								 bool elem_only);
+static bool yb_get_batched_array_map(ArrayCoerceExpr *acoerce,
+									 deparse_context *context);
+static void yb_get_batched_referent(Node *node, deparse_context *context,
+									void *callback_arg);
+static bool yb_is_batched_nestloop_param(Param *param, ListCell *ancestor_cell);
+
+/* The batched param whose element a CaseTestExpr stands for, if any */
+static Param *yb_batched_elem_param = NULL;
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -8486,6 +8496,10 @@ get_parameter(Param *param, deparse_context *context)
 	deparse_namespace *dpns;
 	ListCell   *ancestor_cell;
 
+	/* YB: an array param that a batched nested loop fills */
+	if (yb_get_batched_param(param, context, false))
+		return;
+
 	/*
 	 * If it's a PARAM_EXEC parameter, try to locate the expression from which
 	 * the parameter was computed.  Note that failing to find a referent isn't
@@ -9305,6 +9319,17 @@ get_rule_expr(Node *node, deparse_context *context,
 						yb_skip_deparsing_fieldname_for_param = true;
 					}
 				}
+
+				/*
+				 * YB: A field of a row of batched values (see
+				 * yb_get_batched_array_map).  The row is anonymous, so its
+				 * fields are named f1, f2, ...
+				 */
+				if (IsA(arg, CaseTestExpr) && yb_batched_elem_param != NULL)
+				{
+					appendStringInfo(buf, ".f%d", fno);
+					yb_skip_deparsing_fieldname_for_param = true;
+				}
 				if (!yb_skip_deparsing_fieldname_for_param)
 				{
 					/*
@@ -9396,6 +9421,10 @@ get_rule_expr(Node *node, deparse_context *context,
 			{
 				ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
 				Node	   *arg = (Node *) acoerce->arg;
+
+				/* YB: an expression on each element of a batched param */
+				if (yb_get_batched_array_map(acoerce, context))
+					break;
 
 				if (acoerce->coerceformat == COERCE_IMPLICIT_CAST &&
 					!showimplicit)
@@ -9519,6 +9548,13 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * be unable to avoid that (see comments for CaseExpr).  If we
 				 * do see one, print it as CASE_TEST_EXPR.
 				 */
+				/* YB: an element of a batched param, see yb_get_batched_array_map */
+				if (yb_batched_elem_param != NULL)
+				{
+					(void) yb_get_batched_param(yb_batched_elem_param, context,
+												true);
+					break;
+				}
 				appendStringInfoString(buf, "CASE_TEST_EXPR");
 			}
 			break;
@@ -9633,10 +9669,10 @@ get_rule_expr(Node *node, deparse_context *context,
 					rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
 				else
 				{
-					List	   *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
-					RowExpr    *row = (RowExpr *) linitial(elems);
+					Oid			lhs_type;
 
-					rhs_type = exprType(linitial(row->args));
+					op_input_types(linitial_oid(rcexpr->opnos), &lhs_type,
+								   &rhs_type);
 				}
 
 				appendStringInfo(buf, ") %s ",
@@ -13107,4 +13143,118 @@ yb_decompile_pk_column_index_array(Datum column_index_array, Oid relId,
 		appendStringInfoString(buf, ") HASH");
 	relation_close(indexrel, NoLock);
 	return nKeys;
+}
+
+/*
+ * yb_get_batched_param
+ *		Print an array param that a batched nested loop fills, as
+ *		ARRAY[referent, ...], or just its referent if elem_only.  Returns
+ *		false, printing nothing, for any other param.
+ */
+static bool
+yb_get_batched_param(Param *param, deparse_context *context, bool elem_only)
+{
+	Node	   *expr;
+	deparse_namespace *dpns;
+	deparse_namespace save_dpns;
+	ListCell   *ancestor_cell;
+	bool		save_varprefix;
+
+	expr = find_param_referent(param, context, &dpns, &ancestor_cell);
+	if (expr == NULL || !yb_is_batched_nestloop_param(param, ancestor_cell))
+		return false;
+
+	push_ancestor_plan(dpns, ancestor_cell, &save_dpns);
+	save_varprefix = context->varprefix;
+	context->varprefix = true;
+
+	if (!elem_only)
+		appendStringInfoString(context->buf, "ARRAY[");
+	/*
+	 * The referent is a column of the batched nested loop's outer plan;
+	 * print the expression it computes the way an array element would be.
+	 */
+	resolve_special_varno(expr, context, yb_get_batched_referent, NULL);
+	if (!elem_only)
+		appendStringInfoString(context->buf, ", ...]");
+
+	context->varprefix = save_varprefix;
+	pop_ancestor_plan(dpns, &save_dpns);
+	return true;
+}
+
+/*
+ * yb_get_batched_array_map
+ *		Print an ArrayCoerceExpr that evaluates an expression on each element
+ *		of a batched nested loop's array param (see yb_replace_batched_expr
+ *		in createplan.c) as ARRAY[expression, ...], showing the param's
+ *		referent where the expression reads the element.  Returns false,
+ *		printing nothing, for any other ArrayCoerceExpr.
+ */
+static bool
+yb_get_batched_array_map(ArrayCoerceExpr *acoerce, deparse_context *context)
+{
+	Param	   *param = (Param *) acoerce->arg;
+	Param	   *save_elem_param = yb_batched_elem_param;
+	deparse_namespace *dpns;
+	ListCell   *ancestor_cell;
+	Node	   *expr;
+
+	if (!IsA(param, Param))
+		return false;
+	expr = find_param_referent(param, context, &dpns, &ancestor_cell);
+	if (expr == NULL || !yb_is_batched_nestloop_param(param, ancestor_cell))
+		return false;
+
+	appendStringInfoString(context->buf, "ARRAY[");
+	yb_batched_elem_param = param;
+	PG_TRY();
+	{
+		get_rule_expr((Node *) acoerce->elemexpr, context, true);
+	}
+	PG_FINALLY();
+	{
+		yb_batched_elem_param = save_elem_param;
+	}
+	PG_END_TRY();
+	appendStringInfoString(context->buf, ", ...]");
+	return true;
+}
+
+/*
+ * yb_get_batched_referent
+ *		resolve_special_varno callback for yb_get_batched_param.
+ */
+static void
+yb_get_batched_referent(Node *node, deparse_context *context,
+						void *callback_arg)
+{
+	Param	   *save_elem_param = yb_batched_elem_param;
+
+	/* The referent is in another plan node, outside the element expression */
+	yb_batched_elem_param = NULL;
+	get_rule_expr(node, context, true);
+	yb_batched_elem_param = save_elem_param;
+}
+
+/*
+ * yb_is_batched_nestloop_param
+ *		Whether param is one that the batched nested loop at ancestor_cell
+ *		(as find_param_referent returned it) supplies.  For a SubPlan argument
+ *		find_param_referent returns the plan around the SubPlan instead.
+ */
+static bool
+yb_is_batched_nestloop_param(Param *param, ListCell *ancestor_cell)
+{
+	Node	   *ancestor = (Node *) lfirst(ancestor_cell);
+	ListCell   *lc;
+
+	if (!IsA(ancestor, YbBatchedNestLoop))
+		return false;
+	foreach(lc, ((NestLoop *) ancestor)->nestParams)
+	{
+		if (((NestLoopParam *) lfirst(lc))->paramno == param->paramid)
+			return true;
+	}
+	return false;
 }

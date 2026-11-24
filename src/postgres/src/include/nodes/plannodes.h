@@ -1613,6 +1613,9 @@ typedef struct PartitionPruneStepOp
 	List	   *exprs;
 	List	   *cmpfns;
 	Bitmapset  *nullkeys;
+
+	/* YB fields */
+	bool		yb_saop_array;	/* the single expr is an array of values */
 } PartitionPruneStepOp;
 
 /*

@@ -131,7 +131,7 @@ EXPLAIN (ANALYZE ON) UPDATE gh30373 a SET id = b.id+1 FROM gh30373 b WHERE a.id=
          Join Filter: (a.id = b.id)
          ->  Seq Scan on gh30373 a  (cost=0.00..100.00 rows=1000 width=64) (actual rows=1 loops=1)
          ->  Index Scan using gh30373_pkey on gh30373 b  (cost=0.00..0.11 rows=1 width=36) (actual rows=1 loops=1)
-               Index Cond: (id = ANY (ARRAY[a.id, $2, $3, ..., $1024]))
+               Index Cond: (id = ANY (ARRAY[a.id, ...]))
 (6 rows)
 
 ROLLBACK;

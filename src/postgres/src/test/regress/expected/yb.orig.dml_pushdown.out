@@ -526,8 +526,8 @@ SELECT * FROM single_row;
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
@@ -536,7 +536,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 
          Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+               Index Cond: (k = ANY (ARRAY[temp.k, ...]))
 (9 rows)
 
 WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
@@ -585,8 +585,8 @@ SELECT * FROM single_row;
 CREATE INDEX single_row_v2_idx ON single_row(v2);
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
@@ -595,7 +595,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 
          Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+               Index Cond: (k = ANY (ARRAY[temp.k, ...]))
 (9 rows)
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 1 RETURNING k, v1)
@@ -611,7 +611,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
          Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+               Index Cond: (k = ANY (ARRAY[temp.k, ...]))
 (10 rows)
 
 DROP INDEX single_row_v2_idx;
@@ -637,7 +637,7 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
          Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+               Index Cond: (k = ANY (ARRAY[temp.k, ...]))
 (10 rows)
 
 DROP TRIGGER notify_single_row_v1_update ON single_row;

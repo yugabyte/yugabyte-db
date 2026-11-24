@@ -38,6 +38,7 @@
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
 #include "miscadmin.h"
+#include "utils/array.h"
 #include "utils/memutils.h"
 #include "utils/tuplesort.h"
 
@@ -899,87 +900,93 @@ CreateBatch(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	TupleTableSlot *outerTupleSlot = NULL;
 	PlanState  *outerPlan = outerPlanState(bnlstate);
 	PlanState  *innerPlan = innerPlanState(bnlstate);
+	TupleDesc	outer_tdesc = outerPlan->ps_ResultTupleDesc;
+	ArrayBuildState **arrays = bnlstate->batch_param_arrays;
+	int			ntuples = 0;
+	int			i;
+	ListCell   *lc;
 
 	LOCAL_JOIN_FN(FreeBatch, bnlstate);
 
-	for (int batchno = 0; batchno < GetMaxBatchSize(batchnl); batchno++)
+	/*
+	 * The previous batch's param arrays are no longer needed: the inner plan
+	 * is rescanned below with the new ones.
+	 */
+	MemoryContextReset(bnlstate->batch_param_cxt);
+	i = 0;
+	foreach(lc, batchnl->nl.nestParams)
 	{
-		bool		have_outer_tuple = false;
+		NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
+		Oid			elemtype =
+			TupleDescAttr(outer_tdesc, nlp->paramval->varattno - 1)->atttypid;
 
+		arrays[i++] = initArrayResult(elemtype, bnlstate->batch_param_cxt,
+									  false);
+	}
+
+	/*
+	 * Fetch up to a batch of outer tuples.  A pushed down LIMIT can make the
+	 * first batch smaller than the maximum batch size.
+	 */
+	while (ntuples < GetCurrentBatchSize(bnlstate) && !bnlstate->bnl_outerdone)
+	{
 		elog(DEBUG2, "getting new outer tuple");
-		if (batchno < GetCurrentBatchSize(bnlstate) &&
-			!bnlstate->bnl_outerdone)
-		{
-			outerTupleSlot = ExecProcNode(outerPlan);
-			/*
-			 * We want to wrap up our current batch if the outerPlan has
-			 * just been exhausted but don't want future invocations of
-			 * CreateBatch to attempt ExecProcNode on outerPlan.
-			 */
-			have_outer_tuple = !TupIsNull(outerTupleSlot);
-			bnlstate->bnl_outerdone = !have_outer_tuple;
-		}
+		outerTupleSlot = ExecProcNode(outerPlan);
 
 		/*
-		 * if there are no more outer tuples, then the join is complete..
+		 * We want to wrap up our current batch if the outerPlan has just been
+		 * exhausted but don't want future invocations of CreateBatch to
+		 * attempt ExecProcNode on outerPlan.
 		 */
-		if (bnlstate->bnl_outerdone)
+		if (TupIsNull(outerTupleSlot))
 		{
-			if (batchno == 0)
-			{
-				elog(DEBUG2, "no outer tuple, ending join");
-				return false;
-			}
+			bnlstate->bnl_outerdone = true;
+			break;
 		}
-		else
-		{
-			/*
-			 * have_outer_tuple can be false even if bnlstate->bnl_outerdone
-			 * is false if the pushed down LIMIT leads our first batch to be
-			 * smaller than the outer table size. While we decrease the size
-			 * of our first batch, we can't decrease the size of the inner
-			 * index scan's corresponding IN list and must fill in the remaining
-			 * values with NULLs.
-			 */
-			if (have_outer_tuple)
-			{
-				elog(DEBUG2, "saving new outer tuple information");
-				ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
-				LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
-			}
-		}
+
+		elog(DEBUG2, "saving new outer tuple information");
+		ExecCopySlot(econtext->ecxt_outertuple, outerTupleSlot);
+		LOCAL_JOIN_FN(AddTupleToOuterBatch, bnlstate, econtext->ecxt_outertuple);
+		ntuples++;
 
 		/*
-		 * fetch the values of any outer Vars that must be passed to the
-		 * inner scan, and store them in the appropriate PARAM_EXEC slots.
+		 * Append the values of the outer columns that must be passed to the
+		 * inner scan to their param arrays.
 		 */
-		ListCell   *lc;
-
+		i = 0;
 		foreach(lc, batchnl->nl.nestParams)
 		{
 			NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
-			int			paramno = nlp->paramno + batchno;
-			ParamExecData *prm;
+			Datum		value;
+			bool		isnull;
 
-			prm = &(econtext->ecxt_param_exec_vals[paramno]);
-			/* Param value should be an OUTER_VAR var */
-			Assert(IsA(nlp->paramval, Var));
-			Assert(nlp->paramval->varno == OUTER_VAR);
-			Assert(nlp->paramval->varattno > 0);
-			if (have_outer_tuple)
-			{
-				prm->value = slot_getattr(econtext->ecxt_outertuple,
-										  nlp->paramval->varattno,
-										  &(prm->isnull));
-			}
-			else
-			{
-				prm->isnull = true;
-			}
-			/* Flag parameter value as changed */
-			innerPlan->chgParam = bms_add_member(innerPlan->chgParam,
-												 paramno);
+			value = slot_getattr(econtext->ecxt_outertuple,
+								 nlp->paramval->varattno, &isnull);
+			accumArrayResult(arrays[i], value, isnull, arrays[i]->element_type,
+							 bnlstate->batch_param_cxt);
+			i++;
 		}
+	}
+
+	/* If there are no more outer tuples, then the join is complete. */
+	if (ntuples == 0)
+	{
+		elog(DEBUG2, "no outer tuple, ending join");
+		return false;
+	}
+
+	/* Store the param arrays in their PARAM_EXEC slots. */
+	i = 0;
+	foreach(lc, batchnl->nl.nestParams)
+	{
+		NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
+		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[nlp->paramno]);
+
+		prm->value = makeArrayResult(arrays[i++], bnlstate->batch_param_cxt);
+		prm->isnull = false;
+		/* Flag parameter value as changed */
+		innerPlan->chgParam = bms_add_member(innerPlan->chgParam,
+											 nlp->paramno);
 	}
 
 	LOCAL_JOIN_FN(ResetBatch, bnlstate, econtext);
@@ -1117,6 +1124,29 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 
 	bnlstate->bnl_currentstatus = BNL_INIT;
 	bnlstate->bnl_batchMatchedInfo = NIL;
+
+	/*
+	 * Each NestLoopParam of a batched nested loop is an array that the outer
+	 * column paramval fills, one element per outer tuple of the batch.
+	 */
+	ListCell   *lc;
+
+	foreach(lc, plan->nl.nestParams)
+	{
+		NestLoopParam *nlp = (NestLoopParam *) lfirst(lc);
+
+		if (!IsA(nlp->paramval, Var) ||
+			nlp->paramval->varno != OUTER_VAR ||
+			nlp->paramval->varattno <= 0)
+			elog(ERROR, "batched nested loop param %d is not a batched outer column",
+				 nlp->paramno);
+	}
+	bnlstate->batch_param_cxt = AllocSetContextCreate(CurrentMemoryContext,
+													  "BNL batch params",
+													  ALLOCSET_DEFAULT_SIZES);
+	bnlstate->batch_param_arrays =
+		palloc(Max(list_length(plan->nl.nestParams), 1) *
+			   sizeof(ArrayBuildState *));
 	bnlstate->bnl_batchTupNo = 0;
 	bnlstate->bnl_outerdone = false;
 

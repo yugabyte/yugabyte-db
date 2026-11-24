@@ -31,4 +31,9 @@ extern Param *generate_new_exec_param(PlannerInfo *root, Oid paramtype,
 									  int32 paramtypmod, Oid paramcollation);
 extern int	assign_special_exec_param(PlannerInfo *root);
 
+/* YB declarations */
+extern Param *yb_replace_nestloop_param_batched(PlannerInfo *root, Expr *expr);
+extern List *yb_identify_current_batched_params(PlannerInfo *root,
+												Relids leftrelids);
+
 #endif							/* PARAMASSIGN_H */

@@ -41,7 +41,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE ident IN
    ->  Index Only Scan using airport_type_hash_idx on airports airports_1
          Index Cond: ((type = 'large_airport'::text) AND (iso_country > '0'::bpchar))
    ->  Index Scan using airports_pkey on airports
-         Index Cond: (ident = ANY (ARRAY[airports_1.ident, $1, $2, ..., $1023]))
+         Index Cond: (ident = ANY (ARRAY[airports_1.ident, ...]))
 (6 rows)
 
 --
@@ -58,13 +58,13 @@ EXPLAIN (COSTS OFF) SELECT elevation_ft FROM airports WHERE type = 'large_airpor
 -- The following select use one ybctid at a time to query data.
 EXPLAIN (COSTS OFF) SELECT elevation_ft FROM airports WHERE ident IN
   (SELECT ident FROM airports WHERE type = 'large_airport' AND name > '0');
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (airports.ident = airports_1.ident)
    ->  Index Only Scan using airport_type_range_idx on airports airports_1
          Index Cond: ((name > '0'::text) AND (type = 'large_airport'::text))
    ->  Index Scan using airports_pkey on airports
-         Index Cond: (ident = ANY (ARRAY[airports_1.ident, $1, $2, ..., $1023]))
+         Index Cond: (ident = ANY (ARRAY[airports_1.ident, ...]))
 (6 rows)
 

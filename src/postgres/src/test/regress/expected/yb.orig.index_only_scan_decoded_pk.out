@@ -716,8 +716,8 @@ $$ AS query \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Sort
    Sort Key: i.item_id
    ->  YB Batched Nested Loop Join
@@ -725,7 +725,7 @@ EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_pa
          ->  Index Only Scan using t_join_child_tag on t_join_child i
                Index Cond: (tag = 1)
          ->  Index Scan using t_join_parent_pkey on t_join_parent t
-               Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
+               Index Cond: (tag_id = ANY (ARRAY[i.item_id, ...]))
 (8 rows)
 
 SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
@@ -956,7 +956,7 @@ EXPLAIN (COSTS OFF) SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_j
          ->  Index Only Scan using t_partial_include_v on t_partial_include c
                Index Cond: (v = 25)
          ->  Index Scan using t_join_parent_pkey on t_join_parent p
-               Index Cond: (tag_id = ANY (ARRAY[c.h1, $1, $2, ..., $1023]))
+               Index Cond: (tag_id = ANY (ARRAY[c.h1, ...]))
 (8 rows)
 
 SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2;
@@ -1305,8 +1305,8 @@ $$ AS query \gset
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Sort
    Sort Key: i.item_id
    ->  YB Batched Nested Loop Join
@@ -1314,7 +1314,7 @@ EXPLAIN (COSTS OFF) SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_pa
          ->  Index Scan using t_join_child_tag on t_join_child i
                Index Cond: (tag = 1)
          ->  Index Scan using t_join_parent_pkey on t_join_parent t
-               Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
+               Index Cond: (tag_id = ANY (ARRAY[i.item_id, ...]))
 (8 rows)
 
 SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id;

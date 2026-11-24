@@ -417,8 +417,11 @@ struct PlannerInfo
 	 */
 	List	   *yb_availBatchedRelids;
 
-	int			yb_cur_batch_no;	/* Used in replace_nestloop_params to keep
-									 * track of current batch */
+	/*
+	 * YB: NestLoopParams for batched join keys, which only a Batched Nested
+	 * Loop supplies (see yb_replace_nestloop_param_batched).
+	 */
+	List	   *yb_curOuterBatchedParams;
 
 	/*
 	 * YB: Number of relations that are still referenced by the plan after

@@ -2770,6 +2770,7 @@ _readPartitionPruneStepOp(void)
 	READ_NODE_FIELD(exprs);
 	READ_NODE_FIELD(cmpfns);
 	READ_BITMAPSET_FIELD(nullkeys);
+	READ_BOOL_FIELD(yb_saop_array);
 
 	READ_DONE();
 }

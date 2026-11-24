@@ -2023,7 +2023,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 												rcexpr->rctype == ROWCOMPARE_EQ);
 
 				if (yb_is_for_row_in)
-					Assert(IsA(rcexpr->rargs, ArrayExpr));
+					Assert(!IsA(rcexpr->rargs, List));
 				else
 					Assert(list_length(castNode(List, rcexpr->rargs)) == nopers);
 

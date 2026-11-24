@@ -116,7 +116,7 @@ from rels r, keys k, sizes b;
 select * from bnl_inner_queries order by qid;
 
 -- Plan validation: every query plans the batched inner scan it is meant to
--- (Index Cond lists the batch, a ROW for the two-column key).
+-- (Index Cond compares to the batched array, a ROW for the two-column key).
 select q.qid, n->>'Node Type' node_type, n->>'Index Name' index_name,
        n->>'Index Cond' index_cond
 from bnl_inner_queries q, lateral bnl_inner_node(q.bs, q.query, false) n

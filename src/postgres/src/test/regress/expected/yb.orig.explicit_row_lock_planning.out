@@ -169,14 +169,14 @@ SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                            QUERY PLAN                            
+------------------------------------------------------------------
  LockRows
    ->  YB Batched Nested Loop Join
          Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan on yb_locks_t2
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t
-               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, ...]))
 (6 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
@@ -254,14 +254,14 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  LockRows (no-op)
    ->  YB Batched Nested Loop Join
          Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t2
          ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
-               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, ...]))
 (6 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;

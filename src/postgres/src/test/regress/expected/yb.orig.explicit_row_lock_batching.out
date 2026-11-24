@@ -427,7 +427,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t W
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=4 loops=1)
-               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, ...]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 4
@@ -463,7 +463,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t JOIN yb_locks_
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=2 loops=1)
-               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, ...]))
                Storage Filter: ((k > 0) AND (k <= 5))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 2
@@ -499,7 +499,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t JOIN (SELECT *
                      Storage Table Read Ops: 3
                      Storage Table Rows Scanned: 4
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=2 loops=1)
-         Index Cond: (k = ANY (ARRAY[z.k1, $2, $3, ..., $1024]))
+         Index Cond: (k = ANY (ARRAY[z.k1, ...]))
          Storage Filter: ((k > 0) AND (k <= 5))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 4
@@ -912,7 +912,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_t2, yb_locks_t W
                Storage Table Read Ops: 3
                Storage Table Rows Scanned: 4
          ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=4 loops=1)
-               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, ...]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 4
                Storage Table Rows Scanned: 4
