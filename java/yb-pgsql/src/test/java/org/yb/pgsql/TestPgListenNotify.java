@@ -34,8 +34,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
+import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
 import org.junit.Test;
@@ -2101,12 +2103,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       listenerStmt.execute("LISTEN " + channel);
       int pollerPid = getPollerPid(listenerStmt);
 
+      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
       try (Connection joiner = getConnectionBuilder().withTServer(0).connect();
            Statement joinerStmt = joiner.createStatement()) {
         try {
           setVirtualWalLimit("0");
           ProcessUtil.signalProcess(pollerPid, "TERM");
-          waitForPollerRestart(listenerStmt, pollerPid);
+          TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
           joinerStmt.execute("LISTEN " + channel);
         } finally {
           setVirtualWalLimit("5");
@@ -2119,6 +2122,42 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         waitForNotification(listener, channel, "after_init");
         waitForNotification(joiner, channel, "after_init");
       }
+    }
+  }
+
+  /**
+   * A poller that stays up for the retry timeout ends the run of failed restarts even if it then
+   * exits by SIGTERM, so a later transient init failure restarts it instead of terminating the
+   * listeners on an old retry timer.
+   */
+  @Test
+  public void testHealthyPollerEndsFailedRestartRun() throws Exception {
+    final String channel = "healthy_ends_run";
+    final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
+    setPollerRetryTimeoutMs(String.valueOf(timeoutMs));
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN " + channel);
+
+      notifyWhilePollerFails(stmt, channel, "a");
+      waitForNotification(listener, channel, "a");
+
+      // Stay up past the timeout, then fail init once after a SIGTERM.
+      Thread.sleep(timeoutMs + Timeouts.adjustTimeoutSecForBuildType(2000));
+      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
+      try {
+        setVirtualWalLimit("0");
+        ProcessUtil.signalProcess(getPollerPid(stmt), "TERM");
+        TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
+      } finally {
+        setVirtualWalLimit("5");
+      }
+
+      stmt.execute("NOTIFY " + channel + ", 'b'");
+      waitForNotification(listener, channel, "b");
+    } finally {
+      setPollerRetryTimeoutMs(DEFAULT_POLLER_RETRY_TIMEOUT_MS);
     }
   }
 
@@ -2191,9 +2230,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Sends a NOTIFY while every poller queue write errors, then clears the error. Waits a fixed
-   * time rather than for a new pid, which a ~50 ms-lived crash-looping poller can hide. Returns the
-   * time just before the NOTIFY.
+   * Sends a NOTIFY while every poller queue write errors, and clears the error once the poller has
+   * restarted after it. Returns the time just before the NOTIFY.
    */
   private long notifyWhilePollerFails(Statement stmt, String channel, String payload)
       throws Exception {
@@ -2202,13 +2240,46 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       appendToPgConfOnAllTServers(
           "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
       Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
       long notifyMs = System.currentTimeMillis();
       stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
-      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
       return notifyMs;
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
     }
+  }
+
+  /** Counts tserver log lines containing a string, from now on. */
+  private LogLineCounter countLogLines(String needle) {
+    LogLineCounter counter = new LogLineCounter(needle);
+    for (MiniYBDaemon tserver : miniCluster.getTabletServers().values()) {
+      tserver.getLogPrinter().addErrorListener(counter);
+    }
+    return counter;
+  }
+
+  private static class LogLineCounter implements LogErrorListener {
+    private final String needle;
+    private final AtomicInteger count = new AtomicInteger();
+
+    LogLineCounter(String needle) {
+      this.needle = needle;
+    }
+
+    int count() {
+      return count.get();
+    }
+
+    @Override
+    public void handleLine(String line) {
+      if (line.contains(needle)) {
+        count.incrementAndGet();
+      }
+    }
+
+    @Override
+    public void reportErrorsAtEnd() {}
   }
 
   private void setPollerRetryTimeoutMs(String value) throws Exception {
