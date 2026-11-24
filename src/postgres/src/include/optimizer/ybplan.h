@@ -46,6 +46,9 @@ extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
 extern void yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,
 													   List **rel_remote_quals, List **rel_colrefs,
 													   Oid relid);
+extern void yb_split_recheck_quals(List *indexquals, Oid relid,
+								   List **remote_quals, List **remote_colrefs,
+								   List **local_quals);
 
 /* YbSkippableEntities helper functions */
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);

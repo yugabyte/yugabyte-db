@@ -453,6 +453,34 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 }
 
 /*
+ * yb_split_recheck_quals
+ *	  Sort the index quals a YB Bitmap Table Scan rechecks into the pushable
+ *	  ones, applied by DocDB on the table fetch, and the rest, applied on the
+ *	  PG side.  Plan creation and costing share the split so that they
+ *	  agree on it.
+ */
+void
+yb_split_recheck_quals(List *indexquals, Oid relid, List **remote_quals,
+					   List **remote_colrefs, List **local_quals)
+{
+	ListCell   *lc;
+
+	foreach(lc, indexquals)
+	{
+		List	   *colrefs = NIL;
+		Expr	   *clause = (Expr *) lfirst(lc);
+
+		if (YbCanPushdownExpr(clause, &colrefs, relid))
+		{
+			*remote_colrefs = list_concat(*remote_colrefs, colrefs);
+			*remote_quals = lappend(*remote_quals, clause);
+		}
+		else
+			*local_quals = lappend(*local_quals, clause);
+	}
+}
+
+/*
  * yb_extract_pushdown_clauses_from_index_predicate
  *	  This functions extracts pushdown clauses from an index's predicate or
  *	  expression list. This function is intended to be used in the context of

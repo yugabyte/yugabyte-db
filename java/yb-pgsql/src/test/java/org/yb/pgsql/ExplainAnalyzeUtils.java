@@ -337,7 +337,8 @@ public class ExplainAnalyzeUtils {
     private BigDecimal value;
   }
 
-  public static Cost getExplainTotalCost(Statement stmt, String query)
+  /** The root plan node of EXPLAIN (FORMAT json) for the query. */
+  public static JsonObject getExplainPlanRoot(Statement stmt, String query)
   throws Exception {
     ResultSet rs = stmt.executeQuery(String.format(
       "EXPLAIN (FORMAT json) %s", query));
@@ -345,10 +346,33 @@ public class ExplainAnalyzeUtils {
     JsonElement json = JsonParser.parseString(rs.getString(1));
     JsonArray rootArray = json.getAsJsonArray();
     if (!rootArray.isEmpty()) {
-      JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
-      return new Cost(plan.get(TOTAL_COST).getAsString());
+      return rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  /** The first node of the plan tree with the given node type and relation name, or null. */
+  public static JsonObject findPlanNode(JsonObject node, String nodeType, String relationName) {
+    if (nodeType.equals(node.get("Node Type").getAsString())
+        && node.has("Relation Name")
+        && relationName.equals(node.get("Relation Name").getAsString())) {
+      return node;
+    }
+    JsonArray children = node.getAsJsonArray("Plans");
+    if (children != null) {
+      for (JsonElement child : children) {
+        JsonObject found = findPlanNode(child.getAsJsonObject(), nodeType, relationName);
+        if (found != null) {
+          return found;
+        }
+      }
+    }
+    return null;
+  }
+
+  public static Cost getExplainTotalCost(Statement stmt, String query)
+  throws Exception {
+    return new Cost(getExplainPlanRoot(stmt, query).get(TOTAL_COST).getAsString());
   }
 
   public static long getExplainQueryId(Statement stmt, String query)

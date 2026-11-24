@@ -1,13 +1,21 @@
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_AND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BATCHED_NESTED_LOOP;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BITMAP_TABLE_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.TOTAL_COST;
+import static org.yb.pgsql.ExplainAnalyzeUtils.findPlanNode;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainPlanRoot;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainTotalCost;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 
 import java.sql.Connection;
@@ -21,6 +29,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.pgsql.ExplainAnalyzeUtils.Cost;
 import org.yb.pgsql.ExplainAnalyzeUtils.MetricsCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
@@ -29,6 +38,8 @@ import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ValueChecker;
+
+import com.google.gson.JsonObject;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
@@ -1384,6 +1395,76 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         NODE_YB_BATCHED_NESTED_LOOP,
         "t2_26463", NODE_SEQ_SCAN, 97656248.0, 100097654198.0,
         "t1_26463", NODE_INDEX_SCAN, 1024.0, 2048.0);
+    }
+  }
+
+  /** Total cost of the inner index scan on relationName of a join plan whose root is joinType. */
+  private static Cost getInnerIndexScanCost(Statement stmt, String query, String joinType,
+                                            String relationName) throws Exception {
+    JsonObject root = getExplainPlanRoot(stmt, query);
+    assertEquals(joinType, root.get("Node Type").getAsString());
+    JsonObject scan = findPlanNode(root, NODE_INDEX_SCAN, relationName);
+    assertNotNull("no Index Scan on " + relationName + " in the plan of: " + query, scan);
+    return new Cost(scan.get(TOTAL_COST).getAsString());
+  }
+
+  @Test
+  public void test37196HashKeyRecheckCost() throws Exception {
+    /*
+     * #37196: without a condition on the hash key, DocDB enforces none of the index conditions
+     * and the executor rechecks them on every row DocDB returns.  The cost model prices the full
+     * scan and has to charge that recheck too.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_37196 (id1 BIGINT, id2 BIGINT, c BIGINT, "
+          + "PRIMARY KEY (id1 HASH, id2 ASC, c ASC)) WITH (colocation = false)");
+      stmt.execute("CREATE INDEX t_37196_idx ON t_37196 (id2 HASH, c ASC, id1 ASC)");
+      stmt.execute("INSERT INTO t_37196 SELECT s, s, 1 + s % 100 "
+          + "FROM generate_series(1, 20000) s");
+      stmt.execute("CREATE TABLE t_37196_outer (c BIGINT PRIMARY KEY) WITH (colocation = false)");
+      stmt.execute("INSERT INTO t_37196_outer SELECT s FROM generate_series(1, 50) s");
+      stmt.execute("ANALYZE t_37196, t_37196_outer");
+
+      // Each unenforced condition is one more comparison per returned row, so a second
+      // condition on a range key column makes the same full scan dearer.
+      String pkScan =
+          "/*+ IndexScan(t_37196 t_37196_pkey) */ SELECT id1 FROM t_37196 WHERE c = 7";
+      assertTrue(getExplainTotalCost(stmt, pkScan + " AND id2 = 7")
+          .compareTo(getExplainTotalCost(stmt, pkScan)) > 0);
+      String indexOnlyScan =
+          "/*+ IndexOnlyScan(t_37196 t_37196_idx) */ SELECT id2 FROM t_37196 WHERE c = 7";
+      assertTrue(getExplainTotalCost(stmt, indexOnlyScan + " AND id1 = 7")
+          .compareTo(getExplainTotalCost(stmt, indexOnlyScan)) > 0);
+
+      // A bitmap scan fetches every row of the table for such an index and rechecks the
+      // conditions on the fetch, so a second condition makes it dearer there too.  Before the
+      // fix the fetch was sized by the unenforced conditions and the second condition made the
+      // scan cheaper.
+      String pkBitmapScan =
+          "/*+ BitmapScan(t_37196 t_37196_pkey) */ SELECT id1 FROM t_37196 WHERE c = 7";
+      assertTrue(getExplainTotalCost(stmt, pkBitmapScan + " AND id2 = 7")
+          .compareTo(getExplainTotalCost(stmt, pkBitmapScan)) > 0);
+      String idxBitmapScan =
+          "/*+ BitmapScan(t_37196 t_37196_idx) */ SELECT id1 FROM t_37196 WHERE c = 7";
+      assertTrue(getExplainTotalCost(stmt, idxBitmapScan + " AND id1 = 7")
+          .compareTo(getExplainTotalCost(stmt, idxBitmapScan)) > 0);
+
+      // The inner scan of a batched nested loop rechecks each row against every key of the
+      // batch, the inner scan of a plain nested loop against one key.  Before the fix both inner
+      // scans had the same cost, so this also pins the per-key charge: charged as one comparison
+      // per row, the batched inner would only match the plain inner.
+      String join = "SELECT t_37196.id1 FROM t_37196_outer JOIN t_37196 "
+          + "ON t_37196.c = t_37196_outer.c";
+      Cost batchedInner = getInnerIndexScanCost(stmt,
+          "/*+ Leading((t_37196_outer t_37196)) YbBatchedNL(t_37196_outer t_37196) "
+              + "IndexScan(t_37196 t_37196_pkey) */ " + join,
+          NODE_YB_BATCHED_NESTED_LOOP, "t_37196");
+      Cost plainInner = getInnerIndexScanCost(stmt,
+          "/*+ Leading((t_37196_outer t_37196)) NoYbBatchedNL(t_37196_outer t_37196) "
+              + "Set(enable_hashjoin off) Set(enable_mergejoin off) "
+              + "IndexScan(t_37196 t_37196_pkey) */ " + join,
+          NODE_NESTED_LOOP, "t_37196");
+      assertTrue(batchedInner.compareTo(plainInner) > 0);
     }
   }
 }
