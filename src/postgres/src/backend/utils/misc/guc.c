@@ -919,6 +919,7 @@ static char *yb_origination_time_override_string;
 static char *yb_neg_catcache_ids_string;
 static char *yb_test_catalog_preload_cache_list_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+static bool yb_conn_mgr_replaying = false;
 bool		yb_test_skip_binding_scan_keys;
 bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
@@ -5049,6 +5050,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
 			NULL,
+			GUC_YB_CONN_MGR_REPLAY_CHECK |
 			GUC_UNIT_BLOCKS | GUC_EXPLAIN
 		},
 		&num_temp_buffers,
@@ -7473,13 +7475,6 @@ static struct config_string ConfigureNamesString[] =
 		{"default_table_access_method", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default table access method for new tables."),
 			NULL,
-			/*
-			 * YB: ConnMgr can't replay this safely since the check hook looks
-			 * up the name again. The access method might have been dropped
-			 * between the SET and the replay, making the replay fail. So,
-			 * setting this GUC makes the connection sticky.
-			 */
-			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_table_access_method,
@@ -8998,6 +8993,8 @@ static void replace_auto_config_value(ConfigVariable **head_p, ConfigVariable **
 static const char *YbFormatConfigValue(struct config_generic *record,
 									   const union config_var_val *val,
 									   char *buffer, size_t bufsize);
+static bool yb_conn_mgr_skip_check_hook(struct config_generic *gconf,
+										bool has_assign_hook);
 
 
 /*
@@ -10489,6 +10486,41 @@ YbResetYsqlConnMgrGucDefaults(void)
 	PG_FINALLY();
 	{
 		yb_conn_mgr_modifying_defaults = false;
+	}
+	PG_END_TRY();
+}
+
+void
+YbSetYsqlConnMgrSessionState(const char *data, int len)
+{
+	const char *ptr = data;
+	const char *end = data + len;
+	GucContext	gucctx = superuser() ? PGC_SUSET : PGC_USERSET;
+
+	PG_TRY();
+	{
+		yb_conn_mgr_replaying = true;
+		while (ptr < end)
+		{
+			const char *name = ptr;
+			const char *value;
+
+			ptr = memchr(ptr, '\0', end - ptr);
+			if (ptr == NULL)
+				break;
+			value = ++ptr;
+			ptr = memchr(ptr, '\0', end - ptr);
+			if (ptr == NULL)
+				break;
+			ptr++;
+
+			(void) set_config_option(name, value, gucctx, PGC_S_SESSION,
+									 GUC_ACTION_SET, true, 0, false);
+		}
+	}
+	PG_FINALLY();
+	{
+		yb_conn_mgr_replaying = false;
 	}
 	PG_END_TRY();
 }
@@ -13044,6 +13076,7 @@ set_config_option_ext(const char *name, const char *value,
 	if (changeVal &&			/* Add only if the parameter value is changed */
 		source != YSQL_CONN_MGR &&	/* Don't add the parameter to the changed
 									 * list, if it is set from YSQL CONN MGR */
+		!yb_conn_mgr_replaying &&
 		(context == PGC_SUSET || context == PGC_USERSET ||	/* SET statement */
 		 value == NULL))		/* RESET statement */
 	{
@@ -16731,6 +16764,10 @@ call_bool_check_hook(struct config_bool *conf, bool *newval, void **extra,
 	if (!conf->check_hook)
 		return true;
 
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+		return true;
+
 	/* Reset variables that might be set by hook */
 	GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
 	GUC_check_errmsg_string = NULL;
@@ -16763,6 +16800,10 @@ call_int_check_hook(struct config_int *conf, int *newval, void **extra,
 {
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -16833,6 +16874,10 @@ call_real_check_hook(struct config_real *conf, double *newval, void **extra,
 	if (!conf->check_hook)
 		return true;
 
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
+		return true;
+
 	/* Reset variables that might be set by hook */
 	GUC_check_errcode_value = ERRCODE_INVALID_PARAMETER_VALUE;
 	GUC_check_errmsg_string = NULL;
@@ -16867,6 +16912,10 @@ call_string_check_hook(struct config_string *conf, char **newval, void **extra,
 
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
 		return true;
 
 	/*
@@ -16915,6 +16964,10 @@ call_enum_check_hook(struct config_enum *conf, int *newval, void **extra,
 {
 	/* Quick success if no hook */
 	if (!conf->check_hook)
+		return true;
+
+	/* YB */
+	if (yb_conn_mgr_skip_check_hook(&conf->gen, conf->assign_hook != NULL))
 		return true;
 
 	/* Reset variables that might be set by hook */
@@ -19046,6 +19099,15 @@ YbIsValidConfigFileName(const char *name)
 {
 	return find_option(name, false, true, LOG) != NULL ||
 		valid_custom_variable_name(name);
+}
+
+static bool
+yb_conn_mgr_skip_check_hook(struct config_generic *gconf, bool has_assign_hook)
+{
+	return (yb_conn_mgr_replaying || yb_conn_mgr_modifying_defaults) &&
+		!has_assign_hook &&
+		!(gconf->flags & GUC_YB_CONN_MGR_REPLAY_CHECK) &&
+		strchr(gconf->name, GUC_QUALIFIER_SEPARATOR) == NULL;
 }
 
 #include "guc-file.c"

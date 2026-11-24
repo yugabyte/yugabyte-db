@@ -1201,14 +1201,93 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // The client sets default_table_access_method by SET or in the startup packet, then another
+  // session drops the access method. The client doesn't hold the only backend, so a second client
+  // takes it. The client's next query replays the value on that backend, and only CREATE TABLE
+  // fails, as in Postgres.
   @Test
-  public void testTableAccessMethodMakesConnectionSticky() throws Exception {
+  public void testTableAccessMethodReplaysAfterDrop() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
-    checkStickyAfterObjectChange("default_table_access_method", "cm_am_set",
-        false /* startupPacket */,
-        "CREATE ACCESS METHOD cm_am_set TYPE TABLE HANDLER heap_tableam_handler",
-        "DROP ACCESS METHOD cm_am_set",
-        "DROP ACCESS METHOD IF EXISTS cm_am_set");
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      for (boolean startupPacket : new boolean[] {false, true}) {
+        String am = "cm_am_" + (startupPacket ? "startup" : "set");
+        pgStmt.execute("CREATE ACCESS METHOD " + am + " TYPE TABLE HANDLER heap_tableam_handler");
+        try {
+          ConnectionBuilder builder = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+          if (startupPacket) {
+            builder = builder.withOptions("-c default_table_access_method=" + am);
+          }
+          try (Connection conn = builder.connect();
+               Statement stmt = conn.createStatement()) {
+            if (!startupPacket) {
+              stmt.execute("SET default_table_access_method = '" + am + "'");
+            }
+            pgStmt.execute("DROP ACCESS METHOD " + am);
+
+            startQueuedClient().assertServed();
+            assertSettingValues(stmt, new String[] {"default_table_access_method", am});
+            runInvalidQuery(stmt, "CREATE TABLE cm_am_tbl (a int)",
+                "access method \"" + am + "\" does not exist");
+          }
+        } finally {
+          pgStmt.execute("DROP ACCESS METHOD IF EXISTS " + am);
+        }
+      }
+    }
+  }
+
+  // The client sets yb_read_time and another setting, so its next deploy carries more than one
+  // value. A second client takes the only backend, then the client's next query replays both on
+  // it. yb_read_time can't be set inside a transaction block, and the replay must not open one.
+  @Test
+  public void testReadTimeReplaysWithOtherSettings() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      ResultSet rs = stmt.executeQuery(
+          "SELECT (extract(epoch from now()) * 1000000)::bigint::text");
+      assertTrue(rs.next());
+      String readTime = rs.getString(1);
+      stmt.execute("SET TimeZone = 'Asia/Kolkata'");
+      stmt.execute("SET yb_read_time = '" + readTime + "'");
+
+      startQueuedClient().assertServed();
+      assertSettingValues(stmt,
+          new String[] {"TimeZone", "Asia/Kolkata"},
+          new String[] {"yb_read_time", readTime});
+    }
+  }
+
+  // The client sets values that SQL would need to quote or escape. A second client takes the only
+  // backend, then the client's next query replays them on it. They must come back unchanged.
+  @Test
+  public void testSessionValuesNeedingQuotesReplay() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String[][] settings = {
+        {"application_name", "it's a \\ test; SET work_mem = 1"},
+        {"search_path", "\"a,b\", \"it's\", \"x;y\", public"},
+        {"cm_test.value", "quote ' backslash \\ semicolon ; E'x'"},
+        {"DateStyle", "SQL, DMY"},
+    };
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      for (String[] setting : settings) {
+        ResultSet rs = stmt.executeQuery(
+            "SELECT set_config('" + setting[0] + "', " +
+            "'" + setting[1].replace("'", "''") + "', false)");
+        assertTrue(rs.next());
+      }
+      assertSettingValues(stmt, settings);
+
+      startQueuedClient().assertServed();
+      assertSettingValues(stmt, settings);
+    }
   }
 
   // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
