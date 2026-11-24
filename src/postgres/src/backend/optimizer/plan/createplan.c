@@ -3559,6 +3559,107 @@ yb_single_row_key_value(Expr *expr, Oid coltype)
 }
 
 /*
+ * yb_single_row_wco_in_slot
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  WITH CHECK
+ * options (RLS policies, view CHECK OPTION) are evaluated on the new-row slot.
+ * On the single-row path that slot is the Result node's output: primary key
+ * values are the WHERE literals, SET values evaluated by the Result node carry
+ * the column type, and every other column is an int4 dummy, zero for a SET
+ * column computed by DocDB and NULL otherwise.  A stored generated column is
+ * recomputed into its cell before the check, but the cell keeps the dummy's
+ * type.  A qual that reads a dummy can reject a legal row, accept a row the
+ * policy forbids, or fail with a type error.  Return true if every column the
+ * quals read is present in the slot as the stored row holds it, false to use
+ * the scan path instead.
+ *
+ * The RETURNING check in the caller asks a similar question, but it decides
+ * what to fetch from DocDB and a bare Var there copies the datum without a
+ * type check; its expression cases are tracked separately (#37734).
+ */
+static bool
+yb_single_row_wco_in_slot(ModifyTablePath *path,
+						  TargetEntry **indexquals,
+						  TupleDesc tupDesc,
+						  AttrNumber attr_offset,
+						  Bitmapset *primary_key_attrs,
+						  Bitmapset *update_attrs,
+						  Bitmapset *pushdown_update_attrs)
+{
+	ListCell   *lc;
+
+	if (path->operation != CMD_UPDATE || path->withCheckOptionLists == NIL)
+		return true;
+
+	/*
+	 * One WCO list per result relation, and the caller already requires a
+	 * single result relation.  Fail closed anyway: checking only the first
+	 * list would leave the other relations' policies unchecked.
+	 */
+	Assert(list_length(path->withCheckOptionLists) == 1);
+	if (list_length(path->withCheckOptionLists) != 1)
+		return false;
+
+	foreach(lc, (List *) linitial(path->withCheckOptionLists))
+	{
+		WithCheckOption *wco = lfirst_node(WithCheckOption, lc);
+		List	   *vars = pull_var_clause(wco->qual,
+										   PVC_RECURSE_AGGREGATES |
+										   PVC_RECURSE_WINDOWFUNCS |
+										   PVC_RECURSE_PLACEHOLDERS);
+		ListCell   *lcv;
+		bool		slot_has_cols = true;
+
+		foreach(lcv, vars)
+		{
+			Var		   *var = lfirst_node(Var, lcv);
+			AttrNumber	attno = var->varattno;
+
+			/*
+			 * Whole-row and system column references are not worth the fast
+			 * path, and a generated column's cell keeps the dummy's type.
+			 */
+			if (!AttrNumberIsForUserDefinedAttr(attno) ||
+				TupleDescAttr(tupDesc, attno - 1)->attgenerated)
+			{
+				slot_has_cols = false;
+				break;
+			}
+
+			if (bms_is_member(attno - attr_offset, primary_key_attrs))
+			{
+				Node	   *key = (Node *) indexquals[attno - 1]->expr;
+				Form_pg_attribute att = TupleDescAttr(tupDesc, attno - 1);
+
+				/*
+				 * The WHERE literal keeps its own type and typmod: an int
+				 * literal on a bigint key, 'a' on a char(3) key or 1.0 on a
+				 * numeric(5,2) key equals the stored value without being it.
+				 */
+				if (exprType(key) != att->atttypid ||
+					exprTypmod(key) != att->atttypmod)
+				{
+					slot_has_cols = false;
+					break;
+				}
+			}
+			else if (!bms_is_member(attno - attr_offset, update_attrs) ||
+					 bms_is_member(attno - attr_offset, pushdown_update_attrs))
+			{
+				slot_has_cols = false;
+				break;
+			}
+		}
+		list_free(vars);
+
+		if (!slot_has_cols)
+			return false;
+	}
+
+	return true;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -4092,6 +4193,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * Verify all YB primary keys are specified in the WHERE clause.
 	 */
 	if (!YBCAllPrimaryKeysProvided(relation, primary_key_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/* WITH CHECK quals must not read dummy targets in the Result slot. */
+	if (!yb_single_row_wco_in_slot(path, indexquals, tupDesc, attr_offset,
+								   primary_key_attrs, update_attrs,
+								   pushdown_update_attrs))
 	{
 		RelationClose(relation);
 		return false;
