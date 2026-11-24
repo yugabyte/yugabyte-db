@@ -6820,8 +6820,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.replicated_ddls");
       stmt.execute("INSERT INTO t1 VALUES (2)");
     }
-    /* BEGIN, RELATION, INSERT and COMMIT, as the publication change resends RELATION. */
-    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("2")));
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(stream, 3).contains(PgOutputInsertMessage.Create("2")));
     stream.close();
     conn.close();
   }
