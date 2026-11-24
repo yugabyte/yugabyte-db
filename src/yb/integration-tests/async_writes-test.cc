@@ -949,6 +949,43 @@ TEST_F(YSqlAsyncWriteTest, SelectForUpdateAsyncWrite) {
   ASSERT_EQ(rows, "1, a; 2, x; 3, c");
 }
 
+// A pipelined write's row locks are released once the leader applies its intents, so the same
+// transaction can keep writing those rows without waiting for quorum commit.
+TEST_F(YSqlAsyncWriteTest, RowLocksReleasedBeforeQuorumCommit) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'a'), (2, 'b'), (3, 'c')", kTableName));
+  auto other_conn = ASSERT_RESULT(Connect());
+
+  // Nothing replicates while the followers are delayed, so a statement that waits for an earlier
+  // statement's locks to be released at quorum commit hits the statement timeout.
+  const auto follower_delay = MonoDelta(30s);
+  const auto statement_timeout = MonoDelta(5s);
+  for (auto* conn : {conn_.get(), &other_conn}) {
+    ASSERT_OK(conn->ExecuteFormat(
+        "SET statement_timeout = $0", statement_timeout.ToMilliseconds()));
+  }
+  auto follower_peers = ASSERT_RESULT(DelayFollowers(kTableName, follower_delay));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_RESULT(conn_->FetchAllAsString(
+      Format("SELECT * FROM $0 WHERE key = 2 FOR UPDATE", kTableName)));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET value = 'x' WHERE key = 2", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET value = 'y' WHERE key = 2", kTableName));
+
+  // Another transaction still conflicts with the row, through the intents.
+  auto result = other_conn.FetchAllAsString(
+      Format("SELECT * FROM $0 WHERE key = 2 FOR UPDATE NOWAIT", kTableName));
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "could not obtain lock");
+
+  ResumeFollowersAndWait(follower_peers, follower_delay);
+  ASSERT_OK(conn_->CommitTransaction());
+  ASSERT_EQ(
+      ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName))),
+      "1, a; 2, y; 3, c");
+}
+
 // The ack (async_write_op_id) of the read path's internal lock write (SELECT ... FOR UPDATE,
 // FK checks, serializable reads) must reach the client, which gates COMMIT on the lock write's
 // quorum fate.
