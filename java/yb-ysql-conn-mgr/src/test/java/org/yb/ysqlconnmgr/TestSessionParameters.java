@@ -1228,8 +1228,13 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
 
             startQueuedClient().assertServed();
             assertSettingValues(stmt, new String[] {"default_table_access_method", am});
-            runInvalidQuery(stmt, "CREATE TABLE cm_am_tbl (a int)",
-                "access method \"" + am + "\" does not exist");
+            try {
+              stmt.execute("CREATE TABLE cm_am_tbl (a int)");
+              fail("CREATE TABLE should have failed");
+            } catch (Exception e) {
+              assertTrue(e.getMessage(),
+                  e.getMessage().contains("access method \"" + am + "\" does not exist"));
+            }
           }
         } finally {
           pgStmt.execute("DROP ACCESS METHOD IF EXISTS " + am);
@@ -1271,7 +1276,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         {"application_name", "it's a \\ test; SET work_mem = 1"},
         {"search_path", "\"a,b\", \"it's\", \"x;y\", public"},
         {"cm_test.value", "quote ' backslash \\ semicolon ; E'x'"},
-        {"DateStyle", "SQL, DMY"},
+        {"DateStyle", "ISO, DMY"},
     };
     try (Connection conn = getConnectionBuilder()
              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
