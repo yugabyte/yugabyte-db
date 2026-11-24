@@ -62,6 +62,7 @@ DECLARE_bool(TEST_pause_before_remote_bootstrap);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_persistence_gate);
 DECLARE_bool(enable_ysql_operation_lease);
@@ -69,6 +70,7 @@ DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(leader_failure_exp_backoff_max_delta_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_lease_relinquish_leadership);
 
@@ -141,7 +143,18 @@ class XClusterGuardedLeaseTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(XClusterGuardedLeaseTest, SequenceBumpsBlockedWithoutLease) {
+// Without the lock fast path (off by default on macOS) setval takes the sequence's object lock by
+// RPC, and that request hangs once the lease is lost.
+class XClusterGuardedLeaseObjectLockFastpathTest : public XClusterGuardedLeaseTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = true;
+    XClusterGuardedLeaseTest::SetUp();
+  }
+};
+
+TEST_F(XClusterGuardedLeaseObjectLockFastpathTest, SequenceBumpsBlockedWithoutLease) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE SEQUENCE seq"));
   const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
