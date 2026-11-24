@@ -5,23 +5,12 @@ import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { getS3IamOptions, hostBaseNamesRegion } from './iamOptionsByHost';
+import { getS3IamOptions, regionRequiredForFederatedIam } from './iamOptionsByHost';
 import './StorageConfiguration.scss';
 
 const required = (value) => {
   return value ? undefined : 'This field is required.';
 };
-
-// YBA does not look up the bucket region of a federated config. So a config that Federated IAM is
-// turned on for, new or edited, names it unless the host base does; on an edit the host base is
-// fixed, and an IAM Role config never stored a region. A config saved federated keeps taking edits.
-const regionRequiredForFederatedIam = (value, data, props) =>
-  data?.FEDERATED_IAM &&
-  !props?.initialValues?.FEDERATED_IAM &&
-  !value &&
-  !hostBaseNamesRegion(data?.AWS_HOST_BASE)
-    ? 'Required for Federated IAM, unless the host base names the region.'
-    : undefined;
 
 const proxyFieldsRequired = (value, data) => {
   if (
@@ -124,7 +113,7 @@ class AwsStorageConfiguration extends Component {
             )}
           </Row>
           )}
-          {showFederatedIam && hostOptions.showFederatedIam && (
+          {showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Federated IAM</div>

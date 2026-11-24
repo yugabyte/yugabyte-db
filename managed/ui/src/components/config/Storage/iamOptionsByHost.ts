@@ -24,8 +24,7 @@ export const getS3IamOptions = (
   iamRoleOn: boolean,
   federatedIamOffered: boolean
 ) => ({
-  showIamRole: isEdited || iamRoleOn || !federatedIamOffered || ybaHost !== YBAHost.GCP,
-  showFederatedIam: true
+  showIamRole: isEdited || iamRoleOn || !federatedIamOffered || ybaHost !== YBAHost.GCP
 });
 
 // Mirrors AWSUtil's AWS_HOST_BASE_REGION_PATTERN. YBA does not look up the bucket region of a
@@ -35,6 +34,24 @@ const HOST_BASE_REGION = /^s3[.-](?:[a-z0-9-]+[.])*([a-z]{2}-[a-z-]+-\d+)[.]amaz
 
 export const hostBaseNamesRegion = (hostBase?: string) =>
   !!hostBase && HOST_BASE_REGION.test(hostBase);
+
+type S3FormValues = { FEDERATED_IAM?: boolean; AWS_HOST_BASE?: string };
+
+// Field-level validator for SIGNING_REGION (redux-form passes the value, the form values and the
+// form props). A config that Federated IAM is turned on for, new or edited, names the bucket's
+// region unless the host base does: on an edit the host base is fixed, and an IAM Role config never
+// stored a region. A config saved federated keeps taking edits without one.
+export const regionRequiredForFederatedIam = (
+  value: string | undefined,
+  data?: S3FormValues,
+  props?: { initialValues?: S3FormValues }
+) =>
+  data?.FEDERATED_IAM &&
+  !props?.initialValues?.FEDERATED_IAM &&
+  !value &&
+  !hostBaseNamesRegion(data?.AWS_HOST_BASE)
+    ? 'Required for Federated IAM, unless the host base names the region.'
+    : undefined;
 
 export const getGcsIamOptions = (
   ybaHost: YBAHostValue,

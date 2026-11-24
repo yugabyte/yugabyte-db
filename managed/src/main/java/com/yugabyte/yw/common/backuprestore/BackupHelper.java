@@ -557,7 +557,9 @@ public class BackupHelper {
   public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
-    storageUtil.validateStorageConfigOnBackup(config.getDataObject(), backupParams);
+    CustomerConfigData configData = config.getDataObject();
+    federateGcpIamOnAws(configData, new ConfigIdentity());
+    storageUtil.validateStorageConfigOnBackup(configData, backupParams);
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
@@ -594,6 +596,11 @@ public class BackupHelper {
       if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
         stampFederationTarget(gcs, resolveCrossCloudFederationTarget(universe, CloudType.gcp));
       }
+      // After the stamping: a GCP IAM config federated only in memory keeps no audience, so this
+      // check defers to the nodes, as it did for every GCP IAM config before PLAT-23407, rather
+      // than call GCS with no identity. YBA federates with an entry only for its own work on the
+      // bucket (applyCrossCloudFederationFromBackup, applyYbaFederatedIdentity).
+      federateGcpIamOnAws(gcs, new ConfigIdentity());
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
@@ -867,8 +874,13 @@ public class BackupHelper {
    * Has YBA reach the bucket of a GCS config with GCP IAM, but without the federation flag, as it
    * reaches that of a federated one, when it runs on AWS with no Google credentials of its own:
    * turns the flag on, in memory only. Such a config is made on a YBA on GCP, which needs no flag
-   * there. Without this, its HA standby on AWS, once promoted, calls GCS with no identity, so
-   * backup deletion and cleanup fail with "Anonymous caller". Only YBA reads the flag, never the DB
+   * there. Without this, its HA standby on AWS, once promoted, calls GCS with no identity
+   * ("Anonymous caller"). Every copy YBA reads the bucket with goes through here. The storage
+   * checks before a backup, a restore or a deletion (applyCrossCloudFederationAudience,
+   * validateStorageConfigOnBackup, and the restore's success marker and file checks) leave the
+   * audience blank, so GCPUtil defers them to the nodes, as for any unresolved federation config.
+   * The deletion itself (applyCrossCloudFederationFromBackup) and YBA's own backups
+   * (applyYbaFederatedIdentity) federate with an entry. Only YBA reads the flag, never the DB
    * nodes. A config that also has a service account key is left as it is, as the flag cannot be
    * turned on for it either (see CustomerConfigStorageGCSValidator).
    */
@@ -1290,6 +1302,7 @@ public class BackupHelper {
     precheckStorageConfig(storageConfig, universe, true /* forRestore */, true /* probeNodes */);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     CustomerConfigData configData = storageConfig.getDataObject();
+    federateGcpIamOnAws(configData, new ConfigIdentity());
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
     for (YbcBackupResponse successMarker : successMarkers) {
       Map<String, YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation>
@@ -1881,11 +1894,13 @@ public class BackupHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot do Point in Time Restore for this backup location");
       }
+      CustomerConfigData configData = storageConfig.getDataObject();
+      federateGcpIamOnAws(configData, new ConfigIdentity());
       preflightResponse =
           storageUtilFactory
               .getStorageUtil(storageConfig.getName())
               .generateYBBackupRestorePreflightResponseWithoutBackupObject(
-                  preflightParams, storageConfig.getDataObject());
+                  preflightParams, configData);
     }
     return preflightResponse.toBuilder()
         .fipsEnabled(
@@ -1965,15 +1980,13 @@ public class BackupHelper {
       UUID universeUUID,
       String fileName,
       boolean checkExistsOnAll) {
+    CustomerConfigData configData = storageConfig.getDataObject();
+    federateGcpIamOnAws(configData, new ConfigIdentity());
     try {
       return storageUtilFactory
           .getStorageUtil(storageConfig.getName())
           .checkFileExists(
-              storageConfig.getDataObject(),
-              storagelocationList,
-              fileName,
-              universeUUID,
-              checkExistsOnAll);
+              configData, storagelocationList, fileName, universeUUID, checkExistsOnAll);
     } catch (PlatformServiceException e) {
       // Already a clear error for the user, such as the storage refusing access.
       throw e;
