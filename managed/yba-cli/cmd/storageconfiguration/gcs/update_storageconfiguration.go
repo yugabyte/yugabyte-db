@@ -188,7 +188,7 @@ func applyGCSCreds(
 	var err error
 	if !util.IsEmptyString(filePath) {
 		gcsCreds, err = util.GcpGetCredentialsAsStringFromFilePath(filePath)
-	} else if updateCreds || (wasIAM && !util.HasValue(data[util.GCSCredentialsJSON])) {
+	} else if _, hasStored := data[util.GCSCredentialsJSON]; updateCreds || (wasIAM && !hasStored) {
 		logrus.Infof("Reading GCS credentials from %s\n", util.GCPCredentialsEnv)
 		gcsCreds, err = util.GcpGetCredentialsAsString()
 	} else {

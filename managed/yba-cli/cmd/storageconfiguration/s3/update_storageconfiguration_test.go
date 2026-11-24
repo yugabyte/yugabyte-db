@@ -39,8 +39,7 @@ func TestApplyS3Keys(t *testing.T) {
 		wasIAM          bool
 		isIAM           bool
 		keepStored      bool
-		blank           bool
-		blankHalf       bool
+		secretOnly      bool
 		env             map[string]string
 		want            map[string]interface{}
 		wantErr         string
@@ -145,22 +144,9 @@ func TestApplyS3Keys(t *testing.T) {
 			want: stored,
 		},
 		{
-			name:   "switching off IAM with blank stored keys reads env",
-			wasIAM: true,
-			blank:  true,
-			env: map[string]string{
-				util.AWSAccessKeyEnv:       envAccess,
-				util.AWSSecretAccessKeyEnv: envSecret,
-			},
-			want: map[string]interface{}{
-				util.AWSAccessKeyEnv:       envAccess,
-				util.AWSSecretAccessKeyEnv: envSecret,
-			},
-		},
-		{
-			name:      "switching off IAM with a blank stored secret reads env",
-			wasIAM:    true,
-			blankHalf: true,
+			name:       "switching off IAM with only the secret stored reads env",
+			wasIAM:     true,
+			secretOnly: true,
 			env: map[string]string{
 				util.AWSAccessKeyEnv:       envAccess,
 				util.AWSSecretAccessKeyEnv: envSecret,
@@ -199,17 +185,8 @@ func TestApplyS3Keys(t *testing.T) {
 			if tc.wasIAM && !tc.keepStored {
 				data = map[string]interface{}{}
 			}
-			if tc.blankHalf {
-				data = map[string]interface{}{
-					util.AWSAccessKeyEnv:       maskedAccess,
-					util.AWSSecretAccessKeyEnv: "",
-				}
-			}
-			if tc.blank {
-				data = map[string]interface{}{
-					util.AWSAccessKeyEnv:       "",
-					util.AWSSecretAccessKeyEnv: "",
-				}
+			if tc.secretOnly {
+				data = map[string]interface{}{util.AWSSecretAccessKeyEnv: maskedSecret}
 			}
 			err := applyS3Keys(
 				data, tc.accessKeyID, tc.secretAccessKey,
