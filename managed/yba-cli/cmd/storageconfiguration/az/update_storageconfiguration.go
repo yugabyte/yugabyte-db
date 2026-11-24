@@ -115,14 +115,9 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(sasToken) == 0 {
-			sasToken, err = util.AzureStorageCredentialsFromEnv()
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			data[util.AzureStorageSasTokenEnv] = sasToken
-		} else {
-			data[util.AzureStorageSasTokenEnv] = sasToken
+		err = applyAzureSASToken(data, sasToken, cmd.Flags().Changed("sas-token"))
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		requestBody := ybaclient.CustomerConfig{
@@ -147,6 +142,25 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 	},
 }
 
+// applyAzureSASToken writes the SAS token into data. Without --sas-token the token is read from
+// the environment if set there, else the stored token is kept.
+func applyAzureSASToken(data map[string]interface{}, sasToken string, flagSet bool) error {
+	if flagSet {
+		if util.IsEmptyString(sasToken) {
+			return fmt.Errorf("--sas-token must be non-empty")
+		}
+		data[util.AzureStorageSasTokenEnv] = sasToken
+		return nil
+	}
+	envToken, err := util.AzureStorageCredentialsFromEnv()
+	if err != nil || util.IsEmptyString(envToken) {
+		return nil
+	}
+	logrus.Infof("Reading the SAS token from %s\n", util.AzureStorageSasTokenEnv)
+	data[util.AzureStorageSasTokenEnv] = envToken
+	return nil
+}
+
 func init() {
 	updateAZStorageConfigurationCmd.Flags().SortFlags = false
 
@@ -155,7 +169,7 @@ func init() {
 		"[Optional] Update name of the storage configuration.")
 	updateAZStorageConfigurationCmd.Flags().String("sas-token", "",
 		fmt.Sprintf("AZ SAS Token to be updated. Provide the token within double quotes. "+
-			"Can also be set using environment variable %s.",
+			"Can also be set using environment variable %s. Omit both to keep the stored token.",
 			util.AzureStorageSasTokenEnv))
 
 }

@@ -20,7 +20,7 @@ yba storage-config azure update --name <storage-configuration-name> \
 ### Options
 
 ```
-      --sas-token string   AZ SAS Token to be updated. Provide the token within double quotes. Can also be set using environment variable AZURE_STORAGE_SAS_TOKEN.
+      --sas-token string   AZ SAS Token to be updated. Provide the token within double quotes. Can also be set using environment variable AZURE_STORAGE_SAS_TOKEN. Omit both to keep the stored token.
       --new-name string    [Optional] Update name of the storage configuration.
   -h, --help               help for update
 ```

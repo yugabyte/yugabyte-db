@@ -38,6 +38,7 @@ func TestApplyS3Keys(t *testing.T) {
 		updateCreds     bool
 		wasIAM          bool
 		isIAM           bool
+		keepStored      bool
 		env             map[string]string
 		want            map[string]interface{}
 		wantErr         string
@@ -121,6 +122,7 @@ func TestApplyS3Keys(t *testing.T) {
 		{
 			name:        "update-credentials with IAM is ignored",
 			updateCreds: true,
+			wasIAM:      true,
 			isIAM:       true,
 			want:        map[string]interface{}{},
 		},
@@ -128,6 +130,13 @@ func TestApplyS3Keys(t *testing.T) {
 			name:  "switching to IAM drops stored keys",
 			isIAM: true,
 			want:  map[string]interface{}{},
+		},
+		{
+			name:       "rename of an IAM config keeps stored keys",
+			wasIAM:     true,
+			isIAM:      true,
+			keepStored: true,
+			want:       stored,
 		},
 		{
 			name:            "key flags with IAM",
@@ -148,7 +157,7 @@ func TestApplyS3Keys(t *testing.T) {
 				t.Setenv(k, v)
 			}
 			data := maps.Clone(stored)
-			if tc.wasIAM {
+			if tc.wasIAM && !tc.keepStored {
 				data = map[string]interface{}{}
 			}
 			err := applyS3Keys(

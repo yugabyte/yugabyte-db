@@ -86,8 +86,20 @@ func TestApplyGCSCreds(t *testing.T) {
 		{
 			name:        "update-credentials with IAM is ignored",
 			updateCreds: true,
+			wasIAM:      true,
 			isIAM:       true,
-			wantGone:    true,
+		},
+		{
+			name:   "rename of an IAM config keeps stored credentials",
+			wasIAM: true,
+			isIAM:  true,
+		},
+		{
+			name:        "empty file flag is rejected before env fallback",
+			fileFlagSet: true,
+			wasIAM:      true,
+			envFile:     envCreds,
+			wantErr:     "must be non-empty",
 		},
 		{
 			name:        "file flag with IAM",

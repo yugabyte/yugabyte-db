@@ -160,7 +160,7 @@ var updateGCSStorageConfigurationCmd = &cobra.Command{
 
 // applyGCSCreds writes the GCS credentials JSON into data. Without a file the stored credentials
 // are kept, or read from the environment with --update-credentials or when switching off IAM.
-// IAM drops the credentials.
+// Switching to IAM drops the credentials; --update-credentials is ignored with IAM.
 func applyGCSCreds(
 	data map[string]interface{},
 	filePath string,
@@ -171,8 +171,13 @@ func applyGCSCreds(
 			return fmt.Errorf(
 				"--credentials-file-path cannot be used with GCP IAM based storage configurations")
 		}
-		delete(data, util.GCSCredentialsJSON)
+		if !wasIAM {
+			delete(data, util.GCSCredentialsJSON)
+		}
 		return nil
+	}
+	if fileFlagSet && util.IsEmptyString(filePath) {
+		return fmt.Errorf("--credentials-file-path must be non-empty")
 	}
 	var gcsCreds string
 	var err error
@@ -181,8 +186,6 @@ func applyGCSCreds(
 	} else if updateCreds || wasIAM {
 		logrus.Infof("Reading GCS credentials from %s\n", util.GCPCredentialsEnv)
 		gcsCreds, err = util.GcpGetCredentialsAsString()
-	} else if fileFlagSet {
-		return fmt.Errorf("--credentials-file-path must be non-empty")
 	} else {
 		return nil
 	}
