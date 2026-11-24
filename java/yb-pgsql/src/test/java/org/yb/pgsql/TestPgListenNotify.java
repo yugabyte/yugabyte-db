@@ -95,8 +95,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
     flagMap.put("tserver_unresponsive_timeout_ms",
         String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
-    flagMap.put("xcluster_guarded_lease_duration_ms",
-        String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS));
     return flagMap;
   }
 
@@ -2267,6 +2265,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Test
   public void testSlotCleanupOnTServerDecommission() throws Exception {
     final String channel = "decommission_test";
+    // Only this test needs the short lease. Set for the whole class, it expires on every TServer
+    // whenever the master stalls longer, e.g. the multi-second snapshot flush in
+    // testListenNotifyWithDbClone on sanitizer builds, and their OID allocations fail.
+    restartClusterWithFlags(
+        Collections.singletonMap("xcluster_guarded_lease_duration_ms",
+            String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS)),
+        Collections.emptyMap());
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
     YBClient client = miniCluster.getClient();
 
     markClusterNeedsRecreation();
