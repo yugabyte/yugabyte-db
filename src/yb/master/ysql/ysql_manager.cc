@@ -626,11 +626,16 @@ Status YsqlManager::CreateYbSystemDBIfNeeded() {
     return Status::OK();
   }
 
-  auto statement = Format("CREATE DATABASE $0", kYbSystemDbName);
+  // Keep CREATE DATABASE from bumping every database's catalog version, which conflicts with
+  // concurrent DDLs in those databases.
+  std::vector<std::string> statements;
+  statements.emplace_back("SET yb_enable_invalidation_messages = false");
+  statements.emplace_back("SET yb_make_next_ddl_statement_nonincrementing = true");
+  statements.emplace_back(Format("CREATE DATABASE $0", kYbSystemDbName));
   auto failure_warn_prefix = Format("Failed to create database $0", kYbSystemDbName);
 
   return ExecuteStatementsAsync(
-      "yugabyte", {statement}, catalog_manager_, failure_warn_prefix,
+      "yugabyte", statements, catalog_manager_, failure_warn_prefix,
       &creating_listen_notify_objects_, &yb_system_db_created_);
 }
 
