@@ -525,10 +525,13 @@ YbcStatus YBCPgStartTableBackfill(
     int64_t pg_job_id,
     const YbcPgOnlineSchemaChangeTableLists *lists);
 
+// With cutover (a finish), leaves the copy as it is. Either way, the job's fence is released when
+// the calling DDL transaction commits.
 YbcStatus YBCPgAbortTableBackfill(
     const YbcPgOid database_oid,
     const YbcPgOid source_relfilenode_oid,
-    int64_t pg_job_id);
+    int64_t pg_job_id,
+    bool cutover);
 
 YbcStatus YBCPgGetTableBackfillStatus(
     const YbcPgOid database_oid,

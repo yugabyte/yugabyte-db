@@ -598,6 +598,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<NamespaceId> GetTableNamespaceId(TableId table_id) EXCLUDES(mutex_);
 
+  // Releases the fence of an online schema change job, off the calling thread.
+  void ReleaseOnlineSchemaChangeFenceAsync(int64_t pg_job_id);
+
   Status ScheduleYsqlTxnVerification(const TableInfoPtr& table,
                                      const TransactionMetadata& txn, const LeaderEpoch& epoch)
                                      EXCLUDES(ddl_txn_verifier_mutex_);

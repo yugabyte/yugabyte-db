@@ -1074,6 +1074,11 @@ typedef struct {
   size_t num_source_leaf_oids;
   const YbcPgOid *target_leaf_oids;
   size_t num_target_leaf_oids;
+  // Every node of each hierarchy, root included, as pg_class oids: what the job's fence locks.
+  const YbcPgOid *source_node_oids;
+  size_t num_source_node_oids;
+  const YbcPgOid *target_node_oids;
+  size_t num_target_node_oids;
 } YbcPgOnlineSchemaChangeTableLists;
 
 // The master's state of an online schema change backfill (OnlineSchemaChangeJobPB::State).

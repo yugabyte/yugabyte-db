@@ -1899,7 +1899,7 @@ TEST_F(PgMiniOnlineSchemaChangeTest, ObjectLockFenceOnSource) {
     const auto start = CoarseMonoClock::Now();
     auto status = conn.Execute(ddl);
     ASSERT_NOK(status) << ddl;
-    ASSERT_STR_CONTAINS(status.ToString(), "is locked by online schema change job");
+    ASSERT_STR_CONTAINS(status.ToString(), "relation \"t\" is locked by an online schema change");
     ASSERT_LT(CoarseMonoClock::Now() - start, 5s) << ddl;
   }
 
@@ -1928,18 +1928,104 @@ TEST_F(PgMiniOnlineSchemaChangeTest, ObjectLockFenceOnTarget) {
   for (const auto* stmt : {
            "INSERT INTO t VALUES (2, 2)", "UPDATE t SET v = 2", "DELETE FROM t",
            "SELECT * FROM t FOR UPDATE", "ALTER TABLE t ADD COLUMN w INT"}) {
-    ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), "is locked by online schema change job");
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute(stmt), "relation \"t\" is locked by an online schema change");
   }
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 1);
   ASSERT_OK(conn.Execute("ANALYZE t"));
   ASSERT_NOK(conn.Execute("ANALYZE t (no_such_column)"));
   ASSERT_NOK_STR_CONTAINS(
-      conn.Execute("ALTER TABLE t ADD COLUMN w INT"), "is locked by online schema change job");
+      conn.Execute("ALTER TABLE t ADD COLUMN w INT"),
+      "relation \"t\" is locked by an online schema change");
 
   ReleaseFence(*cluster_, 43);
   ASSERT_OK(WaitFor(
       [&conn]() -> Result<bool> { return conn.Execute("INSERT INTO t VALUES (2, 2)").ok(); },
       30s, "INSERT after the fence is released"));
+}
+
+namespace {
+
+// Waits until `stmt` succeeds: a fence is released asynchronously after the commit that ends it.
+Status WaitForStatementToSucceed(PGConn* conn, const std::string& stmt) {
+  return WaitFor(
+      [conn, &stmt]() -> Result<bool> { return conn->Execute(stmt).ok(); }, 30s,
+      Format("$0 succeeds", stmt));
+}
+
+}  // namespace
+
+// While a job runs, its fence fails DDL on both tables and user writes to the target at once;
+// writes to the source still replay through the capture trigger, and ANALYZE runs. Finish
+// releases the fence.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeFence) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  auto other = ASSERT_RESULT(Connect());
+  for (const auto* stmt : {
+           "ALTER TABLE t1 ADD COLUMN w INT", "ALTER TABLE t2 ADD COLUMN w INT",
+           "CREATE INDEX ON t1 (v)", "DROP INDEX t2_pkey", "TRUNCATE t2",
+           "INSERT INTO t2 VALUES (10, 'x', 'y')", "DELETE FROM t2",
+           "COMMENT ON TABLE t1 IS 'x'"}) {
+    const auto start = CoarseMonoClock::Now();
+    ASSERT_NOK_STR_CONTAINS(other.Execute(stmt), "locked by online schema change job");
+    ASSERT_LT(CoarseMonoClock::Now() - start, 5s) << stmt;
+  }
+  // The error names the relation and the job, and how to end it.
+  const auto job_id = ASSERT_RESULT(OnlineSchemaChangeJobId(&conn, "t1", "t2"));
+  auto status = other.Execute("ALTER TABLE t2 ADD COLUMN w INT");
+  ASSERT_STR_CONTAINS(
+      status.ToString(),
+      Format("relation \"t2\" is locked by online schema change job $0", job_id));
+  ASSERT_STR_CONTAINS(status.ToString(), Format("yb_abort_mirror_table($0)", job_id));
+  ASSERT_OK(other.Execute("INSERT INTO t1 VALUES (3, 'c')"));
+  ASSERT_OK(other.Execute("UPDATE t1 SET v = 'b2' WHERE id = 2"));
+  ASSERT_OK(other.Execute("ANALYZE t1"));
+  ASSERT_OK(other.Execute("ANALYZE t2"));
+  ASSERT_GE(ASSERT_RESULT(other.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_EQ(ASSERT_RESULT(other.FetchRow<std::string>("SELECT v2 FROM t1 WHERE id = 2")), "b2_x");
+  ASSERT_OK(WaitForStatementToSucceed(&other, "ALTER TABLE t1 ADD COLUMN w INT"));
+}
+
+// Abort releases the fence.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeFenceReleasedByAbort) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t1 ADD COLUMN w INT"), "locked by online schema change job");
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(WaitForStatementToSucceed(&conn, "ALTER TABLE t1 ADD COLUMN w INT"));
+  ASSERT_OK(WaitForStatementToSucceed(&conn, "INSERT INTO t2 VALUES (10, 'x', 'y')"));
+}
+
+// A begin that rolls back leaves no fence; a finish that rolls back keeps it.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeFenceFollowsTransactions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_OK(WaitForStatementToSucceed(&conn, "ALTER TABLE t2 ADD COLUMN w INT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP COLUMN w"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  SleepFor(2s);
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t2 ADD COLUMN w INT"), "locked by online schema change job");
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(WaitForStatementToSucceed(&conn, "ALTER TABLE t1 ADD COLUMN w INT"));
 }
 
 // The master copies nothing until begin's transaction commits. Once COMMIT returns, the job has
@@ -2190,13 +2276,12 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverRequiresPromotedFo
   ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
 
-  // Finish refuses a target that lost one of the source's foreign keys.
-  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t1_pid_fkey"));
-  auto status = FinishOnlineSchemaChange(&conn, "t1", "t2");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "is missing foreign key");
+  // The job's fence keeps the target from losing one of the source's foreign keys.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t1_pid_fkey"),
+      "locked by online schema change job");
 
-  // The wait, which can be repeated, adds it back.
+  // The wait can be repeated.
   ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
   ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
   ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
@@ -2331,12 +2416,11 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeKeyWitnessRecheckedAtCuto
   ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
 
-  ASSERT_OK(conn.Execute("DROP INDEX t1_a_uniq"));
+  // The job's fence keeps the witness from being dropped while the job runs.
   ASSERT_NOK_STR_CONTAINS(
-      FinishOnlineSchemaChange(&conn, "t1", "t2"), "no unique index on source table \"t1\"");
+      conn.Execute("DROP INDEX t1_a_uniq"), "locked by online schema change job");
   ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "ready");
 
-  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t1_a_uniq ON t1 (a)"));
   ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 10);
 }
@@ -3029,7 +3113,10 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCaptureTriggersAreInterna
       "LIMIT 1"));
   ASSERT_NOK_STR_CONTAINS(conn.ExecuteFormat("DROP TRIGGER $0 ON t1", trigger),
                           "because table t1 requires it");
-  ASSERT_OK(conn.ExecuteFormat("ALTER TRIGGER $0 ON t1 RENAME TO renamed", trigger));
+  // The job's fence refuses the rename.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER TRIGGER $0 ON t1 RENAME TO renamed", trigger),
+      "locked by online schema change job");
 
   ASSERT_OK(AbortOnlineSchemaChange(&conn, "t1", "t2"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
@@ -9159,8 +9246,8 @@ Result<PartRows> RunPartitionedOnlineSchemaChange(
 
 void ExpectTopologyFenceBlocks(PGConn* conn, const std::string& ddl) {
   auto status = conn->Execute(ddl);
-  ASSERT_NOK(status) << "expected the topology fence to reject: " << ddl;
-  ASSERT_STR_CONTAINS(status.ToString(), "while online schema change job");
+  ASSERT_NOK(status) << "expected the job's fence to reject: " << ddl;
+  ASSERT_STR_CONTAINS(status.ToString(), "locked by online schema change job");
 }
 
 const std::vector<std::string> kPartDml = {
@@ -9512,7 +9599,8 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedOverlappingJob
   ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
   status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
   ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "active online schema change job already exists");
+  // The first job's fence refuses the second begin's locks.
+  ASSERT_STR_CONTAINS(status.ToString(), "locked by online schema change job");
   ASSERT_OK(AbortOnlineSchemaChange(&conn, "s", "d"));
   ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
 }
@@ -9829,6 +9917,51 @@ TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyVolatileDefault) {
   ASSERT_OK(conn.Execute("INSERT INTO t (id, v) VALUES (0, 'new')"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM t WHERE id = 0 AND u IS NOT NULL")), 1);
+}
+
+// While ALTER TABLE ... CONCURRENTLY copies, its job's fence fails other DDL on the table and
+// writes to the shadow at once; DML on the table and ANALYZE go on.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyFence) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, 'v' || i FROM generate_series(1, 100) AS i"));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    auto alter_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(alter_conn.Execute(
+        "ALTER TABLE t CONCURRENTLY ADD COLUMN u UUID NOT NULL DEFAULT gen_random_uuid()"));
+  });
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(conn.FetchRows<std::string>(
+        "SELECT status FROM pg_catalog.yb_online_schema_change"));
+    return !rows.empty() && rows[0] == "backfilling";
+  }, 30s, "Wait for the job to begin"));
+  const auto shadow = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT target_table::regclass::text FROM pg_catalog.yb_online_schema_change"));
+
+  for (const auto& stmt : std::vector<std::string>{
+           "ALTER TABLE t ADD COLUMN w INT", "CREATE INDEX ON t (v)", "TRUNCATE t",
+           Format("INSERT INTO $0 (id, v) VALUES (1000, 'x')", shadow),
+           Format("ALTER TABLE $0 ADD COLUMN w INT", shadow)}) {
+    const auto start = CoarseMonoClock::Now();
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), "locked by online schema change job");
+    ASSERT_LT(CoarseMonoClock::Now() - start, 5s) << stmt;
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (101, 'v101')"));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 'x' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("ANALYZE t"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  thread_holder.JoinAll();
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(DISTINCT u) FROM t")), 101);
+  ASSERT_OK(WaitForStatementToSucceed(&conn, "ALTER TABLE t ADD COLUMN w INT"));
 }
 
 // Expressions the change-capture trigger cannot replay are refused when the job begins, before

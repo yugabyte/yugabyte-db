@@ -1487,6 +1487,8 @@ Status PgApiImpl::StartTableBackfill(
       lists.source_leaf_oids, lists.num_source_leaf_oids, req.mutable_source_leaf_table_oids());
   AssignOids(
       lists.target_leaf_oids, lists.num_target_leaf_oids, req.mutable_target_leaf_table_oids());
+  AssignOids(lists.source_node_oids, lists.num_source_node_oids, req.mutable_source_node_oids());
+  AssignOids(lists.target_node_oids, lists.num_target_node_oids, req.mutable_target_node_oids());
   // Online schema change requires transactional DDL, so begin is the DDL of the user's
   // transaction. The master ties the job to it through DDL verification, so the commit must report
   // to the master and wait for that verification, as for a DDL that changes a DocDB schema.
@@ -1498,10 +1500,14 @@ Status PgApiImpl::StartTableBackfill(
 }
 
 Status PgApiImpl::AbortTableBackfill(
-    const PgObjectId& source_table_id, int64_t pg_job_id) {
+    const PgObjectId& source_table_id, int64_t pg_job_id, bool cutover) {
   tserver::PgAbortTableBackfillRequestPB req;
   source_table_id.ToPB(req.mutable_source_table_id());
   req.set_pg_job_id(pg_job_id);
+  req.set_cutover(cutover);
+  // As for StartTableBackfill: the master ties the fence's release to this DDL transaction.
+  RETURN_NOT_OK(pg_session_->SetupPerformOptionsForDdl(req.mutable_options()));
+  pg_session_->SetDdlHasSyscatalogChanges();
   return pg_client_.AbortTableBackfill(&req, DdlDeadline());
 }
 

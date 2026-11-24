@@ -21,6 +21,7 @@
 
 #include "access/htup_details.h"
 #include "access/table.h"
+#include "catalog/partition.h"
 #include "catalog/pg_class.h"
 #include "commands/yb_alter_concurrently.h"
 #include "executor/spi.h"
@@ -277,9 +278,23 @@ CopyStatusName(const YbcPgTableBackfillStatus *bf)
 	return "failed";			/* keep compiler quiet */
 }
 
+static YbcPgOid *
+OidArray(List *oids)
+{
+	YbcPgOid   *result = palloc(Max(list_length(oids), 1) * sizeof(YbcPgOid));
+	int			i = 0;
+	ListCell   *lc;
+
+	foreach(lc, oids)
+		result[i++] = lfirst_oid(lc);
+	return result;
+}
+
 /*
  * Validate the pair, record the job, create the capture trigger on the source
- * and ask the master to start the distributed backfill.  See
+ * and ask the master to start the distributed backfill.  The master also takes
+ * the job's fence, which from begin's commit until finish or abort commits
+ * blocks DDL on both hierarchies and user writes on the target.  See
  * utils/yb_online_schema_change.h.
  */
 static int64
@@ -331,7 +346,12 @@ BeginJob(Oid srcOid, Oid dstOid, Oid transformOid, const YbOscBeginOptions *opts
 		.num_source_leaf_oids = list_length(srcLeaves),
 		.target_leaf_oids = YbOscRelfileNodeArray(dstLeaves),
 		.num_target_leaf_oids = list_length(dstLeaves),
+		.source_node_oids = OidArray(srcNodes),
+		.num_source_node_oids = list_length(srcNodes),
+		.target_node_oids = OidArray(dstNodes),
+		.num_target_node_oids = list_length(dstNodes),
 	};
+
 
 	HandleYBStatus(YBCPgStartTableBackfill(MyDatabaseId,
 										   YbGetRelfileNodeId(srcRel),
@@ -456,6 +476,7 @@ yb_wait_mirror_table(PG_FUNCTION_ARGS)
 	 * TABLE that adds the foreign keys fails on a table this session holds
 	 * open (CheckTableNotInUse).
 	 */
+	YbSetObjectLockFenceJob(jobId);
 	LockRelationOid(job.source_table_oid, ShareUpdateExclusiveLock);
 	LockRelationOid(job.target_table_oid, ShareUpdateExclusiveLock);
 	(void) YbOscHierarchyNodes(job.source_table_oid, ShareUpdateExclusiveLock);
@@ -468,6 +489,7 @@ yb_wait_mirror_table(PG_FUNCTION_ARGS)
 	/* A swap keeps the source, and with it the source's foreign keys. */
 	if (job.cutover_mode == YB_OSC_CUTOVER_RENAME)
 		YbOscPromoteForeignKeys(job.source_table_oid, job.target_table_oid);
+	YbSetObjectLockFenceJob(0);
 
 	PG_RETURN_VOID();
 }
@@ -529,6 +551,10 @@ FinishJob(int64 jobId, const YbOscJob *fetched)
 	if (!swap)
 		YbOscCheckForeignKeysPromoted(srcOid, dstOid);
 
+	/* The job's fence goes when this transaction commits. */
+	HandleYBStatus(YBCPgAbortTableBackfill(MyDatabaseId, YbGetRelfileNodeId(srcRel),
+										   jobId, true /* cutover */ ));
+
 	YbOscDropTrigger(srcRel);
 
 	if (swap)
@@ -588,9 +614,16 @@ YbOscFinish(int64 jobId)
 	YbOscJob	job;
 
 	FetchJobOrError(jobId, &job);
+
+	/*
+	 * The job's own locks pass its fence.  An error resets this when the
+	 * (sub)transaction aborts.
+	 */
+	YbSetObjectLockFenceJob(jobId);
 	if (!IsAlterTableJob(job.origin))
 	{
 		FinishJob(jobId, &job);
+		YbSetObjectLockFenceJob(0);
 		return;
 	}
 
@@ -604,6 +637,7 @@ YbOscFinish(int64 jobId)
 		yb_osc_internal_ddl_depth--;
 	}
 	PG_END_TRY();
+	YbSetObjectLockFenceJob(0);
 }
 
 static void
@@ -707,7 +741,7 @@ AbortJob(int64 jobId, const YbOscJob *fetched)
 		 */
 		HandleYBStatus(YBCPgAbortTableBackfill(MyDatabaseId,
 											   YbGetRelfileNodeId(srcRel),
-											   jobId));
+											   jobId, false /* cutover */ ));
 		YbOscDropTrigger(srcRel);
 		table_close(srcRel, NoLock);
 	}
@@ -728,9 +762,16 @@ YbOscAbort(int64 jobId)
 	YbOscJob	job;
 
 	FetchJobOrError(jobId, &job);
+
+	/*
+	 * The job's own locks pass its fence.  An error resets this when the
+	 * (sub)transaction aborts.
+	 */
+	YbSetObjectLockFenceJob(jobId);
 	if (!IsAlterTableJob(job.origin))
 	{
 		AbortJob(jobId, &job);
+		YbSetObjectLockFenceJob(0);
 		return;
 	}
 
@@ -744,6 +785,7 @@ YbOscAbort(int64 jobId)
 		yb_osc_internal_ddl_depth--;
 	}
 	PG_END_TRY();
+	YbSetObjectLockFenceJob(0);
 }
 
 static void
@@ -819,4 +861,24 @@ yb_online_schema_change_progress(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_DATUM(HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls)));
+}
+
+int64
+YbOscActiveAlterTableJob(Oid relid)
+{
+	int64		jobId = YbOscFindActiveJob(list_make1_oid(relid));
+	YbOscJob	job;
+
+	if (jobId == 0 || !YbOscFetchJob(jobId, &job) || !IsAlterTableJob(job.origin) ||
+		job.source_table_oid != relid)
+		return 0;
+	return jobId;
+}
+
+int64
+YbOscActiveJobFor(Oid relid)
+{
+	List	   *relids = get_partition_ancestors(relid);
+
+	return YbOscFindActiveJob(lappend_oid(relids, relid));
 }

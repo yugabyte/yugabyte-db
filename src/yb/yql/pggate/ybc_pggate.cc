@@ -1506,9 +1506,10 @@ YbcStatus YBCPgStartTableBackfill(
 YbcStatus YBCPgAbortTableBackfill(
     const YbcPgOid database_oid,
     const YbcPgOid source_relfilenode_oid,
-    int64_t pg_job_id) {
+    int64_t pg_job_id,
+    bool cutover) {
   const PgObjectId source_id(database_oid, source_relfilenode_oid);
-  return ToYBCStatus(pgapi->AbortTableBackfill(source_id, pg_job_id));
+  return ToYBCStatus(pgapi->AbortTableBackfill(source_id, pg_job_id, cutover));
 }
 
 YbcStatus YBCPgGetTableBackfillStatus(

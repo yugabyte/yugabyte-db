@@ -485,6 +485,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
   LOG_IF(WARNING, resolves_osc_begin && !success.has_value())
       << "Unknown outcome of transaction " << txn_id
       << ", leaving the online schema change job on " << table->ToString() << " waiting";
+  // A finish or abort that committed releases the job's fence.
+  const bool releases_osc_fence =
+      success.value_or(false) && IsFenceReleaseTransaction(metadata, txn_id);
+  const auto osc_job_id =
+      metadata.has_online_schema_change_job() ? metadata.online_schema_change_job().pg_job_id() : 0;
   if (resolves_osc_begin && success.value_or(false)) {
     ResolveOnlineSchemaChangeBegin(
         metadata, txn_id, /* committed= */ true, master_->clock()->Now());
@@ -505,6 +510,9 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
     VLOG(3) << "Ysql DDL transaction " << txn_id << " for table " << table->ToString()
             << " is ambiguous, treating it as a success";
     RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(txn_data));
+  }
+  if (releases_osc_fence) {
+    ReleaseOnlineSchemaChangeFenceAsync(osc_job_id);
   }
   if (resolves_osc_begin) {
     // The job's next step does not wait for the bg tasks tick.
@@ -593,8 +601,15 @@ Status CatalogManager::RollbackYsqlTxnDdlStates(
     const auto& state = mutable_pb.ysql_ddl_txn_verifier_state(idx);
     segment_has_alter = segment_has_alter || state.contains_alter_table_op();
     if (state.contains_online_schema_change_op()) {
-      ResolveOnlineSchemaChangeBegin(
-          mutable_pb, txn_data.ddl_txn_id, /* committed= */ false, master_->clock()->Now());
+      // A begin rolled back: the job is aborted, and the fence it took goes with it.
+      if (ResolveOnlineSchemaChangeBegin(
+              mutable_pb, txn_data.ddl_txn_id, /* committed= */ false, master_->clock()->Now())) {
+        ReleaseOnlineSchemaChangeFenceAsync(mutable_pb.online_schema_change_job().pg_job_id());
+      }
+      // A finish or abort rolled back: the job keeps its fence.
+      if (IsFenceReleaseTransaction(mutable_pb, txn_data.ddl_txn_id)) {
+        mutable_pb.mutable_online_schema_change_job()->clear_fence_release_transaction_id();
+      }
     }
   }
   if (table_created_in_txn_segment) {

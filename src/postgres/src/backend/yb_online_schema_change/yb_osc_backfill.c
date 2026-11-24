@@ -220,6 +220,12 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 	Relation	srcRel = srcRootOid == srcOid ? srcRootRel :
 		table_open(srcOid, AccessShareLock);
 
+	/*
+	 * The chunk writes the target as its job, so its locks pass the job's
+	 * fence.  An error resets this when the transaction aborts.
+	 */
+	YbSetObjectLockFenceJob(YbOscFindActiveJob(list_make1_oid(dstOid)));
+
 	Oid			saveUserId;
 	int			saveSecContext;
 
@@ -324,5 +330,6 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 	AtEOXact_GUC(false, saveNestLevel);
 	SetUserIdAndSecContext(saveUserId, saveSecContext);
 
+	YbSetObjectLockFenceJob(0);
 	PG_RETURN_DATUM(BuildChunkResult(fcinfo, rowsProcessed, outParam));
 }

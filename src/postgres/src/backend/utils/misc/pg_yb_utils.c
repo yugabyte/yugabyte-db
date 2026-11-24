@@ -149,6 +149,7 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 #include "utils/uuid.h"
+#include "utils/yb_online_schema_change.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
@@ -547,6 +548,34 @@ YbSetObjectLockFenceJob(int64 jobId)
 	yb_object_lock_fence_job_id = jobId;
 	YBCSetObjectLockFenceOptions(yb_object_lock_fence_job_id,
 								 yb_object_lock_pass_any_fence);
+}
+
+void
+YbHandleObjectLockStatus(YbcStatus status, const LOCKTAG *locktag)
+{
+	if (!status || YBCStatusPgsqlError(status) != ERRCODE_OBJECT_IN_USE ||
+		locktag->locktag_type != LOCKTAG_RELATION)
+	{
+		HandleYBStatus(status);
+		return;
+	}
+
+	Oid			relid = locktag->locktag_field2;
+	char	   *relname = get_rel_name(relid);
+	int64		jobId = YbOscActiveJobFor(relid);
+
+	YBCFreeStatus(status);
+	if (jobId == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("relation \"%s\" is locked by an online schema change",
+						relname ? relname : "?")));
+	ereport(ERROR,
+			(errcode(ERRCODE_OBJECT_IN_USE),
+			 errmsg("relation \"%s\" is locked by online schema change job %lld",
+					relname ? relname : "?", (long long) jobId),
+			 errhint("Wait for the job to finish, or end it with yb_finish_mirror_table(%lld) or yb_abort_mirror_table(%lld).",
+					 (long long) jobId, (long long) jobId)));
 }
 
 /*

@@ -211,6 +211,10 @@ struct TabletReplicaFullCompactionStatus {
 struct OnlineSchemaChangeTableIdLists {
   TableIds source_leaves;
   TableIds target_leaves;
+  // See StartTableBackfillRequestPB.
+  uint32_t database_oid = 0;
+  std::vector<uint32_t> source_fence_oids;
+  std::vector<uint32_t> target_fence_oids;
 };
 
 struct TableCompactionStatus {
@@ -383,6 +387,8 @@ class YBClient {
 
   Status AbortTableBackfill(
       const TableId& source_table_id, int64_t pg_job_id,
+      const std::optional<TransactionMetadata>& txn = std::nullopt,
+      std::optional<SubTransactionId> sub_transaction_id = std::nullopt, bool cutover = false,
       CoarseTimePoint deadline = CoarseTimePoint());
 
   Result<master::TableBackfillStatusPB> GetTableBackfillStatus(

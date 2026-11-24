@@ -214,6 +214,12 @@ extern void YbSetObjectLockFenceJob(int64 jobId);
 extern void YbSetObjectLockPassAnyFence(bool pass);
 
 /*
+ * HandleYBStatus for an object lock request on locktag, which reports a
+ * relation's online schema change fence by the relation's name and the job.
+ */
+extern void YbHandleObjectLockStatus(YbcStatus status, const struct LOCKTAG *locktag);
+
+/*
  * Errors out of a partition-topology change under parent_oid while an online
  * schema change job on it or on an ancestor is active.  ddl is the verb phrase
  * for the message, e.g. "add a partition to".  Defined in yb_osc_catalog.c.
