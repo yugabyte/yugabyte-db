@@ -11,7 +11,9 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -20,7 +22,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.HostCloudDetector;
+import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider;
+import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
+import com.yugabyte.yw.common.NodeCloudDetector;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
@@ -68,7 +74,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
@@ -87,9 +92,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -99,6 +107,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
@@ -117,6 +127,9 @@ import play.libs.Json;
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
   private static final int maxRetryCount = 5;
+  // Checks of the host's AWS credentials (yb.iam_credentials_check): one submitted while every
+  // thread is busy is rejected right away, not run, and the config's own chain is kept.
+  private static final String IAM_CREDENTIALS_CHECK_POOL = "iam_credentials_check";
   private static final String TABLESPACES_SQL_QUERY =
       "SELECT jsonb_agg(t) from (SELECT spcname, spcoptions"
           + " from pg_catalog.pg_tablespace where spcname not like 'pg_%') as t;";
@@ -128,10 +141,13 @@ public class BackupHelper {
   private StorageUtilFactory storageUtilFactory;
   private ValidateReplicationInfo validateReplicationInfo;
   private NodeUniverseManager nodeUniverseManager;
+  private NodeCloudDetector nodeCloudDetector;
   private YbcBackupUtil ybcBackupUtil;
   private SoftwareUpgradeHelper softwareUpgradeHelper;
   // The cloud YBA runs on: YBA needs no federation to reach a bucket there.
   private final HostCloudDetector hostCloudDetector;
+  // Runs the check of the host's AWS credentials off request threads, a few at a time.
+  private final ExecutorService iamCredentialsCheckExecutor;
   private Commissioner commissioner;
 
   @Inject
@@ -146,7 +162,10 @@ public class BackupHelper {
       NodeUniverseManager nodeUniverseManager,
       YbcBackupUtil ybcBackupUtil,
       SoftwareUpgradeHelper softwareUpgradeHelper,
-      HostCloudDetector hostCloudDetector) {
+      HostCloudDetector hostCloudDetector,
+      NodeCloudDetector nodeCloudDetector,
+      PlatformExecutorFactory executorFactory,
+      CoordinatedShutdown coordinatedShutdown) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -154,10 +173,25 @@ public class BackupHelper {
     this.storageUtilFactory = storageUtilFactory;
     this.validateReplicationInfo = validateReplicationInfo;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.nodeCloudDetector = nodeCloudDetector;
     this.ybcBackupUtil = ybcBackupUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.commissioner = commissioner;
     this.hostCloudDetector = hostCloudDetector;
+    this.iamCredentialsCheckExecutor =
+        executorFactory.createNonBlockingExecutor(
+            IAM_CREDENTIALS_CHECK_POOL,
+            new ThreadFactoryBuilder()
+                .setNameFormat("iam-credentials-check-%d")
+                .setDaemon(true)
+                .build());
+    coordinatedShutdown.addTask(
+        CoordinatedShutdown.PhaseServiceStop(),
+        "iam-credentials-check-shutdown",
+        () -> {
+          iamCredentialsCheckExecutor.shutdown();
+          return CompletableFuture.completedFuture(Done.done());
+        });
   }
 
   public String getValidOwnerRegex() {
@@ -228,7 +262,7 @@ public class BackupHelper {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
 
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
@@ -290,7 +324,7 @@ public class BackupHelper {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
 
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
@@ -370,7 +404,7 @@ public class BackupHelper {
 
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
@@ -558,37 +592,385 @@ public class BackupHelper {
       // and must keep its native identity; stamping an audience there would make it build an
       // AWS-IMDS external_account credential it cannot satisfy.
       if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
-        CrossCloudFederationTarget target =
-            resolveCrossCloudFederationTarget(universe, CloudType.gcp);
-        if (target != null) {
-          gcs.crossCloudFederationAudience = target.audience;
-        }
+        stampFederationTarget(gcs, resolveCrossCloudFederationTarget(universe, CloudType.gcp));
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
         useYbaIamRole(s3);
       } else if (AWSUtil.isCrossCloudFederationConfig(s3)) {
-        CrossCloudFederationTarget target =
-            resolveCrossCloudFederationTarget(universe, CloudType.aws);
-        if (target != null) {
-          s3.crossCloudFederationAudience = target.audience;
-          s3.crossCloudFederationRoleArn = target.roleArn;
-        }
+        stampFederationTarget(s3, resolveCrossCloudFederationTarget(universe, CloudType.aws));
       }
     }
+  }
+
+  /**
+   * Has YBA reach a federated bucket with its own identity, for the work YBA does on the bucket
+   * itself: the continuous YBA backup and its restore, which have no universe, and backup deletion.
+   * With YBA on the bucket's cloud that is its native identity. Otherwise YBA federates with the
+   * provider entry for the bucket's cloud: the universe's when it has one, else the one entry the
+   * customer's providers agree on. The second is what lets a YBA that HA promoted on the other
+   * cloud reach a bucket the universe reaches natively, such as an AWS universe's S3 bucket from a
+   * YBA on GCP. YBA presents its own host identity with that entry, so the entry's AWS role (S3) or
+   * workload identity pool (GCS) must also admit YBA, not only the DB nodes.
+   *
+   * <p>The universe's entry, like a backup's snapshot, is used ahead of the config's own
+   * credentials and on any host, as on every path before this method: it is the identity that
+   * universe's backups were made with, and detection can miss a GCP host on which it works. The
+   * customer-wide entry is only a fallback for YBA's own access, used when YBA's host can present
+   * it and neither the config nor the host has credentials of its own for the bucket's cloud (see
+   * {@link #hasCredentialsOfItsOwn}), so a setup that reached the bucket before keeps doing so.
+   *
+   * @return false when YBA has no way to reach the bucket. With no entry from the universe, that is
+   *     when it runs on confirmed AWS with a GCS config that has neither GCP IAM nor a service
+   *     account key, whatever the providers' entries, as the client uses an entry only with GCP
+   *     IAM. With no entry from the providers either, it is also when it runs on GCP with an S3
+   *     config that has no access keys without the IAM role flag, or with the flag an IAM
+   *     credential source that has nothing on the host to use (its keys are then ignored), or runs
+   *     on confirmed AWS with a GCP IAM GCS config and no application default credentials on the
+   *     host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is
+   *     still built from blank keys (see {@link #useYbaIamRole}).
+   * @throws PlatformServiceException when the customer's providers cannot be read.
+   */
+  public boolean applyYbaFederatedIdentity(
+      CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
+    return applyYbaFederatedIdentity(configData, customerUUID, universe, new ConfigIdentity());
+  }
+
+  /**
+   * YBA's way to one storage config's bucket apart from any universe: the config's own credentials,
+   * else the entry the customer's providers agree on. It depends only on the config, YBA's host and
+   * the providers, never on a backup, so a run over one config's backups resolves it once with this
+   * and reuses it. For one config and one run; deletions running in parallel can share it.
+   */
+  public static final class ConfigIdentity {
+    // Null until asked.
+    @Nullable private Boolean ownCredentials;
+    private boolean customerTargetResolved;
+    @Nullable private CrossCloudFederationTarget customerTarget;
+    private boolean reportedUnreachable;
+  }
+
+  private boolean applyYbaFederatedIdentity(
+      CustomerConfigData configData,
+      @Nullable UUID customerUUID,
+      @Nullable Universe universe,
+      ConfigIdentity configIdentity) {
+    CloudType bucketCloud = federatedBucketCloud(configData);
+    if (bucketCloud == null) {
+      return true;
+    }
+    if (ybaRunsOn(bucketCloud)) {
+      if (configData instanceof CustomerConfigStorageS3Data) {
+        useYbaIamRole((CustomerConfigStorageS3Data) configData);
+      }
+      return true;
+    }
+    boolean canFederate = canPresentFederatedIdentity(bucketCloud);
+    CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
+    if (!canFederate) {
+      // Only the universe's entry, used on any host as before, since detection can miss a GCP host
+      // on which it works; the customer's providers are not consulted where the host can't present
+      // their identity.
+      stampFederationTarget(configData, target);
+      return true;
+    }
+    if (target == null) {
+      // One deletion works it out while the others sharing it wait, up to the time the check takes,
+      // then reuse it instead of repeating the check.
+      synchronized (configIdentity) {
+        if (configIdentity.ownCredentials == null) {
+          // Asked only here, as it can take calls to the bucket's cloud.
+          configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+        }
+        if (configIdentity.ownCredentials) {
+          return true;
+        }
+        if (configData instanceof CustomerConfigStorageGCSData
+            && !((CustomerConfigStorageGCSData) configData).useGcpIam) {
+          // Without GCP IAM the client only uses the config's key, never an entry's audience.
+          return false;
+        }
+        if (!configIdentity.customerTargetResolved) {
+          // A failed read is not remembered, so the next backup reads the providers again.
+          configIdentity.customerTarget =
+              resolveCustomerFederationTarget(customerUUID, bucketCloud);
+          configIdentity.customerTargetResolved = true;
+        }
+        target = configIdentity.customerTarget;
+      }
+      if (target == null) {
+        return false;
+      }
+    }
+    stampFederationTarget(configData, target);
+    return true;
+  }
+
+  /**
+   * {@link #applyYbaFederatedIdentity} for work that cannot go on without the bucket. Fails with
+   * what to change, instead of leaving the client to be built from blank keys (S3) or from
+   * application default credentials that have nothing to use (GCS).
+   */
+  public void requireYbaFederatedIdentity(CustomerConfig config, CustomerConfigData configData) {
+    if (applyYbaFederatedIdentity(configData, config.getCustomerUUID(), null /* universe */)) {
+      return;
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST, noYbaCredentialsMessage(config.getConfigName(), configData));
+  }
+
+  /** Why {@link #applyYbaFederatedIdentity} found no way to the bucket, and each way to fix it. */
+  private static String noYbaCredentialsMessage(
+      String storageConfig, CustomerConfigData configData) {
+    if (federatedBucketCloud(configData) == CloudType.gcp
+        && !((CustomerConfigStorageGCSData) configData).useGcpIam) {
+      return String.format(
+          "YBA has no credentials for the GCS bucket of storage config %s: the config uses neither"
+              + " GCP IAM nor a service account key. Give it a service account key, or turn on GCP"
+              + " IAM and add a gcp entry whose workload identity pool also admits this YBA's AWS"
+              + " role.",
+          storageConfig);
+    }
+    if (federatedBucketCloud(configData) == CloudType.gcp) {
+      return String.format(
+          "YBA runs on AWS and has no credentials for the GCS bucket of storage config %s: the"
+              + " config uses GCP IAM, application default credentials do not resolve on this host,"
+              + " and no provider has a usable gcp entry in its federated IAM targets, or the"
+              + " providers' gcp entries differ. Add a gcp entry whose workload identity pool also"
+              + " admits this YBA's AWS role, or make the providers' gcp entries match. Otherwise"
+              + " give this host application default credentials, such as"
+              + " GOOGLE_APPLICATION_CREDENTIALS naming a service account key or an"
+              + " external_account file, or turn off GCP IAM on the storage config and give it a"
+              + " service account key, which is also what a restore onto a new YBA, with no"
+              + " providers yet, needs.",
+          storageConfig);
+    }
+    // The config's own way out depends on how it is set up: the host's credentials count only
+    // with the IAM role flag, and never for a source that needs AWS instance metadata.
+    CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+    IAMCredentialSource source =
+        s3.iamConfig != null && s3.iamConfig.credentialSource != null
+            ? s3.iamConfig.credentialSource
+            : IAMCredentialSource.DEFAULT;
+    String profile =
+        s3.iamConfig != null
+            ? StringUtils.defaultIfBlank(s3.iamConfig.iamUserProfile, "default")
+            : "default";
+    // What the config's IAM credential source needs on this host, with the IAM role flag set.
+    String hostNeeds;
+    switch (source) {
+      case EC2_INSTANCE:
+        hostNeeds =
+            "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance"
+                + " metadata, to one this host can serve";
+        break;
+      case IAM_USER:
+        hostNeeds =
+            String.format(
+                "give this host the AWS profile '%s' with keys, a credential process or a role",
+                profile);
+        break;
+      case WEB_TOKEN:
+        hostNeeds =
+            "give this host a web identity token file named by AWS_WEB_IDENTITY_TOKEN_FILE,"
+                + " with AWS_ROLE_ARN";
+        break;
+      case ASSUME_INSTANCE_ROLE:
+        hostNeeds =
+            "give this host container credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI or"
+                + " AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)";
+        break;
+      default:
+        hostNeeds =
+            String.format(
+                "give this host AWS credentials its IAM role chain can use: the AWS profile"
+                    + " '%s' with keys, a credential process or a role, a web identity token"
+                    + " file with AWS_ROLE_ARN, or container credentials",
+                profile);
+    }
+    String ownWay =
+        s3.isIAMInstanceProfile
+            ? "clear the IAM role flag on the storage config and set access keys (with the flag"
+                + " set, its keys are not used), or "
+                + hostNeeds
+                + " (if it has that already, the YBA log says why AWS refused it)"
+            : "set access keys on the storage config, or set its IAM role flag and " + hostNeeds;
+    return String.format(
+        "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
+            + " has no credentials this host can use, and no provider has a usable aws entry in"
+            + " its federated IAM targets, or the providers' aws entries differ. Add an aws entry"
+            + " whose AWS role also trusts this YBA's service account, or make the providers' aws"
+            + " entries match. Otherwise %s. Access keys are also what a restore onto a new YBA,"
+            + " with no providers yet, needs.",
+        storageConfig, ownWay);
+  }
+
+  /**
+   * Whether YBA's host can present the identity a stamped entry calls for: a GCE identity token for
+   * an S3 bucket (see {@link AWSUtil#createS3Client}), or the instance's AWS role for a GCS bucket
+   * (the external_account built in {@link GCPUtil#getStorageService}). Elsewhere, including on an
+   * EC2-compatible cloud taken for AWS, YBA does not look up the customer's providers for one.
+   */
+  private boolean canPresentFederatedIdentity(CloudType bucketCloud) {
+    return bucketCloud == CloudType.aws
+        ? hostCloudDetector.isHostCloud(CloudType.gcp)
+        : hostCloudDetector.isConfirmedAws();
+  }
+
+  /** Cloud of the bucket when its config turns on cross-cloud federation, else null. */
+  @Nullable
+  private static CloudType federatedBucketCloud(CustomerConfigData configData) {
+    if (configData instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      return CloudType.aws;
+    }
+    if (configData instanceof CustomerConfigStorageGCSData
+        && GCPUtil.isCrossCloudFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      return CloudType.gcp;
+    }
+    return null;
+  }
+
+  /**
+   * Whether the config, with what YBA's host gives it, has credentials of its own for the bucket's
+   * cloud, which YBA keeps using over a customer-wide guess and falls back on when there is no
+   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, a
+   * credential source that has something on this host to use (any access keys are then ignored),
+   * else S3 access keys; a GCS service account key, or with GCP IAM the application default
+   * credentials the host resolves. Only asked off the bucket's cloud. The IAM role flag alone does
+   * not count: the UI and v2 API set it on every federated S3 config.
+   */
+  private boolean hasCredentialsOfItsOwn(CustomerConfigData configData) {
+    if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      if (s3.isIAMInstanceProfile) {
+        return hostHasAwsCredentials(s3);
+      }
+      return StringUtils.isNotBlank(s3.awsAccessKeyId);
+    }
+    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+    return gcs.useGcpIam ? hostHasGcpCredentials() : StringUtils.isNotBlank(gcs.gcsCredentialsJson);
+  }
+
+  /**
+   * Whether the config's IAM credential source has something on this host, which is not on AWS, to
+   * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
+   * by resolving each source once through the SDK. A source that fails on an error the S3 client's
+   * retries can get past (an AWS throttle or server error, STS failing to reach the token's
+   * identity provider, a network error) still counts and is left to them, so a transient failure
+   * does not switch YBA to another identity. One that AWS rejects, such as a role that does not
+   * trust the host's token, does not, so YBA can use the providers' entry instead. Package-private
+   * so tests do not depend on the machine they run on.
+   */
+  boolean hostHasAwsCredentials(CustomerConfigStorageS3Data s3) {
+    if (s3.iamConfig == null || s3.iamConfig.credentialSource == null) {
+      // The S3 client cannot get credentials from the IAM chain either.
+      return false;
+    }
+    return new IAMTemporaryCredentialsProvider(confGetter)
+        .hasCredentialsOffAws(s3, iamCredentialsCheckExecutor);
+  }
+
+  /**
+   * Whether Google's application default credentials, which {@link GCPUtil#getStorageService} uses
+   * for a GCP IAM config, resolve on this host; GCP EAR resolves the host's credentials the same
+   * way. Package-private so tests do not depend on the machine they run on.
+   */
+  boolean hostHasGcpCredentials() {
+    try {
+      GoogleCredentials.getApplicationDefault();
+      return true;
+    } catch (Exception e) {
+      log.info(
+          "Google application default credentials do not resolve on this host: {}", e.getMessage());
+      return false;
+    }
+  }
+
+  /** Puts a provider's federation entry on the in-memory config; no-op when there is none. */
+  private static void stampFederationTarget(
+      CustomerConfigData configData, @Nullable CrossCloudFederationTarget target) {
+    if (target == null) {
+      return;
+    }
+    if (configData instanceof CustomerConfigStorageGCSData) {
+      ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = target.audience;
+    } else if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      s3.crossCloudFederationAudience = target.audience;
+      s3.crossCloudFederationRoleArn = target.roleArn;
+    }
+  }
+
+  /**
+   * The federation entry for {@code targetCloud} that the customer's providers agree on, or null
+   * when none has one or they have different ones: YBA cannot tell which of those admits it.
+   */
+  @Nullable
+  CrossCloudFederationTarget resolveCustomerFederationTarget(
+      @Nullable UUID customerUUID, CloudType targetCloud) {
+    if (customerUUID == null) {
+      return null;
+    }
+    List<CrossCloudFederationTarget> targets;
+    try {
+      targets =
+          Provider.getAll(customerUUID).stream()
+              .map(p -> CloudInfoInterface.getCrossCloudFederationTarget(p, targetCloud))
+              .filter(Objects::nonNull)
+              // Compare only what is stamped: a gcp entry's role ARN is unused and may differ.
+              .map(
+                  t ->
+                      CrossCloudFederationTarget.of(
+                          t.targetCloud,
+                          t.audience,
+                          t.targetCloud == CloudType.aws ? t.roleArn : null))
+              .distinct()
+              .collect(Collectors.toList());
+    } catch (Exception e) {
+      // Not taken for "no entry", which would reject the config with advice to add one.
+      log.warn(
+          "Could not read the federated IAM entries for {} from the providers", targetCloud, e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Could not read the federated IAM entries for %s from the customer's providers: %s",
+              targetCloud, e.getMessage()));
+    }
+    if (targets.size() > 1) {
+      log.warn(
+          "Providers have {} different federated IAM entries for {}; YBA cannot tell which one"
+              + " admits it",
+          targets.size(),
+          targetCloud);
+      return null;
+    }
+    return targets.isEmpty() ? null : targets.get(0);
   }
 
   /**
    * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
    * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
    * deletion of the universe and its provider; falls back to the live universe for backups taken
-   * before the snapshot existed. With YBA on the bucket's cloud the snapshot is ignored and nothing
-   * is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that
-   * means switching it to YBA's IAM role. No-op for a config that is not federated.
+   * before the snapshot existed, then to the customer's providers (see {@link
+   * #applyYbaFederatedIdentity}). With YBA on the bucket's cloud the snapshot is ignored and
+   * nothing is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS
+   * that means switching it to YBA's IAM role. No-op for a config that is not federated.
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
+    applyCrossCloudFederationFromBackup(configData, backup, new ConfigIdentity());
+  }
+
+  /**
+   * {@link #applyCrossCloudFederationFromBackup(CustomerConfigStorageData, Backup)} for one of
+   * several backups of the same storage config, reusing {@code configIdentity} across them, so the
+   * host's credentials and the customer's providers are looked at once, and a config YBA has no way
+   * to reach is reported once.
+   */
+  public void applyCrossCloudFederationFromBackup(
+      CustomerConfigStorageData configData, Backup backup, ConfigIdentity configIdentity) {
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData
@@ -615,8 +997,39 @@ public class BackupHelper {
     } else {
       return;
     }
-    Universe.maybeGet(backup.getUniverseUUID())
-        .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+    // No snapshot: the backup predates it, or its universe's provider has no entry for the bucket's
+    // cloud, as for an AWS universe's S3 backup deleted by a YBA that HA promoted on GCP.
+    // Failures are logged, not thrown: an immutable-storage config is deleted without reaching the
+    // bucket.
+    boolean reachable;
+    try {
+      reachable =
+          applyYbaFederatedIdentity(
+              configData,
+              backup.getCustomerUUID(),
+              Universe.maybeGet(backup.getUniverseUUID()).orElse(null),
+              configIdentity);
+    } catch (PlatformServiceException e) {
+      log.warn("Deleting backup {}: {}", backup.getBackupUUID(), e.getMessage());
+      return;
+    }
+    if (reachable) {
+      return;
+    }
+    boolean reported;
+    synchronized (configIdentity) {
+      reported = configIdentity.reportedUnreachable;
+      configIdentity.reportedUnreachable = true;
+    }
+    if (reported) {
+      log.debug(
+          "Deleting backup {}: YBA has no credentials for its bucket", backup.getBackupUUID());
+    } else {
+      log.warn(
+          "Deleting backup {}: {}",
+          backup.getBackupUUID(),
+          noYbaCredentialsMessage(String.valueOf(backup.getStorageConfigUUID()), configData));
+    }
   }
 
   /**
@@ -837,7 +1250,7 @@ public class BackupHelper {
     }
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
-    precheckStorageConfig(storageConfig, universe);
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, true /* probeNodes */);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     CustomerConfigData configData = storageConfig.getDataObject();
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
@@ -863,7 +1276,15 @@ public class BackupHelper {
     }
   }
 
-  private void precheckStorageConfig(CustomerConfig storageConfig, Universe universe) {
+  /**
+   * @param forRestore whether the read replicas' tservers are checked too. A restore reaches the
+   *     bucket from the tservers of every cluster, a backup only from the primary cluster's.
+   * @param probeNodes whether an on-prem node whose cloud is not recorded may be probed. A request
+   *     thread passes false: a probe is a few commands on each node in turn, and the task that
+   *     follows the request runs this precheck again and probes there.
+   */
+  private void precheckStorageConfig(
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     if (storageUtil.isIamEnabled(storageConfig)
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
@@ -872,6 +1293,135 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
+    validateCrossCloudFederationConfigured(storageConfig, universe, forRestore, probeNodes);
+  }
+
+  /**
+   * Fails fast when cross-cloud federated IAM is not enabled on the universe but one of its nodes
+   * needs it to reach this bucket, for example because federated IAM was enabled on the provider
+   * after the universe was created. That node has no credentials for the bucket, so the YBC check
+   * on it would otherwise wait about 15 minutes and then fail with no error.
+   */
+  private void validateCrossCloudFederationConfigured(
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
+    CustomerConfigData data = storageConfig.getDataObject();
+    CloudType bucketCloud;
+    if (data instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) data)) {
+      bucketCloud = CloudType.aws;
+    } else if (data instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) data).useGcpIam) {
+      bucketCloud = CloudType.gcp;
+    } else {
+      // Federation on a node covers only these configs, so enabling it cannot help any other.
+      return;
+    }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    // The API that enables federation on a universe refuses a universe whose primary cluster is
+    // multicloud or whose primary cluster's provider has no federation targets, so there is nothing
+    // to point such a universe at.
+    if (primaryCluster == null
+        || primaryCluster.userIntent.isMulticloudSupport()
+        || isSkipConfigBasedPreflightValidation(universe)
+        || CloudInfoInterface.getCrossCloudFederationTargets(
+                Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider)))
+            .isEmpty()) {
+      return;
+    }
+    if (primaryCluster.userIntent.isFederationConfigured()) {
+      // Enabled on the universe. EditUniverse, AddNodeToUniverse and ReplaceNodeInUniverse then
+      // configure it on the nodes of every cluster they touch by this flag alone, and do not set a
+      // read replica's own, so a read replica's flag does not tell whether its nodes have it. A
+      // read replica added after it was enabled has none (ReadOnlyClusterCreate does not configure
+      // it), but cannot be told apart, so it is left to the YBC check.
+      return;
+    }
+    // Once the API accepts a universe, it configures every cluster, read replicas included, each
+    // from its own provider.
+    List<Cluster> clusters =
+        forRestore
+            ? universe.getUniverseDetails().clusters
+            : Collections.singletonList(primaryCluster);
+    for (Cluster cluster : clusters) {
+      // A multicloud read replica has no single provider to read the target from.
+      if (cluster.userIntent.isFederationConfigured() || cluster.userIntent.isMulticloudSupport()) {
+        continue;
+      }
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (CloudInfoInterface.getCrossCloudFederationTarget(provider, bucketCloud) == null) {
+        // The provider does not federate to this cloud, so the nodes use their own identity.
+        continue;
+      }
+      for (NodeDetails node : universe.getRunningTserversinCluster(cluster.uuid)) {
+        CloudType nodeCloud = nodeCloud(universe, cluster, node, probeNodes);
+        // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
+        // natively, and one whose cloud is unknown is left to the YBC check.
+        if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
+            && nodeCloud != bucketCloud) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Universe %s cannot reach this %s bucket: node %s runs on %s and needs"
+                      + " cross-cloud federated IAM, which provider %s has enabled but which is"
+                      + " not enabled on this universe. Enable it with POST"
+                      + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
+                      + " {\"enabled\": true}, then retry.",
+                  universe.getName(),
+                  storageConfig.getName(),
+                  node.nodeName,
+                  nodeCloud,
+                  provider.getName(),
+                  storageConfig.getCustomerUUID(),
+                  universe.getUniverseUUID()));
+        }
+      }
+    }
+  }
+
+  /**
+   * The cloud a node runs on, or null when it cannot be told. An on-prem node's cloud is recorded
+   * when federation is configured on it; until then it is probed here. An AWS or GCP answer is
+   * recorded the same way, so later prechecks do not probe that node again. Any other answer is
+   * not: a metadata service that was only slow to answer looks the same as a physical machine. For
+   * the same reason a recorded {@code onprem} is not trusted and the node is probed again: {@code
+   * ManageCloudFederation} records whatever its probe answered. Without {@code probe}, a node that
+   * would need a probe is unknown.
+   */
+  @Nullable
+  private CloudType nodeCloud(Universe universe, Cluster cluster, NodeDetails node, boolean probe) {
+    CloudType providerCloud = cluster.getProviderCloudType(node);
+    if (providerCloud != CloudType.onprem) {
+      return providerCloud;
+    }
+    String physicalCloud = node.cloudInfo == null ? null : node.cloudInfo.physicalCloud;
+    if (CloudType.aws.name().equals(physicalCloud) || CloudType.gcp.name().equals(physicalCloud)) {
+      return CloudType.valueOf(physicalCloud);
+    }
+    if (!probe) {
+      return null;
+    }
+    CloudType detected =
+        nodeCloudDetector.detect(
+            universe,
+            node,
+            confGetter.getConfForScope(universe, UniverseConfKeys.nodeCloudDetectionTimeout));
+    if (detected == CloudType.aws || detected == CloudType.gcp) {
+      String nodeName = node.nodeName;
+      String probedIp = node.cloudInfo.private_ip;
+      Universe.saveDetails(
+          universe.getUniverseUUID(),
+          u -> {
+            NodeDetails n = u.getNode(nodeName);
+            // Skip a node that moved to another machine while it was probed.
+            if (n != null
+                && n.cloudInfo != null
+                && Objects.equals(n.cloudInfo.private_ip, probedIp)) {
+              n.cloudInfo.physicalCloud = detected.name();
+            }
+          },
+          false /* incrementVersion */);
+    }
+    return detected;
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -1407,7 +1957,9 @@ public class BackupHelper {
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    precheckStorageConfig(storageConfig, universe);
+    // The restore preflight API reaches this on a request thread. RestorePreflightValidate also
+    // does, between its own prechecks, which probe.
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, false /* probeNodes */);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1539,7 +2091,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, false /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (NodeDetails node : nodeDetailsList) {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
@@ -1581,7 +2133,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, true /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
       CloudStoreSpec successMarkerCSSpec =

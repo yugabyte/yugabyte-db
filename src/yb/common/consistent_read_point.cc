@@ -12,6 +12,7 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include <algorithm>
 #include <mutex>
 #include <type_traits>
 #include <utility>
@@ -138,6 +139,37 @@ void ConsistentReadPoint::Restart() {
   local_limits_.swap(restarts_);
   restarts_.clear();
   read_time_.read = restart_read_ht_;
+}
+
+void ConsistentReadPoint::CapGlobalLimit(HybridTime cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_ || read_time_.global_limit <= cap) {
+    return;
+  }
+  read_time_.global_limit = std::max(read_time_.read, cap);
+  read_time_.local_limit = std::min(read_time_.local_limit, read_time_.global_limit);
+  for (auto& [_, local_limit] : local_limits_) {
+    local_limit = std::min(local_limit, read_time_.global_limit);
+  }
+}
+
+void ConsistentReadPoint::CapLocalLimit(TabletIdView tablet, HybridTime cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_) {
+    return;
+  }
+  UpdateLimitsMapUnlocked(
+      tablet, std::min(read_time_.global_limit, std::max(read_time_.read, cap)), &local_limits_);
+}
+
+ConsistentReadPoint::HybridTimeMap ConsistentReadPoint::RestartLocalLimits() const {
+  std::lock_guard lock(mutex_);
+  return IsRestartRequiredUnlocked() ? restarts_ : local_limits_;
+}
+
+HybridTime ConsistentReadPoint::GetRestartReadHt() const {
+  std::lock_guard lock(mutex_);
+  return restart_read_ht_;
 }
 
 void ConsistentReadPoint::Defer() {

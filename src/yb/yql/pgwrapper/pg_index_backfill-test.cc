@@ -85,6 +85,17 @@ const auto kPhaseBackfilling = "backfilling"s;
 const auto kPhaseInitializing = "initializing"s;
 const client::YBTableName kYBTableName(YQLDatabase::YQL_DATABASE_PGSQL, kDatabaseName, kTableName);
 
+bool HasObjectNotFound(const Status& status) {
+  return !status.ok() &&
+          status.ToString().contains(
+              master::MasterErrorPB::Code_Name(master::MasterErrorPB::OBJECT_NOT_FOUND));
+}
+
+bool HasIndexNotFound(const Status& status) {
+  static const std::regex kRegex{R"(Index.*not found)"};
+  return !status.ok() && std::regex_search(status.ToString(), kRegex);
+}
+
 }  // namespace
 
 YB_DEFINE_ENUM(IndexStateFlag, (kIndIsLive)(kIndIsReady)(kIndIsValid));
@@ -2444,23 +2455,20 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillFastClientTimeout, ::testing::Bool());
 //                                                DROP INDEX
 TEST_P(PgIndexBackfillFastClientTimeout, DropWhileBackfilling) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-
-  // conn_ should be used by at most one thread for thread safety.
-  thread_holder_.AddThreadFunctor([this] {
-    LOG(INFO) << "Begin create thread";
-    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
-    // on the catalog version row.
-    ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
-    Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    // Expect timeout because
-    // DROP INDEX is currently not online and removes the index info from the indexed table
-    // ==> the WaitUntilIndexPermissionsAtLeast will keep failing and retrying GetTableSchema on the
-    // index.
-    ASSERT_TRUE(HasClientTimedOut(status)) << status;
-  });
-  thread_holder_.AddThreadFunctor([this] {
-    LOG(INFO) << "Begin drop thread";
+  const auto index_creation_query = Format("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+  {
+    const auto se = ScopeExit([this] {  thread_holder_.JoinAll(); });
+    // conn_ should be used by at most one thread for thread safety.
+    thread_holder_.AddThreadFunctor([this, &index_creation_query] {
+      LOG(INFO) << "Begin create thread";
+      auto create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE
+      // lock on the catalog version row.
+      ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
+      const auto status = create_conn.Execute(index_creation_query);
+      ASSERT_TRUE(
+          EnableTableLocks() ? HasClientTimedOut(status) : HasIndexNotFound(status)) << status;
+    });
     ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
 
     LOG(INFO) << "Drop index";
@@ -2468,8 +2476,11 @@ TEST_P(PgIndexBackfillFastClientTimeout, DropWhileBackfilling) {
 
     // Unblock CREATE INDEX waiting to do backfill.
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
-  });
-  thread_holder_.JoinAll();
+  }
+  // Tearing the cluster down while the dropped index's backfill is still in flight may take a
+  // long time (for example due to #35874). A table has at most one backfill in progress at a
+  // time, so successful creation of the same index means the previous one has finished.
+  ASSERT_OK(conn_->Execute(index_creation_query));
 }
 
 // Override the index backfill test class to have a default client admin timeout one second smaller
@@ -3051,9 +3062,7 @@ class PgIndexBackfillColocatedBlockBeforeIndexMap : public PgIndexBackfillColoca
     PgIndexBackfillColocated::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--TEST_block_backfill_before_index_map=true");
     // The PG backend's CREATE INDEX wait loop uses backfill_index_client_rpc_timeout_ms as its
-    // deadline (defaults to 24h in release). After we drop the table, the wait loop retries
-    // GetTableSchema indefinitely until that deadline. Set a short timeout so the CREATE INDEX
-    // thread fails promptly after the table is dropped.
+    // deadline, whose default (24h in release) is too large for a unit test.
     options->extra_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=30000");
   }
 };
@@ -3074,9 +3083,12 @@ TEST_P(PgIndexBackfillColocatedBlockBeforeIndexMap, ColocatedDropTableDuringBack
   // Thread 1: CREATE INDEX -- the tserver will block before index_map.
   thread_holder_.AddThreadFunctor([this] {
     LOG(INFO) << "Begin create index thread";
-    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kColoDbName));
-    auto status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+    auto create_conn = ASSERT_RESULT(ConnectToDB(kColoDbName));
+    const auto status = create_conn.ExecuteFormat(
+        "CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
     LOG(INFO) << "CREATE INDEX finished with status: " << status;
+    ASSERT_TRUE(
+        EnableTableLocks() ? HasClientTimedOut(status) : HasObjectNotFound(status)) << status;
   });
 
   // Wait for the BackfillIndex RPC to arrive at a tserver and block at the flag.

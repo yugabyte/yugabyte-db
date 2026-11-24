@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
@@ -72,6 +73,15 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			wantErr:  "region r1-typo in --add-zone",
 		},
 		{
+			name: "every unknown region in add-zone is named once",
+			addZones: []string{
+				"zone-name=z1::region-name=r1-typo::subnet=s",
+				"zone-name=z2::region-name=r2-typo::subnet=s",
+				"zone-name=z3::region-name=r1-typo::subnet=s",
+			},
+			wantErr: "region r1-typo, r2-typo in --add-zone",
+		},
+		{
 			name:      "unknown region in edit-zone",
 			editZones: []string{"zone-name=r1-z1::region-name=r1-typo::subnet=s"},
 			wantErr:   "region r1-typo not found",
@@ -97,6 +107,96 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			err := validateOCIRegionAndZoneNames(
 				tc.addRegions, tc.removeRegions, tc.editRegions,
 				tc.addZones, tc.editZones, tc.removeZones, providerRegions)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("got error %v, want one containing %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func ociZone(code string, active bool) ybaclient.AvailabilityZone {
+	zone := ybaclient.AvailabilityZone{Code: util.GetStringPointer(code), Name: code}
+	zone.SetActive(active)
+	return zone
+}
+
+func ociRegion(code string, active bool, zones ...ybaclient.AvailabilityZone) ybaclient.Region {
+	region := ybaclient.Region{Code: util.GetStringPointer(code), Zones: zones}
+	region.SetActive(active)
+	return region
+}
+
+func TestValidateOCIZoneRemovalLeavesActiveZone(t *testing.T) {
+	const (
+		regionName = "us-sanjose-1"
+		onlyZone   = "zone-name=us-sanjose-1-AD-1::region-name=us-sanjose-1"
+		otherZone  = "zone-name=us-sanjose-1-AD-2::region-name=us-sanjose-1"
+		addedZone  = "zone-name=us-sanjose-1-AD-3::region-name=us-sanjose-1::subnet=s"
+	)
+	tests := []struct {
+		name          string
+		regions       []ybaclient.Region
+		addZones      []string
+		removeZones   []string
+		removeRegions []string
+		wantErr       string
+	}{
+		{
+			name: "removing the only zone of a region",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true))},
+			removeZones: []string{onlyZone},
+			wantErr:     "region us-sanjose-1 would have no active zone",
+		},
+		{
+			name: "removing every zone of a region",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true),
+				ociZone("us-sanjose-1-AD-2", true))},
+			removeZones: []string{onlyZone, otherZone},
+			wantErr:     "remove the region with --remove-region",
+		},
+		{
+			name: "removing the last active zone when another is already inactive",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true),
+				ociZone("us-sanjose-1-AD-2", false))},
+			removeZones: []string{onlyZone},
+			wantErr:     "region us-sanjose-1 would have no active zone",
+		},
+		{
+			name: "removing one zone when another stays active",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true),
+				ociZone("us-sanjose-1-AD-2", true))},
+			removeZones: []string{onlyZone},
+		},
+		{
+			name: "removing the only zone while adding a replacement",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true))},
+			addZones:    []string{addedZone},
+			removeZones: []string{onlyZone},
+		},
+		{
+			name: "removing every zone of a region that is itself removed",
+			regions: []ybaclient.Region{ociRegion(regionName, true,
+				ociZone("us-sanjose-1-AD-1", true))},
+			removeRegions: []string{regionName},
+			removeZones:   []string{onlyZone},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updated := removeOCIRegions(tc.removeRegions, tc.regions)
+			updated = editOCIRegions(nil, tc.addZones, nil, tc.removeZones, updated)
+			err := providerutil.ValidateZoneRemovalLeavesActiveZone(tc.removeZones, updated)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)

@@ -42,8 +42,10 @@
 
 #include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/pg_catalog_versions_cache.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
@@ -68,6 +70,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -1703,6 +1706,63 @@ TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
   ASSERT_TRUE(scan_result.empty());
 }
 
+// DROP INDEX and table rewrites drop colocated indexes, which must not leave their rows behind.
+TEST_F(PgMiniTest, TestNoStaleIndexDataOnColocationIdReuse) {
+  const std::string kDbName = "testdb";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // Use index-only scans, which read only the index rows.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn.Execute("SET enable_bitmapscan = off"));
+
+  auto CreateIndexedTable = [&](const std::string& table, int index_colocation_id) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int, w int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0_v ON $0 (v) WITH (colocation_id=$1)",
+        table, index_colocation_id));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i FROM generate_series(1, 10) i",
+        table));
+  };
+
+  auto VerifyNoStaleIndexRows = [&](int colocation_id) {
+    const auto table = Format("reuse_$0", colocation_id);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (v) WITH (colocation_id=$1)",
+        table, colocation_id));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>(
+        Format("SELECT v FROM $0 WHERE v > 0", table)));
+    ASSERT_TRUE(result.empty()) << AsString(result);
+  };
+
+  CreateIndexedTable("t0", 20001);
+  ASSERT_OK(conn.Execute("DROP INDEX t0_v"));
+  VerifyNoStaleIndexRows(20001);
+
+  CreateIndexedTable("t1", 20002);
+  // A failed TRUNCATE keeps the old index, so the tombstone must roll back with it.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION fail() RETURNS trigger LANGUAGE plpgsql AS "
+      "$$ BEGIN RAISE EXCEPTION 'injected failure'; END $$"));
+  ASSERT_OK(conn.Execute("CREATE TRIGGER fail AFTER TRUNCATE ON t1 EXECUTE FUNCTION fail()"));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("TRUNCATE t1"), "injected failure");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1 WHERE v > 0")), 10);
+  ASSERT_OK(conn.Execute("DROP TRIGGER fail ON t1"));
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  VerifyNoStaleIndexRows(20002);
+
+  CreateIndexedTable("t2", 20003);
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ALTER COLUMN w TYPE bigint"));
+  VerifyNoStaleIndexRows(20003);
+  // The rebuilt index keeps its rows.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE v > 0")), 10);
+
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t2"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX mv_v ON mv (v) WITH (colocation_id=20004)"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  VerifyNoStaleIndexRows(20004);
+}
+
 TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   const std::string kDbName = "testdb";
   const std::string kTableName = "tombstone_test";
@@ -1713,9 +1773,6 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
   conn = ASSERT_RESULT(ConnectToDB(kDbName));
-
-  // Keeps the colocation tablet alive when kTableName is dropped.
-  ASSERT_OK(conn.Execute("CREATE TABLE keep_tablet (v int PRIMARY KEY)"));
 
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
       kTableName, kColocationId));
@@ -5355,6 +5412,55 @@ TEST_F_EX(
   ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
   ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
   ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
+}
+
+// The master's catalog versions cache refresh runs on a pool of its own, so it keeps refreshing
+// while every worker of the catalog manager's shared background pool is busy. Before, its body
+// was submitted to that shared pool and queued behind whatever held the workers.
+TEST_F(PgMiniTest, CatalogVersionsCacheRefreshesWhileBackgroundPoolIsBusy) {
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto cached_read_time = [&catalog_manager] {
+    master::DbOidToCatalogVersionMap versions;
+    uint64_t fingerprint = 0;
+    HybridTime read_ht;
+    catalog_manager.pg_catalog_versions_cache().GetAll(&versions, &fingerprint, &read_ht);
+    return read_ht;
+  };
+  ASSERT_OK(WaitFor(
+      [&cached_read_time] { return cached_read_time().is_valid(); }, 30s * kTimeMultiplier,
+      "First catalog versions cache refresh"));
+
+  // The shared pool is built with the default worker count, NumEffectiveCPUs(). Hold every worker,
+  // and wait until each holder runs, so nothing queued behind them can be running.
+  //
+  // Each holder shares the latches rather than reaching them on this stack: the test can return
+  // while holders are still running or, after the ASSERT below fails, still queued in the pool,
+  // and the master outlives the test body.
+  struct Holders {
+    explicit Holders(int num_workers) : started(num_workers) {}
+    CountDownLatch started;
+    CountDownLatch release{1};
+  };
+  const auto num_workers = NumEffectiveCPUs();
+  auto holders = std::make_shared<Holders>(num_workers);
+  auto release_workers = ScopeExit([holders] { holders->release.CountDown(); });
+  for (int i = 0; i != num_workers; ++i) {
+    ASSERT_OK(catalog_manager.SubmitBackgroundTask([holders] {
+      holders->started.CountDown();
+      holders->release.Wait();
+    }));
+  }
+  ASSERT_TRUE(holders->started.WaitFor(30s * kTimeMultiplier))
+      << holders->started.count() << " of " << num_workers
+      << " background workers never started";
+
+  // The refresh runs every heartbeat_interval_ms / 2. Allow many periods, so only a refresh that
+  // cannot run at all fails this.
+  const auto before = cached_read_time();
+  ASSERT_OK(WaitFor(
+      [&cached_read_time, before] { return cached_read_time() > before; },
+      MonoDelta::FromMilliseconds(20 * FLAGS_heartbeat_interval_ms) * kTimeMultiplier,
+      "Catalog versions cache refresh while the background pool is busy"));
 }
 
 // ------------------------------------------------------------------------------------------------

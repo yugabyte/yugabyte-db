@@ -237,6 +237,10 @@ DEFINE_UNKNOWN_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 m
     "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
     "unresponsive_ts_rpc_timeout_ms");
 
+DEFINE_test_flag(bool, fail_tier_target_db_update, false,
+    "Fail the regular DB's target_path_id update in SetTierMigrationTarget, after the target is "
+    "persisted.");
+
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
     "If set to value greater than 0, every nth row will be corrupted in the backfill process "
     "to create an inconsistency between the index and the indexed tables where n is the "
@@ -572,11 +576,13 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
+// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
+// largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
-  HybridTime min_ht = log_ht;
-  HybridTime max_ht = log_ht;
+  HybridTime min_ht = log_ht ? log_ht : commit_ht;
+  HybridTime max_ht = min_ht;
   if (commit_ht) {
     min_ht = std::min(min_ht, commit_ht);
     max_ht = std::max(max_ht, commit_ht);
@@ -855,7 +861,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
@@ -2831,6 +2838,16 @@ const std::string* Tablet::NextReadPartitionKey(
   return &partition_key;
 }
 
+bool Tablet::SwitchToNextTablet(
+    const PgsqlReadRequestMsg& pgsql_read_request, const PgsqlResponseMsg& response) const {
+  if (response.has_paging_state()) {
+    const auto& paging_state = response.paging_state();
+    VLOG_WITH_FUNC(3) << "Paging state: " << paging_state.ShortDebugString();
+    return !paging_state.has_next_partition_key();
+  }
+  return true;
+}
+
 namespace {
 
 void SetBackfillSpecForYsqlBackfill(
@@ -2875,12 +2892,19 @@ Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_re
   if (MayTargetMultipleTablets(pgsql_read_request, row_count)) {
     const auto* next_partition_key = NextReadPartitionKey(pgsql_read_request);
     if (next_partition_key) {
-      if (!response->has_paging_state()) {
-        // DocDB has done with the current tablet, time to switch to the next one
+      if (SwitchToNextTablet(pgsql_read_request, *response)) {
         response->mutable_paging_state()->dup_next_partition_key(*next_partition_key);
       }
       response->mutable_paging_state()->dup_next_tablet_bound(*next_partition_key);
     }
+  }
+
+  // Next partition/row key hasn't been added, neither by the DocDB nor by the above logic, remove
+  // the paging state to prevent further pagination.
+  if (response->has_paging_state() &&
+      !response->paging_state().has_next_partition_key() &&
+      !response->paging_state().has_next_row_key()) {
+    response->clear_paging_state();
   }
 
   // If there is a paging state, update the total number of rows read so far.
@@ -3020,8 +3044,8 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
 
-  if (TEST_sleep_before_apply_intents_) {
-    std::this_thread::sleep_for(TEST_sleep_before_apply_intents_.ToSteadyDuration());
+  if (auto sleep = TEST_sleep_before_apply_intents_.load(std::memory_order_relaxed)) {
+    std::this_thread::sleep_for(sleep.ToSteadyDuration());
   }
   // This flag enables tests to induce a situation where a transaction has committed but its intents
   // haven't yet moved to regular db for a sufficiently long period. For example, it can help a test
@@ -3416,7 +3440,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
-    index_info.emplace(table_info.index_info());
+    index_info.emplace(table_info.index_info(), ht);
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
@@ -5004,7 +5028,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -5401,16 +5431,16 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   return StillHasOrphanedPostSplitDataAbortable();
 }
 
+bool Tablet::HasUncompactedRocksDbParentData() const {
+  return key_bounds().IsInitialized() && !metadata()->rocksdb_parent_data_compacted();
+}
+
 bool Tablet::NeedPostSplitCompaction() {
   if (!key_bounds().IsInitialized()) {
     return false;
   }
 
-  if (!metadata()->rocksdb_parent_data_compacted()) {
-    return true;
-  }
-
-  return vector_indexes().PostSplitCompactionRequired();
+  return HasUncompactedRocksDbParentData() || vector_indexes().PostSplitCompactionRequired();
 }
 
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
@@ -5425,7 +5455,7 @@ bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
   }
 
   VLOG_WITH_PREFIX(1) << "Vector index parent data compaction is not required before split";
-  return !metadata()->rocksdb_parent_data_compacted();
+  return HasUncompactedRocksDbParentData();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {
@@ -5620,12 +5650,21 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
-  std::lock_guard lock(tier_target_mutex_);
-  return SetTierMigrationTargetUnlocked(target_tier, target_path_id);
+  bool changed = false;
+  Status write_status;
+  {
+    std::lock_guard lock(tier_target_mutex_);
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  return write_status;
 }
 
 Status Tablet::SetTierMigrationTargetUnlocked(
-    const std::string& target_tier, uint32_t target_path_id) {
+    const std::string& target_tier, uint32_t target_path_id, bool* changed) {
+  *changed = false;
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
@@ -5642,19 +5681,24 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
   }
-  RETURN_NOT_OK_PREPEND(
-      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-      "Failed to set target_path_id on regular DB");
-
-  std::lock_guard lock(tier_migration_mutex_);
-  ReassertTierIntentUnlocked();
+  const auto db_status = FLAGS_TEST_fail_tier_target_db_update
+      ? STATUS(IOError, "Injected target_path_id update failure")
+      : regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}});
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    const bool state_changed = ReassertTierIntentUnlocked();
+    *changed = state_changed || !same_target;
+  }
+  RETURN_NOT_OK_PREPEND(db_status, "Failed to set target_path_id on regular DB");
   return Status::OK();
 }
 
-void Tablet::ReassertTierIntentUnlocked() {
+bool Tablet::ReassertTierIntentUnlocked() {
+  const bool changed = tier_migration_status_.state != TierMigrationStatus::State::kInProgress;
   tier_migration_status_.state = TierMigrationStatus::State::kInProgress;
   tier_migration_status_.consecutive_failed_passes = 0;
   tier_migration_status_.last_error = Status::OK();
+  return changed;
 }
 
 bool Tablet::IsPersistedTierTarget(
@@ -5678,6 +5722,16 @@ Status Tablet::CheckTierTargetStillPersisted(
 Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
     const std::optional<TierTarget>& expected_target) {
+  auto result = DoRunTierMigrationPass(options, reconciler_pass, expected_target);
+  if (result.ok() && result->state_changed) {
+    NotifyTierStateChanged();
+  }
+  return result;
+}
+
+Result<TierReconcileResult> Tablet::DoRunTierMigrationPass(
+    const TierReconcileOptions& options, ReconcilerPass reconciler_pass,
+    const std::optional<TierTarget>& expected_target) {
   using State = TierMigrationStatus::State;
 
   auto scoped_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -5689,7 +5743,6 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   TierReconcileResult result;
   uint32_t target_path_id = 0;
   std::string target_dir;
-  auto state_before = State::kNone;
   {
     // Held from reading the target to claiming the pass, so the pass is toward the persisted
     // target and AlterTabletTier cannot swap it for another until the pass ends. Not held across
@@ -5707,7 +5760,13 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     target_path_id = metadata()->target_tier_path_id();
     target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
-    if (NeedPostSplitCompaction()) {
+    // A move writes the copy under a new file number, above
+    // post_split_compaction_file_number_upper_bound, so the post-split compaction, which only
+    // takes files below that bound, would skip it and its parent data would never be compacted
+    // away. Only RocksDB parent data holds the pass: a pending vector-index post-split compaction
+    // does not touch RocksDB file numbers, which is why this is narrower than
+    // NeedPostSplitCompaction().
+    if (HasUncompactedRocksDbParentData()) {
       result.awaiting_post_split_compaction = true;
       result.status = tier_migration_status();
       VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";
@@ -5726,7 +5785,6 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       return result;
     }
     status.migration_pass_in_flight = true;
-    state_before = status.state;
   }
 
   auto candidates = CollectTierMigrationCandidates(target_path_id);
@@ -5737,6 +5795,10 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
+    // state_changed is measured against the state the verdict replaces, not the one the pass
+    // started from: a same-target AlterTabletTier during the scan sets kInProgress and reports
+    // it, and the verdict that restores kDone has to be reported too.
+    const auto state_before = status.state;
     if (candidates.empty()) {
       status.migration_pass_in_flight = false;
       status.files_total = 0;
@@ -5824,15 +5886,27 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
     const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
 
+  bool changed = false;
+  std::optional<TierMigrationStatus> in_flight;
+  Status write_status;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
-    std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.migration_pass_in_flight) {
-      // Only the same target gets past the write with a pass in flight: that pass already serves
-      // this request, re-asserted just now like any accepted one, so report it.
-      return tier_migration_status_;
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    if (write_status.ok()) {
+      std::lock_guard lock(tier_migration_mutex_);
+      if (tier_migration_status_.migration_pass_in_flight) {
+        in_flight = tier_migration_status_;
+      }
     }
+  }
+  if (changed) {
+    NotifyTierStateChanged();
+  }
+  RETURN_NOT_OK(write_status);
+  if (in_flight) {
+    // Only the same target gets past the write with a pass in flight: that pass already serves
+    // this request, re-asserted just now like any accepted one, so report it.
+    return *in_flight;
   }
 
   // Lets a test slip another target in after the write, before the pass starts.
@@ -5966,6 +6040,12 @@ void Tablet::WakeTierMigrationReconciler() {
   }
 }
 
+void Tablet::NotifyTierStateChanged() {
+  if (tier_migration_hooks_ && tier_migration_hooks_->tier_state_changed) {
+    tier_migration_hooks_->tier_state_changed(tablet_id());
+  }
+}
+
 Result<TabletTierInfo> Tablet::GetTierInfo() const {
   // Keeps regular_db_ alive for the GetLiveFilesMetaData scan below: a concurrent tablet
   // shutdown/delete waits for this to be released before destroying the DB.
@@ -5991,12 +6071,14 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
     info.tier_paths.push_back(stats);
   }
 
-  // Home tier (path_id 0) is where the first flush will land absent any migration, so an empty
-  // tablet (no live SSTs yet, e.g. still bootstrapping or just created and never flushed) is
-  // trivially "on" its home tier rather than "none". Overwritten below once there is at
-  // least one live SST to derive current_tier from directly.
+  // An empty tablet (no live SSTs yet: still bootstrapping, or never flushed) is trivially "on"
+  // the tier its next flush lands on rather than "none": the target's disk when a target is set,
+  // the home disk (path_id 0) otherwise. This agrees with the reconciler, which declares such a
+  // tablet converged. Overwritten below once there is at least one live SST to derive
+  // current_tier from directly.
+  const uint32_t next_flush_path_id = info.target_tier.empty() ? 0 : info.target_tier_path_id;
   for (const auto& stats : info.tier_paths) {
-    if (stats.is_home) {
+    if (stats.path_id == next_flush_path_id) {
       info.current_tier = stats.tier;
       break;
     }
@@ -6033,11 +6115,28 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
   if (tiers_seen.size() == 1) {
     info.current_tier = *tiers_seen.begin();
   } else if (tiers_seen.size() > 1) {
-    // Straddling more than one tier (e.g. mid-migration): neither the home-tier default set
+    // Straddling more than one tier (e.g. mid-migration): neither the next-flush default set
     // above nor a single derived tier is accurate, so leave it unset rather than pick one.
     info.current_tier.clear();
   }
   return info;
+}
+
+Result<std::string> Tablet::CurrentStorageTier() const {
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  const auto target_path_id = metadata()->target_tier_path_id();
+  if (!metadata()->target_storage_tier().empty() && regular_db_ &&
+      CollectTierMigrationCandidates(target_path_id).empty()) {
+    // Every live SST is under the target's disk, or there is none yet: GetTierInfo would derive
+    // that disk's tier, after building a LiveFileMetaData per SST under the DB mutex.
+    for (const auto& tier_path : metadata()->tier_paths()) {
+      if (tier_path.path_id == target_path_id) {
+        return tier_path.tier;
+      }
+    }
+  }
+  return VERIFY_RESULT(GetTierInfo()).current_tier;
 }
 
 std::string Tablet::TEST_DocDBDumpStr(
@@ -6445,6 +6544,29 @@ Result<int64_t> Tablet::CountIntents() {
   }
   RETURN_NOT_OK(intent_iter->status());
   return num_intents;
+}
+
+Result<bool> Tablet::HasExternalIntents() const {
+  // Set before the first external intents write, never reset, and inherited by split children.
+  if (!metadata_->IsUnderXClusterReplication()) {
+    return false;
+  }
+
+  auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return false;
+  }
+  static constexpr char kPrefix = dockv::KeyEntryTypeAsChar::kExternalTransactionId;
+  static constexpr char kUpperBound = kPrefix + 1;
+  Slice upper_bound(&kUpperBound, 1);
+  auto iter = docdb::CreateRocksDBIterator(
+      intents_db_.get(), &docdb::KeyBounds::kNoBounds, docdb::BloomFilterOptions::Inactive(),
+      rocksdb::kDefaultQueryId, /* file_filter= */ nullptr, &upper_bound,
+      rocksdb::CacheRestartBlockKeys::kFalse);
+  iter.Seek(Slice(&kPrefix, 1));
+  return iter.CheckedValid();
 }
 
 Status Tablet::ReadIntents(std::vector<std::string>* intents) {
@@ -7402,8 +7524,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

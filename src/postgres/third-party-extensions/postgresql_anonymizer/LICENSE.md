@@ -1,7 +1,7 @@
 The PostgreSQL License
 ===============================================================================
 
-Copyright (c) 2018-2020, DALIBO SCOP
+Copyright (c) 2018-2026, DALIBO SCOP
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement

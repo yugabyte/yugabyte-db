@@ -550,6 +550,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         index_info->set_birth_time(index_birth_time);
       }
       index_info->clear_birth_time_state();
+      index_info->clear_birth_time_pending_txn_id();
     }
     RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
     // Propagate birth time related information so that the index starts accepting reads.
@@ -1215,8 +1216,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
-    if (!verifier_state || verifier_state->state != YsqlDdlVerificationState::kDdlInProgress ||
-        verifier_state->txn_state != TxnState::kUnknown) {
+    if (!verifier_state || verifier_state->txn_state != TxnState::kUnknown) {
       VLOG(3) << "Rolling back to sub-transaction for an already completed "
               << " transaction: " << txn
               << ", verifier_state: "
@@ -1350,6 +1350,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper(
   TableInfo* table, const TransactionId& txn_id, const SubTransactionId sub_txn_id,
   const LeaderEpoch& epoch) {
   const auto id = "table id: " + table->id();
+  TEST_SYNC_POINT("CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper:Start");
 
   auto l = table->LockForWrite();
   if (!VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(txn_id))) {
@@ -1446,9 +1447,15 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
 
   bool is_done = false;
   bool is_success = false;
+  std::vector<TableInfoPtr> txn_tables;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     const auto itr = ysql_ddl_txn_undergoing_subtransaction_rollback_map_.find(req_txn);
+    if (itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end()) {
+      if (const auto* verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, req_txn)) {
+        txn_tables = verifier_state->tables;
+      }
+    }
     // Rollback is done if:
     // 1. We don't have the state - indicates that the state was cleaned up after a successful
     // rollback.
@@ -1464,6 +1471,27 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
     is_success = itr == ysql_ddl_txn_undergoing_subtransaction_rollback_map_.end() ||
                  itr->second.sub_txn != sub_txn_id;
   }
+
+  // The rollback map is in memory only, so a new master leader has no entry for a rollback that
+  // the old leader started tracking but did not trigger. A finished rollback removes the table's
+  // DDL states at or after sub_txn_id, so any left on a running table mean the rollback was lost.
+  // Since the rollback was lost, don't report it as done. Return an error instead so that the
+  // caller can handle it. Reporting it as not done would only lead to a timeout, since no rollback
+  // is in progress.
+  for (const auto& table : txn_tables) {
+    auto l = table->LockForRead();
+    if (l->is_running() && VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(req_txn)) &&
+        l->ysql_first_ddl_state_at_or_after_sub_txn(sub_txn_id) <
+            l->ysql_ddl_txn_verifier_state().size()) {
+      resp->set_done(true);
+      return STATUS_FORMAT(
+          IllegalState,
+          "Rollback to sub-transaction $0 of transaction $1 was not applied to table $2, likely "
+          "due to a master leader change",
+          sub_txn_id, req_txn, table->ToString());
+    }
+  }
+
   resp->set_done(is_done);
   VLOG(1) << "Received IsRollbackDocdbSchemaToSubtxnDoneRequestPB request for transaction "
           << req_txn << ", sub_transaction_id: " << sub_txn_id

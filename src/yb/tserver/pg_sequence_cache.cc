@@ -27,15 +27,24 @@ namespace tserver {
 // we should not need to hold mutex_ to read available_ in this case because if available_ is
 // false then we are the only thread accessing this entry so reading it is thread-safe. Thus,
 // we annotate this with NO_THREAD_SAFETY_ANALYSIS.
-void PgSequenceCache::Entry::CheckNotAvailable() NO_THREAD_SAFETY_ANALYSIS { DCHECK(!available_); }
+void PgSequenceCache::Entry::CheckNotAvailable() const NO_THREAD_SAFETY_ANALYSIS {
+  DCHECK(!available_);
+}
 
 PgSequenceCache::Entry::Entry()
     : cv_(&mutex_), available_(true), has_values_(false), curr_value_(0), last_value_(0) {}
 
-std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(int64_t inc_by) {
+std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(
+    int64_t inc_by, uint64_t epoch_now) {
   CheckNotAvailable();
 
   if (!has_values_) {
+    return std::nullopt;
+  }
+
+  // Drop the range when it was stored under a different epoch.
+  if (epoch_now != filled_epoch_) {
+    has_values_ = false;
     return std::nullopt;
   }
 
@@ -55,10 +64,12 @@ std::optional<int64_t> PgSequenceCache::Entry::GetValueIfCached(int64_t inc_by) 
   return value;
 }
 
-void PgSequenceCache::Entry::SetRange(int64_t first_value, int64_t last_value) {
+void PgSequenceCache::Entry::SetRange(
+    int64_t first_value, int64_t last_value, uint64_t epoch_now) {
   CheckNotAvailable();
   curr_value_ = first_value;
   last_value_ = last_value;
+  filled_epoch_ = epoch_now;
   has_values_ = true;
 }
 
@@ -110,6 +121,16 @@ Status PgSequenceCache::Invalidate(const PgObjectId& sequence_id, const MonoTime
     entry->NotifyWaiter();
   }
   return Status::OK();
+}
+
+void PgSequenceCache::BumpDatabaseEpoch(PgOid db_oid) {
+  std::lock_guard cache_lock_guard(lock_);
+  ++db_epochs_[db_oid];
+}
+
+uint64_t PgSequenceCache::DatabaseEpoch(PgOid db_oid) {
+  std::lock_guard cache_lock_guard(lock_);
+  return db_epochs_[db_oid];
 }
 
 }  // namespace tserver

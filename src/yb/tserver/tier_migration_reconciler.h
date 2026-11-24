@@ -23,6 +23,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
@@ -37,8 +38,12 @@ namespace tserver {
 struct TierReconcilePassStats {
   // RUNNING tablets with a persisted target tier.
   uint32_t tablets_with_target = 0;
-  // Of those, the ones this pass scanned (not in flight, not failed).
+  // Of those, the ones this pass ran (not in flight, not failed).
   uint32_t tablets_visited = 0;
+  // Of the visited, split children whose pass was deferred until their post-split compaction
+  // has run (TierReconcileResult::awaiting_post_split_compaction). Each is also counted under
+  // its migration state below, normally tablets_in_progress.
+  uint32_t tablets_awaiting_post_split_compaction = 0;
   uint32_t moves_scheduled = 0;
   // Tablets whose migration state changed during this pass.
   uint32_t state_changes = 0;
@@ -47,6 +52,12 @@ struct TierReconcilePassStats {
   uint32_t tablets_done = 0;
   uint32_t tablets_failed = 0;
 };
+
+// The wire form of a tablet's migration status, shared by the tablet report
+// (ReportedTabletPB.tier_migration_state) and the AlterTabletTier / GetTabletTierInfo responses.
+TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationStatus& status);
+void FillTierMigrationStatusPB(
+    const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb);
 
 // Background driver of tiered-storage migration, one per tserver. A tablet's target tier is
 // persisted in its superblock (by AlterTabletTier, by creation from a tablespace, and carried
@@ -94,6 +105,7 @@ class TierMigrationReconciler {
   scoped_refptr<AtomicGauge<uint32_t>> tablets_in_progress_;
   scoped_refptr<AtomicGauge<uint32_t>> tablets_done_;
   scoped_refptr<AtomicGauge<uint32_t>> tablets_failed_;
+  scoped_refptr<AtomicGauge<uint32_t>> tablets_awaiting_post_split_compaction_;
   scoped_refptr<Counter> moves_scheduled_;
 
   // Set in Init, before any tablet is opened, so the OpenTablet wake-ups need no synchronization.

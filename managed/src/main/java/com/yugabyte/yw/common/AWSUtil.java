@@ -449,7 +449,7 @@ public class AWSUtil implements CloudUtil {
       s3Client.putObject(markerRequest, RequestBody.fromFile(markerFile));
       return true;
     } catch (Exception e) {
-      log.error("Error uploading backup: {}", e);
+      log.error("Error uploading backup", e);
     } finally {
       maybeEnableCertVerification();
       if (s3Client != null) {
@@ -564,7 +564,7 @@ public class AWSUtil implements CloudUtil {
           keyName,
           durationInSeconds);
     } catch (Exception e) {
-      log.error("Error uploading YBDB release {}: {}", release.getName(), e);
+      log.error("Error uploading YBDB release {}", release.getName(), e);
       return false;
     } finally {
       maybeEnableCertVerification();
