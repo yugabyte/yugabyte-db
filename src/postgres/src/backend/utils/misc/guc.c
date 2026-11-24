@@ -11942,6 +11942,25 @@ set_config_option_ext(const char *name, const char *value,
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
+	/*
+	 * YB: A role from the client's startup packet makes the connection sticky
+	 * too, as SET ROLE does. ConnMgr applies the startup packet's values on
+	 * each backend the client is moved to, and check_role checks membership
+	 * again there; after a REVOKE that check fails and the session is closed,
+	 * where on a direct connection the session keeps its role, as in
+	 * PostgreSQL. Keeping the client on the backend where the role was first
+	 * applied means it is never applied again.
+	 */
+	if (source == PGC_S_CLIENT &&
+		yb_conn_mgr_modifying_defaults &&
+		YbIsClientYsqlConnMgr() &&
+		strcmp(name, "role") == 0 &&
+		value != NULL && strcmp(value, "none") != 0)
+	{
+		elog(LOG, "Making connection sticky for the startup packet's %s", name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
 	if (elevel == 0)
 	{
 		if (source == PGC_S_DEFAULT || source == PGC_S_FILE)
