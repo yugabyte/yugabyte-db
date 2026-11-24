@@ -523,6 +523,8 @@ void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags
   extra_tserver_flags->push_back("--xcluster_checkpoint_max_staleness_secs=0");
   extra_tserver_flags->push_back("--maintenance_manager_polling_interval_ms=100");
   extra_tserver_flags->push_back("--db_write_buffer_size=100000");
+  // Retryable request records hold the WAL for the client timeout (60 s) after the workload stops.
+  extra_tserver_flags->push_back("--retryable_request_timeout_secs=5");
 }
 
 // Test that we can retrieve the permanent uuid of a server running
