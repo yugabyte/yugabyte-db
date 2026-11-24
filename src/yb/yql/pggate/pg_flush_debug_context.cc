@@ -49,8 +49,7 @@ YB_DEFINE_TYPED_ENUM(Reason, uint8_t,
   (kCopyBatch)
   (kSwitchToDbCatalogVersionMode)
   (kEndOfTopLevelStmt)
-  (kParallelWorkers)
-  (kBeforeCatalogChange));
+  (kParallelWorkers));
 
 struct YbcContextArgs {
   uint64_t uintarg = 0;
@@ -118,10 +117,6 @@ YbcFlushDebugContext PgFlushDebugContext::YbcParallelWorkers() {
   return MakeYbc(Reason::kParallelWorkers);
 }
 
-YbcFlushDebugContext PgFlushDebugContext::YbcBeforeCatalogChange() {
-  return MakeYbc(Reason::kBeforeCatalogChange);
-}
-
 PgFlushDebugContext PgFlushDebugContext::Make(const YbcFlushDebugContext& ctx) {
   switch (static_cast<Reason>(ctx.reason)) {
     case Reason::kBeginSubTxn:
@@ -157,8 +152,6 @@ PgFlushDebugContext PgFlushDebugContext::Make(const YbcFlushDebugContext& ctx) {
       return {"at the end of top-level statement"};
     case Reason::kParallelWorkers:
       return {"before launching parallel workers"};
-    case Reason::kBeforeCatalogChange:
-      return {"before registering a catalog change in the transaction"};
   }
   DCHECK(false);
   return {"for unknown reason"};

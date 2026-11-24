@@ -3687,10 +3687,6 @@ YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers() {
   return PgFlushDebugContext::YbcParallelWorkers();
 }
 
-YbcFlushDebugContext YBCMakeFlushDebugContextBeforeCatalogChange() {
-  return PgFlushDebugContext::YbcBeforeCatalogChange();
-}
-
 // ---------------------------------------------------------------------------
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------

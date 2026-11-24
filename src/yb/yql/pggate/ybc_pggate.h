@@ -1209,7 +1209,6 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcFlushDebugContext YBCMakeFlushDebugContextParallelWorkers();
-YbcFlushDebugContext YBCMakeFlushDebugContextBeforeCatalogChange();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 YbcStatus YBCResetAutoAnalyzeMutationCounters(
