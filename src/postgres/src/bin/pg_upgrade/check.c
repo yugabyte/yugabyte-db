@@ -50,6 +50,8 @@ static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
 static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
+static void yb_check_anon_security_labels();
+static const char *yb_anon_upgrade_steps(void);
 static void yb_check_pgcrypto_schema();
 static void yb_check_yb_role_prefix();
 static void yb_check_removed_renamed_catalog_acls();
@@ -236,6 +238,8 @@ check_and_dump_old_cluster(bool live_check)
 
 	yb_check_invalid_indexes();
 	yb_check_installed_extensions();
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
+		yb_check_anon_security_labels();
 	yb_check_pgcrypto_schema();
 	yb_check_yb_role_prefix();
 	yb_check_removed_renamed_catalog_acls();
@@ -1888,6 +1892,7 @@ yb_check_installed_extensions()
 {
 	int			dbnum;
 	bool		found = false;
+	bool		anon_found = false;
 	StringInfoData error_msg;
 	char		output_path[MAXPGPATH];
 	FILE	   *script = NULL;
@@ -1939,7 +1944,15 @@ yb_check_installed_extensions()
 								"'anon',"
 								"'cube',"
 								"'earthdistance',"
-								"'yb_ycql_utils')");
+								"'yb_ycql_utils') "
+								/*
+								 * anon 1.x is a C extension; 2.0 rewrote it on
+								 * pgrx with different C symbol names, so its
+								 * catalog objects cannot be restored against
+								 * the new anon.so.
+								 */
+								"OR (extname = 'anon' AND "
+								"split_part(extversion, '.', 1) IN ('0', '1'))");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 
@@ -1948,6 +1961,8 @@ yb_check_installed_extensions()
 			const char *extension_name = PQgetvalue(res, rowno, i_name);
 
 			found = true;
+			if (strcmp(extension_name, "anon") == 0)
+				anon_found = true;
 			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
 				pg_fatal("could not open file \"%s\": %s\n", output_path,
 						 strerror(errno));
@@ -1970,12 +1985,197 @@ yb_check_installed_extensions()
 				 "with YSQL major version upgrade. Please uninstall the extensions\n"
 				 "using DROP EXTENSION, and reinstall them after the upgrade. A list of\n"
 				 "extensions with problems is printed above and in the file:\n"
-				 "    %s\n\n", output_path);
+				 "    %s\n\n%s", output_path,
+				 anon_found ? yb_anon_upgrade_steps() : "");
 	}
 	else
 	{
 		check_ok();
 	}
+}
+
+/*
+ * The anon 1.x upgrade steps, shared by the extension check and the label
+ * check.  Outside --check mode the first refusal ends the run, so each check
+ * prints them; in --check mode both refuse in one run, so they are printed
+ * only once.  stop_dynamic_masking() finds the masked roles through their
+ * MASKED labels, which is why it comes before the labels are removed.
+ */
+static const char *
+yb_anon_upgrade_steps(void)
+{
+	static bool printed = false;
+
+	if (printed)
+		return "";
+	printed = true;
+	return
+		"anon 1.x cannot be upgraded in place. Before the upgrade, in this order:\n"
+		"  1. In every database that uses 1.x dynamic masking, run\n"
+		"     SELECT anon.stop_dynamic_masking();\n"
+		"     If it is skipped, the masking views and the masked roles'\n"
+		"     search_path survive the upgrade, and masked roles read unmasked\n"
+		"     data. It finds the masked roles through their labels, so run it\n"
+		"     before removing any label.\n"
+		"  2. Run DROP EXTENSION anon in every database that has it.\n"
+		"  3. Remove anon's security labels, which DROP EXTENSION keeps, with the\n"
+		"     statements the label check prints and writes to\n"
+		"     anon_security_labels.txt. Until all are removed, keep\n"
+		"     enable_pg_anonymizer on and every listed provider in\n"
+		"     anon.masking_policies (masking policies) or\n"
+		"     anon.k_anonymity_provider (k-anonymity) in ysql_pg_conf_csv on\n"
+		"     every tserver, and restart the tservers after changing it.\n"
+		"     anon 1.x registers providers only when its library is loaded,\n"
+		"     so SET and ALTER DATABASE do not register them.\n"
+		"After the upgrade, run CREATE EXTENSION anon, rewrite rules that call\n"
+		"functions 3.x no longer has, run anon_security_labels_restore.txt,\n"
+		"grant masked roles SELECT on the tables they read and on anon's fake\n"
+		"data tables, and turn on masking with\n"
+		"ALTER DATABASE <db> SET anon.transparent_dynamic_masking TO true.\n\n";
+}
+
+/*
+ * DROP EXTENSION anon keeps anon's security labels, and the binary-upgrade
+ * restore sets each one again.  anon checks a rule when its label is set, and
+ * anon is not installed yet at that point, so a rule that calls an anon
+ * function fails the restore with 'schema "anon" does not exist'.  Labels are
+ * not parsed here to find those rules; every label is refused, and the
+ * restore file puts them back after the upgrade.  Only PG11 sources are
+ * checked, because PG11 to PG15 is the only YSQL major upgrade.
+ *
+ * Every provider is reported: anon 1.x registers one per masking policy plus
+ * the k-anonymity provider, and the policies in effect now need not be the
+ * ones the labels were created with.  YB ships no other label provider.  The
+ * TRUSTED label that anon.init() puts on pg_catalog is skipped, as pg_dump
+ * does not dump labels on system schemas.  Labels on members of an extension
+ * (such as 1.x's TRUSTED label on schema anon) are skipped too: DROP EXTENSION
+ * removes them, and removing them by hand while anon 1.x is installed can fail
+ * in its trusted-schema event trigger.  pg_seclabels does not quote column
+ * names or providers, so they are quoted here.
+ */
+static void
+yb_check_anon_security_labels()
+{
+	int			dbnum;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	char		restore_path[MAXPGPATH];
+	FILE	   *script = NULL;
+	PQExpBufferData restore;
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "anon_security_labels.txt");
+	snprintf(restore_path, sizeof(restore_path), "%s/%s",
+			 log_opts.basedir,
+			 "anon_security_labels_restore.txt");
+	initPQExpBuffer(&restore);
+
+	prep_status("Checking for anon security labels");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_provider;
+		int			i_objtype;
+		int			i_objname;
+		int			i_label;
+		bool		db_used = false;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		res = executeQueryOrDie(conn,
+								"SELECT pg_catalog.quote_ident(l.provider) AS provider, "
+								"l.objtype, "
+								"CASE WHEN l.objtype = 'column' THEN "
+								"pg_catalog.quote_ident(n.nspname) || '.' || "
+								"pg_catalog.quote_ident(c.relname) || '.' || "
+								"pg_catalog.quote_ident(a.attname) "
+								"ELSE l.objname END AS objname, "
+								"pg_catalog.quote_literal(l.label) AS label "
+								"FROM pg_catalog.pg_seclabels l "
+								"LEFT JOIN pg_catalog.pg_attribute a "
+								"ON l.objtype = 'column' AND a.attrelid = l.objoid "
+								"AND a.attnum = l.objsubid "
+								"LEFT JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+								"LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+								"WHERE NOT (l.objtype = 'schema' AND l.objname = 'pg_catalog') "
+								"AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d "
+								"WHERE d.classid = l.classoid AND d.objid = l.objoid "
+								"AND d.deptype = 'e') "
+								/* Labels on shared objects show up in every database. */
+								"%s"
+								"ORDER BY 1, 2, 3",
+								dbnum == 0 ? "" :
+								"AND l.objtype NOT IN ('database', 'role', 'subscription', "
+								"'tablespace') ");
+		ntups = PQntuples(res);
+		i_provider = PQfnumber(res, "provider");
+		i_objtype = PQfnumber(res, "objtype");
+		i_objname = PQfnumber(res, "objname");
+		i_label = PQfnumber(res, "label");
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n", output_path,
+						 strerror(errno));
+			if (!db_used)
+			{
+				yb_fprintf_and_log(script, dbnum == 0 ?
+								   "In database: %s (and shared objects)\n" :
+								   "In database: %s\n",
+								   active_db->db_name);
+				yb_fprintf_and_log(script, "  \\c %s\n", active_db->db_name);
+				appendPQExpBuffer(&restore, "\\c %s\n", active_db->db_name);
+				db_used = true;
+			}
+			yb_fprintf_and_log(script, "  SECURITY LABEL FOR %s ON %s %s IS NULL;\n",
+							   PQgetvalue(res, rowno, i_provider),
+							   PQgetvalue(res, rowno, i_objtype),
+							   PQgetvalue(res, rowno, i_objname));
+			appendPQExpBuffer(&restore, "SECURITY LABEL FOR %s ON %s %s IS %s;\n",
+							  PQgetvalue(res, rowno, i_provider),
+							  PQgetvalue(res, rowno, i_objtype),
+							  PQgetvalue(res, rowno, i_objname),
+							  PQgetvalue(res, rowno, i_label));
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		FILE	   *restore_script;
+
+		if ((restore_script = fopen_priv(restore_path, "w")) == NULL)
+			pg_fatal("could not open file \"%s\": %s\n", restore_path,
+					 strerror(errno));
+		fputs(restore.data, restore_script);
+		fclose(restore_script);
+
+		yb_fatal("Your installation contains security labels from the anon\n"
+				 "extension that YSQL major version upgrade cannot restore. They are\n"
+				 "not removed by DROP EXTENSION anon. The statements that remove them\n"
+				 "are printed above and written to:\n"
+				 "    %s\n"
+				 "The statements that restore them after the upgrade are in:\n"
+				 "    %s\n\n%s", output_path, restore_path,
+				 yb_anon_upgrade_steps());
+	}
+	else
+	{
+		check_ok();
+	}
+
+	termPQExpBuffer(&restore);
 }
 
 /*

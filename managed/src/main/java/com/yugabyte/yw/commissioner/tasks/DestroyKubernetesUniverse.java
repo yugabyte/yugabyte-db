@@ -38,6 +38,8 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -47,6 +49,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 @Abortable
@@ -172,6 +175,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
               KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName());
       volumeDeletes.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
+      // Storage left in namespaces the provider sets, by releases no longer in the placement.
+      SubTaskGroup providerNamespaceVolumeDeletes = createProviderNamespaceVolumeDeletes(universe);
+
       SubTaskGroup namespaceDeletes =
           createSubTaskGroup(
               KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE.getSubTaskGroupName());
@@ -270,6 +276,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       getRunnableTask().addSubTaskGroup(namespacedServicesDelete);
       getRunnableTask().addSubTaskGroup(helmDeletes);
       getRunnableTask().addSubTaskGroup(volumeDeletes);
+      getRunnableTask().addSubTaskGroup(providerNamespaceVolumeDeletes);
       getRunnableTask().addSubTaskGroup(namespaceDeletes);
 
       // Create tasks to remove the universe entry from the Universe table.
@@ -317,6 +324,65 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     log.info("Finished {} task.", getName());
   }
 
+  /**
+   * Creates one VOLUME_DELETE per namespace that the universe's providers set on zones outside the
+   * placement, covering the releases this universe could have had in those zones. Zones in the
+   * placement are deleted by the regular VOLUME_DELETE, and zones without a set namespace by the
+   * namespace delete.
+   */
+  private SubTaskGroup createProviderNamespaceVolumeDeletes(Universe universe) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE.getSubTaskGroupName(),
+            UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Map<List<String>, KubernetesCommandExecutor.Params> paramsByNamespace = new LinkedHashMap<>();
+    for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
+      Provider provider = Util.getSingleProvider(cluster);
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+      boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+      Set<UUID> placementAZs = KubernetesUtil.getConfigPerAZ(cluster.placementInfo).keySet();
+      for (Entry<UUID, Map<String, String>> entry :
+          KubernetesUtil.getConfigPerProviderZone(provider).entrySet()) {
+        Map<String, String> config = entry.getValue();
+        String namespace = config.get("KUBENAMESPACE");
+        if (placementAZs.contains(entry.getKey()) || StringUtils.isBlank(namespace)) {
+          continue;
+        }
+        String azName =
+            isMultiAz ? AvailabilityZone.getOrBadRequest(entry.getKey()).getCode() : null;
+        KubernetesCommandExecutor.Params params =
+            paramsByNamespace.computeIfAbsent(
+                List.of(config.get("KUBECONFIG"), namespace),
+                k -> {
+                  KubernetesCommandExecutor.Params p = new KubernetesCommandExecutor.Params();
+                  p.commandType = KubernetesCommandExecutor.CommandType.VOLUME_DELETE;
+                  p.providerUUID = provider.getUuid();
+                  p.universeName = universe.getName();
+                  p.config = config;
+                  p.namespace = namespace;
+                  p.helmReleaseNames = new LinkedHashSet<>();
+                  p.isForceDelete = params().isForceDelete;
+                  p.setUniverseUUID(universe.getUniverseUUID());
+                  return p;
+                });
+        params.helmReleaseNames.add(
+            KubernetesUtil.getHelmReleaseName(
+                universeDetails.nodePrefix,
+                universe.getName(),
+                azName,
+                isReadOnlyCluster,
+                universeDetails.useNewHelmNamingStyle));
+      }
+    }
+    for (KubernetesCommandExecutor.Params params : paramsByNamespace.values()) {
+      KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+      task.initialize(params);
+      subTaskGroup.addSubTask(task);
+    }
+    return subTaskGroup;
+  }
+
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
       String nodePrefix,
       String universeName,
@@ -332,6 +398,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.universeName = universeName;
     params.azCode = az;
+    params.isForceDelete = params().isForceDelete;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);

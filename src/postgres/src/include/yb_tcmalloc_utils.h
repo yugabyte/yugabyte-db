@@ -26,6 +26,10 @@
 
 extern int	yb_log_heap_snapshot_on_exit_threshold;
 extern int	yb_startup_free_memory_release_threshold;
+extern int	yb_tcmalloc_skip_subrelease_short_interval;
+extern int	yb_tcmalloc_skip_subrelease_long_interval;
+extern bool yb_tcmalloc_release_after_statement;
+extern bool yb_tcmalloc_drain_cpu_caches_after_statement;
 
 /*
  * Handle and process logging of heap snapshot interrupt.
@@ -40,5 +44,7 @@ extern void ProcessLogHeapSnapshotInterrupt(void);
 extern void YbSetupHeapSnapshotProcExit(void);
 
 extern void YbReleaseFreeMemoryAfterStartup(void);
+
+extern void YbReleaseTCMallocMemoryAfterStatement(void);
 
 #endif							/* YB_TCMALLOC_UTILS_H */

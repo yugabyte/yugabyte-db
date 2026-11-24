@@ -7,7 +7,7 @@
  * Scalable PostgreSQL connection pooler.
  */
 
-void od_dbg_printf(char *fmt, ...);
+void od_dbg_printf(char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 #define OD_RELEASE_MODE -1
 

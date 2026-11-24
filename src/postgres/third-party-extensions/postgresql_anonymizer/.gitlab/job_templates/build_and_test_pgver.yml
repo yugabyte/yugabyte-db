@@ -1,0 +1,153 @@
+---
+spec:
+  inputs:
+    always:    # Optional
+      type: string
+      default: ''
+      description: |
+        If the variable is defined, then all the jobs are launched in any case.
+        Usually you'd want at least 1 major version to be built/tested on all
+        pipelines.
+    pgver:     # Mandatory
+      type: string
+      description: |
+        The PostgreSQL major version with the "pg" prefix
+        (e.g. `pg13`, pg16`, etc.).
+    pgrx_image_tag:
+      type: string
+      # We need to build against the oldest GLIBC available, so we're currenty using a rockylinux8 image
+      default: "@sha256:52e83a7e3c77f71937097026f286cff0d7c8adac104ab88cd036490580eb6d33"
+      description: |
+        Version of docker image used to build and test the extension.
+        Prefixed with ':' or '@'
+
+---
+
+##
+## B U I L D
+##
+
+# `cargo pgrx test` will :
+#    - build the extension
+#    - launch a Postgres instance
+#    - run the unit tests against it
+#
+# The functional tests will be launched later with pg_regress
+#
+"build-$[[ inputs.pgver ]]":
+  stage: build
+  image: dalibo/buildpack-rust-postgres$[[ inputs.pgrx_image_tag ]]
+  variables:
+    PGVER: $[[ inputs.pgver ]]
+    ALWAYS: $[[ inputs.always ]]
+  script:
+    # lint only for the default PG version
+    - test -z "${ALWAYS}" || make lint-rs
+    # Build the extension package
+    - make
+    # Launch a postgres instance and run the unit tests
+    # The functional tests will be launched later with pg_regress
+    - make test
+    # At this point we can build the packages too
+    - make deb
+    - make rpm
+  rules:
+    - if: $ALWAYS
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  artifacts:
+    paths:
+      - target/release/anon-$[[ inputs.pgver ]]
+    expire_in: 1 day
+
+#
+# Build on ARM
+#
+"build-$[[ inputs.pgver ]]-arm":
+  stage: build
+  tags:
+    - arm
+  image: dalibo/buildpack-rust-postgres$[[ inputs.pgrx_image_tag ]]
+  variables:
+    PGVER: $[[ inputs.pgver ]]
+    ALWAYS: $[[ inputs.always ]]
+    ARCH: arm64
+  script:
+    - make
+    - make test
+    - make deb rpm
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: always
+    - if: $ALWAYS
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+  when: manual
+  artifacts:
+    paths:
+      - target/release/anon-$[[ inputs.pgver ]]
+    expire_in: 1 day
+
+##
+## T E S T
+##
+
+#
+# Installcheck-pg13 will :
+#   - install the binaries from the build job
+#   - start a postgres instance
+#   - run the functional tests with pg_regress
+#
+"installcheck-$[[ inputs.pgver ]]":
+  stage: test
+  dependencies:
+    - build-$[[ inputs.pgver ]]
+  image: dalibo/buildpack-rust-postgres$[[ inputs.pgrx_image_tag ]]
+  variables:
+    PGVER: $[[ inputs.pgver ]]
+    ALWAYS: $[[ inputs.always ]]
+  script:
+    - make install
+    - make installcheck
+  rules:
+    - if: $ALWAYS
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG
+  artifacts:
+    paths:
+      - target/release/anon-$[[ inputs.pgver ]]
+      - results
+    expire_in: 1 day
+
+##
+## D E P L O Y
+##
+
+release_and_upload:
+  stage: deploy
+  image: gitlab/glab:latest
+  rules:
+    - if: $CI_COMMIT_TAG      # Run this job when a tag is created
+  script:
+    #
+    # CHANGELOG parsing to produce the release note:
+    #   - finds the first version header
+    #   - prints everything until the second one
+    #   - Keep the first H2 title
+    #
+    - CHANGES=`awk '/^[0-9]{8} :/{found++; if(found==2) exit} found==1{if(/^[0-9]{8} :/) print "## " $0; else print}' CHANGELOG.md | sed '/^-\{3,\}$/d'`
+    # Create the Release
+    # /!\ We can't use --job-token for this, we need to create a secret variable
+    - glab auth login --token ${GLAB_TOKEN}
+    - glab release create ${CI_COMMIT_REF_NAME} --ref ${CI_COMMIT_BRANCH:-latest} --notes "${CHANGES}"
+    # Upload the artefacts in the package registry
+    - |
+      for file in $(find ./target/release -name '*.deb' -or -name '*.rpm' ); do
+        glab release upload ${CI_COMMIT_REF_NAME} $file --use-package-registry
+      done

@@ -25,15 +25,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/util/crc.h"
+
 namespace rocksdb {
 namespace crc32c {
-
-extern bool IsFastCrc32Supported();
 
 // Return the crc32c of concat(A, data[0,n-1]) where init_crc is the
 // crc32c of some string A.  Extend() is often used to maintain the
 // crc32c of a stream of data.
-uint32_t Extend(uint32_t init_crc, const char* data, size_t n);
+inline uint32_t Extend(uint32_t init_crc, const char* data, size_t n) {
+  return yb::crc::Crc32cExtend(init_crc, data, n);
+}
 
 inline uint32_t Extend(uint32_t crc, const uint8_t* buf, size_t size) {
   return Extend(crc, reinterpret_cast<const char*>(buf), size);

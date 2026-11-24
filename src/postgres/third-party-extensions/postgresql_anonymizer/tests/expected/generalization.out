@@ -190,11 +190,14 @@ SELECT anon.generalize_tsrange('19041107','millennium');
  ["Thu Jan 01 00:00:00 1001","Mon Jan 01 00:00:00 2001")
 (1 row)
 
+-- Define the timezone to avoid the LMT/PST issue
+-- https://gitlab.com/dalibo/postgresql_anonymizer/-/commit/199f0a392b37c59d92ae441fb8f037e094a11a52#note_2148017485
+SET TIME ZONE 'UTC';
 -- generalize_tstzrange
 SELECT anon.generalize_tstzrange('19041107');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Jan 01 00:00:00 1900 PST","Sat Jan 01 00:00:00 1910 PST")
+ ["Mon Jan 01 00:00:00 1900 UTC","Sat Jan 01 00:00:00 1910 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange(NULL);
@@ -218,73 +221,73 @@ SELECT anon.generalize_tstzrange(NULL,NULL);
 SELECT anon.generalize_tstzrange('19041107','microsecond');
                           generalize_tstzrange                          
 ------------------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:00.000001 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 07 00:00:00.000001 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','millisecond');
                         generalize_tstzrange                         
 ---------------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:00.001 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 07 00:00:00.001 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','second');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:00:01 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 07 00:00:01 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','minute');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 00:01:00 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 07 00:01:00 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','hour');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 07 01:00:00 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 07 01:00:00 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','day');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Tue Nov 08 00:00:00 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Tue Nov 08 00:00:00 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','week');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Nov 07 00:00:00 1904 PST","Mon Nov 14 00:00:00 1904 PST")
+ ["Mon Nov 07 00:00:00 1904 UTC","Mon Nov 14 00:00:00 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','month');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Tue Nov 01 00:00:00 1904 PST","Thu Dec 01 00:00:00 1904 PST")
+ ["Tue Nov 01 00:00:00 1904 UTC","Thu Dec 01 00:00:00 1904 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','year');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Fri Jan 01 00:00:00 1904 PST","Sun Jan 01 00:00:00 1905 PST")
+ ["Fri Jan 01 00:00:00 1904 UTC","Sun Jan 01 00:00:00 1905 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','decade');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Mon Jan 01 00:00:00 1900 PST","Sat Jan 01 00:00:00 1910 PST")
+ ["Mon Jan 01 00:00:00 1900 UTC","Sat Jan 01 00:00:00 1910 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','century');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Tue Jan 01 00:00:00 1901 PST","Mon Jan 01 00:00:00 2001 PST")
+ ["Tue Jan 01 00:00:00 1901 UTC","Mon Jan 01 00:00:00 2001 UTC")
 (1 row)
 
 SELECT anon.generalize_tstzrange('19041107','millennium');
                       generalize_tstzrange                       
 -----------------------------------------------------------------
- ["Thu Jan 01 00:00:00 1001 PST","Mon Jan 01 00:00:00 2001 PST")
+ ["Thu Jan 01 00:00:00 1001 UTC","Mon Jan 01 00:00:00 2001 UTC")
 (1 row)
 
 -- generalize_daterange

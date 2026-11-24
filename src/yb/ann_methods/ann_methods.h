@@ -54,7 +54,7 @@ struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
   static Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> CreateIndexTraits(
       const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
     return CreateHnswlibIndexTraits<Vector, DistanceResult>(
-        block_cache, options, /* mem_tracker= */ nullptr);
+        block_cache, options, /* mem_tracker= */ nullptr, /* tenant_extractor= */ nullptr);
   }
 };
 

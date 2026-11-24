@@ -214,6 +214,12 @@ class Operation {
     return false;
   }
 
+  // Whether no client waits on this op, so raft may hold back sending it to followers in the hope
+  // that a later op carries it. See raft_deferred_update_delay_ms.
+  virtual bool replication_deferrable() const {
+    return false;
+  }
+
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.

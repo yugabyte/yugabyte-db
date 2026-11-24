@@ -340,6 +340,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void ClearRocksDBCache(const ClearRocksDBCacheRequestPB* req,
+                         ClearRocksDBCacheResponsePB* resp,
+                         rpc::RpcContext context) override;
+
   void AddTableToTablet(const AddTableToTabletRequestPB* req,
                         AddTableToTabletResponsePB* resp,
                         rpc::RpcContext context) override;
@@ -365,6 +369,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  // Called on the index table once a nonconcurrently built index's CREATE INDEX commits.
+  void MarkNonConcurrentIndexDone(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
@@ -432,6 +441,11 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   Status DoEnableDbConns(
       const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
+
+  // Submits a change metadata operation for req on the tablet leader, responding asynchronously.
+  void SubmitChangeMetadataOnLeader(
+      const char* method_name, const tablet::ChangeMetadataRequestPB* req,
+      ChangeMetadataResponsePB* resp, rpc::RpcContext* context);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

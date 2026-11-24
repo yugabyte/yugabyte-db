@@ -5,16 +5,25 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
+import com.jayway.jsonpath.JsonPath;
+import com.yugabyte.yw.commissioner.tasks.LdapUnivSync;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import play.libs.Json;
 
 public class RedactingServiceTest {
@@ -111,21 +120,90 @@ public class RedactingServiceTest {
     assertEquals(SECRET_REPLACEMENT, redacted.get("ycql_ldap_bind_passwd").asText());
   }
 
+  @Test
+  public void testStorageRedactionKeepsSensitiveGFlags() {
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    ObjectNode gflags = mapper.createObjectNode();
+    gflags.put("ycql_ldap_bind_passwd", "ycql-ldap-secret");
+    gflags.put("ysql_hba_conf_csv", hba);
+    ObjectNode userIntent = mapper.createObjectNode();
+    userIntent.put("ysqlPassword", "ysql-secret");
+    userIntent.put("ycqlPassword", "ycql-secret");
+    userIntent.set("tserverGFlags", gflags);
+    userIntent
+        .putObject("specificGFlags")
+        .putObject("perProcessFlags")
+        .putObject("value")
+        .set("TSERVER", gflags.deepCopy());
+    ObjectNode details = mapper.createObjectNode();
+    details.putArray("clusters").addObject().set("userIntent", userIntent);
+
+    // Runs without an injector, so this also fails if storage redaction starts reading runtime
+    // config.
+    JsonNode stored = RedactingService.filterSecretFieldsForStorage(details);
+    JsonNode storedIntent = stored.at("/clusters/0/userIntent");
+    assertEquals(SECRET_REPLACEMENT, storedIntent.get("ysqlPassword").asText());
+    assertEquals(SECRET_REPLACEMENT, storedIntent.get("ycqlPassword").asText());
+    for (JsonNode storedGFlags :
+        List.of(
+            storedIntent.get("tserverGFlags"),
+            storedIntent.at("/specificGFlags/perProcessFlags/value/TSERVER"))) {
+      assertEquals("ycql-ldap-secret", storedGFlags.get("ycql_ldap_bind_passwd").asText());
+      assertEquals(hba, storedGFlags.get("ysql_hba_conf_csv").asText());
+    }
+    assertEquals("ysql-secret", details.at("/clusters/0/userIntent/ysqlPassword").asText());
+
+    // The same gflags are redacted for API responses.
+    JsonNode api =
+        RedactingService.filterSecretFields(details, RedactionTarget.APIS, null, null, true);
+    JsonNode apiGFlags = api.at("/clusters/0/userIntent/tserverGFlags");
+    assertEquals(SECRET_REPLACEMENT, apiGFlags.get("ycql_ldap_bind_passwd").asText());
+    assertFalse(apiGFlags.get("ysql_hba_conf_csv").asText().contains("hba-secret"));
+  }
+
+  @Test
+  public void testStorageAndApiRedactionRedactLdapUnivSyncDbuserPassword() {
+    LdapUnivSyncFormData formData = new LdapUnivSyncFormData();
+    formData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
+    formData.setDbUser("yugabyte");
+    formData.setDbuserPassword("db-secret");
+    LdapUnivSync.Params params = new LdapUnivSync.Params();
+    params.ldapUnivSyncFormData = formData;
+    JsonNode paramsJson = Json.toJson(params);
+
+    JsonNode stored = RedactingService.filterSecretFieldsForStorage(paramsJson);
+    assertEquals(SECRET_REPLACEMENT, stored.at("/ldapUnivSyncFormData/dbuserPassword").asText());
+    assertEquals("yugabyte", stored.at("/ldapUnivSyncFormData/dbUser").asText());
+
+    JsonNode api =
+        RedactingService.filterSecretFields(paramsJson, RedactionTarget.APIS, null, null, false);
+    assertEquals(SECRET_REPLACEMENT, api.at("/ldapUnivSyncFormData/dbuserPassword").asText());
+  }
+
   // Test for API responses YSQL HBA conf csv parsing and redaction through regexes
   @Test
   public void testFilterSecretFieldsApisYsqlHbaConfLdapbindpasswd() {
     ObjectNode root = mapper.createObjectNode();
     String hbaEarlyPasswd =
-        "host all all 0.0.0.0/0 ldap ldapbindpasswd=Two Word Secret ldapbinddn=\"\"CN=x,DC=y\"\""
-            + " ldapserver=ldap.example.com ldaptls=0";
+        "\"host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"Two Word Secret\"\""
+            + " ldapbinddn=\"\"CN=x,DC=y\"\" ldapserver=ldap.example.com ldaptls=0\"";
     root.put("ysql_hba_conf_csv", hbaEarlyPasswd);
     JsonNode out =
         RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
-    String redacted = out.get("ysql_hba_conf_csv").asText();
-    assertFalse(redacted.contains("Two Word Secret"));
-    assertTrue(redacted.contains("ldapbinddn"));
-    assertTrue(redacted.contains("CN=x"));
-    assertTrue(redacted.contains("ldapserver=ldap.example.com"));
+    assertEquals(
+        hbaEarlyPasswd.replace("Two Word Secret", SECRET_REPLACEMENT),
+        out.get("ysql_hba_conf_csv").asText());
+
+    // Unquoted, the password ends at the space and Postgres rejects the line, so the rest of the
+    // line is hidden too.
+    root.put(
+        "ysql_hba_conf_csv",
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=Two Word Secret ldaptls=0,local all all trust");
+    out = RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED,local all all trust",
+        out.get("ysql_hba_conf_csv").asText());
 
     // Password last on the line (still under ysql_hba_conf_csv)
     ObjectNode root2 = mapper.createObjectNode();
@@ -321,14 +399,16 @@ public class RedactingServiceTest {
             + "ldapbindpasswd=MyPassword123 "
             + "ldapbasedn=\"\"dc=example,dc=com\"\" ldapsearchattribute=uid\"";
     String redacted8 = RedactingService.redactSensitiveInfoInString(csvDoubleQuoteEscaped);
-    assertFalse("Password should be redacted", redacted8.contains("MyPassword123"));
-    assertTrue("Should contain REDACTED", redacted8.contains("REDACTED"));
-    // Crucially: ldapbasedn should NOT be eaten by the regex
-    assertTrue(
-        "ldapbasedn should be preserved",
-        redacted8.contains("ldapbasedn=\"\"dc=example,dc=com\"\""));
-    assertTrue(
-        "ldapsearchattribute should be preserved", redacted8.contains("ldapsearchattribute=uid"));
+    // Free text has nothing to tell where the password ends, so the rest of the line goes too.
+    assertEquals(
+        csvDoubleQuoteEscaped.substring(0, csvDoubleQuoteEscaped.indexOf("MyPassword123"))
+            + SECRET_REPLACEMENT,
+        redacted8);
+    // A gflag line is redacted like the gflag value.
+    String gflagLine = "--ysql_hba_conf_csv=" + csvDoubleQuoteEscaped;
+    assertEquals(
+        gflagLine.replace("MyPassword123", SECRET_REPLACEMENT),
+        RedactingService.redactSensitiveInfoInString(gflagLine));
   }
 
   @Test
@@ -372,7 +452,7 @@ public class RedactingServiceTest {
             + " ldapsearchattribute=\"\"all\"\" ldaptls=0";
     String redacted = RedactingService.redactSensitiveInfoInString(hbaCsv);
     assertFalse(redacted.contains(")L=1AW*&@|~]))"));
-    assertTrue(redacted.contains("ldapbindpasswd=\"\"" + SECRET_REPLACEMENT + "\"\""));
+    assertTrue(redacted.endsWith(" ldapbindpasswd=" + SECRET_REPLACEMENT));
     assertTrue(redacted.contains("OU=TRY")); // non-secret doubled-quote fields unchanged
   }
 
@@ -383,9 +463,7 @@ public class RedactingServiceTest {
     String hba =
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"\"p\"\"a\"\"ss\"\" ldapsearchattribute=x";
     String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains("p\"a\"ss"));
-    assertTrue(redacted.contains("ldapbindpasswd=\"\"" + SECRET_REPLACEMENT + "\"\""));
-    assertTrue(redacted.contains("ldapsearchattribute=x"));
+    assertEquals("host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT, redacted);
   }
 
   @Test
@@ -393,9 +471,7 @@ public class RedactingServiceTest {
     // Logical password p"a"ss between one pair of outer double quotes
     String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"p\"\"a\"\"ss\" ldapport=636";
     String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains("p\"a\"ss"));
-    assertTrue(redacted.contains("ldapbindpasswd=\"" + SECRET_REPLACEMENT + "\""));
-    assertTrue(redacted.contains("ldapport=636"));
+    assertEquals("host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT, redacted);
   }
 
   @Test
@@ -407,9 +483,11 @@ public class RedactingServiceTest {
             + pwd
             + " ldapsearchattribute=\"\"all\"\" ldaptls=0";
     String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains(pwd));
-    assertTrue(redacted.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
-    assertTrue(redacted.contains("ldapsearchattribute"));
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapserver=server.server.com ldapbinddn=\"\"CN=u\"\" "
+            + "ldapbindpasswd="
+            + SECRET_REPLACEMENT,
+        redacted);
   }
 
   /** Comma in unquoted password must not eat the next record (hostssl, hostnossl, ...). */
@@ -418,10 +496,11 @@ public class RedactingServiceTest {
     String pwd = "a,b";
     String hba =
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + pwd + ",hostssl all all 127.0.0.1/32 trust";
-    String redacted = RedactingService.redactSensitiveInfoInString(hba);
-    assertFalse(redacted.contains("a,b"));
-    assertTrue(redacted.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
-    assertTrue(redacted.contains("hostssl all all 127.0.0.1/32 trust"));
+    // The comma splits the CSV field, and b becomes a line of its own that isn't a rule.
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED,REDACTED,"
+            + "hostssl all all 127.0.0.1/32 trust",
+        RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hba));
   }
 
   @Test
@@ -430,8 +509,7 @@ public class RedactingServiceTest {
     String jsonEscaped =
         "host all yugabyte all ldap ldapbindpasswd=\\\"\\\"secretPwd123\\\"\\\" ldaptls=0";
     String redacted = RedactingService.redactSensitiveInfoInString(jsonEscaped);
-    assertFalse(redacted.contains("secretPwd123"));
-    assertTrue(redacted.contains("ldapbindpasswd=\\\"\\\"" + SECRET_REPLACEMENT + "\\\"\\\""));
+    assertEquals("host all yugabyte all ldap ldapbindpasswd=" + SECRET_REPLACEMENT, redacted);
   }
 
   @Test
@@ -440,20 +518,19 @@ public class RedactingServiceTest {
     String deep =
         "e,DC=two,DC=three ldapbindpasswd=\\\\\"\\\\\"nestedSecret\\\\\"\\\\\" ldapport=696";
     String redacted = RedactingService.redactSensitiveInfoInString(deep);
-    assertFalse(redacted.contains("nestedSecret"));
-    assertTrue(
-        redacted.contains("ldapbindpasswd=\\\\\"\\\\\"" + SECRET_REPLACEMENT + "\\\\\"\\\\\""));
+    assertEquals("e,DC=two,DC=three ldapbindpasswd=" + SECRET_REPLACEMENT, redacted);
   }
 
-  /** Redacted JSON must still parse (no broken backslashes in string values). */
+  /** JSON is redacted as a tree, so it stays valid and only the password is hidden. */
   @Test
   public void testRedactLdapInJsonEscapedDoubleQuotesStillParses() {
     String json =
         "{\"clusters\":[{\"userIntent\":{\"tserverGFlags\":{\"ysql_hba_conf_csv\":\"host all"
             + " ldapbindpasswd=\\\"\\\"secret123\\\"\\\"\"}}}]}";
-    String redacted = RedactingService.redactSensitiveInfoInString(json);
-    assertFalse(redacted.contains("secret123"));
-    Json.parse(redacted); // must remain valid JSON
+    JsonNode redacted = RedactingService.redactSensitiveGFlagFields(Json.parse(json));
+    assertEquals(
+        "host all ldapbindpasswd=\"\"" + SECRET_REPLACEMENT + "\"\"",
+        redacted.at("/clusters/0/userIntent/tserverGFlags/ysql_hba_conf_csv").asText());
   }
 
   /** Deep JSON escaping of doubled-csv hba inside ysql_hba_conf_csv still redacts and parses. */
@@ -479,10 +556,10 @@ public class RedactingServiceTest {
     json.append("\"}");
     String jsonStr = json.toString();
 
-    String redacted = RedactingService.redactSensitiveInfoInString(jsonStr);
-    assertFalse(redacted.contains(")L=1AW*&@|~]))"));
-    assertTrue(redacted.contains(SECRET_REPLACEMENT));
-    Json.parse(redacted);
+    JsonNode redacted = RedactingService.redactSensitiveGFlagFields(Json.parse(jsonStr));
+    assertEquals(
+        "local trust,ldapbindpasswd=" + SECRET_REPLACEMENT + " ldapsearchattribute=x",
+        redacted.get("ysql_hba_conf_csv").asText());
   }
 
   /**
@@ -551,10 +628,10 @@ public class RedactingServiceTest {
     String redactedNoLdap = RedactingService.redactSensitiveInfoInString(noLdap);
     assertEquals(noLdap, redactedNoLdap);
 
-    // Strings with partial matches (should not redact)
+    // Free text can't tell an option name from a longer word, so any ldapbindpasswd counts.
     String partialMatch = "ldapbindpasswd_partial=value";
     String redactedPartial = RedactingService.redactSensitiveInfoInString(partialMatch);
-    assertTrue(redactedPartial.contains("value")); // Should not be redacted
+    assertEquals("ldapbindpasswd" + SECRET_REPLACEMENT, redactedPartial);
   }
 
   @Test
@@ -583,6 +660,89 @@ public class RedactingServiceTest {
     String redactedLogLine = RedactingService.redactSensitiveInfoInString(logLineFromShell);
     assertFalse(redactedLogLine.contains("passw123"));
     assertTrue(redactedLogLine.contains("REDACTED"));
+  }
+
+  private static final String YAML_OVERRIDES =
+      "gflags:\n"
+          + "  tserver:\n"
+          + "    ycql_ldap_bind_passwd: plainSecret\n"
+          + "      foldedSecret\n"
+          + "    webserver_port: 9100\n"
+          + "  master:\n"
+          + "    ycql_ldap_bind_passwd: \"dq \\\"Secret\\\"\"\n"
+          + "    ldapBindPassword: 'sq ''Secret'''\n"
+          + "    ldapServiceAccountPassword: |\n"
+          + "      blockSecret\n"
+          + "      blockSecret2\n"
+          + "    ysql_enable_auth: true\n"
+          + "  - ycql_ldap_bind_passwd:\n"
+          + "      nextLineSecret\n"
+          + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd=hbaSecret"
+          + " ldapserver=ldap.example.com\"\n";
+
+  private static final String YAML_OVERRIDES_REDACTED =
+      "gflags:\n"
+          + "  tserver:\n"
+          + "    ycql_ldap_bind_passwd: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    webserver_port: 9100\n"
+          + "  master:\n"
+          + "    ycql_ldap_bind_passwd: \""
+          + SECRET_REPLACEMENT
+          + "\"\n"
+          + "    ldapBindPassword: '"
+          + SECRET_REPLACEMENT
+          + "'\n"
+          + "    ldapServiceAccountPassword: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    ysql_enable_auth: true\n"
+          + "  - ycql_ldap_bind_passwd: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+          + SECRET_REPLACEMENT
+          + "\n";
+
+  @Test
+  public void testRedactsYamlKeyValue() {
+    assertEquals(
+        YAML_OVERRIDES_REDACTED, RedactingService.redactSensitiveInfoInString(YAML_OVERRIDES));
+    assertEquals(
+        YAML_OVERRIDES_REDACTED,
+        RedactingService.redactSensitiveInfoInString(YAML_OVERRIDES_REDACTED));
+    // The backslash and n are part of the password, not a line break.
+    assertEquals(
+        "    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
+        RedactingService.redactSensitiveInfoInString("    ycql_ldap_bind_passwd: before\\nafter"));
+  }
+
+  @Test(timeout = 10_000)
+  public void testYamlRedactionStaysLinearWithManyValuesOnOneLine() {
+    StringBuilder line = new StringBuilder();
+    for (int i = 0; i < 40_000; i++) {
+      line.append("ycql_ldap_bind_passwd: \"v\" ");
+    }
+    assertFalse(RedactingService.redactSensitiveInfoInString(line.toString()).contains("\"v\""));
+  }
+
+  @Test
+  public void testLogsRedactionRedactsYamlOverridesInsideJson() {
+    ObjectNode payload = Json.newObject();
+    payload.put("universeOverrides", YAML_OVERRIDES);
+    payload.putObject("azOverrides").put("az-1", "ycql_ldap_bind_passwd: azSecret");
+    payload.put("upgradeOption", "Rolling");
+
+    JsonNode redacted =
+        RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, false);
+
+    assertFalse(redacted.has("_redactionParseError"));
+    assertEquals(YAML_OVERRIDES_REDACTED, redacted.get("universeOverrides").asText());
+    assertEquals(
+        "ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
+        redacted.get("azOverrides").get("az-1").asText());
+    assertEquals("Rolling", redacted.get("upgradeOption").asText());
   }
 
   @Test
@@ -682,6 +842,264 @@ public class RedactingServiceTest {
     assertEquals(SECRET_REPLACEMENT, redactedFlag.get("new").asText());
   }
 
+  @Test
+  public void testFilterSecretFieldsForLogsRedactsBareAuditGFlagChanges() {
+    ObjectNode details = Json.newObject();
+    ArrayNode tserver = details.putObject("gflags").putArray("tserver");
+    tserver
+        .addObject()
+        .put("name", "ycql_ldap_bind_passwd")
+        .put("old", "oldSecret")
+        .put("new", "newSecret")
+        .put("default", "defaultSecret");
+    tserver
+        .addObject()
+        .put("name", "ysql_hba_conf_csv")
+        .put("old", "host all all 0.0.0.0/0 ldap ldapbindpasswd=oldHba ldaptls=0")
+        .put("new", "host all all 0.0.0.0/0 ldap ldapbindpasswd=newHba ldaptls=0");
+    tserver.addObject().put("name", "webserver_port").put("old", "9000").put("new", "9100");
+    details
+        .putObject("readonly_cluster_gflags")
+        .putArray("master")
+        .addObject()
+        .put("name", "ycql_ldap_bind_passwd")
+        .putNull("old")
+        .put("new", "readReplicaSecret");
+    ObjectNode original = details.deepCopy();
+
+    JsonNode redacted =
+        RedactingService.filterSecretFields(details, RedactionTarget.LOGS, null, null, true);
+
+    assertEquals(original, details);
+    JsonNode ycql = redacted.get("gflags").get("tserver").get(0);
+    assertEquals(SECRET_REPLACEMENT, ycql.get("old").asText());
+    assertEquals(SECRET_REPLACEMENT, ycql.get("new").asText());
+    assertEquals(SECRET_REPLACEMENT, ycql.get("default").asText());
+    JsonNode hba = redacted.get("gflags").get("tserver").get(1);
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+        hba.get("old").asText());
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+        hba.get("new").asText());
+    assertEquals(
+        original.get("gflags").get("tserver").get(2), redacted.get("gflags").get("tserver").get(2));
+    JsonNode readReplicaYcql = redacted.get("readonly_cluster_gflags").get("master").get(0);
+    assertTrue(readReplicaYcql.get("old").isNull());
+    assertEquals(SECRET_REPLACEMENT, readReplicaYcql.get("new").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsForLogsReplacesFallbackNamingLdapGFlag() {
+    for (String name :
+        List.of(
+            "ycql_ldap_bind_passwd",
+            "ysql_hba_conf_csv",
+            "ycql-ldap-bind-passwd",
+            "ysql-hba-conf-csv")) {
+      ObjectNode fallback =
+          Json.newObject()
+              .put("_redactionParseError", true)
+              .put(
+                  "_redactedPayload",
+                  "{\"gflags\":{\"tserver\":[{\"name\":\"" + name + "\",\"old\":\"secret\"");
+      assertEquals(
+          SECRET_REPLACEMENT,
+          RedactingService.filterSecretFields(fallback, RedactionTarget.LOGS, null, null, true)
+              .get("_redactedPayload")
+              .asText());
+    }
+
+    ObjectNode otherFallback =
+        Json.newObject()
+            .put("_redactionParseError", true)
+            .put("_redactedPayload", "{\"gflags\":{\"tserver\":[{\"name\":\"webserver_port\"");
+    assertEquals(
+        otherFallback,
+        RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
+  }
+
+  /** gflags reads a dash in a flag name as an underscore, so these name the same secrets. */
+  @Test
+  public void testSensitiveGFlagNamesWithDashes() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pw ldaptls=0";
+    String redactedHba =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0";
+
+    ObjectNode gflags =
+        Json.newObject()
+            .put("ycql-ldap-bind-passwd", "dummy-ycql-pw")
+            .put("ycql_ldap-bind_passwd", "dummy-mixed-pw")
+            .put("ysql-hba-conf-csv", hba)
+            .put("webserver-port", "9000");
+    ObjectNode details = Json.newObject();
+    ArrayNode changes = details.putObject("gflags").putArray("tserver");
+    changes.addObject().put("name", "ycql-ldap-bind-passwd").put("new", "dummy-ycql-pw");
+    changes.addObject().put("name", "ysql-hba-conf-csv").put("new", hba);
+    changes.addObject().put("name", "webserver-port").put("new", "9000");
+    for (RedactionTarget target : List.of(RedactionTarget.APIS, RedactionTarget.LOGS)) {
+      JsonNode redacted = RedactingService.filterSecretFields(gflags, target, null, null, true);
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql-ldap-bind-passwd").asText());
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql_ldap-bind_passwd").asText());
+      assertEquals(target.name(), redactedHba, redacted.get("ysql-hba-conf-csv").asText());
+      assertEquals(target.name(), "9000", redacted.get("webserver-port").asText());
+
+      JsonNode redactedChanges =
+          RedactingService.filterSecretFields(details, target, null, null, true)
+              .get("gflags")
+              .get("tserver");
+      assertEquals(target.name(), SECRET_REPLACEMENT, redactedChanges.get(0).get("new").asText());
+      assertEquals(target.name(), redactedHba, redactedChanges.get(1).get("new").asText());
+      assertEquals(target.name(), "9000", redactedChanges.get(2).get("new").asText());
+    }
+
+    assertEquals(
+        Map.of(
+            "ycql-ldap-bind-passwd", SECRET_REPLACEMENT,
+            "ysql-hba-conf-csv", redactedHba,
+            "webserver-port", "9000"),
+        RedactingService.redactGFlags(
+            Map.of(
+                "ycql-ldap-bind-passwd", "dummy-ycql-pw",
+                "ysql-hba-conf-csv", hba,
+                "webserver-port", "9000"),
+            null,
+            null));
+    assertEquals(
+        List.of(
+            "yb-tserver",
+            "--ycql_ldap-bind_passwd=" + SECRET_REPLACEMENT,
+            "--ysql-hba-conf-csv=" + redactedHba),
+        RedactingService.redactGFlagCommand(
+            List.of(
+                "yb-tserver",
+                "--ycql_ldap-bind_passwd=dummy-ycql-pw",
+                "--ysql-hba-conf-csv=" + hba),
+            null,
+            null));
+    String text = "--ycql-ldap-bind-passwd=dummy-ycql-pw\n--webserver-port=9000";
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
+  /**
+   * A universe state transition delta holds a changed gflag's old and new values in an object. API
+   * redaction redacts ldapbindpasswd in each, however ysql_hba_conf_csv is spelled.
+   */
+  @Test
+  public void testHbaDeltaValuesForApisWithAnySpelling() {
+    String oldHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-old-pw ldaptls=0";
+    String newHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-new-pw ldaptls=1";
+    for (String name : List.of("ysql_hba_conf_csv", "ysql-hba-conf-csv", "ysql_hba-conf_csv")) {
+      ObjectNode delta = Json.newObject();
+      delta
+          .putObject("tserverGFlags")
+          .putObject(name)
+          .put("$oldValue", oldHba)
+          .put("$newValue", newHba)
+          .put("$deltaType", "REPLACE");
+      JsonNode values =
+          RedactingService.filterSecretFields(delta, RedactionTarget.APIS, null, null, true)
+              .get("tserverGFlags")
+              .get(name);
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+          values.get("$oldValue").asText());
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=1",
+          values.get("$newValue").asText());
+      assertEquals(name, "REPLACE", values.get("$deltaType").asText());
+    }
+  }
+
+  /** Text matches a gflag name spelled with any mix of dashes and underscores. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInText() {
+    String text =
+        "--ycql_ldap-bind_passwd=dummy-mixed-pw\n"
+            + "--ycql-ldap_bind-passwd=\"dummy-quoted-pw\"\n"
+            + "{\"ycql_ldap-bind_passwd\":\"dummy-json-pw\"}\n"
+            + "ycql-ldap-bind_passwd: dummy-yaml-pw\n"
+            + "--webserver-port=9000";
+    String want =
+        "--ycql_ldap-bind_passwd="
+            + SECRET_REPLACEMENT
+            + "\n--ycql-ldap_bind-passwd=\""
+            + SECRET_REPLACEMENT
+            + "\"\n{\"ycql_ldap-bind_passwd\":\""
+            + SECRET_REPLACEMENT
+            + "\"}\nycql-ldap-bind_passwd: "
+            + SECRET_REPLACEMENT
+            + "\n--webserver-port=9000";
+    assertEquals(want, RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(want, RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
+  }
+
+  /** JSON held in a text value matches a gflag name in any spelling, as the tree around it does. */
+  @Test
+  public void testSensitiveGFlagMixedSpellingInJsonText() {
+    ObjectNode payload =
+        Json.newObject()
+            .put(
+                "details",
+                "{\"ycql_ldap-bind_passwd\":\"dummy-mixed-pw\",\"webserver_port\":\"9000\"}");
+    JsonNode embedded =
+        Json.parse(
+            RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, true)
+                .get("details")
+                .asText());
+    assertEquals(SECRET_REPLACEMENT, embedded.get("ycql_ldap-bind_passwd").asText());
+    assertEquals("9000", embedded.get("webserver_port").asText());
+  }
+
+  /** Log redaction without a DB version knows a release's sensitive gflags by JSON path. */
+  @Test
+  public void testReleaseSensitiveGFlagPathsMatchDashedNames() {
+    Set<JsonPath> before = Set.copyOf(RedactingService.SECRET_JSON_PATHS_LOGS);
+    try {
+      RedactingService.addSensitiveGFlagPathsForLogs(Set.of("$..release_secret_flag"));
+      ObjectNode gflags =
+          Json.newObject()
+              .put("release_secret_flag", "dummy-pw")
+              .put("release-secret-flag", "dummy-pw")
+              .put("webserver-port", "9000");
+      JsonNode redacted =
+          RedactingService.filterSecretFields(gflags, RedactionTarget.LOGS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release_secret_flag").asText());
+      assertEquals(SECRET_REPLACEMENT, redacted.get("release-secret-flag").asText());
+      assertEquals("9000", redacted.get("webserver-port").asText());
+    } finally {
+      RedactingService.SECRET_JSON_PATHS_LOGS.retainAll(before);
+    }
+  }
+
+  @Test
+  public void testFilterSecretFieldsForLogsKeepsStringRedactedCopyOnFailure() {
+    ObjectNode payload =
+        Json.newObject()
+            .put("note", "keep")
+            .put(
+                "ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=secret ldaptls=1");
+    try (MockedStatic<HbaConfRedactor> redactor =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      redactor.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new RuntimeException());
+      assertEquals(
+          "{\"note\":\"keep\",\"ysql_hba_conf_csv\":\"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+              + SECRET_REPLACEMENT,
+          RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, true)
+              .get("_redactedPayload")
+              .asText());
+    }
+  }
+
   /** Verifies ldapbindpasswd redaction for various password shapes and API JSON responses. */
   @Test
   public void testLdapBindPasswdRedactVariousPasswordPatterns() {
@@ -703,7 +1121,7 @@ public class RedactingServiceTest {
     };
 
     for (String password : doubledCsvPasswords) {
-      String encoded = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, password);
+      String encoded = "\"\"" + password.replace("\"", "\"\"") + "\"\"";
       String hba =
           "host all all 0.0.0.0/0 ldap ldapserver=s.example.com ldapbindpasswd="
               + encoded
@@ -725,7 +1143,7 @@ public class RedactingServiceTest {
 
     // API-shaped JSON: ysql_hba_conf_csv must redact and remain valid JSON.
     String tricky = doubledCsvPasswords[0];
-    String encodedTricky = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, tricky);
+    String encodedTricky = "\"\"" + tricky.replace("\"", "\"\"") + "\"\"";
     String hbaForJson =
         "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + encodedTricky + " ldapport=1";
     ObjectNode root = mapper.createObjectNode();
@@ -886,8 +1304,142 @@ public class RedactingServiceTest {
   }
 
   @Test
+  public void testRedactValuesCoversStrippedCredential() {
+    assertEquals(
+        "token: REDACTED",
+        RedactingService.redactValues("token: apikey123", List.of("apikey123\n")));
+  }
+
+  @Test
   public void testRedactValuesIgnoresShortValues() {
     String input = "key: abc, other: abc";
     assertEquals(input, RedactingService.redactValues(input, List.of("abc")));
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+  private static final String K8S_OVERRIDES_REDACTED =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT + "\n";
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsKubernetesOverrides() {
+    ObjectNode userIntent = mapper.createObjectNode();
+    userIntent.put("universeOverrides", K8S_OVERRIDES);
+    userIntent.putObject("azOverrides").put("az-1", K8S_OVERRIDES).putNull("az-2");
+    // userIntentOverrides.azOverrides shares the name but holds objects, which are still searched.
+    userIntent
+        .putObject("userIntentOverrides")
+        .putObject("azOverrides")
+        .putObject("8d6f9c2e-0000-0000-0000-000000000000")
+        .put("instanceType", "c5.large")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
+    ObjectNode universe = mapper.createObjectNode();
+    universe
+        .putObject("universeDetails")
+        .putArray("clusters")
+        .addObject()
+        .set("userIntent", userIntent);
+    ObjectNode v2Provider =
+        universe.putObject("spec").putArray("clusters").addObject().putObject("provider_spec");
+    v2Provider.put("helm_overrides", K8S_OVERRIDES);
+    v2Provider.putObject("az_helm_overrides").put("az-1", K8S_OVERRIDES);
+    ObjectNode root = mapper.createObjectNode();
+    root.putArray("universes").add(universe);
+    root.putObject("node").put("kubernetesOverrides", K8S_OVERRIDES);
+    // KubernetesOverridesUpgradeParams, as task details show them.
+    root.putObject("taskParams")
+        .put("universeOverrides", K8S_OVERRIDES)
+        .putObject("azOverrides")
+        .put("az-1", K8S_OVERRIDES);
+    String noSecrets = "tserver:\n  podLabels:\n    env: test\n";
+    root.put("helm_overrides", noSecrets);
+
+    JsonNode out =
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertFalse(out.toString(), out.toString().contains("dummy-"));
+    JsonNode outIntent = out.at("/universes/0/universeDetails/clusters/0/userIntent");
+    assertEquals(K8S_OVERRIDES_REDACTED, outIntent.get("universeOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, outIntent.at("/azOverrides/az-1").asText());
+    assertTrue(outIntent.at("/azOverrides/az-2").isNull());
+    assertEquals(
+        "c5.large",
+        outIntent
+            .at("/userIntentOverrides/azOverrides")
+            .elements()
+            .next()
+            .get("instanceType")
+            .asText());
+    JsonNode outV2 = out.at("/universes/0/spec/clusters/0/provider_spec");
+    assertEquals(K8S_OVERRIDES_REDACTED, outV2.get("helm_overrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, outV2.at("/az_helm_overrides/az-1").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/node/kubernetesOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/taskParams/universeOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/taskParams/azOverrides/az-1").asText());
+    assertEquals(noSecrets, out.get("helm_overrides").asText());
+
+    // With the gflags sensitive data API redaction off, as the restore on writes is.
+    assertEquals(
+        root, RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, false));
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesKubernetesOverridesTheRedactorHides() {
+    ObjectNode root = mapper.createObjectNode();
+    root.put(
+        "universeOverrides",
+        "x: &pw dummy-bind-pass\n" + K8S_OVERRIDES.replace("dummy-bind-pass", "*pw"));
+    JsonNode out =
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesKubernetesOverridesWhoseRedactionFails() {
+    String overrides =
+        "gflags:\n  master:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=dummy-hba-pass\n    note: response-redaction-fails\n";
+    ObjectNode root = mapper.createObjectNode();
+    root.put("universeOverrides", overrides);
+    root.putObject("azOverrides").put("az-1", overrides).put("az-2", "x: y\n");
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
+      assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-1").asText());
+      assertEquals("x: y\n", out.at("/azOverrides/az-2").asText());
+    }
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsKubernetesOverridesWhenOtherRedactionFails() {
+    ObjectNode root = mapper.createObjectNode();
+    root.putObject("gflags")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
+    root.put("universeOverrides", K8S_OVERRIDES);
+    root.putObject("azOverrides").put("az-1", K8S_OVERRIDES);
+    // The ysql_hba_conf_csv redaction throws, which stops its walk.
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(
+              root.deepCopy(), RedactionTarget.APIS, null, null, true);
+      assertEquals(K8S_OVERRIDES_REDACTED, out.get("universeOverrides").asText());
+      assertEquals(K8S_OVERRIDES_REDACTED, out.at("/azOverrides/az-1").asText());
+    }
+    // The audit details redaction throws, which skips the rest of the gflags redaction.
+    try (MockedStatic<RedactingService> service =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      service
+          .when(() -> RedactingService.redactAuditAdditionalDetails(any(), any(), any()))
+          .thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(
+              root.deepCopy(), RedactionTarget.APIS, null, null, true);
+      assertEquals(K8S_OVERRIDES_REDACTED, out.get("universeOverrides").asText());
+      assertEquals(K8S_OVERRIDES_REDACTED, out.at("/azOverrides/az-1").asText());
+    }
   }
 }

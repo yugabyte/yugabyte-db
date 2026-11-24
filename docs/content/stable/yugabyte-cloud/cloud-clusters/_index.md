@@ -1,19 +1,19 @@
 ---
-title: How to manage clusters
-headerTitle: Manage clusters
+title: How to manage distributed clusters in YugabyteDB Aeon
+headerTitle: Manage distributed clusters
 linkTitle: Manage clusters
-description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Aeon.
+description: Managing distributed clusters in YugabyteDB, and including pausing or deleting clusters.
 headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
   stable_yugabyte-cloud:
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     identifier: cloud-clusters
-    weight: 100
+    weight: 50
 type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB Aeon provides the following tools to manage clusters:
+YugabyteDB Aeon provides the following tools to manage distributed clusters:
 
 | Feature | Description |
 | :--- | :--- |
@@ -35,7 +35,7 @@ To reduce costs on unused clusters, you can pause or delete them.
 
 Access **Pause/Resume Cluster** and **Terminate Cluster** via the cluster **Actions** menu, or click the three dots icon for the cluster on the **Clusters** page.
 
-Deleting a cluster deletes all of its data, including backups.
+Deleting a cluster deletes all of its data. Backups are retained for the duration of their retention period. To access backups after their cluster has been deleted, contact {{% support-cloud %}}.
 
 Paused clusters are not billed for instance vCPU capacity. Disk and backup storage are charged at the standard rate (refer to [Cluster costs](../cloud-admin/cloud-billing-costs/#paused-cluster-costs)). You can't change the configuration, or read and write data to a paused cluster. Alerts and backups are also stopped. Existing backups remain until they expire. You can't pause a Sandbox cluster. Yugabyte notifies you when a cluster is paused for 30 days.
 
@@ -103,6 +103,12 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/monitor-
     body="Serve read requests from remote regions."
     href="managed-read-replica/"
     icon="fa-thin fa-clone">}}
+
+  {{<index/item
+    title="Resource Governance"
+    body="Manage CPU use between databases on a shared cluster."
+    href="resource-governance/"
+    icon="fa-thin fa-gauge-high">}}
 
   {{<index/item
     title="Back up clusters"

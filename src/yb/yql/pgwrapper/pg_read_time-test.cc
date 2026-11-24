@@ -647,6 +647,129 @@ TEST_P(PgReadTimeCatalogModeTest, ReadDataAsOfPastTimeWithCurrentCatalogInTxn) {
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
+// A transaction that starts with yb_read_time set takes no object locks, so a time-travel reader
+// (e.g. ysql_dump --read-time) neither waits on nor blocks concurrent DDLs (#34349).
+TEST_P(PgReadTimeCatalogModeTest, NoObjectLocksWithYbReadTime) {
+  if (GetParam()) {
+    GTEST_SKIP() << "Legacy mode takes no object locks";
+  }
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(ddl_conn.Execute("CREATE INDEX t_v ON t (v)"));
+  ASSERT_OK(ddl_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  const auto t1 = ASSERT_RESULT(ddl_conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  auto tt_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(tt_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE"));
+  ASSERT_EQ(ASSERT_RESULT(tt_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+  ASSERT_OK(tt_conn.Fetch("SELECT pg_get_indexdef('t_v'::regclass)"));
+  ASSERT_OK(tt_conn.Execute("BEGIN"));
+  ASSERT_OK(tt_conn.Execute("LOCK TABLE t IN ACCESS SHARE MODE"));
+  ASSERT_OK(tt_conn.Execute("COMMIT"));
+  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+
+  ASSERT_OK(tt_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(tt_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
+  ASSERT_OK(tt_conn.Execute("COMMIT"));
+}
+
+// Locks taken as of yb_read_time can't fence other sessions, so modes stronger than ACCESS SHARE
+// are refused.
+TEST_P(PgReadTimeCatalogModeTest, RejectStrongerLockModesWithYbReadTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("LOCK TABLE t IN ACCESS SHARE MODE"));
+  if (GetParam()) {
+    ASSERT_NOK(conn.Execute("LOCK TABLE t IN SHARE MODE"));
+  } else {
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute("LOCK TABLE t IN SHARE MODE"),
+        "LOCK TABLE in a mode stronger than ACCESS SHARE is not allowed while yb_read_time is set");
+  }
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// A transaction that starts with yb_read_time set runs without object locks, so yb_read_time can't
+// change inside its transaction block, even in sessions allowed to set it inside one.
+TEST_P(PgReadTimeCatalogModeTest, KeepYbReadTimeInTxnBlockThatStartedWithIt) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  // Allows SET yb_read_time inside a transaction block, as CDC snapshots do.
+  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = on"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("SET yb_read_time TO 0"),
+      "yb_read_time cannot be changed inside a transaction block that started with it set");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // A transaction that started without yb_read_time keeps its object locks, so setting it inside
+  // the block is still allowed.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("SET LOCAL yb_read_time TO $0", t1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 0);
+  ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// guc.c doesn't run the check hook for the paths that restore the reset value, so they need the
+// same rule.
+TEST_P(PgReadTimeCatalogModeTest, RejectResetOfYbReadTimeInTxnBlockThatStartedWithIt) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = on"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  for (const auto* stmt : {
+           "RESET yb_read_time", "SET yb_read_time TO DEFAULT",
+           "SELECT set_config('yb_read_time', NULL, false)", "RESET ALL"}) {
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_NOK_STR_CONTAINS(
+        conn.Execute(stmt),
+        "yb_read_time cannot be changed inside a transaction block that started with it set");
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_read_time")), AsString(t1))
+        << stmt;
+  }
+
+  ASSERT_OK(conn.Execute("RESET yb_read_time"));
+}
+
+// One session alternating between time-travel transactions (no object locks, catalog pinned to
+// yb_read_time) and normal ones.
+TEST_P(PgReadTimeCatalogModeTest, AlternateYbReadTimeAndNormalTransactions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  for (int i = 2; i <= 4; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN c$0 INT", i));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (k, v) VALUES ($0, $0)", i));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 1);
+    ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT c2 FROM t"), "column \"c2\" does not exist");
+    ASSERT_OK(conn.Execute("RESET yb_read_time"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), i);
+    ASSERT_OK(conn.Fetch(Format("SELECT c$0 FROM t", i)));
+  }
+}
+
 // Test that write DMLs are disallowed in a pg session when yb_read_time is set to non-zero.
 TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   auto conn = ASSERT_RESULT(Connect());
@@ -1081,6 +1204,60 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   LOG(INFO) << "Tool output: " << dump_as_of_time;
   // Step 6
   ASSERT_STR_EQ(ground_truth, dump_as_of_time);
+}
+
+// ysql_dump --read-time takes no object locks, so it doesn't wait on a concurrent DDL's locks, and
+// dumps the schema as of the read time.
+TEST_P(PgReadTimeCatalogModeTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(YsqlDumpAsOfTimeDoesNotWaitOnDdl)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+
+  auto ddl_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(ddl_conn.Execute("BEGIN"));
+  ASSERT_OK(ddl_conn.Execute("ALTER TABLE t ADD COLUMN c INT"));
+
+  auto hostport = pg_host_port();
+  std::vector<std::string> args = {
+      GetPgToolPath("ysql_dump"),
+      "--host=" + hostport.host(),
+      "--port=" + std::to_string(hostport.port()),
+      "--schema-only",
+      "--read-time=" + std::to_string(t1),
+      "--include-yb-metadata",
+      "yugabyte"};
+  std::string dump;
+  ASSERT_OK(Subprocess::Call(args, &dump));
+  ASSERT_STR_CONTAINS(dump, "CREATE TABLE public.t");
+  ASSERT_STR_NOT_CONTAINS(dump, "c integer");
+
+  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+}
+
+// A backend pinned to yb_read_time reports no catalog version, even in an open transaction.
+TEST_F(PgMiniTestBase, PointInTimeBackendShowsNoCatalogVersion) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto pit_conn = ASSERT_RESULT(Connect());
+  const auto pid = ASSERT_RESULT(pit_conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  const auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  const auto query = Format(
+      "SELECT catalog_version IS NULL FROM pg_stat_activity WHERE pid = $0", pid);
+
+  ASSERT_OK(pit_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pit_conn.Execute("BEGIN"));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(query)));
+  ASSERT_OK(pit_conn.Execute("COMMIT"));
+
+  ASSERT_OK(pit_conn.Execute("RESET yb_read_time"));
+  ASSERT_OK(pit_conn.Execute("BEGIN"));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>(query)));
+  ASSERT_OK(pit_conn.Execute("COMMIT"));
 }
 
 // Mimics the CheckReadTimePickingLocation test for the relaxed

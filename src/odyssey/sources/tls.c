@@ -191,7 +191,7 @@ int od_tls_frontend_accept(od_client_t *client, od_logger_t *logger,
 				     config->client_login_timeout);
 		if (rc == -1) {
 			od_error(logger, "tls", client, NULL,
-				 "error: %s, login time %d us",
+				 "error: %s, login time %" PRIu64 " us",
 				 od_io_error(&client->io),
 				 machine_time_us() - client->time_accept);
 			return -1;

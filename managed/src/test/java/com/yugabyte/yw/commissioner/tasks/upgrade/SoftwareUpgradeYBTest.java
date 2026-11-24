@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgrade
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -71,6 +72,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -473,37 +475,11 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   @Parameters({"false", "true"})
   public void testSoftwareUpgradeWithReadReplica(boolean enableYSQL) {
     updateDefaultUniverseTo5Nodes(enableYSQL);
-
-    // Adding Read Replica cluster.
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.numNodes = 3;
-    userIntent.replicationFactor = 3;
-    userIntent.ybSoftwareVersion = "2.21.0.0-b1";
-    userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.enableYSQL = enableYSQL;
-
-    TestUtils.initUserIntent(
-        userIntent,
-        defaultProvider,
-        ApiUtils.UTIL_INST_TYPE,
-        ApiUtils.getDummyDeviceInfo(1, 100),
-        "demo-access");
-
-    PlacementInfo pi = new PlacementInfo();
-    AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
-    AvailabilityZone az5 = AvailabilityZone.createOrThrow(region, "az-5", "AZ 5", "subnet-2");
-    AvailabilityZone az6 = AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3");
-
-    // Currently read replica zones are always affinitized.
-    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az5.getUuid(), pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az6.getUuid(), pi, 1, 1, false);
-
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    addReadReplica(
+        enableYSQL,
+        AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1"),
+        AvailabilityZone.createOrThrow(region, "az-5", "AZ 5", "subnet-2"),
+        AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3"));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
@@ -551,6 +527,34 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         "2.21.0.0-b1",
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+  }
+
+  /** Adds a read replica cluster with one node in each of {@code zones}. */
+  private void addReadReplica(boolean enableYSQL, AvailabilityZone... zones) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = zones.length;
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "2.21.0.0-b1";
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.enableYSQL = enableYSQL;
+
+    TestUtils.initUserIntent(
+        userIntent,
+        defaultProvider,
+        ApiUtils.UTIL_INST_TYPE,
+        ApiUtils.getDummyDeviceInfo(1, 100),
+        "demo-access");
+
+    PlacementInfo pi = new PlacementInfo();
+    for (int i = 0; i < zones.length; i++) {
+      PlacementInfoUtil.addPlacementZone(zones[i].getUuid(), pi, 1, 1, i == 1);
+    }
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
   }
 
   @Test
@@ -828,6 +832,19 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         baseVersion,
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
+
+    // The generated superuser password must not be stored in plain text.
+    int storedPasswords = 0;
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (subTask.getTaskType() == TaskType.ManageCatalogUpgradeSuperUser
+          && subTask.getTaskParams().hasNonNull("catalogUpgradePassword")) {
+        assertEquals(
+            RedactingService.SECRET_REPLACEMENT,
+            subTask.getTaskParams().get("catalogUpgradePassword").asText());
+        storedPasswords++;
+      }
+    }
+    assertTrue(storedPasswords > 0);
   }
 
   @Test
@@ -881,10 +898,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
                     .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
     when(mockClient.rollbackYsqlMajorCatalogVersion())
         .thenReturn(new RollbackYsqlMajorCatalogVersionResponse(0L, null, null));
-    mockDBServerVersion(
-        baseVersion,
-        targetVersion,
-        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    mockMastersAlreadyUpgraded(baseVersion, targetVersion);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = targetVersion;
@@ -892,6 +906,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    assertNoMasterCompletedBeforeRollback(taskInfo);
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -1016,10 +1031,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
                 null,
                 YsqlMajorCatalogUpgradeState
                     .YSQL_MAJOR_CATALOG_UPGRADE_PENDING_FINALIZE_OR_ROLLBACK));
-    mockDBServerVersion(
-        baseVersion,
-        targetVersion,
-        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    mockMastersAlreadyUpgraded(baseVersion, targetVersion);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = targetVersion;
@@ -1027,6 +1039,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    assertNoMasterCompletedBeforeRollback(taskInfo);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     int createUserIdx = -1;
@@ -1322,6 +1335,209 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         requireFinalize ? SoftwareUpgradeState.PreFinalize : SoftwareUpgradeState.Ready,
         details.softwareUpgradeState);
     assertEquals(newVersion, primaryVersion());
+    if (requireFinalize) {
+      // PLAT-23183: the retry upgrades no node, yet the progress kept for PreFinalize must still
+      // show every AZ as upgraded.
+      assertAllAzsCompleted(details.prevYBSoftwareConfig);
+    }
+  }
+
+  @Test
+  @Parameters({
+    "false, false, false, false",
+    "true, false, false, false",
+    "false, true, false, false",
+    "true, true, false, false",
+    "false, true, true, false",
+    "true, true, true, false",
+    "false, false, false, true",
+    "true, false, false, true"
+  })
+  public void testRetryKeepsUpgradedAzsCompleted(
+      boolean readReplica, boolean canary, boolean canaryAzSteps, boolean masterPending)
+      throws InterruptedException {
+    updateDefaultUniverseTo5Nodes(true);
+    if (readReplica) {
+      // az1 is shared with the primary cluster, and its AZ progress is kept per cluster.
+      addReadReplica(
+          true,
+          az1,
+          AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1"),
+          AvailabilityZone.createOrThrow(region, "az-5", "AZ 5", "subnet-2"));
+    }
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+    Consumer<SoftwareUpgradeParams> customizeParams =
+        params -> {
+          if (canary) {
+            params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+          }
+          if (canaryAzSteps) {
+            // AZ steps send a canary upgrade through the per-AZ t-server loop.
+            params.canaryUpgradeConfig.primaryClusterAZSteps = new ArrayList<>();
+            for (AvailabilityZone az : Arrays.asList(az1, az2, az3)) {
+              AZUpgradeStep step = new AZUpgradeStep();
+              step.azUUID = az.getUuid();
+              params.canaryUpgradeConfig.primaryClusterAZSteps.add(step);
+            }
+          }
+        };
+    // PLAT-23183: abort the first run as the first t-servers start, before their AZ is saved as
+    // completed.
+    TaskInfo taskInfo =
+        abortUpgradeAfterSubTask(
+            taskUuid ->
+                TaskInfo.getOrBadRequest(taskUuid).getSubTasks().stream()
+                        .filter(t -> t.getTaskType() == TaskType.SaveSoftwareUpgradeProgress)
+                        .filter(
+                            t ->
+                                saveParams(t).tserverAZUpgradeStatesList.stream()
+                                    .anyMatch(s -> s.getStatus() == AZUpgradeStatus.IN_PROGRESS))
+                        .mapToInt(TaskInfo::getPosition)
+                        .min()
+                        .getAsInt()
+                    + 1,
+            customizeParams);
+    assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
+    createCustomerTask(taskInfo);
+
+    // The retry finds every master and the az1 t-servers of each cluster on the new version, as
+    // if the abort had come after them. With masterPending, one master outside az1 is still on the
+    // old version, so the masters are upgraded again while the az1 t-servers are already done
+    // (standard upgrade only: a canary upgrade takes the masters as done from its saved progress).
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    String oldVersion = primaryVersion();
+    String newVersion = "2.21.0.0-b2";
+    Set<String> upgradedTservers =
+        defaultUniverse.getTServers().stream()
+            .filter(n -> n.azUuid.equals(az1.getUuid()))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toSet());
+    NodeDetails pendingMaster =
+        defaultUniverse.getMasters().stream()
+            .filter(n -> !n.azUuid.equals(az1.getUuid()))
+            .findFirst()
+            .get();
+    Set<String> checkedNodes = new HashSet<>();
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenAnswer(
+            invocation -> {
+              String ip = invocation.getArgument(1);
+              int port = invocation.getArgument(2);
+              boolean isMaster = port == 7100;
+              // A pending node reports the old version only on the first check, before it is
+              // upgraded.
+              boolean pendingNode =
+                  isMaster
+                      ? masterPending && ip.equals(pendingMaster.cloudInfo.private_ip)
+                      : !upgradedTservers.contains(ip);
+              boolean pending = pendingNode && checkedNodes.add(ip + ":" + port);
+              return Optional.of(pending ? oldVersion : newVersion);
+            });
+    CustomerTask retry =
+        customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskInfo.getUuid());
+    TaskInfo retryTask = waitForTask(retry.getTaskUUID());
+    assertEquals(Success, retryTask.getTaskState());
+
+    Set<UUID> az1Clusters =
+        defaultUniverse.getTServers().stream()
+            .filter(n -> n.azUuid.equals(az1.getUuid()))
+            .map(n -> n.placementUuid)
+            .collect(Collectors.toSet());
+    assertEquals(readReplica ? 2 : 1, az1Clusters.size());
+    boolean sawAz2InProgress = false;
+    boolean sawPendingMasterInProgress = false;
+    for (TaskInfo subTask : retryTask.getSubTasks()) {
+      if (subTask.getTaskType() != TaskType.SaveSoftwareUpgradeProgress) {
+        continue;
+      }
+      SaveSoftwareUpgradeProgress.Params params = saveParams(subTask);
+      if (masterPending) {
+        sawPendingMasterInProgress |=
+            params.masterAZUpgradeStatesList.stream()
+                .anyMatch(
+                    s ->
+                        s.getAzUUID().equals(pendingMaster.azUuid)
+                            && s.getStatus() == AZUpgradeStatus.IN_PROGRESS);
+      } else {
+        assertTrue(
+            "Masters were upgraded before the retry",
+            params.masterAZUpgradeStatesList.stream()
+                .allMatch(s -> s.getStatus() == AZUpgradeStatus.COMPLETED));
+      }
+      for (AZUpgradeState s : params.tserverAZUpgradeStatesList) {
+        if (s.getAzUUID().equals(az1.getUuid())) {
+          assertEquals(
+              "az1 t-servers were upgraded before the retry",
+              AZUpgradeStatus.COMPLETED,
+              s.getStatus());
+        } else if (s.getAzUUID().equals(az2.getUuid())
+            && s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+          sawAz2InProgress = true;
+        }
+      }
+    }
+    assertEquals(
+        "The retry upgrades the pending master", masterPending, sawPendingMasterInProgress);
+    assertTrue("The retry upgrades the az2 t-servers", sawAz2InProgress);
+
+    PrevYBSoftwareConfig prev =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .prevYBSoftwareConfig;
+    assertAllAzsCompleted(prev);
+    assertEquals(
+        az1Clusters,
+        prev.getTserverAZUpgradeStatesList().stream()
+            .filter(s -> s.getAzUUID().equals(az1.getUuid()))
+            .map(AZUpgradeState::getClusterUUID)
+            .collect(Collectors.toSet()));
+  }
+
+  /**
+   * The masters already run the target version, as after an abort past the last master; each
+   * t-server reports the base version until it is upgraded.
+   */
+  private void mockMastersAlreadyUpgraded(String baseVersion, String targetVersion) {
+    Set<String> checkedTservers = new HashSet<>();
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenAnswer(
+            invocation -> {
+              String ip = invocation.getArgument(1);
+              int port = invocation.getArgument(2);
+              boolean pending = port != 7100 && checkedTservers.add(ip);
+              return Optional.of(pending ? baseVersion : targetVersion);
+            });
+  }
+
+  /** The pre-flight progress save, made before the masters are rolled back, shows none done. */
+  private static void assertNoMasterCompletedBeforeRollback(TaskInfo taskInfo) {
+    TaskInfo preFlightSave =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.SaveSoftwareUpgradeProgress)
+            .min(Comparator.comparingInt(TaskInfo::getPosition))
+            .get();
+    assertTrue(
+        "Masters are rolled back, so the pre-flight save must not mark them completed",
+        saveParams(preFlightSave).masterAZUpgradeStatesList.stream()
+            .noneMatch(s -> s.getStatus() == AZUpgradeStatus.COMPLETED));
+  }
+
+  private static SaveSoftwareUpgradeProgress.Params saveParams(TaskInfo saveTask) {
+    return play.libs.Json.fromJson(
+        saveTask.getTaskParams(), SaveSoftwareUpgradeProgress.Params.class);
+  }
+
+  /** Every master and t-server AZ in the saved progress is COMPLETED. */
+  private static void assertAllAzsCompleted(PrevYBSoftwareConfig prev) {
+    assertTrue("Masters not all completed", allMasterAzsCompleted(prev));
+    assertFalse(prev.getTserverAZUpgradeStatesList().isEmpty());
+    for (AZUpgradeState s : prev.getTserverAZUpgradeStatesList()) {
+      assertEquals(
+          "T-server AZ " + s.getAzName() + " of cluster " + s.getClusterUUID(),
+          AZUpgradeStatus.COMPLETED,
+          s.getStatus());
+    }
   }
 
   @Test

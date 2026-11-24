@@ -1,7 +1,8 @@
 ## Making changes and pushing to upstream
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
-arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
+Changes are reviewed, tested, and merged as GitHub PRs: publish with the `create-pr` skill and backport with `/backport-commit`. Merging is done by the human.
+Phorge (`arc diff` / `arc land`) is being retired: it stops accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21. Use it only when the user explicitly asks for a Phorge diff. `arc land` is always done by the human.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
@@ -37,7 +38,7 @@ When the source material is a customer report:
 
 ### Scrub checklist before any public publish
 
-Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
+Before running `create-pr.sh`, `arc diff`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
 
 - [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).
@@ -50,6 +51,26 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
 
+### Security and customer-sensitive changes
+
+Every fix here is public the moment it is pushed, usually before the release branches have it and always before patched builds ship. What the PR, the commits and the review say decides how much that window gives away. Pick a tier, and keep the rest in the JIRA ticket.
+
+| Tier | Applies to | Public PR, commits, branch | JIRA only |
+|---|---|---|---|
+| `public-cve` | A published CVE in a dependency we bundle or link (Postgres, JRE, Go modules, base images) | Component, old and new version, CVE IDs | Scan reports, affected images and releases, what stays unfixed and why |
+| `embargoed` | A defect in our own code, or a finding that is not public yet | What the code does ("validate the length before the copy"); no CVE ID, no impact, nothing that marks it as a security fix | Everything, including the wording to publish later |
+| `customer` | A change that exists because of one customer | What the code does; no customer | The customer and the case |
+
+For every tier:
+
+- **The JIRA key in the title is the link.** A security fix is tracked in a JIRA ticket of type Vulnerability, never a GitHub issue. The ticket holds the CVE IDs, the affected and target releases and the analysis, and JIRA links the PRs to it by key, so the internal answer to "what fixed this, and where" does not depend on anything written on GitHub.
+- **Never say in a public artifact what is still exposed**: which releases, branches, images or components lack the fix, or how the defect could be used against YugabyteDB. This holds for PR descriptions, review comments, replies and closing comments.
+- **The merged commit message stays as plain as the PR.** Fuller wording goes into the release notes and the disclosure page after fixed builds ship.
+- **Open release-branch PRs together with the master PR** so they can merge the same day. A fix that sits on master alone shows what the released branches lack.
+- **Review discussion that needs the sensitive context goes in the ticket**, with a pointer from the PR.
+
+`create-pr.sh -s <tier>` checks the title, body, commit messages and branch name against the tier before it pushes. The `/sensitive-change` skill walks through the whole flow.
+
 ## Git workflow on branches with an open PR
 
 This repo **squash-merges** every PR, so the per-commit history of a branch is purely a review aid — reviewers read each commit independently to follow the change. Optimize for that:
@@ -59,11 +80,11 @@ This repo **squash-merges** every PR, so the per-commit history of a branch is p
 - **Don't collapse commits locally yourself** (no `git rebase -i ... squash`, no hand-merging commits). The squash happens automatically at merge time on GitHub.
 - The first commit on a branch can carry the PR's overall message style; subsequent commits should have short, scoped subject lines (`Fix lint warnings`, `Address review: rename foo to bar`).
 - **`## Upgrade/Rollback safety` section in PR descriptions.** Required for any change that affects upgrade-rollback compatibility — wire-format (`.proto`) changes, gflag default flips that alter observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. Spell out forward/backward behavior on a mixed-version cluster and what rollback looks like. `create-pr.sh` enforces this mechanically for `.proto` changes; for other upgrade-relevant changes the rule is soft — include the section anyway.
-- **PR titles must match `[<issue>] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA. `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this mechanically. Backport titles keep the same shape with a `[BACKPORT <release-branch>]` prefix.
+- **PR titles must match `[<issue>,...] <Component>: <Title>`.** `<issue>` is `#NNNN` for GitHub issues or `PROJECT-NNN` for JIRA.  A change that fixes several issues lists them all, comma-separated with no spaces and all GitHub or all JIRA (`[#123,#456]`, `[PLAT-1,DB-2]`).  `<Component>` is one of `DocDB`, `YSQL`, `YCQL`, `YBA`, `CDC`, `xCluster`, `yugabyted`, `Docs`, `Agents`, `Build` (or another component agreed with the team). `create-pr.sh` enforces this mechanically. Backport titles keep the same shape with a `[BACKPORT <release-branch>]` prefix.
 - **Always push via `.agents/scripts/git-push.sh`** — never via raw `git push` (deny-listed in `.claude/settings.json`). The helper runs lint and never rebases.
 - **Never rewrite a PR's history once it is ready for review** — no rebase, amend, reset, or force-push after the PR leaves draft (a stack branch is the exception; see below). Renewing the SHAs marks every reviewer line comment "outdated" and destroys the diff-since-last-look, which is the main thing a returning reviewer wants. `git-push.sh` enforces this: for a ready PR it pushes only a fast-forward and otherwise exits `4` with how to recover; there is no override. With no PR, or a draft one, it force-pushes a rewritten branch with `--force-with-lease`.
 - **Refresh a ready-for-review PR branch with a merge, not a rebase** (except a stack branch). `git merge upstream/master` when you need the base's newer commits. The merge commit is harmless: the PR is squash-merged, so it never reaches `master`. `git-push.sh` reports how far behind the branch is but never merges for you — picking up the base mid-review is the author's call.
-- **Stacked PRs live in the main repo, under `feature-stack/<feature-name>/<change-name>`.** GitHub has no cross-fork stacks, and that prefix is the *only* thing allowed to push to `yugabyte/yugabyte-db`. Use the `gh-stack` skill for the stack workflow, and the [Stacked PRs](../.claude/skills/create-pr/SKILL.md#stacked-prs) section of the create-pr skill for what this repo adds to it. The two history rules above do not apply to a stack: GitHub keeps it linear with cascading rebases and lease-protected force-pushes, even after review starts.
+- **Stacked PRs live in the main repo, under `feature-stack/<feature-name>/<change-name>`.** GitHub has no cross-fork stacks, and that prefix is the *only* thing allowed to push to `yugabyte/yugabyte-db`.  Load the [`stack-prs` skill](../.claude/skills/stack-prs/SKILL.md) for any stack operation; it builds on the upstream `gh-stack` skill with what this repo adds.  The two history rules above do not apply to a stack: GitHub keeps it linear with cascading rebases and lease-protected force-pushes, even after review starts.
 - **Keep the PR summary in sync — automatically.** After pushing follow-up commits, update the PR body if they **change scope, change approach, or invalidate the test plan** — don't ask the user first; these rules determine when an update is needed. Leave it alone for lint fixes, typos, comment-only edits, and pure refactors. Command mechanics: [.agents/docs/pr-metadata-sync.md](../.agents/docs/pr-metadata-sync.md).
 - **Keep the PR title in sync — sparingly.** Update the title **only when the new commits make it misleading** (component changed, scope expanded substantially, wrong issue reference) — not for refinements, added tests, or rewordings; title churn invalidates notifications and creates review noise. The "misleading vs. refinement" call is yours. Same mechanics doc as above.
 
@@ -122,14 +143,14 @@ for the block below it, not narration of the change you just made. Don't restate
 retelling of the diff. Padding costs reviewers real time and rots as the code moves. Full
 rule and reasoning:
 [`AGENTS.md` § Prose discipline](../AGENTS.md#prose-discipline--write-for-the-reader-not-for-volume);
-the `create-pr` and `create-diff` skills re-check it before publishing.
+the `create-pr` skill re-checks it before publishing.
 
 ## Commit messages
 
 - Use backticks for method, class, and other code references.
 - Prefer `DocDB` over `docdb` as a component prefix.
 - When referencing other commits (for instance as the cause of a regression), use the form
-  `<COMMIT_HASH>/<DIFF_ID>`.
+  `<COMMIT_HASH>/#<PR>`, or `<COMMIT_HASH>/D<id>` for a commit that landed via Phorge.
 - The body carries the **why** — the constraint, the failure it fixes, the decision a
   reader would otherwise have to reverse-engineer. Not a file-by-file retelling of the
   diff (`git show` does that better). A commit whose reasoning is obvious from the subject

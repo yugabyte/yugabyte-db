@@ -173,6 +173,9 @@ class PeerMessageQueue {
     // The last committed index this peer knows about.
     int64_t last_known_committed_idx;
 
+    // The committed index sent to this peer in the last request built for it.
+    int64_t last_sent_committed_idx = OpId::Min().index;
+
     // The ID of the operation last applied by this peer.
     OpId last_applied;
 
@@ -205,6 +208,10 @@ class PeerMessageQueue {
     PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
 
     uint64_t num_sst_files = 0;
+
+    // On the leader's own entry, only valid while picking a remote bootstrap source, which sets it.
+    // Local appends reset it to false.
+    bool pending_post_split_compaction = false;
 
     std::optional<CloudInfoPB> cloud_info;
 
@@ -332,7 +339,8 @@ class PeerMessageQueue {
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
 
-  // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer.
+  // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer,
+  // preferring one without pending post-split compaction.
   // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
   Result<const TrackedPeer*> FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
       REQUIRES(queue_lock_);

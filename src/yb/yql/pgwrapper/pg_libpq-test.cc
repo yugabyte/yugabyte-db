@@ -1023,21 +1023,21 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   return Status::OK();
 }
 
-TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
-  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
-}
-
-class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+class PgLibPqColocatedTablesWithTablespacesOffTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    const auto flag = "--ysql_yb_enable_colocated_tables_with_tablespaces=false"s;
     options->extra_master_flags.push_back(flag);
     options->extra_tserver_flags.push_back(flag);
   }
 };
 
 TEST_F_EX(PgLibPqTest,
-          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
-          PgLibPqColocatedTablesWithTablespacesTest) {
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse,
+          PgLibPqColocatedTablesWithTablespacesOffTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue) {
   ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
@@ -4948,8 +4948,8 @@ TEST_P(PgCatalogPreloadCacheSplitTest, ListMisses) {
   ASSERT_EQ(misses[GetParam().list_index] == 0, GetParam().fills_list);
 }
 
-// With a partitioned table, the relcache build requests pg_proc and fills all its caches, also when
-// the list names only one of them or none.
+// With a partitioned table, the relcache build requests pg_proc and pg_range and fills all their
+// caches, also when the list names only some of them or none.
 class PgCatalogPreloadCachePartitionedTest
     : public PgCatalogPreloadCacheListTestBase,
       public ::testing::WithParamInterface<std::string> {
@@ -4958,16 +4958,19 @@ class PgCatalogPreloadCachePartitionedTest
     return {"--ysql_yb_test_catalog_preload_cache_list=" + GetParam()};
   }
 
-  static void AssertNoPgProcMisses(std::unordered_map<std::string, int64_t>& misses) {
+  static void AssertNoPrefilledCacheMisses(std::unordered_map<std::string, int64_t>& misses) {
     ASSERT_EQ(misses["pg_proc_oid_index"], 0);
     ASSERT_EQ(misses["pg_proc_proname_args_nsp_index"], 0);
+    ASSERT_EQ(misses["pg_range_rngtypid_index"], 0);
+    ASSERT_EQ(misses["pg_range_rngmultitypid_index"], 0);
   }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgCatalogPreloadCachePartitionedTest,
-                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_database"));
+                        ::testing::Values("PROCOID", "PROCNAMEARGSNSP", "pg_attribute",
+                                          "pg_database"));
 
-TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
+TEST_P(PgCatalogPreloadCachePartitionedTest, PrefilledCacheMisses) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute(
@@ -4976,18 +4979,32 @@ TEST_P(PgCatalogPreloadCachePartitionedTest, PgProcMisses) {
     // Building an expression key looks up its function by OID.
     ASSERT_OK(conn.Execute("CREATE TABLE pe (k INT) PARTITION BY RANGE ((k % 10))"));
     ASSERT_OK(conn.Execute("CREATE TABLE pe1 PARTITION OF pe FOR VALUES FROM (0) TO (5)"));
+    // Sorting the bounds of a range-type key looks up the range type.
+    ASSERT_OK(conn.Execute("CREATE TABLE pr (r int4range) PARTITION BY RANGE (r)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE pr1 PARTITION OF pr FOR VALUES FROM ('[1,2)') TO ('[5,6)')"));
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE pr2 PARTITION OF pr FOR VALUES FROM ('[5,6)') TO ('[9,10)')"));
   }
   auto ddl_conn = ASSERT_RESULT(Connect());
 
   // The first statement also reports the misses of the connection start-up.
   auto conn = ASSERT_RESULT(Connect());
   auto misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
-  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+  ASSERT_NO_FATALS(AssertNoPrefilledCacheMisses(misses));
 
+  // The type cache keeps the range info of int4range across the refresh, so only a key type that
+  // the backend has not seen yet makes the refresh look up pg_range. A multirange key looks up both
+  // the multirange and its range.
+  ASSERT_OK(ddl_conn.Execute("CREATE TABLE pm (m int8multirange) PARTITION BY RANGE (m)"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm1 PARTITION OF pm FOR VALUES FROM ('{[1,2)}') TO ('{[5,6)}')"));
+  ASSERT_OK(ddl_conn.Execute(
+      "CREATE TABLE pm2 PARTITION OF pm FOR VALUES FROM ('{[5,6)}') TO ('{[9,10)}')"));
   ASSERT_OK(IncrementAllDBCatalogVersions(ddl_conn, IsBreakingCatalogVersionChange::kTrue));
   WaitForCatalogVersionToPropagate();
   misses = ASSERT_RESULT(MissesFor(conn, kFunctionNameQuery));
-  ASSERT_NO_FATALS(AssertNoPgProcMisses(misses));
+  ASSERT_NO_FATALS(AssertNoPrefilledCacheMisses(misses));
 }
 
 // The tserver rejects a value that is not a comma separated list of names, so it never reaches the
@@ -6165,6 +6182,78 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   ASSERT_EQ(system(rm_cmd.c_str()), 0);
 }
 
+// pg_restore -d sends table definitions and the DATABASE PROPERTIES entry (ALTER DATABASE ... SET)
+// one statement at a time through the YB block in _printTocEntry, which leaked the SQL-splitting
+// buffer (#35009) and so failed pg_restore on ASAN builds.
+TEST_F(PgLibPqTest, RestoreToDb) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE restore_db"));
+  {
+    auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+    ASSERT_OK(db_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+    ASSERT_OK(db_conn.Execute("INSERT INTO t VALUES (1, 'one')"));
+  }
+  ASSERT_OK(conn.Execute("ALTER DATABASE restore_db SET statement_timeout = '1min'"));
+
+  const auto dump_path = GetTestPath("restore_db.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc -U yugabyte -h $1 -p $2 --dbname restore_db --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  ASSERT_OK(conn.Execute("DROP DATABASE restore_db"));
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d yugabyte -C $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SELECT v FROM t WHERE k = 1")), "one");
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SHOW statement_timeout")), "1min");
+}
+
+// Restoring an --inserts dump sends TABLE DATA through ExecuteSimpleCommands, which leaves the
+// SQL-splitting buffer allocated but empty.  The YB per-statement block in _printTocEntry must
+// still accept the INDEX entry that follows instead of aborting.
+TEST_F(PgLibPqTest, RestoreInsertsDumpWithIndex) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_src"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_dst"));
+  {
+    auto src_conn = ASSERT_RESULT(ConnectToDB("inserts_src"));
+    ASSERT_OK(src_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(src_conn.Execute("CREATE INDEX t_v ON t (v)"));
+    ASSERT_OK(src_conn.Execute("INSERT INTO t VALUES (1, 10), (2, 20)"));
+  }
+
+  const auto dump_path = GetTestPath("inserts_src.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc --inserts -U yugabyte -h $1 -p $2 --dbname inserts_src --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d inserts_dst $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto dst_conn = ASSERT_RESULT(ConnectToDB("inserts_dst"));
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 2);
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>(
+      "SELECT count(*) FROM pg_indexes WHERE indexname = 't_v'")), 1);
+}
+
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
@@ -6882,6 +6971,177 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // The fact that this SELECT succeeds proves that the table exists in BOTH
   // the PostgreSQL catalog and DocDB (no split-brain corruption).
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
+}
+
+class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->insert(flags->end(), {
+          "--enable_object_locking_for_table_locks=true",
+          "--ysql_yb_ddl_transaction_block_enabled=true",
+          "--ysql_enable_concurrent_ddl=true",
+          "--ysql_yb_enable_ddl_savepoint_support=true",
+          "--yb_enable_read_committed_isolation=true",
+      });
+    }
+  }
+
+  struct Isolation {
+    std::string name;
+    std::string suffix;
+    // Whether a statement that changed the catalog is retried in an explicit block.
+    bool retry_allowed_in_block;
+  };
+  const std::vector<Isolation> kIsolations = {
+      {"read committed", "rc", true}, {"repeatable read", "rr", false}};
+};
+
+// Test for #37717: a retryable error raised while committing a statement that
+// ran DDL outside a transaction block must reach the client, and must not leave
+// pg_class.relchecks out of step with the table's CHECK constraints.
+// yb_test_fail_next_ddl = 5 (kConflict) and 6 (kDeadlock) raise the error at
+// the start of YBCommitTransactionContainingDDL; 7 (kConflict) and 8 (kDeadlock)
+// raise it in place of an error from the commit RPC, after the DDL transaction
+// state has been cleared.  Each mode runs the ALTER on its own, inside a DO
+// block, and inside a function called by a SELECT, under both READ COMMITTED
+// and REPEATABLE READ: a retry would re-run the whole statement, DDL included,
+// with the same stale caches.  (Under REPEATABLE READ, only the SELECT is
+// retried by default.)
+TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
+  struct FailMode {
+    int mode;
+    std::string error;
+  };
+  struct StmtForm {
+    std::string name;
+    std::string format;  // $0 is the table.
+    bool returns_rows;
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  // Runs the statements under test, all through the simple query protocol so
+  // that every form goes through the same retry path.
+  auto stmt_conn = ASSERT_RESULT(Connect(/* simple_query_protocol = */ true));
+  const auto run = [&stmt_conn](const std::string& stmt, bool returns_rows) {
+    return returns_rows ? ResultToStatus(stmt_conn.Fetch(stmt)) : stmt_conn.Execute(stmt);
+  };
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION add_check(tbl text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
+      "EXECUTE format('ALTER TABLE %I ADD CONSTRAINT c CHECK (a > 0) NOT VALID', tbl); "
+      "END $$"));
+  const std::vector<StmtForm> kForms = {
+      {"alter", "ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", false},
+      {"do", "DO $$$$ BEGIN ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID; END $$$$",
+       false},
+      {"func", "SELECT add_check('$0')", true}};
+  for (const auto& [isolation, suffix, _] : kIsolations) {
+    ASSERT_OK(stmt_conn.ExecuteFormat("SET default_transaction_isolation = '$0'", isolation));
+    for (const auto& [mode, error] : std::vector<FailMode>{
+             {5, "failed DDL operation with conflict as requested"},
+             {6, "failed DDL operation with deadlock as requested"},
+             {7, "failed DDL commit with conflict as requested"},
+             {8, "failed DDL commit with deadlock as requested"}}) {
+      for (const auto& form : kForms) {
+        SCOPED_TRACE(Format(
+            "$0, yb_test_fail_next_ddl = $1, statement: $2", isolation, mode, form.name));
+        const auto table = Format("t$0_$1_$2", mode, form.name, suffix);
+        const auto stmt = Format(form.format, table);
+        const auto check_query = Format(
+            "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+            "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+            "FROM pg_class WHERE oid = '$0'::regclass", table);
+        ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+
+        // The failed commit must not be retried internally: the PG-side
+        // transaction is not aborted before such a retry, and the re-run used
+        // to see the failed attempt's constraint in the backend's caches and
+        // set relchecks to 2.
+        ASSERT_OK(stmt_conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
+        ASSERT_NOK_STR_CONTAINS(run(stmt, form.returns_rows), error);
+        auto [relchecks, check_rows] =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 0);
+        ASSERT_EQ(check_rows, 0);
+
+        // Running the statement again works and leaves the catalog consistent.
+        ASSERT_OK(run(stmt, form.returns_rows));
+        std::tie(relchecks, check_rows) =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 1);
+        ASSERT_EQ(check_rows, 1);
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+      }
+    }
+  }
+}
+
+// Test for #37717 in an explicit transaction block: the first statement after
+// BEGIN calls a function that runs an ALTER and then, once, raises a retryable
+// error (read restart, kConflict or kDeadlock).  In READ COMMITTED the retry
+// rolls back the statement's internal subtransaction first, so it is allowed
+// and must commit a consistent catalog.  In REPEATABLE READ the retry would
+// restart the transaction without aborting the PG-side transaction, with no
+// internal subtransaction to roll back, so it must be refused, and the session
+// must stay usable.
+TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintRetryInBlock) {
+  struct ErrorCode {
+    std::string sqlstate;
+    std::string name;
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  // Runs the statements under test through the simple query protocol.
+  auto stmt_conn = ASSERT_RESULT(Connect(/* simple_query_protocol = */ true));
+  // nextval is not rolled back, so the error is raised by the first attempt
+  // only, however the retry treats the PG-side state.
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE fail_once CACHE 1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION add_check_then_fail(tbl text, code text) RETURNS void "
+      "LANGUAGE plpgsql AS $$ BEGIN "
+      "EXECUTE format('ALTER TABLE %I ADD CONSTRAINT c CHECK (a > 0) NOT VALID', tbl); "
+      "IF nextval('fail_once') = 1 THEN "
+      "RAISE EXCEPTION 'injected retryable error' USING ERRCODE = code; "
+      "END IF; "
+      "END $$"));
+  for (const auto& [isolation, suffix, retry_allowed] : kIsolations) {
+    for (const auto& [sqlstate, error_name] : std::vector<ErrorCode>{
+             {"YB002", "read_restart"}, {"YB003", "conflict"}, {"YB004", "deadlock"}}) {
+      SCOPED_TRACE(Format("$0, $1", isolation, error_name));
+      const auto table = Format("tb_$0_$1", suffix, error_name);
+      const auto check_query = Format(
+          "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+          "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+          "FROM pg_class WHERE oid = '$0'::regclass", table);
+      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+      ASSERT_OK(ResultToStatus(stmt_conn.Fetch("SELECT setval('fail_once', 1, false)")));
+
+      ASSERT_OK(stmt_conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation));
+      const auto select_status = ResultToStatus(stmt_conn.FetchFormat(
+          "SELECT add_check_then_fail('$0', '$1')", table, sqlstate));
+      if (retry_allowed) {
+        ASSERT_OK(select_status);
+        ASSERT_OK(stmt_conn.Execute("COMMIT"));
+      } else {
+        ASSERT_NOK_STR_CONTAINS(select_status, "injected retryable error");
+        ASSERT_OK(stmt_conn.Execute("ROLLBACK"));
+      }
+      auto [relchecks, check_rows] =
+          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+      ASSERT_EQ(relchecks, check_rows);
+      ASSERT_EQ(check_rows, retry_allowed ? 1 : 0);
+
+      // The session stays usable, and the table ends up with the constraint.
+      if (!retry_allowed) {
+        ASSERT_OK(stmt_conn.ExecuteFormat(
+            "ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table));
+        std::tie(relchecks, check_rows) =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 1);
+        ASSERT_EQ(check_rows, 1);
+      }
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+    }
+  }
 }
 
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {

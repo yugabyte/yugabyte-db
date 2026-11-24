@@ -470,7 +470,9 @@ Enables advanced folding of multiple conditions on the same index column when bi
 
 For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
 
-Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
+Available in v2026.1.0.0 and later.
+
+In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
 
 ##### yb_enable_cbo
 
@@ -715,7 +717,9 @@ Default: `on`
 
 Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
 
-Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot change it inside a transaction block, or after the first query of a transaction has run.
+Available in v2026.1.2 and later.
+
+Any user can change this setting; superuser privileges are not required. You cannot set it to a value with `SET` after the first query of a transaction has run, or in a function's `SET` clause. `RESET` and `SET ... TO DEFAULT` are accepted at any time; a change made after the transaction has started using the optimization takes effect from the next transaction.
 
 Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
 
@@ -770,6 +774,17 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
+
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
 
 ## Networking
 
@@ -1063,6 +1078,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2026.1.3.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
@@ -2910,6 +2939,24 @@ Enable server-server (node-to-node) encryption between YugabyteDB YB-Master and 
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
 
+##### --openssl_require_fips
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Requires the YB-TServer and its YSQL processes to use the OpenSSL FIPS provider. In v2026.1.3.0 and later, this includes YSQL Connection Manager. When enabled, these processes fail to start if the FIPS provider can't be loaded.
+
+Set the same value on every YB-Master and YB-TServer. See [--openssl_require_fips](../yb-master/#openssl-require-fips) for the YB-Master.
+
+The flag selects the OpenSSL FIPS provider. To encrypt client connections, also enable [use_client_to_server_encryption](#use-client-to-server-encryption).
+
+When [ysql_enable_auth](#ysql-enable-auth) is enabled, the auto-generated `ysql_hba.conf` entry uses `scram-sha-256` and ignores `ysql_auth_method`. Rules in [ysql_hba_conf_csv](#ysql-hba-conf-csv) are checked first, so an earlier `md5` rule still applies to the connections it matches. A role whose password is stored as an MD5 hash cannot sign in through the SCRAM rule until you change that password. [Migrate existing MD5 passwords](../../../secure/authentication/password-authentication/#migrate-existing-md5-passwords-to-scram-sha-256) before you enable this flag.
+
+The flag also sets `pgcrypto.builtin_crypto_enabled` to `fips`. pgcrypto then rejects built-in algorithms that are not FIPS-validated.
+
 ##### --cipher_list
 
 {{% tags/wrap %}}
@@ -3013,13 +3060,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-TServer and every YB-Master. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 
@@ -3056,9 +3104,7 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
-The `--ysql_hba_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_hba_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
@@ -3097,9 +3143,7 @@ Default: `""`
 
 Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
 
-The `--ysql_ident_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_ident_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For example:
 

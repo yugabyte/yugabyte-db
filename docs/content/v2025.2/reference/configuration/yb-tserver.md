@@ -246,7 +246,9 @@ Disable callhome diagnostics.
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+Available in v2025.2.8.1 and later.
+
+Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
 
 ### Metric export flags
 
@@ -414,7 +416,9 @@ During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+Available in v2025.2.8.1 and later.
+
+Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
 
 On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
 
@@ -743,6 +747,40 @@ Default: `0`
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
 
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
+
+##### yb_password_validity
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+Available in v2025.2.9.0 and later.
+
+Sets how long, in minutes, a newly set or changed password remains valid. When non-zero, YugabyteDB sets the role's password expiration to the current time plus this duration. You can specify a unit, for example `90d`. The default value of `0` means passwords do not expire.
+
+This parameter applies only when a password is stored, that is, when you run `CREATE ROLE` or `ALTER ROLE ... PASSWORD`. It does not change the expiration of existing passwords. If the statement includes a `VALID UNTIL` clause, that clause takes precedence over this parameter.
+
+This parameter applies only to roles that authenticate using passwords stored in YugabyteDB. It has no effect on LDAP or OIDC users.
+
+This is a superuser-only parameter. Set it in one of the following ways:
+
+- Server-wide, using [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+- For a specific role, using `ALTER ROLE <role> SET yb_password_validity = <value>`.
+- For all roles, using `ALTER ROLE ALL SET yb_password_validity = <value>`.
+
+You cannot set this parameter for a session, for a database (`ALTER DATABASE ... SET`), for a role in a specific database, or for a role that cannot log in.
+
 ## Networking
 
 ### RPC and binding addresses
@@ -1035,6 +1073,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
@@ -1665,7 +1717,9 @@ Enables the YB-TServer catalog cache, which reduces YB-Master overhead for start
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+Available in v2025.2.8.1 and later.
+
+Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
 
 See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 
@@ -2815,13 +2869,14 @@ When YSQL authentication is enabled, you can sign into ysqlsh using the default 
 ##### --ysql_enable_profile
 
 {{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
 
-When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users. Set the flag to `true` on every YB-TServer and every YB-Master. The YB-Master setting is required before a YSQL major upgrade from PostgreSQL 11 to PostgreSQL 15 if login profiles are in use.
 
 ##### --pgsql_proxy_bind_address
 
@@ -2858,9 +2913,7 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
-The `--ysql_hba_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_hba_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
@@ -2899,9 +2952,7 @@ Default: `""`
 
 Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
 
-The `--ysql_ident_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_ident_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For example:
 

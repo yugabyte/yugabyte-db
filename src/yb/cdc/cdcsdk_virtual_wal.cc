@@ -105,6 +105,12 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
+DEFINE_test_flag(uint64, cdcsdk_vwal_round_up_commit_time_usec, 0,
+    "When positive, the virtual WAL rounds the commit time of every transaction record (BEGIN, "
+    "COMMIT, DML) from a user tablet up to a multiple of this many microseconds, so that "
+    "transactions committing within one such window are streamed as one transaction, as "
+    "transactions committing at the same hybrid time are.");
+
 DEFINE_RUNTIME_bool(cdc_skip_unqualified_tables_for_polling, false,
     "When enabled, VWAL will skip adding expired / not-of-interest tables to the polling list.");
 
@@ -113,7 +119,7 @@ DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(cdc_enable_local_rpc_in_virtual_wal);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb::cdc {
 
@@ -251,15 +257,52 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
   auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
+  const auto slot_name = stream->GetReplicationSlotName();
+  RSTATUS_DCHECK(
+      slot_name, IllegalState, Format("Stream $0 has no replication slot name", stream_id_));
+  SCHECK_FORMAT(
+      !stream->IsPausedForUpgrade(), IllegalState,
+      "Replication slot $0 is paused for conversion to an implicit slot. Run 'yb-admin "
+      "prepare_replication_slots_for_transactional_ddl' after finalizing the upgrade to convert "
+      "it, or 'yb-admin release_replication_slot $0' to stream it without converting it",
+      *slot_name);
+  SCHECK_FORMAT(
+      !stream->IsUnusableWithTransactionalDdl(), IllegalState,
+      "Replication slot $0 is unusable with transactional DDL replication, as it wasn't paused "
+      "for conversion to an implicit slot. Create a new replication slot",
+      *slot_name);
 
   detect_publication_changes_implicitly_ =
       stream->GetDetectPublicationChangesImplicitly().value_or(false);
+  if (!detect_publication_changes_implicitly_) {
+    if (auto stop_time = stream->GetImplicitConversionBarrierTime()) {
+      implicit_conversion_stop_time_ = *stop_time;
+      LOG_WITH_PREFIX(INFO) << "Replication slot " << *slot_name << " has a catalog barrier, so "
+                            << "no change committed after " << implicit_conversion_stop_time_
+                            << " is shipped";
+    }
+  }
   if (detect_publication_changes_implicitly_ &&
       !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot stream using a slot which has detect_publication_changes_implicitly set to true "
         "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
+  }
+
+  if (detect_publication_changes_implicitly_ && !stream->IsNotificationSlot() &&
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
+    const auto stream_table_ids = stream->GetTableIds();
+    for (const auto table_oid : {kPgAttributeTableOid, kPgPublicationRelPrpubidIndexOid}) {
+      SCHECK_FORMAT(
+          std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
+              stream_table_ids.end(),
+          IllegalState,
+          "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
+          "its consumer and run 'yb-admin prepare_replication_slots_for_transactional_ddl $0'",
+          *slot_name);
+    }
   }
 
   if (detect_publication_changes_implicitly_) {
@@ -277,7 +320,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     table_list.emplace(pg_publication_rel_table_id_);
     table_list.emplace(pg_replication_origin_table_id_);
     table_list.emplace(pg_publication_table_id_);
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
       pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
       table_list.emplace(pg_attribute_table_id_);
       pg_publication_rel_prpubid_index_table_id_ =
@@ -285,7 +328,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
     }
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
-                        << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
+                        << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
                                 ? ", pg_attribute, pg_publication_rel_prpubid_index"
                                 : "")
                         << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
@@ -742,6 +785,17 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   // response.
   while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
          !sorted_records.empty() && empty_tablet_queues.empty()) {
+    if (implicit_conversion_stop_time_.is_valid() &&
+        !(is_txn_in_progress && curr_active_txn_commit_record) &&
+        sorted_records.top().second.first->GetCommitTime() >
+            implicit_conversion_stop_time_.ToUint64()) {
+      // Every tablet queue has its next record in the priority queue, so every record committed up
+      // to the stop time has been shipped, and the restart time can move to the stop time.
+      virtual_wal_safe_time_ = std::max(virtual_wal_safe_time_, implicit_conversion_stop_time_);
+      VLOG_WITH_PREFIX(2) << "Holding back records committed after the stop time "
+                          << implicit_conversion_stop_time_;
+      break;
+    }
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;
@@ -757,7 +811,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
             pub_refresh_trigger == PubRefreshTrigger::kPublicationUpdated;
         bool needs_table_list_refresh = true;
         last_pub_refresh_time = unique_id->GetCommitTime();
-        if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+        if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
           DCHECK(record->row_message().has_record_time());
           DCHECK(record->row_message().has_transaction_id());
           // We don't advance last_seen_unique_record_id_ for a table rewrite, since the rewritten
@@ -794,7 +848,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
       // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
       // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
       // sent to the walsender.
-      if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+      if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
           !(record->row_message().op() == RowMessage_Op_BEGIN ||
             record->row_message().op() == RowMessage_Op_COMMIT ||
             (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
@@ -813,7 +867,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     if (record->row_message().op() == RowMessage_Op_DDL) {
       // When detecting DDL from catalog DML, discard the legacy CHANGE_METADATA_OP DDL records.
       // TODO(#30813): Skip sending the legacy DDL records from GetChanges.
-      if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+      if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
         VLOG_WITH_PREFIX(4) << "Discarding legacy DDL record: " << record->ShortDebugString();
         continue;
       }
@@ -832,7 +886,13 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // the commit record for this pg_txn_id once we are sure that we have fully shipped all DMLs
     // with the same commit_time.
     if (record->row_message().op() == RowMessage_Op_COMMIT && !should_ship_commit) {
-      if (is_txn_in_progress && !curr_active_txn_commit_record) {
+      // With transactional DDL, a publication refresh inside a DDL transaction can add a table
+      // whose tablets return older transactions. Don't hold a COMMIT that can't get an LSN: it
+      // would be picked to ship on every iteration and block the queue. It's rejected below with
+      // the rest of its old transaction instead.
+      if (is_txn_in_progress && !curr_active_txn_commit_record &&
+          (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
+           unique_id->GreaterThanDistributedLSN(last_seen_unique_record_id_))) {
         VLOG_WITH_PREFIX(2) << "Encountered 1st commit record for txn_id: " << last_seen_txn_id_
                             << "with commit_time " << record->row_message().commit_time()
                             << ". Will store it for shipping later";
@@ -891,6 +951,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                           << ", Rejected record received from tablet_id: " << tablet_id
                           << ", Last_shipped_record's tablet_id: " << last_shipped_record_tablet_id;
     }
+
+    // Done before last_seen_unique_record_id_ moves to this record, and for the BEGIN records that
+    // are not shipped because their transaction is merged with another one at the same commit time.
+    MoveAbortedSubtxnsToResponse(row_message, resp);
 
     if (lsn_result.ok() && txn_id_result.ok()) {
       row_message->set_pg_lsn(*lsn_result);
@@ -1216,7 +1280,22 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
       // not correspond to an actual WAL entry. Hence, it is safe to skip them from adding into the
       // tablet queue.
       if (record.row_message().has_commit_time()) {
-        tablet_queue.push(std::make_shared<CDCSDKProtoRecordPB>(record));
+        auto queued_record = std::make_shared<CDCSDKProtoRecordPB>(record);
+        const auto op = record.row_message().op();
+        if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec > 0) &&
+            tablet_id != master::kSysCatalogTabletId &&
+            (op == RowMessage_Op_BEGIN || op == RowMessage_Op_COMMIT ||
+             op == RowMessage_Op_INSERT || op == RowMessage_Op_UPDATE ||
+             op == RowMessage_Op_DELETE)) {
+          // Rounding up, not down, keeps a commit time at or above the virtual WAL safe
+          // time already reached, below which records are dropped.
+          const uint64_t unit = HybridTime::FromMicros(
+              FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec).ToUint64();
+          const uint64_t commit_time = record.row_message().commit_time();
+          queued_record->mutable_row_message()->set_commit_time(
+              (commit_time + unit - 1) / unit * unit);
+        }
+        tablet_queue.push(std::move(queued_record));
       } else {
         DCHECK_EQ(record.row_message().op(), RowMessage_Op_DDL);
         VLOG_WITH_PREFIX(3) << "Filtered record due to lack of commit_time: "
@@ -1274,7 +1353,7 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
     auto record = tablet_queue->front();
     bool is_publication_refresh_record =
         tablet_id == kPublicationRefreshTabletID ||
-        (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+        (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
          tablet_id == master::kSysCatalogTabletId);
     bool result =
         CDCSDKUniqueRecordID::CanFormUniqueRecordId(is_publication_refresh_record, record);
@@ -1445,6 +1524,21 @@ Result<uint32_t> CDCSDKVirtualWAL::GetRecordTxnID(
   }
 
   return STATUS_FORMAT(InternalError, "Record's commit_time is lesser than last seen record.");
+}
+
+void CDCSDKVirtualWAL::MoveAbortedSubtxnsToResponse(
+    RowMessage* row_message, GetConsistentChangesResponsePB* resp) {
+  // A BEGIN at an earlier commit time is a duplicate of one already handled.
+  if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ||
+      row_message->op() != RowMessage_Op_BEGIN || !row_message->has_aborted_subtxns() ||
+      row_message->commit_time() < last_seen_unique_record_id_->GetCommitTime()) {
+    return;
+  }
+
+  auto& entry = (*resp->mutable_aborted_subtxns())[row_message->transaction_id()];
+  entry.set_commit_time(row_message->commit_time());
+  *entry.mutable_aborted_subtxns() = std::move(*row_message->mutable_aborted_subtxns());
+  row_message->clear_aborted_subtxns();
 }
 
 Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
@@ -1964,14 +2058,14 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletIdsFromVirtualWAL() {
 bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) const {
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
           (table_id == pg_attribute_table_id_ ||
            table_id == pg_publication_rel_prpubid_index_table_id_));
 }
 
 bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
     const std::shared_ptr<CDCSDKProtoRecordPB>& record) const {
-  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     return false;
   }
 
@@ -2002,11 +2096,11 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
-      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
-      return record->row_message().op() == RowMessage_Op_DELETE
-                 ? PubRefreshTrigger::kTableDropped
-                 : PubRefreshTrigger::kTableRewritten;
+      const bool is_drop = record->row_message().op() == RowMessage_Op_DELETE;
+      LOG_WITH_PREFIX(INFO) << "Table " << (is_drop ? "drop" : "rewrite")
+                            << " detected, will trigger a publication refresh";
+      return is_drop ? PubRefreshTrigger::kTableDropped : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
@@ -2021,12 +2115,12 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
 
     return PubRefreshTrigger::kTableCreated;
   } else if (table_id == pg_publication_rel_table_id_ ||
-             (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+             (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
               table_id == pg_publication_rel_prpubid_index_table_id_)) {
     // With transactional DDL only the prpubid index entry triggers the refresh. It is written after
     // its pg_publication_rel row (for both insert and delete), so a read at its record_time sees
     // the row and the index entry together..
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+    if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
         table_id == pg_publication_rel_table_id_) {
       return PubRefreshTrigger::kNone;
     }
@@ -2067,7 +2161,7 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kPublicationUpdated;
   }
 
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
     table_id == pg_attribute_table_id_) {
     return PubRefreshTrigger::kNone;
   }
@@ -2178,7 +2272,9 @@ Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalo
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GetPgCatalogUint32Column(row_message, "oid", true /* use_new_tuple */);
+  // A DELETE record carries the row's key only in the old tuple.
+  auto oid = GetPgCatalogUint32Column(
+      row_message, "oid", row_message.op() != RowMessage_Op_DELETE /* use_new_tuple */);
   if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }

@@ -790,8 +790,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
+  const auto txn_ddl = ASSERT_RESULT(cluster_->GetFlag(
+      pg_ts, "ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this]() {
+  thread_holder.AddThreadFunctor([this, txn_ddl]() {
     std::vector<std::string> argv = {
         GetPgToolPath("pg_recvlogical"),
         "--dbname=yugabyte",
@@ -799,7 +801,9 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
         Format("--host=$0", pg_ts->bind_host()),
         Format("--port=$0", pg_ts->ysql_port()),
         Format("--slot=$0", kSlotName),
-        "--endpos=0/6", // so that the replication stops after 2 commits
+        // With transactional DDL, DDL records also take LSN values. Therefore, adjust endpos
+        // accordingly so that both the commits are streamed.
+        Format("--endpos=0/$0", txn_ddl ? "11" : "6"),
         "--file=-",
         "--start"
     };
@@ -1613,47 +1617,50 @@ TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamp
              kView, start_time, end_time)}));
 }
 
-TEST_P(YbAshV2TestWithCircularBufferSize, TestEveryTimeBound) {
-  // While a single session sleeps, each sampling tick normally stores one sample. With the 1 KiB
-  // buffer, that leaves a gap in time between the last slot and slot 0.
+TEST_P(YbAshV2TestWithCircularBufferSize, TestTimeBoundsBetweenSamples) {
+  constexpr auto kView = "yb_active_session_history";
+  // A single sleeping session gives one sample per sampling round, so with the 1 KiB buffer
+  // there is a time gap between the last slot and slot 0.
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Fetch("SELECT pg_sleep(2)"));
   ASSERT_OK(StopAshSampling());
 
-  // Use every sample_time, every midpoint between consecutive sample_times, and points just
-  // outside the buffer's time range as bounds.
-  const auto [num_bounds, bad_start_time, bad_end_time, bad_empty_range] = ASSERT_RESULT((
-      conn_->FetchRow<int64_t, int64_t, int64_t, int64_t>(R"#(
-          WITH times AS (SELECT DISTINCT sample_time AS ts FROM yb_active_session_history),
+  // Bounds: every sample time, every midpoint between consecutive sample times, one point on
+  // each side of the buffer's time range, and times at and before 2000-01-01, where
+  // timestamptz is 0. The view filtered on sample_time is the expected result.
+  const auto [num_sample_times, bad_start_bounds, bad_end_bounds, bad_empty_ranges] =
+      ASSERT_RESULT((conn_->FetchRow<int64_t, int64_t, int64_t, int64_t>(Format(R"#(
+          WITH times AS (SELECT DISTINCT sample_time AS ts FROM $0),
                bounds AS (SELECT ts FROM times
                           UNION
                           SELECT ts + (LEAD(ts) OVER (ORDER BY ts) - ts) / 2 FROM times
                           UNION
                           SELECT MIN(ts) - INTERVAL '1 ms' FROM times
                           UNION
-                          SELECT MAX(ts) + INTERVAL '1 ms' FROM times),
+                          SELECT MAX(ts) + INTERVAL '1 ms' FROM times
+                          UNION
+                          SELECT '2000-01-01 00:00:00+00'
+                          UNION
+                          SELECT '1999-12-31 00:00:00+00'),
                results AS (
                  SELECT
-                   ARRAY(SELECT sample_time FROM yb_active_session_history
-                         WHERE sample_time >= b.ts ORDER BY 1) AS expected_from,
-                   ARRAY(SELECT sample_time FROM yb_active_session_history(b.ts)
-                         ORDER BY 1) AS actual_from,
-                   ARRAY(SELECT sample_time FROM yb_active_session_history
-                         WHERE sample_time < b.ts ORDER BY 1) AS expected_until,
-                   ARRAY(SELECT sample_time FROM yb_active_session_history(NULL, b.ts)
-                         ORDER BY 1) AS actual_until,
-                   (SELECT COUNT(*) FROM yb_active_session_history(b.ts, b.ts)) AS actual_empty
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time >= b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(b.ts) ORDER BY 1) AS start_ok,
+                   ARRAY(SELECT sample_time FROM $0 WHERE sample_time < b.ts ORDER BY 1)
+                     = ARRAY(SELECT sample_time FROM $0(NULL, b.ts) ORDER BY 1) AS end_ok,
+                   (SELECT COUNT(*) FROM $0(b.ts, b.ts)) = 0 AS empty_ok
                  FROM bounds b WHERE b.ts IS NOT NULL)
-          SELECT COUNT(*),
-                 COUNT(*) FILTER (WHERE expected_from <> actual_from),
-                 COUNT(*) FILTER (WHERE expected_until <> actual_until),
-                 COUNT(*) FILTER (WHERE actual_empty <> 0)
+          SELECT (SELECT COUNT(*) FROM times),
+                 COUNT(*) FILTER (WHERE NOT start_ok),
+                 COUNT(*) FILTER (WHERE NOT end_ok),
+                 COUNT(*) FILTER (WHERE NOT empty_ok)
           FROM results
-      )#")));
-  ASSERT_GT(num_bounds, 0);
-  EXPECT_EQ(bad_start_time, 0);
-  EXPECT_EQ(bad_end_time, 0);
-  EXPECT_EQ(bad_empty_range, 0);
+      )#", kView))));
+  // At least one gap between samples, or the checks below compare empty results.
+  ASSERT_GE(num_sample_times, 2);
+  EXPECT_EQ(bad_start_bounds, 0);
+  EXPECT_EQ(bad_end_bounds, 0);
+  EXPECT_EQ(bad_empty_ranges, 0);
 }
 
 // Regression test: ASH samples for ConflictResolution_WaitOnConflictingTxns must carry the user's

@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <atomic>
 #include <optional>
 
 #include "yb/client/snapshot_test_util.h"
@@ -1434,6 +1435,42 @@ TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
       "ALTER TABLE test DROP COLUMN value2",
       "SELECT SUM(value2) FROM test WHERE value = 1",
       42);
+}
+
+// An insert from a writer with a stale catalog omits both columns added by one ALTER TABLE.
+TEST_P(PgPackedRowTestDisableTableLocks, StaleWriterDuringMultiColumnAdd) {
+  constexpr auto kDdlDelay = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(writer.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  // Tablets get the new schema version before the catalog version is incremented.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_delay_next_ddl = $0", ToMilliseconds(kDdlDelay)));
+  std::atomic<bool> ddl_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &ddl_done] {
+    ASSERT_OK(conn.Execute(
+        "ALTER TABLE test ADD COLUMN c1 BOOL DEFAULT FALSE NOT NULL, ADD COLUMN c2 INT"));
+    ddl_done = true;
+  });
+
+  // In a transaction block, the mismatch only invalidates the table cache entry.
+  ASSERT_OK(LoggedWaitFor([&writer]() -> Result<bool> {
+    RETURN_NOT_OK(writer.Execute("BEGIN"));
+    auto status = writer.Execute("INSERT INTO test VALUES (2, 2)");
+    RETURN_NOT_OK(writer.Execute("ROLLBACK"));
+    return status.ToString().find("schema version mismatch") != std::string::npos;
+  }, kDdlDelay / 2, "Waiting for schema version mismatch"));
+  ASSERT_OK(writer.Execute("INSERT INTO test VALUES (2, 2)"));
+  // Otherwise the insert could have used the new catalog.
+  ASSERT_FALSE(ddl_done);
+  thread_holder.JoinAll();
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM test WHERE c1::text IS NULL")), 0);
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT c1 FROM test WHERE key = 2")));
 }
 
 namespace {

@@ -215,6 +215,12 @@ Status AddVectorIdTombstones(
   return Status::OK();
 }
 
+// A record's rows are written at the source's WAL op time unless the record carries its own time.
+// See CDCRecordPB::external_hybrid_time.
+uint64_t DocWriteTime(const cdc::CDCRecordPB& record) {
+  return record.has_external_hybrid_time() ? record.external_hybrid_time() : record.time();
+}
+
 Status AddRecord(
     const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record,
     std::unordered_set<SchemaVersion>& used_packed_schema_versions,
@@ -281,7 +287,7 @@ Status AddRecord(
       // Used only for testing external hybrid time.
       write_pair->set_external_hybrid_time(yb::kInitialHybridTimeValue);
     } else {
-      write_pair->set_external_hybrid_time(record.time());
+      write_pair->set_external_hybrid_time(DocWriteTime(record));
     }
 
     if (new_schema_version) {

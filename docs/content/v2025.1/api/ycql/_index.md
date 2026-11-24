@@ -134,4 +134,4 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 ## Learn more
 
 - [Advantages of YCQL over Cassandra](/stable/faq/comparisons/cassandra/)
-- [YCQL - Cassandra 3.4 compatibility](../../explore/ycql-language/cassandra-feature-support/)
+- [YCQL - Cassandra 3.4 compatibility](cassandra-feature-support/)

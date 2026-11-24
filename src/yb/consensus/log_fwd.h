@@ -55,9 +55,8 @@ using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
 YB_STRONGLY_TYPED_BOOL(ObeyMemoryLimit);
 
 YB_DEFINE_ENUM(WalEntryState,
-  // Not yet appended to the WAL.
-  (kNone)
-  // Appended to the WAL, but not yet fsynced.
+  // Appended or queued for append to the WAL, but not yet fsynced.
+  // A write op could be applied while it is still queued, see ApplyPendingOperationsUnlocked.
   (kAppended)
   // Appended to the WAL, but the last WAL fsync failed, so it may never become durable.
   (kSyncFailed)

@@ -6,7 +6,6 @@ package oci
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -250,6 +249,9 @@ var updateOCIProviderCmd = &cobra.Command{
 			providerRegions,
 		)
 		providerRegions = addOCIRegions(addRegions, addZones, providerRegions)
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		provider.SetRegions(providerRegions)
 
 		addImageBundles, err := cmd.Flags().GetStringArray("add-image-bundle")
@@ -277,14 +279,19 @@ var updateOCIProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if err := validateOCIImageBundlesNotRemoved(
+		if err := providerutil.ValidateImageBundleEdits(
 			removeImageBundles, editImageBundles, editImageBundleRegionOverrides,
+			providerImageBundles,
 		); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		regionCodes := ociRegionCodes(providerRegions)
-		providerImageBundles = removeOCIImageBundles(removeImageBundles, providerImageBundles)
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 		providerImageBundles, err = editOCIImageBundles(
 			editImageBundles,
 			providerImageBundles,
@@ -391,7 +398,9 @@ func init() {
 			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
-			"Each zone needs to be removed using a separate --remove-zone flag.")
+			"Each zone needs to be removed using a separate --remove-zone flag. "+
+			"Removing every zone of a region is rejected; remove the region with "+
+			"--remove-region instead.")
 
 	updateOCIProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the OCI provider. "+
@@ -507,22 +516,17 @@ func validateOCIRegionAndZoneNames(
 		}
 	}
 	for _, regionString := range editRegions {
-		name := providerutil.BuildRegionMapFromString(regionString, "edit")["name"]
+		name := providerutil.BuildRegionMapFromStringAllowingClearInstanceTemplate(
+			regionString, "edit")["name"]
 		if findOCIRegion(name, providerRegions) == nil {
 			return regionNotFoundError(name)
 		}
 	}
 
-	addedRegions := make(map[string]bool, len(addRegions))
-	for _, regionString := range addRegions {
-		addedRegions[providerutil.BuildRegionMapFromString(regionString, "add")["name"]] = true
-	}
-	for _, zoneString := range addZones {
-		regionName := providerutil.BuildZoneMapFromString(zoneString, "add")["region-name"]
-		if !addedRegions[regionName] && findOCIRegion(regionName, providerRegions) == nil {
-			return fmt.Errorf(
-				"region %s in --add-zone is not in the provider or in --add-region", regionName)
-		}
+	if err := providerutil.ValidateUpdateAddZoneRegions(
+		addRegions, addZones, providerRegions,
+	); err != nil {
+		return err
 	}
 
 	for _, op := range []struct {
@@ -738,26 +742,6 @@ func addOCIZones(
 	return zones
 }
 
-func removeOCIImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
-}
-
 // applyOCIRegionImageEdit updates per-region images. machineImage applies only
 // when the provider has one region. overrides update the named regions.
 func applyOCIRegionImageEdit(
@@ -817,30 +801,6 @@ func validateOCIBundlesCoverAddedRegions(
 	return nil
 }
 
-// validateOCIImageBundlesNotRemoved rejects edits of a bundle that the same
-// update removes; otherwise the edit is dropped or reported as an unknown bundle.
-func validateOCIImageBundlesNotRemoved(
-	removeImageBundles, editImageBundles, editRegionOverrides []string,
-) error {
-	edited := make([]string, 0, len(editImageBundles)+len(editRegionOverrides))
-	for _, raw := range editImageBundles {
-		edited = append(edited,
-			providerutil.BuildImageBundleMapFromString(raw, "edit")["uuid"])
-	}
-	for _, raw := range editRegionOverrides {
-		edited = append(edited,
-			providerutil.BuildImageBundleRegionOverrideMapFromString(raw, "edit")["uuid"])
-	}
-	for _, uuid := range edited {
-		if slices.Contains(removeImageBundles, uuid) {
-			return fmt.Errorf(
-				"image bundle %s is removed with --remove-image-bundle in the same command "+
-					"and cannot also be edited", uuid)
-		}
-	}
-	return nil
-}
-
 func editOCIImageBundles(
 	editImageBundles []string,
 	providerImageBundles []ybaclient.ImageBundle,
@@ -868,16 +828,11 @@ func editOCIImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							return nil, err
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
@@ -960,14 +915,9 @@ func addOCIImageBundles(
 			regions[code] = ybaclient.BundleInfo{YbImage: util.GetStringPointer(image)}
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			return nil, err
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

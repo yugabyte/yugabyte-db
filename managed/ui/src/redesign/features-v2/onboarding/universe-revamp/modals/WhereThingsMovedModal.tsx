@@ -18,16 +18,20 @@ import {
 
 const { Box, Typography } = mui;
 
-interface WhereThingsMovedModalProps {
-  open: boolean;
-  onClose: () => void;
-  onFindOutMore?: () => void;
-}
-
-interface RelocationRow {
+export interface RelocationRow {
   thenKey: string;
   nowPathKey: string;
   nowDetailKey?: string;
+}
+
+export interface WhereThingsMovedModalProps {
+  open: boolean;
+  onClose: () => void;
+  onFindOutMore?: () => void;
+  i18nKeyPrefix?: string;
+  rows?: RelocationRow[];
+  nowPrefixKey?: string;
+  showFindOutMore?: boolean;
 }
 
 const RELOCATION_ROWS: RelocationRow[] = [
@@ -62,11 +66,13 @@ const RELOCATION_ROWS: RelocationRow[] = [
 export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
   open,
   onClose,
-  onFindOutMore
+  onFindOutMore,
+  i18nKeyPrefix = 'onBoarding.whereThingsMovedModal',
+  rows = RELOCATION_ROWS,
+  nowPrefixKey = 'settings',
+  showFindOutMore = true
 }) => {
-  const { t } = useTranslation('translation', {
-    keyPrefix: 'onBoarding.whereThingsMovedModal'
-  });
+  const { t } = useTranslation('translation', { keyPrefix: i18nKeyPrefix });
 
   const handleFindOutMore = () => {
     if (onFindOutMore) {
@@ -109,14 +115,16 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
           >
             {t('close')}
           </YBButton>
-          <YBButton
-            variant="gradient"
-            size="large"
-            onClick={handleFindOutMore}
-            dataTestId="where-things-moved-modal-find-out-more"
-          >
-            {t('findOutMore')}
-          </YBButton>
+          {showFindOutMore && (
+            <YBButton
+              variant="gradient"
+              size="large"
+              onClick={handleFindOutMore}
+              dataTestId="where-things-moved-modal-find-out-more"
+            >
+              {t('findOutMore')}
+            </YBButton>
+          )}
         </FooterActions>
       }
     >
@@ -145,7 +153,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
                 <SortIcon />
               </HeaderLabel>
             </TableHeader>
-            {RELOCATION_ROWS.map((row) => (
+            {rows.map((row) => (
               <TableRow key={`${row.thenKey}-${row.nowPathKey}-${row.nowDetailKey ?? ''}`}>
                 <Typography
                   sx={{
@@ -171,7 +179,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
                   }}
                 >
                   <Box component="span" sx={{ color: '#6D7C88' }}>
-                    {t('settings')}
+                    {t(nowPrefixKey)}
                   </Box>
                   {`  /  ${t(row.nowPathKey)}`}
                   {row.nowDetailKey ? (

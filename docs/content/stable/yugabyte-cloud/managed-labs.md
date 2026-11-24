@@ -6,7 +6,7 @@ headcontent: Test YugabyteDB Aeon features using a demo application in real time
 menu:
   stable_yugabyte-cloud:
     identifier: managed-labs
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     weight: 15
 type: docs
 ---

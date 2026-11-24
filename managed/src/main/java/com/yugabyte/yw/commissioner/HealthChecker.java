@@ -17,7 +17,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
@@ -49,7 +51,9 @@ import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -60,6 +64,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -78,6 +83,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -96,13 +102,18 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Value;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
@@ -119,6 +130,8 @@ public class HealthChecker {
   private static final String YB_TSERVER_PROCESS = "yb-tserver";
 
   static final String SCRIPT_PERMISSIONS = "755";
+  // Reported by node_health.py; the content hash of the scripts it was uploaded with.
+  @VisibleForTesting static final String SCRIPT_FINGERPRINT_FIELD = "script_fingerprint";
 
   private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
 
@@ -127,6 +140,9 @@ public class HealthChecker {
 
   private static final String DDL_ATOMICITY_CHECK_RELEASE = "2.18.4.0-b23";
   private static final String DDL_ATOMICITY_CHECK_PREVIEW_RELEASE = "2.19.1.0-b301";
+
+  // Must outlast the "health check not running" alert. Removing the universe deletes it.
+  private static final long HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(365);
 
   private final Environment environment;
 
@@ -158,8 +174,15 @@ public class HealthChecker {
   // A map of all running health checks.
   final Map<UUID, CompletableFuture<Void>> runningHealthChecks = new ConcurrentHashMap<>();
 
-  // We upload health check script to the node only when NodeInfo is updates
-  private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
+  // The scripts each node was last given. They are uploaded again when the generated content
+  // changes or the node reports scripts other than these.
+  private final Map<Pair<UUID, String>, UploadedScripts> uploadedScripts =
+      new ConcurrentHashMap<>();
+  private final AtomicLong uploadCounter = new AtomicLong();
+  private final Supplier<String> collectMetricsTemplate =
+      Suppliers.memoize(() -> readTemplate("metric/collect_metrics.sh.template"));
+  private final Supplier<String> nodeHealthTemplate =
+      Suppliers.memoize(() -> readTemplate("health/node_health.py.template"));
   private final Map<UUID, Instant> ddlAtomicitySuccessfulCheckTimestamp = new ConcurrentHashMap<>();
 
   // Names of the node health script metrics seen so far - what the next run cleans up before saving
@@ -455,10 +478,28 @@ public class HealthChecker {
         log.debug("Skipping health check scheduler for follower platform");
         return;
       }
-      // TODO(bogdan): This will not be too DB friendly when we go multi-tenant.
+      metricService.setMetric(
+          buildMetricTemplate(
+              PlatformMetrics.HEALTH_CHECK_INTERVAL, HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC),
+          TimeUnit.MILLISECONDS.toSeconds(healthCheckIntervalMs()));
+      // Read the universes and alert configs of all customers at once, rather than querying them
+      // for each customer. Only the universe identities are read here: each check loads its
+      // universe when it runs, so the details of all universes are never in memory at once.
+      Map<Long, List<Universe.Summary>> universesByCustomer =
+          Universe.getSummaries().stream()
+              .collect(Collectors.groupingBy(Universe.Summary::customerId));
+      Map<UUID, CustomerConfig> alertConfigs =
+          CustomerConfig.getAllAlertConfigs().stream()
+              .collect(Collectors.toMap(CustomerConfig::getCustomerUUID, cfg -> cfg, (a, b) -> a));
+      Supplier<List<MaintenanceWindow>> activeWindows =
+          Suppliers.memoize(maintenanceService::listActiveWindows);
       for (Customer c : Customer.getAll()) {
         try {
-          checkCustomer(c);
+          checkCustomer(
+              c,
+              alertConfigs.get(c.getUuid()),
+              universesByCustomer.getOrDefault(c.getId(), Collections.emptyList()),
+              activeWindows);
         } catch (Exception ex) {
           log.error("Error running health check scheduler for customer " + c.getUuid(), ex);
         }
@@ -469,9 +510,19 @@ public class HealthChecker {
   }
 
   public void checkCustomer(Customer c) {
-    // We need an alerting config to do work.
-    CustomerConfig config = CustomerConfig.getAlertConfig(c.getUuid());
+    checkCustomer(
+        c,
+        CustomerConfig.getAlertConfig(c.getUuid()),
+        Universe.getSummaries(c),
+        Suppliers.memoize(maintenanceService::listActiveWindows));
+  }
 
+  private void checkCustomer(
+      Customer c,
+      CustomerConfig config,
+      Collection<Universe.Summary> universes,
+      Supplier<List<MaintenanceWindow>> activeWindows) {
+    // We need an alerting config to do work.
     boolean shouldSendStatusUpdate = false;
     long storeIntervalMs = healthCheckStoreIntervalMs();
     AlertingData alertingData = null;
@@ -499,7 +550,8 @@ public class HealthChecker {
     if (!onlyMetrics) {
       lastCheckTimeMap.put(c.getUuid(), now);
     }
-    checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
+    checkAllUniverses(
+        c, universes, alertingData, shouldSendStatusUpdate, onlyMetrics, activeWindows);
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
@@ -545,40 +597,68 @@ public class HealthChecker {
   @VisibleForTesting
   void checkAllUniverses(
       Customer c, AlertingData alertingData, boolean shouldSendStatusUpdate, boolean onlyMetrics) {
+    checkAllUniverses(
+        c,
+        Universe.getSummaries(c),
+        alertingData,
+        shouldSendStatusUpdate,
+        onlyMetrics,
+        Suppliers.memoize(maintenanceService::listActiveWindows));
+  }
+
+  private void checkAllUniverses(
+      Customer c,
+      Collection<Universe.Summary> universes,
+      AlertingData alertingData,
+      boolean shouldSendStatusUpdate,
+      boolean onlyMetrics,
+      Supplier<List<MaintenanceWindow>> activeWindows) {
+    if (universes.isEmpty()) {
+      return;
+    }
 
     boolean reportOnlyErrors =
         !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
+    // The destinations are the same for all universes of the customer.
+    List<String> customerDestinations = emailHelper.getDestinations(c.getUuid());
 
-    c.getUniverses().stream()
-        .filter(
-            u -> {
-              // Skip universes that were never successfully brought up. Running health checks on
-              // them just produces noisy failures and misleading alerts for something that never
-              // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
-              // for these so operators still see the problem. Null details are handled downstream
-              // in checkSingleUniverse (which reports a failure metric), so let them through here.
-              UniverseDefinitionTaskParams details = u.getUniverseDetails();
-              if (details != null && !details.creationSucceeded) {
-                log.debug(
-                    "Skipping universe {} - universe creation has never successfully completed",
-                    u.getName());
-                return false;
-              }
-              return true;
-            })
-        .map(
-            u -> {
-              String destinations = getAlertDestinations(u, c);
-              return new CheckSingleUniverseParams(
-                  u,
-                  c,
-                  shouldSendStatusUpdate,
-                  reportOnlyErrors,
-                  onlyMetrics,
-                  destinations,
-                  false /*runImmediately*/);
-            })
-        .forEach(params -> runHealthCheck(params, false /*ignoreLastHealthCheck*/));
+    for (Universe.Summary summary : universes) {
+      // The universe is loaded by the check itself, so that only the universes being checked are
+      // in memory, and their details are current when the check starts.
+      scheduleHealthCheck(
+          c,
+          summary.universeUUID(),
+          summary.name(),
+          false /*ignoreLastCheck*/,
+          () -> {
+            Optional<Universe> maybeUniverse = Universe.maybeGet(summary.universeUUID());
+            if (maybeUniverse.isEmpty()) {
+              log.debug("Universe {} no longer exists", summary.name());
+              return null;
+            }
+            Universe u = maybeUniverse.get();
+            // Skip universes that were never successfully brought up. Running health checks on
+            // them just produces noisy failures and misleading alerts for something that never
+            // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
+            // for these so operators still see the problem. Null details are handled downstream
+            // in checkSingleUniverse (which reports a failure metric), so let them through here.
+            UniverseDefinitionTaskParams details = u.getUniverseDetails();
+            if (details != null && !details.creationSucceeded) {
+              log.debug(
+                  "Skipping universe {} - universe creation has never successfully completed",
+                  u.getName());
+              return null;
+            }
+            return new CheckSingleUniverseParams(
+                u,
+                c,
+                shouldSendStatusUpdate,
+                reportOnlyErrors,
+                onlyMetrics,
+                getAlertDestinations(u, customerDestinations, activeWindows),
+                false /*runImmediately*/);
+          });
+    }
   }
 
   public void cancelHealthCheck(UUID universeUUID) {
@@ -592,20 +672,20 @@ public class HealthChecker {
 
   public void markUniverseForReUpload(UUID universeUUID) {
     List<Pair<UUID, String>> universeNodeInfos =
-        uploadedNodeInfo.keySet().stream()
+        uploadedScripts.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
             .toList();
-    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+    universeNodeInfos.forEach(uploadedScripts::remove);
   }
 
   public void handleUniverseRemoval(UUID universeUUID) {
     cancelHealthCheck(universeUUID);
     runningHealthChecks.remove(universeUUID);
     List<Pair<UUID, String>> universeNodeInfos =
-        uploadedNodeInfo.keySet().stream()
+        uploadedScripts.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
             .toList();
-    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+    universeNodeInfos.forEach(uploadedScripts::remove);
   }
 
   private boolean isShutdown() {
@@ -666,9 +746,28 @@ public class HealthChecker {
 
   public CompletableFuture<Void> runHealthCheck(
       CheckSingleUniverseParams params, boolean ignoreLastCheck) {
-    String universeName = params.universe.getName();
-    CompletableFuture<Void> lastCheck =
-        this.runningHealthChecks.get(params.universe.getUniverseUUID());
+    return scheduleHealthCheck(
+        params.customer,
+        params.universe.getUniverseUUID(),
+        params.universe.getName(),
+        ignoreLastCheck,
+        () -> params);
+  }
+
+  /**
+   * Schedules a health check of the universe, unless its previous check is still running and
+   * ignoreLastCheck is false.
+   *
+   * @param paramsSupplier called by the check when it starts; returns the check parameters, or null
+   *     to skip the check
+   */
+  private CompletableFuture<Void> scheduleHealthCheck(
+      Customer customer,
+      UUID universeUuid,
+      String universeName,
+      boolean ignoreLastCheck,
+      Supplier<CheckSingleUniverseParams> paramsSupplier) {
+    CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(universeUuid);
     // Only schedule a task if the previous one for the given universe has completed.
     if (!ignoreLastCheck && lastCheck != null && !lastCheck.isDone()) {
       log.info("Health check for universe {} is still running. Skipping...", universeName);
@@ -676,6 +775,11 @@ public class HealthChecker {
     }
 
     log.debug("Scheduling health check for universe: {}", universeName);
+    // Started on queueing, not when the check begins: a check can wait behind hung ones forever.
+    Metric queuedClock = lastCompletedTimeMetric(customer, universeUuid, universeName);
+    if (metricService.get(MetricKey.from(queuedClock)) == null) {
+      metricService.setMetric(queuedClock, Instant.now().getEpochSecond());
+    }
     long scheduled = System.currentTimeMillis();
     CompletableFuture<Void> task =
         CompletableFuture.runAsync(
@@ -683,7 +787,15 @@ public class HealthChecker {
               long diff = System.currentTimeMillis() - scheduled;
               log.debug(
                   "Health check for universe {} was queued for [ {} ms ]", universeName, diff);
+              CheckSingleUniverseParams params = null;
               try {
+                params = paramsSupplier.get();
+                if (params == null) {
+                  // Not checked, so not expected to complete either.
+                  metricService.delete(
+                      MetricFilter.builder().keys(List.of(MetricKey.from(queuedClock))).build());
+                  return;
+                }
                 log.info("Running health check for universe: {}", universeName);
                 checkSingleUniverse(params);
               } catch (CancellationException | CompletionException e) {
@@ -692,21 +804,29 @@ public class HealthChecker {
                     universeName);
               } catch (Exception e) {
                 log.error("Error running health check for universe: {}", universeName, e);
-                setHealthCheckFailedMetric(params.customer, params.universe);
+                if (params != null) {
+                  setHealthCheckFailedMetric(params.customer, params.universe);
+                }
               } finally {
-                runningHealthChecks.remove(params.universe.getUniverseUUID());
+                runningHealthChecks.remove(universeUuid);
+                // Not after the universe is removed, which deletes its metrics. A check that threw
+                // counts as completed: HEALTH_CHECK_ERROR reports it.
+                if (params != null && Universe.maybeGet(universeUuid).isPresent()) {
+                  metricService.setMetric(
+                      lastCompletedTimeMetric(params), Instant.now().getEpochSecond());
+                }
               }
             },
             this.universeExecutor);
 
     // Add the task to the map of running tasks.
-    this.runningHealthChecks.put(params.universe.getUniverseUUID(), task);
+    this.runningHealthChecks.put(universeUuid, task);
 
     return task;
   }
 
-  private String getAlertDestinations(Universe u, Customer c) {
-    List<String> destinations = emailHelper.getDestinations(c.getUuid());
+  private String getAlertDestinations(
+      Universe u, List<String> destinations, Supplier<List<MaintenanceWindow>> activeWindows) {
     if (destinations.isEmpty()) {
       return null;
     }
@@ -719,7 +839,7 @@ public class HealthChecker {
     // Check if there is an active maintenance window for this universe which is supposed to
     // suppress health check alerts.
     boolean maintenanceWindowActiveForUniverse =
-        maintenanceService.isHealthCheckNotificationSuppressedForUniverse(u);
+        MaintenanceService.isHealthCheckNotificationSuppressedForUniverse(u, activeWindows.get());
 
     return (maintenanceWindowActiveForUniverse) ? null : String.join(",", destinations);
   }
@@ -1276,7 +1396,7 @@ public class HealthChecker {
               .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
               .processErrors();
 
-      return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+      return parseNodeReport(universe, nodeInfo, response.extractRunCommandOutput());
     } else {
       HealthCheckInput.Builder healthCheckInputBldr = HealthCheckInput.newBuilder();
       healthCheckInputBldr.setYbHomeDir(nodeInfo.getYbHomeDir());
@@ -1293,7 +1413,8 @@ public class HealthChecker {
       if (ybaYnpVersion != null) {
         healthCheckInputBldr.setYbaYnpVersion(ybaYnpVersion);
       }
-      healthCheckInputBldr.setGenerationId(generateGenerationId(nodeInfo, nodeCheckContext));
+      healthCheckInputBldr.setGenerationId(
+          generateGenerationId(universe, nodeInfo, nodeCheckContext));
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeInfo.getNodeHost());
       HealthCheckOutput healthCheckOutput =
           nodeAgentClient.runOrGetHealthCheck(
@@ -1308,19 +1429,45 @@ public class HealthChecker {
                 + ": "
                 + healthCheckOutput.getError().getMessage());
       }
-      return Json.fromJson(Json.parse(healthCheckOutput.getReportJson()), Details.class);
+      return parseNodeReport(universe, nodeInfo, healthCheckOutput.getReportJson());
     }
+  }
+
+  private Details parseNodeReport(Universe universe, NodeInfo nodeInfo, String reportJson) {
+    JsonNode report = Json.parse(reportJson);
+    JsonNode fingerprint = report.path(SCRIPT_FINGERPRINT_FIELD);
+    if (report instanceof ObjectNode) {
+      ((ObjectNode) report).remove(SCRIPT_FINGERPRINT_FIELD);
+    }
+    Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
+    UploadedScripts uploaded = uploadedScripts.get(nodeKey);
+    // Scripts from a YBA without fingerprints don't report one; they were replaced when this YBA
+    // started.
+    if (uploaded != null
+        && fingerprint.isTextual()
+        && !fingerprint.asText().equals(uploaded.getFingerprint())) {
+      log.warn(
+          "Node {} of universe {} runs health scripts other than the ones uploaded, uploading"
+              + " them again",
+          nodeInfo.getNodeName(),
+          universe.getUniverseUUID());
+      uploadedScripts.remove(nodeKey, uploaded);
+    }
+    return Json.fromJson(report, Details.class);
   }
 
   // Stable generation from schedule-relevant params. A change forces reschedule;
   // identical params reuse the running schedule and its cache. On-demand trigger uses a
-  // fresh generation so the agent cannot return a previously cached report.
-  private String generateGenerationId(NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
+  // fresh generation so the agent cannot return a previously cached report. Each upload
+  // changes it too, since the agent runs a copy of the script made when it reschedules.
+  private String generateGenerationId(
+      Universe universe, NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
     if (nodeCheckContext.isRunImmediately()) {
       return UUID.randomUUID().toString();
     }
     return Integer.toString(
         Objects.hash(
+            uploadedScripts.get(new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName())),
             nodeInfo.hashCode(),
             nodeCheckContext.getTimeoutSec(),
             nodeCheckContext.getNodeAgentCheckerScheduleIntervalSecs(),
@@ -1338,40 +1485,54 @@ public class HealthChecker {
   private void maybeUploadNodeScripts(
       Universe universe, NodeInfo nodeInfo, ShellProcessContext context) {
     Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
-    NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
-    if (uploadedInfo != null && uploadedInfo.equals(nodeInfo)) {
-      // Node already has the scripts matching its current metadata.
+    // Skip the metrics-collection script for k8s as no one will call it on a k8s pod.
+    String collectMetricsScript =
+        nodeInfo.isK8s()
+            ? ""
+            : collectMetricsTemplate.get().replace("{{YB_HOME_DIR}}", nodeInfo.ybHomeDir);
+    String nodeHealthScript =
+        nodeHealthTemplate
+            .get()
+            .replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString())
+            .replace(
+                "{{TMP_DIR}}",
+                GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe));
+    String fingerprint = DigestUtils.sha256Hex(collectMetricsScript + nodeHealthScript);
+    UploadedScripts uploaded = uploadedScripts.get(nodeKey);
+    if (uploaded != null && uploaded.getFingerprint().equals(fingerprint)) {
       return;
     }
-    // Skip the metrics-collection script for k8s as no one will call it on a k8s pod. A changed
-    // NodeInfo can also mean the node IP changed (node name reused for a fresh underlying node).
+    // A changed NodeInfo can also mean the node IP changed (node name reused for a fresh
+    // underlying node).
     if (!nodeInfo.isK8s()) {
-      String generatedScriptPath =
-          generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
       log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
-      String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager.uploadFileToNode(
           nodeInfo.nodeDetails,
           universe,
-          generatedScriptPath,
-          scriptPath,
+          writeScript(
+              "collect_metrics_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
+              ".sh",
+              collectMetricsScript),
+          nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh",
           SCRIPT_PERMISSIONS,
           context);
     }
 
     log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
-    String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
     nodeUniverseManager.uploadFileToNode(
         nodeInfo.nodeDetails,
         universe,
-        generatedScriptPath,
+        writeScript(
+            "node_health_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
+            ".py",
+            nodeHealthScript.replace("{{SCRIPT_FINGERPRINT}}", fingerprint)),
         getNodeHealthScriptPath(nodeInfo),
         SCRIPT_PERMISSIONS,
         context);
 
     // Only record the node as up to date after both uploads succeeded, so a failed upload is
     // retried on the next cycle.
-    uploadedNodeInfo.put(nodeKey, nodeInfo);
+    uploadedScripts.put(nodeKey, new UploadedScripts(fingerprint, uploadCounter.incrementAndGet()));
   }
 
   /**
@@ -1416,6 +1577,30 @@ public class HealthChecker {
     }
   }
 
+  private static Metric lastCompletedTimeMetric(CheckSingleUniverseParams params) {
+    return buildMetricTemplate(
+        PlatformMetrics.HEALTH_CHECK_LAST_COMPLETED_TIME,
+        params.customer,
+        params.universe,
+        HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC);
+  }
+
+  // The same key as above, from what is known before the universe is loaded; a completed check
+  // replaces the labels with the full set.
+  private static Metric lastCompletedTimeMetric(
+      Customer customer, UUID universeUuid, String universeName) {
+    return buildMetricTemplate(
+            PlatformMetrics.HEALTH_CHECK_LAST_COMPLETED_TIME,
+            customer,
+            HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC)
+        .setSourceUuid(universeUuid)
+        .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUuid.toString())
+        .setLabel(KnownAlertLabels.UNIVERSE_NAME, universeName)
+        .setLabel(KnownAlertLabels.SOURCE_UUID, universeUuid.toString())
+        .setLabel(KnownAlertLabels.SOURCE_NAME, universeName)
+        .setLabel(KnownAlertLabels.SOURCE_TYPE, "universe");
+  }
+
   private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
     // Remove old metrics and create only health check failed.
     MetricFilter toClean =
@@ -1425,46 +1610,29 @@ public class HealthChecker {
     metricService.cleanAndSave(Collections.singletonList(healthCheckFailed), toClean);
   }
 
-  private String generateCollectMetricsScript(UUID universeUuid, NodeInfo nodeInfo) {
-    String template;
-    try (InputStream templateStream =
-        environment.resourceAsStream("metric/collect_metrics.sh.template")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      String scriptContent = template.replace("{{YB_HOME_DIR}}", nodeInfo.ybHomeDir);
-      // For now it has no universe/cluster specific info. Add placeholder substitution here once
-      // they are added.
-      Path path =
-          fileHelperService.createTempFile(
-              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeUuid, ".sh");
-      Files.writeString(path, scriptContent);
-
-      return path.toString();
+  private String readTemplate(String resource) {
+    try (InputStream templateStream = environment.resourceAsStream(resource)) {
+      return IOUtils.toString(templateStream, StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition rule template", e);
+      throw new RuntimeException("Failed to read " + resource, e);
     }
   }
 
-  private String generateNodeCheckScript(UUID universeUuid, NodeInfo nodeInfo) {
-    String template;
-    try (InputStream templateStream =
-        environment.resourceAsStream("health/node_health.py.template")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      Universe universe = Universe.getOrBadRequest(universeUuid);
-      String customTmpDirectory =
-          GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe);
-      String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
-      scriptContent = scriptContent.replace("{{TMP_DIR}}", customTmpDirectory);
-      // For now it has no universe/cluster specific info. Add placeholder substitution here once
-      // they are added.
-      Path path =
-          fileHelperService.createTempFile(
-              "node_health_" + universeUuid + "_" + nodeInfo.nodeUuid, ".py");
-      Files.writeString(path, scriptContent);
-
+  private String writeScript(String prefix, String suffix, String content) {
+    try {
+      Path path = fileHelperService.createTempFile(prefix, suffix);
+      Files.writeString(path, content);
       return path.toString();
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition rule template", e);
+      throw new RuntimeException("Failed to write " + prefix + suffix, e);
     }
+  }
+
+  /** The upload ID tells uploads of the same content apart, so each one reschedules the agent. */
+  @Value
+  private static class UploadedScripts {
+    String fingerprint;
+    long uploadId;
   }
 
   private MetricFilter metricSourceKeysFilterWithHealthScriptMetrics(
@@ -1486,9 +1654,10 @@ public class HealthChecker {
 
   @VisibleForTesting
   static boolean canHealthCheckUniverse(UUID universeUUID) {
-    Optional<Universe> u = Universe.maybeGet(universeUUID);
-    UniverseDefinitionTaskParams universeDetails = u.map(Universe::getUniverseDetails).orElse(null);
-    if (universeDetails == null) {
+    // Read the current state from the database, since a task may have started since the check
+    // loaded the universe. Only the fields that tell whether it is busy are read.
+    Optional<Boolean> busyByTask = Universe.isUniverseBusyByTask(universeUUID);
+    if (busyByTask.isEmpty()) {
       log.warn(
           "Cancelling universe "
               + universeUUID
@@ -1496,9 +1665,8 @@ public class HealthChecker {
       return false;
     }
 
-    if (universeDetails.isUniverseBusyByTask()) {
-      log.warn(
-          "Cancelling universe " + u.get().getName() + " health-check, some task is in progress.");
+    if (busyByTask.get()) {
+      log.warn("Cancelling universe " + universeUUID + " health-check, some task is in progress.");
       return false;
     }
     return true;

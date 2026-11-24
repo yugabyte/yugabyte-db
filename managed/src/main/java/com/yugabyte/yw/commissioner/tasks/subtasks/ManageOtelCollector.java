@@ -42,7 +42,8 @@ public class ManageOtelCollector extends NodeTaskBase {
   // GODEBUG=fips140=on. It is a separate artifact from the bare 0.145.0 rather than a
   // replacement, published from the same collector manifest by the unified-otelcol workflow in
   // yugabyte-cloud, so the suffix is part of the version string and not a build flag here.
-  public static String OtelCollectorVersion = "0.145.0-fips";
+  // The -1 is a rebuild of 0.145.0 with Go 1.27.3 and patched Go dependencies (PLAT-22934).
+  public static String OtelCollectorVersion = "0.145.0-1-fips";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
