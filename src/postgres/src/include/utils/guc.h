@@ -251,6 +251,9 @@ typedef enum
 												 * Manager connection sticky */
 #define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
 												 * Connection Manager */
+#define GUC_YB_CONN_MGR_REPLAY_CHECK	0x10000000	/* YB: run the check hook
+													 * on Connection Manager
+													 * replay */
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
@@ -526,6 +529,7 @@ extern void assign_recovery_prefetch(int new_value, void *extra);
 extern void YbValidateConfigFile(const char *config_file);
 extern void YbSetYsqlConnMgrGucDefaults(const char *data, int len);
 extern void YbResetYsqlConnMgrGucDefaults(void);
+extern void YbSetYsqlConnMgrSessionState(const char *data, int len);
 extern void YbSetParallelWorker();
 extern char *YbResolveGucValue(const char *name, const char *value);
 extern bool YbIsValidConfigFileName(const char *name);
