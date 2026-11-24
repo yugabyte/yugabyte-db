@@ -1809,6 +1809,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String channel = "relisten_replay";
 
     try {
+      // Keep A on one backend under Connection Manager; UNLISTEN would otherwise unstick it.
+      setConnMgrReversibleStickinessExclusions("listen");
       // The poller now crashes after every queue write, before the CDC ack, so it keeps
       // replaying the same transaction.
       setFatalAfterNotifsQueueWriteFlag(true);
@@ -1834,6 +1836,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
     } finally {
       setFatalAfterNotifsQueueWriteFlag(false);
+      setConnMgrReversibleStickinessExclusions("");
     }
 
     verifyListenNotifyWorks();
@@ -2222,8 +2225,17 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   private void setConnMgrReversibleStickinessExclusions(String value) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       setServerFlag(tserver, "ysql_yb_conn_mgr_reversible_stickiness_exclusions", value);
+    }
+    String expected = value.contains("listen") ? "on" : "off";
+    try (Connection conn = getConnectionBuilder().connect()) {
+      waitForCondition(conn,
+          "SELECT CASE WHEN current_setting('yb_conn_mgr_listen_permanent_sticky') = '"
+          + expected + "' THEN 1 ELSE 0 END");
     }
   }
 
