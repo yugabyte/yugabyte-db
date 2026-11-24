@@ -2177,29 +2177,29 @@ class PgObjectLocksTestDdlOverlap : public PgObjectLocksTest {
   }
 };
 
-// The parameter turns ysql_enable_concurrent_ddl off.
+// The parameter is the value of ysql_enable_concurrent_ddl.
 class PgObjectLocksTestOverlappingDdls : public PgObjectLocksTestDdlOverlap,
                                          public ::testing::WithParamInterface<bool> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTestDdlOverlap::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back(
-        Format("--ysql_enable_concurrent_ddl=$0", !GetParam()));
+        Format("--ysql_enable_concurrent_ddl=$0", GetParam()));
   }
 };
 
 TEST_P(PgObjectLocksTestOverlappingDdls, DdlsOverlapOnlyWithConcurrentDdl) {
-  const bool concurrent_ddl_off = GetParam();
+  const bool concurrent_ddl = GetParam();
   ASSERT_NO_FATALS(CreateOverlapObjects());
   const auto overlapped = ASSERT_RESULT(
       DdlsOverlap(cluster_->tablet_server(0), cluster_->tablet_server(1), "v"));
-  ASSERT_EQ(overlapped, !concurrent_ddl_off);
+  ASSERT_EQ(overlapped, concurrent_ddl);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     ConcurrentDdl, PgObjectLocksTestOverlappingDdls, ::testing::Bool(),
     [](const ::testing::TestParamInfo<bool>& info) {
-      return info.param ? "ConcurrentDdlDisabled" : "ConcurrentDdlEnabled";
+      return info.param ? "ConcurrentDdlEnabled" : "ConcurrentDdlDisabled";
     });
 
 // Turning ysql_enable_concurrent_ddl off on a running cluster: the cluster starts with it on, and
