@@ -39,6 +39,7 @@ set client_min_messages to 'warning';
 --          closing its last group), so the full-pull estimate exceeds the
 --          actuals by design.
 
+drop view if exists check_limit_run_cost;
 drop view if exists check_first_fetch_limit_estimates;
 drop type if exists limit_plan_rows cascade;
 create type limit_plan_rows as (
@@ -177,6 +178,50 @@ from
     ) expected;
 
 
+-- A scan's startup cost pays for every row of its first response, so the
+-- Limit above it charges none of the scan's run cost when the first response
+-- holds the rows the Limit reads, and some of it when the scan has to make a
+-- further request (#36851).  "Limit Cost" compares the two: the Limit's run
+-- cost, its total less its startup cost, is 0 exactly when no stream of the
+-- scan made a request after its first.  A Limit that reads its whole input is
+-- not compared.
+create view check_limit_run_cost as
+with limits as (
+    select
+        q.qid,
+        js.explain_line::jsonb #>> '{0,Plan,Node Type}' top_type,
+        (js.explain_line::jsonb #>> '{0,Plan,Total Cost}')::numeric -
+        (js.explain_line::jsonb #>> '{0,Plan,Startup Cost}')::numeric limit_run_cost,
+        (js.explain_line::jsonb #>> '{0,Plan,Plan Rows}')::float8 limit_rows,
+        (js.explain_line::jsonb #>> '{0,Plan,Plans,0,Plan Rows}')::float8 input_rows
+    from
+        queries q,
+        explain_query_options opt,
+        lateral explain_query_json(q.query, opt.with_analyze) js
+)
+select
+    l.qid,
+    s."Node Type",
+    s."Index Name",
+    s."First Fetch Limit",
+    l.input_rows "Input Rows",
+    l.limit_rows "Limit Rows",
+    s."Storage Table Read Requests",
+    s."Storage Index Read Requests",
+    l.limit_run_cost "Limit Run Cost",
+    case
+        when l.limit_rows >= l.input_rows then 'whole input'
+        when (s."Storage Table Read Requests" <= 1
+              and s."Storage Index Read Requests" <= 1) = (l.limit_run_cost = 0)
+            then 'passed'
+        else 'failed'
+    end "Limit Cost"
+from
+    limits l
+    join check_first_fetch_limit_estimates s using (qid)
+where l.top_type = 'Limit';
+
+
 delete from queries;
 
 -- 81xxx: contiguous ranges x scan kind x LIMIT k.
@@ -308,6 +353,21 @@ from check_first_fetch_limit_estimates
 where qid < 89000 and "Estimates" <> 'passed'
 order by qid, nid;
 
+-- should return only the rows explained below.
+-- 82002: the cost model takes the rows of a response as the scan's rows over
+-- its estimated pages, which is 4215 / 5 = 843 rows where a response holds
+-- 1024, so it prices the bound's 1000 rows as reaching into a second request.
+-- 89002: DISTINCT over duplicated keys.  The scan is costed without the trim,
+-- as one default-sized response that covers the LIMIT, while the executor
+-- trims the first request to the bound and then fetches a default-sized one.
+select qid, "Node Type", "Index Name", "First Fetch Limit",
+       "Input Rows", "Limit Rows",
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Limit Run Cost", "Limit Cost"
+from check_limit_run_cost
+where "Limit Cost" = 'failed'
+order by qid;
+
 -- Fetch limit variant: row-count pagination
 set yb_fetch_size_limit = 0;
 set yb_fetch_row_limit = 128;
@@ -336,6 +396,19 @@ select qid, nid, "Node Type", "Index Name",
 from check_first_fetch_limit_estimates
 where qid < 89000 and "Estimates" <> 'passed'
 order by qid, nid;
+
+-- should return only the rows explained below.
+-- LIMIT 128 with 128 rows to a response: for the same reason as 82002 above,
+-- the cost model takes a response as 12345 / 97 = 127.3 rows and prices the
+-- last row of the bound as reaching into a second request.
+-- 89002: as above.
+select qid, "Node Type", "Index Name", "First Fetch Limit",
+       "Input Rows", "Limit Rows",
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Limit Run Cost", "Limit Cost"
+from check_limit_run_cost
+where "Limit Cost" = 'failed'
+order by qid;
 
 -- Fetch limit variant: byte-size pagination
 set yb_fetch_size_limit = '8kB';
