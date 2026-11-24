@@ -915,6 +915,9 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
+              for (String nodeName : ImmutableList.of("host-n4", "host-n5")) {
+                u.getNode(nodeName).state = NodeDetails.NodeState.VMImageUpgrade;
+              }
               u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "saved");
               u.getNode("host-n5").pathToUUIDMapping = ImmutableMap.of("/mnt/d1", "stale");
             });
@@ -932,14 +935,107 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
-  public void testVMImageUpgradeOciRetryReusesMappingInOlderRuntimeInfo() throws Exception {
+  public void testVMImageUpgradeOciCapturesFstabOfLiveNodeWithMappingLeftOnIt() {
     ImageBundle ociBundle = addOciNodes();
+    // As if a run that unfroze the universe left the node out after an earlier attempt saved it.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "left"));
+
+    TaskInfo taskInfo = submitOciOnlyUpgrade(ociBundle, false);
+    assertEquals(1, getSubTaskParams(taskInfo, TaskType.RunNodeCommand, "host-n4").size());
+    assertEquals(ImmutableList.of("/mnt/d0=abc", "/mnt/d0=abc"), getUploadedYnpMappings());
+    assertNoSavedMappings();
+  }
+
+  @Test
+  public void testVMImageUpgradeOciRetryReusesMappingInOlderRuntimeInfo() {
+    ImageBundle ociBundle = addOciNodes();
+    AtomicReference<String> swappedNode = new AtomicReference<>();
+    TaskInfo failedTask = failUpgradeAsOlderYba(ociBundle, "legacy", swappedNode);
+
+    TaskInfo retry = retryUpgrade(failedTask);
+    assertSucceeded(retry);
+    assertTrue(getSubTaskParams(retry, TaskType.RunNodeCommand, swappedNode.get()).isEmpty());
+    assertFalse(getReplaceRootVolumeParams().containsKey(swappedNode.get()));
+    assertEquals("legacy", getYnpMount(retry, swappedNode.get()));
+    assertNoSavedMappings();
+    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+  }
+
+  @Test
+  public void testVMImageUpgradeOciRetryOfNodeSwappedWithoutMappingSkipsFstab() {
+    ImageBundle ociBundle = addOciNodes();
+    AtomicReference<String> swappedNode = new AtomicReference<>();
+    // As a YBA that swapped root volumes without capturing fstab, such as 2025.2.7, leaves it.
+    TaskInfo failedTask = failUpgradeAsOlderYba(ociBundle, null, swappedNode);
+
+    TaskInfo retry = retryUpgrade(failedTask);
+    assertSucceeded(retry);
+    assertTrue(getSubTaskParams(retry, TaskType.RunNodeCommand, swappedNode.get()).isEmpty());
+    assertFalse(getReplaceRootVolumeParams().containsKey(swappedNode.get()));
+    // YNP gets no mapping for the swapped node, so it finds the data disks itself.
+    List<String> uploadedMappings = getUploadedYnpMappings();
+    assertEquals(2, uploadedMappings.size());
+    assertEquals(ImmutableSet.of("", "/mnt/d0=abc"), ImmutableSet.copyOf(uploadedMappings));
+    assertNoSavedMappings();
+    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+  }
+
+  @Test
+  public void testVMImageUpgradeOciRerunReusesMappingTakenFromOlderRuntimeInfo() {
+    ImageBundle ociBundle = addOciNodes();
+    AtomicReference<String> swappedNode = new AtomicReference<>();
+    TaskInfo failedTask = failUpgradeAsOlderYba(ociBundle, "legacy", swappedNode);
+    AtomicBoolean failProvisioning = new AtomicBoolean(true);
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                argThat(n -> n != null && swappedNode.get().equals(n.nodeName)),
+                any(),
+                argThat(
+                    (List<String> command) ->
+                        command != null
+                            && command.stream().anyMatch(s -> s.contains("node-agent-provision"))),
+                any()))
+        .thenAnswer(
+            inv ->
+                failProvisioning.get()
+                    ? ShellResponse.create(1, "Installation failed")
+                    : ShellResponse.create(0, ""));
+
+    // The retry takes the mapping from the older runtime info, then fails on the swapped node.
+    TaskInfo retry = retryUpgrade(failedTask);
+    assertEquals(TaskInfo.State.Failure, retry.getTaskState());
+    assertEquals(
+        ImmutableMap.of("/mnt/d0", "legacy"),
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getNode(swappedNode.get())
+            .pathToUUIDMapping);
+    failProvisioning.set(false);
+
+    // A new submission, which doesn't inherit the runtime info.
+    TaskInfo rerun = submitOciOnlyUpgrade(ociBundle, false);
+    assertTrue(getSubTaskParams(rerun, TaskType.RunNodeCommand, swappedNode.get()).isEmpty());
+    assertEquals("legacy", getYnpMount(rerun, swappedNode.get()));
+    assertNoSavedMappings();
+    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+  }
+
+  /**
+   * Fails an upgrade at its first root volume replacement, then makes the task look as an older YBA
+   * that had swapped that node's root volume would have left it: no mapping on the node, the node
+   * in the runtime info's volumeReplacedNodes and, if legacyUuid is set, a mapping in its
+   * deviceMappingByNode. The node's fstab can't be read from then on.
+   */
+  private TaskInfo failUpgradeAsOlderYba(
+      ImageBundle ociBundle, String legacyUuid, AtomicReference<String> swappedNode) {
     AtomicBoolean failReplacement = new AtomicBoolean(true);
-    AtomicReference<String> failedNode = new AtomicReference<>();
     doAnswer(
             inv -> {
               if (failReplacement.get()) {
-                failedNode.set(((ReplaceRootVolume.Params) inv.getArgument(1)).nodeName);
+                swappedNode.set(((ReplaceRootVolume.Params) inv.getArgument(1)).nodeName);
                 return ShellResponse.create(1, "Failed to update the boot volume");
               }
               return new ShellResponse();
@@ -949,42 +1045,47 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     TaskInfo failedTask = submitOciOnlyUpgradeTask(ociBundle, false);
     assertEquals(TaskInfo.State.Failure, failedTask.getTaskState());
 
-    // As a YBA that kept the mapping in the task's runtime info would have left a node it had
-    // already moved to its new root volume.
     UUID nodeUuid =
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
-            .getNode(failedNode.get())
+            .getNode(swappedNode.get())
             .getNodeUuid();
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
-        u -> u.getNode(failedNode.get()).pathToUUIDMapping = null);
+        u -> u.getNode(swappedNode.get()).pathToUUIDMapping = null);
     ObjectNode runtimeInfo = Json.newObject();
-    runtimeInfo
-        .putObject("deviceMappingByNode")
-        .putObject(nodeUuid.toString())
-        .put("/mnt/d0", "legacy");
+    if (legacyUuid != null) {
+      runtimeInfo
+          .putObject("deviceMappingByNode")
+          .putObject(nodeUuid.toString())
+          .put("/mnt/d0", legacyUuid);
+    }
     runtimeInfo.putArray("volumeReplacedNodes").add(nodeUuid.toString());
     failedTask.setRuntimeInfo(runtimeInfo);
     failedTask.save();
-    failFstabReads(Collections.singleton(failedNode.get()));
+    failFstabReads(Collections.singleton(swappedNode.get()));
     failReplacement.set(false);
     Mockito.clearInvocations(mockNodeManager);
+    return failedTask;
+  }
 
+  private TaskInfo retryUpgrade(TaskInfo failedTask) {
     VMImageUpgradeParams retryParams =
         Json.fromJson(failedTask.getTaskParams(), VMImageUpgradeParams.class);
     retryParams.setPreviousTaskUUID(failedTask.getUuid());
     retryParams.expectedUniverseVersion = -1;
     retryParams.creatingUser = defaultUser;
-    TaskInfo retry = waitForTask(commissioner.submit(TaskType.VMImageUpgrade, retryParams));
-    if (retry.getTaskState() != TaskInfo.State.Success) {
-      throw new IllegalStateException(
-          "Retry failed " + LocalProviderUniverseTestBase.getAllErrorsStr(retry));
+    try {
+      return waitForTask(commissioner.submit(TaskType.VMImageUpgrade, retryParams));
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
     }
-    assertTrue(getSubTaskParams(retry, TaskType.RunNodeCommand, failedNode.get()).isEmpty());
-    assertFalse(getReplaceRootVolumeParams().containsKey(failedNode.get()));
-    assertEquals("legacy", getYnpMount(retry, failedNode.get()));
-    assertNoSavedMappings();
-    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+  }
+
+  private static void assertSucceeded(TaskInfo taskInfo) {
+    if (taskInfo.getTaskState() != TaskInfo.State.Success) {
+      throw new IllegalStateException(
+          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+    }
   }
 
   private void failFstabReads(Set<String> nodeNames) {

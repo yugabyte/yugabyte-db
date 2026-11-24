@@ -109,7 +109,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
     // Node UUID -> (mount path -> disk UUID), where older YBA versions kept the fstab mapping. Read
     // but never written: a retry inherits it, so a retry of such a task can still remount the data
-    // disks of a node already on its new root volume.
+    // disks of a node already on its new root volume. The retry saves it on the node for reruns.
     @JsonProperty("deviceMappingByNode")
     Map<UUID, Map<String, String>> legacyDeviceMappingByNode = new ConcurrentHashMap<>();
   }
@@ -279,12 +279,23 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .nodesAreStopped(true)
                   .preAction(
                       node -> {
+                        if (reuseSavedDeviceMapping(universe, node)) {
+                          return;
+                        }
+                        if (isMidUpgrade(universe, node)
+                            && runtimeInfo.volumeReplacedNodes.contains(node.getNodeUuid())) {
+                          // Already on its new root volume, whose fstab no longer has the data
+                          // disks, as when an older YBA that didn't capture fstab swapped it.
+                          log.info(
+                              "Node {} is on its new root volume with no usable fstab mapping,"
+                                  + " provisioning will find its data disks",
+                              node.nodeName);
+                          return;
+                        }
                         // Capture /etc/fstab before the root volume is replaced (old root is
                         // detached after).
-                        if (!reuseSavedDeviceMapping(universe, node)) {
-                          createCaptureFstabTask(universe, node)
-                              .setSubTaskGroupType(getTaskSubGroupType());
-                        }
+                        createCaptureFstabTask(universe, node)
+                            .setSubTaskGroupType(getTaskSubGroupType());
                       })
                   .postAction(
                       node -> {
@@ -722,24 +733,36 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   /**
-   * Uses the mapping an earlier attempt saved on the node if it covers the node's mount points. The
-   * node may be on its new root volume by now, where /etc/fstab no longer has the data disks.
+   * Whether an earlier attempt left the node mid-upgrade. Only such a node can be on its new root
+   * volume, where /etc/fstab no longer has the data disks.
+   */
+  private static boolean isMidUpgrade(Universe universe, NodeDetails node) {
+    NodeDetails current = universe.getNode(node.nodeName);
+    return current != null && current.state == NodeState.VMImageUpgrade;
+  }
+
+  /**
+   * Uses the mapping an earlier attempt left for the node if the node is still mid-upgrade and the
+   * mapping covers its mount points. Any other node's fstab has the data disks, so a mapping left
+   * on it isn't trusted and is captured again.
    */
   private boolean reuseSavedDeviceMapping(Universe universe, NodeDetails node) {
-    NodeDetails savedNode = universe.getNode(node.nodeName);
-    Map<String, String> saved = savedNode == null ? null : savedNode.pathToUUIDMapping;
-    String source = "saved on the node";
-    if (saved == null) {
+    if (!isMidUpgrade(universe, node)) {
+      return false;
+    }
+    Map<String, String> saved = universe.getNode(node.nodeName).pathToUUIDMapping;
+    boolean legacy = saved == null;
+    if (legacy) {
       saved = runtimeInfo.legacyDeviceMappingByNode.get(node.getNodeUuid());
-      source = "in the runtime info of an older YBA's task";
     }
     if (saved == null) {
       return false;
     }
+    String source = legacy ? "in the runtime info of an older YBA's task" : "saved on the node";
     Set<String> mountPoints = getMountPoints(universe, node);
     if (!saved.keySet().equals(mountPoints)) {
       log.info(
-          "Mapping {} for node {} has mount points {} instead of {}, capturing fstab again",
+          "Not reusing the fstab mapping {} for node {}: it has mount points {} instead of {}",
           source,
           node.nodeName,
           saved.keySet(),
@@ -750,6 +773,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     deviceMappingByNode
         .computeIfAbsent(node.getNodeUuid(), k -> new ConcurrentHashMap<>())
         .putAll(saved);
+    if (legacy) {
+      // Save it on the node too: a rerun doesn't inherit this task's runtime info.
+      Map<String, String> mapping = new HashMap<>(saved);
+      createUpdateUniverseFieldsTask(
+              u -> {
+                NodeDetails nodeDetails = u.getNode(node.nodeName);
+                if (nodeDetails != null) {
+                  nodeDetails.pathToUUIDMapping = mapping;
+                }
+              })
+          .setSubTaskGroupType(getTaskSubGroupType());
+    }
     return true;
   }
 
