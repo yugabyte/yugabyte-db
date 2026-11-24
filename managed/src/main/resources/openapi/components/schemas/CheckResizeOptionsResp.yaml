@@ -16,8 +16,3 @@ properties:
     type: array
     items:
       type: string
-  full_move_reasons:
-    description: 'Reasons why the proposed node settings require a full node replacement (FULL_MOVE), such as a changed image bundle, AWS instance profile, public IP assignment or communication ports.'
-    type: array
-    items:
-      type: string
