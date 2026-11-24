@@ -72,6 +72,7 @@
 #include "utils/inval.h"
 #include "utils/plancache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include <sys/stat.h>
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -657,7 +658,7 @@ static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
 static bool yb_use_query_id_for_hinting = true;
 static bool yb_enable_hint_table_cache = true;
-static int	yb_test_hint_cache_invalidate_delay_ms = 0;
+static char *yb_test_hint_cache_invalidate_wait_file = NULL;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
 static int recurse_level = 0;		/* recursion level incl. direct SPI calls */
@@ -943,19 +944,17 @@ _PG_init(void)
 							NULL,
 							NULL);
 
-	DefineCustomIntVariable("pg_hint_plan.yb_test_hint_cache_invalidate_delay_ms",
-							"Test only: sleep this long at the start of the hint "
-							"table's cache invalidation trigger.",
-							NULL,
-							&yb_test_hint_cache_invalidate_delay_ms,
-							0,
-							0,
-							INT_MAX,
-							PGC_SUSET,
-							GUC_UNIT_MS | GUC_NOT_IN_SAMPLE,
-							NULL,
-							NULL,
-							NULL);
+	DefineCustomStringVariable("pg_hint_plan.yb_test_hint_cache_invalidate_wait_file",
+							   "Test only: at the start of the hint table's cache "
+							   "invalidation trigger, wait until this file exists.",
+							   NULL,
+							   &yb_test_hint_cache_invalidate_wait_file,
+							   "",
+							   PGC_SUSET,
+							   GUC_NOT_IN_SAMPLE,
+							   NULL,
+							   NULL,
+							   NULL);
 
 	EmitWarningsOnPlaceholders("pg_hint_plan");
 
@@ -7786,11 +7785,21 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(PointerGetDatum(NULL));
 	}
 
-	if (yb_test_hint_cache_invalidate_delay_ms > 0)
+	if (yb_test_hint_cache_invalidate_wait_file[0] != '\0')
 	{
-		elog(LOG, "sleeping for %d ms in hint cache invalidation",
-			 yb_test_hint_cache_invalidate_delay_ms);
-		pg_usleep(yb_test_hint_cache_invalidate_delay_ms * 1000L);
+		struct stat st;
+
+		/*
+		 * Poll the file system only: a DocDB request here would flush the
+		 * statement's buffered write.
+		 */
+		elog(LOG, "waiting for file %s in hint cache invalidation",
+			 yb_test_hint_cache_invalidate_wait_file);
+		while (stat(yb_test_hint_cache_invalidate_wait_file, &st) != 0)
+		{
+			CHECK_FOR_INTERRUPTS();
+			pg_usleep(10000L);
+		}
 	}
 
 	/*

@@ -17,6 +17,7 @@
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
 #include "yb/util/json_document.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -265,12 +266,13 @@ TEST_F(PgHintTableTest, SimpleConcurrencyTest) {
 // trigger registers a catalog change, and its outcome is only collected at the end of the
 // statement. A write conflict collected there was refused a retry, and the client got 40001.
 //
-// 1. conn_first upserts the hint row outside a transaction block and sleeps at the start of the
-//    hint table's invalidation trigger.
-// 2. conn_second upserts the same row outside a transaction block while conn_first sleeps.
-//    Depending on whether conn_first's write has reached DocDB, conn_second either commits first
-//    (conn_first's write then conflicts) or waits on conn_first (and conflicts once it commits).
-// 3. Both statements must succeed: the losing one is retried.
+// 1. conn_first upserts the hint row outside a transaction block and is held at the start of the
+//    hint table's invalidation trigger, until the test creates a release file.
+// 2. conn_second upserts the same row outside a transaction block. Depending on whether
+//    conn_first's write has reached DocDB, conn_second either commits (conn_first's write then
+//    conflicts) or waits on conn_first's write (and conflicts once conn_first commits). The test
+//    waits until it sees one of the two.
+// 3. The test releases conn_first. Both statements must succeed: the losing one is retried.
 //
 // The refused retry needs transactional DDL, which is on by default only in release builds, so the
 // fixture turns it on.
@@ -297,39 +299,43 @@ TEST_F_EX(PgHintTableTest, ConflictingHintUpsertIsRetried, PgHintTableTestTxnDdl
         query_id, hint);
   };
   ASSERT_OK(conn_first.Execute(upsert("SeqScan(pg_class)")));
+  const auto release_file = GetTestPath("release_hint_trigger");
   ASSERT_OK(conn_first.ExecuteFormat(
-      "SET pg_hint_plan.yb_test_hint_cache_invalidate_delay_ms = $0", 3000 * kTimeMultiplier));
+      "SET pg_hint_plan.yb_test_hint_cache_invalidate_wait_file = '$0'", release_file));
   std::vector<ExternalDaemon*> tservers;
   for (auto* ts : cluster_->tserver_daemons()) {
     tservers.push_back(ts);
   }
-  LogWaiter sleep_waiter(tservers, "sleeping for");
+  LogWaiter hold_waiter(tservers, "waiting for file " + release_file);
 
   // Step 1.
   auto first = std::async(std::launch::async, [&conn_first, &upsert] {
     return conn_first.Execute(upsert(kFirstHint));
   });
-  ASSERT_OK(sleep_waiter.WaitFor(30s * kTimeMultiplier));
+  auto status = hold_waiter.WaitFor(30s * kTimeMultiplier);
 
   // Step 2.
   auto second = std::async(std::launch::async, [&conn_second, &upsert] {
     return conn_second.Execute(upsert(kSecondHint));
   });
-  const auto wait_status = WaitFor([&conn_check, &second]() -> Result<bool> {
-    return second.wait_for(0s) == std::future_status::ready ||
-           VERIFY_RESULT(conn_check.FetchRow<PGUint64>(
-               "SELECT COUNT(*) FROM pg_stat_activity "
-               "WHERE state = 'active' AND query LIKE 'INSERT INTO hint_plan.hints%YbBatchedNL%'"))
-               > 0;
-  }, 30s * kTimeMultiplier, "conn_second runs its upsert");
-  // The statements must overlap, or the test proves nothing.
-  const auto first_running = first.wait_for(0s) == std::future_status::timeout;
+  if (status.ok()) {
+    status = WaitFor([&conn_check, &second]() -> Result<bool> {
+      return second.wait_for(0s) == std::future_status::ready ||
+             VERIFY_RESULT(conn_check.FetchRow<PGUint64>(
+                 "SELECT COUNT(*) FROM pg_locks "
+                 "WHERE NOT granted AND relation = 'hint_plan.hints'::regclass")) > 0;
+    }, 30s * kTimeMultiplier, "conn_second commits or waits on conn_first");
+  }
+  // conn_first is held until the release, so it must still be running here.
+  const auto first_held = first.wait_for(0s) == std::future_status::timeout;
 
-  // Step 3.
+  // Step 3. Release conn_first either way, so that both statements finish.
+  const auto release_status = WriteStringToFile(Env::Default(), "", release_file);
   const auto first_status = first.get();
   const auto second_status = second.get();
-  ASSERT_OK(wait_status);
-  ASSERT_TRUE(first_running) << "conn_first finished before conn_second ran; raise the delay";
+  ASSERT_OK(status);
+  ASSERT_OK(release_status);
+  ASSERT_TRUE(first_held) << "conn_first finished before its release: " << first_status;
   ASSERT_OK(first_status);
   ASSERT_OK(second_status);
   const auto hint = ASSERT_RESULT(conn_check.FetchRow<std::string>(Format(
