@@ -3469,7 +3469,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       REQUIRES_SHARED(mutex_);
 
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
-  // across them. Does IO, so must not be called under mutex_.
+  // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
       const std::unordered_set<xrepl::StreamId>& stream_ids) EXCLUDES(mutex_);
 
