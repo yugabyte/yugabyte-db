@@ -626,7 +626,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // get universe from db
     Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    VMImageUpgradeParams v1Params = new VMImageUpgradeParams();
+    VMImageUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toVMImageUpgradeParams(
+            universe.getUniverseDetails(), request);
     UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(
         vmImageUpgradeSpec, v1Params);
 
