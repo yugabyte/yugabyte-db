@@ -165,7 +165,8 @@ var updateS3StorageConfigurationCmd = &cobra.Command{
 }
 
 // applyS3Keys writes the S3 key pair into data. Without key flags the stored pair is kept,
-// or read from the environment with --update-credentials or when switching off IAM.
+// or read from the environment with --update-credentials or when switching off IAM with no
+// stored keys.
 // Switching to IAM drops the keys; --update-credentials is ignored with IAM.
 func applyS3Keys(
 	data map[string]interface{},
@@ -177,6 +178,9 @@ func applyS3Keys(
 			return fmt.Errorf("--access-key-id and --secret-access-key cannot be used " +
 				"with IAM instance profile based storage configurations")
 		}
+		if updateCreds {
+			logrus.Warnln("--update-credentials is ignored for IAM based storage configurations")
+		}
 		if !wasIAM {
 			delete(data, util.AWSAccessKeyEnv)
 			delete(data, util.AWSSecretAccessKeyEnv)
@@ -184,7 +188,8 @@ func applyS3Keys(
 		return nil
 	}
 	if !keyFlagSet {
-		if !updateCreds && !wasIAM {
+		_, hasStored := data[util.AWSAccessKeyEnv]
+		if !updateCreds && (!wasIAM || hasStored) {
 			return nil
 		}
 		logrus.Infof("Reading S3 keys from %s and %s\n",

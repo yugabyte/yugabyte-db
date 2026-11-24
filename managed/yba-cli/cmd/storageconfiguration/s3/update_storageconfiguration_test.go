@@ -132,6 +132,16 @@ func TestApplyS3Keys(t *testing.T) {
 			want:  map[string]interface{}{},
 		},
 		{
+			name:       "switching off IAM keeps stored keys",
+			wasIAM:     true,
+			keepStored: true,
+			env: map[string]string{
+				util.AWSAccessKeyEnv:       envAccess,
+				util.AWSSecretAccessKeyEnv: envSecret,
+			},
+			want: stored,
+		},
+		{
 			name:       "rename of an IAM config keeps stored keys",
 			wasIAM:     true,
 			isIAM:      true,

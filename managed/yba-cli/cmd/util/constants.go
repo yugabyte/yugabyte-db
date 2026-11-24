@@ -71,6 +71,8 @@ const (
 
 	// AzureStorageSasTokenEnv env variable name azure storage config
 	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"
+	// UseAzureIAM field name to denote in Json request
+	UseAzureIAM = "USE_AZURE_IAM"
 
 	// AzureClientIDField field name to denote in Json request
 	AzureClientIDField = "CLIENT_ID"

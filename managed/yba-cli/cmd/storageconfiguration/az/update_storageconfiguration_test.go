@@ -6,7 +6,6 @@ package azure
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -21,23 +20,17 @@ func TestApplyAzureSASToken(t *testing.T) {
 	tests := []struct {
 		name     string
 		sasToken string
-		flagSet  bool
+		iam      bool
 		env      *string
 		want     string
-		wantErr  string
 	}{
 		{name: "rename only keeps stored token", want: masked},
 		{name: "empty env keeps stored token", env: new(string), want: masked},
 		{name: "env token replaces stored token", env: ptr(envToken), want: envToken},
-		{name: "flag replaces stored token", sasToken: newToken, flagSet: true, want: newToken},
-		{
-			name:     "flag wins over env",
-			sasToken: newToken,
-			flagSet:  true,
-			env:      ptr(envToken),
-			want:     newToken,
-		},
-		{name: "empty flag", flagSet: true, wantErr: "must be non-empty"},
+		{name: "flag replaces stored token", sasToken: newToken, want: newToken},
+		{name: "flag wins over env", sasToken: newToken, env: ptr(envToken), want: newToken},
+		{name: "empty flag falls back to env", sasToken: "", env: ptr(envToken), want: envToken},
+		{name: "IAM config ignores env token", iam: true, env: ptr(envToken), want: masked},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,14 +42,10 @@ func TestApplyAzureSASToken(t *testing.T) {
 				t.Fatal(err)
 			}
 			data := map[string]interface{}{util.AzureStorageSasTokenEnv: masked}
-			err := applyAzureSASToken(data, tc.sasToken, tc.flagSet)
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("got error %v, want one containing %q", err, tc.wantErr)
-				}
-				return
+			if tc.iam {
+				data[util.UseAzureIAM] = "true"
 			}
-			if err != nil {
+			if err := applyAzureSASToken(data, tc.sasToken); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if got := data[util.AzureStorageSasTokenEnv]; got != tc.want {

@@ -40,6 +40,7 @@ func TestApplyGCSCreds(t *testing.T) {
 		wantEmail string
 		wantGone  bool
 		wantErr   string
+		noStored  bool
 	}{
 		{name: "rename only keeps stored credentials"},
 		{
@@ -73,10 +74,16 @@ func TestApplyGCSCreds(t *testing.T) {
 			wantEmail:   "file@example.com",
 		},
 		{
-			name:      "switching off IAM reads env",
+			name:      "switching off IAM with no stored credentials reads env",
 			wasIAM:    true,
+			noStored:  true,
 			envFile:   envCreds,
 			wantEmail: "env@example.com",
+		},
+		{
+			name:    "switching off IAM keeps stored credentials",
+			wasIAM:  true,
+			envFile: envCreds,
 		},
 		{
 			name:     "switching to IAM drops stored credentials",
@@ -113,6 +120,9 @@ func TestApplyGCSCreds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(util.GCPCredentialsEnv, tc.envFile)
 			data := map[string]interface{}{util.GCSCredentialsJSON: masked}
+			if tc.noStored {
+				data = map[string]interface{}{}
+			}
 			err := applyGCSCreds(
 				data, tc.filePath, tc.fileFlagSet, tc.updateCreds, tc.wasIAM, tc.isIAM)
 			if tc.wantErr != "" {
