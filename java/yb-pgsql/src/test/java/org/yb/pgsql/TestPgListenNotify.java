@@ -603,15 +603,17 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String guc = "yb_test_notifs_poller_error_before_init";
     HostAndPort ts0 = getRpcHostPortForTServer(0);
     String originalPgConf = appendToPgConf(ts0, guc + "=true");
-    waitForPostmasterSetting(0, guc, "on");
-    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
-         Statement stmt = conn.createStatement()) {
-      // Bounds the test if the LISTEN waits instead of failing.
-      stmt.setQueryTimeout((int) Timeouts.adjustTimeoutSecForBuildType(60));
-      stmt.execute("LISTEN " + channel);
-      fail("LISTEN should have failed as its poller exits before it initializes");
-    } catch (SQLException e) {
-      assertErrorContains(e, "exited before it initialized");
+    try {
+      waitForPostmasterSetting(0, guc, "on");
+      try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = conn.createStatement()) {
+        // Bounds the test if the LISTEN waits instead of failing.
+        stmt.setQueryTimeout((int) Timeouts.adjustTimeoutSecForBuildType(60));
+        stmt.execute("LISTEN " + channel);
+        fail("LISTEN should have failed as its poller exits before it initializes");
+      } catch (SQLException e) {
+        assertErrorContains(e, "exited before it initialized");
+      }
     } finally {
       setServerFlag(ts0, "ysql_pg_conf_csv", originalPgConf);
       waitForPostmasterSetting(0, guc, "off");
