@@ -312,6 +312,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             universeSpec);
     // Before we completely replace instance type with resourceSpec for k8s,
     // initializing missing tserver/master resource specs from respective instanceType.
+    // Note that V1 request path uses instance type for both resource spec.
+    // Here we use masterInstanceType for master resource spec (which is more appropriate behavior)
     // Explicitly requested resource specs are kept as is.
     KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams, confGetter);
     UniverseConfigureTaskParams v1Params =
@@ -391,6 +393,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
       // Before we completely replace instance type with resourceSpec for k8s,
       // initializing missing tserver/master resource specs from respective instanceType.
+      // Note that V1 request path uses instance type for both resource spec.
+      // Here we use masterInstanceType for master resource spec (which is more appropriate behavior)
       // Explicitly requested specs and specs of clusters not changed by the request are kept as is
       // (the mapper clears them when the node spec is passed without them).
       if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
@@ -649,7 +653,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
     // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing missing resource specs from instanceType.
+    // initializing missing resource specs from instanceType/masterInstanceType.
+    // Note that V1 request path uses instance type for both resource spec.
+    // Here we use masterInstanceType for master resource spec (which is more appropriate behavior)
     KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
         newReadReplica.clusterType, newReadReplica.userIntent, confGetter);
     v1Params.newUI =
