@@ -44,6 +44,8 @@
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_status.h"
 
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -147,6 +149,7 @@ DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_bool(TEST_xcluster_wal_anchor_deletion_skip_marker_clear);
+DECLARE_uint64(initial_seqno);
 
 using namespace std::chrono_literals;
 
@@ -7058,9 +7061,10 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexFlushBeforeIntentsWrite) {
 TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
   const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
-  // Commit while replication is paused, so the consumer gets the intents of the transaction
-  // together with its apply and never writes them to the intents DB. An intents DB write would
-  // disable advancing the intents DB flushed OpId for the tablet.
+  // Commit and wait for the producer to apply the transaction while replication is paused, so the
+  // consumer gets the intents of the transaction together with its apply and never writes them to
+  // the intents DB. CommitTransaction returns before the producer writes the APPLY op. An intents
+  // DB write would disable advancing the intents DB flushed OpId for the tablet.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
   ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
@@ -7074,9 +7078,9 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
         "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
   }
   ASSERT_OK(producer_conn_->CommitTransaction());
-  // The producer writes the APPLY op after the commit returns. Resuming before that lets the
-  // consumer poll the intents without their apply and write them to its intents DB.
-  ASSERT_OK(WaitForAllIntentsApplied(producer_cluster(), kTimeout));
+  const auto producer_table = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
+  ASSERT_OK(WaitForTableIntentsApplied(producer_cluster(), producer_table.table_id(), kTimeout));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
@@ -7085,17 +7089,21 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterRegularFlush) {
       ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
 
   {
-    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
-    // check after the restart.
-    auto indexes = ListVectorIndexes(consumer_cluster());
-    ASSERT_EQ(indexes.size(), 1);
-    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
-
     const auto consumer_table = ASSERT_RESULT(
         GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name=*/"", "vec_test"));
     auto peers = ListTableActiveTabletPeers(consumer_cluster(), consumer_table.table_id());
     ASSERT_EQ(peers.size(), 1);
     auto consumer_tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+    // Fails if the consumer polled the intents without their apply, e.g. split across batches.
+    // An intents DB that was never written stays at the initial sequence number.
+    ASSERT_EQ(consumer_tablet->intents_db()->GetLatestSequenceNumber(), FLAGS_initial_seqno)
+        << "Consumer wrote external intents to its intents DB";
+
+    // TotalEntries waits for the running vector inserts, and the count is the baseline for the
+    // check after the restart.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
 
     // The intents DB flushed OpId starts below the vector index one, so the wait below only
     // succeeds if the flush advances it.
