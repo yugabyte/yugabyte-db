@@ -63,6 +63,12 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     // block"), and yb.port.injection's manual DROP TABLE workarounds fail once the rollback undoes
     // the DDL. Run in the legacy mode until both are addressed.
     toggleDDLMode(flagMap, /* useLegacy */ true);
+    if (BuildTypeUtil.isSanitizerBuild()) {
+      // Under sanitizers, followers of the single-tablet 50000-row profile table can spend ~20s
+      // in one UpdateConsensus while static masking rewrites it, triggering a leader election
+      // that aborts the masking transaction.
+      flagMap.put("leader_failure_max_missed_heartbeat_periods", "60");
+    }
     return flagMap;
   }
 
