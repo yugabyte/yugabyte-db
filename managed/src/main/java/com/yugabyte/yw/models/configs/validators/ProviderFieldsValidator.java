@@ -160,11 +160,14 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     }
   }
 
-  /** The gcp audience {@code provider} has, if any; null for a create. */
+  /**
+   * The gcp audience {@code provider} uses: null for a create, and for a provider saved with
+   * federation off, whose targets were never checked and are not in use.
+   */
   @Nullable
   private static String gcpAudienceOf(@Nullable Provider provider) {
     CloudInfoInterface info = provider == null ? null : CloudInfoInterface.get(provider);
-    if (info == null) {
+    if (info == null || !info.isFederatedIamEnabled()) {
       return null;
     }
     return info.getEffectiveFederationTargets().stream()

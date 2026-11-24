@@ -1783,10 +1783,12 @@ public class AWSUtil implements CloudUtil {
     }
     return error
         + ". YBA runs on GCP, where an IAM role storage config has no AWS credentials to use."
-        + " Turn on Federated IAM on the storage config. YBA and the GCP DB nodes then reach S3"
-        + " through the provider's federated IAM entry for aws, whose role must trust this YBA's"
-        + " service account as well as the nodes'. The AWS DB nodes use their own instance role"
-        + " instead, which must then have access to the bucket.";
+        + " Turn on Federated IAM on the storage config, and set its Signing Region to the"
+        + " bucket's region unless the host base names it: for a federated config YBA does not"
+        + " look the region up, and otherwise uses us-east-1. YBA and the GCP DB nodes then reach"
+        + " S3 through the provider's federated IAM entry for aws, whose role must trust this"
+        + " YBA's service account as well as the nodes'. The AWS DB nodes use their own instance"
+        + " role instead, which must then have access to the bucket.";
   }
 
   @Override

@@ -1057,6 +1057,7 @@ public class AWSUtilTest extends FakeDBApplication {
     String advised = mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error);
     assertTrue(advised, advised.startsWith(error + ". YBA runs on GCP"));
     assertTrue(advised, advised.contains("Turn on Federated IAM"));
+    assertTrue(advised, advised.contains("set its Signing Region to the bucket's region"));
     assertTrue(advised, advised.contains("trust this YBA's service account"));
     assertTrue(advised, advised.contains("AWS DB nodes use their own instance role"));
 

@@ -220,6 +220,22 @@ public class OnPremValidatorTest extends FakeDBApplication {
     assertTrue(validateAndGetMessage(saved).contains("workload identity pool provider"));
   }
 
+  /**
+   * A provider saved with federation off never had its targets checked, so turning federation on
+   * checks the gcp audience even when it is the saved one.
+   */
+  @Test
+  public void testSavedGcpAudienceWithFederationOffIsChecked() {
+    Provider saved = ModelFactory.newProvider(customer, CloudType.onprem, "saved-fed-off");
+    OnPremCloudInfo savedInfo = onPrem(saved);
+    savedInfo.enableFederatedIam = false;
+    savedInfo.crossCloudFederationTargets = List.of(target(CloudType.gcp, PRINCIPAL_SET, null));
+    OnPremCloudInfo info = onPrem();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = List.of(target(CloudType.gcp, PRINCIPAL_SET, null));
+    assertTrue(validateAndGetMessage(saved).contains("workload identity pool provider"));
+  }
+
   /** The node picks its entry by target cloud alone, so two entries for one cloud are ambiguous. */
   @Test
   public void testDuplicateTargetCloudIsRejected() {

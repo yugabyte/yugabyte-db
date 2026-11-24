@@ -12,10 +12,14 @@ const required = (value) => {
   return value ? undefined : 'This field is required.';
 };
 
-// YBA does not look up the bucket region of a federated config, so a new one names it, unless the
-// host base does. A saved one keeps taking edits without it.
-const regionRequiredForFederatedIam = (value, data) =>
-  data?.FEDERATED_IAM && !value && !hostBaseNamesRegion(data?.AWS_HOST_BASE)
+// YBA does not look up the bucket region of a federated config. So a config that Federated IAM is
+// turned on for, new or edited, names it unless the host base does; on an edit the host base is
+// fixed, and an IAM Role config never stored a region. A config saved federated keeps taking edits.
+const regionRequiredForFederatedIam = (value, data, props) =>
+  data?.FEDERATED_IAM &&
+  !props?.initialValues?.FEDERATED_IAM &&
+  !value &&
+  !hostBaseNamesRegion(data?.AWS_HOST_BASE)
     ? 'Required for Federated IAM, unless the host base names the region.'
     : undefined;
 
@@ -249,7 +253,7 @@ class AwsStorageConfiguration extends Component {
                   name="SIGNING_REGION"
                   placeHolder="us-east-1"
                   component={YBTextInputWithLabel}
-                  validate={isEdited ? undefined : regionRequiredForFederatedIam}
+                  validate={regionRequiredForFederatedIam}
                   isReadOnly={this.disableInputFields(isEdited, 'SIGNING_REGION')}
                 />
               </Col>

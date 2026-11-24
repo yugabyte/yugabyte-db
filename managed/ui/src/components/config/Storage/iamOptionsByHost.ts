@@ -4,20 +4,19 @@ import { YBAHost } from '../../../redesign/helpers/constants';
 
 type YBAHostValue = (typeof YBAHost)[keyof typeof YBAHost];
 
-// Only while federated IAM is offered, a new config on a YBA that runs on AWS or GCP shows the IAM
-// options that work from there. Federated IAM works from both clouds, which an HA pair across AWS
-// and GCP needs: the standby, once promoted, reaches the bucket through the provider's federated
-// IAM entry. With it, a YBA on the bucket's cloud still uses its own identity, and the DB nodes
-// their own: an AWS node its instance role, so that role needs access to the S3 bucket. S3 IAM
-// Role, where YBA hands its own credentials to the DB nodes, also shows on AWS and is hidden on
-// GCP, where YBA has none to hand; it keeps its bucket region lookup and its bucket checks at save,
-// which Federated IAM skips. GCS GCP IAM works only from GCP and is hidden on both, so a keyless
-// GCS config is reachable from the standby too. Editing a saved config, where every option shows,
-// or the API still sets either. GCS Federated IAM, which needs AWS instance metadata, is hidden on
-// Azure; a self-hosted or unknown host hides nothing. An option that is on still shows.
-
-const runsOnAwsOrGcp = (ybaHost: YBAHostValue) =>
-  ybaHost === YBAHost.AWS || ybaHost === YBAHost.GCP;
+// Only while federated IAM is offered, a new config shows the IAM options that work from where YBA
+// runs. S3: Federated IAM on every host, IAM Role also on AWS (hidden on GCP, where YBA has no AWS
+// credentials to hand to the DB nodes). Federated IAM works from both clouds, which an HA pair
+// across AWS and GCP needs: the standby, once promoted, reaches the bucket through the provider's
+// federated IAM entry. With it, the DB nodes use their own identity: an AWS node its instance role,
+// so that role needs access to the bucket. IAM Role keeps its bucket region lookup and its bucket
+// checks at save, which Federated IAM skips. GCS: GCP IAM on GCP, where YBA checks the bucket with
+// its own identity, and Federated IAM on AWS only (on GCP it would skip those checks). A YBA on AWS
+// also federates for a GCP IAM config, such as one made on its HA peer on GCP
+// (BackupHelper.federateGcpIamOnAws). Editing a saved
+// config, where every option shows, or the API still sets either. GCS Federated IAM, which needs
+// AWS instance metadata, is hidden on Azure; a self-hosted or unknown host hides nothing. An option
+// that is on still shows.
 
 export const getS3IamOptions = (
   ybaHost: YBAHostValue,
@@ -44,6 +43,7 @@ export const getGcsIamOptions = (
   federatedIamOn: boolean,
   federatedIamOffered: boolean
 ) => ({
-  showGcpIam: isEdited || gcpIamOn || !federatedIamOffered || !runsOnAwsOrGcp(ybaHost),
-  showFederatedIam: isEdited || federatedIamOn || ybaHost !== YBAHost.AZU
+  showGcpIam: isEdited || gcpIamOn || !federatedIamOffered || ybaHost !== YBAHost.AWS,
+  showFederatedIam:
+    isEdited || federatedIamOn || ybaHost === YBAHost.AWS || ybaHost === YBAHost.SELF_HOSTED
 });

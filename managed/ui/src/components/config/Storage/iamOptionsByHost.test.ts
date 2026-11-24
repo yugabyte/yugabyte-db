@@ -43,10 +43,9 @@ describe('getS3IamOptions', () => {
 });
 
 describe('getGcsIamOptions', () => {
-  it('shows only federated IAM, which works from both clouds, on a new config on AWS or GCP', () => {
-    for (const host of [YBAHost.AWS, YBAHost.GCP]) {
-      expect(gcs(host)).toEqual({ showGcpIam: false, showFederatedIam: true });
-    }
+  it('shows only the option that works from where YBA runs on a new config', () => {
+    expect(gcs(YBAHost.AWS)).toEqual({ showGcpIam: false, showFederatedIam: true });
+    expect(gcs(YBAHost.GCP)).toEqual({ showGcpIam: true, showFederatedIam: false });
   });
 
   it('hides federated IAM on Azure, and nothing on a self-hosted or unknown host', () => {
@@ -61,8 +60,8 @@ describe('getGcsIamOptions', () => {
         showFederatedIam: true
       });
     }
-    expect(getGcsIamOptions(YBAHost.GCP, false, true, false, true).showGcpIam).toBe(true);
-    expect(getGcsIamOptions(YBAHost.AZU, false, false, true, true).showFederatedIam).toBe(true);
+    expect(getGcsIamOptions(YBAHost.AWS, false, true, false, true).showGcpIam).toBe(true);
+    expect(getGcsIamOptions(YBAHost.GCP, false, false, true, true).showFederatedIam).toBe(true);
   });
 
   it('keeps GCP IAM on every host while federated IAM is not offered', () => {
