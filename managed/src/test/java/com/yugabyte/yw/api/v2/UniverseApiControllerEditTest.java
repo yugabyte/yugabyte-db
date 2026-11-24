@@ -599,7 +599,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     runEditUniverseV2(universeEditSpec);
   }
 
-  // The V2 model defaults every networking field, so this sends raw JSON with one port only.
+  // The V2 model defaults the ports, assign_public_ip and assign_static_public_ip, so this sends
+  // raw JSON with one port only.
   @Test
   public void testEditUniverseV2KeepsPortsTheRequestLeavesOut() throws ApiException {
     runEditKeepsPortsTheRequestLeavesOut(false);
