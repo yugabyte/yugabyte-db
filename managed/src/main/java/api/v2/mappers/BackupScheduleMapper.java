@@ -15,6 +15,7 @@ import api.v2.models.BackupScheduleState;
 import api.v2.models.BackupScheduleTableType;
 import api.v2.models.TimeUnitType;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.models.Schedule;
@@ -73,13 +74,15 @@ public interface BackupScheduleMapper {
   BackupScheduleKeyspace toBackupScheduleKeyspace(KeyspaceTable keyspaceTable);
 
   /**
-   * The v2 schedule. {@code lastBackupTime} is when the schedule last started a backup, looked up
+   * The v2 schedule. {@code lastBackupTime} is when the schedule last started a backup, and {@code
+   * backupRunning} whether that backup hasn't finished, both from its last schedule task, looked up
    * by the caller (in one query for a page of schedules).
    */
-  default BackupSchedule toBackupSchedule(Schedule schedule, @Nullable Date lastBackupTime) {
+  default BackupSchedule toBackupSchedule(
+      Schedule schedule, @Nullable Date lastBackupTime, boolean backupRunning) {
     return new BackupSchedule()
         .spec(toBackupScheduleSpec(schedule))
-        .info(toBackupScheduleInfo(schedule, lastBackupTime));
+        .info(toBackupScheduleInfo(schedule, lastBackupTime, backupRunning));
   }
 
   default BackupScheduleSpec toBackupScheduleSpec(Schedule schedule) {
@@ -104,23 +107,22 @@ public interface BackupScheduleMapper {
             .tableByTableBackup(bool(params, "tableByTableBackup"))
             .pointInTimeRestore(bool(params, "enablePointInTimeRestore"))
             .useTablespaces(bool(params, "useTablespaces"))
-            .useRoles(bool(params, "useRoles"));
-    if (params.has("minNumBackupsToRetain")) {
-      spec.minBackupsToRetain(params.get("minNumBackupsToRetain").asInt());
-    }
+            .useRoles(bool(params, "useRoles"))
+            // Params saved before the field existed get the default when v1 reads them.
+            .minBackupsToRetain(
+                params.path("minNumBackupsToRetain").asInt(Util.MIN_NUM_BACKUPS_TO_RETAIN));
     return spec;
   }
 
   default BackupScheduleInfo toBackupScheduleInfo(
-      Schedule schedule, @Nullable Date lastBackupTime) {
+      Schedule schedule, @Nullable Date lastBackupTime, boolean backupRunning) {
     DateTimeMapper dates = new DateTimeMapper();
     BackupScheduleInfo info =
         new BackupScheduleInfo()
             .uuid(schedule.getScheduleUUID())
             .state(toBackupScheduleState(schedule.getStatus()))
-            .backupRunning(schedule.isRunningState())
+            .backupRunning(backupRunning)
             .lastBackupTime(dates.toOffsetDateTime(lastBackupTime))
-            .failureCount(schedule.getFailureCount())
             .isKubernetesOperatorControlled(schedule.isKubernetesOperatorControlled());
     // As the v1 schedule list shows them: due times only for an active schedule, and a backup
     // that is overdue (backlog) runs at the next scheduler run.
@@ -130,11 +132,14 @@ public interface BackupScheduleMapper {
           dates.toOffsetDateTime(
               schedule.isBacklogStatus() ? nextRun : schedule.getNextScheduleTaskTime()));
       if (schedule.getTaskParams().path("incrementalBackupFrequency").asLong(0) > 0) {
-        info.nextIncrementalBackupTime(
-            dates.toOffsetDateTime(
-                schedule.isIncrementBacklogStatus()
-                    ? nextRun
-                    : schedule.getNextIncrementScheduleTaskTime()));
+        Date nextIncrement = schedule.getNextIncrementScheduleTaskTime();
+        if (schedule.isIncrementBacklogStatus()) {
+          nextIncrement = nextRun;
+        } else if (nextIncrement == null) {
+          // Not stored yet: the time the scheduler stores on its next run.
+          nextIncrement = ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
+        }
+        info.nextIncrementalBackupTime(dates.toOffsetDateTime(nextIncrement));
       }
     }
     return info;
@@ -197,8 +202,9 @@ public interface BackupScheduleMapper {
       for (JsonNode keyspaceTable : keyspaceTables) {
         keyspaces.add(toBackupScheduleKeyspace(Json.fromJson(keyspaceTable, KeyspaceTable.class)));
       }
-    } else if (StringUtils.isNotEmpty(params.path("keyspace").asText(null))) {
-      // BackupTableParams: one keyspace, with the tables in tableUUIDList or tableUUID.
+    } else {
+      // BackupTableParams: one keyspace, with the tables in tableUUIDList or tableUUID. A
+      // MultiTableBackup schedule can list tables without their keyspace.
       List<UUID> tables = new ArrayList<>();
       for (JsonNode table : params.path("tableUUIDList")) {
         tables.add(UUID.fromString(table.asText()));
@@ -207,10 +213,13 @@ public interface BackupScheduleMapper {
       if (tables.isEmpty() && table != null) {
         tables.add(table);
       }
-      keyspaces.add(
-          new BackupScheduleKeyspace()
-              .keyspace(params.get("keyspace").asText())
-              .tableUuids(tables.isEmpty() ? null : tables));
+      String keyspace = StringUtils.trimToNull(params.path("keyspace").asText(null));
+      if (keyspace != null || !tables.isEmpty()) {
+        keyspaces.add(
+            new BackupScheduleKeyspace()
+                .keyspace(keyspace)
+                .tableUuids(tables.isEmpty() ? null : tables));
+      }
     }
     return keyspaces;
   }

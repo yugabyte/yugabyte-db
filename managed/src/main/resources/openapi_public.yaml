@@ -6090,11 +6090,11 @@ components:
 
         '
       type: object
-      required:
-      - keyspace
       properties:
         keyspace:
-          description: Name of the keyspace or database
+          description: Name of the keyspace or database. Absent only in some older
+            YCQL schedules that list tables without their keyspace; table_uuids then
+            holds those tables.
           type: string
           minLength: 1
         table_uuids:
@@ -6354,7 +6354,7 @@ components:
         state:
           $ref: '#/components/schemas/BackupScheduleState'
         backup_running:
-          description: Whether a backup of the schedule is running
+          description: Whether the backup the schedule last started is still running
           type: boolean
           readOnly: true
         next_backup_time:
@@ -6373,11 +6373,6 @@ components:
           description: When the schedule last started a backup, full or incremental
           type: string
           format: date-time
-          readOnly: true
-        failure_count:
-          description: Number of consecutive scheduled backups that failed
-          type: integer
-          format: int32
           readOnly: true
         is_kubernetes_operator_controlled:
           description: Whether the YBA Kubernetes operator manages the schedule; edit

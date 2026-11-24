@@ -4,11 +4,9 @@ description: |
 
   A keyspace (YCQL) or database (YSQL) a backup schedule backs up. Part of BackupScheduleSpec.
 type: object
-required:
-  - keyspace
 properties:
   keyspace:
-    description: Name of the keyspace or database
+    description: Name of the keyspace or database. Absent only in some older YCQL schedules that list tables without their keyspace; table_uuids then holds those tables.
     type: string
     minLength: 1
   table_uuids:

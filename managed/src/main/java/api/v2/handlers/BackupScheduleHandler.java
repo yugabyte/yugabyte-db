@@ -26,18 +26,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.yb.CommonTypes.TableType;
 
 /** v2 backup schedules: the v1 schedules whose task is a backup. */
 @Singleton
 public class BackupScheduleHandler {
+
+  private static final String BACKUP_TYPE_PARAM = "task_params->>'backupType'";
+  private static final List<String> V2_BACKUP_TYPES =
+      List.of(TableType.PGSQL_TABLE_TYPE.name(), TableType.YQL_TABLE_TYPE.name());
 
   public BackupSchedule getBackupSchedule(UUID cUUID, UUID bsUUID) {
     Schedule schedule = backupSchedules(cUUID).idEq(bsUUID).findOne();
     if (schedule == null) {
       throw new PlatformServiceException(NOT_FOUND, "No backup schedule with UUID " + bsUUID);
     }
-    return BackupScheduleMapper.INSTANCE.toBackupSchedule(
-        schedule, lastBackupTimes(List.of(bsUUID)).get(bsUUID));
+    return toBackupSchedule(schedule, lastTasks(List.of(bsUUID)));
   }
 
   public BackupSchedulePagedResp pageListBackupSchedules(
@@ -66,23 +70,32 @@ public class BackupScheduleHandler {
             paging,
             String.format(
                 "lower(schedule_name) %s, schedule_uuid %s", paging.order(), paging.order()));
-    Map<UUID, Date> lastBackupTimes =
-        lastBackupTimes(
+    Map<UUID, LastTask> lastTasks =
+        lastTasks(
             page.getList().stream().map(Schedule::getScheduleUUID).collect(Collectors.toList()));
     return HandlerPagingSupport.pagedResponse(
-        new BackupSchedulePagedResp(),
-        page,
-        schedule ->
-            BackupScheduleMapper.INSTANCE.toBackupSchedule(
-                schedule, lastBackupTimes.get(schedule.getScheduleUUID())));
+        new BackupSchedulePagedResp(), page, schedule -> toBackupSchedule(schedule, lastTasks));
   }
 
+  /**
+   * The backup schedules of a customer. Schedules of other table types (Redis, in older YBAs) are
+   * left out: v2 has no backup type for them.
+   */
   private static ExpressionList<Schedule> backupSchedules(UUID cUUID) {
     return Schedule.find
         .query()
         .where()
         .eq("customer_uuid", cUUID)
-        .in("task_type", BackupUtil.BACKUP_TASK_TYPES);
+        .in("task_type", BackupUtil.BACKUP_TASK_TYPES)
+        .in(BACKUP_TYPE_PARAM, V2_BACKUP_TYPES);
+  }
+
+  private static BackupSchedule toBackupSchedule(Schedule schedule, Map<UUID, LastTask> lastTasks) {
+    LastTask lastTask = lastTasks.get(schedule.getScheduleUUID());
+    return BackupScheduleMapper.INSTANCE.toBackupSchedule(
+        schedule,
+        lastTask == null ? null : lastTask.scheduledTime,
+        lastTask != null && lastTask.completedTime == null);
   }
 
   private static List<Schedule.State> toV1States(Collection<BackupScheduleState> states) {
@@ -92,24 +105,37 @@ public class BackupScheduleHandler {
         .collect(Collectors.toList());
   }
 
-  /** When each schedule last started a backup, in one query. */
-  private static Map<UUID, Date> lastBackupTimes(List<UUID> scheduleUUIDs) {
-    Map<UUID, Date> times = new HashMap<>();
+  /**
+   * The last task of each schedule, in one query. A backup is running while that task has no
+   * completed time, which is how the scheduler tells it too.
+   */
+  private static Map<UUID, LastTask> lastTasks(List<UUID> scheduleUUIDs) {
+    Map<UUID, LastTask> tasks = new HashMap<>();
     if (scheduleUUIDs.isEmpty()) {
-      return times;
+      return tasks;
     }
     List<SqlRow> rows =
         DB.sqlQuery(
-                "select schedule_uuid, max(scheduled_time) as last_time from schedule_task"
-                    + " where schedule_uuid in (:uuids) group by schedule_uuid")
+                "select distinct on (schedule_uuid) schedule_uuid, scheduled_time, completed_time"
+                    + " from schedule_task where schedule_uuid in (:uuids)"
+                    + " order by schedule_uuid, scheduled_time desc")
             .setParameter("uuids", scheduleUUIDs)
             .findList();
     for (SqlRow row : rows) {
-      Date lastTime = row.getUtilDate("last_time");
-      if (lastTime != null) {
-        times.put(row.getUUID("schedule_uuid"), lastTime);
-      }
+      tasks.put(
+          row.getUUID("schedule_uuid"),
+          new LastTask(row.getUtilDate("scheduled_time"), row.getUtilDate("completed_time")));
     }
-    return times;
+    return tasks;
+  }
+
+  private static final class LastTask {
+    final Date scheduledTime;
+    final Date completedTime;
+
+    LastTask(Date scheduledTime, Date completedTime) {
+      this.scheduledTime = scheduledTime;
+      this.completedTime = completedTime;
+    }
   }
 }

@@ -27,6 +27,7 @@ import com.yugabyte.yba.v2.client.models.BackupScheduleSpec;
 import com.yugabyte.yba.v2.client.models.BackupScheduleState;
 import com.yugabyte.yba.v2.client.models.BackupScheduleTableType;
 import com.yugabyte.yba.v2.client.models.TimeUnitType;
+import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.ebean.DB;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -45,6 +47,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes.TableType;
+import play.libs.Json;
 
 public class BackupScheduleApiTest extends FakeDBApplication {
 
@@ -121,7 +124,7 @@ public class BackupScheduleApiTest extends FakeDBApplication {
             true,
             TimeUnit.DAYS,
             "daily");
-    ScheduleTask.create(UUID.randomUUID(), schedule.getScheduleUUID());
+    ScheduleTask.create(UUID.randomUUID(), schedule.getScheduleUUID()).markCompleted();
     ScheduleTask last = ScheduleTask.create(UUID.randomUUID(), schedule.getScheduleUUID());
     Date lastTime = new Date(System.currentTimeMillis() + 1000);
     last.setScheduledTime(lastTime);
@@ -156,12 +159,75 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     BackupScheduleInfo info = got.getInfo();
     assertEquals(schedule.getScheduleUUID(), info.getUuid());
     assertEquals(BackupScheduleState.BackupScheduleActive, info.getState());
-    assertFalse(info.getBackupRunning());
+    // The last task hasn't completed.
+    assertTrue(info.getBackupRunning());
     assertNotNull(info.getNextBackupTime());
     assertNotNull(info.getNextIncrementalBackupTime());
     assertEquals(lastTime.toInstant(), info.getLastBackupTime().toInstant());
-    assertEquals(Integer.valueOf(0), info.getFailureCount());
     assertFalse(info.getIsKubernetesOperatorControlled());
+
+    last.markCompleted();
+    assertFalse(
+        backupScheduleApi
+            .getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID())
+            .getInfo()
+            .getBackupRunning());
+  }
+
+  @Test
+  public void fillsWhatOlderParamsAndColumnsLack() throws ApiException {
+    Schedule schedule =
+        createBackupSchedule(customer, "incremental", UUID.randomUUID(), UUID.randomUUID());
+    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    params.incrementalBackupFrequency = HOUR;
+    schedule.setTaskParams(Json.toJson(params));
+    schedule.save();
+    // Params saved before minNumBackupsToRetain existed, and a schedule from before the next
+    // incremental time was stored.
+    DB.sqlUpdate(
+            "update schedule set task_params = (task_params::jsonb -"
+                + " 'minNumBackupsToRetain')::json, next_increment_schedule_task_time = null where"
+                + " schedule_uuid = :uuid")
+        .setParameter("uuid", schedule.getScheduleUUID())
+        .execute();
+
+    BackupSchedule got =
+        backupScheduleApi.getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID());
+
+    // v1 runs it with the default.
+    assertEquals(Integer.valueOf(3), got.getSpec().getMinBackupsToRetain());
+    // The time the scheduler stores on its next run.
+    assertNotNull(got.getInfo().getNextIncrementalBackupTime());
+    assertFalse(got.getInfo().getBackupRunning());
+  }
+
+  @Test
+  public void getsAMultiTableBackupScheduleOfTablesWithoutAKeyspace() throws ApiException {
+    UUID universeUUID = UUID.randomUUID();
+    List<UUID> tables = List.of(UUID.randomUUID(), UUID.randomUUID());
+    MultiTableBackup.Params params = new MultiTableBackup.Params();
+    params.storageConfigUUID = UUID.randomUUID();
+    params.setUniverseUUID(universeUUID);
+    params.backupType = TableType.YQL_TABLE_TYPE;
+    params.tableUUIDList = tables;
+    Schedule schedule =
+        Schedule.create(
+            customer.getUuid(),
+            universeUUID,
+            params,
+            TaskType.MultiTableBackup,
+            DAY,
+            null,
+            true,
+            TimeUnit.DAYS,
+            "tables");
+
+    BackupSchedule got =
+        backupScheduleApi.getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID());
+
+    // Only those tables, not every keyspace.
+    assertEquals(
+        List.of(new BackupScheduleKeyspace().tableUuids(tables)), got.getSpec().getKeyspaces());
   }
 
   private static BackupScheduleDuration duration(long amount, TimeUnitType unit) {
@@ -238,6 +304,17 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     Schedule otherSchedule =
         createBackupSchedule(other, "other", UUID.randomUUID(), UUID.randomUUID());
     assertEquals(404, getError(otherSchedule.getScheduleUUID()));
+
+    // Nor a Redis one, which v2 has no backup type for.
+    assertEquals(404, getError(createRedisSchedule().getScheduleUUID()));
+  }
+
+  private Schedule createRedisSchedule() {
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = UUID.randomUUID();
+    params.setUniverseUUID(UUID.randomUUID());
+    params.backupType = TableType.REDIS_TABLE_TYPE;
+    return Schedule.create(customer.getUuid(), params, TaskType.MultiTableBackup, 1000, null);
   }
 
   private int getError(UUID bsUUID) {
@@ -283,6 +360,7 @@ public class BackupScheduleApiTest extends FakeDBApplication {
         TimeUnit.HOURS,
         "script");
     createBackupSchedule(ModelFactory.testCustomer("other-customer"), "other", universe1, config1);
+    createRedisSchedule();
 
     List<String> all = list(null);
     assertEquals(4, all.size());
