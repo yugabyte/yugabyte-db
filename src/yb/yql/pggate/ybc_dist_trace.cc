@@ -137,10 +137,6 @@ bool YBCIsDistTraceEnabled() {
   return dist_trace::IsDistTraceEnabled();
 }
 
-void YBCSetOtelLogThrottleIntervalSecs(int secs) {
-  dist_trace::SetOtelLogThrottleIntervalSecsFromGuc(secs);
-}
-
 bool YBCIsDistTraceActive() {
   return YBCIsDistTraceEnabled() && !YBCIsOtelScopeStackEmpty();
 }
@@ -306,6 +302,10 @@ void YBCDistTraceEndNodeSpan(YbcOtelNodeSpan node_span) {
 void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span) {
   DCHECK_NOTNULL(node_span)->EndOnError();
   PgMemctx::Destroy(node_span);
+}
+
+void YBCSetOtelLogThrottleIntervalSecs(int secs) {
+  dist_trace::SetOtelLogThrottleIntervalSecsFromGuc(secs);
 }
 
 } // extern "C"

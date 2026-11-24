@@ -63,7 +63,6 @@ bool YBCIsOtelScopeStackEmpty();
 void YBCInitDistTrace(const char* node_uuid);
 void YBCShutdownDistTrace();
 bool YBCIsDistTraceEnabled();
-void YBCSetOtelLogThrottleIntervalSecs(int secs);
 bool YBCIsDistTraceActive();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);
 YbcOtelSpanContext YBCGetValidSpanContext(const char* traceparent);
@@ -86,6 +85,8 @@ void YBCDistTraceNodeSpanPushScope(YbcOtelNodeSpan node_span);
 void YBCDistTraceNodeSpanPopScope(YbcOtelNodeSpan node_span);
 void YBCDistTraceEndNodeSpan(YbcOtelNodeSpan node_span);
 void YBCDistTraceEndNodeSpanOnError(YbcOtelNodeSpan node_span);
+
+void YBCSetOtelLogThrottleIntervalSecs(int secs);
 
 #ifdef __cplusplus
 }  // extern "C"
