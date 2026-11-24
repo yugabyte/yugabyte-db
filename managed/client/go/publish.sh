@@ -51,7 +51,7 @@ stale_client() {
   [[ -z "$newer" ]] || echo "$newer is older than $spec"
 }
 STALE="$(stale_client v1 "$MANAGED_DIR/src/main/resources/swagger-all.json" \
-  src/main/java src/main/resources/routes swagger/src)
+  src/main/java src/main/resources/routes src/main/resources/v1.routes swagger/src)
 $(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/openapi.json" \
   src/main/resources/openapi)"
 if [[ -n "${STALE//$'\n'/}" ]]; then
