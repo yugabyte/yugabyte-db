@@ -11,7 +11,11 @@
 # under the License.
 
 """Tests for build-support/lint.py's _parse_perl_regex: the Perl/PCRE named-group syntax that
-arcanist accepts, (?<name>...), compiles under Python's re, and nothing else in a pattern changes."""
+arcanist accepts, (?<name>...), compiles under Python's re, and other constructs outside character
+classes are left as they are.
+
+Run with `python3 -m pytest src/lint/tests/`.
+"""
 
 import importlib.util
 import json
@@ -20,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load(name, path):
@@ -67,6 +71,22 @@ def test_eslint_ui_regex_reads_eslint_stylish_output():
     gd = next(pat.finditer(out)).groupdict()
     assert gd["line"] == "12"
     assert gd["name"] == "no-unused-vars"
+
+
+@pytest.mark.parametrize("rule", [
+    "@typescript-eslint/no-unused-vars",
+    "react-hooks/exhaustive-deps",
+])
+def test_eslint_ui_regex_reads_plugin_scoped_rules(rule):
+    # managed/ui/.eslintrc.js extends plugin:@typescript-eslint and plugin:react-hooks, whose rule
+    # ids have a scope and a slash.
+    with open(REPO_ROOT / ".arclint", encoding="utf-8") as f:
+        raw = json.load(f)["linters"]["eslint-ui"]["script-and-regex.regex"]
+    pat = lint._parse_perl_regex(raw)
+    out = f"  7:3  error  'x' is assigned a value but never used  {rule}\n"
+    gd = next(pat.finditer(out)).groupdict()
+    assert gd["line"] == "7"
+    assert gd["name"] == rule
 
 
 def test_every_configured_regex_compiles():

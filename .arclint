@@ -97,7 +97,7 @@
       "script-and-regex.script":
       "managed/lint/lint-ui.sh",
       "script-and-regex.regex":
-        "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[a-zA-Z_-]+)$/m"
+        "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[@a-zA-Z0-9_/-]+)$/m"
     },
     "text": {
       "type": "text",
