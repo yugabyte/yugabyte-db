@@ -122,8 +122,9 @@ To use this change:
 
 ### Upgrade recommendation
 
-* Use this connector version with YugabyteDB **v2026.1.1.x** only. YugabyteDB **v2026.1.2.0 and later** need `dz.1.9.5.yb.grpc.2026.1.2` or later. Connector versions `dz.1.9.5.yb.grpc.2026.1.1` and earlier fail to start against those clusters.
-* Note: This connector is backward compatible with any previous YugabyteDB version.
+* Use this connector version, or any later version, with YugabyteDB **v2026.1.1.0 and later**. Connector versions `dz.1.9.5.yb.grpc.2026.1` and earlier fail to start against clusters running v2026.1.1.0 and later.
+
+* This connector is backward compatible with any previous YugabyteDB version.
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1)
 
@@ -143,7 +144,7 @@ To use this change:
 
 ### Upgrade recommendation
 
-* This connector version, and all earlier connector versions, are **not compatible** with YugabyteDB **v2026.1.1.0 and later**. For **v2026.1.1.x**, upgrade to `dz.1.9.5.yb.grpc.2026.1.1`. For **v2026.1.2.0 and later**, upgrade to `dz.1.9.5.yb.grpc.2026.1.2` or a later connector version.
+* This connector version, and all earlier connector versions, are **not compatible** with YugabyteDB **v2026.1.1.0 and later**. Upgrade to `dz.1.9.5.yb.grpc.2026.1.1` or a later connector version.
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1)
 
