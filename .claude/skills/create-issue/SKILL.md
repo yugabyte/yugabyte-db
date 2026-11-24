@@ -64,28 +64,31 @@ For GitHub issues, this skill requires the `gh` CLI installed and authenticated:
 
 For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
 (load it via ToolSearch: `select:mcp__claude_ai_Atlassian__createJiraIssue`).
-Step 3c also needs the Atlassian tool that adds a comment to a JIRA issue.
 
 ## Workflow
 
 ### Step 1: Decide the tracker — GitHub vs JIRA
 
 - Core DB code (`src/`, `java/`, `cmake_modules/`, `build-support/`, `.github/`,
-  `.claude/`): follow [filing-guidelines.md](filing-guidelines.md). It defines
-  "sensitive" and routes the issue: a GitHub issue (Step 3a), a JIRA ticket
-  in the `DB` (core database) project with the sensitive-information field
-  set to `Yes` (Step 3b), or a security report.
-  For a security report, draft it in the policy's format and hand it to the
-  user to send; file no issue. Then check for duplicates as it describes.
+  `.claude/`): follow
+  [filing-issues.md](../../../.github/ISSUE_GUIDELINES/filing-issues.md). It
+  defines "sensitive" and routes the issue: a GitHub issue (Step 3a), a JIRA
+  ticket in the `DB` (core database) project with the sensitive-information
+  field set to `Yes` (Step 3b), a `Vulnerability` ticket (below), or a
+  security report. For a security report, draft it in the policy's format and
+  hand it to the user to send; file no issue. Then check for duplicates as it
+  describes.
 - YBA / platform code (`managed/`) → **JIRA ticket**.
-- A security vulnerability, in any part of the repo → **JIRA ticket** of type
-  `Vulnerability`, never `Task` or `Bug` and never a GitHub issue. Give it the CVE
-  IDs if there are any, the affected package and its location, a severity, and
-  the Target Version. Don't set Fix Version; automation fills it in when the fix
-  lands. See `src/AGENTS.md` § Security and customer-sensitive changes.
+- A security vulnerability found by an internal filer, in any part of the
+  repo → **JIRA ticket** of type `Vulnerability`, never `Task` or `Bug` and
+  never a GitHub issue. Give it the CVE IDs if there are any, the affected
+  package and its location, a severity, and the Target Version. Don't set Fix
+  Version; automation fills it in when the fix lands. See `src/AGENTS.md`
+  § Security and customer-sensitive changes. An external filer sends a
+  security report instead, as above.
 
 Ask the user whether they are an internal (Yugabyte) filer when the issue is
-sensitive or carries internal links or artifacts. Don't infer it.
+sensitive. Don't infer it.
 
 If the user has already named a tracker or project, honor it, except for core
 DB code, where the routing above applies whichever tracker the user named:
@@ -117,7 +120,8 @@ issue from being created at all.
 
 3. **Description** — the "what / why": what the issue is, repro steps for a bug,
    or the motivation for a feature. Draft it and confirm with the user.
-   **YSQL:** read [ysql.md](ysql.md) and build the description from it.
+   **YSQL:** read [ysql.md](../../../.github/ISSUE_GUIDELINES/ysql.md) and
+   build the description from it.
 
 ### Step 3a: Create a GitHub issue
 
@@ -186,12 +190,6 @@ issue from being created at all.
    `mcp__claude_ai_Atlassian__createJiraIssue` with the confirmed summary and
    description. **Confirm the summary/description with the user before creating.**
 5. Capture the resulting JIRA key.
-
-### Step 3c: Internal links and artifacts (internal filer only)
-
-Follow the "Links" section of [filing-guidelines.md](filing-guidelines.md): the
-links go in a comment on the synced JIRA ticket, never on GitHub. If the
-`Jira Link:` line doesn't appear on the new GitHub issue, tell the user.
 
 ### Step 4: Report back
 

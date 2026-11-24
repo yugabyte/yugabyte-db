@@ -6,3 +6,6 @@ contact_links:
   - name: YugabyteDB Anywhere
     about: Create a YugabyteDB Anywhere issue.
     url: https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891
+  - name: How to file a core database issue
+    about: Where to file (including sensitive issues and security reports) and what a good issue contains.
+    url: https://github.com/yugabyte/yugabyte-db/blob/master/.github/ISSUE_GUIDELINES/filing-issues.md

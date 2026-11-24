@@ -16,8 +16,13 @@ vulnerability is always sensitive, however it is described.
 
 - **Not sensitive:** a GitHub issue, using the component's issue template. It
   syncs automatically to a ticket in the JIRA `DB` (core database) project.
-- **Sensitive, Yugabyte employee:** a ticket in the JIRA `DB` project, marked
-  as containing sensitive information. That keeps it off GitHub entirely.
+- **Sensitive, Yugabyte employee, security vulnerability:** a JIRA ticket of
+  type `Vulnerability`, never a GitHub issue. See
+  [`src/AGENTS.md`](../../src/AGENTS.md) § Security and customer-sensitive
+  changes for what it holds.
+- **Sensitive, Yugabyte employee, anything else:** a ticket in the JIRA `DB`
+  project, marked as containing sensitive information. That keeps it off
+  GitHub entirely.
 - **Sensitive, external, security vulnerability:** a report to
   `security@yugabyte.com`, per the
   [vulnerability disclosure policy](https://docs.yugabyte.com/stable/secure/vulnerability-disclosure-policy/).
@@ -42,13 +47,16 @@ the JIRA ticket anyway and mention the existing issue's number in it.
 
 ## Links
 
-Link only to public sources in a GitHub issue. Internal links and artifacts
-(Jenkins, test-stability dashboards, internal JIRA or Slack, support tickets,
-files) can come only from a Yugabyte employee. They go in the GitHub issue's
-synced JIRA ticket instead:
+Internal URLs and hostnames never go in a GitHub issue; see the
+confidentiality rules in [`src/AGENTS.md`](../../src/AGENTS.md). Internal
+ticket keys such as `DB-1234` are fine.
 
-1. Once the GitHub issue exists, wait for its `Jira Link:` line to appear.
-2. Add the links and artifacts as a comment on that JIRA ticket. Comments
-   don't sync to GitHub.
-3. Add a line to the GitHub issue saying the JIRA ticket has a comment with
-   additional links and artifacts.
+Even then, write the issue so an external reader can follow it without
+internal references: describe what a ticket or log showed instead of only
+pointing to it.
+
+## Title
+
+Keep the title succinct: the component prefix the template gives (for
+example `[YSQL]`), then the symptom or what is asked for, in a few words.
+Leave the mechanism, versions and repro details for the body.
