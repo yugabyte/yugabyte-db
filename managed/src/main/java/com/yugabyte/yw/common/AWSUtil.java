@@ -1032,7 +1032,7 @@ public class AWSUtil implements CloudUtil {
       } catch (Exception e) {
         log.error("Fetching IAM credentials failed: {}", e.getMessage());
         throw new PlatformServiceException(
-            PRECONDITION_FAILED, withIamRoleAdviceOnGcp(e.getMessage()));
+            PRECONDITION_FAILED, withIamRoleAdviceOnGcp(s3Data, e.getMessage()));
       }
     } else {
       String key = s3Data.awsAccessKeyId;
@@ -1762,6 +1762,7 @@ public class AWSUtil implements CloudUtil {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           withIamRoleAdviceOnGcp(
+              s3Data,
               String.format("Failed to retrieve IAM credentials, error: %s", e.getMessage())));
     }
   }
@@ -1769,18 +1770,23 @@ public class AWSUtil implements CloudUtil {
   /**
    * The error of an IAM role config that found no AWS credentials, with the way out on a YBA that
    * runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on AWS
-   * hands that YBA's own credentials to the DB nodes, and a YBA on GCP has none to hand.
+   * hands that YBA's own credentials to the DB nodes, and a YBA on GCP has none to hand. A config
+   * already federated gets no advice: what it lacks is the aws entry that the federation error
+   * describes.
    */
   @VisibleForTesting
-  String withIamRoleAdviceOnGcp(String error) {
-    if (hostCloudDetector == null
+  String withIamRoleAdviceOnGcp(CustomerConfigStorageS3Data s3Data, String error) {
+    if (isCrossCloudFederationConfig(s3Data)
+        || hostCloudDetector == null
         || !hostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp)) {
       return error;
     }
     return error
         + ". YBA runs on GCP, where an IAM role storage config has no AWS credentials to use."
-        + " Turn on Federated IAM on the storage config, so YBA and the DB nodes reach S3 through"
-        + " the provider's federated IAM entry for aws.";
+        + " Turn on Federated IAM on the storage config. YBA and the GCP DB nodes then reach S3"
+        + " through the provider's federated IAM entry for aws, whose role must trust this YBA's"
+        + " service account as well as the nodes'. The AWS DB nodes use their own instance role"
+        + " instead, which must then have access to the bucket.";
   }
 
   @Override

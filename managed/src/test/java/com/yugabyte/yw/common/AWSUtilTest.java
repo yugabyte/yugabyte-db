@@ -1042,17 +1042,27 @@ public class AWSUtilTest extends FakeDBApplication {
 
   /**
    * An IAM role config made on a YBA on AWS has no credentials on its HA standby on GCP: the error
-   * says to turn on Federated IAM there, and only there.
+   * says to turn on Federated IAM there, and only there. It names what the AWS DB nodes then need,
+   * and a config that is federated already gets no such advice.
    */
   @Test
   public void testIamRoleErrorAdvisesFederatedIamOnGcp() {
     String error = "Unable to load AWS credentials";
-    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(error));
+    CustomerConfigStorageS3Data iamRole = new CustomerConfigStorageS3Data();
+    iamRole.isIAMInstanceProfile = true;
+    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error));
 
     when(mockHostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp))
         .thenReturn(true);
-    String advised = mockAWSUtil.withIamRoleAdviceOnGcp(error);
+    String advised = mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error);
     assertTrue(advised, advised.startsWith(error + ". YBA runs on GCP"));
     assertTrue(advised, advised.contains("Turn on Federated IAM"));
+    assertTrue(advised, advised.contains("trust this YBA's service account"));
+    assertTrue(advised, advised.contains("AWS DB nodes use their own instance role"));
+
+    CustomerConfigStorageS3Data federated = new CustomerConfigStorageS3Data();
+    federated.isIAMInstanceProfile = true;
+    federated.useCrossCloudFederation = true;
+    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(federated, error));
   }
 }

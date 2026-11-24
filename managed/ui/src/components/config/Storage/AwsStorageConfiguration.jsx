@@ -5,12 +5,19 @@ import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { getS3IamOptions } from './iamOptionsByHost';
+import { getS3IamOptions, hostBaseNamesRegion } from './iamOptionsByHost';
 import './StorageConfiguration.scss';
 
 const required = (value) => {
   return value ? undefined : 'This field is required.';
 };
+
+// YBA does not look up the bucket region of a federated config, so a new one names it, unless the
+// host base does. A saved one keeps taking edits without it.
+const regionRequiredForFederatedIam = (value, data) =>
+  data?.FEDERATED_IAM && !value && !hostBaseNamesRegion(data?.AWS_HOST_BASE)
+    ? 'Required for Federated IAM, unless the host base names the region.'
+    : undefined;
 
 const proxyFieldsRequired = (value, data) => {
   if (
@@ -103,6 +110,14 @@ class AwsStorageConfiguration extends Component {
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
+            {showFederatedIam && (
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="IAM Role"
+                  content="YBA hands its own AWS credentials to the database nodes, so this works only while YBA runs on AWS. With an HA standby on GCP, use Federated IAM: once promoted, a YBA on GCP has no AWS credentials to hand."
+                />
+              </Col>
+            )}
           </Row>
           )}
           {showFederatedIam && hostOptions.showFederatedIam && (
@@ -224,7 +239,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          {enableSigningRegion && (
+          {(enableSigningRegion || federatedIamEnabled) && (
             <Row className="config-provider-row">
               <Col lg={2}>
                 <div className="form-item-custom-label">Signing Region</div>
@@ -234,13 +249,18 @@ class AwsStorageConfiguration extends Component {
                   name="SIGNING_REGION"
                   placeHolder="us-east-1"
                   component={YBTextInputWithLabel}
+                  validate={isEdited ? undefined : regionRequiredForFederatedIam}
                   isReadOnly={this.disableInputFields(isEdited, 'SIGNING_REGION')}
                 />
               </Col>
               <Col lg={1} className="config-zone-tooltip">
                 <YBInfoTip
                   title="Signing Region"
-                  content="Used for cases when YBA cannot internally determine the bucket region"
+                  content={
+                    federatedIamEnabled
+                      ? "The bucket's region. YBA does not look it up for Federated IAM, so set it unless the host base names it, as s3.<region>.amazonaws.com does."
+                      : 'Used for cases when YBA cannot internally determine the bucket region'
+                  }
                 />
               </Col>
             </Row>
