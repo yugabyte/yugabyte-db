@@ -13,7 +13,13 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -49,6 +55,14 @@ DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If false, the recommended defaults will be the old defaults, which are more suitable "
     "for YCQL but do not take into account the amount of RAM and cores available.");
 
+DEFINE_NON_RUNTIME_bool(use_global_futex_hash, true,
+    "If true, the process asks the Linux kernel at startup to use the global futex hash table "
+    "instead of a per-process private one. Kernels with the private futex hash (Linux 6.17+, and "
+    "some distribution kernels such as AlmaLinux/RHEL 9.8) cap the private table at 4 slots per "
+    "CPU, which is far too small for the number of threads in this process and makes futex wake "
+    "calls slow. Has no effect on kernels without the private futex hash.");
+TAG_FLAG(use_global_futex_hash, advanced);
+
 DECLARE_double(default_memory_limit_to_ram_ratio);
 DECLARE_int32(db_block_cache_size_percentage);
 DECLARE_int32(tablet_overhead_size_percentage);
@@ -65,9 +79,53 @@ DECLARE_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_string(ysql_yb_enable_cbo);
 
+#ifdef __linux__
+// Defined in linux/prctl.h since Linux 6.17, which the build headers may predate. Values are from
+// https://github.com/torvalds/linux/blob/master/include/uapi/linux/prctl.h
+#ifndef PR_FUTEX_HASH
+#define PR_FUTEX_HASH 78
+#endif
+#ifndef PR_FUTEX_HASH_SET_SLOTS
+#define PR_FUTEX_HASH_SET_SLOTS 1
+#endif
+#endif
+
 namespace yb {
 
 namespace {
+
+// Puts this process on the kernel's global futex hash table, the behavior before the private
+// futex hash was added. With the private hash, the kernel sizes the table by the CPU count
+// (4 slots per CPU) and not by the thread count, so a process with thousands of threads, most of
+// them parked on futexes, gets long hash chains and futex_wake gets much slower.
+//
+// Call this as early as possible, before the server starts its threads. If no thread has been
+// created yet, the kernel never allocates a private table. Otherwise the kernel has to replace the
+// private table while other threads are using futexes. That is supported, but it is a less
+// tested path.
+//
+// Returns a message to log, since logging is not initialized yet when this runs.
+std::string UseGlobalFutexHashIfEnabled() {
+#ifdef __linux__
+  if (!FLAGS_use_global_futex_hash) {
+    return "Not switching to the global futex hash: use_global_futex_hash is false";
+  }
+  if (prctl(PR_FUTEX_HASH, PR_FUTEX_HASH_SET_SLOTS, 0, 0, 0) == 0) {
+    return "Switched to the global futex hash";
+  }
+  const int err = errno;
+  if (err == EINVAL) {
+    // Kernels without the private futex hash do not know PR_FUTEX_HASH, and always use the global
+    // hash.
+    return "Kernel has no private futex hash, using the global futex hash";
+  }
+  return Format(
+      "Could not switch to the global futex hash: prctl(PR_FUTEX_HASH) failed: $0 ($1)",
+      strerror(err), err);
+#else
+  return std::string();
+#endif
+}
 
 struct RecommendedMemoryValues {
   double default_memory_limit_to_ram_ratio;
@@ -301,12 +359,19 @@ Status MasterTServerParseFlagsAndInit(
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
+  // Done right after parsing flags, before anything that may start a thread.
+  const auto futex_hash_message = UseGlobalFutexHashIfEnabled();
+
   // Must be called before installing a failure signal handler (in InitYB).
   absl::InitializeSymbolizer((*argv)[0]);
 
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
+
+  if (!futex_hash_message.empty()) {
+    LOG(INFO) << futex_hash_message;
+  }
 
   std::cerr << "Started process id: " << getpid()
     << " logfile(s): " << GetLogFilePathnamePrefix() << "*"
