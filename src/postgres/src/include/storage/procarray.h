@@ -97,5 +97,7 @@ extern void ProcArrayGetReplicationSlotXmin(TransactionId *xmin,
 											TransactionId *catalog_xmin);
 
 extern void YbStorePgAshSamples(TimestampTz sample_time);
+extern bool YbCountOtherDBBackends(Oid databaseId, int *ndirect, int *npooled,
+								   int *nprepared);
 
 #endif							/* PROCARRAY_H */

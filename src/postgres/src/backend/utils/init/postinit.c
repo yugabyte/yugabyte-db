@@ -1548,6 +1548,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	}
 
 	/*
+	 * YB: Classify before publishing databaseId, so that the in-use check of
+	 * DROP and RENAME DATABASE never takes a starting pooled server for a
+	 * session.
+	 */
+	MyProc->yb_is_conn_mgr_pooled_server =
+		YbIsConnMgrPooledServerStartup(MyProcPort);
+
+	/*
 	 * Now we can mark our PGPROC entry with the database ID.
 	 *
 	 * We assume this is an atomic store so no lock is needed; though actually

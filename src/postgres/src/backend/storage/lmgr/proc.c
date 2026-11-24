@@ -484,6 +484,7 @@ InitProcess(void)
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
 	MyProc->yb_ash_metadata.database_id = 0;
 	MyProc->yb_is_ash_metadata_set = false;
+	MyProc->yb_is_conn_mgr_pooled_server = false;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch

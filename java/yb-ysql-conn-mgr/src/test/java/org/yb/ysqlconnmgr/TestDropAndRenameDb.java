@@ -40,6 +40,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   private static final String GET_CURRENT_DB_QUERY = "SELECT current_database()";
 
   private static final String TEST_DB_DROP = "test_db_drop_database_fails";
+  private static final String TEST_DB_DEAD_POOLED_SERVER = "test_db_drop_dead_pooled_server";
   private static final String TEST_DB_RENAME_DB_WITH_NO_PHY_CONN =
       "test_db_rename_db_with_no_phy_conn";
   private static final String TEST_DB_RENAME_DB_WITH_PHY_CONN = "test_db_rename_db_with_phy_conn";
@@ -224,6 +225,36 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     Thread.sleep(4 * IDLE_CONNECTION_TIME_SECS * 1000);
 
     assertFalse(isProcessAlive(backendPid));
+  }
+
+  // A direct session must block DROP DATABASE even while the pool of the same database still counts
+  // an idle server that has already exited. Connection Manager notices a dead idle server only when
+  // it next tries to use it, so the stats keep reporting it as a physical connection.
+  @Test
+  public void testDropDbWithDirectSessionAndDeadPooledServer() throws Exception {
+    int pooledBackendPid;
+    try (Connection conn = createAndConnectOnDb(TEST_DB_DEAD_POOLED_SERVER, 0);
+        Statement stmt = conn.createStatement()) {
+      pooledBackendPid = getPgBackendPid(stmt);
+    }
+    BasePgSQLTest.waitForStatsToGetUpdated();
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_terminate_backend(" + pooledBackendPid + ")");
+    }
+    for (int i = 0; i < 100 && isProcessAlive(pooledBackendPid); ++i) {
+      Thread.sleep(100);
+    }
+    assertFalse(isProcessAlive(pooledBackendPid));
+
+    try (Connection directConn = getConnectionBuilder()
+            .withDatabase(TEST_DB_DEAD_POOLED_SERVER)
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES).connect()) {
+      dropDatabase(TEST_DB_DEAD_POOLED_SERVER, false);
+    }
+    dropDatabase(TEST_DB_DEAD_POOLED_SERVER, true);
   }
 
   private int getDbOid(String dbName) {

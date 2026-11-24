@@ -161,6 +161,9 @@ static void CreateDatabaseUsingFileCopy(Oid src_dboid, Oid dboid, Oid src_tsid,
 										Oid dst_tsid);
 static void recovery_create_dbdir(char *path, bool only_tblspc);
 
+/* YB declarations */
+static void YbErrorIfDbInUse(Oid db_id, const char *dbname);
+
 /*
  * Create a new database using the WAL_LOG strategy.
  *
@@ -1792,10 +1795,6 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				nslots_active;
 	int			nsubscriptions;
 
-	uint32_t	yb_num_logical_conn;
-	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
-	int			yb_net_client_connections;
-
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this to ensure that no new backend starts up in the target
@@ -1929,41 +1928,7 @@ yb_removing_database_from_system:
 				 sleep);
 			pg_usleep(sleep);
 		}
-		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
-
-		/*
-		 * number of actual client connections =
-		 *		number of clients connected on ysql port
-		 * 			+ number of clients connected on ysql connection manager port
-		 * 			- number of server connections b/w ysql connection manager and ysql.
-		 */
-		yb_net_client_connections = notherbackends;
-
-		/*
-		 * Ignore the number of logical or physical connections to the database
-		 * if pg_backend is unable to read the shared memory segment for
-		 * Ysql Connection Manager stats.
-		 */
-		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
-										   &yb_num_physical_conn_from_ysqlconnmgr))
-		{
-			yb_net_client_connections +=
-				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
-
-			if (YbIsYsqlConnMgrWarmupModeEnabled())
-				yb_net_client_connections = yb_num_logical_conn;
-		}
-
-		/*
-		 * yb_net_client_connections can be negative if there are broken physical connections
-		 * in ysql connection manager pool.
-		 */
-		if (yb_net_client_connections > 0 || npreparedxacts > 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("database \"%s\" is being accessed by other users",
-							dbname),
-					 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+		YbErrorIfDbInUse(db_id, dbname);
 	}
 	else
 	{
@@ -2099,11 +2064,6 @@ RenameDatabase(const char *oldname, const char *newname)
 	int			npreparedxacts;
 	ObjectAddress address;
 
-	uint32_t	yb_num_logical_conn;
-	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
-	int			yb_net_client_connections;
-
-
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this for the same reasons as DROP DATABASE.
@@ -2163,43 +2123,7 @@ RenameDatabase(const char *oldname, const char *newname)
 	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
 	if (IsYugaByteEnabled())
-	{
-		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
-
-		/*
-		 * number of actual client connections =
-		 *		number of clients connected on ysql port
-		 * 			+ number of clients connected on ysql connection manager port
-		 * 			- number of server connections b/w ysql connection manager and ysql.
-		 */
-		yb_net_client_connections = notherbackends;
-
-		/*
-		 * Ignore the number of logical or physical connections to the database
-		 * if pg_backend is unable to read the shared memory segment for
-		 * Ysql Connection Manager stats.
-		 */
-		if (YbGetNumYsqlConnMgrConnections(db_id, -1, &yb_num_logical_conn,
-										   &yb_num_physical_conn_from_ysqlconnmgr))
-		{
-			yb_net_client_connections +=
-				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
-
-			if (YbIsYsqlConnMgrWarmupModeEnabled())
-				yb_net_client_connections = yb_num_logical_conn;
-		}
-
-		/*
-		 * yb_net_client_connections can be negative if there are broken physical connections
-		 * in ysql connection manager pool.
-		 */
-		if (yb_net_client_connections > 0 || npreparedxacts > 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("database \"%s\" is being accessed by other users",
-							oldname),
-					 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
-	}
+		YbErrorIfDbInUse(db_id, oldname);
 	else
 	{
 		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
@@ -3747,4 +3671,39 @@ dbase_redo(XLogReaderState *record)
 	}
 	else
 		elog(PANIC, "dbase_redo: unknown op code %u", info);
+}
+
+/*
+ * Error out if another session uses the database, for DROP and RENAME
+ * DATABASE.
+ *
+ * Connection Manager's logical clients have no backend of their own, so they
+ * are counted from its stats, and its pooled servers are left out: they are
+ * the backends those clients run on. When the stats cannot be read, the pooled
+ * servers stand in for the clients that cannot be seen.
+ */
+static void
+YbErrorIfDbInUse(Oid db_id, const char *dbname)
+{
+	int			ndirect;
+	int			npooled;
+	int			nprepared;
+	uint32_t	nlogical;
+	uint32_t	nphysical;
+	int			nsessions;
+
+	YbCountOtherDBBackends(db_id, &ndirect, &npooled, &nprepared);
+
+	nsessions = ndirect;
+	if (YbGetNumYsqlConnMgrConnections(db_id, -1, &nlogical, &nphysical))
+		nsessions += nlogical;
+	else
+		nsessions += npooled;
+
+	if (nsessions > 0 || nprepared > 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("database \"%s\" is being accessed by other users",
+						dbname),
+				 errdetail_busy_db(nsessions, nprepared)));
 }

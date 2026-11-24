@@ -5440,3 +5440,77 @@ YbStorePgAshSamples(TimestampTz sample_time)
 
 	YbAshFillSampleWeight(samples_considered);
 }
+
+/*
+ * CountOtherDBBackends for YB: also splits the other backends into direct
+ * ones and Connection Manager pooled servers.
+ *
+ * Only direct backends and prepared transactions are waited for. A pooled
+ * server is no session of its own, and an idle one stays connected until
+ * Connection Manager's idle timeout, so waiting for it would only stretch
+ * every DROP/RENAME of a database with a warm pool to the full 5 s.
+ */
+bool
+YbCountOtherDBBackends(Oid databaseId, int *ndirect, int *npooled,
+					   int *nprepared)
+{
+	ProcArrayStruct *arrayP = procArray;
+
+#define MAXAUTOVACPIDS	10		/* max autovacs to SIGTERM per iteration */
+	int			autovac_pids[MAXAUTOVACPIDS];
+	int			tries;
+
+	/* 50 tries with 100ms sleep between tries makes 5 sec total wait */
+	for (tries = 0; tries < 50; tries++)
+	{
+		int			nautovacs = 0;
+		bool		found = false;
+		int			index;
+
+		CHECK_FOR_INTERRUPTS();
+
+		*ndirect = *npooled = *nprepared = 0;
+
+		LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+		for (index = 0; index < arrayP->numProcs; index++)
+		{
+			int			pgprocno = arrayP->pgprocnos[index];
+			PGPROC	   *proc = &allProcs[pgprocno];
+			uint8		statusFlags = ProcGlobal->statusFlags[index];
+
+			if (proc->databaseId != databaseId)
+				continue;
+			if (proc == MyProc)
+				continue;
+
+			if (proc->pid == 0)
+			{
+				(*nprepared)++;
+				found = true;
+			}
+			else if (proc->yb_is_conn_mgr_pooled_server)
+				(*npooled)++;
+			else
+			{
+				(*ndirect)++;
+				found = true;
+				if ((statusFlags & PROC_IS_AUTOVACUUM) &&
+					nautovacs < MAXAUTOVACPIDS)
+					autovac_pids[nautovacs++] = proc->pid;
+			}
+		}
+
+		LWLockRelease(ProcArrayLock);
+
+		if (!found)
+			return false;
+
+		for (index = 0; index < nautovacs; index++)
+			(void) kill(autovac_pids[index], SIGTERM);	/* ignore any error */
+
+		pg_usleep(100 * 1000L); /* 100ms */
+	}
+
+	return true;
+}
