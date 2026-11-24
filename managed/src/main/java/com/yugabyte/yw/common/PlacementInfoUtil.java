@@ -800,10 +800,6 @@ public class PlacementInfoUtil {
         return true;
       }
       if (UniverseCRUDHandler.isAwsArnChanged(cluster, currentCluster, provider)) {
-        LOG.debug(
-            "awsArnString info has changed from {} to {}",
-            currentCluster.userIntent.awsArnString,
-            cluster.userIntent.awsArnString);
         return true;
       }
       if (UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)) {
