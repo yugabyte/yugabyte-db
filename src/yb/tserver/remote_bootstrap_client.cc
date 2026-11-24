@@ -558,7 +558,6 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   }
 
   auto start = MonoTime::Now();
-  auto timeout = MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec);
   int backoff_ms = 1;
   const int kMaxBackoffMs = 256;
   RaftConfigPB committed_config;
@@ -587,7 +586,8 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
         break;
       }
     }
-  } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
+  } while (MonoTime::Now().GetDeltaSince(start).LessThan(
+      MonoDelta::FromSeconds(FLAGS_committed_config_change_role_timeout_sec)));
 
   return STATUS(TimedOut,
                 Format("Timed out waiting member type of peer $0 to change in the committed "
