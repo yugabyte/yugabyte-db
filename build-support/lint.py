@@ -321,7 +321,9 @@ def run_golint(linter: Linter, files: list[str]) -> list[Message]:
 
 
 # A Perl/PCRE named group ``(?<name>`` that is not escaped (an even number of backslashes before
-# the paren). Lookbehinds ``(?<=`` and ``(?<!`` do not match, since a name starts with a letter or _.
+# the paren). Lookbehinds ``(?<=`` and ``(?<!`` do not match, since a name starts with a letter
+# or _. Character classes are not tracked, so a ``(?<name>`` written inside ``[...]`` is rewritten
+# too; no configured regex has one.
 _PERL_NAMED_GROUP = re.compile(r"(?<!\\)((?:\\\\)*)\(\?<([A-Za-z_]\w*)>")
 
 
