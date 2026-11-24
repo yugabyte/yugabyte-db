@@ -11,15 +11,15 @@ import (
 )
 
 func TestGetInt32FlagIfChanged(t *testing.T) {
+	zero, value := int32(0), int32(500)
 	cases := []struct {
 		args []string
 		want *int32
 	}{
 		{args: nil, want: nil},
-		{args: []string{"--delay", "0"}, want: GetInt32Pointer(1)},
-		{args: []string{"--delay", "500"}, want: GetInt32Pointer(500)},
+		{args: []string{"--delay", "0"}, want: &zero},
+		{args: []string{"--delay", "500"}, want: &value},
 	}
-	*cases[1].want = 0
 	for _, c := range cases {
 		cmd := &cobra.Command{}
 		cmd.Flags().Int32("delay", 18000, "")
