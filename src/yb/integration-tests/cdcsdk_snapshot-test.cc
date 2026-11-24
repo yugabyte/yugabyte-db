@@ -69,6 +69,8 @@ TEST_F(CDCSDKYsqlTest, InsertBeforeAfterSnapshot) {
 // Begin transaction, insert one row, commit transaction, enable snapshot
 // Expected records: (DDL, READ).
 TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
+  // Leader moves by the load balancer make GetChanges fail with "Not leader".
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
