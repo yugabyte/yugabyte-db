@@ -561,7 +561,8 @@ DROP USER phenc;
 -- see only this session's values. The role can still change its password
 -- in plaintext, under its reuse policy; a pre-hashed one is refused. Its
 -- window does not apply to another role's password, which is not compared.
--- A superuser's own password is checked the same way.
+-- A superuser's own password is checked the same way. A pre-hashed password
+-- an admin sets still goes into the role's history.
 ALTER ROLE ALL SET yb_password_reuse_history = 0;
 \c yugabyte yugabyte
 CREATE ROLE admin SUPERUSER LOGIN;
@@ -581,9 +582,11 @@ ALTER ROLE other_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: ano
 \c yugabyte admin
 SHOW yb_password_reuse_history;
 ALTER ROLE app_user PASSWORD 'pw_three';            -- ok: admin reset
-ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: admin reset
+ALTER ROLE app_user PASSWORD 'md57062f046990197ecc4363fbbacbf6cd8'; -- ok: admin reset, pw_four pre-hashed
 ALTER ROLE admin PASSWORD 'pw_admin';               -- ok: its own password
 ALTER ROLE admin PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail: its own password
+\c yugabyte app_user
+ALTER ROLE app_user PASSWORD 'pw_four';             -- fail: reused, set by admin
 \c yugabyte yugabyte
 DROP ROLE other_user;
 DROP ROLE app_user;
