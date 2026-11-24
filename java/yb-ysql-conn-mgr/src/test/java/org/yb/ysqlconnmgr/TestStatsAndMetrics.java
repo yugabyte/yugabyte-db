@@ -91,24 +91,20 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
   // (after the fix for #28083). However, connections do not wait in the control
   // pool unless there is a delay during routing, and even then, avg_wait_time_ns
   // is updated in only 1 tick before being reset.
-  // Hence, it is checked in 2 adjacent ticks to ensure it is not missed (i.e.
-  // immediately upon creating the connection, and the tick after creating the
-  // connection).
+  // Hence, it is sampled more often than the tick interval over 2 ticks so the
+  // one tick that has it is not missed, then checked for reset afterwards.
   private void testAvgWaitTime(String db_name, String user_name, int min_val,
       int stats_update_interval_ms) throws Exception {
     JsonObject pool;
 
-    // In the first fetch, it is possible that the stats are not updated and so
-    // the pool doesn't exist. In thi case, we take the avg_wait_time to be 0
-    pool = getPool(db_name, user_name);
-    int avgWaitTimeNs1 = 0;
-    if (pool != null)
-      avgWaitTimeNs1 = pool.get("avg_wait_time_ns").getAsInt();
-
-    Thread.sleep(stats_update_interval_ms);
-    pool = getPool(db_name, user_name);
-    assertNotNull(pool);
-    int avgWaitTimeNs2 = pool.get("avg_wait_time_ns").getAsInt();
+    // The pool may not exist in the stats until the first tick.
+    int maxAvgWaitTimeNs = 0;
+    for (int i = 0; i < 8; ++i) {
+      pool = getPool(db_name, user_name);
+      if (pool != null)
+        maxAvgWaitTimeNs = Math.max(maxAvgWaitTimeNs, pool.get("avg_wait_time_ns").getAsInt());
+      Thread.sleep(stats_update_interval_ms / 4);
+    }
 
     Thread.sleep(stats_update_interval_ms);
     pool = getPool(db_name, user_name);
@@ -116,7 +112,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     int avgWaitTimeNs3 = pool.get("avg_wait_time_ns").getAsInt();
 
     assertGreaterThan("Routing time (avg_wait_time_ns) not updated, expect greater than min_val",
-        avgWaitTimeNs1 + avgWaitTimeNs2, min_val);
+        maxAvgWaitTimeNs, min_val);
     assertEquals("Routing time (avg_wait_time_ns) not reset, expect == 0", avgWaitTimeNs3, 0);
   }
 
