@@ -131,8 +131,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
   /**
    * An earlier attempt that left the node in this state may have deleted its node agent record,
-   * which ReplaceRootVolume does before the swap, so the stop can fail. A rerun is a first try, so
-   * the base doesn't tolerate that, but the node gets a new root volume and agent anyway.
+   * which ReplaceRootVolume does before the swap, so the stop can fail. Any later run that finds
+   * the node in this state, a new submission included, is a first try, so the base doesn't tolerate
+   * that. The instance is stopped for the swap anyway, and the node gets a new root volume and
+   * agent.
    */
   @Override
   protected boolean isIgnoreStopError(UpgradeContext upgradeContext, NodeDetails nodeDetails) {
@@ -731,8 +733,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       return false;
     }
     Map<String, String> saved = savedNode.pathToUUIDMapping;
+    String source = "saved on the node";
     if (saved == null) {
       saved = runtimeInfo.legacyDeviceMappingByNode.get(node.getNodeUuid());
+      source = "in the runtime info of an older YBA's task";
     }
     if (saved == null) {
       return false;
@@ -740,13 +744,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Set<String> mountPoints = getMountPoints(universe, node);
     if (!saved.keySet().equals(mountPoints)) {
       log.info(
-          "Mapping saved on node {} has mount points {} instead of {}, capturing fstab again",
+          "Mapping {} for node {} has mount points {} instead of {}, capturing fstab again",
+          source,
           node.nodeName,
           saved.keySet(),
           mountPoints);
       return false;
     }
-    log.info("Reusing the fstab mapping saved on node {}", node.nodeName);
+    log.info("Reusing the fstab mapping {} for node {}", source, node.nodeName);
     deviceMappingByNode
         .computeIfAbsent(node.getNodeUuid(), k -> new ConcurrentHashMap<>())
         .putAll(saved);
