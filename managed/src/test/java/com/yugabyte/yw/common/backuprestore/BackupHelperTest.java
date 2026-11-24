@@ -2109,6 +2109,35 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
+   * A YBC restore checks the success marker's locations with its own copy of the config, which is
+   * federated on AWS as well, so GCPUtil makes no call to GCS with no identity.
+   */
+  @Test
+  public void testGcpIamGcsYbcRestoreCheckIsFederatedOnAws() {
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    when(mockGCPUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    when(mockConfigService.getOrBadRequest(any(), any())).thenCallRealMethod();
+    hostCloud(CloudType.aws);
+    YbcBackupResponse successMarker =
+        YbcBackupUtil.parseYbcBackupResponse(
+            TestUtils.readResource("backup/ybc_success_file_without_regions.json"));
+    ArgumentCaptor<CustomerConfigData> checked = ArgumentCaptor.forClass(CustomerConfigData.class);
+
+    spyBackupHelper.validateStorageConfigForYbcRestoreTask(
+        gcsIamConfig().getConfigUUID(),
+        testCustomer.getUuid(),
+        testUniverse.getUniverseUUID(),
+        List.of(successMarker));
+
+    verify(mockGCPUtil).checkListObjectsWithYbcSuccessMarkerCloudStore(checked.capture(), any());
+    assertTrue(
+        GCPUtil.isUnresolvedFederationConfig((CustomerConfigStorageGCSData) checked.getValue()));
+  }
+
+  /**
    * Left as it is on GCP, where YBA reaches GCS natively; on an AWS host with Google credentials,
    * which it keeps using; and with a service account key.
    */

@@ -1768,11 +1768,12 @@ public class AWSUtil implements CloudUtil {
   }
 
   /**
-   * The error of an IAM role config that found no AWS credentials, with the way out on a YBA that
-   * runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on AWS
-   * hands that YBA's own credentials to the DB nodes, and a YBA on GCP has none to hand. A config
-   * already federated gets no advice: what it lacks is the aws entry that the federation error
-   * describes.
+   * The error of an IAM role config whose AWS credentials could not be had, with the way out on a
+   * YBA that runs on GCP, such as an HA standby promoted there: an IAM role config made on a YBA on
+   * AWS hands that YBA's own credentials to the DB nodes, and a YBA on GCP has them only if its
+   * host is set up with some. The advice is conditional, as the error may also come from AWS
+   * refusing or throttling credentials the host has. A config already federated gets no advice:
+   * what it lacks is the aws entry that the federation error describes.
    */
   @VisibleForTesting
   String withIamRoleAdviceOnGcp(CustomerConfigStorageS3Data s3Data, String error) {
@@ -1782,13 +1783,14 @@ public class AWSUtil implements CloudUtil {
       return error;
     }
     return error
-        + ". YBA runs on GCP, where an IAM role storage config has no AWS credentials to use."
-        + " Turn on Federated IAM on the storage config, and set its Signing Region to the"
-        + " bucket's region unless the host base names it: for a federated config YBA does not"
-        + " look the region up, and otherwise uses us-east-1. YBA and the GCP DB nodes then reach"
-        + " S3 through the provider's federated IAM entry for aws, whose role must trust this"
-        + " YBA's service account as well as the nodes'. The AWS DB nodes use their own instance"
-        + " role instead, which must then have access to the bucket.";
+        + ". YBA runs on GCP, where an IAM role storage config has AWS credentials only if this"
+        + " host is set up with them: an AWS profile, a web identity token or container"
+        + " credentials. If it is not, turn on Federated IAM on the storage config, and set its"
+        + " Signing Region to the bucket's region unless the host base names it: for a federated"
+        + " config YBA does not look the region up, and otherwise uses us-east-1. YBA and the GCP"
+        + " DB nodes then reach S3 through the provider's federated IAM entry for aws, whose role"
+        + " must trust this YBA's service account as well as the nodes'. The AWS DB nodes use"
+        + " their own instance role instead, which must then have access to the bucket.";
   }
 
   @Override

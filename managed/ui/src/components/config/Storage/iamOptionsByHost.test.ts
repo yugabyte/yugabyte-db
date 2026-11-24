@@ -20,7 +20,7 @@ describe('getS3IamOptions', () => {
     expect(s3(YBAHost.AWS)).toEqual({ showIamRole: true });
   });
 
-  it('hides the IAM role on a new config on GCP, where YBA has no AWS credentials', () => {
+  it('hides the IAM role on a new config on GCP', () => {
     expect(s3(YBAHost.GCP)).toEqual({ showIamRole: false });
   });
 
@@ -114,6 +114,18 @@ describe('regionRequiredForFederatedIam', () => {
         initialValues: { FEDERATED_IAM: true }
       })
     ).toBeUndefined();
+  });
+
+  it('keeps the region of a config saved as federated with one', () => {
+    expect(
+      regionRequiredForFederatedIam('', federated, {
+        initialValues: { FEDERATED_IAM: true, SIGNING_REGION: 'ap-south-1' }
+      })
+    ).toBe(REQUIRED);
+  });
+
+  it('does not take a blank region', () => {
+    expect(regionRequiredForFederatedIam('  ', federated, { initialValues: {} })).toBe(REQUIRED);
   });
 
   it('needs none when the host base names the region, or one is set', () => {

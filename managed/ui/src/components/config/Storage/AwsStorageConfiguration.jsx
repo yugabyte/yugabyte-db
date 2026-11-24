@@ -107,7 +107,7 @@ class AwsStorageConfiguration extends Component {
               <Col lg={1} className="config-zone-tooltip">
                 <YBInfoTip
                   title="IAM Role"
-                  content="YBA hands its own AWS credentials to the database nodes, so this works only while YBA runs on AWS. With an HA standby on GCP, use Federated IAM: once promoted, a YBA on GCP has no AWS credentials to hand."
+                  content="YBA gets AWS credentials from its host, on AWS its instance role, and by default hands them to the database nodes. A YBA on GCP has them only if its host is set up with an AWS profile or a web identity token. With an HA standby on GCP, use Federated IAM instead."
                 />
               </Col>
             )}

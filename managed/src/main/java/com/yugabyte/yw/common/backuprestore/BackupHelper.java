@@ -596,10 +596,10 @@ public class BackupHelper {
       if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
         stampFederationTarget(gcs, resolveCrossCloudFederationTarget(universe, CloudType.gcp));
       }
-      // After the stamping: a GCP IAM config federated only in memory keeps no audience, so this
-      // check defers to the nodes, as it did for every GCP IAM config before PLAT-23407, rather
-      // than call GCS with no identity. YBA federates with an entry only for its own work on the
-      // bucket (applyCrossCloudFederationFromBackup, applyYbaFederatedIdentity).
+      // After the stamping: a GCP IAM config federated only in memory keeps no audience, so
+      // GCPUtil skips this check rather than call GCS with no identity. YBA federates with an
+      // entry only for its own work on the bucket (applyCrossCloudFederationFromBackup,
+      // applyYbaFederatedIdentity).
       federateGcpIamOnAws(gcs, new ConfigIdentity());
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
@@ -875,14 +875,20 @@ public class BackupHelper {
    * reaches that of a federated one, when it runs on AWS with no Google credentials of its own:
    * turns the flag on, in memory only. Such a config is made on a YBA on GCP, which needs no flag
    * there. Without this, its HA standby on AWS, once promoted, calls GCS with no identity
-   * ("Anonymous caller"). Every copy YBA reads the bucket with goes through here. The storage
-   * checks before a backup, a restore or a deletion (applyCrossCloudFederationAudience,
-   * validateStorageConfigOnBackup, and the restore's success marker and file checks) leave the
-   * audience blank, so GCPUtil defers them to the nodes, as for any unresolved federation config.
-   * The deletion itself (applyCrossCloudFederationFromBackup) and YBA's own backups
-   * (applyYbaFederatedIdentity) federate with an entry. Only YBA reads the flag, never the DB
-   * nodes. A config that also has a service account key is left as it is, as the flag cannot be
-   * turned on for it either (see CustomerConfigStorageGCSValidator).
+   * ("Anonymous caller"). The backup, restore and deletion paths pass every copy they read the
+   * bucket with through here. An edit of the config does not: CustomerConfigStorageGCSValidator
+   * checks the bucket with YBA's own identity, so on such a YBA the edit is refused until Federated
+   * IAM is turned on for the config. The storage checks before a backup, a restore or a deletion
+   * (applyCrossCloudFederationAudience, validateStorageConfigOnBackup, and the restore's success
+   * marker and file checks) leave the audience blank, so GCPUtil makes no call to GCS for them, as
+   * for any unresolved federation config. The YBC success marker then counts as present, so a
+   * restore takes the YBC path. That is the only path such a config has: yb_backup.py reads GCS
+   * only with a service account key (GCS_CREDENTIALS_JSON), which the config does not have, so it
+   * can neither make nor restore a yb_backup.py backup. The deletion itself
+   * (applyCrossCloudFederationFromBackup) and YBA's own backups (applyYbaFederatedIdentity)
+   * federate with an entry. Only YBA reads the flag, never the DB nodes. A config that also has a
+   * service account key is left as it is, as the flag cannot be turned on for it either (see
+   * CustomerConfigStorageGCSValidator).
    */
   private void federateGcpIamOnAws(CustomerConfigData configData, ConfigIdentity configIdentity) {
     if (!(configData instanceof CustomerConfigStorageGCSData)) {
@@ -1894,13 +1900,11 @@ public class BackupHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot do Point in Time Restore for this backup location");
       }
-      CustomerConfigData configData = storageConfig.getDataObject();
-      federateGcpIamOnAws(configData, new ConfigIdentity());
       preflightResponse =
           storageUtilFactory
               .getStorageUtil(storageConfig.getName())
               .generateYBBackupRestorePreflightResponseWithoutBackupObject(
-                  preflightParams, configData);
+                  preflightParams, storageConfig.getDataObject());
     }
     return preflightResponse.toBuilder()
         .fipsEnabled(
@@ -1981,6 +1985,8 @@ public class BackupHelper {
       String fileName,
       boolean checkExistsOnAll) {
     CustomerConfigData configData = storageConfig.getDataObject();
+    // For a GCP IAM GCS config on AWS this reports the file present without a call to GCS, which
+    // for the YBC success marker is right for it (see federateGcpIamOnAws).
     federateGcpIamOnAws(configData, new ConfigIdentity());
     try {
       return storageUtilFactory

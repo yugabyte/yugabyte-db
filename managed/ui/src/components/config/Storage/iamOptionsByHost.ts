@@ -5,18 +5,17 @@ import { YBAHost } from '../../../redesign/helpers/constants';
 type YBAHostValue = (typeof YBAHost)[keyof typeof YBAHost];
 
 // Only while federated IAM is offered, a new config shows the IAM options that work from where YBA
-// runs. S3: Federated IAM on every host, IAM Role also on AWS (hidden on GCP, where YBA has no AWS
-// credentials to hand to the DB nodes). Federated IAM works from both clouds, which an HA pair
-// across AWS and GCP needs: the standby, once promoted, reaches the bucket through the provider's
-// federated IAM entry. With it, the DB nodes use their own identity: an AWS node its instance role,
-// so that role needs access to the bucket. IAM Role keeps its bucket region lookup and its bucket
-// checks at save, which Federated IAM skips. GCS: GCP IAM on GCP, where YBA checks the bucket with
-// its own identity, and Federated IAM on AWS only (on GCP it would skip those checks). A YBA on AWS
-// also federates for a GCP IAM config, such as one made on its HA peer on GCP
-// (BackupHelper.federateGcpIamOnAws). Editing a saved
-// config, where every option shows, or the API still sets either. GCS Federated IAM, which needs
-// AWS instance metadata, is hidden on Azure; a self-hosted or unknown host hides nothing. An option
-// that is on still shows.
+// runs. Editing a saved config shows every option, an option that is on always shows, and the API
+// still sets either.
+// S3: Federated IAM on every host, and IAM Role on every host but GCP. IAM Role uses AWS credentials
+// from YBA's host, which a YBA on GCP has only if its host is set up with some. Federated IAM works
+// from both clouds, as the standby of an HA pair across AWS and GCP needs once promoted. With it,
+// an AWS DB node uses its instance role, which then needs access to the bucket. IAM Role is still
+// offered for its bucket region lookup and its bucket checks at save, which Federated IAM skips.
+// GCS: GCP IAM on every host but AWS, and Federated IAM on AWS and on a self-hosted or unknown
+// host: not on GCP, where it would skip YBA's own bucket checks, nor on Azure, as it needs AWS
+// instance metadata. A YBA on AWS also federates for a GCP IAM config, such as one made on its HA
+// peer on GCP (BackupHelper.federateGcpIamOnAws).
 
 export const getS3IamOptions = (
   ybaHost: YBAHostValue,
@@ -35,23 +34,29 @@ const HOST_BASE_REGION = /^s3[.-](?:[a-z0-9-]+[.])*([a-z]{2}-[a-z-]+-\d+)[.]amaz
 export const hostBaseNamesRegion = (hostBase?: string) =>
   !!hostBase && HOST_BASE_REGION.test(hostBase);
 
-type S3FormValues = { FEDERATED_IAM?: boolean; AWS_HOST_BASE?: string };
+type S3FormValues = { FEDERATED_IAM?: boolean; AWS_HOST_BASE?: string; SIGNING_REGION?: string };
+
+const isBlank = (value?: string) => !value?.trim();
 
 // Field-level validator for SIGNING_REGION (redux-form passes the value, the form values and the
-// form props). A config that Federated IAM is turned on for, new or edited, names the bucket's
-// region unless the host base does: on an edit the host base is fixed, and an IAM Role config never
-// stored a region. A config saved federated keeps taking edits without one.
+// form props). YBA does not look up a federated config's bucket region, so a federated config
+// names it unless the host base does. On an edit the host base is fixed, and an IAM Role config
+// never stored a region. Only a config saved federated without a region keeps taking edits
+// without one; one saved with a region cannot drop it.
 export const regionRequiredForFederatedIam = (
   value: string | undefined,
   data?: S3FormValues,
   props?: { initialValues?: S3FormValues }
-) =>
-  data?.FEDERATED_IAM &&
-  !props?.initialValues?.FEDERATED_IAM &&
-  !value &&
-  !hostBaseNamesRegion(data?.AWS_HOST_BASE)
+) => {
+  const saved = props?.initialValues;
+  const savedFederatedWithoutRegion = !!saved?.FEDERATED_IAM && isBlank(saved?.SIGNING_REGION);
+  return data?.FEDERATED_IAM &&
+    isBlank(value) &&
+    !savedFederatedWithoutRegion &&
+    !hostBaseNamesRegion(data?.AWS_HOST_BASE)
     ? 'Required for Federated IAM, unless the host base names the region.'
     : undefined;
+};
 
 export const getGcsIamOptions = (
   ybaHost: YBAHostValue,

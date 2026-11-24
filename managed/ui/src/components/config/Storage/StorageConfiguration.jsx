@@ -260,7 +260,8 @@ class StorageConfiguration extends Component {
             'IAM_INSTANCE_PROFILE',
             'USE_CROSS_CLOUD_FEDERATION'
           ];
-          // YBA does not look up a federated config's bucket region, and YBC gets this one.
+          // YBA does not look up a federated config's bucket region, and YBC gets this one as is.
+          dataPayload['SIGNING_REGION'] = dataPayload['SIGNING_REGION']?.trim();
           if (dataPayload['SIGNING_REGION']) FIELDS.push('SIGNING_REGION');
         } else if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];

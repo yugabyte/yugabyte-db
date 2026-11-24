@@ -1041,9 +1041,10 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   /**
-   * An IAM role config made on a YBA on AWS has no credentials on its HA standby on GCP: the error
-   * says to turn on Federated IAM there, and only there. It names what the AWS DB nodes then need,
-   * and a config that is federated already gets no such advice.
+   * An IAM role config made on a YBA on AWS has no credentials on its HA standby on GCP unless that
+   * host is set up with some: the error says to turn on Federated IAM there, and only there. It
+   * names what the AWS DB nodes then need, and a config that is federated already gets no such
+   * advice.
    */
   @Test
   public void testIamRoleErrorAdvisesFederatedIamOnGcp() {
@@ -1056,7 +1057,9 @@ public class AWSUtilTest extends FakeDBApplication {
         .thenReturn(true);
     String advised = mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error);
     assertTrue(advised, advised.startsWith(error + ". YBA runs on GCP"));
-    assertTrue(advised, advised.contains("Turn on Federated IAM"));
+    // Conditional: the host may have AWS credentials that AWS refused or throttled.
+    assertTrue(advised, advised.contains("only if this host is set up with them"));
+    assertTrue(advised, advised.contains("If it is not, turn on Federated IAM"));
     assertTrue(advised, advised.contains("set its Signing Region to the bucket's region"));
     assertTrue(advised, advised.contains("trust this YBA's service account"));
     assertTrue(advised, advised.contains("AWS DB nodes use their own instance role"));
