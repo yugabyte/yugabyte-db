@@ -118,6 +118,8 @@ bool		yb_mem_report_enabled = false;
 static bool enforce = false;
 static int64 backend_idle_budget_kb = 0;
 static int64 backend_peak_budget_kb = 0;
+static int64 relcache_init_idle_budget_kb = 0;
+static int64 relcache_init_peak_budget_kb = 0;
 static int64 parallel_worker_peak_budget_kb = 0;
 static int64 bgworker_peak_budget_kb = 0;
 static int64 aux_peak_budget_kb = 0;
@@ -172,6 +174,11 @@ budgets_for_type(BackendType type, const char *bgw_type,
 	{
 		case B_INVALID:
 		case B_LOGGER:
+			break;
+		case YB_RELCACHE_INIT_BACKEND:
+			/* Builds the relcache init file, so needs more than a plain backend. */
+			*idle_budget_kb = relcache_init_idle_budget_kb;
+			*peak_budget_kb = relcache_init_peak_budget_kb;
 			break;
 		case B_BG_WORKER:
 			*peak_budget_kb = strcmp(bgw_type, "parallel worker") == 0 ?
@@ -329,6 +336,10 @@ YbMemReportPostmasterInit(void)
 	enforce = env_bool("FLAGS_TEST_ysql_pg_mem_enforce");
 	backend_idle_budget_kb = env_int64("FLAGS_TEST_ysql_pg_mem_backend_idle_kb");
 	backend_peak_budget_kb = env_int64("FLAGS_TEST_ysql_pg_mem_backend_peak_kb");
+	relcache_init_idle_budget_kb =
+		env_int64("FLAGS_TEST_ysql_pg_mem_relcache_init_idle_kb");
+	relcache_init_peak_budget_kb =
+		env_int64("FLAGS_TEST_ysql_pg_mem_relcache_init_peak_kb");
 	parallel_worker_peak_budget_kb =
 		env_int64("FLAGS_TEST_ysql_pg_mem_parallel_worker_peak_kb");
 	bgworker_peak_budget_kb = env_int64("FLAGS_TEST_ysql_pg_mem_bgworker_peak_kb");

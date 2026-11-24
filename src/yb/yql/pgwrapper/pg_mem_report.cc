@@ -40,6 +40,13 @@ DEFINE_test_flag(int64, ysql_pg_mem_backend_idle_kb, 0,
 DEFINE_test_flag(int64, ysql_pg_mem_backend_peak_kb, 0,
     "Budget for the peak RSS (VmHWM) of a client backend or walsender, in kB. 0 means no budget.");
 
+DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_idle_kb, 0,
+    "Budget for the anonymous RSS of a relcache init backend (the backend that builds the "
+    "relcache init file) while idle, in kB. 0 means no budget.");
+
+DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_peak_kb, 0,
+    "Budget for the peak RSS (VmHWM) of a relcache init backend, in kB. 0 means no budget.");
+
 DEFINE_test_flag(int64, ysql_pg_mem_parallel_worker_peak_kb, 0,
     "Budget for the peak RSS (VmHWM) of a parallel worker, in kB. 0 means no budget.");
 
@@ -63,6 +70,8 @@ const std::vector<std::string> kPgMemFlags = {
     "TEST_ysql_pg_mem_enforce",
     "TEST_ysql_pg_mem_backend_idle_kb",
     "TEST_ysql_pg_mem_backend_peak_kb",
+    "TEST_ysql_pg_mem_relcache_init_idle_kb",
+    "TEST_ysql_pg_mem_relcache_init_peak_kb",
     "TEST_ysql_pg_mem_parallel_worker_peak_kb",
     "TEST_ysql_pg_mem_bgworker_peak_kb",
     "TEST_ysql_pg_mem_aux_peak_kb",
