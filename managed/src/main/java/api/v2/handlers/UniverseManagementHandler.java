@@ -312,6 +312,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             universeSpec);
     // Before we completely replace instance type with resourceSpec for k8s,
     // initializing missing tserver/master resource specs from respective instanceType.
+    // Note that V1 request path uses instance type for both resource spec.
+    // Here we use masterInstanceType for master resource spec (which is more appropriate behavior)
     // Explicitly requested resource specs are kept as is.
     KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams, confGetter);
     UniverseConfigureTaskParams v1Params =
@@ -391,23 +393,26 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
       // Before we completely replace instance type with resourceSpec for k8s,
       // initializing missing tserver/master resource specs from respective instanceType.
+      // Note that V1 request path uses instance type for both resource spec.
+      // Here we use masterInstanceType for master resource spec (which is more appropriate
+      // behavior)
       // Explicitly requested specs and specs of clusters not changed by the request are kept as is
       // (the mapper clears them when the node spec is passed without them).
       if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
         if (Util.isKubernetesBased(cluster)) {
           KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
               cluster.clusterType, cluster.userIntent, false, /* overwrite */ confGetter);
-          UUID providerUUID = cluster.userIntent.maybeGetSingleProviderUUID().get();
-
-          if (cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID) == null) {
-            throw new PlatformServiceException(BAD_REQUEST, "Tserver resource spec is required");
-          }
-          if (cluster.clusterType == ClusterType.PRIMARY
-              && cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID) == null) {
-            throw new PlatformServiceException(BAD_REQUEST, "Master resource spec is required");
+          UUID providerUUID = Util.getSingleProviderUUID(cluster);
+          if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+            if (cluster.userIntent.getTserverK8SNodeResourceSpec(providerUUID) == null) {
+              throw new PlatformServiceException(BAD_REQUEST, "Tserver resource spec is required");
+            }
+            if (cluster.clusterType == ClusterType.PRIMARY
+                && cluster.userIntent.getMasterK8SNodeResourceSpec(providerUUID) == null) {
+              throw new PlatformServiceException(BAD_REQUEST, "Master resource spec is required");
+            }
           }
         }
-
       }
     }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));

@@ -18,11 +18,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.KubernetesOverridesRedactor;
-import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
@@ -114,22 +116,36 @@ public class UniverseControllerRequestBinder {
       taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
 
-      // Before we completely replace instance type logic with resourceSpec for k8s,
-      // initializing tserverK8SNodeResourceSpec from instanceType
-      // and masterK8SNodeResourceSpec from masterInstanceType.
-      // Previously masterK8SNodeResourceSpec was also initialized from instanceType,
-      // which is incorrect, but in general that worked since masterInstanceType has a fallback
-      // to instanceType if null (but instance types could derive when masterInstanceType is
-      // pinned to some value)
-      // If instanceType is not provided, the respective resources spec is left untouched.
-      // For the masterInstanceType it falls back to instanceType, so masterK8sResourceSpec
-      // is untouched if both instanceType and masterInstanceType are nulls.
-      // Basically that method is used for those universes that are mistakenly rely on
-      // instance types for some reason
-      // (for example due to a bug in code that erases or skips setting specs)
-      // since use_k8s_custom_resources is set to true by default now and all the existing
-      // universes were migrated by V298__Fix_K8s_Resource_Spec.
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(taskParams, runtimeConfGetter);
+      if (UniverseDefinitionTaskParams.class.isAssignableFrom(paramType)) {
+        // We can get rid of this if when we default to new style resource spec.
+        for (UniverseDefinitionTaskParams.Cluster cluster : taskParams.clusters) {
+          UserIntent ui = cluster.userIntent;
+          if (Util.isKubernetesBasedUniverse(taskParams)) {
+            UUID providerUUID = Util.getSingleProviderUUID(ui);
+            if (ui.getBaseInstanceType(providerUUID) != null) {
+              if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+                InstanceType instanceType =
+                    InstanceType.getOrBadRequest(
+                        providerUUID, ui.getBaseInstanceType(providerUUID));
+                // set K8s resource spec from instance type data.
+                UserIntent.K8SNodeResourceSpec masterK8SNodeResourceSpec =
+                    new UserIntent.K8SNodeResourceSpec();
+                UserIntent.K8SNodeResourceSpec tserverK8SNodeResourceSpec =
+                    new UserIntent.K8SNodeResourceSpec();
+                masterK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                masterK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+                tserverK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                tserverK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+                Util.providerInitializerForExistingIntent(ui, providerUUID)
+                    .setNodeResourceSpec(
+                        tserverK8SNodeResourceSpec, UniverseTaskBase.ServerType.TSERVER)
+                    .setNodeResourceSpec(
+                        masterK8SNodeResourceSpec, UniverseTaskBase.ServerType.MASTER);
+              }
+            }
+          }
+        }
+      }
 
       return taskParams;
     } catch (JsonProcessingException exception) {
