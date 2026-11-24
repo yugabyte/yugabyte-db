@@ -115,10 +115,7 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		err = applyAzureSASToken(data, sasToken)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
+		applyAzureSASToken(data, sasToken)
 
 		requestBody := ybaclient.CustomerConfig{
 			Name:         storageCode,
@@ -144,21 +141,20 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 
 // applyAzureSASToken writes the SAS token into data. Without --sas-token the token is read from
 // the environment if set there, else the stored token is kept. IAM configs never read the env.
-func applyAzureSASToken(data map[string]interface{}, sasToken string) error {
+func applyAzureSASToken(data map[string]interface{}, sasToken string) {
 	if !util.IsEmptyString(sasToken) {
 		data[util.AzureStorageSasTokenEnv] = sasToken
-		return nil
+		return
 	}
 	if util.IsTrueValue(data[util.UseAzureIAM]) {
-		return nil
+		return
 	}
 	envToken, err := util.AzureStorageCredentialsFromEnv()
 	if err != nil || util.IsEmptyString(envToken) {
-		return nil
+		return
 	}
 	logrus.Infof("Reading the SAS token from %s\n", util.AzureStorageSasTokenEnv)
 	data[util.AzureStorageSasTokenEnv] = envToken
-	return nil
 }
 
 func init() {

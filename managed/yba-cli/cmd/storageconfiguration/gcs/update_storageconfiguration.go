@@ -188,7 +188,7 @@ func applyGCSCreds(
 	var err error
 	if !util.IsEmptyString(filePath) {
 		gcsCreds, err = util.GcpGetCredentialsAsStringFromFilePath(filePath)
-	} else if _, hasStored := data[util.GCSCredentialsJSON]; updateCreds || (wasIAM && !hasStored) {
+	} else if updateCreds || (wasIAM && !util.HasValue(data[util.GCSCredentialsJSON])) {
 		logrus.Infof("Reading GCS credentials from %s\n", util.GCPCredentialsEnv)
 		gcsCreds, err = util.GcpGetCredentialsAsString()
 	} else {
@@ -213,8 +213,8 @@ func init() {
 	updateGCSStorageConfigurationCmd.Flags().String("credentials-file-path", "",
 		fmt.Sprintf("GCS Credentials File Path. %s",
 			formatter.Colorize(
-				"Omit to keep the stored credentials. Required when switching off IAM, "+
-					"unless GOOGLE_APPLICATION_CREDENTIALS is set.",
+				"Omit to keep the stored credentials. Switching off IAM with no stored "+
+					"credentials reads the file in GOOGLE_APPLICATION_CREDENTIALS.",
 				formatter.GreenColor)))
 	updateGCSStorageConfigurationCmd.Flags().Bool("use-gcp-iam", false,
 		"[Optional] Use IAM Role from the YugabyteDB Anywhere Host. "+

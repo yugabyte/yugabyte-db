@@ -39,6 +39,7 @@ func TestApplyS3Keys(t *testing.T) {
 		wasIAM          bool
 		isIAM           bool
 		keepStored      bool
+		blank           bool
 		env             map[string]string
 		want            map[string]interface{}
 		wantErr         string
@@ -142,6 +143,19 @@ func TestApplyS3Keys(t *testing.T) {
 			want: stored,
 		},
 		{
+			name:   "switching off IAM with blank stored keys reads env",
+			wasIAM: true,
+			blank:  true,
+			env: map[string]string{
+				util.AWSAccessKeyEnv:       envAccess,
+				util.AWSSecretAccessKeyEnv: envSecret,
+			},
+			want: map[string]interface{}{
+				util.AWSAccessKeyEnv:       envAccess,
+				util.AWSSecretAccessKeyEnv: envSecret,
+			},
+		},
+		{
 			name:       "rename of an IAM config keeps stored keys",
 			wasIAM:     true,
 			isIAM:      true,
@@ -169,6 +183,12 @@ func TestApplyS3Keys(t *testing.T) {
 			data := maps.Clone(stored)
 			if tc.wasIAM && !tc.keepStored {
 				data = map[string]interface{}{}
+			}
+			if tc.blank {
+				data = map[string]interface{}{
+					util.AWSAccessKeyEnv:       "",
+					util.AWSSecretAccessKeyEnv: "",
+				}
 			}
 			err := applyS3Keys(
 				data, tc.accessKeyID, tc.secretAccessKey,

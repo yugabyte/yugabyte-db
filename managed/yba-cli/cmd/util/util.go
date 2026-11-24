@@ -770,3 +770,8 @@ func IsTrueValue(value interface{}) bool {
 	}
 	return false
 }
+
+// HasValue reports whether a stored config value is present and not blank.
+func HasValue(value interface{}) bool {
+	return value != nil && !IsEmptyString(fmt.Sprint(value))
+}

@@ -28,3 +28,21 @@ func TestIsTrueValue(t *testing.T) {
 		})
 	}
 }
+
+func TestHasValue(t *testing.T) {
+	tests := []struct {
+		value interface{}
+		want  bool
+	}{
+		{nil, false},
+		{"", false},
+		{"  ", false},
+		{"AK**", true},
+		{true, true},
+	}
+	for _, tc := range tests {
+		if got := HasValue(tc.value); got != tc.want {
+			t.Fatalf("HasValue(%#v) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}

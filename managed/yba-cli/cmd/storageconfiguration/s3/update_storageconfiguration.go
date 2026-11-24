@@ -188,7 +188,7 @@ func applyS3Keys(
 		return nil
 	}
 	if !keyFlagSet {
-		_, hasStored := data[util.AWSAccessKeyEnv]
+		hasStored := util.HasValue(data[util.AWSAccessKeyEnv])
 		if !updateCreds && (!wasIAM || hasStored) {
 			return nil
 		}
@@ -219,14 +219,14 @@ func init() {
 	updateS3StorageConfigurationCmd.Flags().String("access-key-id", "",
 		fmt.Sprintf("S3 Access Key ID. %s",
 			formatter.Colorize(
-				"Omit to keep the stored keys. Required when switching off IAM, "+
-					"unless set in the environment.",
+				"Omit to keep the stored keys. Switching off IAM with no stored keys "+
+					"reads them from the environment.",
 				formatter.GreenColor)))
 	updateS3StorageConfigurationCmd.Flags().String("secret-access-key", "",
 		fmt.Sprintf("S3 Secret Access Key. %s",
 			formatter.Colorize(
-				"Omit to keep the stored keys. Required when switching off IAM, "+
-					"unless set in the environment.",
+				"Omit to keep the stored keys. Switching off IAM with no stored keys "+
+					"reads them from the environment.",
 				formatter.GreenColor)))
 	updateS3StorageConfigurationCmd.MarkFlagsRequiredTogether("access-key-id", "secret-access-key")
 	updateS3StorageConfigurationCmd.Flags().Bool("use-iam-instance-profile", false,

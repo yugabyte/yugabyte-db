@@ -45,9 +45,7 @@ func TestApplyAzureSASToken(t *testing.T) {
 			if tc.iam {
 				data[util.UseAzureIAM] = "true"
 			}
-			if err := applyAzureSASToken(data, tc.sasToken); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			applyAzureSASToken(data, tc.sasToken)
 			if got := data[util.AzureStorageSasTokenEnv]; got != tc.want {
 				t.Fatalf("got %v, want %v", got, tc.want)
 			}

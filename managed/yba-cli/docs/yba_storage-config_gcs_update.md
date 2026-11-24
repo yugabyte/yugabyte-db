@@ -21,7 +21,7 @@ yba storage-config gcs update --name <storage-configuration-name> \
 
 ```
       --update-credentials             [Optional] Read new credentials from the file in GOOGLE_APPLICATION_CREDENTIALS when --credentials-file-path is not given. (default false)
-      --credentials-file-path string   GCS Credentials File Path. Omit to keep the stored credentials. Required when switching off IAM, unless GOOGLE_APPLICATION_CREDENTIALS is set.
+      --credentials-file-path string   GCS Credentials File Path. Omit to keep the stored credentials. Switching off IAM with no stored credentials reads the file in GOOGLE_APPLICATION_CREDENTIALS.
       --use-gcp-iam                    [Optional] Use IAM Role from the YugabyteDB Anywhere Host. Supported for Kubernetes GKE clusters with workload identity. Configuration creation will fail on insufficient permissions on the host. (default false)
       --new-name string                [Optional] Update name of the storage configuration.
   -h, --help                           help for update
