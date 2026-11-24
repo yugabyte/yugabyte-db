@@ -237,8 +237,14 @@ CREATE INDEX ON bm_limit (b ASC);
 INSERT INTO bm_limit SELECT i, i FROM generate_series(1, 10000) i;
 ANALYZE bm_limit;
 
+-- The helper's SET clause turns the guard off for the call only, so no RESET
+-- has to bring back the harness's value for the statements and test files
+-- that follow; behind YSQL Connection Manager those share the pooled
+-- backends.
 CREATE FUNCTION explain_bitmap_first_fetch(query text) RETURNS SETOF text
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql
+SET yb_explain_hide_non_deterministic_fields = off
+AS $$
 DECLARE
     line text;
 BEGIN
@@ -254,7 +260,6 @@ $$;
 -- of this file uses: RESET on the latter lands on its own built-in default
 -- and drags yb_enable_cbo down to legacy_mode with it, changing later plans.
 SET yb_enable_cbo = on;
-SET yb_explain_hide_non_deterministic_fields = off;
 \set bmlimit '/*+ BitmapScan(bm_limit) */ SELECT * FROM bm_limit WHERE a < 5000 OR b > 9000 LIMIT 10'
 
 -- exceeds work_mem: the fallback table scan takes the bound, and DocDB
@@ -266,7 +271,6 @@ SET work_mem TO '4MB';
 SELECT explain_bitmap_first_fetch(:'bmlimit');
 
 SET work_mem TO '100kB';
-RESET yb_explain_hide_non_deterministic_fields;
 RESET yb_enable_cbo;
 DROP FUNCTION explain_bitmap_first_fetch(text);
 DROP TABLE bm_limit;
