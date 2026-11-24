@@ -951,7 +951,7 @@ _PG_init(void)
 							0,
 							0,
 							INT_MAX,
-							PGC_USERSET,
+							PGC_SUSET,
 							GUC_UNIT_MS | GUC_NOT_IN_SAMPLE,
 							NULL,
 							NULL,
