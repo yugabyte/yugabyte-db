@@ -16,8 +16,8 @@
  * The reuse windows are gated by yb_password_reuse_history and
  * yb_password_reuse_interval (superuser-only).  yb_allow_prehashed_passwords
  * rejects an already-hashed PASSWORD clause on its own, and so does a reuse
- * window.  A globals dump has only the verifier, so binary upgrade and
- * yb_binary_restore may load it anyway.
+ * window for a role's own password.  A globals dump has only the verifier, so
+ * binary upgrade and yb_binary_restore may load it anyway.
  *
  * Those windows are the session's, loaded for the authenticated user at
  * login.  An admin resetting another role's password does not apply them:
@@ -109,13 +109,15 @@ YbPasswordReusePolicyActive(int reuse_max, int reuse_time_mins,
 
 /*
  * Reject pre-hashed passwords when yb_allow_prehashed_passwords is off, or
- * when a reuse window is on: a pre-hashed secret cannot be compared with the
- * history. guc.c refuses turning both on at SET time, but saved settings for
- * a role or for all roles can still combine them; a plaintext password is
- * accepted then too.
+ * when a reuse window is on for a role setting its own password: a pre-hashed
+ * secret cannot be compared with the history. enforce_reuse is as for
+ * YbApplyPasswordHistory(): false for an admin reset or CREATE ROLE, which
+ * compare nothing, so this session's windows do not apply. guc.c refuses
+ * turning both on at SET time, but saved settings for a role or for all
+ * roles can still combine them; a plaintext password is accepted then too.
  */
 void
-YbCheckPreHashedPasswordAllowed(const char *password)
+YbCheckPreHashedPasswordAllowed(const char *password, bool enforce_reuse)
 {
 	if (!IsYugaByteEnabled() ||
 		get_password_type(password) == PASSWORD_TYPE_PLAINTEXT)
@@ -137,7 +139,8 @@ YbCheckPreHashedPasswordAllowed(const char *password)
 				 errdetail("yb_allow_prehashed_passwords is off."),
 				 errhint("Supply the password in plaintext; it is encrypted before being stored.")));
 
-	if (YbPasswordReusePolicyActive(yb_password_reuse_history,
+	if (enforce_reuse &&
+		YbPasswordReusePolicyActive(yb_password_reuse_history,
 									yb_password_reuse_interval, false))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PASSWORD),

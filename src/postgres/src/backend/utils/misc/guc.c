@@ -3240,8 +3240,9 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"yb_allow_prehashed_passwords", PGC_SUSET, CONN_AUTH_AUTH,
 			gettext_noop("Allows a role to be given an already-hashed password."),
-			gettext_noop("A pre-hashed password cannot be inspected, so no password policy "
-						 "can be enforced while this is on.")
+			gettext_noop("A pre-hashed password cannot be checked against the password "
+						 "history, so a role with a password reuse policy cannot set its "
+						 "own password to one.")
 		},
 		&yb_allow_prehashed_passwords,
 		true,

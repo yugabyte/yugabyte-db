@@ -559,21 +559,35 @@ DROP USER phenc;
 -- Settings saved for a role and for all roles can still give a login both
 -- yb_allow_prehashed_passwords on and a reuse window: the SET-time checks
 -- see only this session's values. The role can still change its password
--- in plaintext, under its reuse policy; a pre-hashed one is refused.
+-- in plaintext, under its reuse policy; a pre-hashed one is refused. Its
+-- window does not apply to another role's password, which is not compared.
+-- A superuser's own password is checked the same way.
 ALTER ROLE ALL SET yb_password_reuse_history = 0;
 \c yugabyte yugabyte
-CREATE ROLE phsaved LOGIN PASSWORD 'pw_one';
-ALTER ROLE phsaved SET yb_password_reuse_history = 3;
+CREATE ROLE admin SUPERUSER LOGIN;
+\c yugabyte admin
+CREATE ROLE app_user LOGIN CREATEROLE PASSWORD 'pw_one';
+ALTER ROLE app_user SET yb_password_reuse_history = 3;
+ALTER ROLE admin SET yb_password_reuse_history = 3;
 ALTER ROLE ALL SET yb_allow_prehashed_passwords = on;
-\c yugabyte phsaved
+\c yugabyte app_user
 SHOW yb_allow_prehashed_passwords;
 SHOW yb_password_reuse_history;
-ALTER ROLE phsaved PASSWORD 'pw_two';
-ALTER ROLE phsaved PASSWORD 'pw_two';              -- fail: reused
-ALTER ROLE phsaved PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail
+ALTER ROLE app_user PASSWORD 'pw_two';
+ALTER ROLE app_user PASSWORD 'pw_two';              -- fail: reused
+ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail
+CREATE ROLE other_user LOGIN PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
+ALTER ROLE other_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
+\c yugabyte admin
+SHOW yb_password_reuse_history;
+ALTER ROLE app_user PASSWORD 'pw_three';            -- ok: admin reset
+ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: admin reset
+ALTER ROLE admin PASSWORD 'pw_admin';               -- ok: its own password
+ALTER ROLE admin PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail: its own password
 \c yugabyte yugabyte
-ALTER ROLE phsaved PASSWORD 'pw_three';            -- ok: admin reset
-DROP ROLE phsaved;
+DROP ROLE other_user;
+DROP ROLE app_user;
+DROP ROLE admin;
 ALTER ROLE ALL RESET ALL;
 \c yugabyte yugabyte
 
