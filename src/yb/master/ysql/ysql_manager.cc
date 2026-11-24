@@ -626,14 +626,11 @@ Status YsqlManager::CreateYbSystemDBIfNeeded() {
     return Status::OK();
   }
 
-  std::vector<std::string> statements;
-  statements.emplace_back(Format("CREATE DATABASE $0", kYbSystemDbName));
-  statements.emplace_back(Format(
-      "COMMENT ON DATABASE $0 IS 'system database for YugabyteDB internal use'", kYbSystemDbName));
+  auto statement = Format("CREATE DATABASE $0", kYbSystemDbName);
   auto failure_warn_prefix = Format("Failed to create database $0", kYbSystemDbName);
 
   return ExecuteStatementsAsync(
-      "yugabyte", statements, catalog_manager_, failure_warn_prefix,
+      "yugabyte", {statement}, catalog_manager_, failure_warn_prefix,
       &creating_listen_notify_objects_, &yb_system_db_created_);
 }
 

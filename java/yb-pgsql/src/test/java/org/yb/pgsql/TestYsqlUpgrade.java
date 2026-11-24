@@ -203,9 +203,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private static final String INVALIDATION_MESSAGES_TABLE  = "pg_yb_invalidation_messages";
 
   /** Guaranteed to be greated than any real OID, needed for sorted entities to appear at the end */
-  private static final long PLACEHOLDER_SYS_OID = 1234567890L;
-  private static final long PLACEHOLDER_NORMAL_OID = PLACEHOLDER_SYS_OID - 1;
-
+  private static final long PLACEHOLDER_OID = 1234567890L;
   /** Static in order to persist between tests. */
   private static int LAST_USED_SYS_OID = 9000;
 
@@ -1562,7 +1560,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .map(r -> bootstrapRelation ? excluded(r, "relfrozenxid") : r)
           .map(r -> bootstrapRelation ? excluded(r, "relminmxid") : r)
           .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &&
-              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_SYS_OID) : r))
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
@@ -1590,7 +1588,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             return r;
           })
           .map(r -> (replaceSysGeneratedOid && r.getColumnName(0).equals("oid") &
-              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_SYS_OID) : r))
+              isSysGeneratedOid(r.getLong(0)) ? replaced(r, r.getLong(0), PLACEHOLDER_OID) : r))
           .collect(Collectors.toList());
     };
 
@@ -2111,22 +2109,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       snapshot.catalog.forEach((tableName, rows) -> {
         simplifiedCatalog.put(tableName, copyWithResolvedOids(tableName, rows, entityNamesMap));
       });
-      // Replace auto-generated OIDs with placeholders so that comparison is
-      // not sensitive to the exact OID values.
+      // Replace auto-generated OIDs with placeholders.
       simplifiedCatalog.forEach((tableName, rows) -> {
         if (pgClassByNameMap.get(tableName).getBoolean(SysCatalogSnapshot.RELHASOIDS_COL_IDX)) {
           LOG.info("Processing table: {}", tableName);
-          rows.forEach((r) -> {
-            long oid = r.getLong(0);
-            // yb_system is a system database but gets a normal OID on
-            // upgraded clusters where the bg task creates it at runtime.
-            boolean isSystemOid = isSysGeneratedOid(oid)
-                || (tableName.equals("pg_database") && "yb_system".equals(r.getString(1)));
-            if (isSystemOid)
-              r.elems.set(0, PLACEHOLDER_SYS_OID);
-            else if (oid >= FIRST_NORMAL_OID)
-              r.elems.set(0, PLACEHOLDER_NORMAL_OID);
-          });
+          rows.stream()
+              .filter((r) -> isSysGeneratedOid(r.getLong(0)))
+              .forEach((r) -> r.elems.set(0, PLACEHOLDER_OID));
           Collections.sort(rows);
         }
       });
