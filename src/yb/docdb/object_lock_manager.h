@@ -38,12 +38,23 @@ struct LockData {
   TabletId status_tablet;
   MonoTime start_time;
   TransactionId background_transaction_id = TransactionId::Nil();
+  // The owner is a fence: a long-lived owner, such as an online schema change job, that is not a
+  // transaction. Its locks are fence locks, which a conflicting request fails against at once
+  // instead of waiting, unless it may pass the fence (below). A fence request never waits either:
+  // it fails if it conflicts with any holder.
+  bool fence = false;
+  // The request may pass the fence of this owner: the fence's locks on a key count as the
+  // request's own, as with background_transaction_id.
+  TransactionId fence_co_owner = TransactionId::Nil();
+  // The request may pass any fence. For statements that read the table and change no schema, such
+  // as ANALYZE.
+  bool pass_any_fence = false;
   StdStatusCallback callback;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         key_to_lock, deadline, object_lock_owner, status_tablet, start_time,
-        background_transaction_id);
+        background_transaction_id, fence, fence_co_owner, pass_any_fence);
   }
 };
 

@@ -1244,12 +1244,23 @@ class PgClient::Impl : public BigDataFetcher {
     const auto lock_type = static_cast<tserver::ObjectLockMode>(mode);
     req.set_lock_type(lock_type);
     req.set_is_session_lock(is_session_lock);
+    if (fence_co_owner_job_id_) {
+      req.set_fence_co_owner_job_id(fence_co_owner_job_id_);
+    }
+    if (pass_any_fence_) {
+      req.set_pass_any_fence(true);
+    }
 
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
     return VERIFY_RESULT(
         PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get()).status;
+  }
+
+  void SetObjectLockFenceOptions(int64_t fence_co_owner_job_id, bool pass_any_fence) {
+    fence_co_owner_job_id_ = fence_co_owner_job_id;
+    pass_any_fence_ = pass_any_fence;
   }
 
   bool TryAcquireObjectLockInSharedMemory(
@@ -2233,6 +2244,9 @@ class PgClient::Impl : public BigDataFetcher {
   std::optional<BigSharedMemoryDescriptor> big_shared_memory_;
   bool big_shared_memory_response_pending_ = false;
   ThreadSafeArena object_locks_arena_;
+  // See PgClient::SetObjectLockFenceOptions.
+  int64_t fence_co_owner_job_id_ = 0;
+  bool pass_any_fence_ = false;
   RequestSequenceNum request_sequence_num_;
   ClusterConfig cluster_config_;
 };
@@ -2500,6 +2514,10 @@ Status PgClient::AcquireObjectLock(
     tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
     bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
   return impl_->AcquireObjectLock(options, lock_id, mode, is_session_lock, tablespace_oid);
+}
+
+void PgClient::SetObjectLockFenceOptions(int64_t fence_co_owner_job_id, bool pass_any_fence) {
+  impl_->SetObjectLockFenceOptions(fence_co_owner_job_id, pass_any_fence);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

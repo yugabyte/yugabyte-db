@@ -332,6 +332,10 @@ class PgClient {
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
       bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
 
+  // Applies to the object lock requests that follow, until set again: they may pass the fence of
+  // online schema change job fence_co_owner_job_id (0 for none), or any fence.
+  void SetObjectLockFenceOptions(int64_t fence_co_owner_job_id, bool pass_any_fence);
+
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);

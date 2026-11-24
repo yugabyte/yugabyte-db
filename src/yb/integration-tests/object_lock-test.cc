@@ -3232,4 +3232,115 @@ std::vector<std::string> ClusterFlags::GetFormattedMasterFlags() {
   return master_flags.ToFormattedVector();
 }
 
+
+namespace {
+
+Status LockOnlineSchemaChangeFence(
+    MiniCluster& cluster, const TransactionId& fence_id, uint32_t relation_id,
+    TableLockType lock_type) {
+  google::protobuf::RepeatedPtrField<docdb::ObjectLockPB> locks;
+  auto* lock = locks.Add();
+  lock->set_database_oid(kDatabaseID);
+  lock->set_relation_oid(relation_id);
+  lock->set_object_oid(kDefaultObjectId);
+  lock->set_object_sub_oid(kDefaultObjectSubId);
+  lock->set_lock_type(lock_type);
+  auto* master = VERIFY_RESULT(cluster.GetLeaderMiniMaster());
+  Synchronizer synchronizer;
+  master->master()->catalog_manager_impl()->object_lock_info_manager()->LockOnlineSchemaChangeFence(
+      fence_id, TransactionId::Nil(), locks, CoarseMonoClock::Now() + kTimeout,
+      synchronizer.AsStdStatusCallback());
+  return synchronizer.Wait();
+}
+
+Status ReleaseOnlineSchemaChangeFence(MiniCluster& cluster, const TransactionId& fence_id) {
+  auto* master = VERIFY_RESULT(cluster.GetLeaderMiniMaster());
+  master->master()->catalog_manager_impl()->object_lock_info_manager()->ReleaseLocksForTxn(
+      fence_id);
+  return Status::OK();
+}
+
+}  // namespace
+
+// A fence taken by the master is held on every tserver. A DDL lock that conflicts with it fails at
+// once, at the master, instead of waiting; once the fence is released the DDL lock goes through.
+TEST_F(ObjectLockTest, OnlineSchemaChangeFenceFailsDdlLocksAtOnce) {
+  const auto fence_id = TransactionId::GenerateRandom();
+  ASSERT_OK(LockOnlineSchemaChangeFence(
+      *cluster_, fence_id, kRelationId, TableLockType::SHARE_UPDATE_EXCLUSIVE));
+  for (auto ts : cluster_->mini_tablet_servers()) {
+    ASSERT_GE(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 1);
+  }
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  const auto start = MonoTime::Now();
+  auto status = AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn2, kDatabaseID, kRelationId);
+  ASSERT_NOK(status);
+  ASSERT_LT(MonoTime::Now() - start, 3s);
+  ASSERT_STR_CONTAINS(status.ToString(), "locked by online schema change job");
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn2));
+
+  ASSERT_OK(ReleaseOnlineSchemaChangeFence(*cluster_, fence_id));
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        for (auto ts : cluster_->mini_tablet_servers()) {
+          if (ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() != 0) {
+            return false;
+          }
+        }
+        // The master releases its own copy last, after every tserver has.
+        auto* master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+        return master->master()->catalog_manager_impl()->object_lock_info_manager()
+                   ->TEST_ts_local_lock_manager()->TEST_GrantedLocksSize() == 0;
+      },
+      kTimeout, "fence released everywhere"));
+  // A new owner: one whose locks were all released cannot acquire again.
+  const auto owner = docdb::ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(0), owner, kDatabaseID, kRelationId));
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), owner));
+}
+
+// A fence has no lease: lease cleanup keeps it, and a tserver that joins later is bootstrapped
+// with it.
+TEST_F(ObjectLockTest, OnlineSchemaChangeFenceOutlivesLeases) {
+  const auto fence_id = TransactionId::GenerateRandom();
+  ASSERT_OK(LockOnlineSchemaChangeFence(
+      *cluster_, fence_id, kRelationId, TableLockType::EXCLUSIVE));
+
+  // Several cleanup passes (object_lock_cleanup_interval_ms) and lease periods.
+  SleepFor(MonoDelta::FromMilliseconds(3 * kDefaultMasterYSQLLeaseTTLMilli));
+  auto* added_tserver = ASSERT_RESULT(AddTabletServer(kTimeout));
+  ASSERT_OK(WaitFor(
+      [added_tserver]() {
+        return added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize() > 0;
+      },
+      kTimeout, "the added tserver is bootstrapped with the fence"));
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_NOK_STR_CONTAINS(
+      AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn2, kDatabaseID, kRelationId),
+      "locked by online schema change job");
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn2));
+  ASSERT_OK(ReleaseOnlineSchemaChangeFence(*cluster_, fence_id));
+}
+
+// A fence is persisted with the other DDL locks: a restarted master leader still holds it.
+TEST_F(ObjectLockTest, OnlineSchemaChangeFenceSurvivesMasterRestart) {
+  const auto fence_id = TransactionId::GenerateRandom();
+  ASSERT_OK(LockOnlineSchemaChangeFence(
+      *cluster_, fence_id, kRelationId, TableLockType::SHARE_UPDATE_EXCLUSIVE));
+
+  ASSERT_OK(cluster_->mini_master()->Restart());
+  ASSERT_OK(cluster_->mini_master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(WaitForTabletServersToAcquireYSQLLeases(
+      cluster_->mini_tablet_servers(), kDefaultInitialLeaseAcquisitionTime));
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_NOK_STR_CONTAINS(
+      AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn2, kDatabaseID, kRelationId),
+      "locked by online schema change job");
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn2));
+  ASSERT_OK(ReleaseOnlineSchemaChangeFence(*cluster_, fence_id));
+}
+
 }  // namespace yb

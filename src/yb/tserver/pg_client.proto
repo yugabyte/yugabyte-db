@@ -1628,6 +1628,11 @@ message PgAcquireObjectLockRequestPB {
   reserved 5; // ASH metadata is now passed in RequestHeader PB
 
   bool is_session_lock = 6 [(yb.rpc.trace) = {enabled: true}];
+
+  // The request may pass the fence of this online schema change job (see
+  // AcquireObjectLockRequestPB.fence_co_owner_txn_id), or any fence.
+  int64 fence_co_owner_job_id = 7;
+  bool pass_any_fence = 8;
 }
 
 message PgAcquireObjectLockResponsePB {
