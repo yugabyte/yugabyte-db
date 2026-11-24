@@ -542,6 +542,7 @@ SocketBackend(StringInfo inBuf)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
+			doing_extended_query_message = false;
 			break;
 
 			/* YB: YbThrowError packet */

@@ -19014,6 +19014,10 @@ YbIsValidConfigFileName(const char *name)
 		valid_custom_variable_name(name);
 }
 
+/*
+ * Match by name so that a GUC set from inside the replayed GUC's hooks still
+ * runs its own check hook; its assign hook may need the extra.
+ */
 static bool
 yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
 {
