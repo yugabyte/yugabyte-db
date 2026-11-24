@@ -1092,15 +1092,8 @@ is_foreign_param(PlannerInfo *root,
 		case T_FuncExpr:	/* YB */
 			{
 				/*
-				 * YB: For federated YugabyteDB, stable functions on the
-				 * pushdown allowlist (e.g. now()) are deparsed as remote
-				 * params so they get re-evaluated each EXECUTE -- treat
-				 * them as foreign params here so foreign_grouping_ok()
-				 * doesn't put them at the top level of a tlist (which
-				 * would confuse setrefs.c per the comment in
-				 * foreign_grouping_ok).  Volatility is the only thing we
-				 * need to check; is_foreign_expr has already filtered for
-				 * the allowlist.
+				 * YB: For federated YugabyteDB, deparseFuncExpr sends stable
+				 * functions as remote params.
 				 */
 				FuncExpr   *fexpr = (FuncExpr *) expr;
 				PgFdwRelationInfo *fpinfo;
@@ -3101,17 +3094,9 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	PgFdwRelationInfo *yb_fpinfo;
 
 	/*
-	 * YB: For federated YugabyteDB, emit stable functions (e.g. now()) as
-	 * remote params rather than folding them into a Const here.  A Const
-	 * would be frozen into a generic plan, so every later EXECUTE of a
-	 * prepared statement would ship the same stale value.  A param in
-	 * context->params_list is evaluated by process_query_params() for each
-	 * scan, and by the coordinator rather than the remotes, so all tservers
-	 * see the same value.
-	 *
-	 * Any stable FuncExpr reaching here has already been approved by
-	 * is_foreign_expr (it is on yb_pushdown_funcs_to_constify), so a
-	 * volatility check is sufficient.
+	 * YB: For federated YugabyteDB, send stable functions (e.g. now()) as
+	 * remote params, evaluated locally at each execution.  is_foreign_expr
+	 * has already limited them to the allowlist.
 	 */
 	yb_fpinfo = (PgFdwRelationInfo *) context->foreignrel->fdw_private;
 	if (yb_fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB
@@ -4153,16 +4138,8 @@ yb_has_unpushable_funcs(Node *expr)
 }
 
 /*
- * YB: Register `expr` as a remote Param and emit its $N placeholder.
- *
- * Used for stable FuncExprs (e.g. now()) and SQLValueFunctions
- * (e.g. CURRENT_TIMESTAMP) on federated YugabyteDB servers, so the value
- * is evaluated on the coordinator at every EXECUTE rather than being frozen
- * at plan time.
- *
- * Intentionally duplicates the find-or-append-in-params_list logic from
- * deparseParam rather than widening that upstream function's signature,
- * so that deparseParam stays unchanged from upstream PostgreSQL.
+ * YB: Add expr to context->params_list, if it is not there yet, and print
+ * its $N placeholder.  Same logic as deparseParam, which only takes a Param.
  */
 static void
 yb_deparse_as_remote_param(Expr *expr, deparse_expr_cxt *context)

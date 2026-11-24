@@ -595,7 +595,8 @@ yb_pgfdw_init(void)
 {
 	DefineCustomBoolVariable("postgres_fdw.yb_enable_global_views_stable_func_pushdown",
 							 "Push allowlisted stable functions (e.g. now()) and SQL value functions "
-							 "(e.g. CURRENT_TIMESTAMP) down to global views YugabyteDB tservers.",
+							 "(e.g. CURRENT_TIMESTAMP, CURRENT_USER) down to remote tservers in "
+							 "global-view queries.",
 							 NULL,
 							 &yb_enable_global_views_stable_func_pushdown,
 							 true,

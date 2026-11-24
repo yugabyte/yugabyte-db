@@ -405,7 +405,6 @@ TEST_F(PgGlobalViewsTest, TestPushedDownNowDuringExecution) {
       SELECT generic_plans, custom_plans FROM pg_prepared_statements
       WHERE name = 'now_execution_query')")));
   ASSERT_EQ(plan_counts, (decltype(plan_counts){2, 0}));
-
 }
 
 TEST_F(PgGlobalViewsTest, TestDistinctIsNotPushedDown) {
