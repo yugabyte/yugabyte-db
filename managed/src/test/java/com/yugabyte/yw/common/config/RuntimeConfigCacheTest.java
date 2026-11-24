@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 import com.github.benmanes.caffeine.cache.Policy;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import io.ebean.DB;
 import io.ebean.Transaction;
@@ -63,8 +64,8 @@ public class RuntimeConfigCacheTest extends FakeDBApplication {
   }
 
   // Play loads through Caffeine's async cache. Until the load's completion step runs, just after
-  // the
-  // value is returned, the entry has Caffeine's in-flight expiry instead of the one it asked for.
+  // the value is returned, the entry has Caffeine's in-flight expiry instead of the one it asked
+  // for.
   private Duration loadedExpiresAfter(String key) throws InterruptedException {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
     Duration remaining = expiresAfter(key);
@@ -89,12 +90,12 @@ public class RuntimeConfigCacheTest extends FakeDBApplication {
   }
 
   @Test
-  public void readBeforeTheChangeCommitsKeepsTheOldValueForAtMostSixtySeconds() throws Exception {
+  public void readBeforeTheChangeCommitsIsDroppedWhenItCommits() throws Exception {
     RuntimeConfService runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
     assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
 
-    // The race the expiry bounds: the change listener clears the key inside the transaction that
-    // writes it, and a request on another connection reads the committed value before the commit.
+    // The change listener clears the key inside the transaction that writes it, and a request on
+    // another connection reads the committed value before the commit.
     try (Transaction transaction = DB.beginTransaction()) {
       runtimeConfService.setKey(customer.getUuid(), GLOBAL_SCOPE_UUID, REDACTION_KEY, "true", true);
       assertFalse(
@@ -103,10 +104,23 @@ public class RuntimeConfigCacheTest extends FakeDBApplication {
               .get(10, TimeUnit.SECONDS));
       transaction.commit();
     }
+    // The commit clears the key again, so the next read gets the committed value.
+    assertTrue(runtimeConfigCache.getBoolean(REDACTION_KEY));
+  }
+
+  @Test
+  public void writeThatSkipsTheListenerIsReadWithinSixtySeconds() throws Exception {
+    assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
+
+    // RuntimeConfig.setValue writes the key without notifying the change listener.
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(REDACTION_KEY, "true");
     assertFalse(runtimeConfigCache.getBoolean(REDACTION_KEY));
     assertTrue(loadedExpiresAfter(REDACTION_KEY).compareTo(Duration.ofSeconds(60)) <= 0);
 
-    // Once that expiry passes, the committed value is read.
+    // Once the expiry passes, the new value is read.
     expiration.setExpiresAfter(REDACTION_KEY, Duration.ofNanos(1));
     Thread.sleep(1);
     assertTrue(runtimeConfigCache.getBoolean(REDACTION_KEY));
@@ -115,8 +129,9 @@ public class RuntimeConfigCacheTest extends FakeDBApplication {
   @Test
   public void clearDuringALoadDropsTheLoadedValue() throws Exception {
     // RuntimeConfigCache loads with getOrElseUpdate and its change listener clears with remove,
-    // both on this cache. A load that read the old value before a clear must not stay cached:
-    // Caffeine stores a load's result only if the key still maps to that load when it completes.
+    // both on this cache. A load that read the old value before a clear, such as the one after a
+    // change commits, must not stay cached: Caffeine stores a load's result only if the key still
+    // maps to that load when it completes.
     SyncCacheApi cache =
         app.injector()
             .instanceOf(
