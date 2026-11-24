@@ -302,6 +302,9 @@ message PgStartTableBackfillRequestPB {
   repeated uint32 target_leaf_table_oids = 9;
   // The begin's DDL transaction, which the job is tied to.
   PgPerformOptionsPB options = 10;
+  // pg_class oids of every node of each hierarchy, which the job's fence locks.
+  repeated uint32 source_node_oids = 11;
+  repeated uint32 target_node_oids = 12;
 }
 
 message PgStartTableBackfillResponsePB {
@@ -312,6 +315,9 @@ message PgAbortTableBackfillRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB source_table_id = 2;
   int64 pg_job_id = 3;
+  // See AbortTableBackfillRequestPB.
+  PgPerformOptionsPB options = 4;
+  bool cutover = 5;
 }
 
 message PgAbortTableBackfillResponsePB {

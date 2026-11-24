@@ -103,6 +103,9 @@ message OnlineSchemaChangeJobPB {
   // The transaction of the begin that started the job. The source table is enrolled in its DDL
   // verification (YsqlDdlTxnVerifierStatePB.contains_online_schema_change_op).
   optional bytes begin_transaction_id = 20;
+  // The finish or abort whose commit releases the job's fence. The source table is enrolled in its
+  // DDL verification, as for begin.
+  optional bytes fence_release_transaction_id = 21;
 }
 
   message YsqlDdlTxnVerifierStatePB {

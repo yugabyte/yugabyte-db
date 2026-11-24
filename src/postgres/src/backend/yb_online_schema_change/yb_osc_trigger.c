@@ -686,6 +686,14 @@ yb_online_schema_change_trigger(PG_FUNCTION_ARGS)
 	Oid			transformOid = (Oid) strtoul(trigdata->tg_trigger->tgargs[1], NULL, 10);
 	Oid			srcRootOid = (Oid) strtoul(trigdata->tg_trigger->tgargs[2], NULL, 10);
 
+	/*
+	 * The replay writes the target as the job (named by the trigger), so its
+	 * locks pass the job's fence, which refuses every other writer.  An error
+	 * resets this when the (sub)transaction aborts.
+	 */
+	YbSetObjectLockFenceJob(strtoll(trigdata->tg_trigger->tgname +
+									strlen(YB_OSC_TRIGGER_NAME_PREFIX), NULL, 10));
+
 	Relation	targetRel = table_open(targetOid, RowExclusiveLock);
 	Relation	srcRootRel = trigdata->tg_relation;
 
@@ -771,6 +779,12 @@ yb_online_schema_change_trigger(PG_FUNCTION_ARGS)
 
 	if (srcRootRel != trigdata->tg_relation)
 		table_close(srcRootRel, NoLock);
-	table_close(targetRel, RowExclusiveLock);
+
+	/*
+	 * The lock is kept until the user's transaction ends, so that a cutover's
+	 * AccessExclusiveLock waits for every replayed write to commit.
+	 */
+	table_close(targetRel, NoLock);
+	YbSetObjectLockFenceJob(0);
 	return PointerGetDatum(NULL);
 }

@@ -184,7 +184,7 @@ Result<std::optional<std::string>> PgOnlineSchemaChangeJobStatus(
 // without changing its schema (YsqlDdlTxnVerifierStatePB.contains_online_schema_change_op). No
 // schema comparison can tell, and the transaction's status is gone once it has applied, so the
 // job's row in pg_yb_online_schema_change, which the step writes, decides: a begin committed iff
-// the row exists.
+// the row exists, and a finish or abort iff the row is no longer active.
 Result<std::optional<bool>> OnlineSchemaChangeStepCommitted(
     SysCatalogTable* sys_catalog, const TableInfo& table, const SysTablesEntryPB& pb,
     const ReadHybridTime& read_time, HybridTime* read_restart_ht) {
@@ -197,6 +197,11 @@ Result<std::optional<bool>> OnlineSchemaChangeStepCommitted(
       read_time, read_restart_ht));
   if (job.state() == OnlineSchemaChangeJobPB::WAITING_FOR_BEGIN) {
     return status.has_value();
+  }
+  // A finish or abort, which releases the job's fence, committed iff the job is no longer active.
+  if (!job.fence_release_transaction_id().empty() &&
+      job.fence_release_transaction_id() == pb.transaction().transaction_id()) {
+    return status.has_value() && *status != "active";
   }
   return std::nullopt;
 }

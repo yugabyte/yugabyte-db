@@ -1024,7 +1024,10 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		if (lock_timeout_ms > 0)
 			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
 
-		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
+		YbHandleObjectLockStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag),
+													  (YbcObjectLockMode) lockmode,
+													  sessionLock),
+								 locktag);
 
 		if (lock_timeout_ms > 0)
 			disable_timeout(LOCK_TIMEOUT, false);

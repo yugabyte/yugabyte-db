@@ -2248,6 +2248,9 @@ class PgClientSession::Impl {
         client::OnlineSchemaChangeTableIdLists{
             .source_leaves = TableIdsFromOids(database_oid, req.source_leaf_table_oids()),
             .target_leaves = TableIdsFromOids(database_oid, req.target_leaf_table_oids()),
+            .database_oid = database_oid,
+            .source_fence_oids = {req.source_node_oids().begin(), req.source_node_oids().end()},
+            .target_fence_oids = {req.target_node_oids().begin(), req.target_node_oids().end()},
         },
         txn, sub_txn, context->GetClientDeadline());
   }
@@ -2256,9 +2259,24 @@ class PgClientSession::Impl {
       const PgAbortTableBackfillRequestPB& req,
       PgAbortTableBackfillResponsePB* resp,
       rpc::RpcContext* context) {
+    std::optional<TransactionMetadata> txn;
+    std::optional<SubTransactionId> sub_txn;
+    if (req.has_options()) {
+      RETURN_NOT_OK(SetupSessionForDdl(
+          /* use_regular_transaction_block= */ true, req.options(), context->GetClientDeadline()));
+      const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
+          /* use_transaction= */ true, /* use_regular_transaction_block= */ true,
+          context->GetClientDeadline(),
+          IsTxnUsingTableLocks(req.options().using_table_locks_globally()), GetDeferReadPoint(req),
+          req.options().origination_ht()));
+      if (metadata) {
+        txn = *metadata;
+        sub_txn = req.options().active_sub_transaction_id();
+      }
+    }
     return client_.AbortTableBackfill(
         PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
-        req.pg_job_id(),
+        req.pg_job_id(), txn, sub_txn, req.cutover(),
         context->GetClientDeadline());
   }
 

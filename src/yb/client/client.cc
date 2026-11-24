@@ -683,6 +683,13 @@ Status YBClient::StartTableBackfill(
   req.set_pg_job_id(pg_job_id);
   SetTableIdentifiers(lists.source_leaves, req.mutable_source_leaf_tables());
   SetTableIdentifiers(lists.target_leaves, req.mutable_target_leaf_tables());
+  if (lists.database_oid) {
+    req.set_database_oid(lists.database_oid);
+  }
+  req.mutable_source_fence_oids()->Assign(
+      lists.source_fence_oids.begin(), lists.source_fence_oids.end());
+  req.mutable_target_fence_oids()->Assign(
+      lists.target_fence_oids.begin(), lists.target_fence_oids.end());
   master::StartTableBackfillResponsePB resp;
   RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
       deadline, req, &resp, "StartTableBackfill",
@@ -694,13 +701,24 @@ Status YBClient::StartTableBackfill(
 }
 
 Status YBClient::AbortTableBackfill(
-    const TableId& source_table_id, int64_t pg_job_id, CoarseTimePoint deadline) {
+    const TableId& source_table_id, int64_t pg_job_id,
+    const std::optional<TransactionMetadata>& txn,
+    std::optional<SubTransactionId> sub_transaction_id, bool cutover, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   }
   master::AbortTableBackfillRequestPB req;
   req.mutable_source_table()->set_table_id(source_table_id);
   req.set_pg_job_id(pg_job_id);
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
+  }
+  if (sub_transaction_id) {
+    req.set_sub_transaction_id(*sub_transaction_id);
+  }
+  if (cutover) {
+    req.set_cutover(true);
+  }
   master::AbortTableBackfillResponsePB resp;
   RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
       deadline, req, &resp, "AbortTableBackfill",

@@ -409,6 +409,12 @@ message StartTableBackfillRequestPB {
   // aborted if it aborts.
   optional TransactionMetadataPB transaction = 9;
   optional uint32 sub_transaction_id = 10;
+  // The job's fence: SHARE UPDATE EXCLUSIVE on these source relations and EXCLUSIVE on these
+  // target relations (pg_class oids in database_oid), from begin's commit until finish or abort
+  // commits. Taken over from begin's own locks.
+  optional uint32 database_oid = 11;
+  repeated uint32 source_fence_oids = 12;
+  repeated uint32 target_fence_oids = 13;
 }
 
 message StartTableBackfillResponsePB {
@@ -418,6 +424,12 @@ message StartTableBackfillResponsePB {
 message AbortTableBackfillRequestPB {
   optional TableIdentifierPB source_table = 1;
   optional int64 pg_job_id = 2;
+  // The finish's or abort's DDL transaction: the job's fence is released when it commits.
+  optional TransactionMetadataPB transaction = 3;
+  optional uint32 sub_transaction_id = 4;
+  // A finish: the copy has ended and is left as it is; only the fence's release is tied to the
+  // transaction.
+  optional bool cutover = 5;
 }
 
 message AbortTableBackfillResponsePB {

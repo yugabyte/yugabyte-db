@@ -21,14 +21,18 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/docdb/object_lock_data.h"
+
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_split_manager.h"
 
 #include "yb/server/clock.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
@@ -43,6 +47,9 @@ DEFINE_RUNTIME_uint32(online_schema_change_backfill_resume_interval_ms, 60 * 100
     "durably unfinished but that it is not driving yet, and for the pins of finished jobs. A new "
     "leader term rescans at once. Jobs it already drives are visited on every bg tasks tick "
     "regardless.");
+
+DEFINE_RUNTIME_uint32(online_schema_change_fence_timeout_ms, 30 * 1000,
+    "How long begin waits for its online schema change fence to reach every tserver.");
 
 DEFINE_RUNTIME_uint32(online_schema_change_backfill_max_resumes, 20,
     "How many leader terms may take over a single online schema change before it is failed. A "
@@ -69,10 +76,9 @@ server::MonitoredTaskState MonitoredStateFor(OnlineSchemaChangeJobPB::State stat
   }
 }
 
-// Enrolls `pb`, the source table's entry, in the DDL verification of begin's transaction, the way
-// an ALTER TABLE in that transaction would, but changing no schema. Returns true if the table was
-// not enrolled in it yet, so the verifier must be scheduled.
-Result<bool> EnrollInBeginVerification(
+}  // namespace
+
+Result<bool> EnrollInOnlineSchemaChangeVerification(
     SysTablesEntryPB& pb, const TransactionMetadata& txn,
     std::optional<SubTransactionId> sub_txn) {
   bool new_enrollment = false;
@@ -104,6 +110,14 @@ Result<bool> EnrollInBeginVerification(
       ->set_contains_online_schema_change_op(true);
   return new_enrollment;
 }
+
+bool IsFenceReleaseTransaction(const SysTablesEntryPB& pb, const TransactionId& txn) {
+  return pb.has_online_schema_change_job() &&
+         Slice(pb.online_schema_change_job().fence_release_transaction_id()) ==
+             Slice(txn.data(), txn.size());
+}
+
+namespace {
 
 std::optional<OnlineSchemaChangeJobPB> ReadJobEntry(const TableInfo& source_table) {
   auto l = source_table.LockForRead();
@@ -457,7 +471,8 @@ void OnlineSchemaChangeController::Forget(
 Status OnlineSchemaChangeController::Start(
     const TableInfoPtr& source_table, const OnlineSchemaChangeJobPB& job_pb,
     const LeaderEpoch& epoch, const std::optional<TransactionMetadata>& begin_txn,
-    std::optional<SubTransactionId> begin_sub_txn) {
+    std::optional<SubTransactionId> begin_sub_txn,
+    const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& fence_locks) {
   RETURN_NOT_OK(ValidateOnlineSchemaChangeJob(job_pb));
   const auto pg_job_id = job_pb.pg_job_id();
   // A previous job that has ended may still hold its pin: one the DDL verifier aborted is released
@@ -505,7 +520,7 @@ Status OnlineSchemaChangeController::Start(
         entry->set_begin_transaction_id(
             begin_txn->transaction_id.data(), begin_txn->transaction_id.size());
         schedule_verification =
-            VERIFY_RESULT(EnrollInBeginVerification(pb, *begin_txn, begin_sub_txn));
+            VERIFY_RESULT(EnrollInOnlineSchemaChangeVerification(pb, *begin_txn, begin_sub_txn));
       }
       dirty = true;
     }
@@ -519,6 +534,23 @@ Status OnlineSchemaChangeController::Start(
   if (schedule_verification) {
     RETURN_NOT_OK(
         catalog_manager_->ScheduleYsqlTxnVerification(source_table, *begin_txn, epoch));
+  }
+  if (begin_txn && !fence_locks.empty()) {
+    // Begin holds stronger locks on every fenced relation until its DDL verification ends, so the
+    // fence, taken with begin as its background transaction, conflicts with nothing it does not
+    // already exclude, and is in place before begin's locks go.
+    const auto fence_id = docdb::OnlineSchemaChangeFenceId(pg_job_id);
+    Synchronizer synchronizer;
+    catalog_manager_->object_lock_info_manager_->LockOnlineSchemaChangeFence(
+        fence_id, begin_txn->transaction_id, fence_locks,
+        CoarseMonoClock::Now() + FLAGS_online_schema_change_fence_timeout_ms * 1ms,
+        synchronizer.AsStdStatusCallback());
+    if (auto s = synchronizer.Wait(); !s.ok()) {
+      // Partially fanned-out locks are persisted; releasing by owner clears them. Begin fails, and
+      // its abort aborts the job.
+      catalog_manager_->object_lock_info_manager_->ReleaseLocksForTxn(fence_id);
+      return s.CloneAndPrepend("Failed to take the online schema change fence");
+    }
   }
 
   auto job = FindJob(source_table, epoch, /* add = */ true);

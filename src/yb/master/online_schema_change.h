@@ -42,6 +42,15 @@ class OnlineSchemaChangeTest;
 // True for WAITING_FOR_BEGIN, COMPUTING_READ_TIME and IN_PROGRESS: the job is not finished.
 bool IsOnlineSchemaChangeJobResumable(OnlineSchemaChangeJobPB::State state);
 
+// Enrolls `pb`, a source table's entry, in the DDL verification of `txn`, the way an ALTER TABLE in
+// that transaction would, but changing no schema: commit and abort only resolve the online schema
+// change step the transaction ran. Returns true if the verifier must be scheduled.
+Result<bool> EnrollInOnlineSchemaChangeVerification(
+    SysTablesEntryPB& pb, const TransactionMetadata& txn, std::optional<SubTransactionId> sub_txn);
+
+// True if `txn` is the finish or abort whose commit releases the fence of the job in `pb`.
+bool IsFenceReleaseTransaction(const SysTablesEntryPB& pb, const TransactionId& txn);
+
 // True if `pb`, a source table's entry, holds a job waiting for begin's transaction `txn`.
 bool IsWaitingForBegin(const SysTablesEntryPB& pb, const TransactionId& txn);
 
@@ -160,10 +169,14 @@ class OnlineSchemaChangeController {
   // Fails if another unfinished job reads `source_table`, or if this one has already finished.
   // With `begin_txn`, the job waits in WAITING_FOR_BEGIN until that transaction commits, and is
   // aborted if it aborts.
+  // With `begin_txn`, also takes the job's fence on `fence_locks`, taking over from begin's locks.
+  // The fence is released when finish or abort commits (AbortTableBackfill), or when begin
+  // aborts.
   Status Start(
       const TableInfoPtr& source_table, const OnlineSchemaChangeJobPB& job,
       const LeaderEpoch& epoch, const std::optional<TransactionMetadata>& begin_txn = std::nullopt,
-      std::optional<SubTransactionId> begin_sub_txn = std::nullopt);
+      std::optional<SubTransactionId> begin_sub_txn = std::nullopt,
+      const google::protobuf::RepeatedPtrField<docdb::ObjectLockPB>& fence_locks = {});
 
   // Visits the job on `source_table` now, e.g. after a cancel or an abort has been written.
   void Reconcile(const TableInfoPtr& source_table, const LeaderEpoch& epoch);

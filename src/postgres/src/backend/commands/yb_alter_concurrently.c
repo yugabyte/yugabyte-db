@@ -1302,15 +1302,23 @@ WaitForCopy(Oid srcOid, int64 jobId, char **errorMessage)
 }
 
 /*
- * Re-take the statement's session lock after a transaction abort released it.
- * With object locking a session lock may only be taken over a transaction
- * lock on the same relation.
+ * Take the statement's session lock, as job jobId's (0 before the job
+ * begins), or re-take it after a transaction abort released it.  Once the job
+ * has begun, its fence keeps other DDL off both tables, and the session lock,
+ * which passes the fence as the job's, only keeps a concurrent
+ * yb_finish_mirror_table or yb_abort_mirror_table out; it is then taken on the
+ * shadow, which both lock.  On the source it would also hold back ANALYZE,
+ * which takes the same mode and otherwise passes the fence.  With object
+ * locking a session lock may only be taken over a transaction lock on the
+ * same relation.
  */
 static void
-RelockSession(LockRelId *lockrelid, LOCKMODE lockmode)
+RelockSession(LockRelId *lockrelid, LOCKMODE lockmode, int64 jobId)
 {
+	YbSetObjectLockFenceJob(jobId);
 	LockRelationId(lockrelid, lockmode);
 	LockRelationIdForSession(lockrelid, lockmode);
+	YbSetObjectLockFenceJob(0);
 }
 
 /*
@@ -1368,6 +1376,11 @@ RollBackAndRethrow(int64 jobId, Oid shadowOid, const YbOscTxnState *txn,
 /* Each retry re-runs only the begin, not the copy, so the cap is generous. */
 #define YB_OSC_BEGIN_MAX_ATTEMPTS 20
 
+/*
+ * ERRCODE_OBJECT_IN_USE: a failed attempt's job is aborted with its
+ * transaction, and its fence is released just after, so the next attempt can
+ * still meet it.
+ */
 static bool
 IsRetryableBeginError(int sqlerrcode)
 {
@@ -1375,7 +1388,8 @@ IsRetryableBeginError(int sqlerrcode)
 		sqlerrcode == ERRCODE_T_R_DEADLOCK_DETECTED ||
 		sqlerrcode == ERRCODE_YB_TXN_CONFLICT ||
 		sqlerrcode == ERRCODE_T_R_SERIALIZATION_FAILURE ||
-		sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+		sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_OBJECT_IN_USE;
 }
 
 /*
@@ -1385,12 +1399,18 @@ IsRetryableBeginError(int sqlerrcode)
  * write workload the deadlock detector may pick it as the victim.  The begin
  * has made nothing durable by then, so it is retried in a fresh transaction.
  * Anything else, or running out of attempts, rolls the statement back.
+ *
+ * The begin takes the job's fence, which conflicts with the session lock, so
+ * the first attempt drops it under a transaction lock of the same mode.  The
+ * locks of each attempt, and then the fence, keep the source from changing.
  */
 static int64
 BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
 		 const YbOscBeginOptions *opts, const YbOscTxnState *txn,
 		 LockRelId *lockrelid, LOCKMODE lockmode)
 {
+	bool		sessionLocked = true;
+
 	for (int attempt = 1;; attempt++)
 	{
 		ErrorData  *edata = NULL;
@@ -1400,6 +1420,12 @@ BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
 		PushActiveSnapshot(GetTransactionSnapshot());
 		PG_TRY();
 		{
+			LockRelationId(lockrelid, lockmode);
+			if (sessionLocked)
+			{
+				UnlockRelationIdForSession(lockrelid, lockmode);
+				sessionLocked = false;
+			}
 			jobId = YbOscBegin(srcOid, shadowOid, transformOid, opts);
 		}
 		PG_CATCH();
@@ -1429,7 +1455,6 @@ BeginJob(Oid srcOid, Oid shadowOid, Oid transformOid,
 						get_rel_name(srcOid), attempt, edata->message)));
 		FreeErrorData(edata);
 		pg_usleep(Min(attempt, 10) * 100000L);	/* linear backoff, capped at 1s */
-		RelockSession(lockrelid, lockmode);
 	}
 }
 
@@ -1524,14 +1549,15 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 	/*
 	 * Hold the lock across the commits below, as CREATE INDEX CONCURRENTLY
 	 * does.  A transaction abort releases session locks too, so the error
-	 * paths need no explicit unlock.
+	 * paths need no explicit unlock.  A job being resumed already has its
+	 * fence, which refuses the lock until it is taken as the job's below.
 	 */
 	lockrelid = rel->rd_lockInfo.lockRelId;
-	LockRelationIdForSession(&lockrelid, lockmode);
 
 	jobId = FindJobToResume(rel, stmt);
 	if (jobId == 0)
 	{
+		LockRelationIdForSession(&lockrelid, lockmode);
 		Oid			shadowOid;
 		Oid			transformOid;
 
@@ -1558,6 +1584,14 @@ YbAlterTableConcurrently(AlterTableStmt *stmt, Oid relid, LOCKMODE lockmode,
 	 * or a failed copy rolls the job back.
 	 */
 	CommitAndStartPlainTransaction(&txn);
+	{
+		YbOscJob	job;
+
+		if (!YbOscFetchJob(jobId, &job))
+			elog(ERROR, "online schema change job %lld disappeared", (long long) jobId);
+		lockrelid.relId = job.target_table_oid;
+		RelockSession(&lockrelid, lockmode, jobId);
+	}
 	PG_TRY();
 	{
 		char	   *errorMessage;

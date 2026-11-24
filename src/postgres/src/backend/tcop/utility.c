@@ -82,6 +82,7 @@
 #include "libpq/libpq-be.h"
 #include "pg_yb_utils.h"
 #include "utils/backend_status.h"
+#include "utils/yb_online_schema_change.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 /*
@@ -1465,7 +1466,20 @@ ProcessUtilitySlow(ParseState *pstate,
 						lockmode = ShareUpdateExclusiveLock;
 					else
 						lockmode = AlterTableGetLockLevel(atstmt->cmds);
+					/*
+					 * YB: a re-run of ALTER TABLE ... CONCURRENTLY resumes
+					 * the table's job, so its lock passes the job's fence.
+					 */
+					if (atstmt->yb_concurrent)
+					{
+						Oid			yb_named_relid = RangeVarGetRelid(atstmt->relation,
+																	  NoLock, true);
+
+						YbSetObjectLockFenceJob(YbOscActiveAlterTableJob(yb_named_relid));
+					}
 					relid = AlterTableLookupRelation(atstmt, lockmode);
+					if (atstmt->yb_concurrent)
+						YbSetObjectLockFenceJob(0);
 
 					if (OidIsValid(relid))
 					{

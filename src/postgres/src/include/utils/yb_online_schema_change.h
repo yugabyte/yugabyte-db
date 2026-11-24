@@ -126,4 +126,13 @@ extern bool YbOscGetCopyState(Oid srcOid, int64 jobId,
 extern void YbOscFinish(int64 jobId);
 extern void YbOscAbort(int64 jobId);
 
+/*
+ * The id of the active ALTER TABLE ... CONCURRENTLY job on relid, or 0.  A
+ * re-run of the statement resumes that job and passes its fence.
+ */
+extern int64 YbOscActiveAlterTableJob(Oid relid);
+
+/* The id of the active job on relid or on an ancestor partitioned table, or 0. */
+extern int64 YbOscActiveJobFor(Oid relid);
+
 #endif							/* YB_ONLINE_SCHEMA_CHANGE_H */

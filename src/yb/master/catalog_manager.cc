@@ -119,6 +119,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/online_schema_change.h"
+#include "yb/docdb/object_lock_data.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
@@ -7479,7 +7480,23 @@ Status CatalogManager::StartTableBackfill(
       begin_sub_txn = req->sub_transaction_id();
     }
   }
-  Status s = online_schema_change_->Start(source_table, job, epoch, begin_txn, begin_sub_txn);
+  google::protobuf::RepeatedPtrField<docdb::ObjectLockPB> fence_locks;
+  const std::pair<const google::protobuf::RepeatedField<uint32_t>&, TableLockType> fenced[] = {
+      {req->source_fence_oids(), TableLockType::SHARE_UPDATE_EXCLUSIVE},
+      {req->target_fence_oids(), TableLockType::EXCLUSIVE},
+  };
+  for (const auto& [oids, lock_type] : fenced) {
+    for (auto oid : oids) {
+      auto* lock = fence_locks.Add();
+      lock->set_database_oid(req->database_oid());
+      lock->set_relation_oid(oid);
+      lock->set_object_oid(0);
+      lock->set_object_sub_oid(0);
+      lock->set_lock_type(lock_type);
+    }
+  }
+  Status s = online_schema_change_->Start(
+      source_table, job, epoch, begin_txn, begin_sub_txn, fence_locks);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::UNKNOWN_ERROR, s);
   }
@@ -7503,17 +7520,40 @@ Status CatalogManager::AbortTableBackfill(
 
   const int64_t pg_job_id = req->pg_job_id();
 
+  std::optional<TransactionMetadata> txn;
+  if (req->has_transaction()) {
+    txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+  }
+  std::optional<SubTransactionId> sub_txn;
+  if (req->has_sub_transaction_id()) {
+    sub_txn = req->sub_transaction_id();
+  }
+
   // Once ABORTED, the job is no longer driven, and a pass already running cannot overwrite the
   // state: the controller only moves an unfinished entry. A job that is already terminal, or gone,
-  // is left alone.
+  // is left alone. With a transaction, the job's fence is released when it commits: the source is
+  // enrolled in its DDL verification in the same write.
+  bool schedule_verification = false;
   {
     auto l = source_table->LockForWrite();
     if (l->pb.has_online_schema_change_job() &&
         l->pb.online_schema_change_job().pg_job_id() == pg_job_id) {
-      auto& job = *l.mutable_data()->pb.mutable_online_schema_change_job();
-      if (IsOnlineSchemaChangeJobResumable(job.state())) {
+      auto& pb = l.mutable_data()->pb;
+      auto& job = *pb.mutable_online_schema_change_job();
+      bool dirty = false;
+      if (!req->cutover() && IsOnlineSchemaChangeJobResumable(job.state())) {
         job.set_state(OnlineSchemaChangeJobPB::ABORTED);
         job.set_finished_at(master_->clock()->Now().ToUint64());
+        dirty = true;
+      }
+      if (txn) {
+        job.set_fence_release_transaction_id(
+            txn->transaction_id.data(), txn->transaction_id.size());
+        schedule_verification =
+            VERIFY_RESULT(EnrollInOnlineSchemaChangeVerification(pb, *txn, sub_txn));
+        dirty = true;
+      }
+      if (dirty) {
         RETURN_NOT_OK_PREPEND(
             sys_catalog_->Upsert(epoch, source_table),
             "Failed to persist online schema change backfill abort.");
@@ -7521,11 +7561,24 @@ Status CatalogManager::AbortTableBackfill(
       }
     }
   }
+  if (schedule_verification) {
+    RETURN_NOT_OK(ScheduleYsqlTxnVerification(source_table, *txn, epoch));
+  }
 
   // A visit stops resending the job's chunks and releases what the job still holds.
   online_schema_change_->Reconcile(source_table, epoch);
 
   return Status::OK();
+}
+
+void CatalogManager::ReleaseOnlineSchemaChangeFenceAsync(int64_t pg_job_id) {
+  WARN_NOT_OK(
+      background_tasks_thread_pool_->SubmitFunc([this, pg_job_id] {
+        LOG(INFO) << "Releasing the fence of online schema change job " << pg_job_id;
+        object_lock_info_manager_->ReleaseLocksForTxn(
+            docdb::OnlineSchemaChangeFenceId(pg_job_id));
+      }),
+      Format("Failed to submit the release of the fence of job $0", pg_job_id));
 }
 
 Status CatalogManager::GetTableBackfillStatus(
