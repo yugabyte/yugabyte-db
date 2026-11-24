@@ -1,6 +1,7 @@
 # Review guide for yba-cli
 
-For the review agent: how a change to the `yba` CLI fits the codebase and holds up over time.
+For anyone, human or AI agent, reviewing a change to the `yba` CLI: how it fits the codebase
+and holds up over time.
 This applies in addition to [managed/REVIEW.md](../REVIEW.md). `make fmt` (golines, 100
 columns) owns formatting and line length; do not flag them.
 
@@ -15,18 +16,6 @@ failure is a command that exits 0 and silently changes something the user did no
 reset field, a moved master, a turned-off feature. Report at **HIGH** a finding that can change
 or delete state the user did not name, leak a secret, or leave a universe locked; report the rest
 at **MEDIUM**.
-
-## How to review
-
-- Flag at MEDIUM severity and above. Suppress LOW nits unless they reveal a correctness problem.
-- Do not flag naming that matches the surrounding command family, or a missing test where an
-  existing test already exercises the changed behaviour.
-- Flag anything in the diff that contradicts a flag's usage text, a command's `Long` or
-  `Example`, a doc page or the commit message in the same diff.
-- With no actionable finding, reply `LGTM` in one line, with at most a one-line caveat. Do not
-  recap the diff.
-- Do not re-flag across review rounds. Skip a resolved thread, a thread whose reply explains why
-  the suggestion was declined, and a hunk that is byte-identical to the one you already reviewed.
 
 ## Change shape
 
@@ -256,6 +245,8 @@ did not ask for. A note in the help text or the release notes does not make a ch
 - Help text describes supported behaviour. It does not warn that a feature is broken; file the
   bug instead.
 - A command's `Example` shows a working command line for each mutually exclusive flag set.
+- Usage text, a command's `Long` and `Example`, the docs and the commit message match the code in
+  the same diff. A contradiction between them is a finding.
 
 ## Where to look harder, and what to skip
 
