@@ -523,6 +523,16 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void gflagsApiRedactionFollowsItsKeyReset() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    assertEquals(OK, setKey(key, "true", GLOBAL_SCOPE_UUID).status());
+    assertTrue(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    // Deleting the key returns it to its default.
+    assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, key).status());
+    assertFalse(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+  }
+
+  @Test
   public void scopeStrictnessTest() {
     // Global key can only be set in global scope
     Result r =
