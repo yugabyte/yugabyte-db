@@ -1392,3 +1392,156 @@ DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_
 	sr_cross_mixed, sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double,
 	sr_cross_text, sr_cross_real, sr_cross_date, sr_cross_name;
 DROP DOMAIN sr_cross_dom;
+
+--
+-- Test tables with RLS WITH CHECK policies (DB-25003).  The single-row path
+-- evaluates the policy on a slot that holds only the key and the constant SET
+-- values, so a policy that reads any other column must not use single-row.
+--
+CREATE TABLE single_row_rls_key (k int PRIMARY KEY, v1 int, v2 int);
+CREATE TABLE single_row_rls_set_col (k int PRIMARY KEY, v1 int, v2 int);
+CREATE TABLE single_row_rls_other_col (k int PRIMARY KEY, v1 int, v2 int);
+CREATE TABLE single_row_rls_int8 (k bigint PRIMARY KEY, v1 int);
+CREATE TABLE single_row_rls_row (k int PRIMARY KEY, v1 int, v2 int);
+CREATE TABLE single_row_rls_restr (k int PRIMARY KEY, v1 int, v2 int);
+CREATE TABLE single_row_rls_text (k int PRIMARY KEY, v1 int, v2 text);
+CREATE TABLE single_row_rls_gen (k int PRIMARY KEY, v1 int,
+	g bigint GENERATED ALWAYS AS (v1 * 2) STORED);
+CREATE TABLE single_row_rls_part (k int, v1 int, v2 int, PRIMARY KEY (k))
+	PARTITION BY RANGE (k);
+CREATE TABLE single_row_rls_part_lo PARTITION OF single_row_rls_part
+	FOR VALUES FROM (0) TO (100);
+CREATE TABLE single_row_rls_part_hi (v2 int, v1 int, k int NOT NULL);
+ALTER TABLE single_row_rls_part ATTACH PARTITION single_row_rls_part_hi
+	FOR VALUES FROM (100) TO (200);
+INSERT INTO single_row_rls_key VALUES (1, 1, 1), (0, 1, 1);
+INSERT INTO single_row_rls_set_col VALUES (1, 1, 1);
+INSERT INTO single_row_rls_other_col VALUES (1, 1, 1);
+INSERT INTO single_row_rls_int8 VALUES (1, 1), (0, 1);
+INSERT INTO single_row_rls_row VALUES (1, 1, 1);
+INSERT INTO single_row_rls_restr VALUES (1, 1, 1);
+INSERT INTO single_row_rls_text VALUES (1, 1, 'a');
+INSERT INTO single_row_rls_gen VALUES (1, 1);
+INSERT INTO single_row_rls_part VALUES (1, 1, 1), (150, 1, 1);
+ALTER TABLE single_row_rls_key ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_set_col ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_other_col ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_int8 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_row ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_restr ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_text ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_gen ENABLE ROW LEVEL SECURITY;
+ALTER TABLE single_row_rls_part ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p ON single_row_rls_key FOR ALL USING (true) WITH CHECK (k > 0);
+CREATE POLICY p ON single_row_rls_set_col FOR ALL USING (true) WITH CHECK (v1 < 100);
+CREATE POLICY p ON single_row_rls_other_col FOR ALL USING (true) WITH CHECK (v2 > 0);
+CREATE POLICY p ON single_row_rls_int8 FOR ALL USING (true) WITH CHECK (k > 0);
+CREATE POLICY p ON single_row_rls_row FOR ALL USING (true)
+	WITH CHECK (single_row_rls_row IS NOT NULL);
+CREATE POLICY p ON single_row_rls_restr FOR ALL USING (true) WITH CHECK (k > 0);
+CREATE POLICY p2 ON single_row_rls_restr AS RESTRICTIVE FOR ALL USING (true)
+	WITH CHECK (v2 IS NULL OR v2 > 0);
+CREATE POLICY p ON single_row_rls_text FOR ALL USING (true) WITH CHECK (v2 <> '');
+CREATE POLICY p ON single_row_rls_gen FOR ALL USING (true) WITH CHECK (g > 0);
+CREATE POLICY p ON single_row_rls_part FOR ALL USING (true) WITH CHECK (v2 < 100);
+CREATE ROLE single_row_rls_user;
+GRANT ALL ON single_row_rls_key, single_row_rls_set_col, single_row_rls_other_col,
+	single_row_rls_int8, single_row_rls_row, single_row_rls_restr, single_row_rls_text,
+	single_row_rls_gen, single_row_rls_part, single_row_rls_part_lo, single_row_rls_part_hi
+	TO single_row_rls_user;
+
+-- The owner bypasses RLS, so there is nothing to check.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_other_col SET v1 = 2 WHERE k = 1;
+SET ROLE single_row_rls_user;
+
+-- Below statements should all USE single-row.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_key SET v1 = 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_key SET v1 = 2 WHERE k = 0;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_set_col SET v1 = 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_int8 SET v1 = 2 WHERE k = 1::bigint;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_int8 SET v1 = 2 WHERE k = 0::bigint;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_text SET v2 = 'b' WHERE k = 1;
+-- v2 is column 3 in the parent and column 1 in the leaf the key prunes to.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_part SET v2 = 2 WHERE k = 150;
+-- DELETE has no new row, so WITH CHECK does not apply.
+EXPLAIN (COSTS FALSE) DELETE FROM single_row_rls_other_col WHERE k = 1;
+-- Pushed-down SET columns are not in the slot, but these policies do not read them.
+SET yb_enable_expression_pushdown TO on;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_key SET v1 = v1 + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_set_col SET v1 = 2, v2 = v2 + 1 WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_other_col SET v1 = 2 WHERE k = 1;
+-- The WHERE literal is int, the key the policy reads is bigint.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_int8 SET v1 = 2 WHERE k = 1;
+-- The SET value is computed by DocDB, so the slot does not hold it.
+SET yb_enable_expression_pushdown TO on;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_set_col SET v1 = v1 + 1 WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
+-- Whole-row reference.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_row SET v1 = 2 WHERE k = 1;
+-- One of several policies reads a column the slot does not hold.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_restr SET v1 = 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_part SET v1 = 2 WHERE k = 150;
+-- The placeholder is an int, the column the policy reads is text.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_text SET v1 = 2 WHERE k = 1;
+-- The generated column is recomputed into the slot, but its cell keeps the
+-- placeholder's type.
+EXPLAIN (COSTS FALSE) UPDATE single_row_rls_gen SET v1 = 2 WHERE k = 1;
+
+-- Test execution.  The key is checked on the fast path too.
+UPDATE single_row_rls_key SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_key SET v1 = 2 WHERE k = 0;
+UPDATE single_row_rls_set_col SET v1 = 3 WHERE k = 1;
+UPDATE single_row_rls_set_col SET v1 = 300 WHERE k = 1;
+SET yb_enable_expression_pushdown TO on;
+UPDATE single_row_rls_key SET v1 = v1 + 1 WHERE k = 1;
+UPDATE single_row_rls_set_col SET v1 = v1 + 1 WHERE k = 1;
+UPDATE single_row_rls_set_col SET v1 = 5, v2 = v2 + 1 WHERE k = 1;
+UPDATE single_row_rls_set_col SET v1 = 500, v2 = v2 + 1 WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
+UPDATE single_row_rls_other_col SET v1 = 5 WHERE k = 1;
+UPDATE single_row_rls_int8 SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_int8 SET v1 = 3 WHERE k = 1::bigint;
+UPDATE single_row_rls_int8 SET v1 = 3 WHERE k = 0::bigint;
+UPDATE single_row_rls_row SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_restr SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_text SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_text SET v2 = 'b' WHERE k = 1;
+UPDATE single_row_rls_text SET v2 = '' WHERE k = 1;
+UPDATE single_row_rls_part SET v2 = 2 WHERE k = 150;
+UPDATE single_row_rls_part SET v2 = 200 WHERE k = 150;
+UPDATE single_row_rls_part SET v1 = 2 WHERE k = 150;
+UPDATE single_row_rls_gen SET v1 = 2 WHERE k = 1;
+UPDATE single_row_rls_gen SET v1 = -2 WHERE k = 1;
+RESET ROLE;
+-- The policies must see the stored values, which no longer pass them.  The
+-- placeholder would: NULL for v2, zero for the pushed-down v1.
+UPDATE single_row_rls_set_col SET v1 = 99 WHERE k = 1;
+UPDATE single_row_rls_other_col SET v2 = -1 WHERE k = 1;
+UPDATE single_row_rls_restr SET v2 = -1 WHERE k = 1;
+UPDATE single_row_rls_text SET v2 = '' WHERE k = 1;
+UPDATE single_row_rls_part SET v2 = 200 WHERE k = 150;
+SET ROLE single_row_rls_user;
+SET yb_enable_expression_pushdown TO on;
+UPDATE single_row_rls_set_col SET v1 = v1 + 1 WHERE k = 1;
+SET yb_enable_expression_pushdown TO off;
+UPDATE single_row_rls_other_col SET v1 = 6 WHERE k = 1;
+UPDATE single_row_rls_restr SET v1 = 3 WHERE k = 1;
+UPDATE single_row_rls_text SET v1 = 3 WHERE k = 1;
+UPDATE single_row_rls_part SET v1 = 3 WHERE k = 150;
+DELETE FROM single_row_rls_other_col WHERE k = 1;
+RESET ROLE;
+SELECT * FROM single_row_rls_key ORDER BY k;
+SELECT * FROM single_row_rls_set_col;
+SELECT * FROM single_row_rls_other_col;
+SELECT * FROM single_row_rls_int8 ORDER BY k;
+SELECT * FROM single_row_rls_restr;
+SELECT * FROM single_row_rls_text;
+SELECT * FROM single_row_rls_gen;
+SELECT * FROM single_row_rls_part ORDER BY k;
+DROP TABLE single_row_rls_key, single_row_rls_set_col, single_row_rls_other_col,
+	single_row_rls_int8, single_row_rls_row, single_row_rls_restr, single_row_rls_text,
+	single_row_rls_gen, single_row_rls_part;
+DROP ROLE single_row_rls_user;
