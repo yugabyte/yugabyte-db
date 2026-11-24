@@ -7797,6 +7797,11 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 			 yb_test_hint_cache_invalidate_wait_file);
 		while (stat(yb_test_hint_cache_invalidate_wait_file, &st) != 0)
 		{
+			if (errno != ENOENT)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file \"%s\": %m",
+								yb_test_hint_cache_invalidate_wait_file)));
 			CHECK_FOR_INTERRUPTS();
 			pg_usleep(10000L);
 		}

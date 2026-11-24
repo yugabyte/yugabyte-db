@@ -299,6 +299,7 @@ TEST_F_EX(PgHintTableTest, ConflictingHintUpsertIsRetried, PgHintTableTestTxnDdl
         query_id, hint);
   };
   ASSERT_OK(conn_first.Execute(upsert("SeqScan(pg_class)")));
+  const auto first_pid = ASSERT_RESULT(conn_first.FetchRow<int32_t>("SELECT pg_backend_pid()"));
   const auto release_file = GetTestPath("release_hint_trigger");
   ASSERT_OK(conn_first.ExecuteFormat(
       "SET pg_hint_plan.yb_test_hint_cache_invalidate_wait_file = '$0'", release_file));
@@ -329,8 +330,14 @@ TEST_F_EX(PgHintTableTest, ConflictingHintUpsertIsRetried, PgHintTableTestTxnDdl
   // conn_first is held until the release, so it must still be running here.
   const auto first_held = first.wait_for(0s) == std::future_status::timeout;
 
-  // Step 3. Release conn_first either way, so that both statements finish.
+  // Step 3. Release conn_first either way, so that both statements finish. If the release file
+  // cannot be written, cancel conn_first's statement instead: it would otherwise wait forever.
   const auto release_status = WriteStringToFile(Env::Default(), "", release_file);
+  if (!release_status.ok()) {
+    WARN_NOT_OK(ResultToStatus(conn_check.FetchRow<bool>(
+                    Format("SELECT pg_cancel_backend($0)", first_pid))),
+                "Failed to cancel conn_first");
+  }
   const auto first_status = first.get();
   const auto second_status = second.get();
   ASSERT_OK(status);
