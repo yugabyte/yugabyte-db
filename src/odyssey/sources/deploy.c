@@ -46,40 +46,40 @@ int yb_set_client_id(od_client_t *client, od_server_t *server)
 }
 
 /*
- * Send 'G' packet to set GUC defaults from startup vars.
- * Format: key1\0value1\0key2\0value2\0...
+ * Send a 'G' packet carrying every var in client_vars that differs from
+ * server_vars. Subtype 'D' sets startup-packet defaults, 'S' session values.
+ * Format: subtype key1\0value1\0key2\0value2\0...
  * Returns number of packets to ignore (1 for ReadyForQuery), or -1 on error.
  */
-static int yb_send_set_guc_defaults(od_client_t *client, od_server_t *server)
+static int yb_send_guc_state(od_client_t *client, od_server_t *server,
+			     kiwi_vars_t *client_vars, kiwi_vars_t *server_vars,
+			     char subtype)
 {
 	od_instance_t *instance = client->global->instance;
-	kiwi_vars_t *client_startup_vars = &client->yb_vars_startup;
-	kiwi_vars_t *server_default_vars = &server->yb_vars_default;
 	machine_msg_t *msg;
 	int rc;
 
-	/* Early return if no startup vars */
-	if (client_startup_vars->size == 0) {
-		od_debug(&instance->logger, "deploy", client, server,
-			 "no startup vars, skipping SET GUC DEFAULTS packet");
+	if (client_vars->size == 0)
 		return 0;
-	}
 
-	char *query = malloc(yb_max_query_size + 1);
-	if (query == NULL) {
+	char *data = malloc(yb_max_query_size + 1);
+	if (data == NULL) {
 		return -1;
 	}
-	query[yb_max_query_size] = '\0';
-	int query_size;
 	int pos = 0;
 	int num_vars_in_pkt = 0;
 
-	for (int i = 0; i < client_startup_vars->size; i++) {
-		kiwi_var_t *client_var = &client_startup_vars->vars[i];
-		kiwi_var_t *server_var;
-		server_var = yb_kiwi_vars_get(server_default_vars,
-					      client_var->name);
+	data[pos++] = subtype;
 
+	for (int i = 0; i < client_vars->size; i++) {
+		kiwi_var_t *client_var = &client_vars->vars[i];
+		kiwi_var_t *server_var;
+
+		/* we do not support odyssey-to-backend compression yet */
+		if (strcmp(client_var->name, "compression") == 0)
+			continue;
+
+		server_var = yb_kiwi_vars_get(server_vars, client_var->name);
 		if (kiwi_var_compare(client_var, server_var))
 			continue;
 
@@ -87,46 +87,43 @@ static int yb_send_set_guc_defaults(od_client_t *client, od_server_t *server)
 		    yb_max_query_size + 1) {
 			od_error(
 				&instance->logger, "deploy", client, server,
-				"Size of set GUC defaults to txn backend query exceeds yb_max_query_size (= %d)",
-				yb_max_query_size);
-			free(query);
+				"Size of GUC state packet '%c' exceeds yb_max_query_size (= %d)",
+				subtype, yb_max_query_size);
+			free(data);
 			return -1;
 		}
 
 		num_vars_in_pkt++;
-		memcpy(query + pos, client_var->name, client_var->name_len);
+		memcpy(data + pos, client_var->name, client_var->name_len);
 		pos += client_var->name_len;
-		memcpy(query + pos, client_var->value, client_var->value_len);
+		memcpy(data + pos, client_var->value, client_var->value_len);
 		pos += client_var->value_len;
 	}
 
-	/* Early return if there are no variables to set after comparing with server_default_vars */
 	if (num_vars_in_pkt == 0) {
-		free(query);
+		free(data);
 		return 0; /* No ReadyForQuery packet is expected */
 	}
 
-	/* Create and send the KIWI_FE_SET_GUC_DEFAULTS packet */
-	query_size = pos;
-	msg = yb_kiwi_fe_write_guc_defaults(NULL, query, query_size,
+	msg = yb_kiwi_fe_write_guc_defaults(NULL, data, pos,
 					    KIWI_FE_SET_GUC_DEFAULTS);
-	free(query);
+	free(data);
 
 	if (msg == NULL) {
 		od_error(&instance->logger, "deploy", client, server,
-			 "failed to create SET GUC DEFAULTS packet");
+			 "failed to create GUC state packet '%c'", subtype);
 		return -1;
 	}
 
 	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "deploy", client, server,
-			 "failed to send SET GUC DEFAULTS packet");
+			 "failed to send GUC state packet '%c'", subtype);
 		return -1;
 	}
 
 	od_debug(&instance->logger, "deploy", client, server,
-		 "sent SET GUC DEFAULTS packet with %d variables",
+		 "sent GUC state packet '%c' with %d variables", subtype,
 		 num_vars_in_pkt);
 
 	/* One ReadyForQuery packet expected */
@@ -191,44 +188,19 @@ int od_deploy(od_client_t *client, char *context)
 		yb_reset = 1;
 	}
 
-	/* Send 'G' packet with startup vars to set GUC defaults */
-	rc = yb_send_set_guc_defaults(client, server);
+	rc = yb_send_guc_state(client, server, &client->yb_vars_startup,
+			       &server->yb_vars_default, 'D');
 	if (rc == -1) {
 		return -1;
 	}
 	query_count += rc;
 
-	char *query = malloc(yb_max_query_size + 1);
-	if (query == NULL) {
+	rc = yb_send_guc_state(client, server, &client->yb_vars_session,
+			       &server->yb_vars_session, 'S');
+	if (rc == -1) {
 		return -1;
 	}
-	query[yb_max_query_size] = '\0';
-	int query_size;
-	query_size = kiwi_vars_cas(
-		&client->yb_vars_session, &server->yb_vars_session, query,
-		yb_max_query_size);
-
-	if (query_size > 0) {
-		query[query_size] = 0;
-		query_size++;
-		machine_msg_t *msg;
-		msg = kiwi_fe_write_query(NULL, query, query_size);
-		if (msg == NULL) {
-			free(query);
-			return -1;
-		}
-
-		rc = od_write(&server->io, &msg);
-		if (rc == -1) {
-			free(query);
-			return -1;
-		}
-
-		query_count++;
-
-		od_debug(&instance->logger, context, client, server,
-			 "deploy: %s", query);
-	}
+	query_count += rc;
 
 	od_debug(&instance->logger, context, client, server,
 		 "deploy: query_count=%d", query_count);
@@ -241,7 +213,6 @@ int od_deploy(od_client_t *client, char *context)
 		client->server->synced_settings = true;
 	}
 
-	free(query);
 	return query_count;
 
 #else
