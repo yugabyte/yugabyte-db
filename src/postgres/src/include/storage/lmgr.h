@@ -118,5 +118,7 @@ extern const char *GetLockNameFromTagType(uint16 locktag_type);
 
 /* YB declarations */
 extern void YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode);
+extern void YbLockObjects(const Oid *classIds, const Oid *objIds, int n,
+						  LOCKMODE lockmode);
 
 #endif							/* LMGR_H */

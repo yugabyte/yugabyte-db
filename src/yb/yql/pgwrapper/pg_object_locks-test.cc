@@ -387,7 +387,7 @@ TEST_F_EX(PgObjectLocksTestRF1, DdlBlockedOnObjectLockReportsLockConflict,
   ASSERT_OK(blocker.CommitTransaction());
 }
 
-class PgObjectLocksTestPartitionTree : public PgObjectLocksTestRF1 {
+class PgObjectLocksTestBatching : public PgObjectLocksTestRF1 {
  protected:
   static constexpr int kNumMiddle = 2;
   static constexpr int kLeavesPerMiddle = 5;
@@ -439,7 +439,7 @@ class PgObjectLocksTestPartitionTree : public PgObjectLocksTestRF1 {
 
 // A partition tree's global locks are sent to the master in a batch per partitioned parent, not
 // one request per partition, and the batch takes the same locks as one request per partition.
-TEST_F(PgObjectLocksTestPartitionTree, GlobalLocksBatchedPerParent) {
+TEST_F(PgObjectLocksTestBatching, GlobalLocksBatchedPerParent) {
   CreatePartitionTree();
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE plain (k INT, v INT)"));
@@ -472,8 +472,46 @@ TEST_F(PgObjectLocksTestPartitionTree, GlobalLocksBatchedPerParent) {
   ASSERT_EQ(alter_off.granted, alter.granted);
 }
 
+// performMultipleDeletions takes the deletion locks of all its targets with one request. DETACH
+// PARTITION passes it the partition's cloned triggers without locking them first.
+TEST_F(PgObjectLocksTestBatching, DeletionLocksBatched) {
+  constexpr int kNumTriggers = 20;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION noop_trigger() RETURNS TRIGGER LANGUAGE plpgsql AS "
+      "$$ BEGIN RETURN NEW; END $$"));
+  for (const auto& [table, num_triggers] : {std::pair{"one", 1}, {"many", kNumTriggers}}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT, v INT) PARTITION BY RANGE (k); "
+        "CREATE TABLE $0_part PARTITION OF $0 FOR VALUES FROM (0) TO (10)", table));
+    for (int i = 0; i != num_triggers; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TRIGGER $0_trigger_$1 BEFORE INSERT ON $0 FOR EACH ROW "
+          "EXECUTE FUNCTION noop_trigger()", table, i));
+    }
+  }
+
+  const auto one = ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE one DETACH PARTITION one_part"));
+  const auto many =
+      ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE many DETACH PARTITION many_part"));
+  ASSERT_EQ(many.requests, one.requests);
+  ASSERT_GE(many.granted, one.granted + kNumTriggers - 1);
+
+  ASSERT_OK(conn.Execute("SET yb_batch_object_locks = off"));
+  const auto many_off =
+      ASSERT_RESULT(GlobalLocksOf(conn, "ALTER TABLE many DETACH PARTITION many_part"));
+  ASSERT_EQ(many_off.requests, one.requests + kNumTriggers - 1);
+  ASSERT_EQ(many_off.granted, many.granted);
+
+  // The cloned triggers are gone once the detach commits.
+  ASSERT_OK(conn.Execute("RESET yb_batch_object_locks"));
+  ASSERT_OK(conn.Execute("ALTER TABLE many DETACH PARTITION many_part"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_trigger WHERE tgrelid = 'many_part'::regclass")), 0);
+}
+
 // A batch that conflicts with a lock on one leaf waits for it, then holds the whole tree.
-TEST_F(PgObjectLocksTestPartitionTree, BatchWaitsForConflictingLeafLock) {
+TEST_F(PgObjectLocksTestBatching, BatchWaitsForConflictingLeafLock) {
   CreatePartitionTree();
   auto holder = ASSERT_RESULT(Connect());
   ASSERT_OK(holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
@@ -510,7 +548,7 @@ TEST_F(PgObjectLocksTestPartitionTree, BatchWaitsForConflictingLeafLock) {
 }
 
 // A batch that times out takes nothing: the session stays usable and no lock is left behind.
-TEST_F(PgObjectLocksTestPartitionTree, TimedOutBatchLeavesNoLocks) {
+TEST_F(PgObjectLocksTestBatching, TimedOutBatchLeavesNoLocks) {
   CreatePartitionTree();
   auto holder = ASSERT_RESULT(Connect());
   ASSERT_OK(holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));

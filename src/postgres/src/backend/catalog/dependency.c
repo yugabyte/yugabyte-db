@@ -240,6 +240,9 @@ static bool stack_address_present_add_flags(const ObjectAddress *object,
 											ObjectAddressStack *stack);
 static void DeleteInitPrivs(const ObjectAddress *object);
 
+/* YB declarations */
+static void YbAcquireDeletionLocks(const ObjectAddresses *objects, int flags);
+
 
 /*
  * Go through the objects given running the final actions on them, and execute
@@ -420,6 +423,10 @@ performMultipleDeletions(const ObjectAddresses *objects,
 	 * delete it when we reach its owner.
 	 */
 	targetObjects = new_object_addresses();
+
+	/* YB: Acquire the deletion locks below with one request. */
+	if (IsYugaByteEnabled())
+		YbAcquireDeletionLocks(objects, flags);
 
 	for (i = 0; i < objects->numrefs; i++)
 	{
@@ -3149,4 +3156,29 @@ DeleteInitPrivs(const ObjectAddress *object)
 	systable_endscan(scan);
 
 	table_close(relation, RowExclusiveLock);
+}
+
+/*
+ * Acquire AcquireDeletionLock's locks on all of objects at once: each is a
+ * global lock, which would otherwise cost a round trip to the master and every
+ * tserver.  AcquireDeletionLock then finds them held.
+ */
+static void
+YbAcquireDeletionLocks(const ObjectAddresses *objects, int flags)
+{
+	/* That one lock is not in AccessExclusiveLock. */
+	if (flags & PERFORM_DELETION_CONCURRENTLY)
+		return;
+
+	Oid		   *classIds = palloc(objects->numrefs * sizeof(Oid));
+	Oid		   *objIds = palloc(objects->numrefs * sizeof(Oid));
+
+	for (int i = 0; i < objects->numrefs; i++)
+	{
+		classIds[i] = objects->refs[i].classId;
+		objIds[i] = objects->refs[i].objectId;
+	}
+	YbLockObjects(classIds, objIds, objects->numrefs, AccessExclusiveLock);
+	pfree(objIds);
+	pfree(classIds);
 }

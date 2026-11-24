@@ -29,6 +29,7 @@
 #include "utils/inval.h"
 
 /* YB includes */
+#include "catalog/pg_class.h"
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -1453,41 +1454,40 @@ GetLockNameFromTagType(uint16 locktag_type)
 }
 
 /*
- *		YbLockRelationOids
- *
- * LockRelationOid on each of relids, in one round trip when lockmode is a
- * global lock: one that YB acquires through the master on every tserver,
- * which costs a round trip per lock.
+ * Whether YbLockTags would batch n locks in lockmode: only global locks, which
+ * YB acquires through the master on every tserver at a round trip each.
  */
-void
-YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode)
+static bool
+YbBatchesLocks(int n, LOCKMODE lockmode)
 {
-	if (n <= 1 || lockmode < ShareUpdateExclusiveLock || !yb_batch_object_locks ||
-		YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
-	{
-		for (int i = 0; i < n; i++)
-			LockRelationOid(relids[i], lockmode);
-		return;
-	}
+	return n > 1 && lockmode >= ShareUpdateExclusiveLock &&
+		yb_batch_object_locks && YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED;
+}
 
-	LOCKTAG    *tags = palloc(n * sizeof(LOCKTAG));
+/*
+ * Lock each of tags in lockmode with one request, then absorb invalidation
+ * messages once for the batch.  isRelation[i] says whether tags[i] is a
+ * relation, whose new lock also clamps the uncertainty window as in
+ * LockRelationOid.
+ */
+static void
+YbLockTags(const LOCKTAG *tags, const bool *isRelation, int n,
+		   LOCKMODE lockmode)
+{
 	LOCALLOCK **locallocks = palloc(n * sizeof(LOCALLOCK *));
 	LockAcquireResult *results = palloc(n * sizeof(LockAcquireResult));
-	bool		anyAcquired = false;
+	bool		relationAcquired = false;
 	bool		anyNotClear = false;
-
-	for (int i = 0; i < n; i++)
-		SetLocktagRelationOid(&tags[i], relids[i]);
 
 	YbLockAcquireMultiple(tags, n, lockmode, locallocks, results);
 
 	for (int i = 0; i < n; i++)
 	{
-		anyAcquired |= results[i] == LOCKACQUIRE_OK;
+		relationAcquired |= isRelation[i] && results[i] == LOCKACQUIRE_OK;
 		anyNotClear |= results[i] != LOCKACQUIRE_ALREADY_CLEAR;
 	}
 
-	/* As in LockRelationOid, once for the whole batch. */
+	/* As in LockRelationOid and LockDatabaseObject, once for the batch. */
 	if (anyNotClear)
 	{
 		AcceptInvalidationMessages();
@@ -1498,10 +1498,79 @@ YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode)
 		}
 	}
 
-	if (anyAcquired && YBCUsingObjectLocksGloballyForCurrentTxn())
+	if (relationAcquired && YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 
 	pfree(results);
 	pfree(locallocks);
+}
+
+/*
+ *		YbLockRelationOids
+ *
+ * LockRelationOid on each of relids, in one round trip when lockmode is a
+ * global lock.
+ */
+void
+YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode)
+{
+	if (!YbBatchesLocks(n, lockmode))
+	{
+		for (int i = 0; i < n; i++)
+			LockRelationOid(relids[i], lockmode);
+		return;
+	}
+
+	LOCKTAG    *tags = palloc(n * sizeof(LOCKTAG));
+	bool	   *isRelation = palloc(n * sizeof(bool));
+
+	for (int i = 0; i < n; i++)
+	{
+		SetLocktagRelationOid(&tags[i], relids[i]);
+		isRelation[i] = true;
+	}
+	YbLockTags(tags, isRelation, n, lockmode);
+	pfree(isRelation);
+	pfree(tags);
+}
+
+/*
+ *		YbLockObjects
+ *
+ * Lock each object (classIds[i], objIds[i]) of the current database in
+ * lockmode, as LockRelationOid does for a relation and LockDatabaseObject
+ * does for any other object, in one round trip when lockmode is a global
+ * lock.
+ */
+void
+YbLockObjects(const Oid *classIds, const Oid *objIds, int n,
+			  LOCKMODE lockmode)
+{
+	if (!YbBatchesLocks(n, lockmode))
+	{
+		for (int i = 0; i < n; i++)
+		{
+			if (classIds[i] == RelationRelationId)
+				LockRelationOid(objIds[i], lockmode);
+			else
+				LockDatabaseObject(classIds[i], objIds[i], 0, lockmode);
+		}
+		return;
+	}
+
+	LOCKTAG    *tags = palloc(n * sizeof(LOCKTAG));
+	bool	   *isRelation = palloc(n * sizeof(bool));
+
+	for (int i = 0; i < n; i++)
+	{
+		isRelation[i] = classIds[i] == RelationRelationId;
+		if (isRelation[i])
+			SetLocktagRelationOid(&tags[i], objIds[i]);
+		else
+			SET_LOCKTAG_OBJECT(tags[i], MyDatabaseId, classIds[i], objIds[i],
+							   0);
+	}
+	YbLockTags(tags, isRelation, n, lockmode);
+	pfree(isRelation);
 	pfree(tags);
 }
