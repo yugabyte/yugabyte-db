@@ -56,16 +56,18 @@ SET yb_bnl_batch_size = 3;
 -- bnl_serial and bnl_unbatched so a caller can assert more than the counts;
 -- the next call replaces them.
 --
--- `query` carries its own hint comment.  pg_hint_plan prefers a nested
--- statement's own hints to the caller's, and everything built in front of the
--- comment here -- EXPLAIN options, a table name -- stays within the characters
--- it allows to precede a hint.  The settings are local, so the caller's session
--- is unchanged on return.
+-- `query` carries its own hint comment, with YbBatchedNL on each join it
+-- batches; the unbatched run replaces those hints with NestLoop.  pg_hint_plan
+-- prefers a nested statement's own hints to the caller's, and everything built
+-- in front of the comment here -- EXPLAIN options, a table name -- stays within
+-- the characters it allows to precede a hint.  The settings are local, so the
+-- caller's session is unchanged on return.
 create function bnl_variants(query text) returns setof text
 language plpgsql as $$
 declare
   regimes  text[] := array['parallel', 'serial', 'unbatched'];
   regime   text;
+  rquery   text;
   line     text;
   n        bigint;
   counts   text := '';
@@ -84,22 +86,19 @@ begin
                        true);
     perform set_config('max_parallel_workers_per_gather',
                        case regime when 'parallel' then '2' else '0' end, true);
-    perform set_config('yb_bnl_batch_size',
-                       case regime when 'unbatched' then '1' else '3' end, true);
-    -- Batching is the only join method the settings above leave enabled, so
-    -- plain nested loops have to come back for the run that takes it away.
-    perform set_config('enable_nestloop',
-                       case regime when 'unbatched' then 'on' else 'off' end,
-                       true);
+    rquery := case regime
+                when 'unbatched' then replace(query, 'YbBatchedNL(', 'NestLoop(')
+                else query
+              end;
 
     return next '-- ' || regime;
     begin
-      for line in execute 'explain (costs off) ' || query
+      for line in execute 'explain (costs off) ' || rquery
       loop
         return next line;
       end loop;
 
-      execute 'create temporary table bnl_' || regime || ' as ' || query;
+      execute 'create temporary table bnl_' || regime || ' as ' || rquery;
     exception when others then
       -- One regime failing must not take the others down with it, or a planner
       -- error in any of them hides every result this reports.  Parenthesized

@@ -2,11 +2,14 @@
 -- Batched nested loop joins that must be built and must run correctly
 --
 -- The prelude leaves the batched join the one join method enabled, with
--- yb_prefer_bnl off so that YbBatchedNL and NestLoop hints are followed; the
--- tests at the end of the file switch to the cost model.  The tables shared
--- with yb.orig.join_batching_negative come from yb.orig.join_batching_setup;
--- a test whose data carries a key type, a physical layout or a property of
--- its own creates a table of its own, and no table is dropped.
+-- yb_prefer_bnl off so that YbBatchedNL and NestLoop hints are followed:
+-- since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on keeps a
+-- batched join from being disabled by yb_enable_batchednl or a hint while
+-- nested loops are enabled.  The tests at the end of the file switch to the
+-- cost model.  The tables shared with yb.orig.join_batching_negative come
+-- from yb.orig.join_batching_setup; a test whose data carries a key type, a
+-- physical layout or a property of its own creates a table of its own, and
+-- no table is dropped.
 --
 
 -- Force BNL
