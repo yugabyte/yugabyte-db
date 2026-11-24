@@ -779,4 +779,50 @@ EXECUTE nonequality_saop_count('{5,3000000000}');
 (1 row)
 
 DEALLOCATE nonequality_saop_count;
-DROP TABLE t_nonequality_saop;
+CREATE TABLE t_nonequality_saop_hash(h int, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash SELECT i % 10, i FROM generate_series(1, 100) i;
+CREATE TABLE t_nonequality_saop_hash_f4(h real, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
+-- Test non-equality SAOP on a hash column
+:explain_analyze SELECT count(*) FROM t_nonequality_saop_hash WHERE h > ANY ('{8,9}');
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_nonequality_saop_hash (actual rows=1 loops=1)
+         Storage Filter: (h > ANY ('{8,9}'::integer[]))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 100
+         Partial Aggregate: true
+(6 rows)
+
+-- Test Equality + non-equality SAOP on a hash column
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h > ANY ('{5,2}');
+                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_pkey on t_nonequality_saop_hash (actual rows=10 loops=1)
+   Index Cond: (h = 6)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
+(4 rows)
+
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h < ANY ('{7,9}');
+                                            QUERY PLAN
+---------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_pkey on t_nonequality_saop_hash (actual rows=10 loops=1)
+   Index Cond: (h = 6)
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 10
+(4 rows)
+
+-- Test Equality + non-equality SAOP different types on a hash column (#37237)
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+                                               QUERY PLAN
+--------------------------------------------------------------------------------------------------------
+ Index Scan using t_nonequality_saop_hash_f4_pkey on t_nonequality_saop_hash_f4 (actual rows=1 loops=1)
+   Index Cond: (h = '1.5'::double precision)
+   Rows Removed by Index Recheck: 2
+   Storage Table Read Requests: 3
+   Storage Table Rows Scanned: 3
+(5 rows)
+
+DROP TABLE t_nonequality_saop, t_nonequality_saop_hash, t_nonequality_saop_hash_f4;

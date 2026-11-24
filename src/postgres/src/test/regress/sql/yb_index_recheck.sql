@@ -220,4 +220,19 @@ PREPARE nonequality_saop_count(bigint[]) AS SELECT count(*) FROM t_nonequality_s
 EXECUTE nonequality_saop_count('{5,3000000000}');
 DEALLOCATE nonequality_saop_count;
 
-DROP TABLE t_nonequality_saop;
+CREATE TABLE t_nonequality_saop_hash(h int, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash SELECT i % 10, i FROM generate_series(1, 100) i;
+CREATE TABLE t_nonequality_saop_hash_f4(h real, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_saop_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
+
+-- Test non-equality SAOP on a hash column
+:explain_analyze SELECT count(*) FROM t_nonequality_saop_hash WHERE h > ANY ('{8,9}');
+
+-- Test Equality + non-equality SAOP on a hash column
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h > ANY ('{5,2}');
+:explain_analyze SELECT * FROM t_nonequality_saop_hash WHERE h = 6 AND h < ANY ('{7,9}');
+
+-- Test Equality + non-equality SAOP different types on a hash column (#37237)
+:explain_analyze SELECT * FROM t_nonequality_saop_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+
+DROP TABLE t_nonequality_saop, t_nonequality_saop_hash, t_nonequality_saop_hash_f4;
