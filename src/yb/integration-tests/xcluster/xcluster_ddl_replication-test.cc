@@ -2914,8 +2914,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithWorkload) {
 
   LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
   SetReplicationDirection(ReplicationDirection::BToA);
-  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
-      ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+  const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, cluster_B_));
+  ASSERT_OK(WaitForNotAutomaticTargetOnAllTServers(namespace_id, cluster_B_));
 
   LOG(INFO) << "===== Switchover done";
   // Roles should match the new switchover state.
@@ -2996,8 +2997,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingDDL) {
 
     LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
     SetReplicationDirection(ReplicationDirection::BToA);
-    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
-        ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+    const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
+    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, cluster_B_));
+    ASSERT_OK(WaitForNotAutomaticTargetOnAllTServers(namespace_id, cluster_B_));
 
     LOG(INFO) << "===== Switchover done";
     // Roles should match the new switchover state.
@@ -3081,8 +3083,9 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingSequenceBump) 
 
     LOG(INFO) << "===== Finishing switchover: wait for B to no longer be in readonly mode";
     SetReplicationDirection(ReplicationDirection::BToA);
-    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
-        ASSERT_RESULT(GetNamespaceId(producer_client())), /*is_read_only=*/false, cluster_B_));
+    const auto namespace_id = ASSERT_RESULT(GetNamespaceId(producer_client()));
+    ASSERT_OK(WaitForReadOnlyModeOnAllTServers(namespace_id, /*is_read_only=*/false, cluster_B_));
+    ASSERT_OK(WaitForNotAutomaticTargetOnAllTServers(namespace_id, cluster_B_));
 
     LOG(INFO) << "===== Switchover done";
   }
