@@ -1029,6 +1029,17 @@ XClusterOutboundReplicationGroup::GetNamespaceInfoSafe(
   return &outbound_group_pb.mutable_namespace_infos()->at(namespace_id);
 }
 
+XClusterOutboundReplicationGroup::NamespaceInfoPB*
+XClusterOutboundReplicationGroup::GetNamespaceInfoForNewTable(
+    const Result<XClusterOutboundReplicationGroupInfo::WriteLock>& lock_result,
+    const NamespaceId& namespace_id) const {
+  auto* ns_info = GetNamespaceInfoSafe(lock_result, namespace_id);
+  if (ns_info && ns_info->state() == NamespaceInfoPB::FAILED) {
+    return nullptr;
+  }
+  return ns_info;
+}
+
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB*>
 XClusterOutboundReplicationGroup::GetNamespaceInfo(const NamespaceId& namespace_id) {
   DCHECK(outbound_rg_info_->metadata().DEBUG_HasWriteLock());
@@ -1063,8 +1074,8 @@ Status XClusterOutboundReplicationGroup::CreateStreamForNewTable(
 
   std::lock_guard mutex_lock(mutex_);
   auto lock_result = LockForWrite();
-  auto ns_info = GetNamespaceInfoSafe(lock_result, namespace_id);
-  if (!ns_info || ns_info->state() == NamespaceInfoPB::FAILED) {
+  auto ns_info = GetNamespaceInfoForNewTable(lock_result, namespace_id);
+  if (!ns_info) {
     return Status::OK();
   }
 
@@ -1134,8 +1145,8 @@ Status XClusterOutboundReplicationGroup::CheckpointNewTable(
   {
     std::lock_guard mutex_lock(mutex_);
     auto lock_result = LockForWrite();
-    auto ns_info = GetNamespaceInfoSafe(lock_result, namespace_id);
-    if (!ns_info || ns_info->state() == NamespaceInfoPB::FAILED) {
+    auto ns_info = GetNamespaceInfoForNewTable(lock_result, namespace_id);
+    if (!ns_info) {
       completion_cb(Status::OK());
       return Status::OK();
     }
@@ -1214,7 +1225,7 @@ Status XClusterOutboundReplicationGroup::MarkNewTablesAsCheckpointed(
     const NamespaceId& namespace_id, const TableId& table_id, const LeaderEpoch& epoch) {
   std::lock_guard mutex_lock(mutex_);
   auto lock_result = LockForWrite();
-  auto ns_info = GetNamespaceInfoSafe(lock_result, namespace_id);
+  auto ns_info = GetNamespaceInfoForNewTable(lock_result, namespace_id);
   if (!ns_info) {
     return Status::OK();
   }

@@ -59,6 +59,7 @@ DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
+DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(TEST_return_legacy_universe_replication_info);
 DECLARE_bool(TEST_vector_index_exact);
@@ -1726,6 +1727,16 @@ TEST_F(XClusterDBScopedTest, CreateTable) {
 
   // Make sure the other table remains unchanged.
   ASSERT_OK(VerifyWrittenRecords(new_producer_table, new_consumer_table));
+}
+
+// Tests that a table can still be created in a database whose checkpoint failed.
+TEST_F(XClusterDBScopedTest, CreateTableAfterFailedCheckpoint) {
+  ASSERT_OK(SetUpClusters());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_inject_replication_index_update_failure) = true;
+  ASSERT_NOK_STR_CONTAINS(
+      CheckpointReplicationGroup(), "Simulated error when setting the replication index");
+
+  ASSERT_OK(CreateYsqlTable(/*idx=*/1, /*num_tablets=*/3, &producer_cluster_));
 }
 
 TEST_F(XClusterDBScopedTest, DropTableOnProducerThenConsumer) {

@@ -254,6 +254,12 @@ class XClusterOutboundReplicationGroup
       const Result<XClusterOutboundReplicationGroupInfo::WriteLock>& lock_result,
       const NamespaceId& namespace_id) const REQUIRES(mutex_);
 
+  // Like GetNamespaceInfoSafe, but also returns nullptr for a FAILED namespace. FAILED is
+  // terminal, so the steps that add a new table skip it rather than fail the table's creation.
+  NamespaceInfoPB* GetNamespaceInfoForNewTable(
+      const Result<XClusterOutboundReplicationGroupInfo::WriteLock>& lock_result,
+      const NamespaceId& namespace_id) const REQUIRES(mutex_);
+
   Result<NamespaceInfoPB::TableInfoPB*> GetTableInfo(
       NamespaceInfoPB& ns_info, const TableId& table_id) REQUIRES(mutex_);
 
