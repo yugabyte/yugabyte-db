@@ -6,6 +6,7 @@ package azure
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -18,19 +19,44 @@ func TestApplyAzureSASToken(t *testing.T) {
 		envToken = "sv=2024-01-01&sig=envEXAMPLE"
 	)
 	tests := []struct {
-		name     string
-		sasToken string
-		iam      bool
-		env      *string
-		want     string
+		name        string
+		sasToken    string
+		updateCreds bool
+		iam         bool
+		env         *string
+		want        string
+		wantErr     string
 	}{
 		{name: "rename only keeps stored token", want: masked},
-		{name: "empty env keeps stored token", env: new(string), want: masked},
-		{name: "env token replaces stored token", env: ptr(envToken), want: envToken},
+		{name: "rename with an env token set keeps stored token", env: ptr(envToken), want: masked},
 		{name: "flag replaces stored token", sasToken: newToken, want: newToken},
-		{name: "flag wins over env", sasToken: newToken, env: ptr(envToken), want: newToken},
-		{name: "empty flag falls back to env", sasToken: "", env: ptr(envToken), want: envToken},
-		{name: "IAM config ignores env token", iam: true, env: ptr(envToken), want: masked},
+		{
+			name:        "flag wins over update-credentials",
+			sasToken:    newToken,
+			updateCreds: true,
+			env:         ptr(envToken),
+			want:        newToken,
+		},
+		{
+			name:        "update-credentials reads env",
+			updateCreds: true,
+			env:         ptr(envToken),
+			want:        envToken,
+		},
+		{name: "update-credentials without env", updateCreds: true, wantErr: "not found"},
+		{
+			name:        "update-credentials with empty env",
+			updateCreds: true,
+			env:         new(string),
+			wantErr:     "is empty",
+		},
+		{
+			name:        "update-credentials with IAM is ignored",
+			updateCreds: true,
+			iam:         true,
+			env:         ptr(envToken),
+			want:        masked,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -45,7 +71,16 @@ func TestApplyAzureSASToken(t *testing.T) {
 			if tc.iam {
 				data[util.UseAzureIAM] = "true"
 			}
-			applyAzureSASToken(data, tc.sasToken)
+			err := applyAzureSASToken(data, tc.sasToken, tc.updateCreds)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("got error %v, want one containing %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if got := data[util.AzureStorageSasTokenEnv]; got != tc.want {
 				t.Fatalf("got %v, want %v", got, tc.want)
 			}
