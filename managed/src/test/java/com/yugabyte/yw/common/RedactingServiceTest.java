@@ -988,6 +988,38 @@ public class RedactingServiceTest {
         RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
   }
 
+  /**
+   * A universe state transition delta holds a changed gflag's old and new values in an object. API
+   * redaction redacts ldapbindpasswd in each, however ysql_hba_conf_csv is spelled.
+   */
+  @Test
+  public void testHbaDeltaValuesForApisWithAnySpelling() {
+    String oldHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-old-pw ldaptls=0";
+    String newHba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-new-pw ldaptls=1";
+    for (String name : List.of("ysql_hba_conf_csv", "ysql-hba-conf-csv", "ysql_hba-conf_csv")) {
+      ObjectNode delta = Json.newObject();
+      delta
+          .putObject("tserverGFlags")
+          .putObject(name)
+          .put("$oldValue", oldHba)
+          .put("$newValue", newHba)
+          .put("$deltaType", "REPLACE");
+      JsonNode values =
+          RedactingService.filterSecretFields(delta, RedactionTarget.APIS, null, null, true)
+              .get("tserverGFlags")
+              .get(name);
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0",
+          values.get("$oldValue").asText());
+      assertEquals(
+          name,
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=1",
+          values.get("$newValue").asText());
+      assertEquals(name, "REPLACE", values.get("$deltaType").asText());
+    }
+  }
+
   /** Text matches a gflag name spelled with any mix of dashes and underscores. */
   @Test
   public void testSensitiveGFlagMixedSpellingInText() {
