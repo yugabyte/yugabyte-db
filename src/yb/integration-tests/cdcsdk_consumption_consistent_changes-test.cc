@@ -5573,7 +5573,7 @@ void CDCSDKConsumptionConsistentChangesTest::
       "unrelated_namespace", YQLDatabase::YQL_DATABASE_CQL, "" /* creator_role_name */,
       "" /* namespace_id */, "" /* source_namespace_id */, std::nullopt /* next_pg_oid */,
       nullptr /* txn */, false /* colocated */,
-      CoarseMonoClock::Now() + MonoDelta::FromSeconds(10) /* deadline */));
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(10) * kTimeMultiplier /* deadline */));
 }
 
 TEST_F(

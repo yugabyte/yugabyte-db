@@ -6397,7 +6397,7 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
   return stream_ids;
 }
 
-bool CatalogManager::HasLogicalReplicationStreams(
+bool CatalogManager::AreCdcLogicalReplicationStreams(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
   if (stream_ids.empty()) {
     return false;
@@ -6940,19 +6940,19 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
 
     // For each hidden tablet, get all the streams on it and related info about the streams.
     std::unordered_set<xrepl::StreamId> stream_ids;
-    bool has_logical_replication_streams;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      has_logical_replication_streams = HasLogicalReplicationStreams(stream_ids);
-      if (has_logical_replication_streams) {
+      are_cdc_logical_replication_streams = AreCdcLogicalReplicationStreams(stream_ids);
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
     }
     // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
-    HybridTime min_restart_time_across_slots;
-    if (has_logical_replication_streams) {
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
       min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
@@ -7082,19 +7082,19 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
   for (const auto& [table_id, tablet_hide_pair] : hidden_colocated_tables) {
     const auto& [tablet_id, hide_time] = tablet_hide_pair;
     std::unordered_set<xrepl::StreamId> stream_ids;
-    bool has_logical_replication_streams;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
-      has_logical_replication_streams = HasLogicalReplicationStreams(stream_ids);
-      if (has_logical_replication_streams) {
+      are_cdc_logical_replication_streams = AreCdcLogicalReplicationStreams(stream_ids);
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
     }
     // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
-    HybridTime min_restart_time_across_slots;
-    if (has_logical_replication_streams) {
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
       min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
