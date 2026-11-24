@@ -16,12 +16,19 @@
 #include "yb/common/entity_ids_types.h"
 
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
 
 namespace yb::master {
 
 struct SysCatalogLoadingState {
   std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
+
+  // The tablets of each PREPARING table that joins existing tablets, e.g. a colocated table or a
+  // vector index. A vector index has all tablets of its indexed table, and the table must become
+  // RUNNING only after all of them have added it, so the AddTableToTablet tasks are scheduled
+  // with one shared counter once all tablets are loaded.
+  std::unordered_map<TableId, std::pair<TableInfoPtr, TabletInfos>> preparing_table_tablets;
 
   // The tables which require their memory state to write to disk.
   TableIdSet write_to_disk_tables;

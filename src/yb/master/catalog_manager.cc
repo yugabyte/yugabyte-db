@@ -1741,6 +1741,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", state));
+  ScheduleAddTableToTabletForPreparingTables(state);
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
@@ -1765,6 +1766,23 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
+}
+
+void CatalogManager::ScheduleAddTableToTabletForPreparingTables(SysCatalogLoadingState* state) {
+  for (auto& [table_id, table_and_tablets] : state->preparing_table_tablets) {
+    auto& [table, tablets] = table_and_tablets;
+    DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
+    // The table is promoted to RUNNING when the counter reaches zero, so it must cover all of
+    // the table's tablets, which may have been loaded far apart.
+    auto counter = std::make_shared<std::atomic<size_t>>(tablets.size());
+    for (const auto& tablet : tablets) {
+      auto call = std::make_shared<AsyncAddTableToTablet>(
+          master_, AsyncTaskPool(), tablet, table, state->epoch, counter);
+      table->AddTask(call);
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send AddTableToTablet request");
+    }
+  }
+  state->preparing_table_tablets.clear();
 }
 
 bool CatalogManager::IsDeletedTabletLoadedFromSysCatalog(const TabletId& tablet_id) const {
@@ -15214,6 +15232,12 @@ void CatalogManager::SchedulePostTabletCreationTasks(
   }
 
   if (!table_info->LockForRead()->IsPreparing()) {
+    return;
+  }
+  // A secondary table, e.g. a colocated table or a vector index, joins tablets which are usually
+  // RUNNING before it is added to them. AsyncAddTableToTablet promotes it once all of its tablets
+  // have added it.
+  if (table_info->IsSecondaryTable()) {
     return;
   }
   auto tablets_running_result = table_info->AreAllTabletsRunning(new_running_tablets);

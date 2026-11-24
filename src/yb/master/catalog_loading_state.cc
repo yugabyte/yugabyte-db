@@ -13,6 +13,8 @@
 
 #include "yb/master/catalog_loading_state.h"
 
+#include "yb/master/catalog_entity_info.h"
+
 namespace yb::master {
 
 SysCatalogLoadingState::SysCatalogLoadingState(LeaderEpoch leader_epoch)
@@ -25,6 +27,7 @@ void SysCatalogLoadingState::AddPostLoadTask(std::function<void()>&& func, std::
 void SysCatalogLoadingState::Reset() {
   parent_to_child_tables.clear();
   post_load_tasks.clear();
+  preparing_table_tablets.clear();
   write_to_disk_tables.clear();
   validate_backfill_status_index_tables.clear();
 }

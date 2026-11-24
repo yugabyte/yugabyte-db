@@ -1241,6 +1241,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status VisitSysCatalog(SysCatalogLoadingState* state);
   Status RunLoaders(SysCatalogLoadingState* state) REQUIRES(mutex_);
 
+  // Sends AddTableToTablet to all tablets of each table the tablet loader found PREPARING.
+  void ScheduleAddTableToTabletForPreparingTables(SysCatalogLoadingState* state) REQUIRES(mutex_);
+
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
   Status WaitForWorkerPoolTests(

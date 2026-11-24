@@ -1152,6 +1152,11 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTable(const TableId& table
   return IndexForTableUnlocked(table_id);
 }
 
+bool TabletVectorIndexes::HasIndex(const TableId& table_id) const {
+  SharedLock lock(vector_indexes_mutex_);
+  return vector_indexes_map_.contains(table_id);
+}
+
 VectorIndexList TabletVectorIndexes::Collect(const std::vector<TableId>& table_ids) {
   if (!has_vector_indexes_.load(std::memory_order_acquire)) {
     return VectorIndexList();

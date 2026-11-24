@@ -37,6 +37,10 @@ using namespace std::literals;
 
 DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
+DEFINE_test_flag(string, stuck_add_table_to_tablet_id, "",
+    "Tablet ID for which AddTableToTablet tasks get stuck, as with "
+    "TEST_stuck_add_tablet_to_table_task_enabled.");
+
 DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
                  "When set, transition all delete replica tasks to a failed state.");
 
@@ -1155,8 +1159,8 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
   }
   if (!*tablets_running_result) {
     // A vector index shares the indexed table's tablets, which may include split children the
-    // master has not yet seen RUNNING. Wait for them without resending the RPC: re-adding a
-    // vector index to a tablet is not idempotent.
+    // master has not yet seen RUNNING. Wait for them without resending the RPC: the tablet has
+    // added the table already and could be gone by now (a split parent).
     LOG_WITH_PREFIX(INFO) << "Not all tablets are running yet, waiting before promoting table";
     table_added_ = true;
     TransitionToWaitingState(MonitoredTaskState::kRunning);
@@ -1183,7 +1187,8 @@ Status AsyncAddTableToTablet::PickReplica() {
 }
 
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
-  if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
+  if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled) ||
+      PREDICT_FALSE(tablet_id_ == FLAGS_TEST_stuck_add_table_to_tablet_id)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
     return true;
   }

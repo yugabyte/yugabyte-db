@@ -3460,11 +3460,18 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   }
 
   if (table_info_ptr->NeedVectorIndex()) {
-    auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
-        index_info->indexed_table_id()));
-    VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
-    RETURN_NOT_OK(vector_indexes_->CreateIndex(
-        *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
+    // A new master leader resends AddTableToTablet to all tablets of a vector index that is still
+    // PREPARING, including the ones which already added it. AddTable above keeps the existing table
+    // info, so the existing index stays as it is.
+    if (vector_indexes_->HasIndex(table_info.table_id())) {
+      LOG_WITH_PREFIX(INFO) << "Vector index " << table_info.table_id() << " already exists";
+    } else {
+      auto indexed_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
+          index_info->indexed_table_id()));
+      VLOG_WITH_PREFIX_AND_FUNC(3) << table_info_ptr->ToString();
+      RETURN_NOT_OK(vector_indexes_->CreateIndex(
+          *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
+    }
   }
 
   // Analogous to ScheduleValidation on tablet open for non-colocated index tablets.
