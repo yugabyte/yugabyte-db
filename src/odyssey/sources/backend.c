@@ -252,10 +252,15 @@ void yb_od_backend_close_connection(od_server_t *server,
 		goto cleanup;
 	}
 	if (machine_connected(server->io.io)) {
+		errno = 0;
 		int rc = od_backend_terminate(server);
 		if (rc == -1) {
+			int errno_ = errno;
+			server->yb_backend_exited =
+				errno_ == EPIPE || errno_ == ECONNRESET;
 			od_debug(&instance->logger, "backend", NULL, server,
-				 "failed to send Terminate, skipping drain");
+				 "failed to send Terminate, errno=%d, skipping drain",
+				 errno_);
 		} else {
 			/*
 			 * YB: Wait for backend to close socket. Dup the fd and save it so
@@ -264,14 +269,11 @@ void yb_od_backend_close_connection(od_server_t *server,
 			 */
 			server->yb_backend_exited =
 				yb_od_backend_drain_until_eof(server);
-			if (!server->yb_backend_exited &&
-			    server->yb_slot_claimed) {
-				server->yb_exiting_fd =
-					dup(machine_fd(server->io.io));
-				if (server->yb_exiting_fd != -1)
-					shutdown(server->yb_exiting_fd,
-						 SHUT_WR);
-			}
+		}
+		if (!server->yb_backend_exited && server->yb_slot_claimed) {
+			server->yb_exiting_fd = dup(machine_fd(server->io.io));
+			if (server->yb_exiting_fd != -1)
+				shutdown(server->yb_exiting_fd, SHUT_WR);
 		}
 	}
 
