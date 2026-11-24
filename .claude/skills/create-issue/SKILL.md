@@ -71,7 +71,7 @@ For JIRA tickets, the Atlassian MCP tool `createJiraIssue` must be available
 
 - Core DB code (`src/`, `java/`, `cmake_modules/`, `build-support/`, `.github/`,
   `.claude/`): follow
-  [filing-issues.md](../../../.github/ISSUE_GUIDELINES/filing-issues.md). It
+  [filing-issues.md](../../../.github/issue-guides/filing-issues.md). It
   defines "sensitive" and routes the issue: a GitHub issue (Step 3a), a JIRA
   ticket in the `DB` (core database) project with the sensitive-information
   field set to `Yes` (Step 3b), a `Vulnerability` ticket (below), or a
@@ -120,7 +120,7 @@ issue from being created at all.
 
 3. **Description** — the "what / why": what the issue is, repro steps for a bug,
    or the motivation for a feature. Draft it and confirm with the user.
-   **YSQL:** read [ysql.md](../../../.github/ISSUE_GUIDELINES/ysql.md) and
+   **YSQL:** read [ysql.md](../../../.github/issue-guides/ysql.md) and
    build the description from it.
 
 ### Step 3a: Create a GitHub issue
