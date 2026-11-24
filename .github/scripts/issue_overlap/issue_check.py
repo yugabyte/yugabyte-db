@@ -314,7 +314,7 @@ def main():
     title, body, selfs = load_issue(args)
     if args.issue and comment and not body.strip():
         # The GitHub copy of an issue filed in Jira: only the sync's lines.
-        # The workflow checks that issue from Jira instead.
+        # Only --jira, run with a Jira credential, can check that issue.
         print("issue body is empty or only Jira sync lines; not checking",
               file=sys.stderr)
         return
@@ -437,7 +437,8 @@ def print_comment(fmt, strong, prs, metas, issues, jira, n_terms):
 if __name__ == "__main__":
     if any(a == "--jira" or a.startswith("--jira=") for a in sys.argv[1:]):
         # A traceback can show internal Jira text (in a failed command's
-        # arguments), and the Actions log is public. Report the error type only.
+        # arguments), and a CI log may be read by people without Jira access.
+        # Report the error type only.
         try:
             main()
         except SystemExit:

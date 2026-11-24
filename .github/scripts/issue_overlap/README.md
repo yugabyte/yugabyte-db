@@ -1,7 +1,7 @@
 # issue_overlap
 
 `issue_check.py` lists open PRs and issues that look like the same work as a newly filed issue.
-The `issue-overlap` workflow runs it on every new issue and comments with what it finds.
+The `issue-overlap` workflow runs it on every new GitHub issue and comments with what it finds.
 `pr_overlap.py` does the same for a PR (open PRs changing the same code), and `issue_check.py`
 reuses its PR-diff index.
 
@@ -27,14 +27,17 @@ python3 pr_overlap.py 38804                             # open PRs changing the 
   A PR needs three when the issue has 20 or more terms, because long reports share vocabulary
   with many PRs. A comment shows at most three items per section. The script prints nothing and
   exits 0 when nothing qualifies, when the issue has no terms, and for the GitHub copy of a
-  Jira-filed issue (the `jira-issue` job checks that one).
+  Jira-filed issue, whose text is not on GitHub.
 - **Rollout:** the workflow posts only when the repository variable `ISSUE_OVERLAP_POST` is
-  `true`. Until then, GitHub-issue runs write the comment they would post to the job summary,
-  and Jira-issue runs log only whether they would post.
-- **Jira text stays in Jira.** GitHub comments never include Jira results. In `--jira` mode,
-  terms are never sent to GitHub search (each GitHub issue has a Jira copy, so the Jira search
-  finds GitHub-filed duplicates), and errors print only their type, because the Actions log
-  is public.
+  `true`. Until then, each run writes the comment it would post to the job summary.
+- **Jira-filed issues are not checked by the workflow.** Checking one needs a Jira credential,
+  which must not be a secret of this public repository: anyone with write access can recover a
+  repository secret, and some collaborators have no Jira access. `--jira` mode is meant to run
+  internally (Jenkins or the Jira sync service) with its own credential.
+- **Jira text stays in Jira.** GitHub comments never include Jira results, and `--format github`
+  never queries Jira. In `--jira` mode, terms are never sent to GitHub search (each GitHub issue
+  has a Jira copy, so the Jira search finds GitHub-filed duplicates), and errors print only
+  their type, because a CI log may be read by people without Jira access.
 
 ## Gotchas
 
