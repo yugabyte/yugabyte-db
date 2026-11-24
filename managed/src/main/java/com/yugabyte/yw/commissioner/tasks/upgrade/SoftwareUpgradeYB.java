@@ -213,12 +213,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
    */
   private void createUpgradeSubtasks(Universe universe, UpgradeTaskCreationContext ctx) {
     MastersAndTservers nodesToApply = ctx.nodesToApply;
+    MasterRollback masterRollback = getMasterRollback(universe, ctx);
 
     if (!ctx.isResume) {
-      nodesToApply = createPreFlightPhase(universe, ctx, nodesToApply);
+      nodesToApply = createPreFlightPhase(universe, ctx, nodesToApply, masterRollback);
     }
 
-    nodesToApply = createCatalogRollbackRecoveryIfNeeded(universe, ctx, nodesToApply);
+    nodesToApply =
+        createCatalogRollbackRecoveryIfNeeded(universe, ctx, nodesToApply, masterRollback);
 
     // Same password for CREATE_USER (before masters) and CREATE_PG_PASS_FILE (after masters),
     // matching K8s so .pgpass is written on the current leader after the master roll.
@@ -262,7 +264,10 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
    * rollback recovery run later in {@link #createUpgradeSubtasks}.
    */
   private MastersAndTservers createPreFlightPhase(
-      Universe universe, UpgradeTaskCreationContext ctx, MastersAndTservers nodesToApply) {
+      Universe universe,
+      UpgradeTaskCreationContext ctx,
+      MastersAndTservers nodesToApply,
+      MasterRollback masterRollback) {
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
         true /* isSoftwareRollbackAllowed */);
@@ -276,17 +281,27 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     }
 
     createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), ctx.newVersion);
-    UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    // A catalog rollback, scheduled after this save, rolls every master back and upgrades every
+    // node again.
+    MastersAndTservers pendingNodes =
+        masterRollback == MasterRollback.NONE
+            ? nodesToApply
+            : new MastersAndTservers(universe.getMasters(), universe.getTServers());
     Map<UUID, Set<UUID>> masterCompletedForProgress;
-    if (ctx.mastersDone) {
-      masterCompletedForProgress = azsByClusterFromNodes(universe.getMasters());
+    if (masterRollback != MasterRollback.NONE) {
+      masterCompletedForProgress = Collections.emptyMap();
+    } else if (!isCanaryUpgrade()) {
+      masterCompletedForProgress =
+          upgradedAzsByCluster(universe.getMasters(), nodesToApply.mastersList);
     } else {
       masterCompletedForProgress =
-          deriveCompletedMasterAzsFromPrev(universe.getUniverseDetails().prevYBSoftwareConfig);
+          ctx.mastersDone
+              ? azsByClusterFromNodes(universe.getMasters())
+              : deriveCompletedMasterAzsFromPrev(
+                  universe.getUniverseDetails().prevYBSoftwareConfig);
     }
     Map<UUID, Set<UUID>> tserverCompletedForProgress =
-        tserverProgressMapFromCompletedLists(
-            primaryClusterUuid, ctx.primaryAZsCompleted, ctx.readReplicaAZsCompleted);
+        priorCompletedTserverAzs(universe, ctx, pendingNodes);
     createSaveSoftwareUpgradeProgressTask(
         isCanaryUpgrade(),
         isCanaryUpgrade() ? CanaryPauseState.NOT_PAUSED : null,
@@ -297,6 +312,41 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
     return nodesToApply;
   }
 
+  /** Whether a failed YSQL major catalog upgrade needs the masters (and catalog) rolled back. */
+  private enum MasterRollback {
+    NONE,
+    MASTERS,
+    CATALOG_AND_MASTERS
+  }
+
+  /**
+   * Decides, once per task, whether {@link #createCatalogRollbackRecoveryIfNeeded} rolls back the
+   * masters, so the pre-flight progress save does not mark them completed first.
+   */
+  private MasterRollback getMasterRollback(Universe universe, UpgradeTaskCreationContext ctx) {
+    if (!ctx.requireAdditionalSuperUserForCatalogUpgrade) {
+      return MasterRollback.NONE;
+    }
+    if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
+      YsqlMajorCatalogUpgradeState catalogUpgradeState =
+          softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
+      if (catalogUpgradeState.equals(
+          YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
+        return MasterRollback.CATALOG_AND_MASTERS;
+      }
+      if (catalogUpgradeState.equals(
+          YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
+        // Abort after last master (or .pgpass deleted on failure): all masters are PG15 but
+        // catalog is still PENDING. Roll masters back so CREATE USER DDLs are allowed.
+        return MasterRollback.MASTERS;
+      }
+      return MasterRollback.NONE;
+    }
+    return softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(universe, "15")
+        ? MasterRollback.MASTERS
+        : MasterRollback.NONE;
+  }
+
   /**
    * Rolls back masters/catalog when a prior YSQL major catalog upgrade failed, so the upgrade can
    * be retried safely. Runs on both fresh and resume canary paths (preflight is skipped on resume).
@@ -305,31 +355,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
    *     re-upgrades them; otherwise the unchanged {@code nodesToApply}.
    */
   private MastersAndTservers createCatalogRollbackRecoveryIfNeeded(
-      Universe universe, UpgradeTaskCreationContext ctx, MastersAndTservers nodesToApply) {
-    boolean rollbackMaster = false;
-    if (ctx.requireAdditionalSuperUserForCatalogUpgrade) {
-      if (softwareUpgradeHelper.isAllMasterUpgradedToYsqlMajorVersion(universe, "15")) {
-        YsqlMajorCatalogUpgradeState catalogUpgradeState =
-            softwareUpgradeHelper.getYsqlMajorCatalogUpgradeState(universe);
-        if (catalogUpgradeState.equals(
-            YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING_ROLLBACK)) {
-          log.info("YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
-          createRollbackYsqlMajorVersionCatalogUpgradeTask();
-          rollbackMaster = true;
-        } else if (catalogUpgradeState.equals(
-            YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_PENDING)) {
-          // Abort after last master (or .pgpass deleted on failure): all masters are PG15 but
-          // catalog is still PENDING. Roll masters back so CREATE USER DDLs are allowed.
-          rollbackMaster = true;
-        }
-      } else if (softwareUpgradeHelper.isAnyMasterUpgradedOrInProgressForYsqlMajorVersion(
-          universe, "15")) {
-        rollbackMaster = true;
-      }
-    }
-
-    if (!rollbackMaster) {
+      Universe universe,
+      UpgradeTaskCreationContext ctx,
+      MastersAndTservers nodesToApply,
+      MasterRollback masterRollback) {
+    if (masterRollback == MasterRollback.NONE) {
       return nodesToApply;
+    }
+    if (masterRollback == MasterRollback.CATALOG_AND_MASTERS) {
+      log.info("YSQL catalog upgrade is in a failed state. Rolling back catalog upgrade.");
+      createRollbackYsqlMajorVersionCatalogUpgradeTask();
     }
 
     log.info("Rolling back master before upgrade to enable DDLs to create upgrade user.");
@@ -341,6 +376,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS,
         true,
         false,
+        null,
         null);
     catalogRollbackForcesMasterReupgrade = true;
     return new MastersAndTservers(universe.getMasters(), universe.getTServers());
@@ -370,6 +406,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         YsqlMajorVersionUpgradeState.ROLLBACK_IN_PROGRESS,
         true,
         false,
+        null,
         null);
   }
 
@@ -426,13 +463,22 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           createManageCatalogUpgradeSuperUserTask(Action.CREATE_USER, catalogUpgradePassword);
         }
       }
-      Map<UUID, Set<UUID>> priorMasterCompleted =
-          isCanaryUpgrade()
-              ? deriveCompletedMasterAzsFromPrev(universe.getUniverseDetails().prevYBSoftwareConfig)
-              : null;
+      Map<UUID, Set<UUID>> priorMasterCompleted;
+      if (catalogRollbackForcesMasterReupgrade) {
+        // Every master is upgraded again after the catalog rollback.
+        priorMasterCompleted = null;
+      } else if (isCanaryUpgrade()) {
+        priorMasterCompleted =
+            deriveCompletedMasterAzsFromPrev(universe.getUniverseDetails().prevYBSoftwareConfig);
+      } else {
+        priorMasterCompleted =
+            upgradedAzsByCluster(universe.getMasters(), nodesToApply.mastersList);
+      }
       if (priorMasterCompleted != null && priorMasterCompleted.isEmpty()) {
         priorMasterCompleted = null;
       }
+      Map<UUID, Set<UUID>> priorTserverCompleted =
+          priorCompletedTserverAzs(universe, ctx, nodesToApply);
       upgradeMaster(
           universe,
           getNonMasterNodes(nodesToApply.mastersList, nodesToApply.tserversList),
@@ -440,7 +486,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           ctx.requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null,
           false,
           true,
-          priorMasterCompleted);
+          priorMasterCompleted,
+          priorTserverCompleted);
       upgradeMaster(
           universe,
           nodesToApply.mastersList,
@@ -448,7 +495,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           ctx.requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null,
           true,
           true,
-          priorMasterCompleted);
+          priorMasterCompleted,
+          priorTserverCompleted);
       if (ctx.requireYsqlMajorVersionUpgrade) {
         createUpdateSoftwareUpdatePrevConfigTask(true, false);
       }
@@ -598,9 +646,11 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       boolean activeRole,
       boolean trackSoftwareUpgradeProgress,
-      @Nullable Map<UUID, Set<UUID>> priorMasterCompletedByCluster) {
+      @Nullable Map<UUID, Set<UUID>> priorMasterCompletedByCluster,
+      @Nullable Map<UUID, Set<UUID>> priorTserverCompletedByCluster) {
     long sleepTime =
         confGetter.getConfForScope(universe, UniverseConfKeys.upgradeMasterStagePauseDurationMs);
+    Map<UUID, Set<UUID>> tserversDone = copyClusterAzMapNullable(priorTserverCompletedByCluster);
     boolean targetUpgrade =
         trackSoftwareUpgradeProgress && version.equals(taskParams().ybSoftwareVersion);
     if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
@@ -620,7 +670,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 priorCompletedMasters,
                 pendingMasterAzs,
                 null),
-            buildTserverStates(universe, Collections.emptyMap()),
+            buildTserverStates(universe, tserversDone),
             false);
       }
       createMasterUpgradeFlowTasks(
@@ -637,7 +687,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             isCanaryUpgrade(),
             isCanaryUpgrade() ? CanaryPauseState.NOT_PAUSED : null,
             buildMasterStates(universe, masterDone),
-            buildTserverStates(universe, Collections.emptyMap()),
+            buildTserverStates(universe, tserversDone),
             false);
       }
     } else {
@@ -665,7 +715,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                     masterCompletedByCluster,
                     singleClusterAzInProgress(cluster.uuid, azUUID),
                     null),
-                buildTserverStates(universe, Collections.emptyMap()),
+                buildTserverStates(universe, tserversDone),
                 false);
           }
           createMasterUpgradeFlowTasks(
@@ -685,7 +735,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 isCanaryUpgrade(),
                 isCanaryUpgrade() ? CanaryPauseState.NOT_PAUSED : null,
                 buildMasterStates(universe, masterCompletedByCluster),
-                buildTserverStates(universe, Collections.emptyMap()),
+                buildTserverStates(universe, tserversDone),
                 false);
           }
           if (sleepTime > 0) {
@@ -715,6 +765,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
         confGetter.getConfForScope(universe, UniverseConfKeys.upgradeTServerStagePauseDurationMs);
     boolean targetUpgrade =
         trackSoftwareUpgradeProgress && version.equals(taskParams().ybSoftwareVersion);
+    Map<UUID, Set<UUID>> priorCompletedTservers =
+        upgradedAzsByCluster(universe.getTServers(), tserverNodes);
     if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE || sleepTime <= 0) {
       if (targetUpgrade && !tserverNodes.isEmpty()) {
         Map<UUID, Set<UUID>> pendingTserverAzs = azsByClusterFromNodes(tserverNodes);
@@ -726,7 +778,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 universe,
                 ServerType.TSERVER,
                 universe.getTServers(),
-                Collections.emptyMap(),
+                priorCompletedTservers,
                 pendingTserverAzs,
                 null),
             false);
@@ -742,6 +794,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
       if (targetUpgrade && !tserverNodes.isEmpty()) {
         Map<UUID, Set<UUID>> tDone = azsByClusterFromNodes(tserverNodes);
+        mergeClusterAzSetsInto(tDone, priorCompletedTservers);
         createSaveSoftwareUpgradeProgressTask(
             false,
             null,
@@ -751,7 +804,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       }
     } else {
       List<String> upgradedZones = new ArrayList<>();
-      Map<UUID, Set<UUID>> tserverCompletedByCluster = new HashMap<>();
+      Map<UUID, Set<UUID>> tserverCompletedByCluster = priorCompletedTservers;
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         List<UUID> azs = sortAZs(cluster, universe);
         List<NodeDetails> tserverNodesForCluster =
@@ -838,6 +891,8 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 != null;
     if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
         || (sleepTime <= 0 && !hasCanaryAZSteps)) {
+      Map<UUID, Set<UUID>> priorCompletedTservers =
+          upgradedAzsByCluster(universe.getTServers(), tserverNodes);
       if (version.equals(taskParams().ybSoftwareVersion)) {
         Map<UUID, Set<UUID>> pendingTserverAzs = azsByClusterFromNodes(tserverNodes);
         createSaveSoftwareUpgradeProgressTask(
@@ -848,7 +903,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 universe,
                 ServerType.TSERVER,
                 universe.getTServers(),
-                Collections.emptyMap(),
+                priorCompletedTservers,
                 pendingTserverAzs,
                 null),
             false);
@@ -864,6 +919,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
       if (version.equals(taskParams().ybSoftwareVersion)) {
         Map<UUID, Set<UUID>> tDone = azsByClusterFromNodes(tserverNodes);
+        mergeClusterAzSetsInto(tDone, priorCompletedTservers);
         createSaveSoftwareUpgradeProgressTask(
             true,
             CanaryPauseState.NOT_PAUSED,
@@ -882,6 +938,16 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           (k, v) -> rrAZsCompleted.put(k, v != null ? new ArrayList<>(v) : new ArrayList<>()));
     }
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    // Also count AZs whose t-servers were upgraded but not saved as completed before an abort.
+    upgradedAzsByCluster(universe.getTServers(), tserverNodes)
+        .forEach(
+            (clusterUuid, azs) -> {
+              List<UUID> completed =
+                  clusterUuid.equals(primaryClusterUuid)
+                      ? primaryAZsCompleted
+                      : rrAZsCompleted.computeIfAbsent(clusterUuid, k -> new ArrayList<>());
+              azs.stream().filter(az -> !completed.contains(az)).forEach(completed::add);
+            });
     List<String> upgradedZones = new ArrayList<>();
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       List<UUID> azs = getAZOrderForCluster(cluster, universe);
@@ -1143,6 +1209,44 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
       }
     }
     return m;
+  }
+
+  /**
+   * AZs, by cluster, where every node of the role already runs the target version (none is in
+   * {@code pendingNodes}). Read from the nodes rather than saved progress, so it stays right after
+   * an abort before a progress save or a YBA restart.
+   */
+  private static Map<UUID, Set<UUID>> upgradedAzsByCluster(
+      List<NodeDetails> roleNodes, List<NodeDetails> pendingNodes) {
+    Map<UUID, Set<UUID>> upgraded = azsByClusterFromNodes(roleNodes);
+    azsByClusterFromNodes(pendingNodes)
+        .forEach(
+            (clusterUuid, azs) -> {
+              Set<UUID> clusterAzs = upgraded.get(clusterUuid);
+              if (clusterAzs != null) {
+                clusterAzs.removeAll(azs);
+              }
+            });
+    return upgraded;
+  }
+
+  /**
+   * T-server AZs, by cluster, already upgraded before this run: read from the nodes, plus the AZs a
+   * canary upgrade saved as completed.
+   */
+  private Map<UUID, Set<UUID>> priorCompletedTserverAzs(
+      Universe universe, UpgradeTaskCreationContext ctx, MastersAndTservers nodesToApply) {
+    Map<UUID, Set<UUID>> completed =
+        upgradedAzsByCluster(universe.getTServers(), nodesToApply.tserversList);
+    if (isCanaryUpgrade()) {
+      mergeClusterAzSetsInto(
+          completed,
+          tserverProgressMapFromCompletedLists(
+              universe.getUniverseDetails().getPrimaryCluster().uuid,
+              ctx.primaryAZsCompleted,
+              ctx.readReplicaAZsCompleted));
+    }
+    return completed;
   }
 
   private static Map<UUID, Set<UUID>> tserverProgressMapFromCompletedLists(
