@@ -476,10 +476,11 @@ class OtlpHttpCollector {
     return false;
   }
 
-  // Records the spans of each request, then answers with this HTTP status. Webserver sends only 200
-  // or 503.
-  void SetResponseCode(int code) {
-    response_code_ = code;
+  // Records the spans of each request, and answers HTTP 503 to requests from this service only.
+  // Webserver sends no other error code.
+  void FailExportsFrom(std::string service_name) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    failing_service_ = std::move(service_name);
   }
 
   size_t CountSpansFromService(std::string_view service_name) const EXCLUDES(mutex_) {
@@ -490,6 +491,15 @@ class OtlpHttpCollector {
           [service_name](const Span& span) { return span.service_name == service_name; });
     }
     return count;
+  }
+
+  bool HasSpanFromService(const std::string& trace_id, std::string_view service_name) const
+      EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    auto it = traces_.find(trace_id);
+    return it != traces_.end() &&
+           std::any_of(it->second.spans.begin(), it->second.spans.end(),
+               [service_name](const Span& span) { return span.service_name == service_name; });
   }
 
   bool HasSpanWithNamePrefix(const std::string& trace_id, std::string_view prefix) const
@@ -904,15 +914,17 @@ class OtlpHttpCollector {
       return;
     }
 
-    RecordSpans(request);
-    resp->code = response_code_;
+    resp->code = RecordSpans(request) ? 503 : 200;
   }
 
-  void RecordSpans(const otlp::ExportTraceServiceRequest& request) {
+  // Returns whether the request comes from failing_service_.
+  bool RecordSpans(const otlp::ExportTraceServiceRequest& request) {
     std::lock_guard lock(mutex_);
+    bool fail = false;
     for (const auto& resource_spans : request.resource_spans()) {
       const auto service_name =
           FindStringAttribute(resource_spans.resource().attributes(), "service.name");
+      fail = fail || (!failing_service_.empty() && service_name == failing_service_);
       for (const auto& traces : resource_spans.scope_spans()) {
         for (const auto& span : traces.spans()) {
           const auto trace_id = b2a_hex(span.trace_id());
@@ -958,6 +970,7 @@ class OtlpHttpCollector {
         }
       }
     }
+    return fail;
   }
 
   mutable std::mutex mutex_;
@@ -965,7 +978,7 @@ class OtlpHttpCollector {
   TraceMap traces_ GUARDED_BY(mutex_);
   std::string endpoint_;
   std::unique_ptr<Webserver> server_;
-  std::atomic<int> response_code_{200};
+  std::string failing_service_ GUARDED_BY(mutex_);
 };
 
 class DistTraceTest : public LibPqTestBase {
@@ -1386,8 +1399,8 @@ class DaemonLogCounter : public ExternalDaemon::StringListener {
   std::atomic<int> count_{0};
 };
 
-// Runs traced queries against a collector that cannot take spans, and checks that a runtime change
-// of ysql_yb_otel_log_throttle_interval_secs reaches running and new postgres backends.
+// Runs traced statements against a collector that cannot take one process's spans, and checks that
+// a runtime change of ysql_yb_otel_log_throttle_interval_secs reaches that process.
 class DistTraceOtelLogThrottleTest : public DistTraceTest {
  protected:
   void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
@@ -1396,34 +1409,30 @@ class DistTraceOtelLogThrottleTest : public DistTraceTest {
       AppendFlagToAllowedPreviewFlagsCsv(*flags, "otel_collector_traces_endpoint");
       flags->push_back(Format("--otel_collector_traces_endpoint=$0", endpoint));
       flags->push_back("--otel_batch_max_export_batch_size=1");
+      flags->push_back("--ysql_yb_otel_log_throttle_interval_secs=3600");
     }
-    options->extra_tserver_flags.push_back("--ysql_yb_otel_log_throttle_interval_secs=3600");
   }
 
   // Returns the collector URL.
   virtual Result<std::string> StartCollector() = 0;
 
-  // Returns once the backend has processed the spans of every query, so that each throttled
-  // message the queries cause has been logged or suppressed.
+  // Returns once every throttled message the traced statements caused has been logged or
+  // suppressed.
   virtual Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) = 0;
 
-  // DaemonLogCounter cannot tell the backend's lines from yb-tserver's. Returns how many messages
-  // matching the pattern yb-tserver has produced so far, logged or suppressed.
-  virtual size_t TServerMessages() = 0;
+  // Returns how many throttled messages the process under test has produced so far, logged or
+  // suppressed. No other process in LoggingDaemon() produces them, so its matching lines are the
+  // throttler's output alone.
+  virtual size_t Messages() = 0;
 
-  Status RunTracedQueries(PGConn* conn) {
-    std::vector<std::string> trace_ids;
-    for (int i = 0; i < kQueries; ++i) {
-      auto traceparent = GenerateTraceparent();
-      RETURN_NOT_OK(conn->FetchFormat("/*traceparent='$0'*/ SELECT 1", traceparent.full));
-      trace_ids.push_back(std::move(traceparent.trace_id));
-    }
-    // Each traced query causes at least one message in the backend.
-    backend_messages_ += kQueries;
-    return WaitForSpansProcessed(trace_ids);
+  virtual ExternalDaemon* LoggingDaemon() { return cluster_->tablet_server(0); }
+
+  virtual Status RunTracedStatement(PGConn* conn, const TraceparentInfo& traceparent) {
+    return ResultToStatus(conn->FetchFormat("/*traceparent='$0'*/ SELECT 1", traceparent.full));
   }
 
-  Status SetInterval(PGConn* conn, const std::string& secs) {
+  // Postgres backends get the new value through the GUC, after yb-tserver rewrites the PG conf.
+  virtual Status SetInterval(PGConn* conn, const std::string& secs) {
     RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_otel_log_throttle_interval_secs", secs));
     return WaitFor(
         [conn, &secs]() -> Result<bool> {
@@ -1433,44 +1442,52 @@ class DistTraceOtelLogThrottleTest : public DistTraceTest {
         30s * kTimeMultiplier, Format("yb_otel_log_throttle_interval_secs = $0", secs));
   }
 
-  // Each phase reads the line count before the message counts. A message counted after that read
-  // is logged after it too, so the expected counts are lower bounds on the lines that follow.
-  void TestIntervalChangeReachesBackends(const std::string& pattern) {
-    DaemonLogCounter counter(cluster_->tablet_server(0), pattern);
+  Status RunTracedStatements(PGConn* conn) {
+    std::vector<std::string> trace_ids;
+    for (int i = 0; i < kStatements; ++i) {
+      auto traceparent = GenerateTraceparent();
+      RETURN_NOT_OK(RunTracedStatement(conn, traceparent));
+      trace_ids.push_back(std::move(traceparent.trace_id));
+    }
+    ++batches_;
+    return WaitForSpansProcessed(trace_ids);
+  }
 
-    // Each process logs the first message of its 3600s window and suppresses the rest. A fresh
-    // backend has no window yet.
+  // Each phase reads the line count before the message count. A message counted after that read
+  // is logged after it too, so the expected count is a lower bound on the lines that follow.
+  void TestIntervalChange(const std::string& pattern) {
+    DaemonLogCounter counter(LoggingDaemon(), pattern);
+
+    // The process logs the first message of its 3600s window and suppresses the rest.
     auto conn1 = ASSERT_RESULT(Connect());
-    ASSERT_OK(RunTracedQueries(&conn1));
+    ASSERT_OK(RunTracedStatements(&conn1));
     ASSERT_OK(counter.WaitForCount(1));
-    auto lines = counter.Count();
-    ASSERT_LE(lines, 1 + (TServerMessages() > 0 ? 1 : 0));
+    ASSERT_EQ(counter.Count(), 1);
 
     ASSERT_OK(SetInterval(&conn1, "0"));
     ASSERT_NO_FATALS(RunAndExpectEveryMessageLogged(&counter, &conn1));
 
-    // The postmaster spawn env still holds 3600.
+    // A new backend's spawn env still holds 3600, so this checks that it reads the GUC.
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_NO_FATALS(RunAndExpectEveryMessageLogged(&counter, &conn2));
   }
 
   void RunAndExpectEveryMessageLogged(DaemonLogCounter* counter, PGConn* conn) {
     auto lines_before = counter->Count();
-    auto backend_before = backend_messages_;
-    auto tserver_before = TServerMessages();
-    ASSERT_OK(RunTracedQueries(conn));
-    // A throttled backend logs at most one line, which cannot cover kQueries messages.
-    ASSERT_OK(counter->WaitForCount(narrow_cast<int>(
-        lines_before + (backend_messages_ - backend_before) +
-        (TServerMessages() - tserver_before))));
+    auto messages_before = Messages();
+    ASSERT_OK(RunTracedStatements(conn));
+    // A throttled process logs at most one line, which cannot cover kStatements messages.
+    ASSERT_OK(counter->WaitForCount(
+        narrow_cast<int>(lines_before + Messages() - messages_before)));
   }
 
-  size_t backend_messages_ = 0;
-  static constexpr int kQueries = 10;
+  size_t batches_ = 0;
+  static constexpr int kStatements = 10;
 };
 
 // Accepts connections and never replies. The backend export thread blocks on its first span, so
-// with a one-span queue the backend drops every later span.
+// with a one-span queue the backend drops every later span. yb-tserver keeps the default
+// otel_batch_max_queue_size, which these queries cannot fill, so every drop is the backend's.
 class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
  protected:
   void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) override {
@@ -1493,8 +1510,8 @@ class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
     return Status::OK();
   }
 
-  // yb-tserver keeps the default otel_batch_max_queue_size, which these queries cannot fill.
-  size_t TServerMessages() override { return 0; }
+  // Each query drops at least one span.
+  size_t Messages() override { return batches_ * kStatements; }
 
   void DoBeforeTearDown() override {
     // Blocked exports would hold up daemon shutdown until they time out. Closing the listener
@@ -1507,14 +1524,17 @@ class DistTraceStalledCollectorTest : public DistTraceOtelLogThrottleTest {
   Socket stalled_collector_;
 };
 
-// Records every span and fails each export with HTTP 503. Webserver sends no other error code, and
-// the exporter retries only when built with WITH_OTLP_RETRY_PREVIEW, which thirdparty leaves off.
+// Records every span and fails only the postgres backends' exports. yb-tserver exports the same
+// traces without failures, so every failure line in its output is a backend's. The exporter
+// retries only when built with WITH_OTLP_RETRY_PREVIEW, which thirdparty leaves off.
 class DistTraceFailingCollectorTest : public DistTraceOtelLogThrottleTest {
  protected:
   Result<std::string> StartCollector() override {
-    collector_.SetResponseCode(503);
+    collector_.FailExportsFrom(std::string(FailingService()));
     return collector_.Url();
   }
+
+  virtual std::string_view FailingService() const { return "ysql"; }
 
   // The root span ends last, and the export thread sends one span per batch in order.
   Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) override {
@@ -1527,11 +1547,40 @@ class DistTraceFailingCollectorTest : public DistTraceOtelLogThrottleTest {
         30s * kTimeMultiplier, "Root spans of all queries at the collector");
   }
 
-  // yb-tserver exports its spans of the traced queries to the same collector. With one span per
-  // batch, each of its spans is one failed export.
-  size_t TServerMessages() override {
-    return collector_.CountSpansFromService("TabletServer");
+  // With one span per batch, each span is one failed export.
+  size_t Messages() override { return collector_.CountSpansFromService(FailingService()); }
+};
+
+// Fails only yb-master's exports. Traced DDLs reach yb-master, which reads the runtime flag
+// directly.
+class DistTraceFailingMasterCollectorTest : public DistTraceFailingCollectorTest {
+ protected:
+  std::string_view FailingService() const override { return "Master"; }
+
+  ExternalDaemon* LoggingDaemon() override { return cluster_->master(); }
+
+  Status RunTracedStatement(PGConn* conn, const TraceparentInfo& traceparent) override {
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "SET yb_dist_tracecontext = 'traceparent=''$0'''", traceparent.full));
+    return conn->ExecuteFormat("CREATE TABLE throttle_$0 (k int PRIMARY KEY)", next_table_++);
   }
+
+  Status WaitForSpansProcessed(const std::vector<std::string>& trace_ids) override {
+    return WaitFor(
+        [this, &trace_ids] {
+          return std::all_of(trace_ids.begin(), trace_ids.end(), [this](const auto& trace_id) {
+            return collector_.HasSpanFromService(trace_id, FailingService());
+          });
+        },
+        30s * kTimeMultiplier, "yb-master spans of all DDLs at the collector");
+  }
+
+  Status SetInterval(PGConn*, const std::string& secs) override {
+    return cluster_->SetFlagOnMasters("ysql_yb_otel_log_throttle_interval_secs", secs);
+  }
+
+ private:
+  int next_table_ = 0;
 };
 
 class DistTraceConnMgrTest : public LibPqTestBase {
@@ -3346,15 +3395,19 @@ TEST_F(DistTraceRpcTest, TestOtelLogThrottle) {
 }
 
 TEST_F(DistTraceStalledCollectorTest, TestDroppedSpanLogIntervalChange) {
-  TestIntervalChangeReachesBackends("queue is full - dropping span");
+  TestIntervalChange("queue is full - dropping span");
 }
 
 TEST_F(DistTraceFailingCollectorTest, TestExportFailureLogIntervalChange) {
-  TestIntervalChangeReachesBackends("[OTLP TRACE HTTP Exporter] ERROR: Export");
+  TestIntervalChange("[OTLP TRACE HTTP Exporter] ERROR: Export");
 }
 
 TEST_F(DistTraceFailingCollectorTest, TestHttpClientFailureLogIntervalChange) {
-  TestIntervalChangeReachesBackends("[OTLP HTTP Client] Export failed, Status:503");
+  TestIntervalChange("[OTLP HTTP Client] Export failed, Status:503");
+}
+
+TEST_F(DistTraceFailingMasterCollectorTest, TestMasterExportFailureLogIntervalChange) {
+  TestIntervalChange("[OTLP HTTP Client] Export failed, Status:503");
 }
 
 // A multi-row scan must emit exactly one executor-node span (not one per
