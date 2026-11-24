@@ -49,6 +49,7 @@ insert into ce.rP select * from ce.r;
 analyze ce.rP;
 
 delete from queries;
+delete from query_method_hints;
 insert into queries (qid, descr, query)
 with outers(qoff, n) as (
     values (0, 256), (10, 1024)
@@ -65,6 +66,14 @@ base(qid, descr, tmpl) as (
 select b.qid + o.qoff, b.descr || ' ' || o.n || '-outer',
        replace(b.tmpl, '@N@', o.n::text)
 from base b, outers o;
+
+-- With the 1024-row outer, the batched nested loop of the inner join and the
+-- semijoin costs about the same whether it reads the outer in primary key
+-- order and keeps that order through the join, or reads it through the index
+-- on z and sorts above the join.  Pin the first (#38249).
+insert into query_method_hints values
+    (611, 'BNL', 'IndexScan(s s_pkey)'),
+    (612, 'BNL', 'IndexScan(s s_pkey)');
 
 -- Plan validation, as in yb.orig.bnl_cost_parity, except that the inner's
 -- first scanned relation is a partition, aliased r_<n>.  Expect no rows.
@@ -101,4 +110,5 @@ order by qid;
 
 reset yb_bnl_batch_size;
 delete from queries;
+delete from query_method_hints;
 drop table ce.rP;
