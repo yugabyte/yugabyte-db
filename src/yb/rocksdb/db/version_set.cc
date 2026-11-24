@@ -2414,10 +2414,9 @@ Result<std::string> Version::FindTargetKey(
                         << " cross: " << candidate_cross << " window: [" << low_cross << ", "
                         << high_cross << "] target: " << target_size;
 
-      // Only a Cross strictly inside the window subdivides it. Anything else means this file is
-      // spent: the window would not move, so the next call returns the same key. Breaking here
-      // carries termination for the inner loop, not just accuracy -- keep it in any refactor.
-      if (candidate_cross <= low_cross || candidate_cross >= high_cross) {
+      // A candidate is always a key strictly above low_buf, so taking it as the new low bound
+      // moves the window even when its Cross equals low_cross (low_buf is not an existing key).
+      if (candidate_cross >= high_cross) {
         break;
       }
 
