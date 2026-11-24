@@ -251,6 +251,19 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetAllAppliedOpId();
 
+  struct WalGcRetentionOpIdInfo {
+    OpId committed_op_id = OpId::Max();
+    OpId majority_replicated_op_id = OpId::Max();
+    OpId min_progressing_pre_voter_op_id = OpId::Max();
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(
+          committed_op_id, majority_replicated_op_id, min_progressing_pre_voter_op_id);
+    }
+  };
+
+  WalGcRetentionOpIdInfo GetWalGcRetentionOpIdInfo();
+
   Status CheckReadyAsRbsSource();
 
   Result<MicrosTime> MajorityReplicatedHtLeaseExpiration(
