@@ -1865,9 +1865,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum interval in seconds between postgres PSS collections by the health check. PSS"
               + " is read from smaps_rollup for every postgres backend, which is costly on nodes"
               + " with many connections. Runs that happen sooner skip PSS and report the last"
-              + " collected values. 0 collects PSS on every run, -1 never collects it. Metrics are"
-              + " collected once a minute by default, so the default of 120 collects PSS every"
-              + " second run.",
+              + " collected values. 0 collects PSS on every run, -1 never collects it.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =

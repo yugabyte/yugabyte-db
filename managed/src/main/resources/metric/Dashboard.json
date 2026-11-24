@@ -11529,6 +11529,11 @@
       "legendFormat" : "Postgres",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-postmaster\"}[300s])) by (process) / 1024",
       "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Postgres (lowerbound)",
+      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional_lowerbound\", node_prefix=~\"$dbcluster\", process=\"yb-postmaster\"}[300s])) by (process) / 1024",
+      "refId" : "B"
     } ],
     "gridPos" : {
       "w" : 12,
