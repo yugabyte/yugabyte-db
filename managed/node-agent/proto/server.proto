@@ -30,6 +30,9 @@ message ServerInfo {
     bool rootNodeExporterUnit = 6;
     // Whether node agent runs in Go FIPS 140-3 mode.
     bool fipsEnabled = 7;
+    // Whether a system-level yb-node-agent unit is enabled or running next to the user-level one
+    // this agent runs under. YBA does not upgrade such an agent (PLAT-24106).
+    bool duplicateServerUnit = 8;
 }
 
 message PingRequest {

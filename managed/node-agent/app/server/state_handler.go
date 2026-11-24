@@ -4,12 +4,28 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"node-agent/app/task"
+	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"os"
+	"sync"
 	"syscall"
+	"time"
 )
+
+const (
+	nodeAgentServiceName       = "yb-node-agent.service"
+	duplicateUnitCheckInterval = 5 * time.Minute
+)
+
+var duplicateUnitCache struct {
+	sync.Mutex
+	checkedAt  time.Time
+	found      bool
+	refreshing bool
+}
 
 // HandleUpgradeState is called by the platform after all the required files are copied.
 func HandleUpgradeState(
@@ -18,6 +34,12 @@ func HandleUpgradeState(
 	upgradeInfo *pb.UpgradeInfo,
 ) error {
 	util.FileLogger().Info(ctx, "Starting the node agent upgrade process")
+	// Refuse before touching the config: a second server would write its stale config back over
+	// the upgraded one and serve the old cert (PLAT-24106). YBA retries the upgrade on error.
+	if err := checkDuplicateServerUnits(ctx); err != nil {
+		util.FileLogger().Errorf(ctx, "Cannot upgrade node agent - %s", err.Error())
+		return err
+	}
 	// Delete the certs from past failures.
 	err := cleanUpConfigAfterIncompleteUpdate(ctx, config, upgradeInfo)
 	if err != nil {
@@ -41,6 +63,47 @@ func HandleUpgradeState(
 	}
 	util.FileLogger().Info(ctx, "Node agent has been succesfully upgraded")
 	return nil
+}
+
+// duplicateServerUnit returns the path of a system-level unit that runs a second server next to
+// this user-level one, or "" if there is none or it cannot be told (e.g. no systemd), so that not
+// knowing never blocks an upgrade.
+func duplicateServerUnit(ctx context.Context) string {
+	path, err := module.DuplicateSystemdUnit(ctx, nodeAgentServiceName)
+	if err != nil {
+		util.FileLogger().Warnf(ctx, "Unable to check for duplicate node agent units - %s", err)
+		return ""
+	}
+	return path
+}
+
+func checkDuplicateServerUnits(ctx context.Context) error {
+	if path := duplicateServerUnit(ctx); path != "" {
+		return fmt.Errorf("system-level unit %s runs a second node agent next to the user-level "+
+			"%s; disable and remove it", path, nodeAgentServiceName)
+	}
+	return nil
+}
+
+// cachedDuplicateServerUnit is duplicateServerUnit for Ping, which YBA calls on every poll with a
+// short timeout, so systemctl runs in the background at most once per interval and Ping returns the
+// last result.
+func cachedDuplicateServerUnit(ctx context.Context) bool {
+	duplicateUnitCache.Lock()
+	defer duplicateUnitCache.Unlock()
+	if !duplicateUnitCache.refreshing &&
+		time.Since(duplicateUnitCache.checkedAt) >= duplicateUnitCheckInterval {
+		duplicateUnitCache.refreshing = true
+		go func() {
+			found := duplicateServerUnit(context.WithoutCancel(ctx)) != ""
+			duplicateUnitCache.Lock()
+			defer duplicateUnitCache.Unlock()
+			duplicateUnitCache.found = found
+			duplicateUnitCache.checkedAt = time.Now()
+			duplicateUnitCache.refreshing = false
+		}()
+	}
+	return duplicateUnitCache.found
 }
 
 // HandleUpgradedState is called when platform has already rotated the cert and the server key.

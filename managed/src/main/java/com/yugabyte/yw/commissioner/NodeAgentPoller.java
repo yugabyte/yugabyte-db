@@ -361,6 +361,16 @@ public class NodeAgentPoller {
           }
           // Fall-thru to complete in single cycle.
         case UPGRADE:
+          // A second server on the node would undo the upgrade (PLAT-24106). Skip before new
+          // certs are generated and uploaded. UPGRADED is past the point of no return.
+          if (response.getServerInfo().getDuplicateServerUnit()) {
+            log.warn(
+                "Skipping upgrade of node agent {} as a system-level yb-node-agent unit also runs"
+                    + " on the node. Remove that unit to allow the upgrade.",
+                nodeAgent);
+            return;
+          }
+          // Fall-thru.
         case UPGRADED:
           if (!isUpgrading.compareAndSet(false, true)) {
             log.info("Node agent {} is being upgraded", nodeAgent);

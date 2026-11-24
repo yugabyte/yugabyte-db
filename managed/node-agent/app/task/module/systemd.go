@@ -10,6 +10,7 @@ import (
 	"node-agent/backoff"
 	"node-agent/util"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -42,6 +43,85 @@ var (
 		"controller": {"yb-controller.service", UserSystemdUnitPath + "/yb-controller.service"},
 	}
 )
+
+// SystemUnitState is what system-level systemd reports for a unit.
+type SystemUnitState struct {
+	LoadState     string
+	UnitFileState string
+	ActiveState   string
+	FragmentPath  string
+}
+
+// Runs a unit with this state, now or on the next boot.
+func (s SystemUnitState) runs() bool {
+	if s.LoadState != "loaded" {
+		// not-found or masked.
+		return false
+	}
+	return strings.HasPrefix(s.UnitFileState, "enabled") ||
+		(s.ActiveState != "" && s.ActiveState != "inactive" && s.ActiveState != "failed")
+}
+
+// ShowSystemUnitState asks system-level systemd for the state of a unit. It runs without sudo as
+// node agent may not have it; "show" needs no privileges. A var for tests.
+var ShowSystemUnitState = func(ctx context.Context, serviceName string) (SystemUnitState, error) {
+	out, err := exec.CommandContext(ctx, "systemctl", "show", serviceName,
+		"-p", "LoadState", "-p", "UnitFileState", "-p", "ActiveState", "-p", "FragmentPath").
+		Output()
+	if err != nil {
+		return SystemUnitState{}, err
+	}
+	values := parseSystemdProperties(string(out))
+	return SystemUnitState{
+		LoadState:     values["LoadState"],
+		UnitFileState: values["UnitFileState"],
+		ActiveState:   values["ActiveState"],
+		FragmentPath:  values["FragmentPath"],
+	}, nil
+}
+
+// SelfCgroupPath tells which systemd manager started this process. A var for tests.
+var SelfCgroupPath = "/proc/self/cgroup"
+
+// Whether this process runs in a unit of a per-user systemd manager (user@<uid>.service).
+func runsUnderUserManager() (bool, error) {
+	data, err := os.ReadFile(SelfCgroupPath)
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(data), "/user@"), nil
+}
+
+// DuplicateSystemdUnit returns the path of the system-level serviceName unit when this process
+// runs under the user-level unit and the system-level one is also enabled or running, so both
+// start a server for the same install. It returns "" otherwise, including when this process is
+// the system-level one: the user-level unit is the target setup and is not reported.
+func DuplicateSystemdUnit(ctx context.Context, serviceName string) (string, error) {
+	underUser, err := runsUnderUserManager()
+	if err != nil || !underUser {
+		return "", err
+	}
+	state, err := ShowSystemUnitState(ctx, serviceName)
+	if err != nil {
+		return "", err
+	}
+	if !state.runs() {
+		return "", nil
+	}
+	return state.FragmentPath, nil
+}
+
+// parseSystemdProperties maps the key=value lines of "systemctl show -p ..." output.
+func parseSystemdProperties(out string) map[string]string {
+	values := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
+		if found {
+			values[key] = value
+		}
+	}
+	return values
+}
 
 // IsUserSystemd checks if the systemd service file exists in the user's systemd directory.
 // It returns true along with the path if it exists, false otherwise.
@@ -284,14 +364,7 @@ func systemdUnitProperties(
 	if err != nil {
 		return nil, err
 	}
-	values := map[string]string{}
-	for _, line := range strings.Split(cmdInfo.StdOut.String(), "\n") {
-		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
-		if found {
-			values[key] = value
-		}
-	}
-	return values, nil
+	return parseSystemdProperties(cmdInfo.StdOut.String()), nil
 }
 
 // KillSystemdServiceLeftovers SIGKILLs processes left in the cgroup of a unit that has no main
