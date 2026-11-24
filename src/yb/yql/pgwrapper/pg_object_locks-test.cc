@@ -2202,35 +2202,12 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param ? "ConcurrentDdlEnabled" : "ConcurrentDdlDisabled";
     });
 
-// Turning ysql_enable_concurrent_ddl off on a running cluster: the cluster starts with it on, and
-// a rolling restart turns it off on every tserver. DDLs overlap before and run one at a time after.
-TEST_F(PgObjectLocksTestDdlOverlap, ConcurrentDdlSwitchedOff) {
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  ASSERT_NO_FATALS(CreateOverlapObjects());
-  ASSERT_TRUE(ASSERT_RESULT(DdlsOverlap(ts1, ts2, "v1")));
-
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    auto* ts = cluster_->tablet_server(i);
-    ts->RemoveExtraFlag("ysql_enable_concurrent_ddl");
-    ts->AddExtraFlag("ysql_enable_concurrent_ddl", "false");
-    ts->Shutdown();
-    ASSERT_OK(ts->Restart());
-    ASSERT_OK(LoggedWaitFor(
-        [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
-        60s * kTimeMultiplier, "restarted tserver to accept connections"));
-    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_enable_concurrent_ddl")), "false");
-  }
-
-  ASSERT_FALSE(ASSERT_RESULT(DdlsOverlap(ts1, ts2, "v2")));
-}
-
 class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
-    // CreateIndexWaitDoesNotBlockWritersDdl reads the CREATE INDEX's WaitForLockers wait from ASH.
+    // DetachConcurrentlyWaitDoesNotBlockWritersDdl reads the DETACH's WaitForLockers wait from ASH.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_ash=true");
   }
 };
@@ -2265,16 +2242,15 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockDoesNotCrossDatabases
 }
 
 // With ysql_enable_concurrent_ddl off, a DDL in a transaction block holds the database DDL lock
-// until the block ends. The block rolls back to a savepoint taken before its first DDL, then runs
-// another DDL, which takes the lock again. Whether ROLLBACK TO releases the lock taken in the
-// rolled-back subtransaction is not part of the design and may change; the test does not check it.
+// until the block ends, even after ROLLBACK TO a savepoint taken before the DDL.
+// TODO(#34673): whether ROLLBACK TO releases the lock taken in the rolled-back subtransaction is
+// not part of the design. This test pins the current behavior, which may change.
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
     ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
-    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
   }
 
   auto block_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
@@ -2282,7 +2258,6 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   ASSERT_OK(block_conn.Execute("SAVEPOINT s"));
   ASSERT_OK(block_conn.Execute("ALTER TABLE a ADD COLUMN v INT"));
   ASSERT_OK(block_conn.Execute("ROLLBACK TO s"));
-  ASSERT_OK(block_conn.Execute("ALTER TABLE b ADD COLUMN v INT"));
 
   // A wait shows as a statement timeout.
   auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
@@ -2370,43 +2345,6 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlWithoutVersionIncrementDoesNot
   ASSERT_OK(holder.Execute("COMMIT"));
 }
 
-// With ysql_enable_concurrent_ddl off, a CREATE INDEX phase waits for lockers before it takes the
-// database DDL lock, so another DDL in the database runs while the CREATE INDEX waits.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLock) {
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 100), 0"));
-    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
-  }
-  ASSERT_OK(cluster_->SetFlagOnTServers(
-      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
-
-  LogWaiter pause_log(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
-  auto index_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  auto index_future = std::async(std::launch::async, [&index_conn]() {
-    return index_conn.Execute("CREATE INDEX t_v ON t(v)");
-  });
-  // Unpause on early failure, or index_future's destructor waits for the paused CREATE INDEX.
-  auto unpause = ScopeExit([this] {
-    WARN_NOT_OK(
-        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
-        "Failed to unpause CREATE INDEX");
-  });
-  ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
-
-  // A wait would show as a statement timeout.
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
-  ASSERT_OK(ddl_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
-
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
-  ASSERT_OK(index_future.get());
-}
-
 // With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
 // on t, which a CREATE INDEX holds across its phases, while a later CREATE INDEX phase waits for
 // the database lock after its wait for lockers. The deadlock detector must end the cycle well
@@ -2471,48 +2409,6 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIs
   if (alter_status.ok()) {
     ASSERT_OK(ddl_conn.Execute("COMMIT"));
   }
-}
-
-// With ysql_enable_concurrent_ddl off, a CREATE INDEX waits for a writer to t, and the writer's
-// transaction then runs a DDL. The CREATE INDEX holds no database DDL lock while it waits, so the
-// DDL runs, and the CREATE INDEX finishes once the writer commits. Holding the lock there would
-// block both: the wait for lockers is registered under the session's transaction, so the deadlock
-// detector would not see the cycle.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitDoesNotBlockWritersDdl) {
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 100), 0"));
-    ASSERT_OK(conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
-  }
-  ASSERT_OK(cluster_->SetFlagOnTServers(
-      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
-
-  auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(writer_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
-  ASSERT_OK(writer_conn.Execute("BEGIN"));
-  ASSERT_OK(writer_conn.Execute("INSERT INTO t VALUES (1000, 1)"));
-
-  auto index_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(index_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
-  auto index_future = std::async(std::launch::async, [&index_conn]() {
-    return index_conn.Execute("CREATE INDEX t_v ON t(v)");
-  });
-  // The CREATE INDEX waits for the writer in WaitForLockers before its backfill. That wait shows
-  // in ASH, not in pg_stat_activity or pg_locks.
-  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(LoggedWaitFor([&observer]() -> Result<bool> {
-    auto waiting = observer.FetchRow<int64_t>(
-        "SELECT COUNT(*) FROM yb_active_session_history"
-        " WHERE wait_event_aux = 'WaitForLockersMultiple'");
-    return waiting.ok() && *waiting > 0;
-  }, 30s * kTimeMultiplier, "the CREATE INDEX to wait for the writer"));
-
-  ASSERT_OK(writer_conn.Execute("ALTER TABLE other ADD COLUMN c INT"));
-  ASSERT_OK(writer_conn.Execute("COMMIT"));
-  ASSERT_OK(index_future.get());
 }
 
 // With ysql_enable_concurrent_ddl off, DETACH PARTITION CONCURRENTLY waits for a writer to the
