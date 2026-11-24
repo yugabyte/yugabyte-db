@@ -2570,21 +2570,22 @@ ORDER BY node_id, metric_name;
        3 | memory_usage |         91.5
 (4 rows)
 
--- SQL value functions in predicates: all SQLValueFunction nodes
--- (time/date, identity, and catalog variants) are pushed down as remote
--- params: the coordinator evaluates and ships the concrete value.
+-- SQL value functions in predicates are pushed down as remote params: the
+-- coordinator evaluates them and ships the value.  CURRENT_SCHEMA is the
+-- exception and is filtered locally.  The view returns one row of known values
+-- per node, so each query also checks the value that was shipped.
+SELECT current_user AS test_user, current_database() AS test_db \gset
 CREATE VIEW sqlvalue_function_test AS
     SELECT
         yb_get_local_tserver_uuid() AS server_uuid,
-        NULL::TIMESTAMPTZ AS timestamptz_value,
-        NULL::DATE AS date_value,
-        NULL::TIMESTAMP AS timestamp_value,
-        NULL::TIME AS time_value,
-        NULL::TIMETZ AS timetz_value,
-        NULL::NAME AS role_value,
-        NULL::NAME AS catalog_value,
-        NULL::NAME AS schema_value
-    WHERE false;
+        '2000-01-01'::TIMESTAMPTZ AS timestamptz_value,
+        '2000-01-01'::DATE AS date_value,
+        '2000-01-01'::TIMESTAMP AS timestamp_value,
+        '00:00:00'::TIME AS time_value,
+        '00:00:00+00'::TIMETZ AS timetz_value,
+        :'test_user'::NAME AS role_value,
+        :'test_db'::NAME AS catalog_value,
+        'public'::NAME AS schema_value;
 -- Global-view reads execute as the non-superuser yb_global_views_user role
 -- (a member of pg_read_all_stats), so grant it read access to the view.
 GRANT SELECT ON sqlvalue_function_test TO pg_read_all_stats;
@@ -2717,7 +2718,10 @@ SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE timestamptz_value < CURRENT_TIMESTAMP;
  ?column? 
 ----------
-(0 rows)
+        1
+        1
+        1
+(3 rows)
 
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE timestamptz_value < CURRENT_TIMESTAMP(3);
@@ -2823,7 +2827,10 @@ SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE timestamp_value < LOCALTIMESTAMP;
  ?column? 
 ----------
-(0 rows)
+        1
+        1
+        1
+(3 rows)
 
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE timestamp_value < LOCALTIMESTAMP(3);
@@ -2925,7 +2932,10 @@ SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE role_value = CURRENT_ROLE;
  ?column? 
 ----------
-(0 rows)
+        1
+        1
+        1
+(3 rows)
 
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE role_value = CURRENT_USER;
@@ -2966,28 +2976,31 @@ WHERE catalog_value = CURRENT_CATALOG;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE schema_value = CURRENT_SCHEMA;
-                                              QUERY PLAN                                              
-------------------------------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Append
    ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_1"
          Output: 1
-         Remote Filter: ("gv$sqlvalue_function_test_1".schema_value = CURRENT_SCHEMA)
-         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+         Filter: ("gv$sqlvalue_function_test_1".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT schema_value FROM public.sqlvalue_function_test
    ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_2"
          Output: 1
-         Remote Filter: ("gv$sqlvalue_function_test_2".schema_value = CURRENT_SCHEMA)
-         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+         Filter: ("gv$sqlvalue_function_test_2".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT schema_value FROM public.sqlvalue_function_test
    ->  Foreign Scan on public."gv$sqlvalue_function_test" "gv$sqlvalue_function_test_3"
          Output: 1
-         Remote Filter: ("gv$sqlvalue_function_test_3".schema_value = CURRENT_SCHEMA)
-         Remote SQL: SELECT NULL FROM public.sqlvalue_function_test WHERE ((schema_value = $1::name))
+         Filter: ("gv$sqlvalue_function_test_3".schema_value = CURRENT_SCHEMA)
+         Remote SQL: SELECT schema_value FROM public.sqlvalue_function_test
 (13 rows)
 
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE catalog_value = CURRENT_CATALOG;
  ?column? 
 ----------
-(0 rows)
+        1
+        1
+        1
+(3 rows)
 
 SELECT 1 FROM "gv$sqlvalue_function_test"
 WHERE schema_value = CURRENT_SCHEMA;

@@ -297,8 +297,8 @@ is_foreign_expr(PlannerInfo *root,
 	 * YB: For federated YugabyteDB we make this more granular and whitelist
 	 * expressions that are safe to push down: immutable functions,
 	 * constifiable stable functions (listed in yb_pushdown_funcs_to_constify,
-	 * e.g. now()), and all SQLValueFunction nodes (stable session-level
-	 * constants such as CURRENT_TIMESTAMP, CURRENT_USER, etc.).
+	 * e.g. now()), and SQLValueFunction nodes other than CURRENT_SCHEMA
+	 * (e.g. CURRENT_TIMESTAMP, CURRENT_USER).
 	 * Non-federated servers keep the upstream behaviour and reject all
 	 * mutable (stable + volatile) functions.
 	 */
@@ -965,14 +965,14 @@ foreign_expr_walker(Node *node,
 		case T_SQLValueFunction:	/* YB */
 			{
 				/*
-				 * YB: For federated YugabyteDB, allow all SQLValueFunction
-				 * variants.  These are stable session-level constants that
-				 * will be emitted as remote params during deparse, so the
-				 * coordinator evaluates them at execution time and ships the
-				 * concrete value to each remote tserver.
+				 * YB: For federated YugabyteDB, SQLValueFunctions are sent as
+				 * remote params.  CURRENT_SCHEMA is left out: params are
+				 * evaluated under the search_path forced by
+				 * set_transmission_modes(), so it would always be pg_catalog.
 				 */
 				if (fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB ||
-					!yb_enable_global_views_stable_func_pushdown)
+					!yb_enable_global_views_stable_func_pushdown ||
+					((SQLValueFunction *) node)->op == SVFOP_CURRENT_SCHEMA)
 					return false;
 
 				collation = InvalidOid;
@@ -1109,7 +1109,8 @@ is_foreign_param(PlannerInfo *root,
 			{
 				PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) baserel->fdw_private;
 				if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB &&
-					yb_enable_global_views_stable_func_pushdown)
+					yb_enable_global_views_stable_func_pushdown &&
+					((SQLValueFunction *) expr)->op != SVFOP_CURRENT_SCHEMA)
 					return true;
 				return false;
 			}
