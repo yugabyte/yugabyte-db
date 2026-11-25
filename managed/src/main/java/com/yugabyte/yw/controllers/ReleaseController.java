@@ -5,7 +5,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -198,8 +197,7 @@ public class ReleaseController extends AuthenticatedController {
                 gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
             release.setSensitiveGflags(sensitiveGflags);
             release.save();
-            RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-                sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+            RedactingService.addSensitiveGFlagPathsForLogs(sensitiveGflags);
           });
     } else {
       try {
