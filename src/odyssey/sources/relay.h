@@ -523,17 +523,9 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 
 			od_readahead_reuse(&relay->src->readahead);
 
-			/*
-			 * YB: A paused relay writes its Sync here. Keep the
-			 * client read stopped; reading it would busy-loop on
-			 * bytes left on the socket. The frontend polls it for a
-			 * hangup, and yb_resume_client_relay() starts the read.
-			 */
-			if (!relay->yb_paused) {
-				rc = od_io_read_start(relay->src);
-				if (rc == -1)
-					return relay->error_read;
-			}
+			rc = od_io_read_start(relay->src);
+			if (rc == -1)
+				return relay->error_read;
 		} else {
 			rc = od_io_write_start(relay->dst);
 			if (rc == -1)

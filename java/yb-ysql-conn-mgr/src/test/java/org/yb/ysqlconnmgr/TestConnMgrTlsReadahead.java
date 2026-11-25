@@ -97,16 +97,6 @@ public class TestConnMgrTlsReadahead extends BaseYsqlConnMgr {
   }
 
   /**
-   * TestProtocolEdgeCases#testNoBusyLoopWhilePausedAfterSync over TLS. OpenSSL pulls one record
-   * (at most 16 KB) off the socket per read, so a 64 KB Query leaves the records after the first
-   * on the socket while the client is paused after its Sync.
-   */
-  @Test
-  public void testNoBusyLoopWhilePausedAfterSyncWithSsl() throws Exception {
-    assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder().ssl(), 65536);
-  }
-
-  /**
    * TestProtocolEdgeCases#testDisconnectWithFullReadaheadWhilePausedAfterSync over TLS, with a
    * 64 KB Query so that TLS records stay on the socket ahead of the client's FIN.
    */

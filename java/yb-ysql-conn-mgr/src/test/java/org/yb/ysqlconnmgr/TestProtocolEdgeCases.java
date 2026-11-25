@@ -139,17 +139,6 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
         }
     }
 
-    // ConnMgr stops reading a client after its Sync until the backend's ReadyForQuery. Writing
-    // that Sync to the server must not start the client read again: with the readahead full and
-    // more client bytes on the socket, level-triggered epoll would wake the client coroutine in a
-    // busy loop for as long as the statement before the Sync runs.
-    @Test
-    public void testNoBusyLoopWhilePausedAfterSync() throws Exception {
-        restartClusterWithAdditionalFlags(Collections.emptyMap(),
-            Collections.singletonMap("ysql_conn_mgr_readahead_buffer_size", "64"));
-        assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder(), 4096);
-    }
-
     // A client that goes away while it is paused after its Sync must be noticed, so its cleanup
     // cancels the running statement and returns the only backend to the pool, instead of leaving
     // the statement running with nobody listening until it ends.

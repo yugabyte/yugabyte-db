@@ -2284,9 +2284,9 @@ od_frontend_remote_process_server(od_server_t *server, od_client_t *client)
 
 /*
  * YB: A client paused after a Sync is not read until ReadyForQuery, so its
- * EOF can wait behind unread bytes. Instead, poll its socket for a hangup
- * this often, as Postgres does with client_connection_check_interval.
- * A half-closed client is treated as gone.
+ * EOF can wait behind unread bytes. Instead, poll its socket for a hangup on
+ * each wakeup and at least this often, as Postgres does with
+ * client_connection_check_interval. A half-closed client is treated as gone.
  */
 #define YB_PAUSED_CLIENT_POLL_MS 1000
 
@@ -2299,7 +2299,11 @@ static bool yb_paused_client_hung_up(od_client_t *client)
 			 "client fd poll failed, errno=%d (%s)",
 			 machine_errno(), strerror(machine_errno()));
 	}
-	return !machine_connected(io->io);
+	if (machine_connected(io->io))
+		return false;
+	/* Level-triggered epoll would keep reporting it during the cleanup. */
+	od_io_read_stop(io);
+	return true;
 }
 
 static od_frontend_status_t od_frontend_remote(od_client_t *client)
@@ -2361,9 +2365,17 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 #endif
 			/* one minute */
 			bool yb_paused = yb_is_relay_paused(&client->relay);
-			if (machine_cond_wait(client->cond,
-					      yb_paused ? YB_PAUSED_CLIENT_POLL_MS :
-							  60000) == 0) {
+			int yb_wait_rc = machine_cond_wait(
+				client->cond,
+				yb_paused ? YB_PAUSED_CLIENT_POLL_MS : 60000);
+			if (yb_paused && yb_paused_client_hung_up(client)) {
+				od_log(&instance->logger, "wait sync", client,
+				       server,
+				       "client disconnected while paused after Sync");
+				status = OD_ECLIENT_READ;
+				break;
+			}
+			if (yb_wait_rc == 0) {
 				client->time_last_active = machine_time_us();
 #ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
@@ -2371,14 +2383,6 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					"change client last active time %lld\n",
 					client->time_last_active);
 #endif
-				break;
-			}
-
-			if (yb_paused && yb_paused_client_hung_up(client)) {
-				od_log(&instance->logger, "wait sync", client,
-				       server,
-				       "client disconnected while paused after Sync");
-				status = OD_ECLIENT_READ;
 				break;
 			}
 		}
