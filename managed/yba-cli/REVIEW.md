@@ -44,12 +44,12 @@ Most CLI bugs that reach users are update commands that change more than the use
   - A flag default (`""`, `0`, `false`, a hard-coded value) sent without one of these checks
     overwrites the stored value.
 - **Server defaults.** For every field the request leaves out, read the server form class
-  (`forms/`, `api/v2/models`) and check its default. A non-null default (default ports, a 24 h
-  interval, `null` meaning "delete all") replaces the stored value. Send the current value, and
-  file the server bug: a missing field must mean "keep".
+  (`forms/`) or the v2 schema (`src/main/resources/openapi/`) and check its default. A non-null
+  default (default ports, a 24 h interval, `null` meaning "delete all") replaces the stored
+  value. Send the current value, and file the server bug: a missing field must mean "keep".
 - **Boolean flags that describe state** take their default from the object read, not from a
-  constant. Known gap: `--root-and-client-root-ca-same` in `eit cert` and `eit tls` defaults
-  to `true`.
+  constant. Known gap: `--root-and-client-root-ca-same` in `universe security eit cert` and
+  `tls` defaults to `true`.
 - **No side effects.** A command never turns on a server feature or a runtime config key that the
   user did not name. A new behaviour gets its own flag, default off.
 - **Required flags** are required on create. On update, a flag whose stored value exists is
@@ -95,9 +95,9 @@ Most CLI bugs that reach users are update commands that change more than the use
 - **Version gates.** The CLI supports YBA from `MinCLIStableVersion` and `MinCLIPreviewVersion`
   (`cmd/util/constants.go`). A command or flag that needs a newer API calls
   `CheckValidYBAVersionForCommand` (or a `*YBAVersionCheck` helper in `internal/client/`) with
-  **both** a stable and a preview minimum, verified on `master` and the stable branch. Play
-  answers an unknown route with a plain-text 404, so an ungated call fails with a confusing error
-  on an older YBA.
+  **both** a stable and a preview minimum, verified on `master` and the stable branch. YBA
+  answers an unknown GET route with a plain-text 404, so an ungated call fails with a confusing
+  error on an older YBA.
 - **Validation belongs on the server.** When a rule exists only in the UI or only in the CLI
   (pause on on-prem, architecture match, a GET that reads a different source than the apply
   path), the fix goes into YBA. A CLI check may be added on top, for a clearer message only.
@@ -123,11 +123,14 @@ A fix on one path must hold on its siblings, or the PR must say why a sibling is
 - **Clusters:** primary and read replica. `create-read-replica` builds its user intent from the
   primary's; a field added to one must be added to the other.
 - **Server types:** tserver and dedicated master. `buildDeviceInfo` and `buildMasterDeviceInfo`
-  must apply the same inputs (volume encryption, mount points, storage class).
-- **Providers:** AWS, GCP, Azure, OCI, on-prem and Kubernetes each have their own create, update
-  and instance-type commands. A fix in one provider's command is checked in the others.
-- **Command families:** describe, update, delete and test-alert of one object share selection
-  and paging code. A fix in one is checked in all of them.
+  must apply the same inputs (volume encryption, mount points, storage class). Known gap:
+  `buildMasterDeviceInfo` does not set volume encryption.
+- **Providers:** AWS, GCP, Azure, OCI, on-prem and Kubernetes each have their own create and update
+  commands, and all but Kubernetes have instance-type commands. A fix in one provider's command
+  is checked in the others.
+- **Command families:** describe, update and delete of one object (and test-alert for alert
+  policies) often carry copies of the same selection and paging code. A fix in one is checked in
+  all of them.
 - **Other clients:** the Terraform provider and the YBA MCP server reuse the same APIs and often
   the same request shapes. A server bug found through the CLI is filed for the server.
 
@@ -215,8 +218,8 @@ the release notes does not make a change safe.
   (`formatter.RedColor`); the object name in a success message is green
   (`formatter.GreenColor`).
 - **Output goes through `internal/formatter`.** `list`, `describe` and the result of a create or
-  update print through the object's formatter context, so `-o table`, `json`, `pretty` and `raw`
-  all work. Printing an object with `fmt.Print` is a finding.
+  update print through the object's formatter context, so `-o table`, `json` and `pretty` all
+  work. Printing an object with `fmt.Print` is a finding.
 
 ## Tests
 
@@ -260,9 +263,9 @@ the release notes does not make a change safe.
 - Where universe requests are built: `cmd/universe/build_universe.go` (create),
   `cmd/universe/edit/cluster/clusterutil.go` (edit cluster) and `cmd/universe/readreplica/`
   (read replica create). A dropped field here reaches every universe made or changed that way.
-- `cmd/universe/edit/` and `cmd/universe/upgrade/`: each command is a rolling restart or a
+- `cmd/universe/edit/` and `cmd/universe/upgrade/`: most commands are a rolling restart or a
   placement change on a live universe. Check what the request carries over from the current
   universe.
 - `internal/client/client.go`: the HTTP client, version checks and timeouts for every command.
 - `cmd/util/`: shared helpers. A change here changes every command.
-- Skip `docs/` (generated), `go.sum`, and release binaries and tarballs in the tree.
+- Skip `docs/` (generated) and `go.sum`.
