@@ -4119,6 +4119,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_error_before_init", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller raises an ERROR "
+						 "before it initializes, so it exits and is restarted "
+						 "without reporting an init status."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_notifs_poller_error_before_init,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_conn_mgr_selective_deallocate", PGC_SIGHUP, CUSTOM_OPTIONS,
 			gettext_noop("DEPRECATED: no-op."),
 			NULL,

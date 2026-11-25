@@ -591,6 +591,35 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A LISTEN fails, rather than hangs, when its poller exits before it initializes.
+   */
+  @Test
+  public void testListenFailsWhenPollerExitsBeforeInit() throws Exception {
+    final String channel = "poller_exits_before_init";
+
+    final String guc = "yb_test_notifs_poller_error_before_init";
+    HostAndPort ts0 = getRpcHostPortForTServer(0);
+    String originalPgConf = appendToPgConf(ts0, guc + "=true");
+    try {
+      waitForPostmasterSetting(0, guc, "on");
+      try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = conn.createStatement()) {
+        // Bounds the test if the LISTEN waits instead of failing.
+        stmt.setQueryTimeout((int) Timeouts.adjustTimeoutSecForBuildType(60));
+        stmt.execute("LISTEN " + channel);
+        fail("LISTEN should have failed as its poller exits before it initializes");
+      } catch (SQLException e) {
+        assertErrorContains(e, "exited before it initialized");
+      }
+    } finally {
+      setServerFlag(ts0, "ysql_pg_conf_csv", originalPgConf);
+      waitForPostmasterSetting(0, guc, "off");
+    }
+
+    assertListenNotifyWorksOnTServer0(channel);
+  }
+
+  /**
    * On tserver 0, runs "LISTEN <prefix>_1", and once it has started a poller, "LISTEN <prefix>_2".
    * Then cancels the first LISTEN if cancelFirst is set (otherwise the test's setup must make it
    * fail), and returns the errors of both LISTENs.
@@ -743,12 +772,21 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   private void setPollerInitDelay(int tserverIndex, long delayMs) throws Exception {
     setServerFlag(getRpcHostPortForTServer(tserverIndex),
         "ysql_yb_test_notifs_poller_init_delay_ms", String.valueOf(delayMs));
+    waitForPostmasterSetting(tserverIndex, "yb_test_notifs_poller_init_delay_ms",
+        String.valueOf(delayMs));
+  }
+
+  /**
+   * Waits until a new backend on the given tserver shows the given setting for a GUC, i.e. once
+   * its postmaster has reloaded the config: pollers started before then use the old value.
+   */
+  private void waitForPostmasterSetting(int tserverIndex, String guc, String setting)
+      throws Exception {
     TestUtils.waitFor(() -> {
       try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
            Statement stmt = conn.createStatement()) {
         return getSingleRow(stmt, "SELECT setting FROM pg_settings"
-            + " WHERE name = 'yb_test_notifs_poller_init_delay_ms'")
-            .getString(0).equals(String.valueOf(delayMs));
+            + " WHERE name = '" + guc + "'").getString(0).equals(setting);
       }
     }, Timeouts.adjustTimeoutSecForBuildType(30_000));
   }
@@ -2180,17 +2218,25 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * Appends an entry to ysql_pg_conf_csv on every tserver, first saving each prior value in
-   * {@code original} for the caller to restore. The value is CSV with quoting, so it is only
-   * appended to, never split. A change to the flag reloads postgresql.conf, so it reaches
-   * background workers such as the poller.
+   * {@code original} for the caller to restore.
    */
   private void appendToPgConfOnAllTServers(String entry, Map<HostAndPort, String> original)
       throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
-      original.put(tserver, current);
-      setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
+      original.put(tserver, appendToPgConf(tserver, entry));
     }
+  }
+
+  /**
+   * Appends an entry to ysql_pg_conf_csv on the given tserver, and returns the prior value for the
+   * caller to restore. The value is CSV with quoting, so it is only appended to, never split. A
+   * change to the flag reloads postgresql.conf, so it reaches background workers such as the
+   * poller.
+   */
+  private String appendToPgConf(HostAndPort tserver, String entry) throws Exception {
+    String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
+    setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
+    return current;
   }
 
   private void setNotificationsPollSleepDurationEmpty(String valueMs) throws Exception {
