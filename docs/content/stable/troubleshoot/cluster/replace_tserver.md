@@ -45,7 +45,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
 
    Note the UUID of the failed YB-TServer (the `Tablet Server UUID` for `<failed-tserver-ip>:9100`). You need it in the next step.
 
-1. Remove the failed server from the server list. The server must be dead, still blacklisted, and hosting no tablets. Run the following command:
+1. Remove the failed server from the server list. `remove_tablet_server` is available in v2025.1 and later. On v2024.2, skip this step and continue with the blacklist cleanup. The server must be dead, still blacklisted, and hosting no tablets. Run the following command:
 
    ```sh
    ~/master/bin/yb-admin --master_addresses <master-addresses> remove_tablet_server <tserver-uuid>
@@ -55,7 +55,7 @@ You can replace a failed YB-TServer in a YugabyteDB cluster, as follows:
    If this command returns `Cannot remove tablet server <tserver-uuid> because it may still hold a xCluster-guarded information lease`, wait and retry. The lease expires about `xcluster_guarded_lease_duration_ms` (default `120000`, 2 minutes) plus clock-skew slack after the failed server's last heartbeat. The server is marked `DEAD` about one minute after that heartbeat (`tserver_unresponsive_timeout_ms`, default `60000`), so about another minute usually remains.
    -->
 
-1. As a final cleanup step, remove the failed server's address from the blacklist. Do this after `remove_tablet_server`: the server must still be blacklisted, and removing the address first makes that command fail.
+1. As a final cleanup step, remove the failed server's address from the blacklist. On v2025.1 and later, do this after `remove_tablet_server`: the server must still be blacklisted, and removing the address first makes that command fail.
 
    If you skip this step and later re-install a YB-TServer with the same address, that YB-TServer will be blacklisted and will never be assigned any tablets.
 
