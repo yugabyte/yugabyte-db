@@ -10256,7 +10256,8 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
 /*
  * Cost a ybgin scan that ybgin cannot execute yet (#7850).  The planner
  * compares disabled node counts before costs, so the scan also counts as a
- * disabled node, unless the factor is 0, which lets tests force the scan.
+ * disabled node, unless yb_test_ybgin_disable_cost_factor is 0, which lets
+ * tests force the scan.
  */
 static void
 yb_cost_unsupported_ybgin_scan(IndexPath *path, Cost *indexStartupCost,
