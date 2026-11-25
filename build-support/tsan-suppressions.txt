@@ -172,9 +172,8 @@ signal:yb::PstackWatcher::DumpStacks
 # from the pqGetpwuid function
 race:pqGetpwuid
 
-# Usearch and HNSWlib have non-trivial synchronisation, so TSAN detects false positive races there.
+# HNSWlib has non-trivial synchronisation, so TSAN detects false positive races there.
 # https://gist.github.com/spolitov/1624c44446196a0a35b6b9ceae877f92
-race:unum::usearch
 race:hnswlib::HierarchicalNSW
 race:hnswlib::L2Space::L2Space
 race:hnswlib::InnerProductSpace::InnerProductSpace

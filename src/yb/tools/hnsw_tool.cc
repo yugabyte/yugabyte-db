@@ -27,7 +27,6 @@
 
 #include "yb/ann_methods/ann_methods.h"
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/tools/pgvector_wrapper.h"
 
@@ -64,7 +63,6 @@
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/sharded_index.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
@@ -88,7 +86,7 @@ using namespace yb::vector_index;  // NOLINT
 YB_DEFINE_ENUM(HnswAction, HNSW_ACTIONS);
 
 // --ann_method values, parsed case-insensitively with an optional `k` prefix.
-YB_DEFINE_ENUM(BenchmarkAnnMethod, (kUsearch)(kHnswlib)(kPgVector));
+YB_DEFINE_ENUM(BenchmarkAnnMethod, (kHnswlib)(kPgVector));
 
 // ------------------------------------------------------------------------------------------------
 // Help command
@@ -841,12 +839,11 @@ class BenchmarkTool {
     VertexIdToVectorDistanceFunction<InputVector, InputDistanceResult>
         vertex_id_to_query_distance_fn;
     if constexpr (std::is_same_v<InputVector, FloatVector>) {
-      // Unlike the reference functions, usearch's metrics use SIMD; metric_punned_t has no u8_k.
+      // Unlike the reference functions, DistanceMetric uses SIMD; it has no uint8_t kernels.
       vertex_id_to_query_distance_fn =
           [this, metric = hnsw_options().template CreateMetric<FloatVector>()](
               VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
-            return MetricDistance(
-                metric, input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data(), v.data());
+            return metric(input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data(), v.data());
           };
     } else {
       vertex_id_to_query_distance_fn =
@@ -1362,11 +1359,6 @@ template<BenchmarkAnnMethod method>
 struct ANNMethodKindFor;
 
 template<>
-struct ANNMethodKindFor<BenchmarkAnnMethod::kUsearch> {
-  static constexpr auto kValue = ann_methods::ANNMethodKind::kUsearch;
-};
-
-template<>
 struct ANNMethodKindFor<BenchmarkAnnMethod::kHnswlib> {
   static constexpr auto kValue = ann_methods::ANNMethodKind::kHnswlib;
 };
@@ -1418,20 +1410,14 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
 #define YB_VECTOR_INDEX_BENCHMARK_SUPPORTED_CASES         \
     /* method, distance,     input type, indexed type */  \
     /* Euclidean distance */                              \
-    ((Usearch, L2Squared,    float,      float  ))        \
-    ((Usearch, L2Squared,    uint8_t,    float  ))        \
     ((Hnswlib, L2Squared,    float,      float  ))        \
     ((Hnswlib, L2Squared,    uint8_t,    float))          \
     ((PgVector, L2Squared,   float,      float  ))        \
     /* Cosine similarity */                               \
-    ((Usearch, Cosine,       float,      float  ))        \
-    ((Usearch, Cosine,       uint8_t,    float  ))        \
     ((Hnswlib, Cosine,       float,      float  ))        \
     ((Hnswlib, Cosine,       uint8_t,    float  ))        \
     ((PgVector, Cosine,      float,      float  ))        \
     /* Inner product */                                   \
-    ((Usearch, InnerProduct, float,      float  ))        \
-    ((Usearch, InnerProduct, uint8_t,    float  ))        \
     ((Hnswlib, InnerProduct, float,      float  ))        \
     ((Hnswlib, InnerProduct, uint8_t,    float  ))        \
     ((PgVector, InnerProduct, float,     float  ))

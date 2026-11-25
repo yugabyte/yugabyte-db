@@ -17,7 +17,6 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
 
 #include "yb/common/common.pb.h"
 
@@ -157,9 +156,6 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
   auto hnsw_options = ConvertToHnswOptions(options);
   auto backend = options.hnsw().backend();
   switch (backend) {
-    case HnswBackend::YB_HNSW_USEARCH:
-      return ann_methods::CreateUsearchIndexTraits<Vector, DistanceResult>(
-          block_cache, hnsw_options, mem_tracker);
     case HnswBackend::YB_HNSW_HNSWLIB: {
       vector_index::VectorTenantExtractor tenant_extractor;
       if (options.tenant_hash_group_and_range_components()) {
@@ -171,6 +167,7 @@ Result<vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>> HnswTraits(
           block_cache, hnsw_options, mem_tracker, std::move(tenant_extractor));
     }
     case HnswBackend::DEPRECATED_USEARCH: [[fallthrough]];
+    case HnswBackend::YB_HNSW_USEARCH: [[fallthrough]];
     case HnswBackend::DEPRECATED_HNSWLIB:
       break;
   }

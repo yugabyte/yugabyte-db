@@ -19,15 +19,15 @@
 
 namespace yb::ann_methods {
 
-// Bookkeeping helper used by vector index wrappers (e.g. usearch / hnswlib) to attribute their
+// Bookkeeping helper used by vector index wrappers (e.g. hnswlib) to attribute their
 // heap usage to two child MemTrackers under a single parent:
 //
 //   - "index_data": the persistent graph state intrinsic to the instance (graph nodes,
 //                   neighbour lists, label lookups, lock arrays, ...).
 //   - "search_contexts": per-thread scratch buffers used during search (visited-set buffers,
 //                        candidate priority queues, ...) -- could in principle be shared
-//                        across instances of compatible capacity (see the corresponding TODOs
-//                        in usearch_wrapper.cc / hnswlib_wrapper.cc).
+//                        across instances of compatible capacity (see the corresponding TODO
+//                        in hnswlib_wrapper.cc).
 //
 // Each child is updated independently on its own events: data consumption typically grows
 // during insert (and on Reserve() because some allocations are sized to the reserved

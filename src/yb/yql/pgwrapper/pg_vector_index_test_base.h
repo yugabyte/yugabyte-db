@@ -36,7 +36,7 @@
 #include "yb/util/strongly_typed_bool.h"
 
 #include "yb/vector_index/distance.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "yb/vector_index/distance_metric.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pgvector_utils.h"
@@ -89,7 +89,7 @@ int64_t BlockCacheConsumption(MiniCluster* cluster);
 
 // Peak heap footprint of all vector indexes on the server, summed across tablets. The hierarchy is
 // server -> "Tablets_overhead" -> "tablet-<id>" -> "vector_indexes". We use the peak rather than
-// the current consumption because the index is built on the heap (usearch/hnswlib) but a memtable
+// the current consumption because the index is built on the heap (hnswlib) but a memtable
 // flush can later seal the chunk and convert it to the on-disk yb_hnsw block-cache form, which
 // frees the heap tracker; the peak still reflects the footprint the build reserved cache space for.
 int64_t VectorIndexPeakConsumption(MiniCluster* cluster);
@@ -220,7 +220,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return expected;
   }
 
-  unum::usearch::metric_kind_t UsearchMetricKind() const;
+  vector_index::DistanceMetric MakeDistanceMetric() const;
 
   template <class Vector>
   std::string DistanceToQuery(const Vector& vector) const {
@@ -331,15 +331,14 @@ Result<size_t> PgVectorIndexTestBase::FetchAndVerifyOrder(
   auto query = "SELECT id FROM test" + IndexQuerySuffix(query_vector, limit);
   auto result = VERIFY_RESULT(conn.FetchRows<int64_t>(query));
 
-  unum::usearch::metric_punned_t metric(
-      dimensions_, UsearchMetricKind(), unum::usearch::scalar_kind_t::f32_k);
+  auto metric = MakeDistanceMetric();
 
-  std::vector<typename unum::usearch::metric_punned_t::result_t> distances;
+  std::vector<float> distances;
   distances.reserve(result.size());
   for (auto key : result) {
     size_t idx = VERIFY_RESULT(extractor(key));
     distances.push_back(
-        vector_index::MetricDistance(metric, query_vector.data(), vectors_[idx].data()));
+        metric(query_vector.data(), vectors_[idx].data()));
   }
 
   LOG_WITH_FUNC(INFO) << "Requested: " << limit << ", found: " << result.size();

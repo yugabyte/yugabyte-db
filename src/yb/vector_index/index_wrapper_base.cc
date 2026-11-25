@@ -19,7 +19,7 @@
 #include "yb/util/logging.h"
 
 DEFINE_RUNTIME_bool(vector_index_enable_block_cache_reservation, true,
-    "Whether a usearch/hnswlib vector index chunk reserves space in the block cache for its "
+    "Whether an hnswlib vector index chunk reserves space in the block cache for its "
     "in-memory footprint when it is created. Reserving lowers the cache's effective capacity so it "
     "evicts other blocks instead of letting total memory grow. Disable to restore the prior "
     "behavior where the index footprint is purely additive on top of the block cache.");

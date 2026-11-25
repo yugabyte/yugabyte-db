@@ -903,8 +903,7 @@ void PgVectorIndexTest::TestRandom() {
   real_dimensions_ = 16;
   dimensions_ = real_dimensions_ * kDimensionMultiplier;
 
-  unum::usearch::metric_punned_t metric(
-      dimensions_, UsearchMetricKind(), unum::usearch::scalar_kind_t::f32_k);
+  auto metric = MakeDistanceMetric();
 
   std::vector<const HdrHistogram*> read_histograms;
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -936,8 +935,7 @@ void PgVectorIndexTest::TestRandom() {
         [&metric, &query_vector, &vectors = vectors_](size_t li, size_t ri) {
       const auto& lhs = vectors[li];
       const auto& rhs = vectors[ri];
-      return vector_index::MetricDistance(metric, query_vector.data(), lhs.data()) <
-             vector_index::MetricDistance(metric, query_vector.data(), rhs.data());
+      return metric(query_vector.data(), lhs.data()) < metric(query_vector.data(), rhs.data());
     });
     size_t ep = 0;
     for (int64_t id : rows) {
@@ -1972,12 +1970,10 @@ TEST_F(PgVectorIndexLimitTest, FilteredTopKUsesLimit) {
 class PgVectorIndexBackendFlagTest : public YBTest {};
 
 TEST_F(PgVectorIndexBackendFlagTest, RejectsRemovedBackends) {
-  for (const auto* backend : {"usearch", "hnswlib", "yb_hnsw"}) {
+  for (const auto* backend : {"usearch", "hnswlib", "yb_hnsw", "yb_hnsw_usearch"}) {
     ASSERT_NOK(SET_FLAG(vector_index_backend, backend));
   }
-  for (const auto* backend : {"yb_hnsw_usearch", "yb_hnsw_hnswlib"}) {
-    ASSERT_OK(SET_FLAG(vector_index_backend, backend));
-  }
+  ASSERT_OK(SET_FLAG(vector_index_backend, "yb_hnsw_hnswlib"));
 }
 
 }  // namespace yb::pgwrapper

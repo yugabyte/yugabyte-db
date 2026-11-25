@@ -841,7 +841,7 @@ Status TabletVectorIndexes::Backfill(
 
   // Convert the byte budget into a vector count using the index implementation's own per-vector
   // memory layout. The same number of vectors with different numbers of dimensions can consume
-  // very different amounts of memory, so the wrapper (usearch/hnswlib) computes the equivalent
+  // very different amounts of memory, so the wrapper (hnswlib) computes the equivalent
   // vector count from its internal per-node accounting.
   const size_t bytes_limit = FLAGS_vector_index_backfill_single_chunk_size_bytes;
   const size_t limit = bytes_limit ? vector_index->EstimateNumVectorsForBytes(bytes_limit) : 0;

@@ -650,14 +650,13 @@ TAG_FLAG(emergency_repair_mode, unsafe);
 DEPRECATE_FLAG(bool, vector_index_use_hnswlib, "02_2026");
 DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 
-static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
 static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
 DEFINE_RUNTIME_string(vector_index_backend, kYbHnswHnswlib,
-    "Which vector index backend to use. Options are \"yb_hnsw_usearch\" and \"yb_hnsw_hnswlib\".");
+    "Which vector index backend to use. The only option is \"yb_hnsw_hnswlib\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kYbHnswUsearch, kYbHnswHnswlib));
+    FLAG_IN_SET_VALIDATOR(kYbHnswHnswlib));
 
 TAG_FLAG(vector_index_backend, hidden);
 TAG_FLAG(vector_index_backend, advanced);
@@ -5084,13 +5083,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       vector_index_options.set_store_payload(VERIFY_RESULT(VectorIndexStoresPayload(
           indexed_table_lock->schema().table_properties(), req.name(),
           indexed_table_lock->name())));
-      vector_index_options.mutable_hnsw()->set_backend(
-          FLAGS_vector_index_backend == kYbHnswUsearch
-              ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
-      // Tenants are only for the hnswlib backend. A tenant leaves at least the last component of
-      // the primary key, otherwise every row would be its own tenant.
-      if (vector_index_options.store_payload() &&
-          vector_index_options.hnsw().backend() == HnswBackend::YB_HNSW_HNSWLIB) {
+      vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
+      // A tenant leaves at least the last component of the primary key, otherwise every row would
+      // be its own tenant.
+      if (vector_index_options.store_payload()) {
         auto num_components = Schema::NumHashGroupAndRangeComponents(indexed_table_lock->schema());
         vector_index_options.set_tenant_hash_group_and_range_components(
             narrow_cast<uint32_t>(std::min<size_t>(

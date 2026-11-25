@@ -738,7 +738,7 @@ Status ValidateVectorIndexBackend(const TableId& table_id, const SysTablesEntryP
     return Status::OK();
   }
   const auto backend = table.index_info().vector_idx_options().hnsw().backend();
-  if (backend == HnswBackend::YB_HNSW_USEARCH || backend == HnswBackend::YB_HNSW_HNSWLIB) {
+  if (backend == HnswBackend::YB_HNSW_HNSWLIB) {
     return Status::OK();
   }
   return STATUS(

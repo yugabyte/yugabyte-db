@@ -30,7 +30,7 @@ namespace yb::vector_index {
 std::string VectorIndexPayloadFilePath(const std::string& index_path);
 
 // Payloads attached to vectors, used by vector index implementations that cannot store such
-// payloads in their own format (usearch, hnswlib). Payloads are indexed by the
+// payloads in their own format (hnswlib). Payloads are indexed by the
 // implementation-assigned vector slot, a dense index in [0, size). Every slot has a payload, so
 // a missing payload is a corruption. Serialized to a separate file alongside the vector index
 // chunk file in slot order.

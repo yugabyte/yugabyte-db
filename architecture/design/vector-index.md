@@ -5,14 +5,13 @@
 YugabyteDB implements approximate nearest neighbor vector indexing and search
 by integrating the SQL interface provided by the pgvector PostgreSQL extension
 with a new framework allowing to integrate existing vector indexing libraries
-at the storage layer. Initial support is planned for the HNSW (Hierarchical
-Navigable Small World) algorithm through
-[Usearch](https://github.com/unum-cloud/usearch) and
-[Hnswlib](https://github.com/nmslib/hnswlib) libraries, with more algorithms
-and libraries to be added later. We use these existing libraries to generate
-indexes in memory and save them to disk. In the read path, we combine query
-results from in-memory and immutable on-disk indexes and return the aggregated
-top K results. The approach of maintaining multiple immutable indexes on disk
+at the storage layer. The HNSW (Hierarchical Navigable Small World) algorithm
+is supported through the [Hnswlib](https://github.com/nmslib/hnswlib) library,
+with more algorithms and libraries to be added later. We use Hnswlib to build
+indexes in memory, and save them to disk in YugabyteDB's own block-based HNSW
+format (YbHnsw), which serves searches on flushed indexes. In the read path,
+we combine query results from in-memory and immutable on-disk indexes and
+return the aggregated top K results. The approach of maintaining multiple immutable indexes on disk
 is inspired by LSM (Log-Structured Merge tree) storage engines such as RocksDB,
 so we use the name **Vector LSM** for this new storage subsystem. In the rest
 of this document, we describe Vector LSM and the overall vector indexing and
@@ -594,7 +593,7 @@ a search-time parameter.
 
 To reduce or eliminate the retries caused by insufficient number of matching
 results, we should consider filtering the vectors inside the search algorithm
-itself. Both Usearch and Hnswlib support predicate pushdown into the search
+itself. Hnswlib and YbHnsw support predicate pushdown into the search
 implementation. The insertion hybrid time of a vector is known at vector
 insertion time, so it makes sense to store it in the index, perhaps as part of
 the label, and filter out vectors that are too new in the predicate callback.
@@ -673,7 +672,7 @@ it needs is not compacted away during the check.
 In summary, the vector indexing architecture in YugabyteDB adds practical and
 efficient vector search capabilities to the distributed SQL database. By
 combining the familiar pgvector SQL interface with proven vector indexing
-libraries like Usearch and Hnswlib, and adding an extensible framework allowing
+libraries like Hnswlib, and adding an extensible framework allowing
 to incorporate other libraries, this architecture supports high-performance
 vector data management on a large scale, fitting use cases like recommendation
 systems and document search.
@@ -697,7 +696,5 @@ Malkov, Yu. A., & Yashunin, D. A. (2018). *Efficient and robust approximate near
 Ongaro, D., & Ousterhout, J. (2014). *In Search of an Understandable Consensus Algorithm*. USENIX Annual Technical Conference. [https://raft.github.io/raft.pdf](https://raft.github.io/raft.pdf)
 
 *Universal compactions in RocksDB.* https://github.com/facebook/rocksdb/wiki/Universal-Compaction
-
-*Usearch vector indexing library.* https://github.com/unum-cloud/usearch
 
 *Hnswlib vector indexing library.* https://github.com/nmslib/hnswlib

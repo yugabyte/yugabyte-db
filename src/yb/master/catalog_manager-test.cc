@@ -949,16 +949,15 @@ TEST(TestCatalogManager, ValidateVectorIndexBackend) {
 
   auto& options = *table.mutable_index_info()->mutable_vector_idx_options();
   options.set_idx_type(PgVectorIndexType::HNSW);
-  for (auto backend : {HnswBackend::YB_HNSW_USEARCH, HnswBackend::YB_HNSW_HNSWLIB}) {
-    options.mutable_hnsw()->set_backend(backend);
-    ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
-  }
+  options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
+  ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
 
   // An unset backend reads as DEPRECATED_USEARCH: such indexes predate block-based backends.
   options.mutable_hnsw()->clear_backend();
   auto status = ValidateVectorIndexBackend("table_id", table);
   ASSERT_TRUE(status.IsNotSupported()) << status;
-  for (auto backend : {HnswBackend::DEPRECATED_USEARCH, HnswBackend::DEPRECATED_HNSWLIB}) {
+  for (auto backend : {HnswBackend::DEPRECATED_USEARCH, HnswBackend::YB_HNSW_USEARCH,
+                       HnswBackend::DEPRECATED_HNSWLIB}) {
     options.mutable_hnsw()->set_backend(backend);
     status = ValidateVectorIndexBackend("table_id", table);
     ASSERT_TRUE(status.IsNotSupported()) << status;

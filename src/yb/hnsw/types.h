@@ -27,25 +27,14 @@ class HierarchicalNSW;
 
 }
 
-namespace unum::usearch {
-
-struct index_dense_config_t;
-template <typename, typename> class index_dense_gt;
-
-}
-
 namespace yb::hnsw {
 
 using VectorNo = uint32_t;
-using UsearchIndexDense = unum::usearch::index_dense_gt<vector_index::VectorId, uint32_t>;
 
 template <class DistanceResult>
 using HnswlibIndex = hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>;
 
 struct Config {
-  Config() = default;
-  explicit Config(const unum::usearch::index_dense_config_t& input);
-
   uint64_t connectivity_base = 0;
   uint64_t connectivity = 0;
 

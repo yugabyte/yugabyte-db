@@ -49,7 +49,6 @@
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(vector_index_store_payload);
-DECLARE_string(vector_index_backend);
 DECLARE_uint32(vector_index_tenant_hash_group_and_range_components);
 DECLARE_uint64(vector_index_initial_chunk_size);
 
@@ -676,10 +675,10 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterDroppedColumn) {
   ASSERT_EQ(rows, (std::vector<int32_t>{7}));
 }
 
-// CREATE INDEX on restore takes the backend, store_payload and tenant components from the restore
-// cluster's flags, but the restored chunk files were written with the source's. Restore has to
-// apply the source options.
-TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
+// CREATE INDEX on restore takes store_payload and tenant components from the restore cluster's
+// flags, but the restored chunk files were written with the source's. Restore has to apply the
+// source options.
+TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterPayloadFlagsChange) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Restoring the snapshot superblock goes through yb-controller";
   }
@@ -721,7 +720,6 @@ TEST_P(PgVectorIndexBackupRestoreTest, IndexAfterBackendAndPayloadFlagsChange) {
   ASSERT_OK(tools::CreateBackup(*cluster_, tmp_dir, Format("ysql.$0", kSourceDb)));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_tenant_hash_group_and_range_components) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_usearch";
   ASSERT_OK(tools::RestoreBackup(*cluster_, tmp_dir, Format("ysql.$0", kRestoredDb)));
 
   auto check_options = [&source_options](const PgVectorIdxOptionsPB& options) {

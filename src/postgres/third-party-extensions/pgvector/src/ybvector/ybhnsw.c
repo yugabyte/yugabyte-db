@@ -196,7 +196,7 @@ ybhnswrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 
 
 /*
- * ybusearchhandler handler function: return
+ * ybhnswhandler handler function: return
  * IndexAmRoutine with access method parameters and callbacks.
  */
 PGDLLEXPORT PG_FUNCTION_INFO_V1(ybhnswhandler);

@@ -41,9 +41,9 @@
 #include "yb/ann_methods/index_memory_consumption.h"
 
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/distance_metric.h"
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/hnswlib_include.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_payload_map.h"
 
@@ -87,11 +87,11 @@ class HnswlibVectorFilter : public hnswlib::BaseFilterFunctor<VectorId> {
 };
 
 template <vector_index::CoordinateScalarType CoordinateType, ValidDistanceResultType DistanceResult,
-          unum::usearch::metric_kind_t kMetricKind>
+          DistanceKind kDistanceKind>
 class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
  public:
   explicit YbSpace(size_t dim)
-      : metric_(dim, kMetricKind, unum::usearch::scalar_kind<CoordinateType>()),
+      : metric_(dim, kDistanceKind, CoordinateTypeTraits<CoordinateType>::kKind),
         data_size_(dim * sizeof(CoordinateType)) {
   }
 
@@ -109,11 +109,10 @@ class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
 
  private:
   static DistanceResult DistFunc(const void* lhs, const void* rhs, const void* arg) {
-    return vector_index::MetricDistance(
-        *static_cast<const unum::usearch::metric_punned_t*>(arg), lhs, rhs);
+    return (*static_cast<const vector_index::DistanceMetric*>(arg))(lhs, rhs);
   }
 
-  unum::usearch::metric_punned_t metric_;
+  vector_index::DistanceMetric metric_;
   size_t data_size_;
 };
 
@@ -140,12 +139,11 @@ Result<std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
         return std::make_shared<hnswlib::InnerProductSpace>(options.dimensions);
       } else {
         return std::make_shared<YbSpace<
-            CoordinateType, DistanceResult, unum::usearch::metric_kind_t::ip_k>>(
-                options.dimensions);
+            CoordinateType, DistanceResult, DistanceKind::kInnerProduct>>(options.dimensions);
       }
     case DistanceKind::kCosine:
       return std::make_shared<YbSpace<
-          CoordinateType, DistanceResult, unum::usearch::metric_kind_t::cos_k>>(options.dimensions);
+          CoordinateType, DistanceResult, DistanceKind::kCosine>>(options.dimensions);
   }
 
   return STATUS_FORMAT(

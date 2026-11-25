@@ -641,8 +641,6 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
 
 include_directories(src)
 
-include_directories("src/inline-thirdparty/usearch")
-include_directories("src/inline-thirdparty/fp16")
 include_directories("src/inline-thirdparty/hnswlib")
 include_directories("src/inline-thirdparty/simsimd")
 
