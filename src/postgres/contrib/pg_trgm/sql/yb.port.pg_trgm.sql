@@ -144,6 +144,7 @@ select * from test2 where t = '%li%ne 5%';
 select * from test2 where t = 'line 6';
 select * from test2 where t = 'li_e 6';
 drop index test2_idx_gin;
+reset yb_test_ybgin_disable_cost_factor;
 
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 

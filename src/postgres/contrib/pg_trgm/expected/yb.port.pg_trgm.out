@@ -1580,6 +1580,7 @@ select * from test2 where t = 'li_e 6';
 (1 row)
 
 drop index test2_idx_gin;
+reset yb_test_ybgin_disable_cost_factor;
 create index test2_idx_gist on test2 using gist (t gist_trgm_ops);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
