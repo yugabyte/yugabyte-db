@@ -321,10 +321,6 @@ od_frontend_attach(od_client_t *client, char *context,
 		rc = od_backend_connect(server, context, route_params, client);
 		od_atomic_u32_dec(&router->servers_routing);
 
-		/* YB: Backend connected, start client read */
-		if (yb_restart_read)
-			od_io_read_start(&client->io);
-
 		if (rc == -1) {
 			/* In case of 'too many connections' error, retry attach attempt by
 			 * waiting for a idle server connection for pool_timeout ms
@@ -340,8 +336,17 @@ od_frontend_attach(od_client_t *client, char *context,
 						instance->config
 							.server_login_retry);
 				}
+				/*
+				 * YB: Restart only after the sleep. od_router_attach
+				 * stops client read on entry only if it is active.
+				 */
+				if (yb_restart_read)
+					od_io_read_start(&client->io);
 				continue;
 			}
+
+			if (yb_restart_read) /* YB */
+				od_io_read_start(&client->io);
 
 			/* YB: check auth failure status codes to update OID status */
 			if (yb_frontend_error_is_db_does_not_exist(client))
@@ -351,6 +356,9 @@ od_frontend_attach(od_client_t *client, char *context,
 
 			return OD_ESERVER_CONNECT;
 		}
+
+		if (yb_restart_read) /* YB */
+			od_io_read_start(&client->io);
 
 		/* YB: In case we create a new server but the logical client version of
 		 * transactional backend is greater than the client's version then disconnect
