@@ -222,7 +222,6 @@ public class UniverseCRUDHandler {
 
   @Data
   public static class UpdateOptionsState {
-    private Set<String> fullMoveReasons = new HashSet<>();
     private Set<String> resizeRestrictions = new HashSet<>();
     private Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions = new HashSet<>();
   }
@@ -344,7 +343,6 @@ public class UniverseCRUDHandler {
         result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
       }
     }
-    result.fullMoveReasons.addAll(nodeSettingsChanges);
     if (smartResizePossible
         && nonNodeChanges.isEmpty()
         && samePlacement
@@ -390,19 +388,18 @@ public class UniverseCRUDHandler {
   }
 
   /**
-   * Verify that the set of provider ids remains the same (in case of multicloud).
-   * The changes in provider settings should be checked separately
-   * since different properties can lead to different updates ie:
-   * tags update -> simple update operation
-   * imagebundle update -> full move
+   * Verify that the set of provider ids remains the same (in case of multicloud). The changes in
+   * provider settings should be checked separately since different properties can lead to different
+   * updates ie: tags update -> simple update operation imagebundle update -> full move
    *
-   * @param cluster
-   * @param currentCluster
-   * @return
+   * @param cluster new version of cluster
+   * @param currentCluster current version of cluster
+   * @return true if providers ids are same
    */
-  private static boolean haveSameProviderIds(Cluster cluster, Cluster currentCluster) {
-    return Objects.equals(currentCluster.userIntent.getAllProviderUUIDs(),
-        cluster.userIntent.getAllProviderUUIDs());
+  @VisibleForTesting
+  static boolean haveSameProviderIds(@NotNull Cluster cluster, @NotNull Cluster currentCluster) {
+    return Objects.equals(
+        currentCluster.userIntent.getAllProviderUUIDs(), cluster.userIntent.getAllProviderUUIDs());
   }
 
   private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {

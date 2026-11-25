@@ -1940,6 +1940,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 EDIT,
                 taskParams.getPrimaryCluster(),
                 Universe.getOrBadRequest(universe.getUniverseUUID()))
+            .getUpdateOptions()
             .contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE));
 
     TaskInfo failed = submitTask(taskParams);

@@ -4442,33 +4442,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateOptionsFullMoveReasons() {
-    setupAndApplyActions(
-        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
-        null,
-        Collections.emptyMap(),
-        Collections.emptyList(),
-        Arrays.asList(
-            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 0), // -> 7001
-            new Pair(UserAction.MODIFY_IMAGE_BUNDLE_UUID, 0) // -> new ib
-            ),
-        (idx, params) -> {
-          UniverseCRUDHandler.UpdateOptionsState state = getUpdateOptionsState(params);
-          switch (idx) {
-            case 0:
-              assertEquals(Set.of("Communication ports are changed"), state.getFullMoveReasons());
-              break;
-            case 1:
-              assertEquals(
-                  Set.of("Communication ports are changed", "The image bundle is changed"),
-                  state.getFullMoveReasons());
-              break;
-          }
-        });
-  }
-
-  @Test
-  public void testUpdateOptionsNoFullMoveReasonsForDeviceChange() {
+  public void testUpdateOptionsNoRestrictionsForDeviceChange() {
     setupAndApplyActions(
         "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
         null,
@@ -4479,7 +4453,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         (idx, params) -> {
           UniverseCRUDHandler.UpdateOptionsState state = getUpdateOptionsState(params);
           assertEquals(Set.of(SMART_RESIZE_NON_RESTART, FULL_MOVE), state.getUpdateOptions());
-          assertEquals(Collections.emptySet(), state.getFullMoveReasons());
           assertEquals(Collections.emptySet(), state.getResizeRestrictions());
         });
   }

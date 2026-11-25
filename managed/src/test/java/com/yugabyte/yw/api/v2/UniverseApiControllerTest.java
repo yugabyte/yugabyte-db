@@ -765,7 +765,6 @@ public class UniverseApiControllerTest extends UniverseTestBase {
         new HashSet<>(checkResizeOptionsResp.getOptions()),
         is(Set.of(ResizeUpdateOption.SMART_RESIZE_NON_RESTART, ResizeUpdateOption.FULL_MOVE)));
     assertThat(checkResizeOptionsResp.getResizeRestrictions(), is(empty()));
-    assertThat(checkResizeOptionsResp.getFullMoveReasons(), is(empty()));
 
     nodeSpec.instanceType(newInstanceType);
     checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);

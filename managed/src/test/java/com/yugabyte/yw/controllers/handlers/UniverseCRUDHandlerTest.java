@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -28,6 +29,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UpdateOptions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -775,5 +778,146 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
     taskParams.clusterOperation = ClusterOperationType.EDIT;
     taskParams.clusters.add(cluster);
     return taskParams;
+  }
+
+  /*--- Tests for haveSameProviderIds ---*/
+
+  private static final String PROVIDER_SPECS_CHANGED =
+      "The list of provider specifications is changed";
+
+  private Cluster legacyProviderCluster(UUID providerUUID) {
+    UserIntent userIntent = testIntent();
+    userIntent.provider = providerUUID.toString();
+    userIntent.providerType = Common.CloudType.aws;
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  private Cluster specProviderCluster(UUID... providerUUIDs) {
+    UserIntent userIntent = testIntent();
+    for (UUID providerUUID : providerUUIDs) {
+      TestUtils.specificationProviderInitializer(userIntent, providerUUID)
+          .setProviderType(Common.CloudType.aws)
+          .setAccessCode("demo-access");
+    }
+    return new Cluster(ClusterType.PRIMARY, userIntent);
+  }
+
+  @Test
+  public void haveSameProviderIds_legacySameProvider() {
+    UUID providerUUID = UUID.randomUUID();
+    assertTrue(
+        UniverseCRUDHandler.haveSameProviderIds(
+            legacyProviderCluster(providerUUID), legacyProviderCluster(providerUUID)));
+  }
+
+  @Test
+  public void haveSameProviderIds_legacyDifferentProvider() {
+    assertFalse(
+        UniverseCRUDHandler.haveSameProviderIds(
+            legacyProviderCluster(UUID.randomUUID()), legacyProviderCluster(UUID.randomUUID())));
+  }
+
+  @Test
+  public void haveSameProviderIds_noProviders() {
+    assertTrue(
+        UniverseCRUDHandler.haveSameProviderIds(
+            new Cluster(ClusterType.PRIMARY, testIntent()),
+            new Cluster(ClusterType.PRIMARY, testIntent())));
+  }
+
+  @Test
+  public void haveSameProviderIds_specsSameProvidersDifferentOrder() {
+    UUID p1 = UUID.randomUUID();
+    UUID p2 = UUID.randomUUID();
+    assertTrue(
+        UniverseCRUDHandler.haveSameProviderIds(
+            specProviderCluster(p1, p2), specProviderCluster(p2, p1)));
+  }
+
+  @Test
+  public void haveSameProviderIds_specsProviderAdded() {
+    UUID p1 = UUID.randomUUID();
+    assertFalse(
+        UniverseCRUDHandler.haveSameProviderIds(
+            specProviderCluster(p1, UUID.randomUUID()), specProviderCluster(p1)));
+  }
+
+  @Test
+  public void haveSameProviderIds_specsProviderRemoved() {
+    UUID p1 = UUID.randomUUID();
+    assertFalse(
+        UniverseCRUDHandler.haveSameProviderIds(
+            specProviderCluster(p1), specProviderCluster(p1, UUID.randomUUID())));
+  }
+
+  @Test
+  public void haveSameProviderIds_specsProviderReplaced() {
+    UUID p1 = UUID.randomUUID();
+    assertFalse(
+        UniverseCRUDHandler.haveSameProviderIds(
+            specProviderCluster(p1, UUID.randomUUID()),
+            specProviderCluster(p1, UUID.randomUUID())));
+  }
+
+  // The full spec comparison used to treat any difference as a provider change. Only the set of
+  // provider IDs matters now; the other fields are checked separately.
+  @Test
+  public void haveSameProviderIds_ignoresOtherSpecFields() {
+    UUID p1 = UUID.randomUUID();
+    UUID p2 = UUID.randomUUID();
+    Cluster current = specProviderCluster(p1, p2);
+    Cluster cluster = specProviderCluster(p1, p2);
+    ProviderSpecification spec = cluster.userIntent.getProviderSpecification(p1);
+    spec.setAccessKeyCode("other-access");
+    spec.setInstanceTags(new HashMap<>(Map.of("key", "value")));
+    spec.setImageBundleUUID(UUID.randomUUID());
+    spec.setAwsInstanceProfile("arn:aws:iam::123456789012:instance-profile/other");
+    spec.setHelmOverrides("foo: bar");
+    cluster.userIntent.getProviderSpecification(p2).setProviderType(Common.CloudType.gcp);
+
+    assertTrue(UniverseCRUDHandler.haveSameProviderIds(cluster, current));
+  }
+
+  @Test
+  public void haveSameProviderIds_legacyAndSpecWithSameProvider() {
+    UUID providerUUID = UUID.randomUUID();
+    assertTrue(
+        UniverseCRUDHandler.haveSameProviderIds(
+            specProviderCluster(providerUUID), legacyProviderCluster(providerUUID)));
+  }
+
+  // Changing a provider spec field that no other check covers (here the access key) must not be
+  // reported as a provider change or force an UPDATE.
+  @Test
+  public void getUpdateOptions_specFieldChangeIsNotProviderChange() {
+    Universe universe = ModelFactory.createFromConfig(provider, "spec-u", "r1-az1-3-3");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UserIntent intent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+              TestUtils.specificationProviderInitializer(intent, provider.getUuid())
+                  .setProviderType(Common.CloudType.aws)
+                  .setInstanceType(ApiUtils.UTIL_INST_TYPE)
+                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 100))
+                  .setAccessCode("demo-access");
+            });
+    assertTrue(universe.getUniverseDetails().getPrimaryCluster().userIntent.isMulticloudSupport());
+
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    Cluster cluster = taskParams.getPrimaryCluster();
+    cluster.userIntent.getProviderSpecification(provider.getUuid()).setAccessKeyCode("other");
+
+    UniverseCRUDHandler.UpdateOptionsState state =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, ClusterOperationType.EDIT, cluster, universe);
+
+    assertFalse(
+        state.getResizeRestrictions().toString(),
+        state.getResizeRestrictions().contains(PROVIDER_SPECS_CHANGED));
+    assertFalse(
+        state.getUpdateOptions().toString(),
+        state.getUpdateOptions().contains(UpdateOptions.UPDATE));
   }
 }

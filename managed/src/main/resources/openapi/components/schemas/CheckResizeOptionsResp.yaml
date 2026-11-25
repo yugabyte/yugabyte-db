@@ -12,7 +12,10 @@ properties:
     items:
       $ref: "./ResizeUpdateOption.yaml"
   resize_restrictions:
-    description: Reasons why an in-place resize (SMART_RESIZE or SMART_RESIZE_NON_RESTART) is not available for the proposed node settings. Empty if no restriction was found.
+    description: |
+      Reasons why an in-place resize (SMART_RESIZE or SMART_RESIZE_NON_RESTART) is not available for the proposed node settings.
+      If there are no changes related to resize, returns a single element: ["Nothing changed"] 
+      Empty if there are resize changes and no restriction was found.
     type: array
     items:
       type: string
