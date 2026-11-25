@@ -12843,7 +12843,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
 
   for (int i = 0; i < 8; i++) {
     const int extra_count =
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
       ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
@@ -12895,7 +12895,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   ASSERT_FALSE(change_resp.has_error());
   ASSERT_EQ(
       change_resp.cdc_sdk_proto_records_size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11);
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12956,7 +12956,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   for (int i = 0; i < 8; i++) {
     const int extra_count =
-        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
+        FLAGS_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0;
     if (FLAGS_ysql_enable_packed_row) {
       ASSERT_EQ(record_count[i], expected_count_with_packed_row[i] + extra_count);
     } else {
