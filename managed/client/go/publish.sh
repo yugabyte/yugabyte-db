@@ -78,6 +78,15 @@ V2_STALE="$(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/op
 # sbt rebuilds the v2 spec only when its inputs change content, not mtime. cleanV2ServerStubs
 # forces the rebuild.
 [[ -z "$V2_STALE" ]] || STALE+=" $V2_STALE. Run sbt \"cleanV2ServerStubs; swaggerGen\"."
+# The generator's own templates and config change the client without changing the spec. One
+# newer than the generated client.go means the client predates it. swaggerGen regenerates both.
+for v in v1 v2; do
+  cfg=openapi-go-config.json
+  [[ "$v" == v1 ]] || cfg=openapi-go-config-v2.json
+  newer="$(cd "$GEN_DIR" && git ls-files -z -- templates "$cfg" | existing \
+    | xargs -0 -r sh -c 'find "$@" -newer "$0" -print -quit' "$GEN_DIR/$v/client.go")"
+  [[ -z "$newer" ]] || STALE+=" client/go/$newer is newer than the $v client. Run sbt swaggerGen."
+done
 STALE="${STALE# }"
 if [[ -n "$STALE" ]]; then
   $DRY_RUN || die "The generated client is stale: $STALE"

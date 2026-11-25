@@ -24,8 +24,8 @@ yba universe security eit cert --name <universe-name> --rotate-self-signed-clien
       --rotate-self-signed-client-cert       [Optional] Rotates client certificate. Cannot rotate client certificate when root CA or client root CA are being rotated (default false)
       --rotate-self-signed-server-cert       [Optional] Rotates server certificate. Cannot rotate client certificate when root CA or client root CA are being rotated (default false)
       --root-and-client-root-ca-same         [Optional] Use same certificates for node to node and client to node communication. Set true for rotating server and client certificates and when root CA and client root CA are same. (default true)
-      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 180000)
-      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 180000)
+      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). The CLI always sends this value, so the YBA runtime config yb.upgrade.sleep_after_master_restart_ms does not apply. (default 180000)
+      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). The CLI always sends this value, so the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms does not apply. (default 180000)
   -h, --help                                 help for cert
 ```
 

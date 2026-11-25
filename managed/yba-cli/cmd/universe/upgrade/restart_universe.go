@@ -119,9 +119,13 @@ func init() {
 		"[Optional] Skip validations before running the CLI command.")
 
 	RestartCmd.Flags().Int32("delay-between-master-servers",
-		180000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
 	RestartCmd.Flags().Int32("delay-between-tservers",
-		180000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
 
 	RestartCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+
