@@ -47,9 +47,12 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
       log.info("No universe key for universe {}, skipping KMS check", universeUUID);
       return;
     }
-    // YBA pushes only the active key to masters. With no active key, check the newest one (rows
-    // are newest first), so a KMS outage still fails the task.
-    KmsHistory key = keys.stream().filter(KmsHistory::isActive).findFirst().orElse(keys.get(0));
+    // YBA pushes only the active key to restarted masters. With none, it pushes nothing.
+    KmsHistory key = keys.stream().filter(KmsHistory::isActive).findFirst().orElse(null);
+    if (key == null) {
+      log.info("No active universe key for universe {}, skipping KMS check", universeUUID);
+      return;
+    }
     KmsConfig kmsConfig = KmsConfig.get(key.getConfigUuid());
     if (kmsConfig == null) {
       throw new RuntimeException(

@@ -13,9 +13,9 @@ package com.yugabyte.yw.common.kms.util;
 import com.google.inject.Inject;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Singleton;
 
 @Singleton
@@ -36,25 +36,18 @@ public class EncryptionAtRestUniverseKeyCache {
     public byte[] getKeyVal() {
       return Base64.getDecoder().decode(this.keyVal);
     }
-
-    public void updateEntry(byte[] keyRef, byte[] keyVal) {
-      this.keyRef = Base64.getEncoder().encodeToString(keyRef);
-      this.keyVal = Base64.getEncoder().encodeToString(keyVal);
-    }
   }
 
   private Map<UUID, EncryptionAtRestUniverseKeyCacheEntry> cache;
 
   @Inject
   public EncryptionAtRestUniverseKeyCache() {
-    this.cache = new HashMap<UUID, EncryptionAtRestUniverseKeyCacheEntry>();
+    // Tasks on different universes read and write it at the same time.
+    this.cache = new ConcurrentHashMap<>();
   }
 
   public void setCacheEntry(UUID universeUUID, byte[] keyRef, byte[] keyVal) {
-    EncryptionAtRestUniverseKeyCacheEntry cacheEntry = this.cache.get(universeUUID);
-    if (cacheEntry != null) cacheEntry.updateEntry(keyRef, keyVal);
-    else cacheEntry = new EncryptionAtRestUniverseKeyCacheEntry(keyRef, keyVal);
-    this.cache.put(universeUUID, cacheEntry);
+    this.cache.put(universeUUID, new EncryptionAtRestUniverseKeyCacheEntry(keyRef, keyVal));
   }
 
   public byte[] getCacheEntry(UUID universeUUID, byte[] keyRef) {

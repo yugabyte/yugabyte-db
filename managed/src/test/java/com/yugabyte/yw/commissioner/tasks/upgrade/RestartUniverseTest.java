@@ -5,10 +5,14 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -158,12 +162,17 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE);
   }
 
-  // The check must still ask KMS when the universe has keys but none is marked active.
+  // With no active key YBA pushes no key, so the check does not ask KMS.
   @Test
-  public void testRestartFailsKmsCheckWhenNoKeyIsActive() {
-    setUpUniverseKeyInKms(
-        defaultUniverse.getUniverseUUID(), false /* kmsWorks */, false /* activateKey */);
-    verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, false);
+  public void testRestartSkipsKmsCallWhenNoKeyIsActive() {
+    EncryptionAtRestService<?> keyService =
+        setUpUniverseKeyInKms(
+            defaultUniverse.getUniverseUUID(), false /* kmsWorks */, false /* activateKey */);
+    RestartTaskParams taskParams = new RestartTaskParams();
+    taskParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    verify(keyService, never()).retrieveKeyFromKms(any(), any(), any(), any());
   }
 
   // A retry finishes a started restart, so with the key in the YBA cache it skips the check.
@@ -210,14 +219,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   }
 
   private void verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption option) {
-    verifyRestartFailsBeforeStop(option, true);
-  }
-
-  private void verifyRestartFailsBeforeStop(
-      UpgradeTaskParams.UpgradeOption option, boolean setUpKey) {
-    if (setUpKey) {
-      setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
-    }
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
     RestartTaskParams taskParams = new RestartTaskParams();
     taskParams.upgradeOption = option;
     TaskInfo taskInfo = submitTask(taskParams);
