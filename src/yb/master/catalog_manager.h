@@ -3133,10 +3133,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
 
+  // Returns true if stream_ids is non-empty and the streams are logical replication streams (have
+  // a replication slot name). Returns NotFound if none of the streams is in cdc_stream_map_.
+  Result<bool> AreCdcLogicalReplicationStreams(
+      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
-      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
+      const std::unordered_set<xrepl::StreamId>& stream_ids) EXCLUDES(mutex_);
 
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)
