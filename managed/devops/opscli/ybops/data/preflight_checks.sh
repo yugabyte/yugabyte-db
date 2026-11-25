@@ -163,12 +163,13 @@ preflight_all_checks() {
 
   # Check whether files in home directory are cleaned up if exists.
   # Finds all files including the .yugabytedb folder and ignores other dot files, node-agent files.
+  # An empty bin/ is clean: on SLES, useradd copies /etc/skel/bin into the new home.
   yb_home_dir_clean=true
   if [[ -e "$yb_home_dir" ]]; then
     if [[ "$check_type" == "provision" ]]; then
-      files=$(sudo find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+      files=$(sudo find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" ! -empty -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
     else
-      files=$(find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+      files=$(find "$yb_home_dir" -maxdepth 1 -mindepth 1  -name "bin" ! -empty -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
     fi
     if [[ -n "$files" ]]; then
       yb_home_dir_clean=false
