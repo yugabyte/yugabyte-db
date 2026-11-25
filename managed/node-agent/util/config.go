@@ -82,7 +82,7 @@ func ConfigWithName(configPath string) (*Config, error) {
 	config.viperInstance.SetConfigType("yml")
 	config.viperInstance.AddConfigPath(configDir)
 	config.viperInstance.SetConfigName(configName)
-	err = config.viperInstance.ReadInConfig()
+	err = withFileLock(filename, syscall.LOCK_SH, config.viperInstance.ReadInConfig)
 	if err != nil {
 		err = fmt.Errorf("Error reading the config file - %s", err.Error())
 		return nil, err
@@ -155,7 +155,7 @@ func (config *Config) CompareAndUpdate(key string, expected, val any) (bool, err
 func (config *Config) Reload() error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	return config.withFileLock(syscall.LOCK_SH, func() error {
+	return withFileLock(config.viperInstance.ConfigFileUsed(), syscall.LOCK_SH, func() error {
 		instance, err := config.readFile()
 		if err == nil {
 			config.viperInstance = instance
@@ -181,7 +181,7 @@ func (config *Config) mutate(change func(*viper.Viper) bool) (bool, error) {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
 	changed := false
-	err := config.withFileLock(syscall.LOCK_EX, func() error {
+	err := withFileLock(config.viperInstance.ConfigFileUsed(), syscall.LOCK_EX, func() error {
 		instance, err := config.readFile()
 		if err != nil {
 			return err
@@ -208,10 +208,10 @@ func (config *Config) readFile() (*viper.Viper, error) {
 }
 
 // withFileLock runs fn holding a flock on a lock file next to the config file. WriteConfig
-// truncates before writing, so readers take it too to never see a partial file.
-func (config *Config) withFileLock(how int, fn func() error) error {
-	lockPath := config.viperInstance.ConfigFileUsed() + ".lock"
-	file, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0644)
+// truncates before writing, so every read of the file (the first load, Reload and mutate) takes it
+// too to never see a partial file.
+func withFileLock(configFile string, how int, fn func() error) error {
+	file, err := os.OpenFile(configFile+".lock", os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}

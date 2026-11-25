@@ -252,7 +252,7 @@ func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.Ping
 			CertExpirySecs:       loadedCertExpirySecs,
 			RootNodeExporterUnit: err == nil,
 			FipsEnabled:          fips140.Enabled(),
-			DuplicateServerUnit:  cachedDuplicateServerUnit(ctx),
+			DuplicateServerUnit:  duplicateServerUnitFound.Load(),
 		},
 	}, nil
 }

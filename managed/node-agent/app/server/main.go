@@ -113,6 +113,7 @@ loop:
 			return
 		}
 	}
+	monitorDuplicateServerUnits(Context())
 	addr := fmt.Sprintf("%s:%s", host, port)
 	serverConfig := &RPCServerConfig{
 		Address:           addr,

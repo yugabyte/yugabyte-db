@@ -106,6 +106,19 @@ public class NodeAgentPoller {
               KnownAlertLabels.NODE_NAME.labelName())
           .register(PrometheusRegistry.defaultRegistry);
 
+  private static final String NODE_AGENT_DUPLICATE_SERVER_UNIT_NAME =
+      "ybp_nodeagent_duplicate_server_unit";
+  private static final Gauge NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE =
+      Gauge.builder()
+          .name(NODE_AGENT_DUPLICATE_SERVER_UNIT_NAME)
+          .help("Does a system-level yb-node-agent unit run next to the user-level one")
+          .labelNames(
+              KnownAlertLabels.CUSTOMER_UUID.labelName(),
+              KnownAlertLabels.NODE_AGENT_UUID.labelName(),
+              KnownAlertLabels.NODE_ADDRESS.labelName(),
+              KnownAlertLabels.NODE_NAME.labelName())
+          .register(PrometheusRegistry.defaultRegistry);
+
   private static final String NODE_AGENT_CONNECTION_NAME = "ybp_nodeagent_connection";
   private static final Gauge NODE_AGENT_CONNECTION_GAUGE =
       Gauge.builder()
@@ -348,21 +361,23 @@ public class NodeAgentPoller {
               String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
               nodeAgent.getName())
           .set(response.getServerInfo().getRootNodeExporterUnit() ? 1 : 0);
+      NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE
+          .labelValues(
+              nodeAgent.getCustomerUuid().toString(),
+              nodeAgent.getUuid().toString(),
+              String.format("%s:%s", nodeAgent.getIp(), nodeAgent.getPort()),
+              nodeAgent.getName())
+          .set(response.getServerInfo().getDuplicateServerUnit() ? 1 : 0);
       boolean wasDead = !isNodeAgentAlive();
       lastFailedCount = 0;
       if (wasDead) {
         // Return to schedule on the live executor.
         return;
       }
-      // A second server on the node would undo the upgrade (PLAT-24106), so do not start one. It
-      // is checked before new certs are generated. An UPGRADED agent must still be finalized.
       if (response.getServerInfo().getDuplicateServerUnit()
           && (nodeAgent.getState() == State.UPGRADE
               || (nodeAgent.getState() == State.READY && maybeGetDeployType(nodeAgent) != null))) {
-        log.error(
-            "Cannot upgrade node agent {} because a system-level yb-node-agent unit also runs on"
-                + " the node. Disable and remove that unit to allow the upgrade.",
-            nodeAgent);
+        logUpgradeBlocked(nodeAgent);
         return;
       }
       switch (nodeAgent.getState()) {
@@ -532,6 +547,19 @@ public class NodeAgentPoller {
     NODE_AGENT_SERVER_CERT_EXPIRING_GAUGE.removeIf(matches);
     NODE_AGENT_CONNECTION_GAUGE.removeIf(matches);
     NODE_AGENT_ROOT_NODE_EXPORTER_GAUGE.removeIf(matches);
+    NODE_AGENT_DUPLICATE_SERVER_UNIT_GAUGE.removeIf(matches);
+  }
+
+  /**
+   * Logs why an upgrade does not start on a node where a second node agent server runs. It would
+   * undo the upgrade (PLAT-24106), so this is checked before new certs are generated. An UPGRADED
+   * agent is past that point and must still be finalized.
+   */
+  private static void logUpgradeBlocked(NodeAgent nodeAgent) {
+    log.error(
+        "Cannot upgrade node agent {} because a system-level yb-node-agent unit also runs on the"
+            + " node. Disable and remove that unit to allow the upgrade.",
+        nodeAgent);
   }
 
   @VisibleForTesting
@@ -730,9 +758,16 @@ public class NodeAgentPoller {
       return false;
     }
     log.info("Node agent {} needs an upgrade", nodeAgent);
+    PingResponse response;
     try {
-      nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
+      response = nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofSeconds(2));
     } catch (RuntimeException e) {
+      return false;
+    }
+    if (response.getServerInfo().getDuplicateServerUnit()
+        && nodeAgent.getState() != State.UPGRADED) {
+      logUpgradeBlocked(nodeAgent);
+      // Go on with the current version, as when the node agent is not ready.
       return false;
     }
     return upgradeNodeAgent(
