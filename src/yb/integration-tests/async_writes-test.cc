@@ -968,16 +968,15 @@ TEST_F(YSqlAsyncWriteTest, RowLocksReleasedBeforeQuorumCommit) {
   auto follower_peers = ASSERT_RESULT(DelayFollowers(kTableName, follower_delay));
 
   ASSERT_OK(conn_->Execute("BEGIN"));
-  ASSERT_RESULT(conn_->FetchAllAsString(
-      Format("SELECT * FROM $0 WHERE key = 2 FOR UPDATE", kTableName)));
+  ASSERT_OK(conn_->FetchFormat("SELECT * FROM $0 WHERE key = 2 FOR UPDATE", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET value = 'x' WHERE key = 2", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET value = 'y' WHERE key = 2", kTableName));
 
   // Another transaction still conflicts with the row, through the intents.
-  auto result = other_conn.FetchAllAsString(
-      Format("SELECT * FROM $0 WHERE key = 2 FOR UPDATE NOWAIT", kTableName));
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.status().ToString(), "could not obtain lock");
+  auto status = ResultToStatus(
+      other_conn.FetchFormat("SELECT * FROM $0 WHERE key = 2 FOR UPDATE NOWAIT", kTableName));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "could not obtain lock");
 
   ResumeFollowersAndWait(follower_peers, follower_delay);
   ASSERT_OK(conn_->CommitTransaction());
