@@ -2398,6 +2398,42 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlWithoutVersionIncrementDoesNot
   ASSERT_OK(alter_future.get());
 }
 
+// With ysql_enable_concurrent_ddl off, a DDL in a procedure waits for the database DDL lock, both
+// when the procedure is called outside a transaction block (non-atomic) and inside one (atomic).
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlInProcedureWaits) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE PROCEDURE add_column(col TEXT) LANGUAGE plpgsql AS $$ BEGIN "
+        "EXECUTE format('ALTER TABLE b ADD COLUMN %I INT', col); END $$"));
+  }
+
+  for (const bool atomic : {false, true}) {
+    SCOPED_TRACE(atomic ? "atomic" : "non-atomic");
+    // Holds the database lock until COMMIT.
+    auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(holder.Execute("BEGIN"));
+    ASSERT_OK(holder.ExecuteFormat("ALTER TABLE a ADD COLUMN v$0 INT", atomic));
+
+    auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    if (atomic) {
+      ASSERT_OK(ddl_conn.Execute("BEGIN"));
+    }
+    auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    auto call_future = ASSERT_RESULT(StartDdlWaitingForDatabaseLock(
+        ddl_conn, observer, Format("CALL add_column('c$0')", atomic)));
+    ASSERT_OK(holder.Execute("COMMIT"));
+    ASSERT_OK(call_future.get());
+    if (atomic) {
+      ASSERT_OK(ddl_conn.Execute("COMMIT"));
+    }
+  }
+}
+
 // With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
 // on t, which a CREATE INDEX holds across its phases, while a later CREATE INDEX phase waits for
 // the database lock after its wait for lockers. The deadlock detector must end the cycle well
