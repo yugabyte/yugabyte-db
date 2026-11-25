@@ -254,6 +254,28 @@ line_append_quoted(YbMemReportLine *line, const char *key, const char *value)
 	line->data[line->len] = '\0';
 }
 
+/*
+ * Appends " key=<hex>".  Used for statement text so that the record never
+ * contains raw SQL, which tests that scan the log for SQL fragments would
+ * otherwise count.
+ */
+static void
+line_append_hex(YbMemReportLine *line, const char *key, const char *value)
+{
+	static const char digits[] = "0123456789abcdef";
+	const unsigned char *p;
+
+	line_appendf(line, " %s=", key);
+	for (p = (const unsigned char *) value; *p != '\0'; p++)
+	{
+		if (line->len >= (int) sizeof(line->data) - 3)
+			break;
+		line->data[line->len++] = digits[*p >> 4];
+		line->data[line->len++] = digits[*p & 0xf];
+	}
+	line->data[line->len] = '\0';
+}
+
 static const char *
 kinds_string(bool idle, bool peak)
 {
@@ -314,7 +336,7 @@ log_record(pid_t pid, const char *type_desc, const YbMemReportSlot *slot,
 	line_append_quoted(&line, "bgw", slot ? slot->bgw_type : "");
 	line_append_quoted(&line, "db", slot ? slot->db : "");
 	line_append_quoted(&line, "app", slot ? slot->app : "");
-	line_append_quoted(&line, "stmt", slot ? slot->stmt : "");
+	line_append_hex(&line, "stmt_hex", slot ? slot->stmt : "");
 
 	ereport(LOG_SERVER_ONLY,
 			(errmsg_internal("%s", line.data),

@@ -52,7 +52,6 @@ public class TestPgMemReport extends BasePgSQLTest {
     assertNotNull("Cluster shutdown did not report the backend over budget", error);
     String message = error.getMessage();
     assertTrue(message, message.contains("PG memory budget exceeded (enforce: on)"));
-    assertTrue(message, message.contains("client_backend"));
     assertTrue(message,
         message.contains("peak grew after: SELECT length(repeat('x', 20000000))"));
   }

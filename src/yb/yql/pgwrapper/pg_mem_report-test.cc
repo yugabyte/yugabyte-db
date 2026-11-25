@@ -38,6 +38,13 @@ TEST(PgMemReportParseTest, Record) {
   ASSERT_EQ(fields["stmt"], "SELECT 'a \"b\" c'\nFROM t");
 }
 
+TEST(PgMemReportParseTest, HexStatement) {
+  // "SELECT 1" hex-encoded.
+  auto fields = ASSERT_RESULT(ParsePgMemLine("YB_PG_MEM_RECORD pid=1 stmt_hex=53454c4543542031"));
+  ASSERT_EQ(fields["stmt"], "SELECT 1");
+  ASSERT_NOK(ParsePgMemLine("YB_PG_MEM_RECORD pid=1 stmt_hex=5345x"));
+}
+
 TEST(PgMemReportParseTest, Errors) {
   ASSERT_NOK(ParsePgMemLine("no marker"));
   ASSERT_NOK(ParsePgMemLine("YB_PG_MEM_RECORD pid"));

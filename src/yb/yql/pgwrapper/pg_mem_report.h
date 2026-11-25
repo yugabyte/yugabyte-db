@@ -118,7 +118,9 @@ class PgMemReportCollector {
 };
 
 // Parses the key=value pairs of a YB_PG_MEM_START, _RECORD or _SNAPSHOT line; anything before the
-// marker (log prefixes) is ignored. Quoted values may contain \" \\ and \n escapes.
+// marker (log prefixes) is ignored. Quoted values may contain \" \\ and \n escapes. The statement
+// is logged hex-encoded as stmt_hex, so that the log never contains raw SQL; it is also returned
+// decoded as stmt.
 Result<std::map<std::string, std::string>> ParsePgMemLine(std::string_view line);
 
 // Reads fd until EOF on a detached thread, copies each line to this process's stderr and hands it

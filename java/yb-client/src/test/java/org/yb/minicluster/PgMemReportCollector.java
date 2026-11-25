@@ -166,7 +166,7 @@ public class PgMemReportCollector implements LogErrorListener {
 
   /**
    * Parses the key=value pairs after a YB_PG_MEM_* marker. Quoted values may contain \" \\ and \n
-   * escapes.
+   * escapes. The statement is logged hex-encoded as stmt_hex and also returned decoded as stmt.
    */
   static Map<String, String> parse(String line) {
     int start = -1;
@@ -223,8 +223,27 @@ public class PgMemReportCollector implements LogErrorListener {
         value.append(line, i, end);
         i = end;
       }
+      if (key.equals("stmt_hex")) {
+        result.put("stmt", decodeHex(value.toString()));
+      }
       result.put(key, value.toString());
     }
     return result;
+  }
+
+  private static String decodeHex(String hex) {
+    if (hex.length() % 2 != 0) {
+      throw new IllegalArgumentException("Odd-length hex value: " + hex);
+    }
+    byte[] bytes = new byte[hex.length() / 2];
+    for (int i = 0; i < bytes.length; i++) {
+      int hi = Character.digit(hex.charAt(2 * i), 16);
+      int lo = Character.digit(hex.charAt(2 * i + 1), 16);
+      if (hi < 0 || lo < 0) {
+        throw new IllegalArgumentException("Bad hex value: " + hex);
+      }
+      bytes[i] = (byte) (hi << 4 | lo);
+    }
+    return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
   }
 }

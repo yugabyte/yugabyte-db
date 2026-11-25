@@ -125,6 +125,29 @@ std::string FormatViolation(const std::map<std::string, std::string>& r) {
   return result;
 }
 
+Result<std::string> DecodeHex(std::string_view hex) {
+  if (hex.size() % 2 != 0) {
+    return STATUS_FORMAT(InvalidArgument, "Odd-length hex value: $0", hex);
+  }
+  auto nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+  };
+  std::string result;
+  result.reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    int hi = nibble(hex[i]);
+    int lo = nibble(hex[i + 1]);
+    if (hi < 0 || lo < 0) {
+      return STATUS_FORMAT(InvalidArgument, "Bad hex value: $0", hex);
+    }
+    result += static_cast<char>(hi << 4 | lo);
+  }
+  return result;
+}
+
 void WriteFully(int fd, const char* data, size_t size) {
   while (size > 0) {
     auto written = write(fd, data, size);
@@ -353,6 +376,9 @@ Result<std::map<std::string, std::string>> ParsePgMemLine(std::string_view line)
       }
       value = std::string(line.substr(i, end - i));
       i = end;
+    }
+    if (key == "stmt_hex") {
+      result["stmt"] = VERIFY_RESULT(DecodeHex(value));
     }
     result[std::move(key)] = std::move(value);
   }
