@@ -881,8 +881,10 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     // Published at registration, as a memtable publishes them on write, so the in-memory frontiers
     // cover the inserts with running tasks, e.g. for packing GC and IntentsDbFlushFilter.
     storage::UpdateFrontiers(registered_frontiers, *frontiers);
-    // Empty inserts only update frontiers (no tasks). Non-empty batches apply them on task
-    // success so a failed insert does not publish frontiers for unwritten entries.
+    // An insert without entries has no tasks and applies them here, before Insert adds its
+    // deletions; the task Insert holds for them keeps the chunk from being saved before that.
+    // Non-empty batches apply them on task success so a failed insert does not publish frontiers
+    // for unwritten entries.
     if (new_tasks == 0) {
       storage::UpdateFrontiers(applied_frontiers, *frontiers);
     }
@@ -1677,12 +1679,13 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   release_tasks.Cancel();
 
   if (!context.deletions.empty()) {
+    TEST_SYNC_POINT("VectorLSM::Insert:BeforeInsertDeletions");
     chunk->index->InsertDeletions(context.deletions);
     ReleaseChunkHold(*chunk);
   }
 
   if (!num_tasks) {
-    // Empty insert could be used to update frontiers.
+    // An insert without entries only updates frontiers, or adds deletions.
     return Status::OK();
   }
 

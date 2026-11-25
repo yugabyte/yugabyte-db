@@ -1156,11 +1156,62 @@ TEST_F(VectorLSMHnswlibTest, DeletionsMemTracking) {
       kNumDeletions * sizeof(vector_index::VectorLSMDeletion));
   // A chunk with only deletions is flushed too.
   ASSERT_EQ(lsm.GetFlushAbility(), storage::FlushAbility::kHasNewData);
+  ASSERT_FALSE(ASSERT_RESULT(lsm.AdvanceFlushedFrontier(frontiers)));
 
   ASSERT_OK(lsm.Flush(/* wait = */ true));
   ASSERT_OK(LoggedWaitFor(
       [&deletions_mem_tracker] { return deletions_mem_tracker->consumption() == 0; },
       5s, "Saved deletions released"));
+}
+
+// A chunk is saved only after the deletions of the inserts registered on it are in its index.
+TEST_F(VectorLSMHnswlibTest, DeletionsBeforeSave) {
+  constexpr size_t kDimensions = 4;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  TestFrontiers frontiers(RandomEntries(kDimensions, 1, store_vector_payload()));
+  const auto deletions = RandomDeletions(1);
+
+  CountDownLatch insert_paused(1);
+  CountDownLatch resume_insert(1);
+  std::atomic<bool> save_started{false};
+  // The deletion lookup when the save started.
+  Result<HybridTime> found_at_save = HybridTime::kInvalid;
+  auto* sync = SyncPoint::GetInstance();
+  sync->SetCallBack("VectorLSM::Insert:BeforeInsertDeletions", [&](void*) {
+    insert_paused.CountDown();
+    resume_insert.Wait();
+  });
+  sync->SetCallBack("VectorLSM::DoSaveChunk:Status", [&](void*) {
+    found_at_save = lsm.DeletionsLookup().Find(deletions[0].vector_id);
+    save_started = true;
+  });
+  sync->EnableProcessing();
+  auto cleanup = ScopeExit([sync] {
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([&lsm, &frontiers, &deletions] {
+    ASSERT_OK(lsm.Insert({}, { .frontiers = &frontiers, .deletions = deletions }));
+  });
+  // Lets the insert finish before the join when an assertion below fails.
+  auto resume_on_failure = ScopeExit([&resume_insert] { resume_insert.CountDown(); });
+  ASSERT_TRUE(insert_paused.WaitFor(10s * kTimeMultiplier));
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  // Gives a save that does not wait for the insert the time to start.
+  SleepFor(200ms * kTimeMultiplier);
+  ASSERT_FALSE(save_started);
+
+  resume_insert.CountDown();
+  threads.JoinAll();
+  ASSERT_OK(lsm.WaitForFlush());
+  ASSERT_TRUE(save_started);
+  ASSERT_EQ(ASSERT_RESULT(std::move(found_at_save)), deletions[0].hybrid_time);
 }
 
 // Reporting a failed chunk save must not clear it: the chunk stays in the updates queue, so the
