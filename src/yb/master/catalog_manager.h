@@ -3463,9 +3463,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
       const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
 
-  // Returns true if stream_ids is non-empty and the streams are logical replication streams, i.e.
-  // they have a slot entry in cdc_state. Returns NotFound if none of the streams is in
-  // cdc_stream_map_.
+  // Returns true if stream_ids is non-empty and the streams are logical replication streams (see
+  // IsCdcLogicalReplicationStream). Returns NotFound if none of the streams is in cdc_stream_map_.
   Result<bool> AreCdcLogicalReplicationStreams(
       const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
 
