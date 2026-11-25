@@ -3009,7 +3009,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	YBAddDdlTxnStateExtended(mode, true);
+	YBAddDdlTxnStateExtended(mode, true /* serialize_ddl_in_database */ );
 }
 
 /*
