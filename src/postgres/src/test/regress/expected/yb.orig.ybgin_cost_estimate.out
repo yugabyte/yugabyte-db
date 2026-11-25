@@ -29,8 +29,9 @@ EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ to_tsquery('simple', '!aa'
                  QUERY PLAN                  
 ---------------------------------------------
  Seq Scan on vectors
+   Disabled: true
    Storage Filter: (v @@ '!''aa'''::tsquery)
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', '!aa');
                 QUERY PLAN                 
@@ -48,8 +49,9 @@ EXPLAIN (costs off)  SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on vectors
+   Disabled: true
    Storage Filter: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
                               QUERY PLAN                              
@@ -106,8 +108,9 @@ EXPLAIN (costs off)  SELECT * FROM arrays WHERE a <@ '{1}';
             QUERY PLAN             
 -----------------------------------
  Seq Scan on arrays
+   Disabled: true
    Filter: (a <@ '{1}'::integer[])
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM arrays WHERE a <@ '{1}';
                QUERY PLAN               
@@ -125,8 +128,9 @@ EXPLAIN (costs off)  SELECT * FROM arrays WHERE a @> '{}';
             QUERY PLAN            
 ----------------------------------
  Seq Scan on arrays
+   Disabled: true
    Filter: (a @> '{}'::integer[])
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM arrays WHERE a @> '{}';
                QUERY PLAN               
@@ -144,8 +148,9 @@ EXPLAIN (costs off)  SELECT * FROM arrays WHERE a is null;
           QUERY PLAN           
 -------------------------------
  Seq Scan on arrays
+   Disabled: true
    Storage Filter: (a IS NULL)
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM arrays WHERE a is null;
                QUERY PLAN               
@@ -183,8 +188,9 @@ EXPLAIN (costs off)  SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ > 2)';
                        QUERY PLAN                        
 ---------------------------------------------------------
  Seq Scan on jsonbs
+   Disabled: true
    Storage Filter: (j @? '$."aaa"[*]?(@ > 2)'::jsonpath)
-(2 rows)
+(3 rows)
 
 EXPLAIN (costs off) /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ > 2)';
                      QUERY PLAN                      

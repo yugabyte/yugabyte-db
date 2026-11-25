@@ -5531,7 +5531,7 @@
 },
 
 { name => 'yb_test_ybgin_disable_cost_factor', type => 'real', context => 'PGC_USERSET', group => 'QUERY_TUNING_COST',
-  short_desc => 'The multiplier to disable_cost to add when costing ybgin index scans that may not be supported.',
+  short_desc => 'The multiplier to disable_cost to add when costing ybgin index scans that may not be supported. Above 1, such a scan also counts as a disabled node.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_test_ybgin_disable_cost_factor',
   boot_val => '2.0',

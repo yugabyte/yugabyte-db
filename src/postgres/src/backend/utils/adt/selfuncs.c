@@ -298,6 +298,9 @@ static Selectivity yb_cmp_selectivity(PlannerInfo *root, Oid opfamily,
 									  Oid collation, int cmpstrategy,
 									  Node *var, Oid vartype, Const *bound);
 static int	yb_scansel_cmpstrategy(bool isgt, bool end_fraction, bool strict);
+static void yb_cost_unsupported_ybgin_scan(IndexPath *path,
+										   Cost *indexStartupCost,
+										   Cost *indexTotalCost);
 static Selectivity yb_bounded_cmp_selectivity(PlannerInfo *root,
 											  Oid opfamily,
 											  Oid collation,
@@ -9094,8 +9097,8 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 		 * TODO(#7850): for ybgin, queries using multiple scan keys aren't
 		 * supported yet.
 		 */
-		*indexStartupCost = *indexTotalCost =
-			yb_test_ybgin_disable_cost_factor * disable_cost;
+		yb_cost_unsupported_ybgin_scan(path, indexStartupCost,
+									   indexTotalCost);
 		*indexSelectivity = 0;
 		*indexCorrelation = 0.0;
 		*indexPages = 0;
@@ -9282,8 +9285,8 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 			 *
 			 * indexSelectivity and indexCorrelation are already set above.
 			 */
-			*indexStartupCost = *indexTotalCost =
-				yb_test_ybgin_disable_cost_factor * disable_cost;
+			yb_cost_unsupported_ybgin_scan(path, indexStartupCost,
+										   indexTotalCost);
 			*indexPages = 0;
 			return;
 		}
@@ -10248,4 +10251,24 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
 	}
 
 	return conditioned;
+}
+
+/*
+ * Cost a ybgin index scan that ybgin cannot execute yet (TODO(#7850)).
+ *
+ * The scan costs yb_test_ybgin_disable_cost_factor times disable_cost.  The
+ * planner compares disabled node counts before costs, so a factor above 1 also
+ * counts the scan as a disabled node.  The scan then loses to a path whose
+ * only penalty is one disabled node, such as a seq scan with enable_seqscan
+ * off, just as its cost loses to one disable_cost.  A factor of 1 or less
+ * leaves the count alone so that tests can force the scan.
+ */
+static void
+yb_cost_unsupported_ybgin_scan(IndexPath *path, Cost *indexStartupCost,
+							   Cost *indexTotalCost)
+{
+	*indexStartupCost = *indexTotalCost =
+		yb_test_ybgin_disable_cost_factor * disable_cost;
+	if (yb_test_ybgin_disable_cost_factor > 1.0)
+		path->path.disabled_nodes = 1;
 }
