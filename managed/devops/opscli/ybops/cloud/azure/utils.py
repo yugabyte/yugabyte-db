@@ -735,7 +735,7 @@ class AzureCloudAdmin():
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except (CloudError, HttpResponseError) as e:
             code = self._get_azure_error_code(e)
-            if code == 'ResourceNotFound':
+            if code in ['ResourceNotFound', 'NotFound']:
                 logging.info("[app] Resource ip name {} is not found".format(ip_name))
             else:
                 raise e

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from azure.core.exceptions import HttpResponseError
+
 from ybops.cloud.azure.cloud import AzureCloud
 from ybops.cloud.azure.utils import AzureCloudAdmin
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -147,3 +149,35 @@ class TestAzureCloudAdmin(TestCase):
         with self.assertRaises(YBOpsRuntimeError):
             cloud.expand_file_system(args, {"ssh_host": "10.0.0.1"})
         self.assertEqual(remote_shell.check_exec_command.call_count, 2)
+
+    @staticmethod
+    def _azure_error(code):
+        error = HttpResponseError(message="Resource not found")
+        error.error = SimpleNamespace(code=code)
+        return error
+
+    def _admin_without_resources(self, ip_error):
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+        admin.compute_client.disks.list_by_resource_group.return_value = []
+        admin.network_client = MagicMock()
+        admin.network_client.network_interfaces.get.side_effect = \
+            self._azure_error("ResourceNotFound")
+        admin.network_client.public_ip_addresses.get.side_effect = ip_error
+        return admin
+
+    def test_destroy_orphaned_resources_treats_missing_ip_as_gone(self):
+        # Azure answers NotFound instead of ResourceNotFound for a public IP it has just deleted.
+        for code in ["ResourceNotFound", "NotFound"]:
+            with self.subTest(code=code):
+                admin = self._admin_without_resources(self._azure_error(code))
+
+                admin.destroy_orphaned_resources("yb-universe-n1", "node-uuid")
+
+                admin.network_client.public_ip_addresses.begin_delete.assert_not_called()
+
+    def test_destroy_orphaned_resources_raises_other_ip_errors(self):
+        admin = self._admin_without_resources(self._azure_error("AuthorizationFailed"))
+
+        with self.assertRaises(HttpResponseError):
+            admin.destroy_orphaned_resources("yb-universe-n1", "node-uuid")
