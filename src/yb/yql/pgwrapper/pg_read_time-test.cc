@@ -51,6 +51,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_uint64(max_clock_skew_usec);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -2258,15 +2259,18 @@ TEST_P(PgCrossTxnSnapshotTest, ConflictsWithRestartRead) {
   auto exporter = ASSERT_RESULT(ConnectAtIsolation());
   ASSERT_OK(exporter.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(exporter.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 6) i"));
+  auto importer = ASSERT_RESULT(ConnectAtIsolation());
+  auto writer = ASSERT_RESULT(Connect());
+  // The write must land inside the exported read time's uncertainty window, which the default
+  // skew is too short to guarantee on slow (sanitizer) builds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 60000000ULL * kTimeMultiplier;
 
   ASSERT_OK(exporter.Execute("BEGIN"));
   const auto snapshot_id = ASSERT_RESULT(ExportSnapshot(exporter));
 
-  auto importer = ASSERT_RESULT(ConnectAtIsolation());
   ASSERT_OK(importer.Execute("BEGIN"));
   ASSERT_OK(ImportSnapshot(importer, snapshot_id));
 
-  auto writer = ASSERT_RESULT(Connect());
   ASSERT_OK(writer.Execute("INSERT INTO t SELECT i, i FROM generate_series(7, 10) i"));
 
   const auto status = importer.Fetch("SELECT count(*) FROM t");
