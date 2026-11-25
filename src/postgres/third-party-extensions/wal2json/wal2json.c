@@ -127,7 +127,9 @@ static void pg_decode_commit_txn(LogicalDecodingContext *ctx,
 static void pg_decode_change(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
 				 ReorderBufferChange *change);
-#if PG_VERSION_NUM >= 90500
+#if PG_VERSION_NUM >= 190000
+static bool pg_filter_by_origin(LogicalDecodingContext *ctx, ReplOriginId origin_id);
+#elif PG_VERSION_NUM >= 90500
 static bool pg_filter_by_origin(LogicalDecodingContext *ctx, RepOriginId origin_id);
 #endif
 #if PG_VERSION_NUM >= 90600
@@ -232,7 +234,11 @@ _PG_init(void)
 void
 _PG_output_plugin_init(OutputPluginCallbacks *cb)
 {
+#if PG_VERSION_NUM >= 190000
+	StaticAssertVariableIsOfType(&_PG_output_plugin_init, LogicalOutputPluginInit);
+#else
 	AssertVariableIsOfType(&_PG_output_plugin_init, LogicalOutputPluginInit);
+#endif
 
 	cb->startup_cb = pg_decode_startup;
 	cb->begin_cb = pg_decode_begin_txn;
@@ -795,14 +801,22 @@ pg_decode_shutdown(LogicalDecodingContext *ctx)
 
 #if PG_VERSION_NUM >= 90500
 static bool
+#if PG_VERSION_NUM >= 190000
+pg_filter_by_origin(LogicalDecodingContext *ctx, ReplOriginId origin_id)
+#else
 pg_filter_by_origin(LogicalDecodingContext *ctx, RepOriginId origin_id)
+#endif
 {
 	JsonDecodingData *data = ctx->output_plugin_private;
 
 	elog(DEBUG3, "origin: %u", origin_id);
 
 	/* changes produced locally are never filtered */
+#if PG_VERSION_NUM >= 190000
+	if (origin_id == InvalidReplOriginId)
+#else
 	if (origin_id == InvalidRepOriginId)
+#endif
 		return false;
 
 	/* Filter origins, if available */
@@ -858,7 +872,10 @@ pg_decode_begin_txn_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 		pfree(lsn_str);
 	}
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+	if (data->include_timestamp)
+		appendStringInfo(ctx->out, "%s\"timestamp\":%s\"%s\",%s", data->ht, data->sp, timestamptz_to_str(txn->commit_time), data->nl);
+#elif PG_VERSION_NUM >= 150000
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, "%s\"timestamp\":%s\"%s\",%s", data->ht, data->sp, timestamptz_to_str(txn->xact_time.commit_time), data->nl);
 #else
@@ -891,7 +908,10 @@ pg_decode_begin_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	if (data->include_xids)
 		appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+	if (data->include_timestamp)
+			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+#elif PG_VERSION_NUM >= 150000
 	if (data->include_timestamp)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->xact_time.commit_time));
 #else
@@ -1007,7 +1027,10 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	if (data->include_xids)
 		appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+	if (data->include_timestamp)
+			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+#elif PG_VERSION_NUM >= 150000
 	if (data->include_timestamp)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->xact_time.commit_time));
 #else
@@ -1166,7 +1189,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 		/* XXX Unchanged TOAST Datum does not need to be output */
 		if (yb_send_unchanged_toasted ||
-		   (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval))) 
+		   (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(DatumGetPointer(origval)))) 
 		{
 			elog(DEBUG1, "column \"%s\" has an unchanged TOAST", NameStr(attr->attname));
 			continue;
@@ -1724,7 +1747,11 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	char		*schemaname;
 	char		*tablename;
 
+#if PG_VERSION_NUM >= 190000
+	StaticAssertVariableIsOfType(&pg_decode_change, LogicalDecodeChangeCB);
+#else
 	AssertVariableIsOfType(&pg_decode_change, LogicalDecodeChangeCB);
+#endif
 
 	data = ctx->output_plugin_private;
 
@@ -2034,7 +2061,7 @@ pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid
 	getTypeOutputInfo(typid, &typoutfunc, &isvarlena);
 
 	/* XXX dead code? check is one level above. */
-	if ((yb_unchanged_toasted) || (isvarlena && VARATT_IS_EXTERNAL_ONDISK(value)))
+	if ((yb_unchanged_toasted) || (isvarlena && VARATT_IS_EXTERNAL_ONDISK(DatumGetPointer(value))))
 	{
 		elog(WARNING, "unchanged TOAST Datum");
 		return;
@@ -2180,7 +2207,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 
 		/* don't send unchanged TOAST Datum */
 		if (yb_unchanged_toasted ||
-		   (!nulls[i] && (attr->attlen == -1 && VARATT_IS_EXTERNAL_ONDISK(values[i])))) 
+		   (!nulls[i] && (attr->attlen == -1 && VARATT_IS_EXTERNAL_ONDISK(DatumGetPointer(values[i]))))) 
 			continue;
 
 		if (need_sep)
@@ -2421,7 +2448,10 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	if (data->include_xids)
 		appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+	if (data->include_timestamp)
+		appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+#elif PG_VERSION_NUM >= 150000
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->xact_time.commit_time));
 #else
@@ -2785,7 +2815,10 @@ pg_decode_message_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 	if (data->include_timestamp)
 	{
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+		if (transactional)
+			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+#elif PG_VERSION_NUM >= 150000
 		if (transactional)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->xact_time.commit_time));
 #else
@@ -2924,7 +2957,10 @@ static void pg_decode_truncate_v1(LogicalDecodingContext *ctx,
 	if (data->include_xids)
 		appendStringInfo(ctx->out, "%s%s%s\"xid\":%s%u,%s", data->ht, data->ht, data->ht, data->sp, txn->xid, data->nl);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+	if (data->include_timestamp)
+		appendStringInfo(ctx->out, "%s%s%s\"timestamp\":%s\"%s\",%s", data->ht, data->ht, data->ht, data->sp, timestamptz_to_str(txn->commit_time), data->nl);
+#elif PG_VERSION_NUM >= 150000
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, "%s%s%s\"timestamp\":%s\"%s\",%s", data->ht, data->ht, data->ht, data->sp, timestamptz_to_str(txn->xact_time.commit_time), data->nl);
 #else
@@ -3014,7 +3050,10 @@ static void pg_decode_truncate_v2(LogicalDecodingContext *ctx,
 		if (data->include_xids)
 			appendStringInfo(ctx->out, ",\"xid\":%u", txn->xid);
 
-#if PG_VERSION_NUM >= 150000
+#if PG_VERSION_NUM >= 190000
+		if (data->include_timestamp)
+			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->commit_time));
+#elif PG_VERSION_NUM >= 150000
 		if (data->include_timestamp)
 			appendStringInfo(ctx->out, ",\"timestamp\":\"%s\"", timestamptz_to_str(txn->xact_time.commit_time));
 #else

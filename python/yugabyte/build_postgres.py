@@ -802,7 +802,6 @@ class PostgresBuilder(YbBuildToolBase):
         # - pgrx and the extensions built on it (documentdb, pg_parquet, postgresql_anonymizer) need
         #   pgrx 0.19.3 and pg_anon 3.3.2 (#37181).
         # - mage needs an upgrade to Apache AGE release/PG19/1.8.0 (#35023).
-        # - wal2json is to be fixed on PG19 (#35025).
         external_extension_subdirs = [
             'yb-extensions',
             # 'third-party-extensions/documentdb',  # #37181
@@ -819,7 +818,7 @@ class PostgresBuilder(YbBuildToolBase):
             'third-party-extensions/pgvector',
             'third-party-extensions/postgresql-hll',
             # 'third-party-extensions/postgresql_anonymizer',  # #37181
-            # 'third-party-extensions/wal2json'  # #35025
+            'third-party-extensions/wal2json',
         ]
         external_extension_dirs = [os.path.join(self.pg_build_root, d)
                                    for d in external_extension_subdirs]
