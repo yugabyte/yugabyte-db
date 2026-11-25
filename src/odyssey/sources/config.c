@@ -145,6 +145,7 @@ od_config_listen_t *od_config_listen_add(od_config_t *config)
 
 	listen->tls_opts = od_tls_opts_alloc();
 	if (listen->tls_opts == NULL) {
+		free(listen);
 		return NULL;
 	}
 

@@ -77,6 +77,7 @@ set(od_test_src
         odyssey/test_util.c
         odyssey/test_locks.c
         odyssey/test_hba_parse.c
+        odyssey/test_frontend_status.c
    )
 
 file(COPY machinarium/ca.crt DESTINATION machinarium)

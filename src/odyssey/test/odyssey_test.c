@@ -85,6 +85,7 @@ extern void odyssey_test_attribute(void);
 extern void odyssey_test_util(void);
 extern void odyssey_test_lock(void);
 extern void odyssey_test_hba(void);
+extern void odyssey_test_frontend_status_to_str(void);
 
 int main(int argc, char *argv[])
 {
@@ -160,6 +161,7 @@ int main(int argc, char *argv[])
 	odyssey_test(odyssey_test_util);
 	odyssey_test(odyssey_test_lock);
 	odyssey_test(odyssey_test_hba);
+	odyssey_test(odyssey_test_frontend_status_to_str);
 
 	return 0;
 }

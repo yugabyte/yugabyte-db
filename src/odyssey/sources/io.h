@@ -50,7 +50,6 @@ static inline char *od_io_error(od_io_t *io)
 static inline int od_io_prepare(od_io_t *io, machine_io_t *io_obj,
 				int readahead)
 {
-	io->io = io_obj;
 	int rc;
 	rc = od_readahead_prepare(&io->readahead, readahead);
 	if (rc == -1) {
@@ -73,6 +72,12 @@ static inline int od_io_prepare(od_io_t *io, machine_io_t *io_obj,
 	io->on_write = machine_cond_create();
 	if (io->on_write == NULL)
 		return -1;
+
+	/*
+	 * Set last: on failure the caller frees io_obj itself, and
+	 * od_backend_close_connection() must not see io->io pointing at it.
+	 */
+	io->io = io_obj;
 	return 0;
 }
 

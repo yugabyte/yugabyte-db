@@ -33,6 +33,9 @@ od_bucket_t *od_bucket_create(void)
 		return b;
 	}
 
+	if (b->l)
+		od_counter_llist_free(b->l);
+	free(b);
 	return NULL;
 }
 
