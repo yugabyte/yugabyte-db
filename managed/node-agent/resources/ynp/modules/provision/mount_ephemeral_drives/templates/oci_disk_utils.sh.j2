@@ -9,6 +9,7 @@
 #
 # The caller defines:
 #   DEV_ROOT            (normally /dev)
+#   FSTAB_PATH          (normally /etc/fstab)
 #   DEFAULT_SSD_DRIVES  the device names YBA requested, e.g. "sdb sdc"
 #   mounts              the mount paths YBA requested, in the same order
 
@@ -61,13 +62,11 @@ oci_disk_is_blank() {
   return 1
 }
 
-# Sets oci_spares to the whole sd disks, other than the given requested names,
-# that may replace the boot volume, and oci_spare_mounts to where each is
-# mounted. A spare has no partitions, and is either unmounted and blank (an
-# empty mount), or mounted. The caller uses a mounted spare only at that same
-# mount path, which is where an earlier run mounted it.
-oci_list_spares() {
-  local requested=" $* "
+# Sets oci_disks to the whole sd disks, those with no partitions, LVM or other
+# holders, oci_disk_mounts to where each is mounted, and oci_disk_uuids to each
+# one's filesystem UUID, or an empty string. blkid -p reads the disk, so this
+# doesn't depend on udev having created the by-uuid links yet.
+oci_list_disks() {
   local listing=""
   local name=""
   local device_type=""
@@ -75,102 +74,187 @@ oci_list_spares() {
   local disk_mount=""
   local rc=0
 
-  oci_spares=()
-  oci_spare_mounts=()
+  oci_disks=()
+  oci_disk_mounts=()
+  oci_disk_uuids=()
   listing=$(lsblk -dnr -o NAME,TYPE) || rc=$?
   if [[ $rc -ne 0 ]]; then
     echo >&2 "lsblk failed to list disks with exit code $rc."
     return 1
   fi
   while read -r name device_type; do
-    if [[ "$device_type" != "disk" || ! "$name" =~ ^sd[a-z]+$ || \
-          "$requested" == *" $name "* ]]; then
+    if [[ "$device_type" != "disk" || ! "$name" =~ ^sd[a-z]+$ ]]; then
       continue
     fi
     rc=0
     oci_disk_tree "$name" || rc=$?
     if [[ $rc -eq 2 ]]; then
-      echo >&2 "Not using disk $name to replace the boot volume."
+      echo >&2 "Not using disk $name."
     fi
-    if [[ $rc -ne 0 ]]; then
-      continue
-    fi
-    if ! oci_tree_is_whole_disk "$oci_disk_tree_rv"; then
+    if [[ $rc -ne 0 ]] || ! oci_tree_is_whole_disk "$oci_disk_tree_rv"; then
       continue
     fi
     read -r disk disk_mount <<< "$oci_disk_tree_rv"
-    if [[ -n "$disk_mount" ]] || oci_disk_is_blank "$name"; then
-      oci_spares+=("$name")
-      oci_spare_mounts+=("$disk_mount")
-    fi
+    oci_disks+=("$name")
+    oci_disk_mounts+=("$disk_mount")
+    oci_disk_uuids+=("$(blkid -p -s UUID -o value "$DEV_ROOT/$name" 2>/dev/null || true)")
   done <<< "$listing"
 }
 
-# Sets get_oci_drives_rv to the requested device names, with the boot volume's
-# name, if it was requested, replaced by a spare: the one already mounted at
-# that name's mount path, or else the first blank one. Other requested names,
-# and local NVMe names, are kept; the probe loop skips a missing one. Returns 1
-# when lsblk fails on a requested disk, or when a requested disk other than the
-# boot volume has partitions or holders, which mount_drives would format away.
+# Sets oci_fstab_disk_rv to the disk holding the filesystem that the YBA fstab
+# entry for the given mount path names by UUID, or an empty string when there is
+# no such entry or no such disk. Returns 1 when the entry is ambiguous.
+oci_fstab_disk() {
+  local mount_path=$1
+  local -a uuids=()
+  local j=0
+
+  oci_fstab_disk_rv=""
+  if [[ ! -r "$FSTAB_PATH" ]] || ! grep -Fqx -- "#$mount_path" "$FSTAB_PATH"; then
+    return 0
+  fi
+  mapfile -t uuids < <(awk -v mount_path="$mount_path" '
+      !/^[[:space:]]*#/ && NF >= 2 && $2 == mount_path && $1 ~ /^UUID=/ {
+        print substr($1, 6)
+      }
+    ' "$FSTAB_PATH")
+  # Jinja renders this file, and bash's array length syntax opens a Jinja
+  # comment, so test the elements instead.
+  if [[ -z "${uuids[0]:-}" ]]; then
+    return 0
+  elif [[ -n "${uuids[1]:-}" ]]; then
+    echo >&2 "$FSTAB_PATH has more than one entry for $mount_path."
+    return 1
+  fi
+  for j in "${!oci_disks[@]}"; do
+    if [[ "${oci_disk_uuids[j]}" != "${uuids[0]}" ]]; then
+      continue
+    fi
+    if [[ -n "$oci_fstab_disk_rv" ]]; then
+      echo >&2 "Disks $oci_fstab_disk_rv and ${oci_disks[j]} both have UUID ${uuids[0]}."
+      return 1
+    fi
+    oci_fstab_disk_rv=${oci_disks[j]}
+  done
+}
+
+# Sets get_oci_drives_rv to a device name for each requested name, in order:
+#   1. the disk an earlier run put at that name's mount path: the one fstab
+#      names by UUID, or else the one mounted there. The kernel can rename disks
+#      across reboots, so the requested name may now be another data volume, or
+#      the boot volume, and a data volume may be left unmounted (fstab mounts
+#      them with nofail).
+#   2. otherwise the requested name, unless it is the boot volume or a disk that
+#      step 1 gave to another mount path.
+#   3. otherwise a blank disk that no other mount path uses. With none, the boot
+#      volume's name is kept, and the probe loop skips it.
+# Local NVMe names are kept. Returns 1 when lsblk fails on a requested disk, when
+# a requested disk other than the boot volume has partitions or holders, which
+# mount_drives would format away, when fstab and the mounts disagree or name a
+# disk twice, or when a disk at another mount path has no replacement.
 get_oci_drives() {
   local -a requested=()
   local -a drives=()
+  local -a pending=()
   local name=""
-  local replacement=""
-  local listed=false
+  local mounted=""
   local rc=0
   local i=0
   local j=0
 
   read -r -a requested <<< "$DEFAULT_SSD_DRIVES"
-  drives=("${requested[@]}")
+  oci_list_disks || return 1
+  for i in "${!requested[@]}"; do
+    drives[i]=""
+    if ! [[ "${requested[i]}" =~ ^sd[a-z]+$ && -n "${mounts[i]:-}" ]]; then
+      continue
+    fi
+    mounted=""
+    for j in "${!oci_disks[@]}"; do
+      if [[ "${oci_disk_mounts[j]}" != "${mounts[i]}" ]]; then
+        continue
+      fi
+      if [[ -n "$mounted" ]]; then
+        echo >&2 "Disks $mounted and ${oci_disks[j]} are both mounted at ${mounts[i]}."
+        return 1
+      fi
+      mounted=${oci_disks[j]}
+    done
+    oci_fstab_disk "${mounts[i]}" || return 1
+    if [[ -n "$oci_fstab_disk_rv" && -n "$mounted" && "$oci_fstab_disk_rv" != "$mounted" ]]; then
+      echo >&2 "$FSTAB_PATH puts disk $oci_fstab_disk_rv at ${mounts[i]}, but disk $mounted is mounted there."
+      return 1
+    fi
+    name=${oci_fstab_disk_rv:-$mounted}
+    if [[ -z "$name" ]]; then
+      continue
+    fi
+    if [[ " ${drives[*]} " == *" $name "* ]]; then
+      echo >&2 "Disk $name belongs at more than one mount path."
+      return 1
+    fi
+    drives[i]=$name
+    if [[ -n "$oci_fstab_disk_rv" ]]; then
+      echo "Disk $name holds the filesystem $FSTAB_PATH mounts at ${mounts[i]}. Using it there."
+    else
+      echo "Disk $name is already mounted at ${mounts[i]}. Using it there."
+    fi
+  done
+
   for i in "${!requested[@]}"; do
     name=${requested[i]}
+    if [[ -n "${drives[i]}" ]]; then
+      continue
+    fi
     if ! [[ "$name" =~ ^sd[a-z]+$ ]]; then
+      drives[i]=$name
+      continue
+    fi
+    if [[ " ${drives[*]} " == *" $name "* ]]; then
+      echo "Requested disk $name belongs at another mount path."
+      pending+=("$i")
       continue
     fi
     rc=0
     oci_disk_tree "$name" || rc=$?
     if [[ $rc -eq 1 ]]; then
+      drives[i]=$name
       continue
     elif [[ $rc -ne 0 ]]; then
       echo >&2 "Cannot tell whether requested disk $name is the boot volume."
       return 1
     fi
-    if ! oci_tree_is_boot_volume "$oci_disk_tree_rv"; then
-      if ! oci_tree_is_whole_disk "$oci_disk_tree_rv"; then
-        echo >&2 "Requested disk $name has partitions or holders. Refusing to format it."
-        return 1
-      fi
+    if oci_tree_is_boot_volume "$oci_disk_tree_rv"; then
+      echo "Requested disk $name is the boot volume."
+      pending+=("$i")
       continue
     fi
-
-    if ! $listed; then
-      oci_list_spares "${requested[@]}" || return 1
-      listed=true
+    if ! oci_tree_is_whole_disk "$oci_disk_tree_rv"; then
+      echo >&2 "Requested disk $name has partitions or holders. Refusing to format it."
+      return 1
     fi
-    replacement=""
-    for j in "${!oci_spares[@]}"; do
-      if [[ -n "${mounts[i]:-}" && "${oci_spare_mounts[j]}" == "${mounts[i]}" ]]; then
-        replacement=$j
+    drives[i]=$name
+  done
+
+  for i in ${pending[@]+"${pending[@]}"}; do
+    name=${requested[i]}
+    for j in "${!oci_disks[@]}"; do
+      if [[ -z "${oci_disk_mounts[j]}" && " ${drives[*]} " != *" ${oci_disks[j]} "* ]] && \
+         oci_disk_is_blank "${oci_disks[j]}"; then
+        drives[i]=${oci_disks[j]}
+        echo "Using blank disk ${drives[i]} instead of $name."
         break
       fi
     done
-    if [[ -z "$replacement" ]]; then
-      for j in "${!oci_spares[@]}"; do
-        if [[ -z "${oci_spare_mounts[j]}" ]]; then
-          replacement=$j
-          break
-        fi
-      done
-    fi
-    if [[ -z "$replacement" ]]; then
-      echo >&2 "Requested disk $name is the boot volume, and no blank disk can replace it."
+    if [[ -n "${drives[i]}" ]]; then
       continue
     fi
-    echo "Requested disk $name is the boot volume. Using ${oci_spares[replacement]} instead."
-    drives[i]=${oci_spares[replacement]}
-    unset 'oci_spares[replacement]' 'oci_spare_mounts[replacement]'
+    if [[ " ${drives[*]} " == *" $name "* ]]; then
+      echo >&2 "Requested disk $name belongs at another mount path, and no blank disk can replace it."
+      return 1
+    fi
+    echo >&2 "Requested disk $name is the boot volume, and no blank disk can replace it."
+    drives[i]=$name
   done
   get_oci_drives_rv="${drives[*]}"
 }
