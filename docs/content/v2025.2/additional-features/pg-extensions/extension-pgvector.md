@@ -292,36 +292,78 @@ SET hnsw.ef_search = 100;
 
 ## Upgrade vector indexes
 
-Starting with v2025.2.6.0, YugabyteDB stores the vector reverse mapping (which maps each vector back to its table row) once per indexed table, instead of once per vector index.
+Vector indexes are generally available starting in v2026.1.1.0, and v2025.2.6.0 in the v2025.2 LTS series. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout, and a table can't be converted in place, so each vector table created before these releases must be rebuilt once, from its DDL and DML, as part of the upgrade. Subsequent upgrades don't require extra steps for vector tables.
 
-Tables created on earlier releases continue to work and return correct results. However, each time a vector index is created or dropped on such a table, reverse-mapping data is left behind and its storage is never reclaimed. To avoid this, recreate the tables that have vector indexes as part of the upgrade.
+### Step 1: Choose the release to upgrade to
 
-Keep the following in mind:
+Vector indexes reached general availability recently and are improving quickly; each new release can include further vector index fixes. Upgrade to the latest release in your series:
 
-- The reverse-mapping format of a table is fixed when the table is created. Tables get the new format only if they are created after the upgrade is [finalized](../../../manage/upgrade-deployment/). Don't recreate vector tables while the upgrade is in progress.
-- Recreate tables from their DDL. Restoring a table from a backup, using [PITR](../../../manage/backup-restore/point-in-time-recovery/), or cloning a database preserves the old format.
+- v2026.1 series: the latest v2026.1 release, and no earlier than v2026.1.2.0. v2026.1.1.x supports vector indexes, but v2026.1.2.0 includes important fixes for vector search errors during concurrent deletes, a vector index stall during compaction, and possible row loss after a crash. Tables created on v2026.1.1.x don't need to be rebuilt when you upgrade to a later v2026.1 release.
+- v2025.2 LTS series: the latest v2025.2 release, and no earlier than v2025.2.6.0.
 
-| Upgrading from | Action |
-| :--- | :--- |
-| v2024.2 | v2024.2 includes the `vector` extension but not vector indexes. Export the data, then drop the tables that use the extension and the extension itself before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
-| v2025.1 | The upgrade fails if a vector index exists. Use [Option 1](#option-1-rebuild-across-the-upgrade). |
-| v2025.2.0 to v2025.2.5 | Rebuild the vector tables using [Option 1 or Option 2](#upgrade-from-v2025-1-or-v2025-2). |
-| v2025.2.6.0 or later | No action required if all vector tables were created after the upgrade to that release was finalized. |
+When upgrading from v2025.2.6.0 or later to v2026.1, upgrade to the latest v2026.1 release, and no earlier than v2026.1.2.0. v2026.1.0.x and v2026.1.1.x don't contain all the fixes in v2025.2.6.0, so they aren't supported upgrade targets.
 
-To find the tables that have vector indexes, run the following query in each database. Save the `index_ddl` output to recreate the indexes later.
+### Step 2: Find the tables that need a rebuild
+
+The upgrade procedure depends on the release each vector table was created on, not the release your universe runs today. YugabyteDB doesn't show which layout a table uses, so keep track of when your vector tables were created.
+
+Run the following query in each database. It lists every table that has a vector column, with the DDL of its vector indexes, if any. Save the output; you'll need the index DDL to recreate the indexes.
 
 ```sql
-SELECT n.nspname AS schema_name, t.relname AS table_name,
-       i.relname AS index_name, pg_get_indexdef(i.oid) AS index_ddl
-FROM pg_index x
-JOIN pg_class i ON i.oid = x.indexrelid
-JOIN pg_am a ON a.oid = i.relam
-JOIN pg_class t ON t.oid = x.indrelid
-JOIN pg_namespace n ON n.oid = t.relnamespace
-WHERE a.amname = 'ybhnsw';
+SELECT n.nspname AS schema_name,
+       c.relname AS table_name,
+       v.index_name,
+       v.index_ddl
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+LEFT JOIN (
+    SELECT x.indrelid, i.relname AS index_name, pg_get_indexdef(i.oid) AS index_ddl
+    FROM pg_index x
+    JOIN pg_class i ON i.oid = x.indexrelid
+    JOIN pg_am am ON am.oid = i.relam
+    WHERE am.amname = 'ybhnsw'
+) v ON v.indrelid = c.oid
+WHERE c.relkind IN ('r', 'p', 'm')
+  AND EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    JOIN pg_type t ON t.oid = a.atttypid
+    WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+      AND t.typname IN ('vector', 'halfvec', 'sparsevec'))
+ORDER BY 1, 2, 3;
 ```
 
-Also include tables that have `vector` columns but no index yet, if you plan to index them later.
+The output lists a partitioned table and each of its partitions separately; rebuild them together, from the partitioned table's DDL. Materialized views also appear; drop and recreate them after their source tables.
+
+Use the following table to decide what to do for each table.
+
+| The vector table was created on | What to do |
+| :--- | :--- |
+| v2025.2.6.0+<br>v2026.1.1.0+<br>after the upgrade to that release was finalized | Nothing. Upgrade as usual. |
+| v2024.2 | Drop the vector extension itself before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
+| v2025.1, or v2025.2.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade): drop the vector tables before upgrading. Current releases can't open vector indexes created on these releases, so the upgrade can't proceed while they exist. |
+| v2025.2.1 to v2025.2.5, or v2026.1.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade) or [Option 2](#option-2-rebuild-after-the-upgrade). Option 2 keeps the tables online during the upgrade. |
+| Not sure | Treat it as old and rebuild it. Rebuilding a table that already has the new layout does no harm. |
+
+If you plan to add a vector column to an existing table that was created before v2025.2.6.0 or v2026.1.1.0, recreate the table with the vector column instead of using `ALTER TABLE ... ADD COLUMN`.
+
+{{< warning title="If an upgrade stops after the first node" >}}
+
+If you upgrade while vector indexes created on v2025.1 or v2025.2.0.x still exist, the first upgraded node can't open them and the rolling upgrade stops. Roll back using a non-rolling rollback (this restarts all nodes at once and causes brief downtime), drop those tables as described in [Option 1](#option-1-rebuild-across-the-upgrade), and upgrade again.
+
+{{< /warning >}}
+
+{{< note title="Why a rebuild is needed" >}}
+
+For every vector, YugabyteDB keeps a lookup entry that points from the vector back to the row it belongs to, so that a vector search can return rows. Starting with v2025.2.6.0 and v2026.1.1.0, these lookup entries belong to the table rather than to each vector index, and vector values are stored in a slightly different form.
+
+Which layout a table uses is decided once, when the table is created with CREATE TABLE, and can't be changed afterwards. This has the following consequences:
+
+- Old-layout tables aren't supported on the new releases. They still return correct results, but every CREATE INDEX or DROP INDEX on them leaves lookup entries behind that are never cleaned up, so they waste storage indefinitely.
+- Only a new CREATE TABLE gives a table the new layout. REINDEX, dropping and recreating only the index, ALTER TABLE, restoring from a backup, point-in-time recovery, and database cloning all keep the table's existing layout. That's why the procedures recreate each table from its DDL and reload its data.
+- The new layout takes effect only after the upgrade is finalized. A table created while the upgrade is still in progress gets the old layout. Don't recreate vector tables until you have finalized the upgrade.
+- In a colocated database, all colocated tables share storage, so space already lost isn't reclaimed by recreating individual tables. See Colocated databases.
+{{< /note >}}
 
 ### Upgrade from v2024.2
 
