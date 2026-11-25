@@ -19,6 +19,8 @@
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/client/snapshot_test_util.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
@@ -63,6 +65,7 @@ DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
+DECLARE_bool(enable_cdc_state_table_caching);
 DECLARE_bool(ysql_yb_enable_listen_notify);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
@@ -15305,6 +15308,41 @@ TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStream) {
       {tablet_id, kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
       {} /* expected_colocated_table_ids */,
       "Backfilled gRPC stream should have a cdc_state slot entry");
+}
+
+// The first sys catalog load after the AutoFlag is promoted backfills legacy gRPC streams. When
+// that load is the one a PITR restore triggers, the master leader rejects RPCs until it clears
+// restoring_sys_catalog_, so the backfill must run after that.
+TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStreamDuringPitrRestore) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = false;
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Without the cache, every cdc_state write sends IsCreateTableDone, as the first one after a
+  // master restart does.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdc_state_table_caching) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&test_client()->proxy_cache());
+  snapshot_util.SetCluster(test_cluster());
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr /* table */, YQL_DATABASE_PGSQL, test_namespace_name, client::WaitSnapshot::kTrue));
+
+  // Promote the flag without a sys catalog reload, as finalize_upgrade does, so that the restore's
+  // reload is the first one to backfill the stream.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_pg_create_grpc_stream) = true;
+  ASSERT_OK(
+      snapshot_util.RestoreSnapshotSchedule(schedule_id, test_cluster()->mini_master()->Now()));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetCDCStream(stream_id));
+        return !resp.stream().cdcsdk_ysql_replication_slot_name().empty();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier,
+      "Backfill to populate the slot name on the legacy gRPC stream"));
 }
 
 TEST_F(CDCSDKYsqlTest, TestRecordTypeOptionPresenceForStreams) {
