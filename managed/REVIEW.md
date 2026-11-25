@@ -2,7 +2,8 @@
 
 These apply to changes under `managed/` in addition to the repo-root [REVIEW.md](../REVIEW.md).
 Skip this file for backport PRs. For v2 API changes, also check the contract rules in
-[AGENTS.md](AGENTS.md#contract-rules).
+[AGENTS.md](AGENTS.md#contract-rules). For changes under `yba-cli/`, also check
+[yba-cli/REVIEW.md](yba-cli/REVIEW.md).
 
 YBA orchestrates long-lived universes and upgrades in place, keeping its own database. Most YBA
 bugs that reach customers are not wrong lines in the diff. They come from a change that holds on

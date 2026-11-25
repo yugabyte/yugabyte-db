@@ -97,9 +97,13 @@ git -C "$CLIENT_REPO" rev-parse --git-dir >/dev/null 2>&1 \
   || die "$CLIENT_REPO is not a git clone."
 git -C "$CLIENT_REPO" remote get-url origin | grep -q 'yugabyte/platform-go-client' \
   || die "The origin of $CLIENT_REPO is not yugabyte/platform-go-client."
+# cleanup runs from /, so a relative clone path must become absolute.
+CLIENT_REPO="$(cd "$CLIENT_REPO" && pwd)"
 
 # The commit names the yugabyte-db SHA, so the generated code must match it.
-SRC_SHA="$(git -C "$MANAGED_DIR" rev-parse --short HEAD)"
+# A fixed length: the default abbreviation depends on the clone, and the once-per-SHA check
+# below matches the branch name.
+SRC_SHA="$(git -C "$MANAGED_DIR" rev-parse --short=12 HEAD)"
 if [[ -n "$(git -C "$MANAGED_DIR" status --porcelain -- .)" ]]; then
   $DRY_RUN || die "managed/ has uncommitted changes, so the client may not match $SRC_SHA."
   echo "WARNING: managed/ has uncommitted changes." >&2
