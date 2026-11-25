@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,6 +66,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
@@ -78,6 +80,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -360,6 +363,38 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RestartUniverse)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  // KubernetesOverridesUpgradeParams.verifyParams walks placement + kubeconfig via
+  // KubernetesUtil.validateUpgradeServiceEndpoints. A bare ModelFactory k8s universe has
+  // null/empty placement and no KUBECONFIG, which NPEs or throws "No config found".
+  private Universe prepareK8sUniverseForOverridesUpgrade(String universeName) {
+    Universe universe = createUniverse(universeName, customer.getId(), CloudType.kubernetes);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    provider.setConfigMap(ImmutableMap.of("KUBECONFIG", "test"));
+    provider.save();
+    Region region = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, "az-1", "PlacementAZ 1", "subnet-1");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              PlacementInfo placementInfo = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(az.getUuid(), placementInfo, 1, 1, false);
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.regionList = ImmutableList.of(region.getUuid());
+              details.upsertPrimaryCluster(userIntent, null, placementInfo);
+              u.setUniverseDetails(details);
+            });
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+    return universe;
   }
 
   private static final String K8S_OVERRIDES =

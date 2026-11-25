@@ -197,9 +197,8 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
         Universe.saveDetails(
             universe.getUniverseUUID(),
             u -> {
-              TestUtils.existingProviderInitializer(
-                      u.getUniverseDetails().getPrimaryCluster().userIntent)
-                  .setDeviceInfo(ApiUtils.getDummyDeviceInfo(1, 1));
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
+                  ApiUtils.getDummyDeviceInfo(1, 1);
             });
     universe =
         Universe.saveDetails(
