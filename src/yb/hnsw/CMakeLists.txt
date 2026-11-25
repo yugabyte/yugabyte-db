@@ -19,6 +19,7 @@ set(NHSW_SRCS
   )
 
 set(NHSW_LIBS
+  rocksdb
   vector_index
   yb_common
   yb_util

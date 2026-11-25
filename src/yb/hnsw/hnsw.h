@@ -28,6 +28,7 @@
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_util.h"
+#include "yb/vector_index/vector_lsm_deletions.h"
 #include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 
@@ -155,12 +156,16 @@ class YbHnsw {
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   // payloads provides payloads attached to vectors, stored in the aux data.
   // It is null when the chunk does not store payloads.
+  // deletions, sorted by vector id, are stored with the vectors, see Header::deletion_block.
+  // The index could be empty when there are deletions.
   Status Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
-    const vector_index::VectorPayloadMap* payloads);
+    const vector_index::VectorPayloadMap* payloads,
+    std::span<const vector_index::VectorLSMDeletion> deletions);
   Status Import(
     const HnswlibIndex<DistanceType>& index, const std::string& path,
-    const vector_index::VectorPayloadMap* payloads);
+    const vector_index::VectorPayloadMap* payloads,
+    std::span<const vector_index::VectorLSMDeletion> deletions);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
@@ -177,6 +182,13 @@ class YbHnsw {
   }
 
   DistanceType Distance(const std::byte* lhs, const std::byte* rhs) const;
+
+  // See vector_index::VectorDeletionsReaderIf.
+  Result<HybridTime> FindDeletion(const vector_index::VectorId& vector_id) const;
+
+  // Calls f for every deletion, in vector id order, stopping at the first error it returns.
+  Status ForEachDeletion(
+      const std::function<Status(const vector_index::VectorLSMDeletion&)>& f) const;
 
   const Header& header() const;
 
