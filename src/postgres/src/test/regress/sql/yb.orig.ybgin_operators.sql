@@ -14,7 +14,7 @@
 
 -- Always choose index scan.
 SET enable_seqscan = off;
-SET yb_test_ybgin_disable_cost_factor = 0.5;
+SET yb_test_ybgin_disable_cost_factor = 0;
 
 --
 -- jsonb_ops

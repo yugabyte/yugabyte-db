@@ -3,7 +3,7 @@
 --
 -- Always choose index scan.
 SET enable_seqscan = off;
-SET yb_test_ybgin_disable_cost_factor = 0.5;
+SET yb_test_ybgin_disable_cost_factor = 0;
 CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
     USING ybgin (a)
     WHERE a <@ '{1}' or a @> '{}' or a is null;

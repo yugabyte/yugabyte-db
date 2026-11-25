@@ -2951,7 +2951,7 @@ CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
 -- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
 -- index scan even if it is detected to be not supported.
-SET yb_test_ybgin_disable_cost_factor = 0.5;
+SET yb_test_ybgin_disable_cost_factor = 0;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count 
 -------
@@ -3300,7 +3300,7 @@ CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 SET enable_seqscan = off;
 -- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
 -- index scan even if it is detected to be not supported.
-SET yb_test_ybgin_disable_cost_factor = 0.5;
+SET yb_test_ybgin_disable_cost_factor = 0;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count 
 -------
