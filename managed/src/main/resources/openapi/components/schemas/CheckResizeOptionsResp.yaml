@@ -13,10 +13,12 @@ properties:
       $ref: "./ResizeUpdateOption.yaml"
   has_resize_changes:
     description: Whether the requested payload has resize changes.
+    type: boolean
+    default: false
   resize_restrictions:
     description: |
       Reasons why an in-place resize (SMART_RESIZE or SMART_RESIZE_NON_RESTART) is not available for the proposed node settings.
-      Empty if there are no resize changes or no restriction was found.
+      Empty if no restriction was found.
     type: array
     items:
       type: string
