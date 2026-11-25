@@ -1797,11 +1797,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           new UniverseDefinitionTaskParams.PartitionInfo();
       partitionInfo.setDefaultPartition(true);
       PlacementInfo placement = cluster.getOverallPlacement();
-      if (placement != null) {
-        // Cloning placement.
-        placement = Json.fromJson(Json.toJson(placement), PlacementInfo.class);
-        // Clearing default regions.
-        placement.cloudList.forEach(cloud -> cloud.defaultRegion = null);
+      if (placement != null && placement.cloudList != null
+          && placement.cloudList.stream().anyMatch(c -> c.defaultRegion != null)) {
+        log.warn("Cluster is using old geo-partitioning approach, cannot convert to partitions");
+        return;
       }
       partitionInfo.setPlacement(placement);
       partitionInfo.setUuid(UUID.randomUUID());
