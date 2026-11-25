@@ -3006,6 +3006,16 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
+/*
+ * YBAddDdlTxnState
+ *
+ * Makes the current transaction a DDL transaction of the given mode. Call it
+ * before a statement, or a step of one, writes the catalog: the mode decides
+ * what the transaction does at commit, such as incrementing the catalog
+ * version. With ysql_enable_concurrent_ddl off, a mode that increments the
+ * catalog version also takes the database DDL lock here. A caller that waits
+ * for lockers right after this uses YBAddDdlTxnStateExtended instead.
+ */
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
