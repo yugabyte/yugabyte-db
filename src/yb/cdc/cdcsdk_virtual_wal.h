@@ -399,6 +399,10 @@ class CDCSDKVirtualWAL {
   // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
   TableId pg_attribute_table_id_;
 
+  // The table ID of pg_namespace catalog table for the database on which virtual WAL is polling.
+  // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  TableId pg_namespace_table_id_;
+
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
   // polling.
   TableId pg_publication_rel_table_id_;

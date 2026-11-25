@@ -2770,4 +2770,46 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     stream.close();
     conn.close();
   }
+
+  // ALTER SCHEMA ... RENAME TO writes only to pg_namespace. The row inserted after it must still be
+  // preceded by a RELATION message that carries the new schema name.
+  @Test
+  public void renameSchemaInsideTransaction() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE SCHEMA s1");
+      stmt.execute("CREATE TABLE s1.t1 (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE s1.t1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO s1.t1 VALUES (1, 'one')");
+      stmt.execute("ALTER SCHEMA s1 RENAME TO s2");
+      stmt.execute("INSERT INTO s2.t1 VALUES (2, 'two')");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+
+    // BEGIN, RELATION, INSERT, RELATION, INSERT, COMMIT.
+    List<PgOutputMessage> result = receiveMessage(stream, 6);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        PgOutputRelationMessage.CreateForComparison("s1", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID))),
+        insert("1", "one"),
+        PgOutputRelationMessage.CreateForComparison("s2", "t1", 'c' /* replicaIdentity */,
+            Arrays.asList(column("a", INT4_OID), column("b", TEXT_OID))),
+        insert("2", "two"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
 }
