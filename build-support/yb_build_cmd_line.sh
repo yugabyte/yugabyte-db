@@ -149,6 +149,9 @@ Build options:
   --write-build-descriptor <build_descriptor_path>
     Write a "build descriptor" file. A "build descriptor" is a YAML file that provides information
     about the build root, compiler used, etc.
+  --package-name <package_name>
+    Release package (top-level section of yb_release_manifest.json) whose targets the
+    packaged_targets keyword builds. May be repeated. Defaults to yugabyte.
   --remote
     Prefer a remote build on an auto-scaling cluster of build workers. The parallelism is picked
     automatically based on the current number of build workers.
@@ -324,7 +327,7 @@ Supported target keywords:
   [yb-]master        - master executable
   [yb-]tserver       - tablet server executable
   daemons            - yb-master, yb-tserver, and the postgres server
-  packaged[-targets] - targets that are required for a release package
+  packaged[-targets] - targets that are required for a release package (see --package-name)
   initdb             - Initialize the initial system catalog snapshot for fast cluster startup
   reinitdb           - Reinitialize the initial system catalog snapshot for fast cluster startup
 
@@ -394,6 +397,7 @@ set_default_yb_build_args() {
   java_lint=false
   collect_java_tests=false
   should_use_packaged_targets=false
+  packaged_target_package_names=()
   bolt_enabled=false
 
   test_ybc=true
@@ -753,6 +757,11 @@ parse_yb_build_cmd_line() {
       ;;
       packaged|packaged-targets)
         should_use_packaged_targets=true
+      ;;
+      --package-name)
+        ensure_option_has_arg "$@"
+        packaged_target_package_names+=( "$2" )
+        shift
       ;;
       --skip-build|--sb)
         set_flags_to_skip_build
