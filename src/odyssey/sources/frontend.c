@@ -336,10 +336,7 @@ od_frontend_attach(od_client_t *client, char *context,
 						instance->config
 							.server_login_retry);
 				}
-				/*
-				 * YB: Restart only after the sleep. od_router_attach
-				 * stops client read on entry only if it is active.
-				 */
+				/* YB: Start client read only after the sleep */
 				if (yb_restart_read)
 					od_io_read_start(&client->io);
 				continue;
