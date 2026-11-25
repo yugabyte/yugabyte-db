@@ -27,6 +27,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -451,7 +452,15 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
     thread_holder.AddThreadFunctor([this, &db_name, i, &pid = create_table_pids[i]] {
       auto conn = ASSERT_RESULT(ConnectToDB(db_name));
       pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
-      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0 (key INT PRIMARY KEY, value INT)", i));
+      // The two concurrent DDLs conflict when the second one commits, after its table was created.
+      for (;;) {
+        auto status = conn.ExecuteFormat("CREATE TABLE t$0 (key INT PRIMARY KEY, value INT)", i);
+        if (!IsSerializeAccessError(status)) {
+          ASSERT_OK(status);
+          break;
+        }
+        LOG(INFO) << "Retrying CREATE TABLE t" << i << ": " << status;
+      }
     });
   }
   // CREATE TABLE waits for the table to become RUNNING. Kill it on failure, so the thread can be
