@@ -13,7 +13,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <fstream>
+#include <functional>
 #include <iostream>
+#include <iterator>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -23,11 +27,13 @@
 #include "yb/master/catalog_manager_mutex.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 DEFINE_test_flag(int32, catalog_mutex_test_waiters, 2000,
     "Number of threads that queue for the lock behind the writer in the convoy test.");
@@ -49,6 +55,34 @@ double CpuSeconds(const CpuTimes& times) {
 
 MonoTime Earliest(const std::vector<MonoTime>& times) {
   return *std::min_element(times.begin(), times.end());
+}
+
+// Runs lock_fn on a new thread and returns once that thread is asleep, i.e. queued on the mutex:
+// absl::Mutex parks waiters on a futex, which moves the thread to state 'S' in
+// /proc/self/task/<tid>/stat. lock_fn must block on the mutex before doing anything else.
+Status AddThreadAndWaitUntilQueued(TestThreadHolder& threads, std::function<void()> lock_fn) {
+  // Shared so that a thread that starts after a WaitFor timeout does not write a dead local.
+  auto tid = std::make_shared<std::atomic<int64_t>>(0);
+  threads.AddThread([tid, lock_fn = std::move(lock_fn)] {
+    *tid = Thread::CurrentThreadId();
+    lock_fn();
+  });
+#if defined(__linux__)
+  return WaitFor([&] {
+    auto id = tid->load();
+    if (id == 0) {
+      return false;
+    }
+    std::ifstream file(Format("/proc/self/task/$0/stat", id));
+    std::string stat{std::istreambuf_iterator<char>(file), {}};
+    // The state follows the parenthesized thread name, which may itself contain spaces.
+    auto pos = stat.rfind(')');
+    return pos != std::string::npos && pos + 2 < stat.size() && stat[pos + 2] == 'S';
+  }, MonoDelta::FromSeconds(30), "thread queued on the mutex");
+#else
+  SleepFor(MonoDelta::FromMilliseconds(100));
+  return Status::OK();
+#endif
 }
 
 // CPU-bound work whose duration depends on how much CPU the calling thread gets.
@@ -90,8 +124,8 @@ TEST_F(CatalogManagerMutexTest, Convoy) {
   threads.AddThread([&] {
     SharedLock<CatalogManagerMutex> lock(mutex);
     holder_has_lock = true;
-    // Settling time for the writer and the waiters to queue, not synchronization: the ordering
-    // asserts below fail if they did not queue in time.
+    // Settling time for the waiters to queue before the timed work. Only the measurement depends on
+    // it.
     SleepFor(MonoDelta::FromSeconds(2));
     Stopwatch sw(Stopwatch::ALL_THREADS);
     sw.start();
@@ -103,11 +137,10 @@ TEST_F(CatalogManagerMutexTest, Convoy) {
   ASSERT_OK(WaitFor(
       [&] { return holder_has_lock.load(); }, MonoDelta::FromSeconds(30), "holder has the lock"));
 
-  threads.AddThread([&] {
+  ASSERT_OK(AddThreadAndWaitUntilQueued(threads, [&] {
     std::lock_guard lock(mutex);
     writer_in = MonoTime::Now();
-  });
-  SleepFor(MonoDelta::FromMilliseconds(100));
+  }));
 
   for (int i = 0; i < num_waiters; ++i) {
     threads.AddThread([&, i] {
@@ -220,7 +253,8 @@ TEST_F(CatalogManagerMutexTest, ReleaseToWaiters) {
       while (started < waiters) {
         std::this_thread::yield();
       }
-      // Settling time for every waiter to block (or start polling), not synchronization.
+      // Settling time for every waiter to block before the timed unlock. Only the measurement
+      // depends on it.
       SleepFor(MonoDelta::FromMilliseconds(300 + waiters / 4));
 
       Stopwatch sw(Stopwatch::ALL_THREADS);
@@ -254,19 +288,23 @@ TEST_F(CatalogManagerMutexTest, ReaderHandoffToWriter) {
       MonoTime writer_in;
       std::vector<MonoTime> reader_in(waiters);
       TestThreadHolder threads;
-      threads.AddThread([&] {
+      auto writer_queued = AddThreadAndWaitUntilQueued(threads, [&] {
         std::lock_guard lock(mutex);
         writer_in = MonoTime::Now();
       });
-      // Settling time for the writer to queue, not synchronization: the ordering assert below
-      // fails if it did not queue before the readers.
-      SleepFor(MonoDelta::FromMilliseconds(100));
+      if (!writer_queued.ok()) {
+        // Let the writer finish so that the TestThreadHolder join does not hang.
+        mutex.unlock_shared();
+        FAIL() << writer_queued;
+      }
       for (int i = 0; i < waiters; ++i) {
         threads.AddThread([&, i] {
           SharedLock<CatalogManagerMutex> lock(mutex);
           reader_in[i] = MonoTime::Now();
         });
       }
+      // Settling time for the readers to queue before the timed unlock. Only the measurement
+      // depends on it.
       SleepFor(MonoDelta::FromMilliseconds(300 + waiters / 4));
       Stopwatch sw(Stopwatch::ALL_THREADS);
       sw.start();
