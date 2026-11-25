@@ -122,25 +122,20 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, cache_coroutine, 256,
     "shrink, so a non-zero limit reserves up to ysql_conn_mgr_num_workers * limit stacks for the "
     "life of the process.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcp_keepalive, 15,
-    "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive. A runtime "
-    "change applies only to client and backend connections opened after it; existing connections "
-    "keep their keepalive settings.");
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive, 15,
+    "TCP keepalive time in Ysql Connection Manager. Set to zero, to disable keepalive");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcp_keepalive_keep_interval, 20,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_keep_interval, 20,
     "TCP keepalive interval in Ysql Connection Manager. This is applicable if "
-    "'ysql_conn_mgr_tcp_keepalive' is enabled. A runtime change applies only to connections "
-    "opened after it.");
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcp_keepalive_probes, 4,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_probes, 4,
     "TCP keepalive probes in Ysql Connection Manager. This is applicable if "
-    "'ysql_conn_mgr_tcp_keepalive' is enabled. A runtime change applies only to connections "
-    "opened after it.");
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
-DEFINE_RUNTIME_CONN_MGR_FLAG(uint32, tcp_keepalive_usr_timeout, 0,
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcp_keepalive_usr_timeout, 0,
     "TCP user timeout in Ysql Connection Manager. This is applicable if "
-    "'ysql_conn_mgr_tcp_keepalive' is enabled. A runtime change applies only to connections "
-    "opened after it.");
+    "'ysql_conn_mgr_tcp_keepalive' is enabled.");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_control_connection_pool_size, 0,
     "Maximum number of concurrent control connections in Ysql Connection Manager. "

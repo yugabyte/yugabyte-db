@@ -775,11 +775,14 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 				return NOT_OK_RESPONSE;
 			continue;
 		/* client_login_timeout */
-		case OD_LCLIENT_LOGIN_TIMEOUT:
-			if (!yb_od_config_reader_number32(
-				    reader, &listen->client_login_timeout))
+		case OD_LCLIENT_LOGIN_TIMEOUT: {
+			/* YB: First read uint32 and then assign to _Atomic uint32 */
+			uint32_t val;
+			if (!yb_od_config_reader_number32(reader, &val))
 				return NOT_OK_RESPONSE;
+			listen->client_login_timeout = val;
 			continue;
+		}
 		/* backlog */
 		case OD_LBACKLOG:
 			if (!od_config_reader_number(reader, &listen->backlog))
@@ -2664,13 +2667,14 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			}
 			continue;
 		/* yb_alter_guc_stale_backend_ttl_ms */
-		case OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS:
-			if (!od_config_reader_number(
-				    reader,
-				    &config->yb_alter_guc_stale_backend_ttl_ms)) {
+		case OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS: {
+			int val;
+			if (!od_config_reader_number(reader, &val)) {
 				goto error;
 			}
+			config->yb_alter_guc_stale_backend_ttl_ms = val;
 			continue;
+		}
 		/* yb_max_prepared_statements */
 		case OD_YB_MAX_PREPARED_STATEMENTS: {
 			int val;
