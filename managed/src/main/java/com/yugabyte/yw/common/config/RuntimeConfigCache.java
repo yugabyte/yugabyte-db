@@ -11,7 +11,12 @@ package com.yugabyte.yw.common.config;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import io.ebean.DB;
+import io.ebean.Transaction;
+import io.ebean.TransactionCallbackAdapter;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import lombok.extern.slf4j.Slf4j;
 import play.cache.NamedCache;
 import play.cache.SyncCacheApi;
@@ -38,7 +43,15 @@ public class RuntimeConfigCache {
           GlobalConfKeys.useNewRbacAuthz.getKey(),
           GlobalConfKeys.ybaApiStrictMode.getKey(),
           GlobalConfKeys.ybaApiSafeMode.getKey(),
-          GlobalConfKeys.blockOperatorApiResources.getKey());
+          GlobalConfKeys.blockOperatorApiResources.getKey(),
+          GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey());
+
+  // The change listener clears a key, and clears it again when the transaction that writes it ends.
+  // Writes that don't notify the listener, such as RuntimeConfig.setValue or a database restore,
+  // leave the old value cached until the next change. An expiry bounds that for the gflags API
+  // redaction key, which turns API redaction and the REDACTED merge-back on or off.
+  private static final Map<String, Integer> EXPIRY_SECONDS =
+      Map.of(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), 60);
 
   @Inject
   public RuntimeConfigCache(RuntimeConfigChangeNotifier runtimeConfigChangeNotifier) {
@@ -57,6 +70,29 @@ public class RuntimeConfigCache {
 
             public void processGlobal() {
               log.info("Removed {} from cache", key);
+              removeNowAndAfterTransaction(key);
+            }
+          });
+    }
+  }
+
+  // The listener runs inside the transaction that writes the key, before the commit, and a read on
+  // another connection in between loads the old value. Clearing the key again when the transaction
+  // ends drops that value. A load still running then isn't kept either: the cache stores a load's
+  // value only if the key still maps to that load when it completes.
+  private void removeNowAndAfterTransaction(String key) {
+    cache.remove(key);
+    Transaction transaction = DB.currentTransaction();
+    if (transaction != null && transaction.isActive()) {
+      transaction.register(
+          new TransactionCallbackAdapter() {
+            @Override
+            public void postCommit() {
+              cache.remove(key);
+            }
+
+            @Override
+            public void postRollback() {
               cache.remove(key);
             }
           });
@@ -79,12 +115,15 @@ public class RuntimeConfigCache {
     if (!cachedGlobalKeys.contains(key)) {
       throw new RuntimeException(key + " is not cached with RuntimeConfigCache");
     }
-    return cache.getOrElseUpdate(
-        key,
+    Callable<Boolean> fetch =
         () -> {
           log.info("Fetching {} from DB", key);
           return runtimeConfigFactory.globalRuntimeConf().getBoolean(key);
-        });
+        };
+    Integer expirySeconds = EXPIRY_SECONDS.get(key);
+    return expirySeconds == null
+        ? cache.getOrElseUpdate(key, fetch)
+        : cache.getOrElseUpdate(key, fetch, expirySeconds);
   }
 
   // Add more getters for other types here as needed

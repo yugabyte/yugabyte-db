@@ -26,6 +26,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
@@ -35,8 +39,11 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -186,6 +193,28 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
       assertValue(node, "nodeName", "host-n" + nodeIdx);
     }
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testUniverseGetReadsGFlagsApiRedactionConfigOnce() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    when(mockRuntimeConfig.getBoolean(key)).thenReturn(true);
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + uUUID;
+    for (int i = 0; i < 3; i++) {
+      assertOk(doRequestWithAuthToken("GET", url, authToken));
+    }
+    verify(mockRuntimeConfig, times(1)).getBoolean(key);
+  }
+
+  @Test
+  public void testOnlyApiRedactionReadsGFlagsApiRedactionConfig() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    clearInvocations(mockRuntimeConfig);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.LOGS);
+    verify(mockRuntimeConfig, never()).getBoolean(key);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.APIS);
+    verify(mockRuntimeConfig).getBoolean(key);
   }
 
   @Test
