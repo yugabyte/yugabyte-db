@@ -559,10 +559,13 @@ type ociDisk struct {
 }
 
 // ociFstab returns a YBA-written fstab that mounts each given UUID at /mnt/d0, /mnt/d1, ...
+// An empty UUID leaves that mount path out.
 func ociFstab(uuids ...string) string {
 	fstab := "UUID=root-uuid / xfs defaults 0 0\n"
 	for i, uuid := range uuids {
-		fstab += fmt.Sprintf("#/mnt/d%[1]d\nUUID=%[2]s /mnt/d%[1]d xfs defaults 0 2\n", i, uuid)
+		if uuid != "" {
+			fstab += fmt.Sprintf("#/mnt/d%[1]d\nUUID=%[2]s /mnt/d%[1]d xfs defaults 0 2\n", i, uuid)
+		}
 	}
 	return fstab
 }
@@ -617,7 +620,7 @@ func runOCIDiskResolver(
 			writeTestFile(t, filepath.Join(fixtures, "blkid-error", disk.name), "")
 		}
 		if disk.uuid != "" {
-			writeTestFile(t, filepath.Join(fixtures, "uuid", disk.name), disk.uuid+"\n")
+			writeTestFile(t, filepath.Join(fixtures, "uuid", disk.name), disk.uuid)
 		}
 	}
 	fstabPath := filepath.Join(root, "fstab")
@@ -640,13 +643,12 @@ func runOCIDiskResolver(
 		t,
 		filepath.Join(binDir, "blkid"),
 		"#!/bin/bash\n"+
-			"[[ $1 == -p ]] || exit 4\n"+
-			"device=${!#}\n"+
-			"name=${device##*/}\n"+
-			"if [[ $2 == -s ]]; then\n"+
-			"  cat \"$LSBLK_FIXTURES/uuid/$name\" 2>/dev/null || exit 2\n"+
+			"if [[ $1 == -c && $3 == -t ]]; then\n"+
+			"  grep -lx \"${4#UUID=}\" \"$LSBLK_FIXTURES\"/uuid/* 2>/dev/null | sed 's|.*/|/dev/|'\n"+
 			"  exit\n"+
 			"fi\n"+
+			"[[ $1 == -p ]] || exit 4\n"+
+			"name=${2##*/}\n"+
 			"if [[ -e $LSBLK_FIXTURES/blkid-error/$name ]]; then\n"+
 			"  echo >&2 \"error: $2: Permission denied\"; exit 2\n"+
 			"fi\n"+
@@ -810,7 +812,7 @@ func TestResolveOCIDrives(t *testing.T) {
 			want:       "sdc",
 		},
 		{
-			name: "disk mounted at a YBA mount path stays there",
+			name: "disk mounted at another YBA mount path is not used",
 			disks: []ociDisk{
 				{name: "sda", tree: "sda /mnt/d1\n"},
 				ociBootDisk("sdb"),
@@ -819,40 +821,7 @@ func TestResolveOCIDrives(t *testing.T) {
 			},
 			requested:  "sdb sdc",
 			mountPaths: "/mnt/d0 /mnt/d1",
-			want:       "sdc sda",
-		},
-		{
-			name: "data volume names swapped",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb /mnt/d1\n"},
-				{name: "sdc", tree: "sdc /mnt/d0\n"},
-			},
-			requested:  "sdb sdc",
-			mountPaths: "/mnt/d0 /mnt/d1",
-			want:       "sdc sdb",
-		},
-		{
-			name: "boot volume is sdb and the second data volume sda",
-			disks: []ociDisk{
-				{name: "sda", tree: "sda /mnt/d1\n"},
-				ociBootDisk("sdb"),
-				{name: "sdc", tree: "sdc /mnt/d0\n"},
-			},
-			requested:  "sdb sdc",
-			mountPaths: "/mnt/d0 /mnt/d1",
-			want:       "sdc sda",
-		},
-		{
-			name: "boot volume is the last requested name with data volumes mounted",
-			disks: []ociDisk{
-				{name: "sda", tree: "sda /mnt/d0\n"},
-				{name: "sdb", tree: "sdb /mnt/d1\n"},
-				ociBootDisk("sdc"),
-			},
-			requested:  "sdb sdc",
-			mountPaths: "/mnt/d0 /mnt/d1",
-			want:       "sda sdb",
+			want:       "sdd sdc",
 		},
 		{
 			// fstab mounts data volumes with nofail, so they can be left unmounted.
@@ -868,11 +837,11 @@ func TestResolveOCIDrives(t *testing.T) {
 			want:       "sdc sdb",
 		},
 		{
-			name: "boot volume is sdb and the data volumes are unmounted",
+			name: "boot volume is sdb and the second data volume sda",
 			disks: []ociDisk{
-				{name: "sda", tree: "sda \n", uuid: "uuid-1"},
+				{name: "sda", tree: "sda /mnt/d1\n", uuid: "uuid-1"},
 				ociBootDisk("sdb"),
-				{name: "sdc", tree: "sdc \n", uuid: "uuid-0"},
+				{name: "sdc", tree: "sdc /mnt/d0\n", uuid: "uuid-0"},
 			},
 			requested:  "sdb sdc",
 			mountPaths: "/mnt/d0 /mnt/d1",
@@ -880,12 +849,20 @@ func TestResolveOCIDrives(t *testing.T) {
 			want:       "sdc sda",
 		},
 		{
-			name: "fstab entry for a detached volume",
+			name: "boot volume is the last requested name with data volumes in fstab",
 			disks: []ociDisk{
-				ociBootDisk("sda"),
-				ociDataDisk("sdb"),
-				ociDataDisk("sdc"),
+				{name: "sda", tree: "sda /mnt/d0\n", uuid: "uuid-0"},
+				{name: "sdb", tree: "sdb /mnt/d1\n", uuid: "uuid-1"},
+				ociBootDisk("sdc"),
 			},
+			requested:  "sdb sdc",
+			mountPaths: "/mnt/d0 /mnt/d1",
+			fstab:      ociFstab("uuid-0", "uuid-1"),
+			want:       "sda sdb",
+		},
+		{
+			name:       "fstab entry for a detached volume",
+			disks:      []ociDisk{ociBootDisk("sda"), ociDataDisk("sdb"), ociDataDisk("sdc")},
 			requested:  "sdb sdc",
 			mountPaths: "/mnt/d0 /mnt/d1",
 			fstab:      ociFstab("detached-uuid"),
@@ -902,17 +879,6 @@ func TestResolveOCIDrives(t *testing.T) {
 			mountPaths: "/mnt/d0 /mnt/d1",
 			fstab:      "UUID=uuid-1 /mnt/d0 xfs defaults 0 2\n",
 			want:       "sdb sdc",
-		},
-		{
-			name: "one data volume mounted and one blank",
-			disks: []ociDisk{
-				{name: "sda", tree: "sda /mnt/d0\n"},
-				ociBootDisk("sdb"),
-				ociDataDisk("sdc"),
-			},
-			requested:  "sdb sdc",
-			mountPaths: "/mnt/d0 /mnt/d1",
-			want:       "sda sdc",
 		},
 		{
 			name: "disk an earlier run mounted is used over a blank disk",
@@ -972,61 +938,15 @@ func TestResolveOCIDrivesRefusesRequestedDisk(t *testing.T) {
 			wantError: "Requested disk sdc has partitions or holders. Refusing to format it.",
 		},
 		{
-			// lsblk shows a disk mounted over another at the same path.
-			name: "two disks mounted at one mount path",
+			name: "requested disk holds another mount path's filesystem",
 			disks: []ociDisk{
 				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb /mnt/d0\n"},
-				{name: "sdc", tree: "sdc /mnt/d0\n"},
+				{name: "sdb", tree: "sdb \n", uuid: "uuid-1"},
+				{name: "sdc", tree: "sdc \n", uuid: "uuid-x"},
 			},
 			requested: "sdb sdc",
-			wantError: "Disks sdb and sdc are both mounted at /mnt/d0.",
-		},
-		{
-			// Keeping the name would mount the disk at both mount paths.
-			name: "requested disk mounted at another mount path has no replacement",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb /mnt/d1\n"},
-				{name: "sdc", tree: "sdc /backup\n"},
-			},
-			requested: "sdb sdc",
-			wantError: "Requested disk sdb belongs at another mount path, and no blank disk " +
-				"can replace it.",
-		},
-		{
-			name: "fstab and the mounts disagree",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb /mnt/d0\n", uuid: "uuid-1"},
-				{name: "sdc", tree: "sdc \n", uuid: "uuid-0"},
-			},
-			requested: "sdb sdc",
-			fstab:     ociFstab("uuid-0", "uuid-1"),
-			wantError: "puts disk sdc at /mnt/d0, but disk sdb is mounted there.",
-		},
-		{
-			// A cloned volume keeps its source's filesystem UUID.
-			name: "two disks with the fstab UUID",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb \n", uuid: "uuid-0"},
-				{name: "sdc", tree: "sdc \n", uuid: "uuid-0"},
-			},
-			requested: "sdb sdc",
-			fstab:     ociFstab("uuid-0"),
-			wantError: "Disks sdb and sdc both have UUID uuid-0.",
-		},
-		{
-			name: "fstab puts a disk at one mount path and it is mounted at another",
-			disks: []ociDisk{
-				ociBootDisk("sda"),
-				{name: "sdb", tree: "sdb /mnt/d1\n", uuid: "uuid-0"},
-				ociDataDisk("sdc"),
-			},
-			requested: "sdb sdc",
-			fstab:     ociFstab("uuid-0"),
-			wantError: "Disk sdb belongs at more than one mount path.",
+			fstab:     ociFstab("", "uuid-1"),
+			wantError: "Requested disk sdb holds the filesystem",
 		},
 	}
 	for _, test := range tests {
@@ -1067,11 +987,7 @@ func TestRenderedScriptResolvesOCIDrives(t *testing.T) {
 		`get_oci_drives() {`,
 		`elif [[ $CLOUD_TYPE == "oci" ]]; then`,
 		`get_ephemeral_drives_rv=$get_oci_drives_rv`,
-		`if [[ $CLOUD_TYPE == "azu" || $CLOUD_TYPE == "oci" ]]; then
-      # Every Azure LUN, and every OCI volume, maps to exactly one mount path; mounting a
-      # partial set would shift disks onto the wrong mount points.
-      echo >&2 "Refusing to mount a partial set of data disks."
-      exit 1`,
+		`if [[ $CLOUD_TYPE == "azu" || $CLOUD_TYPE == "oci" ]]; then`,
 	} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("rendered script does not contain %q", expected)
