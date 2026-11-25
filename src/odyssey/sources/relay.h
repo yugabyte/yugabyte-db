@@ -451,20 +451,6 @@ static inline od_frontend_status_t od_relay_write(od_relay_t *relay)
 	return OD_OK;
 }
 
-/*
- * YB: A relay paused after a Sync only watches its client for a hangup.
- * If the client is gone, end the watch (level-triggered epoll would keep
- * reporting it during cleanup) and return the read error; the cleanup
- * cancels the running statement.
- */
-static inline od_frontend_status_t yb_od_relay_check_hangup(od_relay_t *relay)
-{
-	if (od_io_poll(relay->src) == 0 && machine_connected(relay->src->io))
-		return OD_OK;
-	od_io_read_stop(relay->src);
-	return relay->error_read;
-}
-
 static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 {
 	/* on read event */
@@ -476,10 +462,7 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			return OD_ATTACH;
 		}
 
-		if (relay->yb_paused)
-			rc = yb_od_relay_check_hangup(relay);
-		else
-			rc = od_relay_read(relay);
+		rc = od_relay_read(relay);
 		if (rc != OD_OK)
 			return rc;
 
@@ -489,8 +472,9 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 		 * YB: Signal dst->on_write here so the Sync queued in iov
 		 * gets flushed to the server (otherwise we'd never get the
 		 * matching ReadyForQuery and we'd deadlock). Then bubble
-		 * OD_WAIT_SYNC up to the frontend loop, which switches the
-		 * client to a hangup watch until yb_resume_client_relay().
+		 * OD_WAIT_SYNC up to the frontend loop, which calls
+		 * od_io_read_stop on this relay's src to remove the client
+		 * FD from epoll until yb_resume_client_relay() resumes us.
 		 */
 		if (rc == OD_WAIT_SYNC) {
 			if (machine_iov_pending(relay->iov))
@@ -510,15 +494,14 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			 * YB: If the read above found the readahead full, it read
 			 * nothing and the on_read signal is used up. Bytes buffered
 			 * by TLS do not wake the poller, so signal on_read again, or
-			 * they are never read. Signal only when not paused (resume
-			 * checks for them) and the readahead has room, so the next
-			 * od_relay_read() can read them.
+			 * they are never read. Signal only when the readahead has
+			 * room, so the next od_relay_read() can read the pending
+			 * bytes.
 			 * Upstream fixed this in 535a27e by signalling from
 			 * od_relay_read() whenever the readahead is full, which here
 			 * would busy-loop while the relay is paused after a Sync.
 			 */
-			if (!relay->yb_paused &&
-			    od_readahead_left(&relay->src->readahead) > 0 &&
+			if (od_readahead_left(&relay->src->readahead) > 0 &&
 			    yb_machine_tls_read_pending(relay->src->io))
 				machine_cond_signal(relay->src->on_read);
 		}
@@ -541,10 +524,10 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			od_readahead_reuse(&relay->src->readahead);
 
 			/*
-			 * YB: A paused relay writes its Sync here. Leave the
-			 * client on the frontend's hangup watch; reading it would
-			 * busy-loop on bytes left on the socket.
-			 * yb_resume_client_relay() starts the read.
+			 * YB: A paused relay writes its Sync here. Keep the
+			 * client read stopped; reading it would busy-loop on
+			 * bytes left on the socket. The frontend polls it for a
+			 * hangup, and yb_resume_client_relay() starts the read.
 			 */
 			if (!relay->yb_paused) {
 				rc = od_io_read_start(relay->src);

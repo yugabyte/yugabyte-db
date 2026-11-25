@@ -21,8 +21,6 @@ struct mm_pollif {
 	int (*write)(mm_poll_t *, mm_fd_t *, mm_fd_callback_t, void *, int);
 	int (*read_write)(mm_poll_t *, mm_fd_t *, mm_fd_callback_t, void *,
 			  int);
-	/* YB: watch for the peer's hangup only, in place of a read */
-	int (*yb_read_hangup)(mm_poll_t *, mm_fd_t *, mm_fd_callback_t, void *);
 	int (*del)(mm_poll_t *, mm_fd_t *);
 };
 

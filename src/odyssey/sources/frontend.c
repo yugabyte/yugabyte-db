@@ -2282,6 +2282,26 @@ od_frontend_remote_process_server(od_server_t *server, od_client_t *client)
 	return OD_OK;
 }
 
+/*
+ * YB: A client paused after a Sync is not read until ReadyForQuery, so its
+ * EOF can wait behind unread bytes. Instead, poll its socket for a hangup
+ * this often, as Postgres does with client_connection_check_interval.
+ * A half-closed client is treated as gone.
+ */
+#define YB_PAUSED_CLIENT_POLL_MS 1000
+
+static bool yb_paused_client_hung_up(od_client_t *client)
+{
+	od_io_t *io = client->relay.src;
+	if (od_io_poll(io) != 0) {
+		od_instance_t *instance = client->global->instance;
+		od_error(&instance->logger, "wait sync", client, client->server,
+			 "client fd poll failed, errno=%d (%s)",
+			 machine_errno(), strerror(machine_errno()));
+	}
+	return !machine_connected(io->io);
+}
+
 static od_frontend_status_t od_frontend_remote(od_client_t *client)
 {
 	od_route_t *route = client->route;
@@ -2340,7 +2360,10 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 #endif
 #endif
 			/* one minute */
-			if (machine_cond_wait(client->cond, 60000) == 0) {
+			bool yb_paused = yb_is_relay_paused(&client->relay);
+			if (machine_cond_wait(client->cond,
+					      yb_paused ? YB_PAUSED_CLIENT_POLL_MS :
+							  60000) == 0) {
 				client->time_last_active = machine_time_us();
 #ifndef YB_SUPPORT_FOUND
 				od_dbg_printf_on_dvl_lvl(
@@ -2348,6 +2371,14 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 					"change client last active time %lld\n",
 					client->time_last_active);
 #endif
+				break;
+			}
+
+			if (yb_paused && yb_paused_client_hung_up(client)) {
+				od_log(&instance->logger, "wait sync", client,
+				       server,
+				       "client disconnected while paused after Sync");
+				status = OD_ECLIENT_READ;
 				break;
 			}
 		}
@@ -2489,13 +2520,12 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			continue;
 		} else if (status == OD_WAIT_SYNC) {
 			/*
-			 * YB: Stop reading the client until ReadyForQuery, but
-			 * watch it for a hangup, as upstream Odyssey and Postgres
-			 * do, so a client that goes away is noticed even with
-			 * unread bytes ahead of its FIN. A half-closed client is
-			 * treated as gone.
+			 * YB: Park the client read by removing its FD from epoll
+			 * so co-routine doesn't get woken up for any bytes the client
+			 * pipelines after the Sync. The wait above polls the client
+			 * for a hangup while it is paused.
 			 */
-			int rc = yb_od_io_read_hangup_start(client->relay.src);
+			int rc = od_io_read_stop(client->relay.src);
 			if (rc != 0) {
 				od_error(&instance->logger, "wait sync", client, server,
 					"failed to stop client read: %s",

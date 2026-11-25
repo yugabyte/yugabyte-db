@@ -11,11 +11,7 @@
 
 typedef struct mm_fd mm_fd_t;
 
-/*
- * YB: MM_RDHUP watches for the peer's hangup (EPOLLRDHUP, EPOLLHUP,
- * EPOLLERR) but not for data. It calls on_read and is never set with MM_R.
- */
-enum { MM_R = 1, MM_W = 2, MM_RDHUP = 4 };
+enum { MM_R = 1, MM_W = 2 };
 
 typedef void (*mm_fd_callback_t)(mm_fd_t *);
 
