@@ -562,6 +562,7 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
   const int kMaxBackoffMs = 256;
   RaftConfigPB committed_config;
 
+  // The flag is read on each iteration, so a runtime change applies to a wait in progress.
   do {
     if (IsCancelled()) {
       return STATUS_FORMAT(

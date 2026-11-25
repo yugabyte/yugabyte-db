@@ -302,8 +302,7 @@ TEST_F(TabletReplacementITest, TombstoneEvictedReplicaAfterAbortedAddServer) {
 // A replica that was remote bootstrapped while its ADD_SERVER was pending is removed in the same
 // term before it gets an update from the leader. Master must still tombstone it.
 TEST_F(TabletReplacementITest, TombstoneReplicaRemovedAfterPendingAddServerCommitted) {
-  // The tserver reports a replica that is not promoted only while RBS waits for the promotion,
-  // and rejects DeleteTablet for it until then. So the wait must outlast the removal.
+  // The tserver reports the replica only while RBS waits for its promotion, so the wait is long.
   std::vector<std::string> ts_flags = {
       "--enable_leader_failure_detection=false",
       "--committed_config_change_role_timeout_sec=3600"};
