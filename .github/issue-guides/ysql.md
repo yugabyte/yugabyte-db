@@ -4,31 +4,49 @@ The goal is a **minimal reproducer** that a YSQL developer can run and
 understand quickly. This is a framework, not a form: include what this issue
 needs, and write for developer readability.
 
-Lead with the problem and its impact, so a reader knows how bad it is before
-reaching the details. For a bug, the impact is often one of these, from most
-to least severe:
-
-- a security hole: never filed as a GitHub issue; see "Where to file" in
-  [filing-issues.md](filing-issues.md)
-- data corruption
-- wrong results
-- a crash: which process (the postmaster, a postgres backend, a tserver or a
-  master), and whether it is a crash loop
-- a hang, a deadlock, or the cluster becoming unavailable
-- memory or other resource growth
-- an error
-- a performance regression or a bad plan
-- a test failure
-
-Then say where it happens: the statement, feature or component, and the
-build. Other issues, such as an enhancement, a refactor, new tests or
-documentation, lead with what they ask for and why.
-
 Where to file, how to handle duplicates and what to do with internal links
 are the same for every core DB component; see
 [filing-issues.md](filing-issues.md). When a YSQL issue turns out to
 be a duplicate with a materially different repro, the comment on the
-existing issue covers everything under "Always cover" below.
+existing issue carries the summary and everything under "Always cover" below.
+
+## Start with a summary
+
+Open the issue with a short summary, as the first thing under the template's
+Description heading, so a reader knows what kind of issue it is and how bad
+it is before reaching the details. If something isn't known, write "unknown"
+rather than leaving it out. Write "n/a" where a field is irrelevant, such as
+the regression line of an enhancement, or the version and build of a lint
+or tooling issue.
+
+- **Kind:** bug, enhancement, new feature, internal refactor, new tests,
+  documentation, or whatever fits.
+- **Impact:** for a bug, what it does. This is often one of these, from most
+  to least severe:
+  - a security hole: never filed as a GitHub issue; see "Where to file" in
+    [filing-issues.md](filing-issues.md)
+  - data corruption
+  - wrong results
+  - a crash: which process (the postmaster, a postgres backend, a tserver or
+    a master), and whether it is a crash loop
+  - a hang, a deadlock, or the cluster becoming unavailable
+  - memory or other resource growth
+  - an error
+  - a performance regression or a bad plan
+  - a test failure
+
+  For anything else, what it asks for and why.
+- **Version:** the release, or the branch it was found on.
+- **Commit or build:** the commit (already on a remote, written bare so
+  GitHub auto-links it) or the build number.
+- **Build:** compiler, build flavor (release, debug, fastdebug, ASAN, TSAN),
+  architecture and OS. All four is best; if you don't have them all, list
+  what you have.
+- **Regression:** yes, with the last version or commit where it worked; no;
+  or unknown. If you have evidence short of testing, such as the commit that
+  likely introduced it from reading the code, add it and say it is inferred.
+
+Then say where it happens: the statement, feature or component.
 
 ## Reduce first
 
@@ -41,16 +59,13 @@ minimized"). A bloated issue is better than an unfiled one.
 
 ## Always cover
 
-- **Where it was found.** Give the branch plus a commit, version or build
-  number. Commits must already be on a remote, written bare so GitHub
-  auto-links them. If the build type matters, name it: release, debug, ASAN,
-  TSAN, and so on. List every branch or version you actually tested, with its
-  result; if you tested only one, say other versions are untested. If you
-  know it used to work, give the last version or commit where it did.
-- **What kind of issue it is.** An issue gets exactly one `kind/*` label;
-  pick the one that fits best (correctness bugs and crashes are `kind/bug`),
-  defaulting to `kind/bug` if nothing else applies. Use only existing labels.
-  The categories below can still stack in the body, for example a correctness
+- **What else was tested.** List every other branch or version you tried,
+  with its result; if you tried only the one in the summary, say other
+  versions are untested.
+- **Label.** An issue gets exactly one `kind/*` label matching the summary's
+  kind (correctness bugs and crashes are `kind/bug`), defaulting to
+  `kind/bug` if nothing else applies. Use only existing labels. The
+  categories below can still stack in the body, for example a correctness
   bug that only appears under concurrency.
 - **Environment, only what's needed to reproduce it.** List the non-default
   GUCs, gflags, cluster shape (nodes, RF, colocation) and connection manager
@@ -77,6 +92,8 @@ minimized"). A bloated issue is better than an unfiled one.
   from your own reproduction belong on GitHub; customer logs are sensitive.
 
 ## Per category
+
+### Bugs
 
 **Correctness.** Ground the expected result in a reference, never in
 intuition. Name the reference you compared against:
@@ -123,8 +140,31 @@ State any locking-related flags.
 **Bug (other).** Explain briefly why the behavior is wrong: which docs,
 upstream PostgreSQL behavior or invariant it contradicts.
 
-**Feature request, enhancement, refactor, new tests or documentation.** State
-the motivation and the desired outcome. The repro sections don't apply.
+### Issues other than bugs
+
+State the motivation and the desired outcome. Of "Always cover", only the
+label, related issues and how each claim is known always apply; include the
+rest only when it helps, such as the numbers behind a performance
+enhancement. Then:
+
+**Enhancement** (existing behavior made better, such as faster, clearer or
+easier to use). The current behavior, the desired behavior, and who
+benefits. For performance, the numbers that show the gap.
+
+**New feature.** The use case, and the proposed behavior: SQL syntax, GUCs
+or functions. Whether PostgreSQL has it, and in which version. What users do
+today instead.
+
+**Internal refactor.** The code involved, what is wrong with its current
+shape (for example the same decision made in two places), and what the
+refactor makes easier. Say whether behavior is meant to stay the same.
+
+**New tests.** What is untested, and the kind of test that would cover it
+(regress, isolation or Java). If a bug got through because of the gap, link
+it.
+
+**Documentation.** The page, what is wrong or missing, and the correct
+information.
 
 ## Validating a SQL repro
 
