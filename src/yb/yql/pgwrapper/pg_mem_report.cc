@@ -23,42 +23,53 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 DEFINE_test_flag(bool, ysql_pg_mem_report, false,
     "Record the idle and peak memory of every postgres process, compare them with the "
     "--TEST_ysql_pg_mem_*_kb budgets, and log a YB_PG_MEM_RECORD line for each process when the "
     "postmaster reaps it. Read once at postmaster start.");
 
-DEFINE_test_flag(bool, ysql_pg_mem_enforce, false,
+DEFINE_test_flag(bool, ysql_pg_mem_enforce,
+    yb::ReleaseVsDebugVsAsanVsTsan(true, false, false, false),
     "Whether a postgres process over a --TEST_ysql_pg_mem_*_kb budget fails the test. When false "
     "the violation is only logged.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_backend_idle_kb, 0,
+// Release budgets are 1.1x the largest value measured for empty processes (backends that connect
+// and run SELECT 1) in MiniCluster and ExternalMiniCluster. Other build types are not measured yet.
+DEFINE_test_flag(int64, ysql_pg_mem_backend_idle_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(21661, 0, 0, 0),
     "Budget for the anonymous RSS of a client backend or walsender while idle between "
     "statements, in kB. 0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_backend_peak_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_backend_peak_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(66722, 0, 0, 0),
     "Budget for the peak RSS (VmHWM) of a client backend or walsender, in kB. 0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_idle_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_idle_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(41048, 0, 0, 0),
     "Budget for the anonymous RSS of a relcache init backend (the backend that builds the "
     "relcache init file) while idle, in kB. 0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_peak_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_relcache_init_peak_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(88651, 0, 0, 0),
     "Budget for the peak RSS (VmHWM) of a relcache init backend, in kB. 0 means no budget.");
 
 DEFINE_test_flag(int64, ysql_pg_mem_parallel_worker_peak_kb, 0,
     "Budget for the peak RSS (VmHWM) of a parallel worker, in kB. 0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_bgworker_peak_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_bgworker_peak_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(62256, 0, 0, 0),
     "Budget for the peak RSS (VmHWM) of a background worker other than a parallel worker, in kB. "
     "0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_aux_peak_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_aux_peak_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(29000, 0, 0, 0),
     "Budget for the peak RSS (VmHWM) of an auxiliary process (checkpointer, background writer, "
     "WAL writer, startup), in kB. 0 means no budget.");
 
-DEFINE_test_flag(int64, ysql_pg_mem_postmaster_peak_kb, 0,
+DEFINE_test_flag(int64, ysql_pg_mem_postmaster_peak_kb,
+    yb::ReleaseVsDebugVsAsanVsTsan<int64_t>(140466, 0, 0, 0),
     "Budget for the peak RSS (VmHWM) of the postmaster, in kB. 0 means no budget.");
 
 namespace yb::pgwrapper {

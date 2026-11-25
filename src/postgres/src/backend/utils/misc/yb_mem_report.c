@@ -91,6 +91,7 @@ typedef struct YbMemReportSlot
 	int64		peak_kb;
 	int64		peak_shared_kb; /* file + shmem pages when the peak was seen */
 	uint32		snapshots;		/* bit per YbMemReportKind */
+	bool		exited;			/* the exit hook took the final sample */
 	char		bgw_type[BGW_MAXLEN];
 	char		db[YB_MEM_REPORT_NAME_LEN];
 	char		app[YB_MEM_REPORT_NAME_LEN];
@@ -274,7 +275,14 @@ log_record(pid_t pid, const char *type_desc, const YbMemReportSlot *slot,
 	YbMemReportLine line = {0};
 	char		type[64];
 	char	   *p;
-	int64		peak_kb = Max(maxrss_kb, slot ? slot->peak_kb : 0);
+	/*
+	 * wait4() also counts the pages exit() faults in while it runs C++ static
+	 * destructors and atexit handlers: 7-24 MB of library pages the process
+	 * never touched while running.  Use it only when the process did not get
+	 * to take its own final sample, e.g. it crashed or was killed.
+	 */
+	int64		peak_kb = slot && slot->exited ? slot->peak_kb :
+		Max(maxrss_kb, slot ? slot->peak_kb : 0);
 	int64		idle_anon_kb = slot ? slot->idle_anon_kb : 0;
 	bool		idle_over = idle_budget_kb > 0 && idle_anon_kb > idle_budget_kb;
 	bool		peak_over = peak_budget_kb > 0 && peak_kb > peak_budget_kb;
@@ -292,12 +300,14 @@ log_record(pid_t pid, const char *type_desc, const YbMemReportSlot *slot,
 				 " first_idle_anon_kb=" INT64_FORMAT " idle_rss_kb=" INT64_FORMAT
 				 " idle_samples=" INT64_FORMAT " peak_kb=" INT64_FORMAT
 				 " peak_budget_kb=" INT64_FORMAT " peak_shared_kb=" INT64_FORMAT
+				 " self_peak_kb=" INT64_FORMAT " exit_maxrss_kb=" INT64_FORMAT
 				 " over=%s snap=%s",
 				 (int) PostmasterPid, (int) pid, type,
 				 slot ? slot->start_ns : 0, exit_status, idle_anon_kb, idle_budget_kb,
 				 slot ? slot->first_idle_anon_kb : 0, slot ? slot->idle_rss_kb : 0,
 				 slot ? slot->idle_samples : 0, peak_kb, peak_budget_kb,
 				 slot ? slot->peak_shared_kb : 0,
+				 slot ? slot->peak_kb : 0, maxrss_kb,
 				 kinds_string(idle_over, peak_over),
 				 kinds_string(slot && (slot->snapshots & (1 << YB_MEM_REPORT_IDLE)),
 							  slot && (slot->snapshots & (1 << YB_MEM_REPORT_PEAK))));
@@ -312,13 +322,37 @@ log_record(pid_t pid, const char *type_desc, const YbMemReportSlot *slot,
 			 errhidecontext(true)));
 }
 
+/*
+ * VmHWM from /proc/self/status.  Unlike getrusage(), which keeps the max RSS
+ * across exec(), it resets at exec().  That matters for the postmaster, which
+ * starts as a fork of the tserver (or test) process, whose pages all count
+ * in the child's RSS until exec().
+ */
+static int64
+read_vmhwm_kb(void)
+{
+	FILE	   *f = fopen("/proc/self/status", "r");
+	char		line[256];
+	int64		kb = -1;
+
+	if (f == NULL)
+		return -1;
+	while (fgets(line, sizeof(line), f) != NULL)
+	{
+		if (strncmp(line, "VmHWM:", 6) == 0)
+		{
+			kb = strtoll(line + 6, NULL, 10);
+			break;
+		}
+	}
+	fclose(f);
+	return kb;
+}
+
 static void
 postmaster_exit(int code, Datum arg)
 {
-	struct rusage ru;
-
-	getrusage(RUSAGE_SELF, &ru);
-	log_record(MyProcPid, "postmaster", NULL, ru.ru_maxrss, code,
+	log_record(MyProcPid, "postmaster", NULL, read_vmhwm_kb(), code,
 			   0, postmaster_peak_budget_kb);
 }
 
@@ -555,7 +589,12 @@ sample(bool after_statement, bool idle)
 static void
 child_exit(int code, Datum arg)
 {
+	YbMemReportSlot *slot;
+
 	sample(false, false);
+	slot = get_my_slot();
+	if (slot != NULL)
+		slot->exited = true;
 }
 
 /* Called from InitPostmasterChild(). */
