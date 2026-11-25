@@ -1858,13 +1858,14 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				/*
 				 * YB: we expect amsearcharray to be implemented and rightop to
-				 * always be ArrayExpr.
+				 * always be the array that a batched nested loop fills (a
+				 * Param, possibly mapped by an ArrayCoerceExpr).
 				 * TODO(jason): clean up the below code to remove unreachable
 				 * branches.  It is preserved for now because it is a copy of
 				 * the above ScalarArrayOpExpr case.
 				 */
 				Assert(index->rd_indam->amsearcharray);
-				Assert(IsA(rightop, ArrayExpr));
+				Assert(IsA(rightop, Param) || IsA(rightop, ArrayCoerceExpr));
 				if (index->rd_indam->amsearcharray)
 				{
 					/* Index AM will handle this like a simple operator */

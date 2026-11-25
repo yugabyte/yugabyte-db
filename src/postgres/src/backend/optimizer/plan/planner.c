@@ -782,7 +782,6 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		parent_root ? parent_root->yb_cur_batched_groups : NIL;
 	root->yb_availBatchedRelids =
 		parent_root ? parent_root->yb_availBatchedRelids : NULL;
-	root->yb_cur_batch_no = -1;
 	if (hasRecursion)
 		root->wt_param_id = assign_special_exec_param(root);
 	else

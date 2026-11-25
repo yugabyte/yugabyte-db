@@ -100,7 +100,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t
          Storage Table Read Ops: 101
          Storage Table Rows Scanned: 5000
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
-         Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
+         Index Cond: (a = ANY (ARRAY[t_large.a, ...]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1000
@@ -121,7 +121,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t
          Storage Table Read Ops: 6
          Storage Table Rows Scanned: 5000
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
-         Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
+         Index Cond: (a = ANY (ARRAY[t_small.a, ...]))
          Storage Table Read Requests: 14
          Storage Table Read Ops: 21
          Storage Table Rows Scanned: 1000
@@ -143,7 +143,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_large JOIN t_small ON t
          Storage Table Read Ops: 12
          Storage Table Rows Scanned: 5000
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
-         Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
+         Index Cond: (a = ANY (ARRAY[t_large.a, ...]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1000
@@ -164,7 +164,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM t_small JOIN t_large ON t
          Storage Table Read Ops: 3
          Storage Table Rows Scanned: 5000
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
-         Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
+         Index Cond: (a = ANY (ARRAY[t_small.a, ...]))
          Storage Table Read Requests: 2
          Storage Table Read Ops: 3
          Storage Table Rows Scanned: 1000

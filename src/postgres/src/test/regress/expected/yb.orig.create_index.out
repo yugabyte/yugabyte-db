@@ -339,13 +339,13 @@ SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
-                                                       QUERY PLAN                                                       
-------------------------------------------------------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ((t1.h = t2.h) AND (t1.r = t2.r))
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+         Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ...]))
 (5 rows)
 
 SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;

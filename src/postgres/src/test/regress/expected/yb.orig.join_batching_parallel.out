@@ -158,8 +158,8 @@ from
   join (s join u on s.b = u.b) on s.b = t.b and r.a = u.a
 where r.x like '%0%'
 $q$);
-                                            bnl_variants                                             
------------------------------------------------------------------------------------------------------
+                                         bnl_variants                                          
+-----------------------------------------------------------------------------------------------
  -- parallel
  Gather
    Workers Planned: 2
@@ -171,13 +171,13 @@ $q$);
                ->  Parallel Index Scan using r_pkey on r
                      Storage Filter: (x ~~ '%0%'::text)
                ->  Index Scan using t_pkey on t
-                     Index Cond: (a = ANY (ARRAY[r.a, $1, $2]))
+                     Index Cond: (a = ANY (ARRAY[r.a, ...]))
          ->  YB Batched Nested Loop Join
                Join Filter: (s.b = u.b)
                Sort Keys: s.b
                ->  Index Scan using s_pkey on s
                ->  Index Scan using u_pkey on u
-                     Index Cond: ((b = ANY (ARRAY[s.b, $4, $5])) AND (a = ANY (ARRAY[r.a, $7, $8])))
+                     Index Cond: ((b = ANY (ARRAY[s.b, ...])) AND (a = ANY (ARRAY[r.a, ...])))
  -- serial
  YB Batched Nested Loop Join
    Join Filter: ((r.a = u.a) AND (t.b = s.b))
@@ -187,13 +187,13 @@ $q$);
          ->  Index Scan using r_pkey on r
                Storage Filter: (x ~~ '%0%'::text)
          ->  Index Scan using t_pkey on t
-               Index Cond: (a = ANY (ARRAY[r.a, $1, $2]))
+               Index Cond: (a = ANY (ARRAY[r.a, ...]))
    ->  YB Batched Nested Loop Join
          Join Filter: (s.b = u.b)
          Sort Keys: s.b
          ->  Index Scan using s_pkey on s
          ->  Index Scan using u_pkey on u
-               Index Cond: ((b = ANY (ARRAY[s.b, $4, $5])) AND (a = ANY (ARRAY[r.a, $7, $8])))
+               Index Cond: ((b = ANY (ARRAY[s.b, ...])) AND (a = ANY (ARRAY[r.a, ...])))
  -- unbatched
  Nested Loop
    ->  Nested Loop
@@ -267,8 +267,8 @@ from
     on t2a.b = t1b.b + t1a.b
 where t2b.b <= 3
 $q$);
-                                                 bnl_variants                                                  
----------------------------------------------------------------------------------------------------------------
+                                              bnl_variants                                               
+---------------------------------------------------------------------------------------------------------
  -- parallel
  Nested Loop
    Join Filter: ((t1b.b + t1a.b) = t2a.b)
@@ -284,7 +284,7 @@ $q$);
                      ->  Index Scan using t2_pkey on t2 t2b
                            Index Cond: (b <= 3)
                      ->  Index Scan using t2_pkey on t2 t2a
-                           Index Cond: ((b = ANY (ARRAY[t2b.a, $1, $2])) AND (a = ANY (ARRAY[t1a.a, $4, $5])))
+                           Index Cond: ((b = ANY (ARRAY[t2b.a, ...])) AND (a = ANY (ARRAY[t1a.a, ...])))
  -- serial
  Nested Loop
    Join Filter: ((t1b.b + t1a.b) = t2a.b)
@@ -298,7 +298,7 @@ $q$);
                ->  Index Scan using t2_pkey on t2 t2b
                      Index Cond: (b <= 3)
                ->  Index Scan using t2_pkey on t2 t2a
-                     Index Cond: ((b = ANY (ARRAY[t2b.a, $1, $2])) AND (a = ANY (ARRAY[t1a.a, $4, $5])))
+                     Index Cond: ((b = ANY (ARRAY[t2b.a, ...])) AND (a = ANY (ARRAY[t1a.a, ...])))
  -- unbatched
  Nested Loop
    Join Filter: ((t1b.b + t1a.b) = t2a.b)

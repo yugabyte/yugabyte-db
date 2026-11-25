@@ -1486,6 +1486,7 @@ _copyPartitionPruneStepOp(const PartitionPruneStepOp *from)
 	COPY_NODE_FIELD(exprs);
 	COPY_NODE_FIELD(cmpfns);
 	COPY_BITMAPSET_FIELD(nullkeys);
+	COPY_SCALAR_FIELD(yb_saop_array);
 
 	return newnode;
 }

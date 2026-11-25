@@ -2673,14 +2673,8 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 				{
 					NestLoopParam *nlp = (NestLoopParam *) lfirst(l);
 
-					int			batch_size = nlp->yb_batch_size;
-
-					for (size_t i = 0; i < batch_size; i++)
-					{
-						nestloop_params =
-							bms_add_member(nestloop_params,
-										   nlp->paramno + i);
-					}
+					nestloop_params = bms_add_member(nestloop_params,
+													 nlp->paramno);
 				}
 			}
 			break;

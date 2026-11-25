@@ -523,12 +523,12 @@ SELECT * FROM tenk1 a JOIN my_gen_series(1,1000) g ON a.unique1 = g;
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM tenk1 a JOIN my_gen_series(1,10) g ON a.unique1 = g;
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (a.unique1 = g.g)
    ->  Function Scan on my_gen_series g
    ->  Index Scan using tenk1_unique1 on tenk1 a
-         Index Cond: (unique1 = ANY (ARRAY[g.g, $1, $2, ..., $1023]))
+         Index Cond: (unique1 = ANY (ARRAY[g.g, ...]))
 (5 rows)
 

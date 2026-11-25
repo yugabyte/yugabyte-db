@@ -121,14 +121,14 @@ EXPLAIN (COSTS OFF) /*+HashJoin(b r) Leading((r b)) Set(yb_max_merge_scan_stream
 \set _echo_run_query :ECHO
 \set ECHO none
 EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT count(*) FROM bkt16 b JOIN r5n r ON b.r1 = r.r1;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Aggregate
    ->  YB Batched Nested Loop Join
          Join Filter: (b.r1 = r.r1)
          ->  Seq Scan on bkt16 b
          ->  Index Scan using r5n_pkey on r5n r
-               Index Cond: (r1 = ANY (ARRAY[b.r1, $1, $2, ..., $1023]))
+               Index Cond: (r1 = ANY (ARRAY[b.r1, ...]))
 (6 rows)
 
 EXPLAIN (COSTS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT count(*) FROM bkt16 b JOIN r5n r ON b.r1 = r.r1;

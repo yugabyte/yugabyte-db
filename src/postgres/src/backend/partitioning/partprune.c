@@ -222,6 +222,11 @@ static bool perform_func_expr_pruning(PartitionPruneContext *context,
 									  int partIndex,
 									  List *funcExprs);
 static bool canUseFunctionForPartitionPruning(Oid funcoid);
+static List *yb_gen_prune_steps_from_exec_array(GeneratePruningStepsContext *context,
+												Expr *leftop, Oid saop_op,
+												Oid saop_coll, Expr *rightop);
+static PruneStepResult *yb_perform_pruning_array_step(PartitionPruneContext *context,
+													  PartitionPruneStepOp *opstep);
 
 /*
  * make_partition_pruneinfo
@@ -2422,6 +2427,25 @@ match_clause_to_partition_key(GeneratePruningStepsContext *context,
 			 */
 			elem_exprs = arrexpr->elements;
 		}
+		else if (context->target == PARTTARGET_EXEC &&
+				 saop->useOr &&
+				 op_in_opfamily(saop_op, partopfamily) &&
+				 !bms_is_empty(pull_exec_paramids(rightop)))
+		{
+			/*
+			 * YB: The elements of an array computed from exec Params, such
+			 * as the one a batched nested loop join fills, are only known
+			 * when the step runs.
+			 */
+			*clause_steps =
+				yb_gen_prune_steps_from_exec_array(context, leftop, saop_op,
+												   saop_coll, rightop);
+			if (context->contradictory)
+				return PARTCLAUSE_MATCH_CONTRADICT;
+			else if (*clause_steps == NIL)
+				return PARTCLAUSE_UNSUPPORTED;
+			return PARTCLAUSE_MATCH_STEPS;
+		}
 		else
 		{
 			/* Give up on any other clause types. */
@@ -3520,6 +3544,10 @@ perform_pruning_base_step(PartitionPruneContext *context,
 	 */
 	Assert(list_length(opstep->exprs) == list_length(opstep->cmpfns));
 
+	/* YB: a step whose comparison value is an array of values */
+	if (opstep->yb_saop_array)
+		return yb_perform_pruning_array_step(context, opstep);
+
 	nvalues = 0;
 	lc1 = list_head(opstep->exprs);
 	lc2 = list_head(opstep->cmpfns);
@@ -3995,4 +4023,120 @@ canUseFunctionForPartitionPruning(Oid funcoid)
 	 * This is the yb_is_local_table function.
 	 */
 	return funcoid == F_YB_IS_LOCAL_TABLE;
+}
+
+/*
+ * yb_gen_prune_steps_from_exec_array
+ *		Generate pruning steps for 'leftop saop_op ANY (rightop)', where
+ *		rightop is an array expression of exec Params.
+ *
+ * The steps are those of 'leftop saop_op rightop', marked so that
+ * yb_perform_pruning_array_step prunes with each element of the array and
+ * combines the results, as the steps for an OR of one clause per element
+ * would.
+ */
+static List *
+yb_gen_prune_steps_from_exec_array(GeneratePruningStepsContext *context,
+								   Expr *leftop, Oid saop_op, Oid saop_coll,
+								   Expr *rightop)
+{
+	Expr	   *elem_clause;
+	List	   *steps;
+	ListCell   *lc;
+	int			first_new_step = list_length(context->steps);
+
+	elem_clause = make_opclause(saop_op, BOOLOID, false, leftop,
+								(Expr *) rightop, InvalidOid, saop_coll);
+	steps = gen_partprune_steps_internal(context, list_make1(elem_clause));
+
+	/*
+	 * Only one partition key gets a value, so each op step has just the
+	 * array.
+	 */
+	for_each_from(lc, context->steps, first_new_step)
+	{
+		PartitionPruneStepOp *opstep = (PartitionPruneStepOp *) lfirst(lc);
+
+		if (!IsA(opstep, PartitionPruneStepOp))
+			continue;
+		if (list_length(opstep->exprs) != 1 ||
+			!equal(linitial(opstep->exprs), rightop))
+			elog(ERROR, "unexpected pruning step for an array expression");
+		opstep->yb_saop_array = true;
+	}
+
+	return steps;
+}
+
+/*
+ * yb_perform_pruning_array_step
+ *		Determine the partitions that match any element of the array that
+ *		opstep compares the partition key to.
+ */
+static PruneStepResult *
+yb_perform_pruning_array_step(PartitionPruneContext *context,
+							  PartitionPruneStepOp *opstep)
+{
+	PruneStepResult *result;
+	PartitionPruneStepOp elem_step;
+	Const	   *elem_const;
+	ArrayType  *arrayval;
+	Datum		datum;
+	bool		isnull;
+	int16		elemlen;
+	bool		elembyval;
+	char		elemalign;
+	Datum	   *elem_values;
+	bool	   *elem_nulls;
+	int			num_elems;
+	int			keyno = 0;
+	int			i;
+
+	Assert(list_length(opstep->exprs) == 1);
+
+	result = (PruneStepResult *) palloc0(sizeof(PruneStepResult));
+
+	while (bms_is_member(keyno, opstep->nullkeys))
+		keyno++;
+	partkey_datum_from_expr(context, linitial(opstep->exprs),
+							PruneCxtStateIdx(context->partnatts,
+											 opstep->step.step_id, keyno),
+							&datum, &isnull);
+
+	/* A null array matches nothing, since the operator is strict. */
+	if (isnull)
+		return result;
+
+	arrayval = DatumGetArrayTypeP(datum);
+	get_typlenbyvalalign(ARR_ELEMTYPE(arrayval),
+						 &elemlen, &elembyval, &elemalign);
+	deconstruct_array(arrayval, ARR_ELEMTYPE(arrayval),
+					  elemlen, elembyval, elemalign,
+					  &elem_values, &elem_nulls, &num_elems);
+
+	/* Prune with each element in turn, as a step comparing to a Const. */
+	elem_const = makeConst(ARR_ELEMTYPE(arrayval), -1, InvalidOid, elemlen,
+						   (Datum) 0, false, elembyval);
+	elem_step = *opstep;
+	elem_step.exprs = list_make1(elem_const);
+	elem_step.yb_saop_array = false;
+
+	for (i = 0; i < num_elems; i++)
+	{
+		PruneStepResult *elem_result;
+
+		/* A null element matches nothing, since the operator is strict. */
+		if (elem_nulls[i])
+			continue;
+
+		elem_const->constvalue = elem_values[i];
+		elem_result = perform_pruning_base_step(context, &elem_step);
+
+		result->bound_offsets = bms_add_members(result->bound_offsets,
+												elem_result->bound_offsets);
+		result->scan_default |= elem_result->scan_default;
+		result->scan_null |= elem_result->scan_null;
+	}
+
+	return result;
 }

@@ -2390,6 +2390,14 @@ typedef struct YbBatchedNestLoopState
 								 * key is the inner column innerAttrs[i] */
 	ExprState  *ht_lookup_fn;
 
+	/*
+	 * One array per batched NestLoopParam, holding the param's outer value
+	 * for each tuple of the current batch.  Built in batch_param_cxt, which is
+	 * reset for each batch.
+	 */
+	MemoryContext batch_param_cxt;
+	struct ArrayBuildState **batch_param_arrays;
+
 	/* Function pointers to local join methods */
 	YbFlushTupleFn_t FlushTupleImpl;
 	YbGetNewOuterTupleFn_t GetNewOuterTupleImpl;

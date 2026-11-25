@@ -1126,8 +1126,8 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
 
 /*+Set(yb_bnl_batch_size 1024) YbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Append
@@ -1136,11 +1136,11 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt4_n t2 WHERE t1.a = t2.a;
          ->  Seq Scan on prt4_n_p3 t2_3
    ->  Append
          ->  Index Scan using iprt1_p1_a on prt1_p1 t1_1
-               Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
+               Index Cond: (a = ANY (ARRAY[t2.a, ...]))
          ->  Index Scan using iprt1_p2_a on prt1_p2 t1_2
-               Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
+               Index Cond: (a = ANY (ARRAY[t2.a, ...]))
          ->  Index Scan using iprt1_p3_a on prt1_p3 t1_3
-               Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
+               Index Cond: (a = ANY (ARRAY[t2.a, ...]))
 (13 rows)
 
 /* YB: The explain plan changes significantly between PG and YB

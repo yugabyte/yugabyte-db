@@ -442,8 +442,8 @@ WHERE
                     CHILD_SUBQUERY1_t2.col_int_key <= table1.pk
             )
     );
-                                                      QUERY PLAN                                                      
-----------------------------------------------------------------------------------------------------------------------
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
    ->  Seq Scan on cc table1 (actual rows=0 loops=1)
    ->  Index Only Scan using cc_int_key on cc table2 (never executed)
@@ -459,7 +459,7 @@ WHERE
                              ->  Index Scan using c_int_key on c child_subquery1_t2 (never executed)
                                    Index Cond: (col_int_key <= table1.pk)
                              ->  Index Scan using bb_int_key on bb child_subquery1_t1 (never executed)
-                                   Index Cond: (col_int_key = ANY (ARRAY[child_subquery1_t2.pk, $2, $3, ..., $1024]))
+                                   Index Cond: (col_int_key = ANY (ARRAY[child_subquery1_t2.pk, ...]))
 (16 rows)
 
 DROP TABLE bb;

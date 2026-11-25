@@ -1607,3 +1607,58 @@ SELECT count(*) FROM (SELECT k1 FROM bnl_uniq
                       INTERSECT ALL SELECT k1 FROM bnl_uniq) d
   JOIN bnl_uniq t ON t.k1 = d.k1;
 RESET yb_bnl_enable_hashing;
+
+-- #39053: each batched join key is one array param that the batched nested
+-- loop fills at run time, so a cached generic plan is the same size for any
+-- yb_bnl_batch_size.
+CREATE TABLE bnl_generic (a text, b int, v bigint, PRIMARY KEY (a HASH, b ASC));
+INSERT INTO bnl_generic
+  SELECT 'k' || (i % 50), i / 50, i FROM generate_series(1, 500) i;
+ANALYZE bnl_generic;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+SET yb_prefer_bnl = on;
+SET plan_cache_mode = force_generic_plan;
+SET yb_bnl_batch_size = 1024;
+PREPARE bnl_generic_q(text, int, text, int, text, int) AS
+  SELECT t.* FROM bnl_generic t, (VALUES ($1, $2), ($3, $4), ($5, $6)) k(a, b)
+  WHERE t.a = k.a AND t.b = k.b ORDER BY t.v;
+EXPLAIN (COSTS OFF) EXECUTE bnl_generic_q('k1', 1, 'k2', 1, 'k3', 9);
+EXECUTE bnl_generic_q('k1', 1, 'k2', 1, 'k3', 9);
+SELECT total_bytes AS bnl_generic_bytes FROM pg_backend_memory_contexts
+  WHERE name = 'CachedPlan' AND ident LIKE '%bnl_generic t%' \gset
+DEALLOCATE bnl_generic_q;
+SET yb_bnl_batch_size = 16;
+PREPARE bnl_generic_q(text, int, text, int, text, int) AS
+  SELECT t.* FROM bnl_generic t, (VALUES ($1, $2), ($3, $4), ($5, $6)) k(a, b)
+  WHERE t.a = k.a AND t.b = k.b ORDER BY t.v;
+EXECUTE bnl_generic_q('k1', 1, 'k2', 1, 'k3', 9);
+SELECT total_bytes = :bnl_generic_bytes AS same_size
+  FROM pg_backend_memory_contexts
+  WHERE name = 'CachedPlan' AND ident LIKE '%bnl_generic t%';
+DEALLOCATE bnl_generic_q;
+RESET plan_cache_mode;
+
+-- A batched key that is an expression is computed by the outer plan, which
+-- gets a Result node to compute it when it cannot project (here an Append).
+SET yb_bnl_batch_size = 3;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT t.a, t.b, k.b FROM bnl_generic t,
+  (SELECT a, b FROM bnl_generic WHERE b = 2 AND a < 'k12'
+   UNION ALL SELECT a, b FROM bnl_generic WHERE b = 5 AND a < 'k12') k
+  WHERE t.a = k.a AND t.b = k.b + 1 ORDER BY t.a, t.b;
+SELECT t.a, t.b, k.b FROM bnl_generic t,
+  (SELECT a, b FROM bnl_generic WHERE b = 2 AND a < 'k12'
+   UNION ALL SELECT a, b FROM bnl_generic WHERE b = 5 AND a < 'k12') k
+  WHERE t.a = k.a AND t.b = k.b + 1 ORDER BY t.a, t.b;
+/*+ HashJoin(t k) */
+SELECT t.a, t.b, k.b FROM bnl_generic t,
+  (SELECT a, b FROM bnl_generic WHERE b = 2 AND a < 'k12'
+   UNION ALL SELECT a, b FROM bnl_generic WHERE b = 5 AND a < 'k12') k
+  WHERE t.a = k.a AND t.b = k.b + 1 ORDER BY t.a, t.b;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+RESET enable_material;
+RESET yb_prefer_bnl;
+RESET yb_bnl_batch_size;

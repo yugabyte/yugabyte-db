@@ -62,7 +62,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(j
                      ->  Bitmap Index Scan on joina_b_idx (actual rows=4 loops=1)
                            Index Cond: (b < 15)
          ->  Index Scan using joinb_pkey on joinb (actual rows=4 loops=1)
-               Index Cond: (k = ANY (ARRAY[joina.k, $1, $2, ..., $1023]))
+               Index Cond: (k = ANY (ARRAY[joina.k, ...]))
 (13 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
@@ -113,7 +113,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(j
                      ->  Bitmap Index Scan on joina_b_idx (actual rows=4 loops=1)
                            Index Cond: (b < 15)
          ->  Index Scan using joinb_pkey on joinb (actual rows=4 loops=1)
-               Index Cond: (k = ANY (ARRAY[joina.a, $1, $2, ..., $1023]))
+               Index Cond: (k = ANY (ARRAY[joina.a, ...]))
 (13 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
@@ -164,7 +164,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(j
                      ->  Bitmap Index Scan on joina_b_idx (actual rows=4 loops=1)
                            Index Cond: (b < 15)
          ->  Index Scan using joinb_c_idx on joinb (actual rows=2 loops=1)
-               Index Cond: (c = ANY (ARRAY[joina.k, $1, $2, ..., $1023]))
+               Index Cond: (c = ANY (ARRAY[joina.k, ...]))
 (13 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
@@ -213,7 +213,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ YbBatchedNL(joina joinb) Leading(j
                      ->  Bitmap Index Scan on joina_b_idx (actual rows=4 loops=1)
                            Index Cond: (b < 15)
          ->  Index Scan using joinb_c_idx on joinb (actual rows=4 loops=1)
-               Index Cond: (c = ANY (ARRAY[joina.a, $1, $2, ..., $1023]))
+               Index Cond: (c = ANY (ARRAY[joina.a, ...]))
 (13 rows)
 
 /*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */ SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;
@@ -754,7 +754,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(subquery1_t1) */ SELECT
                  ->  Seq Scan on c (actual rows=7 loops=17)
                        Storage Filter: (((col_varchar_key)::text <> (c_1.col_varchar_key)::text) AND ((col_varchar_nokey)::text >= (c_1.col_varchar_nokey)::text))
    ->  Index Only Scan using bb_int_key on bb (actual rows=1 loops=1)
-         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, $7, $8, ..., $1029]))
+         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, ...]))
          Heap Fetches: 0
 (21 rows)
 
@@ -774,7 +774,7 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ Set(enable_bitmapscan false) */ SE
            ->  Seq Scan on c (actual rows=6 loops=27)
                  Storage Filter: (((col_varchar_key)::text <> (c_1.col_varchar_key)::text) AND ((col_varchar_nokey)::text >= (c_1.col_varchar_nokey)::text))
    ->  Index Only Scan using bb_int_key on bb (actual rows=1 loops=1)
-         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, $4, $5, ..., $1026]))
+         Index Cond: (col_int_key = ANY (ARRAY[subquery1_t1.pk, ...]))
          Heap Fetches: 0
 (15 rows)
 

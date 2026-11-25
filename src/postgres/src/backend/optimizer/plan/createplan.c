@@ -58,6 +58,7 @@
 #include "optimizer/ybplan.h"
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
+#include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
@@ -383,6 +384,10 @@ static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
+static Node *yb_replace_batched_expr(PlannerInfo *root, YbBatchedExpr *bexpr);
+static Node *yb_replace_exprs_mutator(Node *node, List **context);
+static Plan *yb_add_batched_keys_to_tlist(PlannerInfo *root, Plan *outer_plan,
+										  List *batched_params);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
@@ -414,6 +419,7 @@ create_plan(PlannerInfo *root, Path *best_path)
 	/* Initialize this module's workspace in PlannerInfo */
 	root->curOuterRels = NULL;
 	root->curOuterParams = NIL;
+	root->yb_curOuterBatchedParams = NIL;
 
 	/* Recursively process the path tree, demanding the correct tlist result */
 	plan = create_plan_recurse(root, best_path, CP_EXACT_TLIST);
@@ -440,6 +446,8 @@ create_plan(PlannerInfo *root, Path *best_path)
 	/* Check we successfully assigned all NestLoopParams to plan nodes */
 	if (root->curOuterParams != NIL)
 		elog(ERROR, "failed to assign all NestLoopParams to plan nodes");
+	if (root->yb_curOuterBatchedParams != NIL)
+		elog(ERROR, "failed to assign all batched NestLoopParams to plan nodes");
 
 	/*
 	 * Reset plan_params to ensure param IDs used for nestloop params are not
@@ -6601,6 +6609,15 @@ create_nestloop_plan(PlannerInfo *root,
 
 	if (yb_is_batched)
 	{
+		List	   *batched_params =
+			yb_identify_current_batched_params(root, outerrelids);
+
+		/* Every param that a batched nested loop supplies is batched. */
+		Assert(nestParams == NIL);
+		nestParams = list_concat(nestParams, batched_params);
+		outer_plan = yb_add_batched_keys_to_tlist(root, outer_plan,
+												  batched_params);
+
 		YbBatchedNestLoop *bnl_plan = make_YbBatchedNestLoop(tlist,
 															 joinclauses,
 															 otherclauses,
@@ -7182,57 +7199,7 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		return (Node *) replace_nestloop_param_var(root, var);
 	}
 	if (IsA(node, YbBatchedExpr))
-	{
-		YbBatchedExpr *bexpr = (YbBatchedExpr *) node;
-		List	   *batched_elems = NIL;
-
-#ifdef USE_ASSERT_CHECKING
-
-		/*
-		 * Every batched Var below shares root->yb_cur_batch_no, so one
-		 * batched nested loop join has to fill all of them (see
-		 * yb_ppi_batched_groups); yb_availBatchedRelids holds one entry per
-		 * enclosing such join.  yb_batched_clause_final_check keeps paths
-		 * that would span two of them out, and a violation here has no
-		 * symptom other than lost rows, so fail loudly instead.
-		 */
-		Relids		batched_vars =
-			bms_intersect(pull_varnos(root, (Node *) bexpr->orig_expr),
-						  root->yb_cur_batched_relids);
-
-		if (!bms_is_empty(batched_vars))
-		{
-			bool		one_join = false;
-			ListCell   *lc;
-
-			foreach(lc, root->yb_availBatchedRelids)
-			{
-				if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
-				{
-					one_join = true;
-					break;
-				}
-			}
-
-			Assert(one_join);
-		}
-#endif
-
-		/*
-		 * Populate batched_elems with each batched instance of
-		 * bexpr->orig_expr's contents.
-		 */
-		for (size_t i = 0; i < yb_bnl_batch_size; i++)
-		{
-			root->yb_cur_batch_no = i;
-			Node	   *elem = replace_nestloop_params_mutator((Node *) copyObject(bexpr->orig_expr),
-															   root);
-
-			batched_elems = lappend(batched_elems, elem);
-		}
-		root->yb_cur_batch_no = -1;
-		return (Node *) batched_elems;
-	}
+		return yb_replace_batched_expr(root, (YbBatchedExpr *) node);
 	if (IsA(node, PlaceHolderVar))
 	{
 		PlaceHolderVar *phv = (PlaceHolderVar *) node;
@@ -7279,8 +7246,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	/*
 	 * YB: If the expression is a RowCompareExpr that is in the form of
 	 * ROW(...) = YBBatchedExpr(ROW(...)), we need to convert it to
-	 * ROW(...) = ARRAY(ROW(...), ROW(...), ...) where the = operator
-	 * also represents a RowCompareExpr.
+	 * ROW(...) = ANY($n), where $n is an array of records that the batched
+	 * nested loop fills and the = operator also represents a RowCompareExpr.
 	 */
 	if (IsA(node, RowCompareExpr))
 	{
@@ -7289,16 +7256,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		if (rcexpr->rctype == ROWCOMPARE_EQ)
 		{
 			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
-			ArrayExpr  *arrexpr = makeNode(ArrayExpr);
 
-			arrexpr->array_typeid = InvalidOid;
-			arrexpr->element_typeid = RECORDOID;
-			arrexpr->multidims = false;
-			arrexpr->array_collid = InvalidOid;
-			arrexpr->location = -1;
-			arrexpr->elements =
-				(List *) replace_nestloop_params(root, rcexpr->rargs);
-			rcexpr_new->rargs = (Node *) arrexpr;
+			rcexpr_new->rargs = replace_nestloop_params(root, rcexpr->rargs);
 			return (Node *) rcexpr_new;
 		}
 	}
@@ -7306,7 +7265,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 	/*
 	 * YB: If the expression is an OpExpr that is in the form of
 	 * col = YBBatchedExpr(outer_val), we need to convert it to
-	 * col IN ARRAY(outer_val1, outer_val2, ...).
+	 * col = ANY($n), where $n is an array that the batched nested loop fills
+	 * with the outer_val of each outer tuple of a batch.
 	 */
 	if (IsA(node, OpExpr))
 	{
@@ -7321,39 +7281,10 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			saop->opfuncid = opexpr->opfuncid;
 			saop->useOr = true;
 			saop->inputcollid = opexpr->inputcollid;
-
-			saop->args = NIL;
-
-			Oid			scalar_type = InvalidOid;
-			Oid			collid = InvalidOid;
-
-			Expr	   *inner_expr = (Expr *) linitial(opexpr->args);
-
-			saop->args = lappend(saop->args, inner_expr);
-
-			Expr	   *outer_expr = (Expr *) lsecond(opexpr->args);
-
-			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
-
-			scalar_type = exprType((Node *) outer_expr);
-			collid = exprCollation((Node *) outer_expr);
-
-			ArrayExpr  *arrexpr = makeNode(ArrayExpr);
-			Oid			array_type;
-
-			if (OidIsValid(scalar_type) && scalar_type != RECORDOID)
-				array_type = get_array_type(scalar_type);
-			else
-				array_type = InvalidOid;
-
-			arrexpr->array_typeid = array_type;
-			arrexpr->element_typeid = scalar_type;
-			arrexpr->multidims = false;
-			arrexpr->array_collid = collid;
-			arrexpr->location = -1;
-			arrexpr->elements =
-				(List *) replace_nestloop_params(root, lsecond(opexpr->args));
-			saop->args = lappend(saop->args, arrexpr);
+			saop->args =
+				list_make2(linitial(opexpr->args),
+						   replace_nestloop_params(root,
+												   lsecond(opexpr->args)));
 			return (Node *) saop;
 		}
 	}
@@ -9915,6 +9846,188 @@ static void
 yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan)
 {
 	plan->ybUniqueId = ++(root->glob->ybNextNodeUid);
+}
+
+/*
+ * yb_replace_batched_expr
+ *	  Replace a YbBatchedExpr with an array that holds its value for each outer
+ *	  tuple of a batch: the array Param that the batched nested loop join
+ *	  supplying its outer rels fills.
+ *
+ * Every batched Var in the expression must come from one batched nested
+ * loop join (see yb_ppi_batched_groups); yb_availBatchedRelids holds one
+ * entry per enclosing such join, and yb_batched_clause_final_check keeps
+ * paths that would span two of them out.  A violation would lose rows
+ * silently, so fail loudly instead.
+ *
+ * Vars and PlaceHolderVars that other nested loops supply become their own
+ * Params.  Those nested loops may sit inside the batched nested loop's inner
+ * side, where its outer plan cannot compute the expression (#25917), so an
+ * expression that references them is split: the Param holds the batched
+ * values it reads, and an ArrayCoerceExpr evaluates the rest of the
+ * expression on each of them.
+ */
+static Node *
+yb_replace_batched_expr(PlannerInfo *root, YbBatchedExpr *bexpr)
+{
+	Relids		varnos = pull_varnos(root, (Node *) bexpr->orig_expr);
+	Relids		batched_vars;
+	Relids		batch_relids = NULL;
+	Relids		save_outer_rels = root->curOuterRels;
+	Node	   *expr;
+	List	   *keys = NIL;
+	Expr	   *key;
+	List	   *replace;
+	Node	   *elemexpr;
+	ArrayCoerceExpr *acoerce;
+	ListCell   *lc;
+
+	batched_vars = bms_intersect(varnos, root->yb_cur_batched_relids);
+	foreach(lc, root->yb_availBatchedRelids)
+	{
+		if (bms_is_subset(batched_vars, (Relids) lfirst(lc)))
+		{
+			batch_relids = (Relids) lfirst(lc);
+			break;
+		}
+	}
+	if (bms_is_empty(batched_vars) || batch_relids == NULL)
+		elog(ERROR, "batched expression is not supplied by exactly one "
+			 "batched nested loop join");
+
+	root->curOuterRels = bms_difference(save_outer_rels, batch_relids);
+	expr = replace_nestloop_params(root, (Node *) bexpr->orig_expr);
+	bms_free(root->curOuterRels);
+	root->curOuterRels = save_outer_rels;
+
+	if (bms_is_subset(varnos, batch_relids))
+		return (Node *) yb_replace_nestloop_param_batched(root, (Expr *) expr);
+
+	/* The batched values: one Var or PlaceHolderVar, or a row of them. */
+	foreach(lc, pull_var_clause(expr, PVC_INCLUDE_PLACEHOLDERS))
+		keys = list_append_unique(keys, lfirst(lc));
+	Assert(keys != NIL);
+	if (list_length(keys) == 1)
+	{
+		CaseTestExpr *ctest = makeNode(CaseTestExpr);
+
+		key = (Expr *) linitial(keys);
+		ctest->typeId = exprType((Node *) key);
+		ctest->typeMod = exprTypmod((Node *) key);
+		ctest->collation = exprCollation((Node *) key);
+		replace = list_make2(key, ctest);
+	}
+	else
+	{
+		RowExpr    *row = makeNode(RowExpr);
+		CaseTestExpr *ctest = makeNode(CaseTestExpr);
+		int			fieldnum = 0;
+
+		row->args = keys;
+		row->row_typeid = RECORDOID;
+		row->row_format = COERCE_EXPLICIT_CALL;
+		row->colnames = NIL;
+		row->location = -1;
+		key = (Expr *) row;
+
+		ctest->typeId = RECORDOID;
+		ctest->typeMod = -1;
+		ctest->collation = InvalidOid;
+
+		replace = NIL;
+		foreach(lc, keys)
+		{
+			Node	   *var = (Node *) lfirst(lc);
+			FieldSelect *fselect = makeNode(FieldSelect);
+
+			fselect->arg = (Expr *) ctest;
+			fselect->fieldnum = ++fieldnum;
+			fselect->resulttype = exprType(var);
+			fselect->resulttypmod = exprTypmod(var);
+			fselect->resultcollid = exprCollation(var);
+			replace = lappend(replace, var);
+			replace = lappend(replace, fselect);
+		}
+	}
+	elemexpr = yb_replace_exprs_mutator(expr, &replace);
+
+	acoerce = makeNode(ArrayCoerceExpr);
+	acoerce->arg = (Expr *) yb_replace_nestloop_param_batched(root, key);
+	acoerce->elemexpr = (Expr *) elemexpr;
+	acoerce->resulttype = get_array_type(exprType(expr));
+	if (!OidIsValid(acoerce->resulttype))
+		elog(ERROR, "could not find array type for data type %s",
+			 format_type_be(exprType(expr)));
+	acoerce->resulttypmod = -1;
+	acoerce->resultcollid = exprCollation(expr);
+	acoerce->coerceformat = COERCE_IMPLICIT_CAST;
+	acoerce->location = -1;
+	return (Node *) acoerce;
+}
+
+/*
+ * yb_replace_exprs_mutator
+ *	  Replace each node equal to an odd member of *context with the member
+ *	  after it.
+ */
+static Node *
+yb_replace_exprs_mutator(Node *node, List **context)
+{
+	ListCell   *lc;
+
+	if (node == NULL)
+		return NULL;
+	for (lc = list_head(*context); lc != NULL; lc = lnext(*context, lnext(*context, lc)))
+	{
+		if (equal(node, lfirst(lc)))
+			return (Node *) copyObject(lfirst(lnext(*context, lc)));
+	}
+	return expression_tree_mutator(node, yb_replace_exprs_mutator,
+								   (void *) context);
+}
+
+/*
+ * yb_add_batched_keys_to_tlist
+ *	  Make the outer plan of a batched nested loop join compute each batched
+ *	  key that is not a plain Var.
+ *
+ * setrefs.c then reduces each batched NestLoopParam to an outer column, as
+ * it does for PlaceHolderVars, so the batched nested loop only copies outer
+ * columns into its array Params.
+ */
+static Plan *
+yb_add_batched_keys_to_tlist(PlannerInfo *root, Plan *outer_plan,
+							 List *batched_params)
+{
+	List	   *tlist = outer_plan->targetlist;
+	bool		changed = false;
+	ListCell   *lc;
+
+	foreach(lc, batched_params)
+	{
+		NestLoopParam *nlp = lfirst_node(NestLoopParam, lc);
+		Expr	   *key = (Expr *) nlp->paramval;
+
+		if (IsA(key, Var) || tlist_member(key, tlist))
+			continue;
+
+		if (!changed && !is_projection_capable_plan(outer_plan))
+		{
+			tlist = copyObject(tlist);
+			outer_plan = inject_projection_plan(outer_plan, tlist,
+												outer_plan->parallel_safe);
+			yb_assign_unique_plan_node_id(root, outer_plan);
+		}
+		changed = true;
+		tlist = lappend(tlist, makeTargetEntry(copyObject(key),
+											   list_length(tlist) + 1,
+											   NULL,
+											   true));
+	}
+
+	if (changed)
+		outer_plan->targetlist = tlist;
+	return outer_plan;
 }
 
 /*

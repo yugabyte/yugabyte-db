@@ -1520,8 +1520,9 @@ init_estate(EState *estate, Relation baserel)
 	rte->relkind = RELKIND_RELATION;
 	ExecInitRangeTable(estate, list_make1(rte));
 
+	/* The batched nested loop's ybctid array, see get_saop_expr */
 	estate->es_param_exec_vals =
-		(ParamExecData *) palloc0(yb_bnl_batch_size * sizeof(ParamExecData));
+		(ParamExecData *) palloc0(sizeof(ParamExecData));
 }
 
 static void
@@ -1692,35 +1693,21 @@ lower_bound_ybctid_indexqual(Expr *ybctid_expr, Datum lower_bound)
 	return op;
 }
 
+/*
+ * Make the qual 'leftarg = ANY ($0)', where $0 is the bytea array that the
+ * batched nested loop built by make_bnl_plan fills with a batch of ybctids.
+ */
 static ScalarArrayOpExpr *
 get_saop_expr(AttrNumber attnum, Expr *leftarg)
 {
-	Bitmapset  *params_bms = NULL;
-	List	   *params = NIL;
-	const FormData_pg_attribute *attr;
+	Param	   *param = makeNode(Param);
 
-	attr = SystemAttributeDefinition(YBIdxBaseTupleIdAttributeNumber);
-	for (int i = 0; i < yb_bnl_batch_size; ++i)
-	{
-		params_bms = bms_add_member(params_bms, i);
-		Param	   *param = makeNode(Param);
-
-		param->paramkind = PARAM_EXEC;
-		param->paramid = i;
-		param->paramtype = attr->atttypid;
-		param->paramtypmod = attr->atttypmod;
-		param->paramcollid = attr->attcollation;
-		param->location = -1;
-		params = lappend(params, param);
-	}
-	ArrayExpr  *arrexpr = makeNode(ArrayExpr);
-
-	arrexpr->array_typeid = BYTEAARRAYOID;
-	arrexpr->element_typeid = BYTEAOID;
-	arrexpr->multidims = false;
-	arrexpr->array_collid = InvalidOid;
-	arrexpr->location = -1;
-	arrexpr->elements = params;
+	param->paramkind = PARAM_EXEC;
+	param->paramid = 0;
+	param->paramtype = BYTEAARRAYOID;
+	param->paramtypmod = -1;
+	param->paramcollid = InvalidOid;
+	param->location = -1;
 
 	ScalarArrayOpExpr *saop = makeNode(ScalarArrayOpExpr);
 
@@ -1728,7 +1715,7 @@ get_saop_expr(AttrNumber attnum, Expr *leftarg)
 	saop->opfuncid = get_opcode(ByteaEqualOperator);
 	saop->useOr = true;
 	saop->inputcollid = InvalidOid;
-	saop->args = list_make2(leftarg, arrexpr);
+	saop->args = list_make2(leftarg, param);
 	return saop;
 }
 

@@ -1197,6 +1197,7 @@ _outPartitionPruneStepOp(StringInfo str, const PartitionPruneStepOp *node)
 	WRITE_NODE_FIELD(exprs);
 	WRITE_NODE_FIELD(cmpfns);
 	WRITE_BITMAPSET_FIELD(nullkeys);
+	WRITE_BOOL_FIELD(yb_saop_array);
 }
 
 static void
