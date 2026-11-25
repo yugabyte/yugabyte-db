@@ -48,6 +48,8 @@ YB_STRONGLY_TYPED_BOOL(Backfill);
 YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
+YB_STRONGLY_TYPED_BOOL(RestartBeforeBackfill);
+YB_STRONGLY_TYPED_BOOL(SafeTimeBeforeIndex);
 YB_STRONGLY_TYPED_BOOL(Split);
 YB_STRONGLY_TYPED_BOOL(StorePayload);
 YB_STRONGLY_TYPED_BOOL(UseSharedMemory);
@@ -458,6 +460,8 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
       NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
   void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
   void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
+  void TestLaggingReplicaBackfill(
+      RestartBeforeBackfill restart, SafeTimeBeforeIndex safe_time_before_index);
 };
 
 ////////////////////////////////////////////////////////

@@ -2025,8 +2025,7 @@ Status CatalogManager::SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
   auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->Tablet());
   auto operation =
       std::make_unique<tablet::ChangeMetadataOperation>(sys_catalog_tablet, tablet_peer->log());
-  auto request = operation->AllocateRequest();
-  request->CopyFrom(cm_req);
+  operation->AllocateRequest(cm_req);
 
   operation->set_completion_callback([this, table, stream_id, safe_op_id](Status s) {
     // If the apply of CHANGE_METADATA_OP has returned non-ok status, then do not populate the state

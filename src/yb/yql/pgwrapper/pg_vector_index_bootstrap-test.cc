@@ -14,7 +14,10 @@
 #include <sys/stat.h>
 
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
@@ -550,6 +553,193 @@ TEST_P(PgVectorIndexTest, CompactionRetainsHistoryForPendingBackfill) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_EQ(tablet->vector_indexes().AllowedHistoryCutoff(), HybridTime::kMax);
   }
+}
+
+// A replica that gets the vector index more than the history retention interval late, and compacts
+// before and after that, still builds the index, also across a restart (GH#38103).
+void PgVectorIndexTest::TestLaggingReplicaBackfill(
+    RestartBeforeBackfill restart, SafeTimeBeforeIndex safe_time_before_index) {
+  constexpr int64_t kNumRows = 64;
+  constexpr int64_t kNumUpdatedRows = 16;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertBatch(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+
+  // Keep the PG tserver up, so the connection survives the restart.
+  const auto pg_ts_uuid = cluster_->mini_tablet_server(kPgTsIndex)->server()->permanent_uuid();
+  tablet::TabletPeerPtr lagging_peer;
+  consensus::RaftConsensusPtr lagging_consensus;
+  tserver::MiniTabletServer* lagging_ts = nullptr;
+  {
+    auto followers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kNonLeaders));
+    auto it = std::ranges::find_if(followers, [&pg_ts_uuid](const auto& peer) {
+      return peer->permanent_uuid() != pg_ts_uuid;
+    });
+    ASSERT_NE(it, followers.end());
+    lagging_peer = *it;
+    lagging_consensus = ASSERT_RESULT(lagging_peer->GetRaftConsensus());
+    lagging_ts = cluster_->find_tablet_server(lagging_peer->permanent_uuid());
+  }
+  if (safe_time_before_index) {
+    // Hold the op that adds the index on the leader after it gets its hybrid time and before it
+    // enters the log, while the lagging replica gets heartbeats with the leader's safe time.
+    const auto tablet_id = lagging_peer->tablet_id();
+    const auto lagging_uuid = lagging_peer->permanent_uuid();
+    std::atomic<bool> held{false};
+    std::atomic<int> safe_time_updates{0};
+    CountDownLatch release_op{1};
+    auto* sync_point = SyncPoint::GetInstance();
+    TestThreadHolder thread_holder;
+    auto sync_point_cleanup = ScopeExit([sync_point, &release_op] {
+      release_op.CountDown();
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+    sync_point->SetCallBack(
+        "RaftConsensus::DoAppendNewRoundsToQueueUnlocked:AddedToLeader",
+        [&tablet_id, &held, &release_op](void* arg) {
+      const auto& msg = *static_cast<consensus::ConsensusRound*>(arg)->replicate_msg();
+      if (msg.op_type() != consensus::CHANGE_METADATA_OP) {
+        return;
+      }
+      const auto& request = msg.change_metadata_request();
+      if (request.tablet_id().ToBuffer() != tablet_id || !request.has_add_table() ||
+          !request.add_table().index_info().has_vector_idx_options()) {
+        return;
+      }
+      held = true;
+      release_op.Wait();
+    });
+    sync_point->SetCallBack(
+        "RaftConsensus::UpdateReplica",
+        [&tablet_id, &lagging_uuid, &held, &safe_time_updates](void* arg) {
+      const auto& request = *static_cast<consensus::LWConsensusRequestPB*>(arg);
+      if (held && request.tablet_id().ToBuffer() == tablet_id &&
+          request.dest_uuid().ToBuffer() == lagging_uuid && request.has_propagated_safe_time()) {
+        ++safe_time_updates;
+      }
+    });
+    sync_point->EnableProcessing();
+    thread_holder.AddThreadFunctor([this, &conn] {
+      ASSERT_OK(CreateIndex(conn));
+    });
+    ASSERT_OK(WaitFor([&held] { return held.load(); }, 30s * kTimeMultiplier, "Index op held"));
+    // The leader sends the next request after the response to the previous one, so the replica has
+    // queued the safe time of the first, which it applies before any later op.
+    ASSERT_OK(WaitFor(
+        [&safe_time_updates] { return safe_time_updates.load() >= 2; }, 30s * kTimeMultiplier,
+        "Safe time updates"));
+    lagging_consensus->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    release_op.CountDown();
+    thread_holder.JoinAll();
+  } else {
+    lagging_consensus->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    ASSERT_OK(CreateIndex(conn));
+  }
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers() - 1, "Other backfills"));
+  // Versions newer than the index hybrid time, which the lagging replica compacts before its
+  // backfill.
+  for (int64_t id = 1; id <= kNumUpdatedRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test SET embedding = '$0' WHERE id = $1", AsString(Vector(kNumRows + id)), id));
+  }
+
+  // The clock-based history cutoff of the lagging replica passes the index hybrid time.
+  // An intents DB flush would wait for the vector index.
+  const auto history_retention_sec = FLAGS_timestamp_history_retention_interval_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+
+  // Hold the backfill of the lagging replica until it has compacted the update.
+  std::atomic<bool> parked{false};
+  CountDownLatch release_backfill{1};
+  auto* sync_point = SyncPoint::GetInstance();
+  auto sync_point_cleanup = ScopeExit([sync_point, &release_backfill] {
+    release_backfill.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+  if (restart) {
+    // A parked backfill would block the shutdown, fail it instead. It still holds the history.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = true;
+  } else {
+    sync_point->SetCallBack("TabletVectorIndexes::Backfill:Start", [&](void*) {
+      parked = true;
+      release_backfill.Wait();
+    });
+    sync_point->EnableProcessing();
+  }
+  lagging_consensus->TEST_RejectMode(consensus::RejectMode::kNone);
+  lagging_consensus.reset();
+  ASSERT_OK(WaitFor([this, &parked]() -> Result<bool> {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    if (indexes.size() != cluster_->num_tablet_servers()) {
+      return false;
+    }
+    return parked.load() || std::ranges::any_of(indexes, [](const auto& index) {
+      return !index->BackfillDone().ok();
+    });
+  }, 30s * kTimeMultiplier, "Lagging replica adds the index"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  {
+    // GetRetentionDirective never returns less than a cutoff a compaction used before
+    // (ApplyUsedHistoryCutoffFloor), so this bounds the compactions before the replica got the
+    // index too.
+    auto tablet = ASSERT_RESULT(lagging_peer->shared_tablet());
+    auto indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(indexes && indexes->size() == 1);
+    ASSERT_LE(
+        tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff.primary_cutoff_ht,
+        indexes->front()->hybrid_time());
+  }
+  lagging_peer.reset();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      history_retention_sec;
+
+  if (restart) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_vector_index_backfill) = false;
+    ASSERT_OK(lagging_ts->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  } else {
+    release_backfill.CountDown();
+  }
+  ASSERT_OK(WaitForVectorIndexBackfills(cluster_->num_tablet_servers(), "Replica backfills"));
+
+  // The check reads at the safe time, which on the restarted replica stays below its history
+  // cutoff until the leader propagates a later safe time.
+  std::string inconsistencies;
+  ASSERT_OK(WaitFor([this, &inconsistencies]() -> Result<bool> {
+    auto result = VectorIndexInconsistencies();
+    if (!result.ok() && result.status().IsSnapshotTooOld()) {
+      return false;
+    }
+    inconsistencies = VERIFY_RESULT(std::move(result));
+    return true;
+  }, 30s * kTimeMultiplier, "Vector index check"));
+  ASSERT_EQ(inconsistencies, "");
+}
+
+TEST_P(PgVectorIndexTest, LaggingReplicaBackfill) {
+  TestLaggingReplicaBackfill(RestartBeforeBackfill::kFalse, SafeTimeBeforeIndex::kFalse);
+}
+
+TEST_P(PgVectorIndexTest, LaggingReplicaBackfillAfterRestart) {
+  TestLaggingReplicaBackfill(RestartBeforeBackfill::kTrue, SafeTimeBeforeIndex::kFalse);
+}
+
+// The lagging replica gets the leader's safe time while the op that adds the index has its hybrid
+// time but is not in the log yet.
+TEST_P(PgVectorIndexTest, YB_DEBUG_ONLY_TEST(LaggingReplicaGetsSafeTimeBeforeIndexOp)) {
+  TestLaggingReplicaBackfill(RestartBeforeBackfill::kFalse, SafeTimeBeforeIndex::kTrue);
 }
 
 // A vector index storage the tablet does not list, as a restore leaves on a crash, is deleted at

@@ -1497,6 +1497,8 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
     AtomicFlagSleepMs(&FLAGS_TEST_delay_before_added_to_leader_ms);
     RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "RaftConsensus::DoAppendNewRoundsToQueueUnlocked:AddedToLeader", round.get());
 
     // After NotifyAddedToLeader, so the op is judged by its assigned hybrid time.
     // After RegisterRetryableRequest, so a resend of an already-replicated id answers

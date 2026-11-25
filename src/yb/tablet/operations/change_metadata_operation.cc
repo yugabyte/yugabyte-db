@@ -60,6 +60,10 @@ DEFINE_test_flag(bool, fail_cdc_setting_retention_barriers_on_apply, false,
                  "Used in tests to fail setting retention barriers on apply of change metadata "
                  "operation.");
 
+DEFINE_RUNTIME_bool(change_metadata_use_mvcc, true,
+    "Whether a tablet leader tracks change metadata operations in MVCC, so that the safe time "
+    "and the history cutoff of every replica stay below such an operation until it is applied.");
+
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
 namespace yb {
@@ -93,6 +97,14 @@ ChangeMetadataOperation::~ChangeMetadataOperation() = default;
 
 void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
   index_map_.FromPB(indexes);
+}
+
+LWChangeMetadataRequestPB* ChangeMetadataOperation::AllocateRequest(
+    const ChangeMetadataRequestPB& source) {
+  auto* request = ExclusiveSchemaOperation::AllocateRequest();
+  request->CopyFrom(source);
+  request->set_use_mvcc(FLAGS_change_metadata_use_mvcc);
+  return request;
 }
 
 std::string ChangeMetadataOperation::ToString() const {
@@ -369,7 +381,7 @@ Status SyncReplicateChangeMetadataOperation(
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
       VERIFY_RESULT(tablet_peer->shared_tablet()), tablet_peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  operation->AllocateRequest(*req);
 
   Synchronizer synchronizer;
 

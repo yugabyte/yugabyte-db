@@ -197,6 +197,10 @@ message ChangeMetadataRequestPB {
   // enable_ysql_index_birth_time_state AutoFlag is on, i.e. after all tservers are upgraded and
   // understand this field. The target index table id is carried in backfill_done_table_id.
   optional bool mark_non_concurrent_index_done = 24;
+
+  // Set by the tablet leader that creates the operation when MVCC tracks it.
+  // Followers then track it there too.
+  optional bool use_mvcc = 25;
 }
 
 message SplitTabletRequestPB {
