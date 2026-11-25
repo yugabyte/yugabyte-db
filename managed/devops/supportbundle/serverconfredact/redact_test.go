@@ -60,7 +60,7 @@ func TestRedactCommaSeparatedGflags(t *testing.T) {
 }
 
 func TestRedactHBADoubledCSV(t *testing.T) {
-	input := "\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapport=389 " +
+	input := "--ysql_hba_conf_csv=\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapport=389 " +
 		"ldapbinddn=\"\"cn=admin,dc=example,dc=com\"\" " +
 		"ldapbindpasswd=MyPassword123 " +
 		"ldapbasedn=\"\"dc=example,dc=com\"\" ldapsearchattribute=uid\""
@@ -131,14 +131,9 @@ func redactNoPanic(input string) (out string, recovered interface{}) {
 	return serverconfredact.RedactSensitiveInfo(input, nil), nil
 }
 
-// Every hba quoting style must redact, including the single-escaped form that has no QuoteStyle of
-// its own.
-//
-// This is a parity contract, not a local invariant: a file is redacted on the node by this package
-// and, when that is skipped, on the YBA host by LdapBindPasswdHbaFormat. Java reaches its unquoted
-// branch for anything not starting with a literal '"', so the single-escaped form redacts there as
-// unquoted. Excluding a leading backslash here made the node disagree, and since a clean node run
-// reports REDACTION_STATUS=NODE and suppresses the YBA pass, the disagreement shipped the password.
+// Every quoting of an ldapbindpasswd in a ysql_hba_conf_csv rule must redact. Quotes Postgres reads
+// stay around the replacement so the rule still parses; backslashes are part of the value to
+// Postgres, so escaped forms are replaced whole.
 func TestRedactHBAAllQuoteStyles(t *testing.T) {
 	const pw = "topsecret"
 	cases := []struct {
@@ -146,18 +141,18 @@ func TestRedactHBAAllQuoteStyles(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"unquoted", `ldapbindpasswd=` + pw + ` ldaptls=0`, `ldapbindpasswd=REDACTED`},
-		{"single_csv", `ldapbindpasswd="` + pw + `" ldaptls=0`, `ldapbindpasswd="REDACTED"`},
-		{"doubled_csv", `ldapbindpasswd=""` + pw + `"" ldaptls=0`, `ldapbindpasswd=""REDACTED""`},
-		{"esc_doubled_csv", `ldapbindpasswd=\"\"` + pw + `\"\" ldaptls=0`, `ldapbindpasswd=\"\"REDACTED\"\"`},
-		{"deep_esc_doubled_csv", `ldapbindpasswd=\\"\\"` + pw + `\\"\\" ldaptls=0`, `ldapbindpasswd=\\"\\"REDACTED\\"\\"`},
-		// No quote style of its own; Java treats it as unquoted, so the wrapper is not preserved.
-		{"single_escaped", `ldapbindpasswd=\"` + pw + `\" ldaptls=0`, `ldapbindpasswd=REDACTED`},
+		{"unquoted", `ldapbindpasswd=` + pw + ` ldaptls=0`, `ldapbindpasswd=REDACTED ldaptls=0`},
+		{"single_csv", `ldapbindpasswd="` + pw + `" ldaptls=0`, `ldapbindpasswd="REDACTED" ldaptls=0`},
+		{"doubled_csv", `ldapbindpasswd=""` + pw + `"" ldaptls=0`, `ldapbindpasswd=""REDACTED"" ldaptls=0`},
+		{"esc_doubled_csv", `ldapbindpasswd=\"\"` + pw + `\"\" ldaptls=0`, `ldapbindpasswd=REDACTED ldaptls=0`},
+		{"deep_esc_doubled_csv", `ldapbindpasswd=\\"\\"` + pw + `\\"\\" ldaptls=0`, `ldapbindpasswd=REDACTED ldaptls=0`},
+		{"single_escaped", `ldapbindpasswd=\"` + pw + `\" ldaptls=0`, `ldapbindpasswd=REDACTED ldaptls=0`},
 		{"single_escaped_at_eol", `ldapbindpasswd=\"` + pw + `\"`, `ldapbindpasswd=REDACTED`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := serverconfredact.RedactSensitiveInfo("host all all 0.0.0.0/0 ldap "+tc.in, nil)
+			out := serverconfredact.RedactSensitiveInfo(
+				"--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap "+tc.in, nil)
 			if strings.Contains(out, pw) {
 				t.Fatalf("password survived: %q", out)
 			}
@@ -251,10 +246,59 @@ func TestSensitiveFlagValueRunsToEndOfLine(t *testing.T) {
 	}
 }
 
+// gflags reads a dash in a flag name as an underscore, so a sensitive flag is redacted under either
+// spelling, and ysql_hba_conf_csv still keeps its ACL.
+func TestRedactDashedFlagNames(t *testing.T) {
+	sensitive := []string{"my_secret_flag", "ysql_hba_conf_csv"}
+	cases := []struct{ input, want string }{
+		{"--ycql-ldap-bind-passwd=abc,def=ghi", "--ycql-ldap-bind-passwd=REDACTED"},
+		{"--ycql_ldap-bind_passwd=abc", "--ycql_ldap-bind_passwd=REDACTED"},
+		{`--ycql_ldap-bind_passwd="abc,def=ghi"`, `--ycql_ldap-bind_passwd="REDACTED"`},
+		{`{"ycql_ldap-bind_passwd":"pw"}`, `{"ycql_ldap-bind_passwd":"REDACTED"}`},
+		{"my_secret-flag=pw, webserver_port=9000", "my_secret-flag=REDACTED, webserver_port=9000"},
+		{"--my-secret-flag=pw\n--port=5433", "--my-secret-flag=REDACTED\n--port=5433"},
+		{"ycql-ldap-bind-passwd=abc, webserver_port=9000",
+			"ycql-ldap-bind-passwd=REDACTED, webserver_port=9000"},
+		{`{"my-secret-flag":"pw"}`, `{"my-secret-flag":"REDACTED"}`},
+		{"--ysql-hba-conf-csv=host all all 0.0.0.0/0 trust",
+			"--ysql-hba-conf-csv=host all all 0.0.0.0/0 trust"},
+	}
+	for _, c := range cases {
+		out := serverconfredact.RedactSensitiveInfo(c.input, sensitive)
+		if out != c.want {
+			t.Fatalf("%q: got %q, want %q", c.input, out, c.want)
+		}
+		if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
+			t.Fatalf("%q -> %q: %v", c.input, out, err)
+		}
+	}
+	for _, name := range []string{"ysql-hba-conf-csv", "ysql_hba-conf_csv"} {
+		hba := `--` + name + `="host all all 0.0.0.0/0 ldap ldapbindpasswd=dummypw ldapport=389"`
+		want := `--` + name + `="host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED ldapport=389"`
+		out := serverconfredact.RedactSensitiveInfo(hba, sensitive)
+		if out != want {
+			t.Fatalf("%q: got %q, want %q", hba, out, want)
+		}
+		if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
+			t.Fatalf("%q -> %q: %v", hba, out, err)
+		}
+	}
+}
+
 func TestVerifyRedactedFindsLeftoverSecrets(t *testing.T) {
+	const hba = `--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap `
 	leftovers := []string{
 		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 ldap ldapbindpasswd=""leakpw"" clientcert=1"`,
+		// Postgres reads each of these as a password, or logs the rest of one.
+		hba + `ldapbindpasswd=REDACTED leakpw`,
+		hba + `ldapbindpasswd=REDACTEDleakpw`,
+		hba + `ldapbindpasswd=REDACTED#leakpw`,
+		hba + `ldapbindpasswd=REDACTED,leakpw`,
+		hba + `"ldapbindpasswd"=leakpw`,
+		hba + `LdapBindPasswd=leakpw`,
+		hba + `ldapsearchfilter="(x) ldapbindpasswd=leakpw"`,
 		`ldapbindpasswd=leakpw`,
+		`ldapbindpasswd=REDACTED leakpw`,
 		`--ycql_ldap_bind_passwd=leakpw`,
 		`--my_secret_flag="leakpw"`,
 		"--port=1 --ycql_ldap_bind_passwd=REDACTED\n--ycql_ldap_bind_passwd=leakpw",
@@ -262,6 +306,8 @@ func TestVerifyRedactedFindsLeftoverSecrets(t *testing.T) {
 		`--my_secret_flag="REDACTED" leakpw`,
 		`radiussecrets=leakpw`,
 		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 radius radiussecrets=""leakpw"""`,
+		`--ycql-ldap-bind-passwd=leakpw`,
+		`--my_secret-flag=leakpw`,
 	}
 	for _, s := range leftovers {
 		err := serverconfredact.VerifyRedacted(s, []string{"my_secret_flag"})
@@ -270,11 +316,11 @@ func TestVerifyRedactedFindsLeftoverSecrets(t *testing.T) {
 		}
 	}
 	clean := []string{
-		`ldapbindpasswd=REDACTED ldaptls=0`,
-		`ldapbindpasswd=""REDACTED"" clientcert=1`,
-		`ldapbindpasswd=\"\"REDACTED\"\"`,
-		`ldapbindpasswd="REDACTED"`,
-		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 ldap ldapbindpasswd="""`,
+		hba + `ldapbindpasswd=REDACTED ldaptls=0`,
+		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 ldap ldapbindpasswd=""REDACTED"" clientcert=1"`,
+		hba + `ldapbindpasswd="REDACTED",REDACTED,local all all trust`,
+		hba + `ldapbindpasswd=REDACTED ldaptls=0 #REDACTED`,
+		`ldapbindpasswd=REDACTED`,
 		`--ycql_ldap_bind_passwd=REDACTED`,
 		`--ycql_ldap_bind_passwd=`,
 		`radiussecrets=REDACTED radiusports=1812`,

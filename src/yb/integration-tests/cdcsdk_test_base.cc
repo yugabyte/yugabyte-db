@@ -74,7 +74,9 @@ std::string GenerateRandomReplicationSlotName() {
 }
 
 int NumberOfCatalogTablesBeingPolledByCDC() {
-  return FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 4;
+  return 4 + (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
+                  ? static_cast<int>(kTxnDdlCatalogTableOids.size())
+                  : 0);
 }
 
 void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids) {
@@ -82,9 +84,10 @@ void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableI
   table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
   table_ids->insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationOid));
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids->insert(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-    table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids->insert(GetPgsqlTableId(database_oid, table_oid));
+    }
   }
 }
 
@@ -630,6 +633,22 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
       VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
 
   RETURN_NOT_OK(master_proxy.GetChanges(change_req, &change_resp, &change_rpc));
+  return change_resp;
+}
+
+Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMasterUntilRecordCount(
+    const xrepl::StreamId& stream_id, int expected_records,
+    const CDCSDKCheckpointPB* explicit_checkpoint, MonoDelta timeout) {
+  GetChangesResponsePB change_resp;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetChangesFromMaster(stream_id, explicit_checkpoint));
+        if (change_resp.has_error()) {
+          return StatusFromPB(change_resp.error().status());
+        }
+        return change_resp.cdc_sdk_proto_records_size() >= expected_records;
+      },
+      timeout, Format("Waiting for $0 records from sys catalog tablet", expected_records)));
   return change_resp;
 }
 

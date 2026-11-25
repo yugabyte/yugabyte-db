@@ -78,9 +78,12 @@ HybridTime ClockBasedHistoryCutoff(server::Clock* clock) {
 
 TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-    RaftGroupMetadata* metadata)
+    RaftGroupMetadata* metadata,
+    const IsTransactionalXClusterTargetProvider& is_transactional_xcluster_target_provider)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
-      metadata_(*metadata), log_prefix_(metadata->LogPrefix()),
+      is_transactional_xcluster_target_provider_(is_transactional_xcluster_target_provider),
+      metadata_(*metadata), is_sys_catalog_(metadata->IsSysCatalog()),
+      log_prefix_(metadata->LogPrefix()),
       apply_history_cutoff_floor_(!metadata->IsSysCatalog()) {
     if (PREDICT_FALSE(FLAGS_TEST_committed_history_cutoff_initial_value_usec > 0)) {
       committed_history_cutoff_information_.primary_cutoff_ht = HybridTime::FromMicros(
@@ -121,23 +124,44 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return { history_cutoff, dockv::TableTTL(*metadata_.schema()),
-          docdb::ShouldRetainDeleteMarkersInMajorCompaction(
-              ShouldRetainDeleteMarkersInMajorCompaction()) };
+  const bool is_transactional_xcluster_target =
+      is_transactional_xcluster_target_provider_ &&
+      is_transactional_xcluster_target_provider_(metadata_.namespace_id());
+
+  return {
+    .history_cutoff = history_cutoff,
+    .table_ttl = dockv::TableTTL(*metadata_.schema()),
+    .retain_delete_markers_in_major_compaction =
+        docdb::ShouldRetainDeleteMarkersInMajorCompaction(
+            ShouldRetainDeleteMarkersInMajorCompaction()),
+    .is_transactional_xcluster_target = is_transactional_xcluster_target,
+  };
 }
 
 HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
   // For proposed history cutoff we don't respect active readers.
   absl::MutexLock lock(&mutex_);
-  // TODO(Sanket): Since this is only for statistics collection, for the master
-  // there will be some imprecision which should be followed up in a diff.
+  // TODO(Sanket): Since this is only for statistics collection, for the master there will be some
+  // imprecision: only timestamp_syscatalog_history_retention_interval_sec is applied below, not
+  // the PITR schedule, CDC SDK safe time and YSQL history retention pin terms of the master's
+  // allowed-history-cutoff provider. Covered by #33033.
 
   // TODO: (Github issue #33033) ProposedHistoryCutoff is pure clock based and ignores the
   // allowed-history-cutoff provider, which triggers compaction frequently when snapshots
   // are being retained (by xCluster, PITR, long running DDLs, etc). Follow-up needed.
-  return FLAGS_enable_history_cutoff_propagation
+  auto cutoff = FLAGS_enable_history_cutoff_propagation
       ? committed_history_cutoff_information_.primary_cutoff_ht :
         ClockBasedHistoryCutoff(clock_.get());
+  // The sys catalog tablet retains history for at least
+  // timestamp_syscatalog_history_retention_interval_sec.
+  if (is_sys_catalog_) {
+    const auto syscatalog_retention_sec =
+        ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+    if (syscatalog_retention_sec > 0) {
+      cutoff.MakeAtMost(clock_->Now().AddSeconds(-syscatalog_retention_sec));
+    }
+  }
+  return cutoff;
 }
 
 Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {

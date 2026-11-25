@@ -173,8 +173,8 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
-val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleFipsVersion = "2.1.3"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -182,7 +182,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.14",
+  "org.postgresql" % "postgresql" % "42.7.15",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.6.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -199,10 +199,11 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
-  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
-  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
-  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  // bc-fips is the FIPS 140-3 validated module itself, so it does not track latest. 2.1.3 is a
+  // patch release of 2.1.1 (CMVP certificate #4943), which Bouncy Castle permits in its place; it
+  // fixes CVE-2026-8798, an unbounded RDSEED retry in the native entropy code. The rest are outside
+  // the validated boundary and track latest. See the dependencyOverrides below - declaring them is
+  // not enough.
   "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
   "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
   "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
@@ -321,7 +322,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.15" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.21" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
@@ -409,7 +410,25 @@ externalResolvers := {
 }
 
 (Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts).value
-(Test / test) := (Test / test).dependsOn(testDependentArtifacts).value
+// The support bundle Go helpers aren't Maven modules, so mvn test never reaches them. Their tests
+// run after the Java tests, and a failure fails `sbt test`. testDependentArtifacts can't carry
+// this: sbt ignores its exit status.
+(Test / test) := {
+  val javaTests = (Test / test).dependsOn(testDependentArtifacts).result.value
+  ybLog("Testing support bundle Go helpers...")
+  val goStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
+  javaTests.toEither.left.foreach(incomplete => throw incomplete)
+  goStatus match {
+    case 0 =>
+    case 2 =>
+      sys.error(
+        "Support bundle Go tests could not run: go is missing, a Go download failed, or the" +
+          " report folders could not be cleared or created; see the log above. This is a" +
+          " tooling failure, not a test failure.")
+    case _ =>
+      sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
+  }
+}
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -757,7 +776,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.3",
+    version := "1.0.8",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -774,7 +793,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.15",
+    version := "1.8.21",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1051,6 +1070,11 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
+// Turn off HotSpot's Base64 encode and decode intrinsics on every CPU. The AVX-512 decode one can
+// write out of bounds on malformed input (CVE-2026-114938). Base64 then runs the bounds-checked
+// Java code, with the same results.
+Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
+
 Universal / mappings ++= {
   compileYbaCliBinary.value.flatMap { folderPath =>
     val folder = file(folderPath)
@@ -1092,12 +1116,12 @@ runPlatform := {
 
 // bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
 // bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
-// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+// was resolving the newest 2.1.x instead. Only an override fixes the FIPS module version.
 dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b14"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.2.0"
 

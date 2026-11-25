@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -43,9 +45,12 @@ import com.yugabyte.yw.common.SpecificationProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -72,6 +77,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -245,6 +251,63 @@ public class UniverseTest extends FakeDBApplication {
     Universe updUniv = Universe.getOrBadRequest(u.getUniverseUUID());
     assertEquals(numNodes, updUniv.getNodes().size());
     assertEquals(numNodes + 1, updUniv.getVersion());
+  }
+
+  @Test
+  public void testStoredDetailsRedactDbPasswordsAndKeepSensitiveGFlags() {
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    Map<String, String> tserverGFlags =
+        Map.of("ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    Consumer<UserIntent> setDbPasswords =
+        userIntent -> {
+          userIntent.ysqlPassword = "ysql-secret";
+          userIntent.ycqlPassword = "ycql-secret";
+        };
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(UUID.randomUUID());
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "stored-secrets";
+    userIntent.specificGFlags = SpecificGFlags.construct(Map.of(), tserverGFlags);
+    setDbPasswords.accept(userIntent);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+    UUID universeUUID = Universe.create(taskParams, defaultCustomer.getId()).getUniverseUUID();
+    assertStoredDetails(universeUUID, tserverGFlags);
+
+    Universe.saveDetails(
+        universeUUID,
+        u -> setDbPasswords.accept(u.getUniverseDetails().getPrimaryCluster().userIntent));
+    assertStoredDetails(universeUUID, tserverGFlags);
+
+    // Universe attach persists through setUniverseDetails and Ebean's save(), not save(boolean).
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    setDbPasswords.accept(details.getPrimaryCluster().userIntent);
+    universe.setUniverseDetails(details);
+    universe.save();
+    assertStoredDetails(universeUUID, tserverGFlags);
+  }
+
+  private static void assertStoredDetails(UUID universeUUID, Map<String, String> tserverGFlags) {
+    String storedJson =
+        DB.sqlQuery("SELECT universe_details_json FROM universe WHERE universe_uuid = :uuid")
+            .setParameter("uuid", universeUUID)
+            .findOne()
+            .getString("universe_details_json");
+    UniverseDefinitionTaskParams stored =
+        Json.fromJson(Json.parse(storedJson), UniverseDefinitionTaskParams.class);
+    Cluster primary = stored.getPrimaryCluster();
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ycqlPassword);
+    // Nodes get their gflags from the stored details.
+    Map<String, String> nodeGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null, UniverseTaskBase.ServerType.TSERVER, primary, stored.clusters);
+    tserverGFlags.forEach((name, value) -> assertEquals(value, nodeGFlags.get(name)));
   }
 
   @Test
@@ -451,7 +514,12 @@ public class UniverseTest extends FakeDBApplication {
 
     Context context = new Context(getApp().config(), u);
     UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(u.getUniverseDetails(), context);
+        UniverseResourceDetails.create(
+            Optional.of(Util.getDefaultProviderUUID(u)),
+            u.getNodes(),
+            u.getUniverseDetails(),
+            context,
+            true);
     JsonNode universeJson = Json.toJson(UniverseResp.create(u, null, mockConfGetter));
     assertThat(
         universeJson.get("universeUUID").asText(),
@@ -496,14 +564,16 @@ public class UniverseTest extends FakeDBApplication {
             k8s.getUniverseUUID(),
             u ->
                 u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-                    "2026.2.0.0-b1");
+                    NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     assertTrue(
-        new UniverseResp(k8s, null, null, null, null, confGetter).nodeExporterSidecarScraped);
-    assertFalse(new UniverseResp(k8s, null).nodeExporterSidecarScraped);
+        new UniverseResp(k8s, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
+    assertFalse(new UniverseResp(k8s).nodeExporterSidecarScraped);
 
     Universe vm = createUniverse("vm-resp", defaultCustomer.getId());
     assertFalse(
-        new UniverseResp(vm, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(vm, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
   }
 
   private Universe k8sUniverseAtVersion(String name, String ybSoftwareVersion) {
@@ -520,21 +590,27 @@ public class UniverseTest extends FakeDBApplication {
   public void testNodeExporterSidecarScrapedFollowsUniverseKeyAndVersion() {
     RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
 
-    Universe keyOff = k8sUniverseAtVersion("k8s-key-off", "2026.2.0.0-b1");
+    Universe keyOff =
+        k8sUniverseAtVersion("k8s-key-off", NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     app.injector()
         .instanceOf(SettableRuntimeConfigFactory.class)
         .forUniverse(keyOff)
         .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "false");
     assertFalse(
-        new UniverseResp(keyOff, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(keyOff, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
 
     Universe belowGate = k8sUniverseAtVersion("k8s-below-gate", "2026.1.2.0-b100");
     assertFalse(
-        new UniverseResp(belowGate, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(
+                belowGate, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
 
     Universe noVersion = k8sUniverseAtVersion("k8s-no-version", null);
     assertFalse(
-        new UniverseResp(noVersion, null, null, null, null, confGetter).nodeExporterSidecarScraped);
+        new UniverseResp(
+                noVersion, null, null, null, null, null, null, null, null, null, confGetter)
+            .nodeExporterSidecarScraped);
   }
 
   @Test
@@ -547,7 +623,7 @@ public class UniverseTest extends FakeDBApplication {
 
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -578,7 +654,7 @@ public class UniverseTest extends FakeDBApplication {
     u.setUniverseDetails(udtp);
 
     // Verify returned json is generated from the non-json userDetails object
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -593,7 +669,7 @@ public class UniverseTest extends FakeDBApplication {
   @Test
   public void testToJSONWithEmptyRegionList() {
     Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, true /* setMasters */);
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -614,7 +690,7 @@ public class UniverseTest extends FakeDBApplication {
 
     u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
-    JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
+    JsonNode universeJson = Json.toJson(new UniverseResp(u));
     assertThat(
         universeJson.get("universeUUID").asText(),
         allOf(notNullValue(), equalTo(u.getUniverseUUID().toString())));
@@ -814,7 +890,7 @@ public class UniverseTest extends FakeDBApplication {
     // areMastersUnderReplicated.
     Universe u = createUniverseWithNodes(3 /* rf */, 3 /* numNodes */, false /* setMasters */);
 
-    UniverseResp universeResp = new UniverseResp(u, null);
+    UniverseResp universeResp = new UniverseResp(u);
 
     JsonNode json = Json.toJson(universeResp).get("universeDetails");
 
@@ -862,7 +938,7 @@ public class UniverseTest extends FakeDBApplication {
       assertTrue(Util.areMastersUnderReplicated(u.getNode("host-n4"), u));
     }
 
-    UniverseResp universeResp = new UniverseResp(u, null);
+    UniverseResp universeResp = new UniverseResp(u);
     JsonNode json = Json.toJson(universeResp).get("universeDetails");
 
     JsonNode nodeDetailsSet = json.get("nodeDetailsSet");

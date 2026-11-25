@@ -358,10 +358,10 @@ class TransactionLoader::Executor {
            intents_iterator_.key()[current_key_.size()] !=
                dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime &&
            intents_iterator_.key().starts_with(current_key_)) {
-      // The delete-list record of a batch holds vector ids, not an intent key.
+      // The delete list record of a batch holds vector ids, not an intent key.
       // With the inverted key it sorts after the strong write intents of its batch, with the old
       // plain key before all intents of the transaction.
-      if (intents_iterator_.value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+      if (dockv::IsVectorIndexRecord(intents_iterator_.value())) {
         intents_iterator_.Prev();
         continue;
       }
@@ -515,6 +515,31 @@ std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::GetPendingAppl
     return std::nullopt;
   }
   return it->second;
+}
+
+std::optional<docdb::ApplyStateWithCommitInfo> TransactionLoader::TakePendingApply(
+    const TransactionId& id) {
+  DCHECK_EQ(state_.load(std::memory_order_acquire), TransactionLoaderState::kCompleted);
+  if (pending_applies_removed_.load(std::memory_order_acquire)) {
+    return std::nullopt;
+  }
+  std::lock_guard lock(pending_applies_mtx_);
+  auto node = pending_applies_.extract(id);
+  if (!node) {
+    return std::nullopt;
+  }
+  return std::move(node.mapped());
+}
+
+void TransactionLoader::AddPendingApply(
+    const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply) {
+  LOG_IF(DFATAL, pending_applies_removed_.load(std::memory_order_acquire))
+      << "Pending apply added after pending applies were taken: " << id;
+  std::lock_guard lock(pending_applies_mtx_);
+  auto [it, inserted] = pending_applies_.try_emplace(id, apply);
+  LOG_IF(DFATAL, !inserted)
+      << "Pending apply already exists: " << id << ", existing: " << it->second.ToString()
+      << ", new: " << apply.ToString();
 }
 
 void TransactionLoader::StartShutdown() {

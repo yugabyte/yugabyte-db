@@ -34,7 +34,7 @@ This application runs a Node.js process to insert order records to a YugabyteDB 
 - An Azure Cloud account with permissions to create services
 - [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
 - [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
-- [Download YugabyteDB Debezium connector](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
+- [Download the YugabyteDB gRPC connector](/stable/releases/cdc-connector/grpc/)
 - [Node.js](https://github.com/nodejs/release#release-schedule) version 18
 
 ## Get started with YugabyteDB
@@ -177,7 +177,7 @@ A Kafka Connect configuration file is required to provide information about the 
 1. Copy the YugabyteDB Debezium connector to the Kafka _libs_ directory.
 
     ```sh
-    cp /path/to/debezium-connector-yugabytedb-1.9.5.y.15.jar /path/to/kafka_2.12-3.2.0/libs
+    cp /path/to/debezium-connector-yugabytedb-<version>.jar /path/to/kafka_2.12-3.2.0/libs
     ```
 
 1. Run Kafka Connect via the _connect-distributed.sh_ script from the Kafka root directory.

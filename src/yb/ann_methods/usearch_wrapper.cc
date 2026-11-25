@@ -56,7 +56,6 @@ bool operator==(const yb::vector_index::VectorId& lhs,
 
 namespace yb::ann_methods {
 
-using unum::usearch::byte_t;
 using unum::usearch::index_dense_config_t;
 using unum::usearch::index_dense_gt;
 using unum::usearch::metric_kind_t;
@@ -134,7 +133,7 @@ class UsearchIndex :
   UsearchIndex(
       const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options,
       const MemTrackerPtr& mem_tracker, vector_index::StoreVectorPayload store_vector_payload)
-      : Base(store_vector_payload),
+      : Base(store_vector_payload, mem_tracker),
         block_cache_(block_cache),
         dimensions_(options.dimensions),
         distance_kind_(options.distance_kind),
@@ -232,8 +231,7 @@ class UsearchIndex :
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
-    return metric_(
-        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
+    return vector_index::MetricDistance(metric_, lhs.data(), rhs.data());
   }
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
@@ -365,8 +363,7 @@ class UsearchIndexTraits :
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
-    return metric_(
-        pointer_cast<const byte_t*>(lhs.data()), pointer_cast<const byte_t*>(rhs.data()));
+    return vector_index::MetricDistance(metric_, lhs.data(), rhs.data());
   }
 
   size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {

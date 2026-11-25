@@ -26,8 +26,11 @@ import { Formik } from 'formik';
 import {
   DEFAULT_RUNTIME_GLOBAL_SCOPE,
   fetchRunTimeConfigs,
-  fetchRunTimeConfigsResponse
+  fetchRunTimeConfigsResponse,
+  loadHostInfo
 } from '../../../actions/customers';
+import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
+import { YBAHost } from '../../../redesign/helpers/constants';
 import {
   isPathStyleAccess,
   isChunkedEncodingEnabled,
@@ -117,6 +120,7 @@ class StorageConfiguration extends Component {
   componentDidMount() {
     this.props.fetchCustomerConfigs();
     this.props.fetchRuntimeConfigs();
+    this.props.fetchHostInfo();
   }
 
   getConfigByType = (name, customerConfigs) => {
@@ -256,6 +260,9 @@ class StorageConfiguration extends Component {
             'IAM_INSTANCE_PROFILE',
             'USE_CROSS_CLOUD_FEDERATION'
           ];
+          // YBA does not look up a federated config's bucket region, and YBC gets this one as is.
+          dataPayload['SIGNING_REGION'] = dataPayload['SIGNING_REGION']?.trim();
+          if (dataPayload['SIGNING_REGION']) FIELDS.push('SIGNING_REGION');
         } else if (values['IAM_INSTANCE_PROFILE']) {
           configName = dataPayload['S3_CONFIGURATION_NAME'];
           dataPayload['IAM_INSTANCE_PROFILE'] = dataPayload['IAM_INSTANCE_PROFILE'].toString();
@@ -530,7 +537,8 @@ class StorageConfiguration extends Component {
       iamRoleEnabled,
       federatedIamEnabled,
       useGcpIam,
-      gcsFederatedIamEnabled
+      gcsFederatedIamEnabled,
+      ybaHost
     } = this.props;
     const { useAzureIam, useOciIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
@@ -561,6 +569,7 @@ class StorageConfiguration extends Component {
               iamRoleEnabled={iamRoleEnabled}
               showFederatedIam={enableFederatedIam}
               federatedIamEnabled={federatedIamEnabled}
+              ybaHost={ybaHost}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
               enableChunkedEncoding={enableChunkedEncoding}
@@ -575,6 +584,7 @@ class StorageConfiguration extends Component {
               useGcpIam={useGcpIam}
               gcsFederatedIamEnabled={gcsFederatedIamEnabled}
               showFederatedIam={enableFederatedIam}
+              ybaHost={ybaHost}
               isEdited={editView[activeTab]}
             />
           )}
@@ -663,13 +673,16 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(fetchRunTimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
       );
+    },
+    fetchHostInfo: () => {
+      loadHostInfo(dispatch);
     }
   };
 };
 
 function mapStateToProps(state) {
   const {
-    customer: { runtimeConfigs }
+    customer: { runtimeConfigs, hostInfo }
   } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
   const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
@@ -688,6 +701,8 @@ function mapStateToProps(state) {
     enableSigningRegion,
     enableS3BackupProxy,
     enableFederatedIam,
+    // Until host info loads, or when it fails, every IAM option stays available.
+    ybaHost: hostInfo ? getYBAHost(hostInfo) : YBAHost.SELF_HOSTED,
     iamRoleEnabled: storageToggleTrue(selector(state, 'IAM_INSTANCE_PROFILE')),
     federatedIamEnabled: storageToggleTrue(selector(state, 'FEDERATED_IAM')),
     useGcpIam: storageToggleTrue(selector(state, 'USE_GCP_IAM')),

@@ -149,6 +149,7 @@ YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
 YbNotifsPollerInitStatus
+YbNotifsPollerPendingEntry
 YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
@@ -156,6 +157,10 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscReplayState
+YbOscTargetOrder
+YbOscTransform
+YbOscTriggerSpec
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState
@@ -301,6 +306,7 @@ YbcOrderingMode
 YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
+YbcPgAbortedSubtxnSet
 YbcPgAshConfig
 YbcPgAttrValueDescriptor
 YbcPgBoundType
@@ -400,7 +406,6 @@ YbcTableProperties
 YbcTablePropertiesData
 YbcTcmallocStats
 YbcTxnPriorityRequirement
-YbcTypeEntityProvider
 YbcUpdateInitPostgresMetricsFn
 YbcWaitEventDescriptor
 YbcWaitEventInfo

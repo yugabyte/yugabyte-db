@@ -1,0 +1,31 @@
+title: GcsStorageSpec
+description: |
+  GcsStorageSpec
+
+  Google Cloud Storage. Part of StorageSpec.
+type: object
+required:
+  - storage_type
+  - backup_location
+  - credentials
+properties:
+  storage_type:
+    $ref: "./StorageType.yaml"
+  backup_location:
+    description: 'Default location of backups, as gs://<bucket>[/<path>]. Can''t be changed after creation.'
+    type: string
+    example: 'gs://backups-example/yba'
+    minLength: 6
+  immutable_storage:
+    description: 'Whether the bucket keeps objects immutable (retention policy). If true, deleting a backup removes only its YBA metadata, not its files.'
+    type: boolean
+    default: false
+  credentials:
+    $ref: "./GcsCredentials.yaml"
+  region_locations:
+    description: 'Per-region backup locations, for universes that store each region''s backup in that region'
+    type: array
+    items:
+      $ref: "./GcsRegionLocation.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

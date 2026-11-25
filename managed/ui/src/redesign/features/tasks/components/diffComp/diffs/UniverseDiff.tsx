@@ -13,7 +13,7 @@ import { differenceWith, intersectionWith, isEqual, keys, size } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 
-import { getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
+import { getAsyncCluster, getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
 import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import DiffCard, { DiffCardRef } from '../DiffCard';
@@ -87,10 +87,10 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           attribute={{ title: 'Instance Type' }}
           operation={DiffOperation.CHANGED}
           beforeValue={{
-            title: beforeValue.userIntent.instanceType!
+            title: beforeValue.userIntent?.instanceType!
           }}
           afterValue={{
-            title: afterValue.userIntent.instanceType!
+            title: afterValue.userIntent?.instanceType!
           }}
         />
       );
@@ -123,13 +123,13 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     // Create diff cards for the removed and added cloud lists.
     cloudListRemoved.forEach((cloudList) => {
       cloudList.regionList.forEach((region) => {
-        this.cards[clusterType].push(this.getRegionsDiffComponent(region, undefined));
+        this.pushRegionCard(clusterType, region, undefined);
       });
     });
 
     cloudListAdded.forEach((cloudList) => {
       cloudList.regionList.forEach((region) => {
-        this.cards[clusterType].push(this.getRegionsDiffComponent(undefined, region));
+        this.pushRegionCard(clusterType, undefined, region);
       });
     });
 
@@ -158,11 +158,11 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
 
       // Create diff cards for the removed and added regions.
       regionAdded.forEach((region) => {
-        this.cards[clusterType].push(this.getRegionsDiffComponent(undefined, region));
+        this.pushRegionCard(clusterType, undefined, region);
       });
 
       regionRemoved.forEach((region) => {
-        this.cards[clusterType].push(this.getRegionsDiffComponent(region, undefined));
+        this.pushRegionCard(clusterType, region, undefined);
       });
 
       // Get the regions that are changed.
@@ -174,16 +174,28 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
 
       regionChanged.forEach((region) => {
         const afterRegion = afterCloudVal!.regionList.find((r) => r.code === region.code);
-        this.cards[clusterType].push(this.getRegionsDiffComponent(region, afterRegion));
+        this.pushRegionCard(clusterType, region, afterRegion);
       });
     });
+  }
+
+  // A modified region with no displayable change (e.g. only a leader preference changed) gets no card.
+  pushRegionCard(
+    clusterType: ClusterType,
+    beforeRegion?: PlacementRegion,
+    afterRegion?: PlacementRegion
+  ) {
+    const card = this.getRegionsDiffComponent(beforeRegion, afterRegion);
+    if (card) {
+      this.cards[clusterType].push(card);
+    }
   }
 
   // Get the diff component for the regions.
   getRegionsDiffComponent(
     beforeRegion?: PlacementRegion,
     afterRegion?: PlacementRegion
-  ): React.ReactElement {
+  ): React.ReactElement | null {
     // If both regions are null, throw an error.
     if (!beforeRegion && !afterRegion) {
       throw new Error('Both before and after regions are null');
@@ -278,6 +290,10 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       });
     }
 
+    if (beforeRegion && afterRegion && atttributeCompList.length === 1) {
+      return null;
+    }
+
     return (
       <DiffCard
         operation={
@@ -351,16 +367,79 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     ];
   }
 
+  // Leader preference of the AZs that changed. An added or removed AZ is on one side only, so the
+  // AZs are matched by uuid or name (see withIdentityFromPayload). Only AZs without an identity are
+  // paired by position, and only when both lists have the same length.
+  getLeaderPreferenceDiffComponent(
+    beforeValue: Cluster,
+    afterValue: Cluster,
+    clusterType: ClusterType
+  ) {
+    const flattenAZs = (cluster: Cluster): any[] =>
+      (cluster.placementInfo?.cloudList ?? []).flatMap((cloud) =>
+        (cloud.regionList ?? []).flatMap((region) => region.azList ?? [])
+      );
+    const beforeAZs = flattenAZs(beforeValue);
+    const afterAZs = flattenAZs(afterValue);
+    const attributes: JSX.Element[] = [];
+    const beforeComp: JSX.Element[] = [];
+    const afterComp: JSX.Element[] = [];
+
+    const azKey = (az: any) => az.uuid ?? az.name;
+    afterAZs.forEach((afterAz, index) => {
+      // Without identity on either side, fall back to position when the lists line up.
+      const beforeAz = azKey(afterAz)
+        ? beforeAZs.find((az) => azKey(az) === azKey(afterAz))
+        : beforeAZs.length === afterAZs.length && !azKey(beforeAZs[index] ?? {})
+        ? beforeAZs[index]
+        : undefined;
+      if (!beforeAz || beforeAz.leaderPreference === afterAz.leaderPreference) {
+        return;
+      }
+      attributes.push(
+        <DeviceInfoField content={afterAz.name ?? `AZ ${index + 1}`} CustomElem="li" />
+      );
+      beforeComp.push(
+        <DeviceInfoField
+          content={beforeAz.leaderPreference?.toString() ?? '---'}
+          operation={DiffOperation.REMOVED}
+        />
+      );
+      afterComp.push(
+        <DeviceInfoField
+          content={afterAz.leaderPreference?.toString() ?? '---'}
+          operation={DiffOperation.ADDED}
+        />
+      );
+      this.changesCount++;
+    });
+    if (attributes.length === 0) {
+      return;
+    }
+    this.cards[clusterType].push(
+      <DiffCard
+        ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
+        attribute={{
+          title: 'Leader Preference',
+          element: <DeviceInfoHeader content="">{attributes}</DeviceInfoHeader>
+        }}
+        operation={DiffOperation.CHANGED}
+        beforeValue={{ element: <>{beforeComp}</> }}
+        afterValue={{ element: <>{afterComp}</> }}
+      />
+    );
+  }
+
   getRegionListDiff = (placementInfo: Cluster['placementInfo']) => {
-    return placementInfo?.cloudList.map((cloud) => {
-      return cloud.regionList.map((region) => {
+    return placementInfo?.cloudList?.map((cloud) => {
+      return (cloud.regionList ?? []).map((region) => {
         return (
           <Box display="flex" key={region.code} mt={1} flexDirection="column">
             <Typography variant="h5">{region.code}</Typography>
             <Box pl={2}>
-              {region.azList.map((az) => (
+              {(region.azList ?? []).map((az) => (
                 <Typography key={az.name} variant="body2">
-                  {az.name} - {az.numNodesInAZ} node
+                  {az.name} - {az.numNodesInAZ ?? '---'} node
                 </Typography>
               ))}
             </Box>
@@ -371,9 +450,13 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   };
 
   isMasterPlacementPresent(beforeValue: Cluster, afterValue: Cluster) {
-    return (
-      beforeValue?.userIntent?.dedicatedNodes === true ||
-      afterValue?.userIntent?.dedicatedNodes === true
+    // dedicatedNodes is restored from the payload (withUnchangedIntentFromPayload); a master value
+    // in the delta also means the master has its own settings, so use the master card.
+    return [beforeValue, afterValue].some(
+      (c) =>
+        c?.userIntent?.dedicatedNodes === true ||
+        !!c?.userIntent?.masterDeviceInfo ||
+        !!c?.userIntent?.masterInstanceType
     );
   }
 
@@ -387,8 +470,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const afterComp: JSX.Element[] = [];
 
     const { attributes: attr1, beforeComp: before1, afterComp: after1 } = this.getDeviceInfoFields(
-      beforeValue.userIntent.masterDeviceInfo,
-      afterValue.userIntent.masterDeviceInfo
+      beforeValue.userIntent?.masterDeviceInfo,
+      afterValue.userIntent?.masterDeviceInfo
     );
     if (attr1.length !== 0) {
       attributes.push(<DeviceInfoHeader content="Master">{attr1}</DeviceInfoHeader>);
@@ -421,17 +504,17 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
       this.changesCount++;
     }
 
-    if (beforeValue.userIntent.masterInstanceType !== afterValue.userIntent.masterInstanceType) {
+    if (beforeValue.userIntent?.masterInstanceType !== afterValue.userIntent?.masterInstanceType) {
       this.cards[clusterType].push(
         <DiffCard
           ref={(ref) => ref && this.cardRefs?.push({ current: ref })}
           attribute={{ title: 'Master Instance Type' }}
           operation={DiffOperation.CHANGED}
           beforeValue={{
-            title: beforeValue.userIntent.masterInstanceType!
+            title: beforeValue.userIntent?.masterInstanceType!
           }}
           afterValue={{
-            title: afterValue.userIntent.masterInstanceType!
+            title: afterValue.userIntent?.masterInstanceType!
           }}
         />
       );
@@ -439,8 +522,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     }
 
     const { attributes: attr2, beforeComp: before2, afterComp: after2 } = this.getDeviceInfoFields(
-      beforeValue.userIntent.deviceInfo,
-      afterValue.userIntent.deviceInfo
+      beforeValue.userIntent?.deviceInfo,
+      afterValue.userIntent?.deviceInfo
     );
 
     if (attr2.length !== 0) {
@@ -844,56 +927,57 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     );
   }
 
+  // The diff cards of one cluster.
+  getClusterDiffs(before: Cluster, after: Cluster, clusterType: ClusterType) {
+    this.getInstanceTypeDiff(before, after, clusterType);
+    this.getCloudListDiffComponent(before, after, clusterType);
+
+    if (this.isMasterPlacementPresent(before, after)) {
+      this.getMasterPlacementDiffComponent(before, after, clusterType);
+    } else {
+      this.getDeviceInfoDiffComponent(before, after, clusterType);
+    }
+
+    this.getLeaderPreferenceDiffComponent(before, after, clusterType);
+    this.getK8sAzOverridesDiffComponent(before, after, clusterType);
+  }
+
   getDiffComponent(): React.ReactElement {
     this.changesCount = 0;
-    // Get the primary cluster before and after the edit operation.
-    const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData as UniverseDetails);
-    const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData as UniverseDetails);
+    const before = this.diffProps.beforeData as UniverseDetails;
+    const after = this.diffProps.afterData as UniverseDetails;
+    const beforePrimaryCluster = getPrimaryCluster(before);
+    const afterPrimaryCluster = getPrimaryCluster(after);
+    const beforeAsyncCluster = getAsyncCluster(before);
+    const afterAsyncCluster = getAsyncCluster(after);
+    // A cluster that was added or removed is on one side only.
+    const hasPrimary = !!beforePrimaryCluster || !!afterPrimaryCluster;
+    const hasAsync = !!beforeAsyncCluster || !!afterAsyncCluster;
+    const emptyCluster = { userIntent: {} } as Cluster;
 
-    if (!beforePrimaryCluster || !afterPrimaryCluster) {
+    if (!hasPrimary && !hasAsync) {
       return <Typography variant="h6">Changes not found</Typography>;
     }
-    // Get the differences in the instance type of the primary cluster.
-    this.getInstanceTypeDiff(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);
 
-    // Get the differences in the cloud list of the primary cluster.
-    this.getCloudListDiffComponent(
-      beforePrimaryCluster!,
-      afterPrimaryCluster!,
-      ClusterType.PRIMARY
-    );
-
-    if (this.isMasterPlacementPresent(beforePrimaryCluster!, afterPrimaryCluster!)) {
-      this.getMasterPlacementDiffComponent(
-        beforePrimaryCluster!,
-        afterPrimaryCluster!,
+    if (hasPrimary) {
+      this.getClusterDiffs(
+        beforePrimaryCluster ?? emptyCluster,
+        afterPrimaryCluster ?? emptyCluster,
         ClusterType.PRIMARY
       );
-    } else {
-      // Get the differences in the device info of the primary cluster.
-      this.getDeviceInfoDiffComponent(
-        beforePrimaryCluster!,
-        afterPrimaryCluster!,
-        ClusterType.PRIMARY
+      this.getCommunicationDiffComponent(before, after, ClusterType.PRIMARY);
+      this.getInstanceTagsDiffComponent(
+        beforePrimaryCluster?.userIntent?.instanceTags,
+        afterPrimaryCluster?.userIntent?.instanceTags
       );
     }
-
-    this.getCommunicationDiffComponent(
-      this.diffProps.beforeData as UniverseDetails,
-      this.diffProps.afterData as UniverseDetails,
-      ClusterType.PRIMARY
-    );
-
-    this.getK8sAzOverridesDiffComponent(
-      beforePrimaryCluster,
-      afterPrimaryCluster,
-      ClusterType.PRIMARY
-    );
-
-    this.getInstanceTagsDiffComponent(
-      beforePrimaryCluster.userIntent.instanceTags,
-      afterPrimaryCluster.userIntent.instanceTags
-    );
+    if (hasAsync) {
+      this.getClusterDiffs(
+        beforeAsyncCluster ?? emptyCluster,
+        afterAsyncCluster ?? emptyCluster,
+        ClusterType.ASYNC
+      );
+    }
 
     return (
       <DiffCardWrapper>
@@ -906,8 +990,10 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           changesCount={this.changesCount}
         />
         <TaskDiffBanner task={this.task} diffCount={this.changesCount} />
-        <DiffTitleBanner title="Primary Cluster" />
+        {hasPrimary && <DiffTitleBanner title="Primary Cluster" />}
         {this.cards[ClusterType.PRIMARY]}
+        {hasAsync && <DiffTitleBanner title="Read Replica" showLegends={!hasPrimary} />}
+        {this.cards[ClusterType.ASYNC]}
       </DiffCardWrapper>
     );
   }
@@ -1064,11 +1150,11 @@ const PlacementAzComponent = ({
       </span>
       <br />
       <span className={clsx(!displayEmpty && fieldOperations?.numNodesInAZ)}>
-        {displayEmpty ? '---' : placementAz.numNodesInAZ}
+        {displayEmpty ? '---' : placementAz.numNodesInAZ ?? '---'}
       </span>
       <br />
       <span className={clsx(!displayEmpty && fieldOperations?.isAffinitized)}>
-        {displayEmpty ? '---' : placementAz.isAffinitized + ''}
+        {displayEmpty ? '---' : placementAz.isAffinitized?.toString() ?? '---'}
       </span>
       <br />
     </div>

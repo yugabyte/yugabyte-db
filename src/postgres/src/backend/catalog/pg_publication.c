@@ -50,6 +50,7 @@
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
+static bool yb_is_internal_table_to_be_excluded_from_cdc(Oid relid);
 
 static void publication_translate_columns(Relation targetrel, List *columns,
 										  int *natts, AttrNumber **attrs);
@@ -1297,8 +1298,20 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE(funcctx);
 }
 
+/*
+ * Returns the tables of the given publications, and sets *yb_is_pub_all_tables
+ * to true if any of them is FOR ALL TABLES.
+ *
+ * Used by both slot creation and the virtual WAL, so that a slot bound to a
+ * publication gets exactly the tables the virtual WAL streams.
+ *
+ * If yb_expand_all_tables_pub is false, a FOR ALL TABLES publication adds no
+ * tables to the result.  Slot creation passes false: the master adds every
+ * table to such a slot itself, so there is no need to list them here.
+ */
 List *
-yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
+yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables,
+							  bool yb_expand_all_tables_pub)
 {
 	/* hash table for O(1) rel_oid lookup */
 	HTAB	   *seen_tables;
@@ -1324,7 +1337,8 @@ yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
 		bool		has_alltables = pub->alltables;
 
 		if (has_alltables)
-			pub_tables = GetAllTablesPublicationRelations(pub->pubviaroot);
+			pub_tables = yb_expand_all_tables_pub ?
+				GetAllTablesPublicationRelations(pub->pubviaroot) : NIL;
 		else
 			pub_tables = GetPublicationRelations(pub->oid,
 												 pub->pubviaroot ?
@@ -1335,6 +1349,10 @@ yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
 		{
 			Oid			rel = lfirst_oid(lc_tables);
 			bool		found;
+
+			/* FOR ALL TABLES lists already leave these tables out. */
+			if (!has_alltables && yb_is_internal_table_to_be_excluded_from_cdc(rel))
+				continue;
 
 			hash_search(seen_tables, &rel, HASH_ENTER, &found);
 			if (!found)
@@ -1382,14 +1400,35 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 /*
  * Similar to is_publishable_relation but with additional check for user defined
  * primary key when GUC variable 'yb_cdcsdk_stream_tables_without_primary_key'
- * is set to false.
+ * is set to false, and excludes tables internal to YugabyteDB.
  */
 bool
 yb_is_publishable_relation(Relation rel)
 {
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 			(yb_cdcsdk_stream_tables_without_primary_key ||
-			 YBRelationHasPrimaryKey(rel)));
+			 YBRelationHasPrimaryKey(rel)) &&
+			!yb_is_internal_table_to_be_excluded_from_cdc(RelationGetRelid(rel)));
+}
+
+/*
+ * Returns true if the table is created internally by a YugabyteDB
+ * feature/extension and CDC must never stream it.
+ *
+ * Must exclude the same tables as the master
+ * (CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream): a slot fails
+ * to stream if it asks for a table that the master left out of its stream.
+ */
+static bool
+yb_is_internal_table_to_be_excluded_from_cdc(Oid relid)
+{
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
+
+	return relname != NULL && nspname != NULL &&
+		strcmp(nspname, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0 &&
+		(strcmp(relname, YB_XCLUSTER_DDL_QUEUE_TABLE_NAME) == 0 ||
+		 strcmp(relname, YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME) == 0);
 }
 
 /*

@@ -13,7 +13,6 @@
 
 #include "yb/tserver/pg_response_cache.h"
 
-#include <algorithm>
 #include <atomic>
 #include <future>
 #include <mutex>
@@ -105,9 +104,8 @@ METRIC_DEFINE_counter(server, pg_response_cache_send_aways,
                       "PgClientService Response Cache Send-Aways From An In-Flight Fill",
                       yb::MetricUnit::kCacheQueries,
                       "Number of queries to PgClientService response cache that found a fill "
-                      "already under way -- another connection filling their database, or any "
-                      "session filling the very entry they wanted -- and were told to read a "
-                      "catalog version this node already holds instead of waiting for it. One "
+                      "already under way in their database and were told to read a catalog "
+                      "version this node already holds instead of waiting for it. One "
                       "that cannot use that version reruns its prefetch without the ask and "
                       "proceeds as it would have without it, so this counts the connections "
                       "turned away, not the ones that went on to read the older version. "
@@ -192,16 +190,20 @@ void TEST_UpdateCatalogReadTime(
 // and each round is cached under a key of its own, so a round with paging state left has later
 // rounds still to come. A failed round holds no rows and no paging state, so it must not be
 // mistaken for the last one.
-[[nodiscard]] bool EndsPrefetch(const PgResponseCache::Response& resp) {
-  if (!IsOk(resp)) {
+[[nodiscard]] bool EndsPrefetch(const LWPgPerformResponsePB& response) {
+  if (response.has_status()) {
     return false;
   }
-  for (const auto& op_response : resp.response->responses()) {
+  for (const auto& op_response : response.responses()) {
     if (op_response.has_paging_state()) {
       return false;
     }
   }
   return true;
+}
+
+[[nodiscard]] bool EndsPrefetch(const PgResponseCache::Response& resp) {
+  return IsOk(resp) && EndsPrefetch(*resp.response);
 }
 
 class MetricContext {
@@ -530,7 +532,7 @@ struct PgResponseCache::DisablerType {};
 // mid-prefetch cannot leave its database marked busy for ever.
 class PgResponseCache::FillToken {
  public:
-  FillToken(Impl* impl, KeyGroup group, uint64_t session_id);
+  FillToken(Impl* impl, KeyGroup group);
 
   FillToken(const FillToken&) = delete;
   FillToken& operator=(const FillToken&) = delete;
@@ -547,8 +549,19 @@ class PgResponseCache::FillToken {
   Impl* const impl_;
   std::atomic<bool> released_{false};
   const KeyGroup group_;
-  const uint64_t session_id_;
 };
+
+namespace {
+
+// Release a claim only through here, so the test flag that holds one past completion cannot be
+// missed.
+void ReleaseClaim(const PgResponseCache::FillTokenPtr& token) {
+  if (!FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
+    token->Release();
+  }
+}
+
+}  // namespace
 
 class PgResponseCache::Impl : private GarbageCollector {
   friend class PgResponseCache::FillToken;
@@ -558,46 +571,22 @@ class PgResponseCache::Impl : private GarbageCollector {
     return key_group_buckets_[group % sz];
   }
 
-  // Whether a connection other than this one is filling an entry of this key group. The session
-  // id is the only handle on "another connection" a Perform carries, so a session's own counts
-  // are skipped.
+  // Whether any fill is under way for this key group, including one the asking caller shares a
+  // token with. Parallel workers share their leader's token slot and each run a connection start
+  // of their own, so counting every fill is what sends a sibling to the older version this node
+  // holds, rather than queueing it behind the fills another sibling still has in flight.
   //
-  // Within one backend the skip decides nothing: pggate asks only on a prefetch's opening round
-  // and clears the ask before any rerun, and at that round the session has filled nothing yet,
-  // so there is no count of its own to find. What it decides is the parallel-worker case below,
-  // where siblings share a session id -- there the skip is why they do not send each other away.
+  // A backend's connection start usually has nothing of its own counted here: pggate asks on
+  // the opening round and on no rerun. A connection to template1 is the exception, because the
+  // auth prefetch fills under Template1DbOid with an ordinary token, and that token lives in
+  // its setter until the request object goes away -- past the response that lets the backend
+  // send this round. Such a connection can be sent away by its own finished auth read, which
+  // costs it a stale attempt or a rerun, not a wrong read.
   //
-  // Counted per session rather than per entry because a connection start wants a different entry
-  // from the fill it is sent away from -- it pinned a version of its own -- so there is no entry
-  // the two have in common to count.
-  //
-  // Parallel workers adopt their leader's session id, so this check does not separate siblings
-  // of one query. The entry-level check in RegisterWaiter separates them only while the first
-  // is still filling the entry the second wants: RegisterWaiter answers kReady before it looks
-  // at the ask, so once that entry is stored the second sibling is served it and its later
-  // rounds, which carry no ask of their own, queue behind the fills the first still has in
-  // flight. Sending a sibling away from an entry already stored would need this check to run
-  // on the session's own counts, which is the one thing it is built not to do.
-  //
-  // What that costs is catalog work the node need not have done -- a sibling served or queued
-  // gets the same bytes any other caller would, and one that is sent away reads the older
-  // version through the same checks as anyone else. Siblings share the session's token, so two
-  // of their fills are counted once and released once, which cannot underflow the count or
-  // leave it held.
-  //
-  // TODO(#34309): separate siblings by counting the session's own fills here, so the second is
-  // sent away from an entry the first has already stored rather than queueing behind the fills
-  // it still has in flight. The check then fires before RegisterWaiter, so answering kReady
-  // ahead of the ask stops mattering. It inverts what AConnectionIsNotSentAwayFromAFillOfItsOwn
-  // and AGroupStaysBusyAcrossOverlappingRounds pin: both ask on a later round of one session,
-  // which pggate does not send, so both want revisiting with the change rather than before it.
-  [[nodiscard]] bool AnotherFillInFlight(KeyGroup group, uint64_t session_id) REQUIRES(mutex_) {
-    auto it = fills_in_flight_.find(group);
-    if (it == fills_in_flight_.end()) {
-      return false;
-    }
-    return std::ranges::any_of(
-        it->second, [session_id](const auto& e) { return e.first != session_id; });
+  // Counted per key group rather than per entry because a connection start wants a different
+  // entry from the fill it is sent away from -- it pinned a version of its own.
+  [[nodiscard]] bool FillInFlight(KeyGroup group) REQUIRES(mutex_) {
+    return fills_in_flight_.contains(group);
   }
 
   // A connection start's prefetch reuses the session's token; every other caching read takes one
@@ -607,13 +596,12 @@ class PgResponseCache::Impl : private GarbageCollector {
   // to, so today it never holds a token on another.
   [[nodiscard]] FillTokenPtr TakeFillToken(
       PartOfConnectionPrefetch part_of_connection_prefetch, KeyGroup group,
-      uint64_t session_id,
       FillTokenPtr* token) {
     if (!part_of_connection_prefetch || !token) {
-      return std::make_shared<FillToken>(this, group, session_id);
+      return std::make_shared<FillToken>(this, group);
     }
     if (!*token || (*token)->released() || (*token)->group() != group) {
-      *token = std::make_shared<FillToken>(this, group, session_id);
+      *token = std::make_shared<FillToken>(this, group);
     }
     return *token;
   }
@@ -624,22 +612,19 @@ class PgResponseCache::Impl : private GarbageCollector {
   // the connection start that took it and wait for whatever that session sent next.
   //
   // Every round of that last request carries the flag, so the flag alone does not say the
-  // prefetch is over. The callers that hold a response test it with EndsPrefetch before calling
-  // -- the setter, and the arm that serves a response already stored -- so a round that failed,
-  // or that still has paging state behind it, does not end the claim.
+  // prefetch is over. Every caller that holds a response tests it with EndsPrefetch before
+  // calling, so a round that failed, or that still has paging state behind it, does not end
+  // the claim.
   //
   // Two callers have nothing to test. A round queued behind another session's fill has no
   // response yet, and a round answered while the database's cache is disabled has read nothing
   // at all. Both end the claim whatever the round turns out to be, so a claim can end a round
   // or two early there; the next round that fills takes a fresh token, and the database is
-  // uncounted only in between.
+  // uncounted until one does.
   static void EndPrefetchClaimIfComplete(
-      const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
-    if (FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
-      return;
-    }
-    if (cache_info.completes_connection_prefetch() && token && *token) {
-      (*token)->Release();
+      ConnectionPrefetchInfo prefetch, FillTokenPtr* token) {
+    if (prefetch.completes_connection_prefetch && token && *token) {
+      ReleaseClaim(*token);
     }
   }
 
@@ -648,23 +633,18 @@ class PgResponseCache::Impl : private GarbageCollector {
   // erase the mark the next round had just made, and a connection arriving then would start a
   // whole-catalog read of its own. A connection start never exceeds one, since its rounds
   // share a token.
-  void NoteFillStarted(KeyGroup group, uint64_t session_id) EXCLUDES(mutex_) {
+  void NoteFillStarted(KeyGroup group) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    ++fills_in_flight_[group][session_id];
+    ++fills_in_flight_[group];
   }
 
-  void NoteFillFinished(KeyGroup group, uint64_t session_id) EXCLUDES(mutex_) {
+  void NoteFillFinished(KeyGroup group) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     auto it = fills_in_flight_.find(group);
     if (it == fills_in_flight_.end()) {
       return;
     }
-    auto session_it = it->second.find(session_id);
-    if (session_it == it->second.end() || --session_it->second > 0) {
-      return;
-    }
-    it->second.erase(session_it);
-    if (it->second.empty()) {
+    if (--it->second == 0) {
       fills_in_flight_.erase(it);
     }
   }
@@ -719,8 +699,8 @@ class PgResponseCache::Impl : private GarbageCollector {
 
  public:
   Result<Setter> Get(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter, uint64_t session_id,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
+      CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter,
       FillTokenPtr* token) EXCLUDES(mutex_) {
     // The last request of a connection start's prefetch is one of its requests, so the two fields
     // have three valid combinations between them and the wire allows a fourth. Only a bug on the
@@ -730,13 +710,13 @@ class PgResponseCache::Impl : private GarbageCollector {
     // cost is a wasted attempt rather than a catalog read at the wrong version. DFATAL rather
     // than FATAL: a debug build fails on it, since only a bug produces it, while a release
     // tserver logs it and carries on.
-    LOG_IF(DFATAL, cache_info->completes_connection_prefetch() &&
-                       !cache_info->part_of_connection_prefetch())
+    LOG_IF(DFATAL, prefetch.completes_connection_prefetch &&
+                       !prefetch.part_of_connection_prefetch)
         << "Request completes a connection prefetch it is not part of, key group "
         << cache_info->key_group() << ", catalog version " << cache_info->catalog_version();
 
     if (cache_info->lookup_only()) {
-      return LookupOnlyGet(cache_info, waiter);
+      return LookupOnlyGet(cache_info, prefetch, waiter);
     }
     const auto group = cache_info->key_group();
     queries_->Increment();
@@ -748,7 +728,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     // entry invalid, so the next caller rebuilds it and starts a second whole-catalog read --
     // the very thing this check exists to prevent, at exactly the times it matters.
     //
-    // While another session is filling this database, send the asking connection away. A
+    // While a fill for this database is under way, send the asking connection away. A
     // connection starting during a run of DDLs pins a version of its own, so the entry it wants
     // is nobody else's and the per-entry check below would not see that fill at all. A
     // connection whose opening round would have hit the cache is not spared the wait either:
@@ -788,8 +768,7 @@ class PgResponseCache::Impl : private GarbageCollector {
         // Closing it means remembering, per key group, the bucket version its recorded catalog
         // version was filled under, which is a map under this lock written from the publish
         // path -- more than the wasted attempt it saves is worth here.
-        send_away = !GetKeyGroupBucket(group).disabler.lock() &&
-                    AnotherFillInFlight(group, session_id);
+        send_away = !GetKeyGroupBucket(group).disabler.lock() && FillInFlight(group);
       }
       if (send_away) {
         send_aways_->Increment();
@@ -808,7 +787,7 @@ class PgResponseCache::Impl : private GarbageCollector {
       // Nothing has been read yet, so unlike the setter and the arm below this cannot tell a
       // round that is finishing the prefetch from one that will fail and be retried. It ends
       // the claim either way, and the retry's first fill takes a fresh token.
-      EndPrefetchClaimIfComplete(*cache_info, token);
+      EndPrefetchClaimIfComplete(prefetch, token);
       return [](Response&& response) {};
     }
     auto join = data->RegisterWaiter(waiter, SendAway(cache_info->send_away_if_fill_in_flight()));
@@ -819,7 +798,7 @@ class PgResponseCache::Impl : private GarbageCollector {
         // one this caller produced: a round that failed, or that still has paging state behind
         // it, is not the end of the prefetch and must not end the claim.
         if (EndsPrefetch(*join.response)) {
-          EndPrefetchClaimIfComplete(*cache_info, token);
+          EndPrefetchClaimIfComplete(prefetch, token);
         }
         waiter->Apply(*join.response);
         return Setter();
@@ -827,17 +806,17 @@ class PgResponseCache::Impl : private GarbageCollector {
         hits_->Increment();
         // No response yet, so the outcome cannot be checked as it is above, and a completing
         // round that goes on to fail ends the claim here all the same.
-        EndPrefetchClaimIfComplete(*cache_info, token);
+        EndPrefetchClaimIfComplete(prefetch, token);
         return Setter();
       case Data::JoinState::kSentAway:
         // Not a hit: nothing was served. The caller reads the version this node already holds
         // and catches up from there, and asks again without send_away_if_fill_in_flight if it
         // cannot, so this cannot be answered the same way twice.
         //
-        // The group check above covers another session's fill, but only once that fill is
-        // counted, which its setter does a moment after the entry is marked as filling. This
-        // arm covers that gap, and the case of a session asking for an entry it is filling
-        // itself, which parallel workers sharing a session can reach.
+        // The group check above misses a fill in two windows: before its setter counts it, a
+        // moment after the entry is marked as filling, and after a sibling's completing round
+        // releases the token the siblings share while another round of theirs is still
+        // filling. This arm covers both.
         send_aways_->Increment();
         return STATUS(Incomplete, "A fill for this key is already under way");
       case Data::JoinState::kFill:
@@ -852,13 +831,12 @@ class PgResponseCache::Impl : private GarbageCollector {
             abandon_guard =
                 std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
             fill = TakeFillToken(
-                PartOfConnectionPrefetch(cache_info->part_of_connection_prefetch()),
-                group, session_id, token),
+                PartOfConnectionPrefetch(prefetch.part_of_connection_prefetch), group, token),
             observer = fill_observer_,
             group,
             version,
             completes_connection_prefetch =
-                cache_info->completes_connection_prefetch()](Response&& response) {
+                prefetch.completes_connection_prefetch](Response&& response) {
       TEST_PAUSE_IF_FLAG(TEST_pg_response_cache_pause_fill);
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
       // state, and each round is cached under a key of its own, so an observer told about the
@@ -897,8 +875,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       // long costs other connections a version they can bridge from; ending it too early costs
       // them the wait this change exists to remove. The session ends it instead, on its next
       // request that is not part of a prefetch or when it goes away.
-      if (is_final_round && !FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
-        fill->Release();
+      if (is_final_round) {
+        ReleaseClaim(fill);
       }
     };
   }
@@ -908,7 +886,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   // a miss: an entry claimed for a fill that is not coming makes every later query on that key
   // wait out the RPC deadline.
   Result<Setter> LookupOnlyGet(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
       const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
     auto data = FindEntryData(cache_info);
     queries_->Increment();
@@ -921,7 +899,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (!response || !IsOk(*response) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request &&
-                      cache_info->completes_connection_prefetch())) {
+                      prefetch.completes_connection_prefetch)) {
       lookup_only_misses_->Increment();
       return STATUS(Incomplete, "Response is not cached");
     }
@@ -1046,10 +1024,9 @@ class PgResponseCache::Impl : private GarbageCollector {
   > entries_ GUARDED_BY(mutex_);
 
   std::vector<KeyGroupBucket> key_group_buckets_ GUARDED_BY(mutex_);
-  // Fills under way, by key group and by the session performing them. The FillToken the filling
-  // caller holds takes the count and drops it, so an abandoned fill clears itself.
-  std::unordered_map<KeyGroup, std::unordered_map<uint64_t, size_t>> fills_in_flight_
-      GUARDED_BY(mutex_);
+  // How many fills are under way for each key group. The FillToken the filling caller holds
+  // takes the count and drops it, so an abandoned fill clears itself.
+  std::unordered_map<KeyGroup, size_t> fills_in_flight_ GUARDED_BY(mutex_);
 
   const PgResponseCache::FillObserver fill_observer_;
 
@@ -1065,17 +1042,25 @@ PgResponseCache::PgResponseCache(
 
 PgResponseCache::~PgResponseCache() = default;
 
-Result<PgResponseCache::Setter> PgResponseCache::Get(
-    LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
-    CoarseTimePoint deadline,
-    const PgResponseCacheWaiterPtr& waiter,
-    uint64_t session_id, FillTokenPtr* token) {
-  return impl_->Get(cache_info, deadline, waiter, session_id, token);
+void PgResponseCache::EndConnectionPrefetchClaim(
+    const LWPgPerformResponsePB& response, const FillTokenPtr& token) {
+  if (token && EndsPrefetch(response)) {
+    ReleaseClaim(token);
+  }
 }
 
-PgResponseCache::FillToken::FillToken(Impl* impl, KeyGroup group, uint64_t session_id)
-    : impl_(impl), group_(group), session_id_(session_id) {
-  impl->NoteFillStarted(group_, session_id_);
+Result<PgResponseCache::Setter> PgResponseCache::Get(
+    LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+    ConnectionPrefetchInfo prefetch,
+    CoarseTimePoint deadline,
+    const PgResponseCacheWaiterPtr& waiter,
+    FillTokenPtr* token) {
+  return impl_->Get(cache_info, prefetch, deadline, waiter, token);
+}
+
+PgResponseCache::FillToken::FillToken(Impl* impl, KeyGroup group)
+    : impl_(impl), group_(group) {
+  impl->NoteFillStarted(group_);
 }
 
 PgResponseCache::FillToken::~FillToken() {
@@ -1087,10 +1072,10 @@ void PgResponseCache::FillToken::Release() {
   // prefetch from QueryData::FlushDone, which runs on a client thread with the session lock
   // already dropped, while the session releases the same token under that lock -- and parallel
   // workers share a session, so they share its token. Whoever claims the latch owes the single
-  // NoteFillFinished this token carries and the other does nothing, so a late release can only
-  // remove the count it put there itself, never one a newer token has taken since.
+  // NoteFillFinished this token carries and the other does nothing, so a late release takes
+  // back exactly the one count this token added, leaving any a newer token has taken since.
   if (!released_.exchange(true, std::memory_order_acq_rel)) {
-    impl_->NoteFillFinished(group_, session_id_);
+    impl_->NoteFillFinished(group_);
   }
 }
 

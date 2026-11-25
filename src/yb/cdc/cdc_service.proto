@@ -79,6 +79,8 @@ service CDCService {
   rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
   rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
       returns (UpdatePublicationTableListResponsePB);
+  rpc InvalidateStreamMetadataCache (InvalidateStreamMetadataCacheRequestPB)
+      returns (InvalidateStreamMetadataCacheResponsePB);
 }
 
 message CDCErrorPB {
@@ -234,6 +236,15 @@ message GetConsistentChangesResponsePB {
   // DocDB transaction id of that catalog write. in_txn_limit applies only to intents of this
   // transaction. Only set together with publication_refresh_record_time.
   optional bytes publication_refresh_txn_id = 7;
+
+  // Aborted subtransactions of the transactions whose BEGIN records the virtual WAL read for this
+  // response, keyed by DocDB transaction id.
+  map<string, CDCSDKAbortedSubtxnsPB> aborted_subtxns = 8;
+}
+
+message CDCSDKAbortedSubtxnsPB {
+  optional fixed64 commit_time = 1;
+  optional SubtxnSetPB aborted_subtxns = 2;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -271,6 +282,13 @@ message UpdatePublicationTableListRequestPB {
 }
 
 message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message InvalidateStreamMetadataCacheRequestPB {
+}
+
+message InvalidateStreamMetadataCacheResponsePB {
   optional CDCErrorPB error = 1;
 }
 
@@ -597,8 +615,9 @@ message RowMessage {
   // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
 
-  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records for
-  // the walsender with transactional DDL, when not empty.
+  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records with
+  // transactional DDL, when not empty. The virtual WAL moves it to
+  // GetConsistentChangesResponsePB.aborted_subtxns.
   optional SubtxnSetPB aborted_subtxns = 20;
 }
 

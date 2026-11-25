@@ -744,6 +744,51 @@ templates:
         Failed to perform health check for universe '{{ $labels.source_name }}'
         - check YB Platform logs for details or contact YB support team
 
+  HEALTH_CHECK_NOT_RUNNING:
+    name: Health check not running
+    description: No health check of the universe has completed for several health check intervals,
+      so the alerts based on health check results can't fire for it
+    queryTemplate: (time() - ybp_health_check_last_completed_time{universe_uuid="__universeUuid__"})
+      / scalar(clamp_min(max(ybp_health_check_interval), 300))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 3.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: health check interval(s)
+    annotations:
+      summary: >-
+        No health check of universe '{{ $labels.source_name }}' has completed for
+        {{ $value | printf "%.0f" }} health check intervals. Alerts based on health checks can't
+        fire for this universe until health checks run again - check YB Platform logs.
+
+  YBA_SCHEDULER_NOT_RUNNING:
+    name: YBA scheduler not running
+    description: A YBA scheduler has not completed a run for several of its intervals, so the
+      background job it runs is stalled
+    queryTemplate: (time() - ybp_scheduler_last_ok_time)
+      / on (scheduler_name) clamp_min(ybp_scheduler_interval, 300)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 3.0
+    targetType: PLATFORM
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: scheduler interval(s)
+    testAlertSettings:
+      additionalLabels:
+        - name: scheduler_name
+          value: HealthChecker
+    annotations:
+      summary: >-
+        YBA scheduler '{{ $labels.scheduler_name }}' has not completed a run for
+        {{ $value | printf "%.0f" }} of its intervals - check YB Platform logs and thread dumps.
+
   HEALTH_CHECK_NOTIFICATION_ERROR:
     name: Health Check Notification Error
     description: Failed to perform health check notification
@@ -2748,12 +2793,14 @@ templates:
   NODE_MAINTENANCE_SERVICE_NOT_RUN:
     name: Node maintenance service not running
     description: A YB node maintenance systemd service (yb-zip_purge_yb_logs / yb-clean_cores) has not been executed recently or never ran
+    # The services run every 5 min and the metric refreshes every minute, so a healthy node's last
+    # run is at most ~7 min old. Keep the window the same in the node list label below.
     queryTemplate: count by (universe_uuid) (
       (yb_node_maintenance_service_status{universe_uuid="__universeUuid__"} != 2
       and ignoring(saved_name) yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} == 0)
       or
       (yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"} > 0
-      and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"}) > 300)
+      and ignoring(saved_name) (time() - yb_node_maintenance_service_last_run_seconds{universe_uuid="__universeUuid__"}) > 1800)
       ) {{ query_condition }} {{ query_threshold }}
     defaultDurationSec: 600
     createForNewCustomer: true
@@ -2803,6 +2850,73 @@ templates:
       summary: >-
         YB node maintenance service definition is missing for universe
         '{{ $labels.source_name }}' on {{ $value | printf "%.0f" }} instance(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_METRICS_COLLECTION_FAILURE:
+    name: DB node metrics collection failure
+    universeType: VM
+    description: Node metrics collected through the node_exporter textfile collector are missing, stale or can't be read
+      on DB node(s), so alerts based on them can't fire for those nodes
+    queryTemplate: count by (universe_uuid) (max by (universe_uuid, node_name) (
+      label_replace(max by (universe_uuid, node_name) (node_textfile_scrape_error{universe_uuid="__universeUuid__"} == 1),
+        "reason", "scrape_error", "", "")
+      or label_replace(max by (universe_uuid, node_name)
+        (time() - node_textfile_mtime_seconds{universe_uuid="__universeUuid__", file=~".*node_metrics.prom"} > 300),
+        "reason", "stale", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="node_export"} == 1)
+        unless on (universe_uuid, node_name) node_textfile_mtime_seconds{universe_uuid="__universeUuid__", file=~".*node_metrics.prom"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "missing", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="master_export"} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid="__universeUuid__", export_type="node_export", process="master"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "master_metrics", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="tserver_export"} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid="__universeUuid__", export_type="node_export", process="tserver"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "tserver_metrics", "", "")
+      )) {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 600
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        label_replace(max by (universe_uuid, node_name) (node_textfile_scrape_error{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'metrics file unreadable', '', '')
+        or label_replace(max by (universe_uuid, node_name)
+        (time() - node_textfile_mtime_seconds{universe_uuid='{{ $labels.universe_uuid }}', file=~'.*node_metrics.prom'} > 300),
+        'reason', 'metrics file not updated for 5+ min', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export'} == 1)
+        unless on (universe_uuid, node_name) node_textfile_mtime_seconds{universe_uuid='{{ $labels.universe_uuid }}', file=~'.*node_metrics.prom'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no metrics file', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='master_export'} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export', process='master'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no master metrics in file', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export', process='tserver'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no tserver metrics in file', '', '')
+        " }}{{if $index}}, {{end}}{{ $element.Labels.node_name }} ({{ $element.Labels.reason }}){{ end }}
+    annotations:
+      summary: >-
+        Node metrics collection failed for universe '{{ $labels.source_name }}' on
+        {{ $value | printf "%.0f" }} node(s). Alerts based on node metrics can't fire for these nodes.
 
         Affected nodes: {{ $labels.affected_node_names }}
 

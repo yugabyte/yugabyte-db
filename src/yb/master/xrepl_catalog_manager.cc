@@ -212,7 +212,7 @@ DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -369,8 +369,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
         auto stream_pg_table_oids =
             catalog_manager_->GetPgTableOidsOfCDCSDKStreamTables(metadata.table_id());
         std::erase_if(eligible_tables_info, [&](const TableInfoPtr& table_info) {
-          auto pg_table_oid = table_info->GetPgTableOid();
-          return !pg_table_oid.ok() || !stream_pg_table_oids.contains(*pg_table_oid);
+          return !CatalogManager::IsRewriteOfStreamTable(stream_pg_table_oids, *table_info);
         });
       }
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
@@ -669,9 +668,44 @@ std::string CDCStreamInfosAsString(const std::vector<CDCStreamInfoPointer>& cdc_
 bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
-         (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_oid == kPgAttributeTableOid ||
-           table_oid == kPgPublicationRelPrpubidIndexOid));
+         (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
+          std::ranges::find(kTxnDdlCatalogTableOids, table_oid) != kTxnDdlCatalogTableOids.end());
+}
+
+const char* SkipReason(PrepareSlotForTxnDdlResult result) {
+  switch (result) {
+    case PrepareSlotForTxnDdlResult::kPrepared:
+      break;
+    case PrepareSlotForTxnDdlResult::kNotLogicalReplication:
+      return "it isn't a logical replication slot";
+    case PrepareSlotForTxnDdlResult::kNotificationSlot:
+      return "it is a LISTEN/NOTIFY slot";
+    case PrepareSlotForTxnDdlResult::kDeleting:
+      return "it is being deleted";
+    case PrepareSlotForTxnDdlResult::kAlreadyUnusable:
+      return "an earlier run marked it unusable with transactional DDL. Create a new replication "
+             "slot";
+    case PrepareSlotForTxnDdlResult::kNotReadyForConversion:
+      return "it wasn't paused for conversion to an implicit slot with its catalog barrier in "
+             "place, so it is now unusable with transactional DDL. Create a new replication slot";
+  }
+  FATAL_INVALID_ENUM_VALUE(PrepareSlotForTxnDdlResult, result);
+}
+
+Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
+    const NamespaceId& namespace_id) {
+  auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  std::vector<TableId> table_ids;
+  table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
+    }
+  }
+  table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
+  table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
+  table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationOid));
+  return table_ids;
 }
 
 ReplicationSlotName MakeGrpcSlotName(const xrepl::StreamId& stream_id) {
@@ -733,6 +767,17 @@ bool IsPublicationsBoundStreamCreationRequest(
   return FLAGS_cdcsdk_enable_publication_scoped_replication_slots &&
          req.has_cdcsdk_stream_create_options() &&
          req.cdcsdk_stream_create_options().has_bound_publication_name() &&
+         !IsNotificationSlotCreationRequest(req, namespace_name);
+}
+
+// Notifications slots stream only pg_yb_notifications through a fixed publication, so pub refresh
+// is enough for them. Detecting publication changes implicitly would make the VWAL poll the master
+// leader.
+bool DetectsPublicationChangesImplicitly(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  return FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+         FLAGS_cdc_enable_dynamic_schema_changes &&
+         IsLogicalReplicationStreamCreationRequest(req, namespace_name) &&
          !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
@@ -1150,6 +1195,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   }
 
   bool is_logical_replication_stream_req;
+  bool detect_publication_changes_implicitly;
   bool allow_tables_without_primary_key;
 
   const bool has_bound_table_ids =
@@ -1182,6 +1228,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     }
 
     is_logical_replication_stream_req = IsLogicalReplicationStreamCreationRequest(req, ns->name());
+    detect_publication_changes_implicitly = DetectsPublicationChangesImplicitly(req, ns->name());
 
     has_bound_publication = req.has_cdcsdk_stream_create_options() &&
                             req.cdcsdk_stream_create_options().has_bound_publication_name();
@@ -1268,24 +1315,13 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
-  // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
-  // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams.
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-      FLAGS_cdc_enable_dynamic_schema_changes && is_logical_replication_stream_req) {
-    auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
-    if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
-      table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-      table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
-    }
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
-    table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationOid));
+  if (detect_publication_changes_implicitly) {
+    auto catalog_table_ids =
+        VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
+    table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
-                      << (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl
-                              ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                      << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
+                              ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                       << "stream metadata tables list.";
@@ -1293,7 +1329,8 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
 
-  return CreateNewCdcsdkStream(req, table_ids, namespace_id, resp, epoch, rpc);
+  return CreateNewCdcsdkStream(
+      req, table_ids, namespace_id, detect_publication_changes_implicitly, resp, epoch, rpc);
 }
 
 xrepl::StreamId CatalogManager::GenerateNewXreplStreamId() {
@@ -1314,7 +1351,8 @@ void CatalogManager::RecoverXreplStreamId(const xrepl::StreamId& stream_id) {
 
 Status CatalogManager::CreateNewCdcsdkStream(
     const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-    const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+    const std::optional<const NamespaceId>& namespace_id,
+    bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
     const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
   VLOG_WITH_FUNC(1) << "table_ids: " << AsString(table_ids)
                     << ", namespace_id: " << AsString(namespace_id);
@@ -1518,9 +1556,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (is_logical_replication_stream_req) {
     metadata->set_allow_tables_without_primary_key(
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
-    metadata->set_detect_publication_changes_implicitly(
-        FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-        FLAGS_cdc_enable_dynamic_schema_changes);
+    metadata->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
   }
 
   // CDC streams which are bound to fixed set of tables will have dynamic table addition disabled.
@@ -1582,6 +1618,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   {
     // Add the stream to the in-memory map.
+    std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
     // Check again before inserting to handle concurrent creates.
@@ -2072,7 +2109,7 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
   auto namespace_id = table->namespace_id();
   std::vector<CDCStreamInfoPtr> streams;
 
-  // Get all the CDCSDK streams on the namespace
+  // Get all the CDCSDK streams on the namespace that take the new table
   {
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
@@ -2082,7 +2119,8 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
            IsTableEligibleForCDCSDKStream(
                table, table->LockForRead(), /*check_schema=*/true,
                stream_info->IsTablesWithoutPrimaryKeyAllowed(),
-               stream_info->DetectPublicationChangesImplicitly()))) {
+               stream_info->DetectPublicationChangesImplicitly()) &&
+           CDCSDKStreamTakesNewTable(*stream_info, *table))) {
         streams.emplace_back(stream_info);
       }
     }
@@ -2418,7 +2456,10 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     auto ltm = stream_info->LockForRead();
     if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
         ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
-      std::optional<std::unordered_set<uint32_t>> stream_pg_table_oids;
+      std::unordered_set<uint32_t> stream_pg_table_oids;
+      if (takes_only_rewritten_tables) {
+        stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
+      }
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
         if (!table) {
@@ -2434,14 +2475,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (takes_only_rewritten_tables) {
-          if (!stream_pg_table_oids) {
-            stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
-          }
-          auto pg_table_oid = table->GetPgTableOid();
-          if (!pg_table_oid.ok() || !stream_pg_table_oids->contains(*pg_table_oid)) {
-            continue;
-          }
+        if (takes_only_rewritten_tables &&
+            !IsRewriteOfStreamTable(stream_pg_table_oids, *table)) {
+          continue;
         }
 
         bool present_in_qualified_table_list =
@@ -2524,6 +2560,22 @@ std::unordered_set<uint32_t> CatalogManager::GetPgTableOidsOfCDCSDKStreamTables(
     }
   }
   return pg_table_oids;
+}
+
+bool CatalogManager::CDCSDKStreamTakesNewTable(
+    const CDCStreamInfo& stream, const TableInfo& table) const {
+  auto ltm = stream.LockForRead();
+  if (!ltm->pb.cdcsdk_ysql_publications_bound_stream() ||
+      ltm->pb.cdcsdk_ysql_include_new_tables()) {
+    return true;
+  }
+  return IsRewriteOfStreamTable(GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id()), table);
+}
+
+bool CatalogManager::IsRewriteOfStreamTable(
+    const std::unordered_set<uint32_t>& stream_pg_table_oids, const TableInfo& table) {
+  auto pg_table_oid = table.GetPgTableOid();
+  return pg_table_oid.ok() && stream_pg_table_oids.contains(*pg_table_oid);
 }
 
 Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
@@ -4234,6 +4286,14 @@ Status CatalogManager::GetCDCStream(
 
   stream_info->set_is_notification_slot(is_notification_slot);
 
+  if (stream_lock->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+    stream_info->set_cdcsdk_implicit_conversion_barrier_ht(
+        stream_lock->pb.cdcsdk_implicit_conversion_barrier_ht());
+  }
+  stream_info->set_cdcsdk_paused_for_upgrade(stream_lock->pb.cdcsdk_paused_for_upgrade());
+  stream_info->set_cdcsdk_unusable_with_transactional_ddl(
+      stream_lock->pb.cdcsdk_unusable_with_transactional_ddl());
+
   stream_info->set_xcluster_use_target_applied_filter(
       stream_lock->pb.xcluster_use_target_applied_filter());
 
@@ -4370,6 +4430,14 @@ Status CatalogManager::ListCDCStreams(
       stream->set_cdcsdk_ysql_replication_slot_name(
         ltm->pb.cdcsdk_ysql_replication_slot_name());
     }
+
+    if (ltm->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+      stream->set_cdcsdk_implicit_conversion_barrier_ht(
+          ltm->pb.cdcsdk_implicit_conversion_barrier_ht());
+    }
+    stream->set_cdcsdk_paused_for_upgrade(ltm->pb.cdcsdk_paused_for_upgrade());
+    stream->set_cdcsdk_unusable_with_transactional_ddl(
+        ltm->pb.cdcsdk_unusable_with_transactional_ddl());
 
     if (ltm->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
       stream->set_cdcsdk_ysql_replication_slot_plugin_name(
@@ -5628,6 +5696,245 @@ Status CatalogManager::BackfillNotificationsStreamsPluginName(const LeaderEpoch&
   return Status::OK();
 }
 
+Result<CDCStreamInfoPtr> CatalogManager::GetPubRefreshStream(const std::string& slot_name) {
+  CDCStreamInfoPtr stream;
+  {
+    SharedLock lock(mutex_);
+    auto* stream_id =
+        FindOrNull(cdcsdk_replication_slots_to_stream_map_, ReplicationSlotName(slot_name));
+    stream = stream_id ? FindPtrOrNull(cdc_stream_map_, *stream_id) : nullptr;
+    SCHECK_FORMAT(stream, NotFound, "Replication slot $0 not found", slot_name);
+    SCHECK_FORMAT(
+        IsCdcLogicalReplicationStream(*stream) && !IsNotificationSlotStream(*stream),
+        InvalidArgument, "Replication slot $0 isn't a logical replication slot", slot_name);
+  }
+  auto l = stream->LockForRead();
+  SCHECK_FORMAT(!l->is_deleting(), NotFound, "Replication slot $0 is being deleted", slot_name);
+  SCHECK_FORMAT(
+      !l->pb.detect_publication_changes_implicitly(), InvalidArgument,
+      "Replication slot $0 already detects publication changes implicitly", slot_name);
+  SCHECK_FORMAT(
+      !l->pb.cdcsdk_unusable_with_transactional_ddl(), InvalidArgument,
+      "Replication slot $0 is unusable with transactional DDL. Create a new replication slot",
+      slot_name);
+  return stream;
+}
+
+Result<bool> CatalogManager::HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id) {
+  auto entry = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+      {kSysCatalogTabletId, stream_id},
+      cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeActiveTime()));
+  return entry && entry->checkpoint && entry->checkpoint->valid() &&
+         *entry->checkpoint != OpId::Max() && entry->active_time &&
+         !IsCDCSDKTabletExpiredOrNotOfInterest(
+             HybridTime::FromMicros(*entry->active_time), std::nullopt /* stream_creation_time */);
+}
+
+Status CatalogManager::SetReplicationSlotCatalogBarrier(
+    const SetReplicationSlotCatalogBarrierRequestPB* req,
+    SetReplicationSlotCatalogBarrierResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing SetReplicationSlotCatalogBarrier request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+  SCHECK(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+          FLAGS_cdc_enable_dynamic_schema_changes,
+      IllegalState,
+      "Replication slots can't detect publication changes implicitly on this universe");
+  SCHECK(
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      "Replication slots can't be prepared for conversion once transactional DDL replication is "
+      "enabled");
+
+  auto stream = VERIFY_RESULT(GetPubRefreshStream(req->replication_slot_name()));
+  std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
+  NamespaceId namespace_id;
+  std::optional<uint64_t> existing_barrier_ht;
+  {
+    auto l = stream->LockForRead();
+    if (l->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+      existing_barrier_ht = l->pb.cdcsdk_implicit_conversion_barrier_ht();
+    }
+    namespace_id = l->namespace_id();
+  }
+  if (existing_barrier_ht) {
+    SCHECK_FORMAT(
+        VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId())), IllegalState,
+        "The catalog barrier of replication slot $0 expired. Release the slot and set the barrier "
+        "again", req->replication_slot_name());
+    LOG_WITH_FUNC(INFO) << "Replication slot " << req->replication_slot_name() << " (stream "
+                        << stream->StreamId() << ") already has a catalog barrier at "
+                        << HybridTime(*existing_barrier_ht);
+    resp->set_barrier_ht(*existing_barrier_ht);
+    return Status::OK();
+  }
+
+  auto pg_class_table_id =
+      GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id)), kPgClassTableOid);
+  auto pg_class_table = GetTableInfo(pg_class_table_id);
+  SCHECK_FORMAT(pg_class_table, NotFound, "Table $0 not found", pg_class_table_id);
+
+  const auto start_ht = master_->clock()->Now();
+  RETURN_NOT_OK(SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+      pg_class_table, stream->StreamId()));
+  HybridTime barrier_ht;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto entry = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {kSysCatalogTabletId, stream->StreamId()},
+            cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeCDCSDKSafeTime()));
+        if (!entry || !entry->checkpoint || *entry->checkpoint == OpId::Invalid() ||
+            !entry->cdc_sdk_safe_time || HybridTime(*entry->cdc_sdk_safe_time) < start_ht) {
+          return false;
+        }
+        barrier_ht = HybridTime(*entry->cdc_sdk_safe_time);
+        return true;
+      },
+      60s, "Waiting for the sys catalog retention barrier", 100ms /* initial_delay */,
+      1 /* delay_multiplier */));
+  // The slot's virtual WAL stops at the recorded time, so it must not be below the commit time of
+  // anything the stopped consumer could already have received, whichever tserver committed it.
+  barrier_ht = std::max(barrier_ht, master_->clock()->MaxGlobalNow());
+
+  {
+    auto l = stream->LockForWrite();
+    SCHECK_FORMAT(
+        !l->is_deleting(), NotFound, "Replication slot $0 is being deleted",
+        req->replication_slot_name());
+    l.mutable_data()->pb.set_cdcsdk_implicit_conversion_barrier_ht(barrier_ht.ToUint64());
+    RETURN_ACTION_NOT_OK(
+        sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
+    l.Commit();
+  }
+  resp->set_barrier_ht(barrier_ht.ToUint64());
+  LOG_WITH_FUNC(INFO) << "Set the sys catalog retention barrier at " << barrier_ht
+                      << " for replication slot " << req->replication_slot_name() << " (stream "
+                      << stream->StreamId() << ")";
+  return Status::OK();
+}
+
+Status CatalogManager::PauseReplicationSlot(
+    const PauseReplicationSlotRequestPB* req, PauseReplicationSlotResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing PauseReplicationSlot request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
+  const auto& slot_name = req->replication_slot_name();
+  SCHECK(
+      !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      "Replication slots can't be paused for conversion once transactional DDL replication is "
+      "enabled");
+
+  auto stream = VERIFY_RESULT(GetPubRefreshStream(slot_name));
+  HybridTime barrier_ht;
+  {
+    auto l = stream->LockForRead();
+    if (l->pb.cdcsdk_paused_for_upgrade()) {
+      return Status::OK();
+    }
+    SCHECK_FORMAT(
+        l->pb.has_cdcsdk_implicit_conversion_barrier_ht(), IllegalState,
+        "Set the catalog barrier on replication slot $0 first", slot_name);
+    barrier_ht = HybridTime(l->pb.cdcsdk_implicit_conversion_barrier_ht());
+  }
+  SCHECK_FORMAT(
+      VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId())), IllegalState,
+      "The catalog barrier of replication slot $0 expired. Release the slot and set the barrier "
+      "again", slot_name);
+
+  auto slot_entry = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream->StreamId()},
+      cdc::CDCStateTableEntrySelector().IncludeRecordIdCommitTime()));
+  SCHECK_FORMAT(
+      slot_entry && slot_entry->record_id_commit_time, NotFound,
+      "Slot entry of replication slot $0 not found", slot_name);
+  const HybridTime restart_ht(*slot_entry->record_id_commit_time);
+  SCHECK_FORMAT(
+      restart_ht >= barrier_ht, TryAgain,
+      "The restart time $0 of replication slot $1 is still below its catalog barrier time $2. Its "
+      "consumer, started after the barrier was set, has to acknowledge every change committed up "
+      "to the barrier",
+      restart_ht, slot_name, barrier_ht);
+
+  {
+    auto l = stream->LockForWrite();
+    l.mutable_data()->pb.set_cdcsdk_paused_for_upgrade(true);
+    RETURN_ACTION_NOT_OK(
+        sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
+    l.Commit();
+  }
+  LOG_WITH_FUNC(INFO) << "Paused replication slot " << slot_name << " (stream "
+                      << stream->StreamId() << ")";
+  return Status::OK();
+}
+
+Status CatalogManager::ReleaseReplicationSlot(
+    const ReleaseReplicationSlotRequestPB* req, ReleaseReplicationSlotResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing ReleaseReplicationSlot request from " << RequestorString(rpc) << ": "
+            << req->ShortDebugString();
+  auto stream = VERIFY_RESULT(GetPubRefreshStream(req->replication_slot_name()));
+  RETURN_NOT_OK(ClearImplicitConversionState(stream));
+  LOG_WITH_FUNC(INFO) << "Released replication slot " << req->replication_slot_name()
+                      << " (stream " << stream->StreamId() << ")";
+  return Status::OK();
+}
+
+Status CatalogManager::ClearImplicitConversionState(const CDCStreamInfoPtr& stream) {
+  std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
+  {
+    auto l = stream->LockForWrite();
+    auto& pb = l.mutable_data()->pb;
+    if (pb.has_cdcsdk_implicit_conversion_barrier_ht() || pb.cdcsdk_paused_for_upgrade()) {
+      pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+      pb.clear_cdcsdk_paused_for_upgrade();
+      RETURN_ACTION_NOT_OK(
+          sys_catalog_->Upsert(leader_ready_term(), stream),
+          "Updating CDC stream in system catalog");
+      l.Commit();
+    }
+  }
+  // Deleted even when the stream records no barrier, since a barrier command that failed after
+  // setting the barrier leaves the entry without recording it.
+  RETURN_NOT_OK_PREPEND(
+      cdc_state_table_->DeleteEntries({{kSysCatalogTabletId, stream->StreamId()}}),
+      Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));
+  return ReleaseSysCatalogRetentionBarriersIfUnused(stream->StreamId());
+}
+
+// Release runs before a rollback, and an older master may never move the sys catalog retention
+// barriers, so they are released here unless another stream still needs them.
+Status CatalogManager::ReleaseSysCatalogRetentionBarriersIfUnused(
+    const xrepl::StreamId& stream_id) {
+  if (!FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    return Status::OK();
+  }
+  std::vector<CDCStreamInfoPtr> streams;
+  {
+    SharedLock lock(mutex_);
+    streams.reserve(cdc_stream_map_.size());
+    for (const auto& [id, stream] : cdc_stream_map_) {
+      if (id != stream_id) {
+        streams.push_back(stream);
+      }
+    }
+  }
+  for (const auto& stream : streams) {
+    auto l = stream->LockForRead();
+    if (!l->started_deleting() && (l->pb.detect_publication_changes_implicitly() ||
+                                   l->pb.has_cdcsdk_implicit_conversion_barrier_ht())) {
+      LOG_WITH_FUNC(INFO) << "Not releasing the sys catalog retention barriers, which CDC stream "
+                          << stream->id() << " needs";
+      return Status::OK();
+    }
+  }
+  auto cdc_service = master_->tablet_server()->GetCDCService();
+  SCHECK(cdc_service, IllegalState, "The CDC service isn't running on the master");
+  RETURN_NOT_OK_PREPEND(
+      cdc_service->ReleaseSysCatalogRetentionBarriers(),
+      "Failed to release the sys catalog retention barriers");
+  LOG_WITH_FUNC(INFO) << "Released the sys catalog retention barriers";
+  return Status::OK();
+}
+
 Status CatalogManager::DisableDynamicTableAdditionOnCDCSDKStream(
     const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
     DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc) {
@@ -6098,10 +6405,10 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
   return stream_ids;
 }
 
-Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+Result<bool> CatalogManager::AreCdcLogicalReplicationStreams(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
   if (stream_ids.empty()) {
-    return HybridTime::kInvalid;
+    return false;
   }
 
   // stream_ids are CDCSDK-only (from GetCDCSDKStreamsForTable), so no xCluster check is needed. A
@@ -6109,13 +6416,15 @@ Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
   // whole DB is gRPC.
   for (const auto stream_id : stream_ids) {
     if (cdc_stream_map_.contains(stream_id)) {
-      if (!IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id])) {
-        return HybridTime::kInvalid;
-      }
-      break;
+      return IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id]);
     }
   }
+  return STATUS_FORMAT(NotFound, "None of the streams $0 found in cdc_stream_map_", stream_ids);
+}
 
+Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
+    const std::unordered_set<xrepl::StreamId>& stream_ids) {
+  TEST_SYNC_POINT("GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead");
   HybridTime min_restart_time_across_all_slots;
   for (const auto& stream_id : stream_ids) {
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
@@ -6184,6 +6493,176 @@ void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
   StartXReplParentTabletDeletionTaskIfStopped();
 }
 
+Status CatalogManager::PrepareReplicationSlotsForTransactionalDDL(
+    const PrepareReplicationSlotsForTransactionalDDLRequestPB* req,
+    PrepareReplicationSlotsForTransactionalDDLResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing PrepareReplicationSlotsForTransactionalDDL request from "
+            << RequestorString(rpc) << ": " << req->ShortDebugString();
+
+  SCHECK(
+      FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,
+      "Transactional DDL replication isn't enabled");
+  SCHECK(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+          FLAGS_cdc_enable_dynamic_schema_changes,
+      IllegalState,
+      "Replication slots can't detect publication changes implicitly on this universe");
+
+  std::vector<std::pair<ReplicationSlotName, CDCStreamInfoPtr>> slots;
+  {
+    SharedLock lock(mutex_);
+    if (req->has_replication_slot_name()) {
+      ReplicationSlotName slot_name(req->replication_slot_name());
+      auto* stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      auto stream = stream_id ? FindPtrOrNull(cdc_stream_map_, *stream_id) : nullptr;
+      SCHECK_FORMAT(
+          stream, NotFound, "Replication slot $0 not found", req->replication_slot_name());
+      slots.emplace_back(std::move(slot_name), std::move(stream));
+    } else {
+      for (const auto& [slot_name, stream_id] : cdcsdk_replication_slots_to_stream_map_) {
+        auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+        if (stream && IsCdcLogicalReplicationStream(*stream) &&
+            !IsNotificationSlotStream(*stream)) {
+          slots.emplace_back(slot_name, std::move(stream));
+        }
+      }
+    }
+  }
+
+  for (const auto& [slot_name, stream] : slots) {
+    auto result = VERIFY_RESULT(PrepareStreamForTransactionalDDL(stream));
+    if (result == PrepareSlotForTxnDdlResult::kPrepared) {
+      resp->add_slots()->set_replication_slot_name(slot_name.ToString());
+      continue;
+    }
+    const auto* skip_reason = SkipReason(result);
+    LOG_WITH_FUNC(INFO) << "Skipping replication slot " << slot_name << " (stream "
+                        << stream->StreamId() << ") because " << skip_reason;
+    auto* skipped = resp->add_skipped_slots();
+    skipped->set_replication_slot_name(slot_name.ToString());
+    skipped->set_reason(skip_reason);
+  }
+  return Status::OK();
+}
+
+Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactionalDDL(
+    const CDCStreamInfoPtr& stream) {
+  {
+    SharedLock lock(mutex_);
+    if (!IsCdcLogicalReplicationStream(*stream)) {
+      return PrepareSlotForTxnDdlResult::kNotLogicalReplication;
+    }
+    if (IsNotificationSlotStream(*stream)) {
+      return PrepareSlotForTxnDdlResult::kNotificationSlot;
+    }
+  }
+  const auto catalog_table_ids =
+      VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(stream->namespace_id()));
+
+  const auto check_state = [](const auto& l) -> std::optional<PrepareSlotForTxnDdlResult> {
+    if (l->started_deleting() || l->is_deleting_metadata()) {
+      return PrepareSlotForTxnDdlResult::kDeleting;
+    }
+    if (l->pb.cdcsdk_unusable_with_transactional_ddl()) {
+      return PrepareSlotForTxnDdlResult::kAlreadyUnusable;
+    }
+    return std::nullopt;
+  };
+
+  // The cdc_state IO happens outside the stream lock, so the stream is rechecked under the write
+  // lock.
+  bool pub_refresh;
+  bool paused;
+  {
+    auto l = stream->LockForRead();
+    if (auto result = check_state(l)) {
+      return *result;
+    }
+    pub_refresh = !l->pb.detect_publication_changes_implicitly();
+    paused = l->pb.cdcsdk_paused_for_upgrade();
+  }
+  const bool convert =
+      pub_refresh && paused && VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId()));
+  if (convert) {
+    // The sys catalog entry was last active when the barrier was set. The converted slot's
+    // consumer gets cdc_intent_retention_ms from now to resume. If the conversion doesn't follow,
+    // this only extends the barrier.
+    cdc::CDCStateTableEntry entry(kSysCatalogTabletId, stream->StreamId());
+    entry.active_time = GetCurrentTimeMicros();
+    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+  }
+
+  std::vector<TableId> added_table_ids;
+  const bool marked_unusable = pub_refresh && !convert;
+  {
+    auto l = stream->LockForWrite();
+    if (auto result = check_state(l)) {
+      return *result;
+    }
+    auto& pb = l.mutable_data()->pb;
+    SCHECK_FORMAT(
+        !pb.detect_publication_changes_implicitly() == pub_refresh &&
+            pb.cdcsdk_paused_for_upgrade() == paused,
+        TryAgain, "CDC stream $0 changed while being prepared. Rerun the command", stream->id());
+    if (pub_refresh) {
+      if (marked_unusable) {
+        // The sys catalog entry holding the barrier is deleted below.
+        pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+        pb.set_cdcsdk_unusable_with_transactional_ddl(true);
+      } else {
+        pb.set_detect_publication_changes_implicitly(true);
+      }
+      pb.clear_cdcsdk_paused_for_upgrade();
+    }
+
+    if (!marked_unusable) {
+      for (const auto& table_id : catalog_table_ids) {
+        if (std::ranges::find(pb.table_id(), table_id) != pb.table_id().end()) {
+          continue;
+        }
+        pb.add_table_id(table_id);
+        if (pb.replica_identity_map_size() > 0) {
+          pb.mutable_replica_identity_map()->insert({table_id, PgReplicaIdentity::CHANGE});
+        }
+        added_table_ids.push_back(table_id);
+      }
+    }
+    if (!pub_refresh && added_table_ids.empty()) {
+      LOG_WITH_FUNC(INFO) << "Stream " << stream->id()
+                          << " already contains all required PG catalog tables";
+      return PrepareSlotForTxnDdlResult::kPrepared;
+    }
+    RETURN_ACTION_NOT_OK(
+        sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
+    l.Commit();
+  }
+
+  if (marked_unusable) {
+    // This is just a warning because even if it fails, the entry expires like any unused one.
+    WARN_NOT_OK(
+        cdc_state_table_->DeleteEntries({{kSysCatalogTabletId, stream->StreamId()}}),
+        Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));
+    LOG_WITH_FUNC(WARNING) << "Marked CDC stream " << stream->id()
+                           << " unusable with transactional DDL";
+    return PrepareSlotForTxnDdlResult::kNotReadyForConversion;
+  }
+
+  {
+    LockGuard lock(mutex_);
+    // If a deletion already removed the stream from the maps, don't add its tables back.
+    if (cdc_stream_map_.contains(stream->StreamId())) {
+      for (const auto& table_id : added_table_ids) {
+        cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
+      }
+    }
+  }
+  LOG_WITH_FUNC(INFO) << (convert ? "Converted CDC stream to an implicit stream and added" :
+                                      "Added")
+                      << " catalog tables " << AsString(added_table_ids) << " to stream "
+                      << stream->id();
+  return PrepareSlotForTxnDdlResult::kPrepared;
+}
+
 Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {
   // Delete a single failed universe from universes_to_clear_.
   if (PREDICT_FALSE(FLAGS_disable_universe_gc)) {
@@ -6191,6 +6670,13 @@ Status CatalogManager::ClearFailedUniverse(const LeaderEpoch& epoch) {
   }
 
   xcluster::ReplicationGroupId replication_group_id;
+  {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (universes_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
   {
     LockGuard lock(mutex_);
 
@@ -6301,6 +6787,13 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
 
 Status CatalogManager::ClearFailedReplicationBootstrap() {
   xcluster::ReplicationGroupId replication_id;
+  {
+    // Check under the shared lock first, so the bg task takes mutex_ for write only with work.
+    SharedLock lock(mutex_);
+    if (replication_bootstraps_to_clear_.empty()) {
+      return Status::OK();
+    }
+  }
   {
     LockGuard lock(mutex_);
 
@@ -6469,15 +6962,21 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
 
     // For each hidden tablet, get all the streams on it and related info about the streams.
     std::unordered_set<xrepl::StreamId> stream_ids;
-    HybridTime min_restart_time_across_slots;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
+    }
+    // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
     size_t count_tablet_streams_to_delete = 0;
@@ -6606,15 +7105,21 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
   for (const auto& [table_id, tablet_hide_pair] : hidden_colocated_tables) {
     const auto& [tablet_id, hide_time] = tablet_hide_pair;
     std::unordered_set<xrepl::StreamId> stream_ids;
-    HybridTime min_restart_time_across_slots;
+    bool are_cdc_logical_replication_streams;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
+      if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
+    }
+    // Read cdc_state outside mutex_: a stalled read must not block catalog operations.
+    HybridTime min_restart_time_across_slots = HybridTime::kInvalid;
+    if (are_cdc_logical_replication_streams) {
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
     if (min_restart_time_across_slots.is_valid() && (hide_time < min_restart_time_across_slots)) {
@@ -6925,6 +7430,12 @@ Result<std::vector<cdc::CDCStateTableKey>> CatalogManager::SyncCDCStateTableEntr
     const auto& entry = *entry_result;
 
     if (entry.key.stream_id == stream_id) {
+      // A pub-refresh stream being converted to an implicit stream has a sys catalog entry holding
+      // its catalog barrier but none of the catalog tables, so the entry isn't checked here, as in
+      // CleanUpCDCSDKStreamsMetadata.
+      if (entry.key.tablet_id == kSysCatalogTabletId) {
+        continue;
+      }
       if (entry.key.colocated_table_id.empty()) {
         cdc_state_tablet_entries.push_back(entry.key.tablet_id);
       } else {

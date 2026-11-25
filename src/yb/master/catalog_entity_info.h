@@ -58,6 +58,7 @@
 
 #include "yb/qlexpr/index.h"
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
@@ -71,6 +72,7 @@ namespace yb::master {
 class RetryingRpcTask;
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+YB_STRONGLY_TYPED_BOOL(SkipFreedTablets);
 
 // Per table structure for external cluster snapshot importing to this cluster.
 // Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
@@ -188,6 +190,14 @@ struct TabletReplica {
 
   std::string fs_data_dir;
 
+  // Tiered storage, from the tablet report (ReportedTabletPB): the tier the replica's SSTs are on
+  // (empty while a migration straddles two, or while a replica with a target is not open yet),
+  // its persisted target tier (empty without one) and where it stands relative to that target.
+  // All unset when the tserver runs without --enable_tiered_storage.
+  std::string current_storage_tier;
+  std::string target_storage_tier;
+  tserver::TierMigrationStatusPB::State tier_migration_state = tserver::TierMigrationStatusPB::NONE;
+
   TabletReplicaDriveInfo drive_info;
 
   TabletLeaderLeaseInfo leader_lease_info;
@@ -199,6 +209,10 @@ struct TabletReplica {
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  // The tiered-storage fields from source, or unset when source is null. A tablet report
+  // describes them for the sender's own replica only.
+  void UpdateStorageTierInfo(const TabletReplica* source);
 
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
@@ -326,6 +340,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted or replaced.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -426,6 +443,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
 
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
+
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
@@ -474,7 +494,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -836,7 +858,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   Result<TabletInfos> GetTablets(GetTabletsMode mode = GetTabletsMode::kOrderByPartitions) const;
-  Result<TabletInfos> GetTabletsIncludeInactive() const;
+  // Fails if a tablet is freed, unless `skip_freed` is set. Skipping is required for secondary
+  // tables whose tablets are owned by another table, e.g. vector indexes -- the tablets are
+  // deleted with that table and may be freed first.
+  Result<TabletInfos> GetTabletsIncludeInactive(
+      SkipFreedTablets skip_freed = SkipFreedTablets::kFalse) const;
+
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get info of the specified index.
@@ -1513,6 +1540,9 @@ class UniverseReplicationInfoBase {
  public:
   Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
+
+  // Reloads the certificates of the cached XClusterRpcTasks, if there is one.
+  Status ReloadCertificates();
 
  protected:
   explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)

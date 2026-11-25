@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import java.io.File;
 import java.util.Map;
 import java.util.Set;
@@ -99,10 +100,13 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
           INTERNAL_SERVER_ERROR,
           "Could not find customer config with provided storage config UUID during restore.");
     }
+    // One copy for every call below: the federated identity is set on it, not on the stored config.
+    CustomerConfigData configData = customerConfig.getDataObject();
+    backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
     File backup =
         storageUtil.downloadYbaBackup(
-            customerConfig.getDataObject(),
+            configData,
             taskParams.backupDir,
             replicationHelper.getReplicationDirFor(taskParams.storageConfigUUID.toString()));
     if (backup == null) {
@@ -112,12 +116,12 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
 
     // Restore any missing YBDB releases from remote storage
     Set<String> toDownloadReleases =
-        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), taskParams.backupDir);
+        storageUtil.getRemoteReleaseVersions(configData, taskParams.backupDir);
     Map<String, ReleaseContainer> localReleaseContainers =
         releaseManager.getAllLocalReleaseContainersByVersion();
     toDownloadReleases.removeAll(localReleaseContainers.keySet());
     if (!storageUtil.downloadRemoteReleases(
-        customerConfig.getDataObject(),
+        configData,
         toDownloadReleases,
         appConfig.getString(Util.YB_RELEASES_PATH),
         taskParams.backupDir)) {

@@ -261,6 +261,88 @@ class PipelineTracking:
             if conn:
                 self._return_connection(conn)
 
+    @meko_observe(name="Record Chunking Plan / Active Pipeline Tracking", as_type="span")
+    def record_chunking_plan(self, pipeline_id: str, plan: Dict[str, Any]) -> bool:
+        """
+        Store how a document was chunked under metadata_snapshot.chunking.
+
+        Merged into the snapshot rather than replacing it, so the config
+        insert_pipeline_details captured stays.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                UPDATE dist_rag.pipeline_details
+                SET metadata_snapshot = metadata_snapshot || %s::jsonb
+                WHERE pipeline_id = %s
+                """,
+                (json.dumps({"chunking": plan}), pipeline_id)
+            )
+            conn.commit()
+            cur.close()
+            return True
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            self.logger.error(f"Failed to record chunking plan: {str(e)}")
+            raise
+
+        finally:
+            if conn:
+                self._return_connection(conn)
+
+    @meko_observe(
+        name="Earlier Chunking Strategy / Active Pipeline Tracking", as_type="span"
+    )
+    def get_earlier_chunking_strategy(self, pipeline_id: str) -> Optional[str]:
+        """
+        Return the strategy the latest earlier attempt at this pipeline's
+        document recorded, or None when there is no earlier attempt.
+
+        Attempts with no plan are skipped: one that died before recording
+        a plan inserted no chunks, so an older attempt's recorded strategy
+        still describes the chunks stored. Only when no earlier attempt
+        recorded one does it read as "paragraph", the only strategy before
+        plans were recorded.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT
+                    (SELECT earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
+                     FROM dist_rag.pipeline_details AS earlier
+                     WHERE earlier.document_id = this.document_id
+                       AND earlier.pipeline_id <> this.pipeline_id
+                       AND earlier.metadata_snapshot -> 'chunking' ->> 'strategy'
+                           IS NOT NULL
+                     ORDER BY earlier.created_at DESC
+                     LIMIT 1),
+                    EXISTS (SELECT 1
+                            FROM dist_rag.pipeline_details AS earlier
+                            WHERE earlier.document_id = this.document_id
+                              AND earlier.pipeline_id <> this.pipeline_id)
+                FROM dist_rag.pipeline_details AS this
+                WHERE this.pipeline_id = %s
+                """,
+                (pipeline_id,)
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row is None or not row[1]:
+                return None
+            return row[0] or "paragraph"
+
+        finally:
+            if conn:
+                self._return_connection(conn)
+
     @meko_observe(name="Update Chunks Processed / Active Pipeline Tracking", as_type="span")
     def update_chunks_processed(self, pipeline_id: str, chunks_count: int) -> bool:
         """

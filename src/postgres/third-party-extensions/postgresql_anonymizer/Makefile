@@ -1,185 +1,359 @@
-##############################################################################
-#
-# Makefile
-#
-###############################################################################
-
 ##
-## V A R I A B L E S
+## This Makefile is trying to mimic the targets and behaviour of the
+## PGXS Makefile
 ##
-
-# This Makefile has many input variables,
-# see link below for the standard vars offered by PGXS
-# https://www.postgresql.org/docs/current/extend-pgxs.html
-
-# The input variable below are optional
-
-# PSQL : psql client ( default = local psql )
-# PGDUMP : pg_dump tool  ( default = docker )
-# REGRESS : run a specific test ( e.g. `REGRESS=noise make installcheck` )
-# PG_TEST_EXTRA : extra tests to be run by `installcheck` ( default = none )
-
-##
-## C O N F I G
-##
-MODULES = anon
-EXTENSION = anon
-EXTENSION_VERSION=$(shell grep default_version $(EXTENSION).control | sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
-DATA = anon/*
-PG_CFLAGS = -Wno-unused-variable
-# Use this var to add more tests
-#PG_TEST_EXTRA ?= ""
-REGRESS_TESTS = init detection ternary
-REGRESS_TESTS+= get_function_schema trusted_schemas
-REGRESS_TESTS+= copy pg_dump
-REGRESS_TESTS+= masking_expressions
-#REGRESS_TESTS+= multiple_masking_policies
-REGRESS_TESTS+= sampling
-REGRESS_TESTS+= destruction noise shuffle random faking partial
-REGRESS_TESTS+= pseudonymization hashing dynamic_masking
-REGRESS_TESTS+= anonymize privacy_by_default
-#REGRESS_TESTS+= restore
-REGRESS_TESTS+= hasmask masked_roles masking masking_search_path masking_foreign_tables
-REGRESS_TESTS+= generalization k_anonymity
-REGRESS_TESTS+= permissions_owner permissions_masked_role injection syntax_checks
-REGRESS_TESTS+= views
-REGRESS_TESTS+=$(PG_TEST_EXTRA)
-# This can be overridden by an env variable
-REGRESS?=$(REGRESS_TESTS)
-MODULEDIR=extension/anon
-REGRESS_OPTS = --inputdir=tests
-
-EXTRA_CLEAN = anon _build _venv $(ZIPBALL)
-
-OBJS = anon.o
-
-##
-## Mandatory PGXS stuff
 ## see https://github.com/postgres/postgres/blob/master/src/makefiles/pgxs.mk
 ##
-PG_CONFIG ?= pg_config
-PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
 
-BUILD?= _build
+PGRX?=cargo pgrx
+PGVER?=$(shell grep 'default = \[".*\"]' Cargo.toml | sed -e 's/.*\["//' | sed -e 's/"].*//')
+PG_MAJOR_VERSION=$(PGVER:pg%=%)
+ANON_MINOR_VERSION?=$(shell grep '^version *= *' Cargo.toml | sed 's/^version *= *//' | tr -d '\"' | tr -d ' ' )
 
-all: extension
+# use `TARGET=debug make run` for more detailed errors
+TARGET?=release
+TARGET_DIR?=target/$(TARGET)/anon-$(PGVER)/
+# YB: PG_CONFIG comes from the shared pgrx fragment, included below.
+#PG_CONFIG?=`$(PGRX) info pg-config $(PGVER) 2> /dev/null || echo pg_config`
+PG_SHAREDIR?=$(shell $(PG_CONFIG) --sharedir)
+PG_LIBDIR?=$(shell $(PG_CONFIG) --libdir)
+PG_PKGLIBDIR?=$(shell $(PG_CONFIG) --pkglibdir)
+PG_BINDIR?=$(shell $(PG_CONFIG) --bindir)
+
+ifeq ($(shell uname -s),Darwin)
+    LIB_SUFFIX?=dylib
+else
+    LIB_SUFFIX?=so
+endif
+LIB=anon.$(LIB_SUFFIX)
+
+# The instance
+PGDATA_DIR=~/.pgrx/data-$(PG_MAJOR_VERSION)
+
+# Be sure to use the PGRX version (PGVER) of the postgres binaries
+# It's especially important for the pg_dump test in pg_regress
+PATH:=$(PG_BINDIR):${PATH}
+
+# This is where the package is placed
+TARGET_SHAREDIR?=$(TARGET_DIR)$(PG_SHAREDIR)
+TARGET_PKGLIBDIR?=$(TARGET_DIR)$(PG_PKGLIBDIR)
+
+PG_REGRESS?=$(PG_PKGLIBDIR)/pgxs/src/test/regress/pg_regress
+PG_SOCKET_DIR?=/var/lib/postgresql/.pgrx/
+PGHOST?=localhost
+PGPORT?=288$(subst pg,,$(PGVER))
+PSQL_OPT?=--host $(PGHOST) --port $(PGPORT)
+PGDATABASE?=contrib_regression
+
+##
+## PGXS tests
+##
+
+# PGXS is used only for functional testing with `make installcheck`
+# For unit tests, we use `cargo` via `make test`
+
+# /!\ The test files should not have the same name that source files located
+# in the `src` folder
+
+REGRESS_TESTS = 000-setup
+REGRESS_TESTS = initialize
+REGRESS_TESTS+= anon_catalog
+REGRESS_TESTS+= catalog_views
+REGRESS_TESTS+= copy
+REGRESS_TESTS+= test_custom_values
+REGRESS_TESTS+= destruction
+REGRESS_TESTS+= detection
+REGRESS_TESTS+= drop_objects
+REGRESS_TESTS+= dropped_columns
+REGRESS_TESTS+= dummy
+REGRESS_TESTS+= elevation_via_operator
+REGRESS_TESTS+= faking
+REGRESS_TESTS+= foreign_keys
+REGRESS_TESTS+= fdw
+REGRESS_TESTS+= generalization
+REGRESS_TESTS+= generated_columns
+REGRESS_TESTS+= get_function_schema
+REGRESS_TESTS+= hashing
+REGRESS_TESTS+= identity
+REGRESS_TESTS+= image_blur
+REGRESS_TESTs+= impexp
+REGRESS_TESTS+= injection
+REGRESS_TESTS+= k_anonymity
+REGRESS_TESTS+= ldp
+REGRESS_TESTS+= masking_cursors
+REGRESS_TESTS+= masking_foreign_tables
+REGRESS_TESTS+= masking_prepared_statements
+REGRESS_TESTS+= multiple_masking_policies
+REGRESS_TESTS+= noise
+REGRESS_TESTS+= partial
+REGRESS_TESTS+= permissions_masked_role
+REGRESS_TESTS+= permissions_owner
+REGRESS_TESTS+= pg_dump
+REGRESS_TESTS+= privacy_by_default
+REGRESS_TESTS+= pseudonymization
+REGRESS_TESTS+= random_functions
+REGRESS_TESTS+= restricted
+REGRESS_TESTS+= rename_objects
+#REGRESS_TESTS+= restore
+REGRESS_TESTS+= rls
+REGRESS_TESTS+= sampling
+REGRESS_TESTS+= search_path
+REGRESS_TESTS+= shuffle
+REGRESS_TESTS+= syntax_checks
+REGRESS_TESTS+= ternary
+# The `test_` is here to avoid collision with the files in the `sql` folder
+# DO NOT rename the `tests/sql/test_*` files !
+REGRESS_TESTS+= test_replica_masking
+REGRESS_TESTS+= test_static_masking
+REGRESS_TESTS+= test_parallel_static_masking
+REGRESS_TESTS+= transparent_dynamic_masking
+REGRESS_TESTS+= trusted_schemas
+REGRESS_TESTS+= views
+REGRESS_TESTS+= when
+
+# We try our best to write tests that produce the same output on all the 5
+# current Postgres major versions. But sometimes it's really hard to do and
+# we generally prefer simplicity over complex output manipulation tricks.
+#
+# In these few special cases, we use conditional tests with the following
+# naming rules:
+# * the _PG15+ suffix means PostgreSQL 15 and all the major versions after
+# * the _PG13- suffix means PostgreSQL 13 and all the major versions below
+
+REGRESS_TESTS_PG14 = elevation_via_security_definer_function_PG14-
+REGRESS_TESTS_PG15 =
+REGRESS_TESTS_PG16 =
+REGRESS_TESTS_PG17 =
+
+REGRESS_TESTS+=${REGRESS_TESTS_PG${PG_MAJOR_VERSION}}
+
+# Use this var to add more tests
+#PG_TEST_EXTRA ?= ""
+REGRESS_TESTS+=$(PG_TEST_EXTRA)
+
+# This can be overridden by an env variable
+REGRESS?=$(REGRESS_TESTS)
+
+
+EXTRA_CLEAN?=target
 
 
 ##
-## H E L P
+## BUILD
 ##
 
-#	@echo "Available targets for $(MODULE) $(EXTENSION_VERSION):"
+# YB: Toolchain detection, cargo env scrubbing, and PG_CONFIG/CARGO_BIN live in
+# the shared pgrx fragment. cargo-pgrx itself is built by the pgrx directory,
+# ordered ahead of this directory by the parent Makefile. The $(YB_CARGO_PGRX) rule below
+# bootstraps it for direct invocations only.
 
-default:: help
+include ../pgrx/pgrx-common.mk
 
-help::  #: display this message.
-	@echo
-	@echo "Available targets for $(EXTENSION) $(EXTENSION_VERSION):"
-	@echo
-	@gawk 'match($$0, /([^:]*):.+#'': (.*)/, m) { printf "    %-16s%s\n", m[1], m[2]}' $(MAKEFILE_LIST) | sort
-	@echo
+# YB: `all` stays the first (default) target so `make` is a no-op build; the real
+# work happens in `install`.
+all:
+
+# YB: Direct invocations bootstrap cargo-pgrx themselves. Under the parent
+# Makefile install-pgrx has already built it, so this file rule does not fire.
+$(YB_CARGO_PGRX):
+	$(MAKE) -C $(YB_PGRX_DIR) cargo-pgrx
 
 
 ##
-## I N S T A L L
+## INSTALL
 ##
 
-BINDIR    ?= $(shell $(PG_CONFIG) --bindir)
-
-install: install-bin
-
-install-bin:
-	install -d $(DESTDIR)$(BINDIR)
-	install -m 0755 bin/pg_dump_anon.sh $(DESTDIR)$(BINDIR)
-
-install-go:  _build/linux/amd64/pg_dump_anon/pg_dump_anon
-	install -d $(DESTDIR)$(BINDIR)
-	install -m 0755 $^ $(DESTDIR)$(BINDIR)
-
-##
-## L I N T
-##
-
-.PHONY: lint
-lint: lint-sh lint-md lint-sql lint-py
-
-.PHONY: lint-sh
-lint-sh: #: check the shell script syntax
-	shellcheck bin/pg_dump_anon.sh
-
-.PHONY: lint-md
-lint-md: #: check the markdown syntax
-	mdl docs/*.md *.md
-
-.PHONY: lint-sql
-lint-sql: #: check the SQL syntax
-	sqlint anon.sql
-	sqlint demo/*.sql
-
-.PHONY: lint-py
-lint-py: | _venv #: Check the python syntax
-	_venv/bin/pip install -r python/development.txt
-	_venv/bin/python -m flake8 python/*.py
-
-.PHONY: lint-go
-lint-go: #: Check the golang syntax
-	 $(MAKE) -C pg_dump_anon lint-go
+# YB: install the extension with the shared cargo-pgrx, then copy the anonymizer
+# data CSVs, which cargo-pgrx does not handle.
+install: $(YB_CARGO_PGRX)
+	export PATH="$(CARGO_DIR):$$PATH" && \
+	$(YB_PGRX_CARGO_ENV) \
+		$(YB_PGRX_RUN_ENV) \
+		$(YB_CARGO_PGRX) pgrx install --release -F pg15 -c $(PG_CONFIG)
+	mkdir -p $(PG_SHAREDIR)/extension/anon/
+	install data/*.csv $(PG_SHAREDIR)/extension/anon/
+	install data/en_US/fake/*.csv $(PG_SHAREDIR)/extension/anon/
 
 ##
-## pg_dump_anon
+## INSTALLCHECK
+##
+## These are the functional tests, the unit tests are run with Cargo
 ##
 
-.PHONY: pg_dump_anon
-pg_dump_anon: #: Build the pg_dump_anon command
-	$(MAKE) -C pg_dump_anon DEST=../_build
+# With PGXS: the postgres instance is created on-the-fly to run the test.
+# With PGRX: the postgres instance is created previously by `cargo run`. This
+# means we have some extra tasks to prepare the instance
+
+installcheck: stop start
+	dropdb $(PSQL_OPT) --if-exists $(PGDATABASE)
+	dropdb $(PSQL_OPT) --if-exists $(PGDATABASE)_source
+	createdb $(PSQL_OPT) $(PGDATABASE)
+	dropuser oscar_the_owner || echo 'ignored'
+	createuser $(PSQL_OPT) postgres --superuser || echo 'ignored'
+	psql $(PSQL_OPT) $(PGDATABASE) -c "ALTER DATABASE $(PGDATABASE) SET session_preload_libraries = 'anon';"
+	psql $(PSQL_OPT) $(PGDATABASE) -c "ALTER DATABASE $(PGDATABASE) SET anon.masking_policies = 'devtests, analytics, impexp';"
+	psql $(PSQL_OPT) $(PGDATABASE) -c "ALTER DATABASE $(PGDATABASE) SET client_min_messages = notice;"
+	$(PG_REGRESS) \
+		$(PSQL_OPT) \
+		--use-existing \
+		--inputdir=./tests/ \
+		--dbname=$(PGDATABASE) \
+		$(REGRESS_OPTS) \
+		$(REGRESS)
+
 
 ##
-## B U I L D
+## PGRX commands
 ##
 
-.PHONY: extension
-extension: | anon #: build the extension
-	cp anon.sql anon/anon--$(EXTENSION_VERSION).sql
-	cp data/*.csv anon/
-	# by default we ship the english fake data
-	cp data/en_US/fake/*.csv anon/
+ifeq ($(TARGET),release)
+  RELEASE_OPT=--release
+endif
 
-anon:
-	mkdir -p $@
+test:
+	$(PGRX) test $(PGVER) $(RELEASE_OPT) --verbose
 
-PG_DUMP?=docker exec postgresqlanonymizer_PostgreSQL_1 pg_dump -U postgres --insert --no-owner
-SED1=sed 's/public.//'
-SED2=sed 's/SELECT.*search_path.*//'
-SED3=sed 's/^SET idle_in_transaction_session_timeout.*//'
-SED4=sed 's/^SET row_security.*//'
-SEDI=$(shell sed --version >/dev/null 2>&1 && echo 'sed -i --' || echo 'sed -i ""')
+start:
+	sed --in-place 's/^#\?wal_level = .*/wal_level = logical/' $(PGDATA_DIR)/postgresql.conf
+	$(PGRX) start $(PGVER)
+
+stop:
+	$(PGRX) stop $(PGVER)
+
+run:
+	# ensure that the wal_level is properly set
+	sed --in-place 's/^#\?wal_level = .*/wal_level = logical/' $(PGDATA_DIR)/postgresql.conf
+	$(PGRX) run $(PGVER) $(RELEASE_OPT)
+
+psql:
+	psql --host localhost --port 288$(PG_MAJOR_VERSION) anon
+
+##
+## Coverage
+##
+
+COVERAGE_DIR?=target/$(TARGET)/coverage
+
+clean_profiles:
+	rm -fr *.profraw
+
+coverage: clean_profiles coverage_test covergage_report
+
+coverage_test:
+	export RUSTFLAGS=-Cinstrument-coverage \
+	export LLVM_PROFILE_FILE=$(TARGET)-%p-%m.profraw \
+	&& $(PGRX) test $(PGVER) $(RELEASE_OPT) --verbose
+
+coverage_report:
+	mkdir -p $(COVERAGE_DIR)
+	export LLVM_PROFILE_FILE=$(TARGET)-%p-%m.profraw \
+	&& grcov . \
+	      --binary-path target/$(TARGET) \
+	      --source-dir . \
+	      --output-path $(COVERAGE_DIR)\
+	      --keep-only 'src/*' \
+	      --llvm \
+	      --ignore-not-existing \
+	      --output-types html,cobertura
+	# Terse output
+	grep '<p class="heading">Lines</p>' -A2 $(COVERAGE_DIR)/html/index.html \
+	  | tail -n 1 \
+	  | xargs \
+	  | sed 's,%.*,,' \
+	  | sed 's/.*>/Coverage: /'
+
+##
+## C L E A N
+##
+
+clean: clean_profiles
+ifdef EXTRA_CLEAN
+	rm -rf $(EXTRA_CLEAN)
+endif
 
 
-sql/tables/%.sql:
-	$(PG_DUMP) --table $* | $(SED1) | $(SED2) | $(SED3) | $(SED4) > $@
+##
+## All targets below are not part of the PGXS Makefile
+##
+
+##
+## P A C K A G E S
+##
+
+# See https://nfpm.goreleaser.com/docs/arch-mapping/
+ARCH?=amd64
+
+# The packages are built from the $(TARGET_DIR) folder.
+# So the $(PG_PKGLIBDIR) and $(PG_SHAREDIR) are relative to that folder
+rpm deb: package
+	export PG_PKGLIBDIR=".$(PG_PKGLIBDIR)" && \
+	export PG_SHAREDIR=".$(PG_SHAREDIR)" && \
+	export PG_MAJOR_VERSION="$(PG_MAJOR_VERSION)" && \
+	export ANON_MINOR_VERSION="$(ANON_MINOR_VERSION)" && \
+	envsubst < nfpm.template.yaml > $(TARGET_DIR)/nfpm.yaml
+	cd $(TARGET_DIR) && nfpm package --packager $@
 
 
-PSQL?=PGPASSWORD=CHANGEME psql -U postgres -h 0.0.0.0 -p54322
-PGRGRSS=docker exec postgresqlanonymizer_PostgreSQL_1 /usr/lib/postgresql/10/lib/pgxs/src/test/regress/pg_regress --outputdir=tests/ --inputdir=./ --bindir='/usr/lib/postgresql/10/bin'  --inputdir=tests --dbname=contrib_regression --user=postgres unit
+# The `package` command needs pg_config from the target version
+# https://github.com/pgcentralfoundation/pgrx/issues/288
+
+package:
+	$(PGRX) package --pg-config $(PG_CONFIG)
+
+##
+## O C I
+##
+
+OCI_DISTRO?=bookworm
+OCI_TAG?=$(PG_MAJOR_VERSION)-$(ANON_MINOR_VERSION)-$(OCI_DISTRO)
+OCI_IMAGE?=registry.gitlab.com/dalibo/postgresql_anonymizer:$(OCI_TAG)
+OCI_ARCH?=amd64
+
+DOCKER_BUILD_ARG := \
+  --build-arg PG_MAJOR_VERSION=$(PG_MAJOR_VERSION) \
+  --build-arg OCI_DISTRO=$(OCI_DISTRO)
+
+oci_image: docker/oci/Dockerfile #: build the OCI image
+	docker build $(DOCKER_BUILD_ARG) --tag $(OCI_IMAGE) --file $^ .
+
+oci_push: #: push the docker image to the registry
+	docker push $(OCI_IMAGE)
 
 ##
 ## D O C K E R
 ##
 
-ifneq ($(PG_MAJOR_VERSION),)
-BUILD_ARG := --build-arg PG_MAJOR_VERSION=$(PG_MAJOR_VERSION)
+DOCKER_TAG?=latest
+DOCKER_IMAGE?=registry.gitlab.com/dalibo/postgresql_anonymizer:$(DOCKER_TAG)
+
+DOCKER_BUILD_ARG := --build-arg ANON_MINOR_VERSION=${ANON_MINOR_VERSION}
+
+ifneq ($(DOCKER_PG_MAJOR_VERSION),)
+DOCKER_BUILD_ARG += --build-arg DOCKER_PG_MAJOR_VERSION=$(DOCKER_PG_MAJOR_VERSION)
 endif
 
+PGRX_VERSION?=0.17.0
+PGRX_TAG?=pgrx-$(PGRX_VERSION)
+PGRX_IMAGE?=registry.gitlab.com/dalibo/postgresql_anonymizer:$(PGRX_TAG)
+PGRX_BUILD_ARGS:=--build-arg PGRX_VERSION=$(PGRX_VERSION)
+
 docker_image: docker/Dockerfile #: build the docker image
-	docker build -t registry.gitlab.com/dalibo/postgresql_anonymizer . --file $^  $(BUILD_ARG)
+	docker build --tag $(DOCKER_IMAGE) . --file $^  $(DOCKER_BUILD_ARG)
+
+pgrx_image: docker/pgrx/Dockerfile
+	docker build --tag $(PGRX_IMAGE) . --file $^ $(PGRX_BUILD_ARGS)
 
 docker_push: #: push the docker image to the registry
-	docker push registry.gitlab.com/dalibo/postgresql_anonymizer
+	docker push $(DOCKER_IMAGE)
+
+pgrx_push:
+	docker push $(PGRX_IMAGE)
 
 docker_bash: #: enter the docker image (useful for testing)
 	docker exec -it docker-PostgreSQL-1 bash
+
+pgrx_bash:
+	docker run --rm --interactive --tty --volume  `pwd`:/pgrx $(PGRX_IMAGE)
 
 COMPOSE=docker compose --file docker/docker-compose.yml
 
@@ -188,149 +362,30 @@ docker_init: #: start a docker container
 	$(COMPOSE) up -d
 	@echo "The Postgres server may take a few seconds to start. Please wait."
 
-
-.PHONY: expected
-expected : tests/expected/unit.out
-
-tests/expected/unit.out:
-	$(PGRGRSS)
-	cp tests/results/unit.out tests/expected/unit.out
-
 ##
-## S T A N D A L O N E
+## L I N T
 ##
 
 
-# This is the schema the required extension (for instance tsm_system_rows)
-# will be installed
-EXTSCHEMA?=public
+lint: lint-rs lint-md
+
+lint-md:
+	uvx rumdl check
+
+lint-rs:
+	cargo clippy --release -- -Dwarnings
 
 ##
-## DATA
+## D O C S
 ##
 
-FAKE_DATA_TABLES?=address city company country email first_name iban last_name lorem_ipsum postcode siret
-FAKE_DATA_LINES?=1000
-FAKE_DATA_LOCALES?=en_US
-FAKE_DATA_SEED?=0
-FAKE_DATA_CSV_FILES=$(addprefix data/$(FAKE_DATA_LOCALES)/fake/, $(addsuffix .csv, $(FAKE_DATA_TABLES)))
+MKDOCS?=uvx mkdocs
 
-.PHONY: fake_data
-fake_data: $(FAKE_DATA_CSV_FILES) #: generate the fake data tables
-
-data/$(FAKE_DATA_LOCALES)/fake/%.csv: | _venv
-	_venv/bin/python python/populate.py \
-	  --table $* \
-	  --lines $(FAKE_DATA_LINES) \
-	  --locales $(FAKE_DATA_LOCALES) \
-	  --seed $(FAKE_DATA_SEED) \
-	  > $@
-
-_venv:
-	python3 -m venv $@ --upgrade-deps
-	$@/bin/pip install --upgrade pip
-	$@/bin/pip install -r python/requirements.txt
-
-DATA_ZIP_FILES=$(BUILD)/postgresql_anonymizer_data_en_US.zip
-DATA_ZIP_FILES+=$(BUILD)/postgresql_anonymizer_data_fr_FR.zip
-
-data_zip: $(DATA_ZIP_FILES)
-
-$(BUILD)/postgresql_anonymizer_data_%.zip: data/% data/*.csv
-	zip $@ --junk-paths -r $^
-
-clean_fake_data:
-	rm $(FAKE_DATA_CSV_FILES)
+.PHONY: docs
+docs:
+	$(MKDOCS) build
 
 ##
-## D E M O   &   T E S T S
+## DALIBO-specific Makefile
 ##
-
-#.PHONY: demo_masking demo_perf demo_random demo_partial
-
-demo_in := $(wildcard demo/*.sql)
-demo_out = $(demo_in:.sql=.out)
-
-.PHONY: demo
-demo:: $(demo_out) demo_blackbox #: launch the demo scripts
-
-demo/%.out: demo/%.sql
-	$(PSQL) -c 'CREATE DATABASE demo;'
-	$(PSQL) --echo-all demo < $^ > $@ 2>&1
-	$(PSQL) -c 'DROP DATABASE demo;'
-	cat $@
-
-demo_blackbox:
-	./demo/blackbox.sh
-
-clean_demo:
-	rm $(demo_out)
-
-tests/sql/%.sql:
-	$(PSQL)	-f $@
-
-
-##
-## C I
-##
-
-.PHONY: ci_local
-ci_local:
-	gitlab-ci-multi-runner exec docker make
-
-##
-## P G X N
-##
-
-ZIPBALL:=_build/linux/$(EXTENSION)-$(EXTENSION_VERSION).zip
-
-.PHONY: pgxn
-
-$(ZIPBALL): pgxn
-
-pgxn: #: build the PGXN package
-	# required by CI : https://gitlab.com/gitlab-com/support-forum/issues/1351
-	git clone --bare https://gitlab.com/dalibo/postgresql_anonymizer.git
-	git -C postgresql_anonymizer.git archive --format zip --prefix=$(EXTENSION)_$(EXTENSION_VERSION)/ --output ../$(ZIPBALL) master
-	# open the package
-	unzip $(ZIPBALL)
-	# remove the zipball because we will rebuild it from scratch
-	rm -fr $(ZIPBALL)
-	# copy artefact into the package
-	cp -pr anon ./$(EXTENSION)_$(EXTENSION_VERSION)/
-	# remove folders and files that are useless in the PGXN package
-	rm -fr ./$(EXTENSION)_$(EXTENSION_VERSION)/images
-	rm -fr ./$(EXTENSION)_$(EXTENSION_VERSION)/docker
-	rm -fr ./$(EXTENSION)_$(EXTENSION_VERSION)/docs
-	# rebuild the package
-	zip -r $(ZIPBALL) ./$(EXTENSION)_$(EXTENSION_VERSION)/
-	# clean up
-	rm -fr ./$(EXTENSION)_$(EXTENSION_VERSION) ./postgresql_anonymizer.git/
-
-##
-## Windows ZIP
-##
-
-WINZIPBALL:=_build/windows/$(EXTENSION)-$(EXTENSION_VERSION)-win2016.zip
-
-.PHONY: windows_zip
-
-$WINZIPBALL: windows_zip
-
-windows_zip: #: build the Windows package
-	zip -r $(WINZIPBALL) . -x "./git/*"
-
-##
-## Debian Packages
-##
-PG_MAJOR_VERSION ?= $(shell pg_config --sharedir | sed s,.*/,,)
-
-.PHONY: debian
-debian: debian/control
-	dpkg-buildpackage --build=binary --no-check-builddeps
-	mkdir -p $(BUILD)/debian
-	cp ../postgresql-*.deb $(BUILD)/debian
-	lintian
-
-debian/control: debian/control.in
-	pg_buildext updatecontrol
+-include dalibo/Makefile

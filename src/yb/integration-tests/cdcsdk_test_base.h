@@ -62,7 +62,7 @@ DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 namespace yb {
 using client::YBClient;
@@ -311,6 +311,13 @@ class CDCSDKTestBase : public YBTest {
 
   Result<GetChangesResponsePB> GetChangesFromMaster(
       const xrepl::StreamId& stream_id, const CDCSDKCheckpointPB* explicit_checkpoint = nullptr);
+
+  // Repeats GetChangesFromMaster until the response has at least expected_records records.
+  // Needed because a committed DDL txn is applied to the sys catalog asynchronously.
+  Result<GetChangesResponsePB> GetChangesFromMasterUntilRecordCount(
+      const xrepl::StreamId& stream_id, int expected_records,
+      const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
+      MonoDelta timeout = MonoDelta::FromSeconds(30) * kTimeMultiplier);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

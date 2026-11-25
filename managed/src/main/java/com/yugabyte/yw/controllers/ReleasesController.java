@@ -1,7 +1,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -137,8 +136,7 @@ public class ReleasesController extends AuthenticatedController {
         gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
     release.setSensitiveGflags(sensitiveGflags);
     release.save();
-    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+    RedactingService.addSensitiveGFlagPathsForLogs(sensitiveGflags);
   }
 
   @ApiOperation(
@@ -299,12 +297,14 @@ public class ReleasesController extends AuthenticatedController {
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
-        if (!release.getUniverses().isEmpty()) {
+        Release.ReleaseState newState = Release.ReleaseState.valueOf(reqRelease.state);
+        if (!isActiveDisabledToggle(release.getState(), newState)
+            && !release.getUniverses().isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
         }
         log.info("updating release state to {}", reqRelease.state);
-        release.saveState(Release.ReleaseState.valueOf(reqRelease.state));
+        release.saveState(newState);
       }
 
       // Now, check if any artifacts have changed, and update them as needed
@@ -390,6 +390,14 @@ public class ReleasesController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Release, reqRelease.toString(), Audit.ActionType.Update);
     return YBPSuccess.empty();
+  }
+
+  // Universes on a disabled release keep running and can still be upgraded off it, so disabling
+  // only blocks new selections of the version and is safe while the release is in use.
+  private static boolean isActiveDisabledToggle(
+      Release.ReleaseState from, Release.ReleaseState to) {
+    return (from == Release.ReleaseState.ACTIVE && to == Release.ReleaseState.DISABLED)
+        || (from == Release.ReleaseState.DISABLED && to == Release.ReleaseState.ACTIVE);
   }
 
   private ResponseRelease releaseToResponseRelease(

@@ -22,9 +22,12 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
@@ -120,26 +123,107 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
     }
   }
 
+  /**
+   * Validates {@code provider}, plus the checks that depend on the provider as it is saved: {@code
+   * existingProvider}, which an edit passes and a create passes as null.
+   */
+  public void validate(Provider provider, @Nullable Provider existingProvider) {
+    validate(provider);
+    validateGcpFederationAudience(provider, existingProvider);
+  }
+
+  /**
+   * A gcp audience must name the workload identity pool provider, the only form STS takes; any
+   * other is refused only once a backup runs. An edit keeps the gcp audience the provider is saved
+   * with, so that edits of its other fields, which an in-use provider still takes, are not refused
+   * for it.
+   */
+  private void validateGcpFederationAudience(
+      Provider provider, @Nullable Provider existingProvider) {
+    CloudInfoInterface info = CloudInfoInterface.get(provider);
+    if (info == null || !info.isFederatedIamEnabled()) {
+      return;
+    }
+    String savedAudience = gcpAudienceOf(existingProvider);
+    for (CrossCloudFederationTarget target : info.getEffectiveFederationTargets()) {
+      if (target != null
+          && target.targetCloud == CloudType.gcp
+          && !CrossCloudFederationTarget.isValidGcpAudience(target.audience)
+          && !Objects.equals(target.audience, savedAudience)) {
+        throwBeanProviderValidatorError(
+            "FEDERATED_IAM_AUDIENCE",
+            "Federated IAM audience for target gcp must name the workload identity pool provider:"
+                + " //iam.googleapis.com/projects/<project-number>/locations/global/"
+                + "workloadIdentityPools/<pool>/providers/<provider>.",
+            null);
+      }
+    }
+  }
+
+  /**
+   * The gcp audience {@code provider} uses: null for a create, and for a provider saved with
+   * federation off, whose targets were never checked and are not in use.
+   */
+  @Nullable
+  private static String gcpAudienceOf(@Nullable Provider provider) {
+    CloudInfoInterface info = provider == null ? null : CloudInfoInterface.get(provider);
+    if (info == null || !info.isFederatedIamEnabled()) {
+      return null;
+    }
+    return info.getEffectiveFederationTargets().stream()
+        .filter(t -> t != null && t.targetCloud == CloudType.gcp && t.audience != null)
+        .map(t -> t.audience)
+        .findFirst()
+        .orElse(null);
+  }
+
   public boolean validateNTPServers(List<String> ntpServers) {
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
+      validateNTPServer(ntpServers.get(i));
+    }
+    return true;
+  }
+
+  /**
+   * Validates the first {@code yb.provider.validate_ntp_server_count} NTP servers and keys a
+   * failure to that server's entry in {@code processedJson}.
+   */
+  public void validateNtpServers(
+      Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
+    if (provider.getDetails() == null
+        || CollectionUtils.isEmpty(provider.getDetails().ntpServers)) {
+      return;
+    }
+    List<String> ntpServers = provider.getDetails().ntpServers;
+    JsonNode ntpArrayJson = processedJson.get("details").get("ntpServers");
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
+      try {
+        validateNTPServer(ntpServers.get(i));
+      } catch (PlatformServiceException e) {
+        validationErrorsMap.put(ntpArrayJson.get(i).get("jsonPath").asText(), e.getMessage());
+      }
+    }
+  }
+
+  private int getNtpServerValidateCount() {
+    return runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
+  }
+
+  private void validateNTPServer(String ntpServer) {
+    if (StringUtils.isEmpty(ntpServer)) {
+      return;
+    }
     try {
-      int maxNTPServerValidateCount =
-          this.runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
-      for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
-        String ntpServer = ntpServers.get(i);
-        if (!StringUtils.isEmpty(ntpServer)) {
-          Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
-          process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-          if (process.exitValue() != 0) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
-          }
-        }
+      Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
+      process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+      if (process.exitValue() != 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
       }
     } catch (Exception e) {
       log.error("Error: ", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    return true;
   }
 
   public void validatePrivateKey(List<AccessKey> allAccessKeys) {
@@ -157,13 +241,14 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       ArrayNode accessKeysJson = (ArrayNode) processedJson.get("allAccessKeys");
       int keyIndex = 0;
       for (AccessKey accessKey : provider.getAllAccessKeys()) {
+        // KeyInfo omits null fields from JSON, so a key sent without content has no leaf node.
+        JsonNode contentJson =
+            accessKeysJson.get(keyIndex).path("keyInfo").path("sshPrivateKeyContent");
         String keyJsonPath =
-            accessKeysJson
-                .get(keyIndex++)
-                .get("keyInfo")
-                .get("sshPrivateKeyContent")
-                .get("jsonPath")
-                .asText();
+            contentJson.has("jsonPath")
+                ? contentJson.get("jsonPath").asText()
+                : String.format("$.allAccessKeys[%d].keyInfo.sshPrivateKeyContent", keyIndex);
+        keyIndex++;
         String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
         if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
           validationErrorsMap.put(keyJsonPath, "Not a valid RSA key!");

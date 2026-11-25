@@ -75,6 +75,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ScheduleUtil;
@@ -1311,8 +1312,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           universe.getUniverseUUID());
       before = existing.getBeforeUniverseDetails();
     }
+    // state_transition_details is saved without the redaction universe_details_json gets, so
+    // redact both sides here. Nothing reads the DB passwords back from it: CreateUniverse keeps
+    // them in memory, and a rollback restores them as REDACTED, as universe_details_json has them.
     JsonNode delta =
-        DeltaEvaluator.buildDeltaJsonTree(before, targetUDTP, new NodeDetailsArrayComparator());
+        DeltaEvaluator.buildDeltaJsonTree(
+            RedactingService.filterSecretFieldsForStorage(Json.toJson(before)),
+            RedactingService.filterSecretFieldsForStorage(Json.toJson(targetUDTP)),
+            new NodeDetailsArrayComparator());
     universe.setStateTransitionDetails(new StateTransitionDetails(rollbackSafe, delta));
     auditService.updateTaskDiff(getTaskUUID(), DeltaEvaluator.generateOnlyDelta(delta));
   }
@@ -1343,6 +1350,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private boolean isPlacementLockHeldByOtherTask(UniverseDefinitionTaskParams universeDetails) {
     return universeDetails.placementModificationTaskUuid != null
         && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
+  }
+
+  /** Whether the universe's placement lock is held by a task of the given type. */
+  protected static boolean isPlacementLockHeldBy(Universe universe, TaskType taskType) {
+    UUID taskUuid = universe.getUniverseDetails().placementModificationTaskUuid;
+    return taskUuid != null
+        && TaskInfo.maybeGet(taskUuid).map(t -> t.getTaskType() == taskType).orElse(false);
   }
 
   private void initAndAddPrecheckTasks(Universe universe) {
@@ -2146,7 +2160,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManageCatalogUpgradeSuperUser.Params params = new ManageCatalogUpgradeSuperUser.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.action = action;
-    params.password = password;
+    params.catalogUpgradePassword = password;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -3322,7 +3336,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               "Error while getting masters from DB. Current YBA masters %s - %s",
               masterAddresses, e.getMessage());
       log.error(msg, e);
-      throw new RuntimeException(msg);
+      throw new RuntimeException(msg, e);
     }
   }
 
@@ -5964,12 +5978,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     saveUniverseDetails(
         u -> {
           UniverseDefinitionTaskParams details = u.getUniverseDetails();
-          ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
-          if (state == null) {
-            state = new ManagedLoadBalancerState();
-          }
-          updater.accept(state);
-          details.setManagedLoadBalancerState(state.isEmpty() ? null : state);
+          details.updateManagedLoadBalancerState(updater);
           u.setUniverseDetails(details);
         });
   }
@@ -6032,13 +6041,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
       Collection<NodeDetails> nodes, ServerType serverType) {
+    return createUpdateMasterAddrsInMemoryTasks(
+        nodes, serverType, getOrCreateExecutionContext().getMasterAddrsSupplier());
+  }
+
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType, Supplier<String> masterAddresses) {
+    return createUpdateMasterAddrsInMemoryTasks(
+        nodes, serverType, masterAddresses, false /* ignoreErrors */);
+  }
+
+  /**
+   * @param ignoreErrors log a failed push instead of failing the task, for servers that may be down
+   */
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      Supplier<String> masterAddresses,
+      boolean ignoreErrors) {
     return createSetFlagInMemoryTasks(
         nodes,
         serverType,
         (node, params) -> {
           params.force = true;
           params.updateMasterAddrs = true;
-          params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
+          params.masterAddrsOverride = masterAddresses;
+          params.ignoreErrors = ignoreErrors;
         });
   }
 
@@ -6323,6 +6351,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
             node.cloudInfo.public_ip = null;
+            // The node may come back on another machine, which may run on another cloud.
+            node.cloudInfo.physicalCloud = null;
           }
 
           // Update the node details.

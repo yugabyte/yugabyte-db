@@ -91,6 +91,8 @@ For some xCluster setups, before upgrading, you should run a verification script
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel query (yb_enable_parallel_append=true)
 
+- If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension and you are upgrading from v2024.2, first save the DDL of every table that uses the `vector` type and export its data. Then drop those tables and the extension, upgrade and finalize, and recreate the extension, tables, and data. The `vector` type OID in v2024.2 is assigned when the extension is created and does not match the fixed OID in v2025.1, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed. Rows written in v2024.2 cannot be used for vector indexes. For the full steps, see [Upgrading from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrading-from-v2024-2).
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

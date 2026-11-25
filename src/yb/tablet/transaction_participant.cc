@@ -32,10 +32,13 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
+#include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_util.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/options.h"
 
@@ -218,6 +221,30 @@ namespace {
 
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
+TransactionApplyData PendingApplyData(
+    const TransactionId& id, const docdb::ApplyStateWithCommitInfo& apply) {
+  return TransactionApplyData {
+    .transaction_id = id,
+    .op_id = apply.apply_op_id,
+    .commit_ht = apply.commit_ht,
+    .log_ht = apply.log_ht,
+  };
+}
+
+bool IsApplyingAtOrBefore(const RunningTransaction& txn, HybridTime commit_ht) {
+  return txn.ProcessingApply() && txn.local_commit_time() <= commit_ht;
+}
+
+// Transactions committed at or before the snapshot hybrid time start applying while loaded, or in
+// APPLY operations preceding the snapshot operation, so they are collected once, and later checks
+// only drop the finished ones.
+class PostponedForPendingApplies : public consensus::PostponedApply {
+ public:
+  bool collected = false;
+  // Weak, so the state kept by consensus does not hold transactions after they are removed.
+  std::vector<std::weak_ptr<RunningTransaction>> transactions;
+};
+
 constexpr size_t kSIModeIdx = 0;
 constexpr size_t kRRRCModeIdx = 1;
 
@@ -230,6 +257,11 @@ ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) 
     bg_wait_state->UpdateTabletId(tablet_id);
   }
   return bg_wait_state;
+}
+
+bool MustWaitForPendingApply(
+    const RunningTransaction& txn, HybridTime resolve_at, WaitForApply wait_for_apply) {
+  return wait_for_apply && IsApplyingAtOrBefore(txn, resolve_at);
 }
 
 } // namespace
@@ -398,23 +430,6 @@ class TransactionParticipant::Impl
     LOG_WITH_PREFIX(INFO) << "Start";
 
     std::lock_guard lock(mutex_);
-    for (auto& deferred : deferred_apply_intents_tasks_) {
-      auto it = transactions_.find(deferred.transaction_id);
-      if (it == transactions_.end()) {
-        LOG_WITH_PREFIX(DFATAL)
-            << "Unknown transaction for deferred apply: " << deferred.transaction_id;
-        continue;
-      }
-      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
-      if (!operation.ok()) {
-        LOG_WITH_PREFIX(WARNING)
-            << "Deferred apply rejected for: " << deferred.transaction_id;
-        continue;
-      }
-      (**it).SetApplyData(deferred.apply_state, &deferred.apply_data, &operation);
-    }
-    deferred_apply_intents_tasks_.clear();
-
     started_ = true;
     start_latch_.CountDown();
   }
@@ -979,7 +994,8 @@ class TransactionParticipant::Impl
     }
 
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
-        &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
+        &applier_, std::move(set), &participant_context_, status_manager,
+        pending_op_counter_blocking_rocksdb_shutdown_start_, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
     participant_context_.StrandEnqueue(cleanup_aborts_task.get());
     return Status::OK();
@@ -1000,6 +1016,7 @@ class TransactionParticipant::Impl
     }
 
     bool was_previously_committed = false;
+    RunningTransactionPtr applying_txn;
 
     {
       // It is our last chance to load transaction metadata, if missing.
@@ -1031,8 +1048,13 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
         VLOG_WITH_PREFIX(3) << "Committed a transaction with txn_id: " << data.transaction_id
                             << " with commit_time: " << data.commit_ht.ToUint64();
-        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
+        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data, &applying_txn](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
+          // Keeps ResolveIntents waiting until intents are written to regular DB.
+          if (data.apply_to_storages.Any()) {
+            txn->SetProcessingApply(true);
+            applying_txn = txn;
+          }
         }));
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
             << "Apply transaction before last safe time " << data.transaction_id << ": "
@@ -1057,7 +1079,7 @@ class TransactionParticipant::Impl
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
 
-        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, applying_txn.get(), &operation));
       } else if (!data.sealed) {
         return ProcessCleanup(data, CleanupType::kImmediate);
       }
@@ -1070,6 +1092,7 @@ class TransactionParticipant::Impl
   Status UpdateAppliedTransaction(
        const TransactionApplyData& data,
        const docdb::ApplyTransactionState& apply_state,
+       RunningTransaction* applying_txn,
        ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
@@ -1079,22 +1102,28 @@ class TransactionParticipant::Impl
     if (lock_and_iterator.found()) {
       lock_and_iterator.transaction().SetApplyInfo(data.op_id, data.log_ht);
       if (!apply_state.active()) {
+        lock_and_iterator.transaction().SetProcessingApply(false);
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else if (started_) {
-        lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
+        lock_and_iterator.transaction().SetApplyData(
+            apply_state, &data, operation, ApplyOnCallingThread::kFalse);
       } else {
         // During bootstrap, the strand/thread pool may not be ready yet, so we cannot
         // schedule the async ApplyIntentsTask. Record the apply state on the transaction
-        // and defer the task scheduling until Start() is called, similar to how the
-        // transaction loader defers pending applies.
+        // and let LoadFinished start it after Start(), together with applies loaded from
+        // regular DB.
         lock_and_iterator.transaction().SetApplyData(apply_state);
-        deferred_apply_intents_tasks_.push_back(DeferredApplyIntentsTask{
-          .transaction_id = data.transaction_id,
-          .apply_data = data,
-          .apply_state = apply_state,
+        loader_.AddPendingApply(data.transaction_id, docdb::ApplyStateWithCommitInfo {
+          .state = apply_state,
+          .commit_ht = data.commit_ht,
+          .apply_op_id = data.op_id,
+          .log_ht = data.log_ht,
         });
       }
+    } else if (applying_txn) {
+      // E.g. ignored after restore, so its apply does not continue.
+      applying_txn->SetProcessingApply(false);
     }
     return Status::OK();
   }
@@ -1344,7 +1373,8 @@ class TransactionParticipant::Impl
     CheckMinRunningHybridTimeSatisfiedUnlocked(&min_running_notifier);
   }
 
-  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
+  Status ResolveIntents(
+      HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
 
     if (FLAGS_max_transactions_in_status_request == 0) {
@@ -1416,19 +1446,27 @@ class TransactionParticipant::Impl
           for (const auto& transaction : transactions_) {
             if (!transaction->local_commit_time().is_valid()) {
               resolver.Add(transaction->metadata().status_tablet, transaction->id());
+            } else if (MustWaitForPendingApply(*transaction, resolve_at, wait_for_apply)) {
+              committed_ids.push_back(transaction->id());
             }
           }
         } else {
           for (const auto& id : recheck_ids) {
             auto it = transactions_.find(id);
-            if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
+            if (it == transactions_.end()) {
               continue;
             }
-            resolver.Add((**it).metadata().status_tablet, id);
+            if (!(**it).local_commit_time().is_valid()) {
+              resolver.Add((**it).metadata().status_tablet, id);
+            } else if (MustWaitForPendingApply(**it, resolve_at, wait_for_apply)) {
+              committed_ids.push_back(id);
+            }
           }
-          auto filter = [this](const TransactionId& id) {
+          auto filter = [this, resolve_at, wait_for_apply](const TransactionId& id) {
             auto it = transactions_.find(id);
-            return it == transactions_.end() || (**it).local_commit_time().is_valid();
+            return it == transactions_.end() ||
+                   ((**it).local_commit_time().is_valid() &&
+                    !MustWaitForPendingApply(**it, resolve_at, wait_for_apply));
           };
           committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
                               committed_ids.end());
@@ -1463,6 +1501,81 @@ class TransactionParticipant::Impl
     }
 
     return Status::OK();
+  }
+
+  consensus::PostponedApplyPtr PostponeForPendingApplies(
+      HybridTime commit_ht, consensus::PostponedApplyPtr postponed) {
+    if (!postponed) {
+      postponed = std::make_unique<PostponedForPendingApplies>();
+    }
+    auto& pending = *down_cast<PostponedForPendingApplies*>(postponed.get());
+    if (loader_.Loading()) {
+      return postponed;
+    }
+    // After a failed load, pending applies are never started, and WaitForPendingApplies fails.
+    if (auto loaded = loader_.Completed(); !loaded.ok() || !*loaded) {
+      return nullptr;
+    }
+    if (!pending.collected) {
+      pending.collected = true;
+      std::lock_guard lock(mutex_);
+      for (const auto& txn : transactions_) {
+        if (IsApplyingAtOrBefore(*txn, commit_ht)) {
+          pending.transactions.push_back(txn);
+        }
+      }
+    }
+    std::erase_if(pending.transactions, [](const auto& weak_txn) {
+      auto txn = weak_txn.lock();
+      return !txn || !txn->ProcessingApply();
+    });
+    return pending.transactions.empty() ? nullptr : std::move(postponed);
+  }
+
+  Status WaitForPendingApplies(HybridTime commit_ht) {
+    // Applies interrupted by a restart are tracked only once the loader adds their transactions.
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
+    // The apply is set during bootstrap, when its task is run here, because the strand is not used
+    // until Start.
+    std::vector<std::pair<RunningTransactionPtr, std::optional<docdb::ApplyStateWithCommitInfo>>>
+        pending;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& txn : transactions_) {
+        if (!IsApplyingAtOrBefore(*txn, commit_ht)) {
+          continue;
+        }
+        std::optional<docdb::ApplyStateWithCommitInfo> apply;
+        if (!started_) {
+          apply = loader_.TakePendingApply(txn->id());
+          RSTATUS_DCHECK(
+              apply, IllegalState, "No pending apply for applying transaction $0", txn->id());
+        }
+        pending.emplace_back(txn, std::move(apply));
+      }
+    }
+    for (auto& [txn, apply] : pending) {
+      if (!apply) {
+        continue;
+      }
+      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
+      RETURN_NOT_OK(operation);
+      auto apply_data = PendingApplyData(txn->id(), *apply);
+      txn->SetApplyData(apply->state, &apply_data, &operation, ApplyOnCallingThread::kTrue);
+    }
+    for (;;) {
+      std::erase_if(pending, [](const auto& entry) { return !entry.first->ProcessingApply(); });
+      if (pending.empty()) {
+        return Status::OK();
+      }
+      // Apply tasks stop on shutdown, without finishing. Shutdown does not start while this waits,
+      // see the declaration, so this only avoids spinning forever if that changes.
+      RETURN_NOT_OK(CheckClosing());
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 5)
+          << "Waiting for " << pending.size() << " transactions committed at or before "
+          << commit_ht << " to be applied";
+      std::this_thread::sleep_for(10ms);
+    }
   }
 
   size_t GetNumRunningTransactions() {
@@ -1925,13 +2038,9 @@ class TransactionParticipant::Impl
             continue;
           }
 
-          auto apply_data = TransactionApplyData {
-            .transaction_id = txn_id,
-            .op_id = pending_apply.apply_op_id,
-            .commit_ht = pending_apply.commit_ht,
-            .log_ht = pending_apply.log_ht,
-          };
-          (**it).SetApplyData(pending_apply.state, &apply_data, &operations[idx]);
+          auto apply_data = PendingApplyData(txn_id, pending_apply);
+          (**it).SetApplyData(
+              pending_apply.state, &apply_data, &operations[idx], ApplyOnCallingThread::kFalse);
           ++idx;
         }
       }
@@ -2402,7 +2511,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
-    TEST_SYNC_POINT("TransactionParticipant::HandleApplying");
+    TEST_SYNC_POINT_CALLBACK("TransactionParticipant::HandleApplying", operation.get());
     if (RandomActWithProbability(FLAGS_TEST_transaction_ignore_applying_probability)) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
@@ -3048,13 +3157,7 @@ class TransactionParticipant::Impl
   std::vector<std::pair<TabletId, TransactionId>> pending_applies_
       GUARDED_BY(pending_applies_mutex_);
 
-  struct DeferredApplyIntentsTask {
-    TransactionId transaction_id;
-    TransactionApplyData apply_data;
-    docdb::ApplyTransactionState apply_state;
-  };
   bool started_ GUARDED_BY(mutex_) = false;
-  std::vector<DeferredApplyIntentsTask> deferred_apply_intents_tasks_ GUARDED_BY(mutex_);
 
   // Counters for fast mode transactions. The first counter tracks serializable transactions, and
   // the second tracks RR/RC transactions. Each counter is incremented by one for every running fast
@@ -3205,8 +3308,18 @@ void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
   impl_->WaitMinRunningHybridTime(ht);
 }
 
-Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
-  return impl_->ResolveIntents(resolve_at, deadline);
+Status TransactionParticipant::ResolveIntents(
+    HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
+  return impl_->ResolveIntents(resolve_at, deadline, wait_for_apply);
+}
+
+consensus::PostponedApplyPtr TransactionParticipant::PostponeForPendingApplies(
+    HybridTime commit_ht, consensus::PostponedApplyPtr postponed) {
+  return impl_->PostponeForPendingApplies(commit_ht, std::move(postponed));
+}
+
+Status TransactionParticipant::WaitForPendingApplies(HybridTime commit_ht) {
+  return impl_->WaitForPendingApplies(commit_ht);
 }
 
 size_t TransactionParticipant::GetNumRunningTransactions() const {

@@ -4,6 +4,7 @@
 # and regression guards for fixed backend crashes.
 test: yb.orig.lake_import
 test: yb.orig.lake_io_restrictions
+test: yb.orig.lake_io_read_committed
 test: yb.orig.pg_duckdb_crash_guards
 test: yb.orig.pgaudit_duckdb
 

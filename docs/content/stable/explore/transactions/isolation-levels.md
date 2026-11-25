@@ -359,6 +359,8 @@ Read Committed isolation is the same as Snapshot isolation, except that every st
 
 Consider an example of transactions' behavior under the Read Committed isolation level.
 
+This example requires Read Committed to be enabled. It is enabled by default on universes created on v2025.2 or later using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. For universes created on earlier versions (including universes later upgraded to v2025.2 or later) or deployed manually, set the YB-TServer flag `yb_enable_read_committed_isolation` to `true` first. If the flag is `false`, transactions use [Snapshot isolation](#snapshot-isolation).
+
 Create a table, as follows:
 
 ```sql
@@ -377,7 +379,7 @@ Connect to the universe using two independent ysqlsh instances, referred to as s
   <tr>
     <td>
 
-Begin a transaction in session #1. (Note that because the universe was deployed using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon, Read Committed is the default isolation level.)
+Begin a transaction in session #1.
 
 ```sql
 BEGIN TRANSACTION;

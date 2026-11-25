@@ -66,10 +66,10 @@ void Poller::Schedule() {
 
 void Poller::Pause() {
   std::lock_guard lock(mutex_);
+  // Leave any scheduled task in place: it checks paused_ when it fires and stops without running
+  // the callback. Aborting it here races with a concurrent Resume(), which sees poll_task_id_
+  // still set, skips Schedule(), and loses the wake-up for good (GH #35051).
   paused_ = true;
-  if (poll_task_id_ != rpc::kUninitializedScheduledTaskId) {
-    scheduler_->Abort(poll_task_id_);
-  }
 }
 
 void Poller::Resume() {

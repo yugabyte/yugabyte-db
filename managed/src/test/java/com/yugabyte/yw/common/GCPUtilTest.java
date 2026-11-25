@@ -754,14 +754,14 @@ public class GCPUtilTest extends FakeDBApplication {
     }
   }
 
-  // useGcpIam with no resolvable audience: every YBA-side bucket call short-circuits before
-  // touching GCS, deferring real access to the node via YBC.
+  // Federation config with no audience: these backup-time checks skip and defer to YBC.
 
   @Test
   public void testCanCredentialListObjectsSkipsForFederationConfig() {
     CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
     gcsData.backupLocation = "gs://test-bucket/backup";
     gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
     // Non-empty locations, yet no storage client is stubbed: returning true proves the skip.
     assertTrue(
         mockGCPUtil.canCredentialListObjects(
@@ -775,6 +775,7 @@ public class GCPUtilTest extends FakeDBApplication {
     CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
     gcsData.backupLocation = "gs://test-bucket/backup";
     gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
     // A federation backup is always a YB-Controller backup, so report the marker as present.
     assertTrue(
         mockGCPUtil.checkFileExists(
@@ -786,6 +787,7 @@ public class GCPUtilTest extends FakeDBApplication {
     CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
     gcsData.backupLocation = "gs://test-bucket/backup";
     gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
     // null csSpec proves the skip short-circuits before any dereference.
     mockGCPUtil.checkListObjectsWithYbcSuccessMarkerCloudStore(gcsData, null);
   }

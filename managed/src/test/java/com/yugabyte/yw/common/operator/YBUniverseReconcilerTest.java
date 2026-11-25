@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.operator;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -653,7 +654,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         oldUniverse.getName());
 
     // Need a response object otherwise reconciler fails with null
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    UniverseResp uResp = new UniverseResp(defaultUniverse);
     Mockito.when(
             universeCRUDHandler.createUniverse(
                 Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
@@ -3269,7 +3270,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     String universeName = "test-new-universe-naming";
     YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
     ybUniverse.getSpec().setUniverseName("user-chosen-name");
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    UniverseResp uResp = new UniverseResp(defaultUniverse);
     Mockito.when(
             universeCRUDHandler.createUniverse(
                 Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
@@ -3487,8 +3488,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     UserIntent storedIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     assertTrue("edit must not disable YSQL auth", storedIntent.enableYSQLAuth);
     assertTrue("edit must not disable YCQL auth", storedIntent.enableYCQLAuth);
-    assertEquals("stored-ysql-pass", storedIntent.ysqlPassword);
-    assertEquals("stored-ycql-pass", storedIntent.ycqlPassword);
+    // Stored details always hold the passwords redacted, and null ones are not serialized at all.
+    assertEquals(SECRET_REPLACEMENT, storedIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, storedIntent.ycqlPassword);
   }
 
   @Test

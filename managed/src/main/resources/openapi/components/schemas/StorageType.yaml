@@ -1,0 +1,22 @@
+title: StorageType
+description: |
+  StorageType
+
+  Kind of storage a storage configuration points at: AWS S3 or an S3-compatible store, Google
+  Cloud Storage, Azure Blob Storage, an NFS mount on the database nodes, or OCI Object Storage.
+  Part of StorageSpec.
+type: string
+enum:
+  - S3
+  - GCS
+  - AZURE
+  - NFS
+  - OCI
+x-enum-varnames:
+  - StorageTypeS3
+  - StorageTypeGCS
+  - StorageTypeAzure
+  - StorageTypeNFS
+  - StorageTypeOCI
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

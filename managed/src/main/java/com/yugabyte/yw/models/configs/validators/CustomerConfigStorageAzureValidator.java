@@ -116,11 +116,11 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
                 blobContainerClient, cloudPath, permissions, azureData.immutableStorage);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
-        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg, e);
       } catch (Exception e) {
         if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
           String exceptionMsg = "Cannot access " + azUrl;
-          throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
+          throwBeanConfigDataValidatorError(fieldName, exceptionMsg, e);
         }
         throw e;
       }

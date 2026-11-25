@@ -97,6 +97,12 @@ typedef struct PgBackendGSSStatus
  * catalog (technically, only the cache does, not direct reads/writes to/from
  * system catalog).  The catalog version indicates that snapshot.  has_version
  * is false for backends that are idle (and not in txn) or non-client backends.
+ * catalog_pinned_to_historical_read_time is true while the backend's catalog
+ * is pinned to yb_read_time (YbIsCatalogPinnedToReadTime). Such a backend is
+ * reported as having no version, so DDLs don't wait for it to catch up and the
+ * invalidation messages it never applies don't stay pinned for it. That is
+ * safe because it can't write while yb_read_time is set (pggate rejects write
+ * DML and DDL), so it can't act on a stale catalog.
  */
 typedef struct YbPgBackendCatalogVersionStatus
 {
@@ -104,6 +110,7 @@ typedef struct YbPgBackendCatalogVersionStatus
 								 * version */
 	uint64_t	version;		/* if has_version, catalog version that the
 								 * backend is on */
+	bool		catalog_pinned_to_historical_read_time;
 } YbPgBackendCatalogVersionStatus;
 
 /* ----------
