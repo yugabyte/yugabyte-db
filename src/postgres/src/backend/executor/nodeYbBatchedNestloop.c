@@ -431,6 +431,15 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 	if (!bnlstate->bnl_tuple_sort)
 	{
 		TupleDesc	result_desc = result_slot->tts_tupleDescriptor;
+		int			sortopt = TUPLESORT_NONE;
+
+		/*
+		 * tuplesort_set_bound requires TUPLESORT_ALLOWBOUNDED. An unbounded
+		 * sort gets a cheaper tuple context, so only ask for it when a bound
+		 * is set.
+		 */
+		if (bnlstate->bound)
+			sortopt |= TUPLESORT_ALLOWBOUNDED;
 
 		sorter = tuplesort_begin_heap(result_desc,
 									  batchnl_plan->numSortCols,
@@ -440,7 +449,7 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 									  batchnl_plan->nullsFirst,
 									  work_mem,
 									  NULL,
-									  false);
+									  sortopt);
 
 		if (bnlstate->bound)
 			tuplesort_set_bound(sorter, bnlstate->bound);
