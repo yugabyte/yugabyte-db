@@ -257,8 +257,9 @@ the release notes does not make a change safe.
 
 ## Where to look harder, and what to skip
 
-- `cmd/universe/universeutil/` and `cmd/universe/build_universe.go`: every universe create and
-  edit builds its request here. A dropped field here reaches every universe.
+- Where universe requests are built: `cmd/universe/build_universe.go` (create),
+  `cmd/universe/edit/cluster/clusterutil.go` (edit cluster) and `cmd/universe/readreplica/`
+  (read replica create). A dropped field here reaches every universe made or changed that way.
 - `cmd/universe/edit/` and `cmd/universe/upgrade/`: each command is a rolling restart or a
   placement change on a live universe. Check what the request carries over from the current
   universe.

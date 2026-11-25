@@ -183,8 +183,9 @@ rsync -a --delete "${META[@]}" "$STAGE/v2/" "$WORKTREE/v2/"
 # of another kind was added to the client repo by hand, so the publish stops.
 DELETED="$GOWORK_DIR/deleted.txt"
 git -C "$WORKTREE" ls-files --deleted >"$DELETED" || die "Cannot list the deleted files."
-NOT_GENERATED="$(awk '{ p = $0; sub(/^v2\//, "", p) }
-  p !~ /^((model|api)_[a-z0-9_]+\.go|docs\/[A-Za-z0-9_]+\.md|test\/api_[a-z0-9_]+_test\.go)$/' \
+GENERATED_RE='^((model|api)_[a-z0-9_]+[.]go|docs/[A-Za-z0-9_]+[.]md'
+GENERATED_RE+='|test/(api|model)_[a-z0-9_]+_test[.]go)$'
+NOT_GENERATED="$(awk -v re="$GENERATED_RE" '{ p = $0; sub(/^v2\//, "", p) } p !~ re' \
   "$DELETED")"
 if [[ -n "$NOT_GENERATED" ]]; then
   MSG="The mirror deletes files the generator does not write: ${NOT_GENERATED//$'\n'/ }."
