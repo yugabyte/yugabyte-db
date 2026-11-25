@@ -174,17 +174,26 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   auto session = CreateSession();
   ASSERT_OK(WriteRow(session, kKey, 0));
   auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
+  // Bound in-flight writes: an unbounded flood leaves a server-side backlog on the tablet that
+  // keeps the following snapshot from completing in time.
+  constexpr size_t kMaxInFlight = 1000;
+  int good = 0;
+  auto wait_futures = [&futures, &good] {
+    for (auto& future : futures) {
+      if (future.get().status.ok()) {
+        ++good;
+      }
+    }
+    futures.clear();
+  };
   for (int r = 1; r <= kNumWrites; ++r) {
     ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
     futures.push_back(session->FlushFuture());
-  }
-
-  int good = 0;
-  for (auto& future : futures) {
-    if (future.get().status.ok()) {
-      ++good;
+    if (futures.size() >= kMaxInFlight) {
+      wait_futures();
     }
   }
+  wait_futures();
 
   LOG(INFO) << "Total good: " << good;
 
