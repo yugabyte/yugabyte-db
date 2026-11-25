@@ -353,6 +353,7 @@ static SlruCtlData NotifyCtlData;
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
 bool		yb_test_notifs_poller_error_holding_queue_lock = false;
+bool		yb_test_notifs_poller_error_before_init = false;
 int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
@@ -3275,8 +3276,6 @@ ybStartNotifsPollerBgWorker(void)
 	BackgroundWorker worker;
 	BackgroundWorkerHandle *local_handle;
 	BackgroundWorkerHandle *shm_handle;
-	BgwHandleStatus status;
-	pid_t		pid;
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 
@@ -3310,30 +3309,71 @@ ybStartNotifsPollerBgWorker(void)
 	poller_data->has_bgw_handle = true;
 	LWLockRelease(NotifyQueueLock);
 
-	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
-	if (status != BGWH_STARTED)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("could not start background process"),
-				 errhint("More details may be available in the server log.")));
-
+	/*
+	 * Don't wait for the worker to start here: ybWaitForNotifsPollerInit,
+	 * called next, already waits for that, and also reports a worker that
+	 * exits before it initializes with a clearer error.
+	 */
 	pfree(local_handle);
 }
 
 /*
- * Wait for the node's notifications poller to initialize, and fail if it does
- * not. The poller reports how its initialization went in init_status, and so
- * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller that fails to initialize is
- * restarted until ybCleanupListenState terminates it as the last listener
- * unregisters. On a first startup that is right away, as every listener is
- * waiting here and fails with it.
+ * Has the node's notifications poller exited since this backend last saw it
+ * running? *seen_pid is the pid it was last seen running with, or 0. An
+ * exited worker shows as stopped until it is restarted, and with a new pid
+ * after that.
+ */
+static bool
+ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
+{
+	static BackgroundWorkerHandle *shm_handle = NULL;
+	BgwHandleStatus status = BGWH_NOT_YET_STARTED;
+	pid_t		pid = 0;
+
+	if (shm_handle == NULL)
+	{
+		bool		found;
+
+		shm_handle = ybShmemNotifsPollerBgwHandle(&found);
+	}
+
+	/*
+	 * No handle: the LISTEN starting the poller has not registered it yet,
+	 * or the poller was stopped, which happens only after init_status is set
+	 * to FAILED or once no listeners remain.
+	 */
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	if (poller_data->has_bgw_handle)
+		status = GetBackgroundWorkerPid(shm_handle, &pid);
+	LWLockRelease(NotifyQueueLock);
+
+	switch (status)
+	{
+		case BGWH_NOT_YET_STARTED:
+			return false;
+		case BGWH_STARTED:
+			if (*seen_pid == 0)
+				*seen_pid = pid;
+			return pid != *seen_pid;
+		default:
+			return true;
+	}
+}
+
+/*
+ * Wait for the node's notifications poller to initialize. Fail if init_status
+ * is set to FAILED, by the poller or by ybCleanupListenState when the LISTEN
+ * that started the poller unregisters, or if the poller exits with init_status
+ * still unset. A failed poller is restarted until the last listener
+ * unregisters, which on a first startup is right away, as every listener fails
+ * here.
  */
 static void
 ybWaitForNotifsPollerInit(void)
 {
 	static YbNotifsPollerShmemData *poller_data = NULL;
 	char		error_message[sizeof(poller_data->error_message)];
+	pid_t		poller_pid = 0;
 
 	if (poller_data == NULL)
 	{
@@ -3344,6 +3384,11 @@ ybWaitForNotifsPollerInit(void)
 
 	for (;;)
 	{
+		/*
+		 * Check for an exit before reading init_status, so that a status the
+		 * poller set just before exiting is not missed.
+		 */
+		bool		exited = ybNotifsPollerExited(poller_data, &poller_pid);
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
@@ -3356,13 +3401,15 @@ ybWaitForNotifsPollerInit(void)
 			strlcpy(error_message, poller_data->error_message,
 					sizeof(error_message));
 			LWLockRelease(NotifyQueueLock);
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller background worker "
-							"failed to initialize"),
-					 (error_message[0] ? errdetail("%s", error_message) : 0),
-					 errhint("Retry the LISTEN. If it keeps failing, check the "
-							 "server log.")));
+			break;
+		}
+
+		if (exited)
+		{
+			strlcpy(error_message,
+					"The notifications poller exited before it initialized.",
+					sizeof(error_message));
+			break;
 		}
 
 		/*
@@ -3375,6 +3422,14 @@ ybWaitForNotifsPollerInit(void)
 		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
 	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("notifications poller background worker "
+					"failed to initialize"),
+			 (error_message[0] ? errdetail("%s", error_message) : 0),
+			 errhint("Retry the LISTEN. If it keeps failing, check the "
+					 "server log.")));
 }
 
 static BackgroundWorkerHandle *
@@ -3416,6 +3471,13 @@ YbNotifsPollerMain(Datum main_arg)
 	if (ybIsStaleNotifsPoller())
 		ybExitStaleNotifsPoller(NULL);
 	LWLockRelease(NotifyQueueLock);
+
+	/*
+	 * Test-only: exit before reporting an init status. The postmaster restarts
+	 * the poller.
+	 */
+	if (yb_test_notifs_poller_error_before_init)
+		elog(ERROR, "notifications poller failing before it initializes, for testing");
 
 	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
