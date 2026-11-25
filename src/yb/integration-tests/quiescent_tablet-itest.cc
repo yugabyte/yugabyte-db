@@ -15,11 +15,13 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -38,13 +40,18 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_quiescent_tablets);
 DECLARE_bool(remote_bootstrap_from_leader_only);
 DECLARE_bool(TEST_assert_remote_bootstrap_happens_from_same_zone);
+DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_int32(quiescent_tablet_idle_sec);
@@ -288,6 +295,103 @@ TEST_F(QuiescentTabletTest, Split) {
   ASSERT_NO_FATALS(CheckRows(100));
   ASSERT_NO_FATALS(WriteRows(100, 200));
   ASSERT_NO_FATALS(CheckRows(200));
+}
+
+// A split child copies the parent's retryable requests when it opens. The parent's bootstrap state
+// flush, started by the split's log rollover, can end before that copy and after the child's
+// bootstrap state file is written. The child's file must still hold the requests when the quiescent
+// mode deletes its WAL, or after a restart the child applies a retried write again (#39155).
+TEST_F(QuiescentTabletRf1Test, YB_DEBUG_ONLY_TEST(SplitChildRetryableWrite)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = false;
+  ASSERT_NO_FATALS(WriteRows(0, 100));
+
+  // Split needs SST files. The bootstrap state files predate the retried write.
+  auto peers = TablePeers();
+  std::vector<OpId> committed_op_ids;
+  for (const auto& peer : peers) {
+    ASSERT_OK(ASSERT_RESULT(peer->shared_tablet())->Flush(
+        tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+    ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+    ASSERT_OK(WaitFor(
+        [&peer] { return peer->TEST_HasBootstrapStateOnDisk(); }, 10s * kTimeMultiplier,
+        "Bootstrap state flushed"));
+    committed_op_ids.push_back(ASSERT_RESULT(peer->GetRaftConsensus())->GetLastCommittedOpId());
+  }
+
+  SyncPoint::GetInstance()->LoadDependency({
+      {"AsyncRpc::Finished:SetTimedOut:1", "QuiescentTabletRf1Test::SplitChildRetryableWrite:Lost"},
+      {"QuiescentTabletRf1Test::SplitChildRetryableWrite:Retry",
+       "AsyncRpc::Finished:SetTimedOut:2"},
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // The write is applied, but the client gets TimedOut and retries it when released.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = true;
+  Status write_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &write_status] {
+    write_status = PutKeyValue(NewSession().get(), "key_0", "retried");
+  });
+  // Releases the client before thread_holder joins it.
+  auto retry_se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+    TEST_SYNC_POINT("QuiescentTabletRf1Test::SplitChildRetryableWrite:Retry");
+  });
+
+  tablet::TabletPeerPtr parent;
+  OpId write_op_id;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (size_t i = 0; i != peers.size(); ++i) {
+      auto op_id = VERIFY_RESULT(peers[i]->GetRaftConsensus())->GetLastCommittedOpId();
+      if (op_id > committed_op_ids[i]) {
+        parent = peers[i];
+        write_op_id = op_id;
+        return true;
+      }
+    }
+    return false;
+  }, 10s * kTimeMultiplier, "Write replicated"));
+  TEST_SYNC_POINT("QuiescentTabletRf1Test::SplitChildRetryableWrite:Lost");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_finished_set_timedout) = false;
+
+  SyncPoint::GetInstance()->SetCallBack(
+      "TSTabletManager::OpenTablet:CopyRetryableRequestsFromParent",
+      [&parent, write_op_id](void*) {
+        EXPECT_OK(WaitFor([&parent, write_op_id]() -> Result<bool> {
+          return VERIFY_RESULT(parent->GetRaftConsensus())
+                     ->GetLastFlushedOpIdInRetryableRequests() >= write_op_id;
+        }, 10s * kTimeMultiplier, "Parent bootstrap state flushed"));
+      });
+  const auto parent_id = parent->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(mini_cluster(), parent_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_quiescent_tablets) = true;
+  ASSERT_OK(WaitAllQuiescent(num_tablets() + 1));
+  // The parent would detect the retry as a duplicate, so it must be gone. Its periodic cleanup
+  // (cleanup_split_tablets_interval_sec) would delete it the same way.
+  Synchronizer delete_parent;
+  client_->DeleteNotServingTablet(parent_id, delete_parent.AsStdStatusCallback());
+  ASSERT_OK(delete_parent.Wait());
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  ASSERT_OK(WaitFor(
+      [tablet_server, &parent_id] {
+        return !tablet_server->server()->tablet_manager()->LookupTablet(parent_id);
+      },
+      30s * kTimeMultiplier, "Parent deleted"));
+  ASSERT_OK(tablet_server->Restart());
+
+  ASSERT_NO_FATALS(PutKeyValue("key_0", "updated"));
+  TEST_SYNC_POINT("QuiescentTabletRf1Test::SplitChildRetryableWrite:Retry");
+  thread_holder.JoinAll();
+  ASSERT_OK(write_status);
+
+  std::string value;
+  for (auto& [key, row_value] : GetScanResults(client::TableRange(table_))) {
+    if (key == "key_0") {
+      value = std::move(row_value);
+    }
+  }
+  ASSERT_EQ(value, "updated");
 }
 
 // A table that asks to keep its WAL for a time stays out of the mode.

@@ -13,13 +13,18 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/fs/fs_manager.h"
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -68,6 +73,7 @@ class TabletBootstrapStateManager {
   }
 
   bool has_file_on_disk() const {
+    std::lock_guard lock(file_mutex_);
     return has_file_on_disk_;
   }
 
@@ -77,8 +83,9 @@ class TabletBootstrapStateManager {
   // Load the latest version from disk if any.
   Result<consensus::TabletBootstrapStatePB> LoadFromDisk();
 
-  // Copy the latest version to dest_path.
-  Status CopyTo(const std::string& dest_path);
+  // Copy the latest version to dest_path. Returns the op id it covers, or OpId::Min() if this
+  // instance neither loaded nor saved it.
+  Result<OpId> CopyTo(const std::string& dest_path);
 
   static std::string_view FileName();
 
@@ -95,7 +102,7 @@ class TabletBootstrapStateManager {
 
   // Do the actual initialization.
   // Find the valid bootstrap state file from disk and delete other versions.
-  Status DoInit();
+  Status DoInit() REQUIRES(file_mutex_);
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -103,7 +110,12 @@ class TabletBootstrapStateManager {
 
   TabletId tablet_id_;
 
-  bool has_file_on_disk_ = false;
+  // Keeps CopyTo from seeing the file while SaveToDisk replaces it. CopyTo holds it for the whole
+  // copy, so the op id it returns belongs to the copied file.
+  mutable std::mutex file_mutex_;
+  bool has_file_on_disk_ GUARDED_BY(file_mutex_) = false;
+  // Op id the file on disk covers, if this instance loaded or saved it.
+  OpId file_op_id_ GUARDED_BY(file_mutex_);
   FsManager* fs_manager_ = nullptr;
   std::string dir_;
   TabletBootstrapState bootstrap_state_;

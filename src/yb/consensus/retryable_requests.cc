@@ -259,14 +259,14 @@ class RetryableRequests::Impl {
   }
 
   Impl(const Impl& rhs) {
-    CopyFrom(rhs);
+    CopyFrom(rhs, rhs.last_flushed_op_id_);
   }
 
-  void CopyFrom(const Impl& rhs) {
+  void CopyFrom(const Impl& rhs, const OpId& last_flushed_op_id) {
     log_prefix_ = rhs.log_prefix_;
     request_timeout_secs_ = rhs.request_timeout_secs_;
     max_replicated_op_id_ = rhs.max_replicated_op_id_;
-    last_flushed_op_id_ = rhs.last_flushed_op_id_;
+    last_flushed_op_id_ = last_flushed_op_id;
     clock_ = rhs.clock_;
     running_requests_gauge_ = rhs.running_requests_gauge_;
     replicated_request_ranges_gauge_ = rhs.replicated_request_ranges_gauge_;
@@ -764,8 +764,8 @@ RetryableRequests::RetryableRequests(const RetryableRequests& rhs)
 
 RetryableRequests::RetryableRequests(RetryableRequests&& rhs) : impl_(std::move(rhs.impl_)) {}
 
-void RetryableRequests::CopyFrom(const RetryableRequests& rhs) {
-  impl_->CopyFrom(*rhs.impl_);
+void RetryableRequests::CopyFrom(const RetryableRequests& rhs, const OpId& last_flushed_op_id) {
+  impl_->CopyFrom(*rhs.impl_, last_flushed_op_id);
 }
 
 void RetryableRequests::operator=(RetryableRequests&& rhs) {
