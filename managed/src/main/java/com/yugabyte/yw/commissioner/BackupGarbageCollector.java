@@ -201,9 +201,16 @@ public class BackupGarbageCollector {
                 config.getConfigName());
           } finally {
             // A backup whose delete failed and was queued again, or was not reached this run, still
-            // needs the config: deleting it now would leave the backup's files behind.
+            // needs the config: deleting it now would leave the backup's files behind. So does one
+            // whose delete gave up (FailedToDelete): its files are still in the storage, and only
+            // with the config can a later delete, or a forced one, remove the backup.
             if (Backup.findIfBackupsDeletingWithCustomerConfig(
-                customer.getUuid(), config.getConfigUUID())) {
+                    customer.getUuid(), config.getConfigUUID())
+                || Backup.countWithStorageConfig(
+                        customer.getUuid(),
+                        config.getConfigUUID(),
+                        List.of(BackupState.FailedToDelete))
+                    > 0) {
               log.info(
                   "Customer Storage config {} is kept until its backups are deleted",
                   config.getConfigName());

@@ -17,8 +17,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import io.ebean.DB;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.SqlRow;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
@@ -1144,6 +1146,61 @@ public class XClusterConfig extends Model {
       return Optional.empty();
     }
     return Optional.of(xClusterConfig);
+  }
+
+  /**
+   * Config UUIDs for the given universes, keyed by the universe that is the source or the target.
+   * One query of the uuid columns, with no association fetches.
+   */
+  public static ConfigUuidsByUniverse findConfigUuidsByUniverseUuids(
+      Collection<UUID> universeUuids) {
+    if (CollectionUtils.isEmpty(universeUuids)) {
+      return ConfigUuidsByUniverse.EMPTY;
+    }
+    List<SqlRow> rows =
+        DB.sqlQuery(
+                "select uuid, source_universe_uuid, target_universe_uuid from xcluster_config"
+                    + " where source_universe_uuid in (:sourceUniverseUuids)"
+                    + " or target_universe_uuid in (:targetUniverseUuids)")
+            .setParameter("sourceUniverseUuids", universeUuids)
+            .setParameter("targetUniverseUuids", universeUuids)
+            .findList();
+    Set<UUID> requested = new HashSet<>(universeUuids);
+    Map<UUID, List<UUID>> asSource = new HashMap<>();
+    Map<UUID, List<UUID>> asTarget = new HashMap<>();
+    for (SqlRow row : rows) {
+      UUID configUuid = (UUID) row.get("uuid");
+      UUID sourceUniverseUuid = (UUID) row.get("source_universe_uuid");
+      UUID targetUniverseUuid = (UUID) row.get("target_universe_uuid");
+      if (sourceUniverseUuid != null && requested.contains(sourceUniverseUuid)) {
+        asSource.computeIfAbsent(sourceUniverseUuid, ignored -> new ArrayList<>()).add(configUuid);
+      }
+      if (targetUniverseUuid != null && requested.contains(targetUniverseUuid)) {
+        asTarget.computeIfAbsent(targetUniverseUuid, ignored -> new ArrayList<>()).add(configUuid);
+      }
+    }
+    return new ConfigUuidsByUniverse(asSource, asTarget);
+  }
+
+  public static final class ConfigUuidsByUniverse {
+    private static final ConfigUuidsByUniverse EMPTY =
+        new ConfigUuidsByUniverse(Map.of(), Map.of());
+
+    private final Map<UUID, List<UUID>> asSource;
+    private final Map<UUID, List<UUID>> asTarget;
+
+    private ConfigUuidsByUniverse(Map<UUID, List<UUID>> asSource, Map<UUID, List<UUID>> asTarget) {
+      this.asSource = asSource;
+      this.asTarget = asTarget;
+    }
+
+    public List<UUID> sourceConfigUuids(UUID universeUuid) {
+      return asSource.getOrDefault(universeUuid, List.of());
+    }
+
+    public List<UUID> targetConfigUuids(UUID universeUuid) {
+      return asTarget.getOrDefault(universeUuid, List.of());
+    }
   }
 
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {

@@ -199,6 +199,11 @@ void DataPatcherTest::TestAddTimeDelta(QuiescentTablets quiescent_tablets) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
       "CREATE TABLE t (i INT PRIMARY KEY, j INT) WITH transactions = { 'enabled' : true }"));
+  // System tablets created before ts-3 registered get their ts-3 replicas from the balancer.
+  // A ts-3 replica whose ADD_SERVER is not committed (or whose remote bootstrap is unfinished)
+  // at a shutdown is tombstoned after restart, deleting dirs apply-patch --revert needs.
+  // Wait here rather than before patching, to keep the live sub-time step close to the writes.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(60s * kTimeMultiplier));
   size_t last_value = 0;
 
   ASSERT_OK(InsertValues(&session, NextValueRange(kValueGroupSize, &last_value)));

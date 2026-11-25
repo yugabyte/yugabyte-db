@@ -63,6 +63,7 @@ public class UpdateLoadBalancerConfigTest extends UniverseModifyBaseTest {
 
   private void givenTserversCanRestart(Universe universe) throws Exception {
     mockCommonForEditUniverseBasedTasks(universe);
+    setCheckNodesAreSafeToTakeDown(mockClient);
     when(mockClient.getLeaderBlacklistCompletion())
         .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);

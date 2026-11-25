@@ -27,6 +27,7 @@
 #include "yb/util/fast_varint.h"
 #include "yb/util/minmax.h"
 
+DECLARE_uint32(xcluster_colocated_missing_schema_rows_retention_sec);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_cdr_metadata);
 
@@ -1179,6 +1180,82 @@ TEST_F(DocDBMissingSchemaTest, ColocationNonTombstoneDroppedDuringPartialCompact
   const auto id = RandomUniformInt<ColocationId>(
       kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
   TestNonTombstoneDroppedDuringPartialCompaction(id, id + 1);
+}
+
+// Runs as a transactional xCluster target with a retention of 1s. The tests use a history cutoff
+// of 3s, so rows newer than 2s are within the retention.
+class XClusterTargetMissingSchemaTest : public DocDBMissingSchemaTest {
+ protected:
+  void SetUp() override {
+    DocDBMissingSchemaTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_colocated_missing_schema_rows_retention_sec) = 1;
+    retention_policy_->SetIsTransactionalXClusterTargetForTests(true);
+  }
+};
+
+// Rows within the retention are kept; older rows are dropped.
+TEST_F(XClusterTargetMissingSchemaTest, ColocationRowsKeptWithinRetention) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 2, HybridTime::FromMicros(1000000)));
+  ASSERT_OK(InsertLivenessColumnRecords(id, 3, 4, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertTombstoneRecords(id, 3, 3, HybridTime::FromMicros(2600000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 5, HybridTime::FromMicros(3500000)));
+  MarkMissing(id);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], ["r3"]), [HT{ physical: 2600000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r4"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      SubDocKey(DocKey($0, [], ["r5"]), [SystemColumnId(0); HT{ physical: 3500000 }]) -> null
+      )#",
+      IdToString(id)));
+}
+
+// A table tombstone below the cutoff drops rows under it in the window, but not the next table's.
+TEST_F(XClusterTargetMissingSchemaTest, ColocationTableTombstoneCoversRowsWithinRetention) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
+
+  ASSERT_OK(InsertLivenessColumnRecords(id, 1, 2, HybridTime::FromMicros(2200000)));
+  ASSERT_OK(InsertTombstoneRecords(id, 1, 1, HybridTime::FromMicros(2400000)));
+  ASSERT_OK(InsertTableTombstoneRecord(id, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 3, HybridTime::FromMicros(2700000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id + 1, 1, HybridTime::FromMicros(2200000)));
+  MarkMissing(id);
+  MarkMissing(id + 1);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 2500000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 2700000 }]) -> null
+      SubDocKey(DocKey($1, [], ["r1"]), [SystemColumnId(0); HT{ physical: 2200000 }]) -> null
+      )#",
+      IdToString(id), IdToString(id + 1)));
+}
+
+// A table tombstone above the history cutoff covers nothing yet: a read between the cutoff and the
+// tombstone still sees the rows in the window.
+TEST_F(XClusterTargetMissingSchemaTest, ColocationTableTombstoneAboveCutoffKeepsRows) {
+  const auto id = RandomUniformInt<ColocationId>(
+      kFirstNormalColocationId, std::numeric_limits<ColocationId>::max());
+
+  ASSERT_OK(InsertLivenessColumnRecord(id, 1, HybridTime::FromMicros(2500000)));
+  ASSERT_OK(InsertLivenessColumnRecord(id, 2, HybridTime::FromMicros(1000000)));
+  ASSERT_OK(InsertTableTombstoneRecord(id, HybridTime::FromMicros(3500000)));
+  MarkMissing(id);
+
+  FullyCompactHistoryBefore(HybridTime::FromMicros(3000000));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 3500000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 2500000 }]) -> null
+      )#",
+      IdToString(id)));
 }
 
 class DocDBVectorMetadataCompactionTest

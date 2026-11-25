@@ -1,6 +1,8 @@
 // Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import api.v2.models.CloudSpecificInfo;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
@@ -14,6 +16,7 @@ import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -154,15 +157,22 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     return params;
   }
 
-  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseSpec universeSpec) {
+  private UniverseSpec inheritFromPrimaryBeforeMapping(UniverseCreateSpec universeCreateSpec) {
+    if (universeCreateSpec == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot inherit for null spec");
+    }
+    UniverseSpec universeSpec = universeCreateSpec.getSpec();
     if (universeSpec == null || universeSpec.getClusters() == null) {
       return universeSpec;
     }
     ClusterSpec primaryClusterSpec =
         universeSpec.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .filter(c -> ClusterTypeEnum.PRIMARY.equals(c.getClusterType()))
             .findAny()
-            .orElse(null);
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST, "Primary cluster should be provided"));
     List<ClusterSpec> clusters = new ArrayList<>();
     clusters.add(primaryClusterSpec);
     for (ClusterSpec otherCluster : universeSpec.getClusters()) {
@@ -181,7 +191,7 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromCreateSpec(
       UniverseCreateSpec universeCreateSpec) {
     // Copy unset RR/async properties from primary (excludes placement, partitions, nodeSpec).
-    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec.getSpec());
+    UniverseSpec universeSpec = inheritFromPrimaryBeforeMapping(universeCreateSpec);
     UniverseDefinitionTaskParams params = toV1UniverseDefinitionTaskParams(universeSpec);
     // set Arch
     params.arch = toV1Arch(universeCreateSpec.getArch());
@@ -208,9 +218,27 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
       UniverseEditSpec universeEditSpec,
       UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams) {
+    UniverseDefinitionTaskParams.UniverseSettings previousSettings =
+        v1UniverseDefinitionTaskParams.universeSettings;
     UniverseDefinitionTaskParams params =
         delegate.toV1UniverseDefinitionTaskParamsFromEditSpec(
             universeEditSpec, v1UniverseDefinitionTaskParams);
+
+    // expert_mode used to deserialize as false when omitted (schema default) and replace the
+    // stored setting. Null, or universe_settings omitted entirely, or passing {}
+    // means the edit did not set it and current settings will be kept.
+    Boolean expertMode =
+        universeEditSpec != null && universeEditSpec.getUniverseSettings() != null
+            ? universeEditSpec.getUniverseSettings().getExpertMode()
+            : null;
+    if (expertMode == null) {
+      params.universeSettings = previousSettings;
+    } else {
+      if (params.universeSettings == null) {
+        params.universeSettings = new UniverseDefinitionTaskParams.UniverseSettings();
+      }
+      params.universeSettings.setExpertMode(expertMode);
+    }
 
     if (universeEditSpec != null && universeEditSpec.getNetworkingSpec() != null) {
       UniverseNetworkingSpec networkingSpec = universeEditSpec.getNetworkingSpec();
@@ -239,8 +267,14 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     if (source == null || userIntent == null) {
       return;
     }
-    userIntent.assignPublicIP = source.getAssignPublicIp();
-    userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
+    // Omitted flags stay null. Copying the create-time default (assignPublicIP=true) onto an edit
+    // changes the setting and forces a full move.
+    if (source.getAssignPublicIp() != null) {
+      userIntent.assignPublicIP = source.getAssignPublicIp();
+    }
+    if (source.getAssignStaticPublicIp() != null) {
+      userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
+    }
     if (source.getEnableIpv6() != null) {
       userIntent.enableIPV6 = source.getEnableIpv6();
     }

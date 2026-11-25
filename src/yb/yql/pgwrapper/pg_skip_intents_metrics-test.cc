@@ -756,7 +756,9 @@ TEST_P(SkipIntentsMatViewTest, TestRefreshMetrics) {
   auto interim_writes = ASSERT_RESULT(GetSkipIntentsCount());
 
   ASSERT_GT(initial_writes, 0);
-  ASSERT_GT(interim_writes, initial_writes);
+  // The index is on a relation that existed before its transaction, so it is not built on the
+  // fastpath.
+  ASSERT_EQ(interim_writes, initial_writes);
 
   // 5. Refresh the View
   std::string cmd = "REFRESH MATERIALIZED VIEW ";
@@ -1916,8 +1918,9 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
   ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
 
-  // The index is a relation this transaction created, so its backfill takes the fastpath and sets
-  // the skipped-intents state before the catalog update conflicts.
+  // TODO(#38494): the build of an index on a table that existed before the transaction no longer
+  // takes the fastpath, so the skipped-intents state is not set here and its lower precedence is
+  // not exercised. No other statement was found that skips intents before it conflicts.
   auto result = index_conn.Execute(
       "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
   ASSERT_NOK(result);
@@ -2473,6 +2476,140 @@ TEST_P(SkipIntentsIsolationTest, DuplicateKeyCheckCrossesFastpathBoundary) {
   // The row written before the savepoint is in the regular db and survives the rollback of the
   // aborted statement; the transaction as a whole is rolled back, so the table is gone.
   ASSERT_NOK(conn.Fetch("SELECT k FROM dup_key_t"));
+}
+
+// An index created in a transaction block on a table that existed before it is written like the
+// table, through the intents db: a read through the index is not at in_txn_limit, so it would
+// not see rows written on the fastpath when the transaction's snapshot is older than the build
+// (#36505).
+class SkipIntentsNewIndexOnExistingTableTest : public SkipIntentsIsolationTest {
+ protected:
+  static constexpr auto kNumRows = 1000;
+  static constexpr auto kNumDistinct = 100;
+  static constexpr auto kRowsPerValue = kNumRows / kNumDistinct;
+
+  void SetUp() override {
+    SkipIntentsIsolationTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, c INT, u INT)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t SELECT g, g % $0, g FROM generate_series(1, $1) g",
+        kNumDistinct, kNumRows));
+  }
+
+  // Starts a transaction and makes it pick its snapshot. The sleep that follows puts anything
+  // the transaction would write on the fastpath outside the clock skew window of that snapshot,
+  // where a read at the snapshot silently misses it instead of asking for a restart.
+  Result<PGConn> BeginWithOldSnapshot() {
+    auto conn = VERIFY_RESULT(ConnectAtIsolation());
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    SCHECK_EQ(
+        VERIFY_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), kNumRows,
+        IllegalState, "Unexpected row count");
+    SleepFor(1s * kTimeMultiplier);
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_seqscan = off"));
+    RETURN_NOT_OK(conn.Execute("SET LOCAL enable_bitmapscan = off"));
+    return conn;
+  }
+
+  Status BuildWithoutFastpath(PGConn& conn, const std::string& ddl) {
+    const auto writes_before = VERIFY_RESULT(GetSkipIntentsCount());
+    RETURN_NOT_OK(conn.Execute(ddl));
+    SCHECK_EQ(
+        VERIFY_RESULT(GetSkipIntentsCount()), writes_before, IllegalState,
+        "The index was built on the fastpath");
+    return Status::OK();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, SkipIntentsNewIndexOnExistingTableTest,
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ"), IsolationSuffix);
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, ScanAndModifyThroughIndex) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX t_c ON t (c)"));
+
+  const auto index_only_query = "SELECT count(*) FROM t WHERE c = 5";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(index_only_query, "Index Only")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), kRowsPerValue);
+
+  const auto index_query = "SELECT k FROM t WHERE c = 5 ORDER BY k";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(index_query, "Index")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>(index_query)).size(), kRowsPerValue);
+
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRows<int32_t>("UPDATE t SET c = -1 WHERE c = 5 RETURNING k")).size(),
+      kRowsPerValue);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRows<int32_t>("DELETE FROM t WHERE c = 6 RETURNING k")).size(),
+      kRowsPerValue);
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, 777, $0)", kNumRows + 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 777")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), 0);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = -1")),
+      kRowsPerValue);
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(index_only_query)), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 6")), 0);
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = -1")),
+      kRowsPerValue);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 777")), 1);
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, UniqueConstraintArbiter) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "ALTER TABLE t ADD CONSTRAINT t_u_key UNIQUE (u)"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t VALUES ($0, 1, 5) ON CONFLICT (u) DO NOTHING", kNumRows + 1));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), kNumRows);
+  auto status = conn.ExecuteFormat("INSERT INTO t VALUES ($0, 1, 5)", kNumRows + 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, UniqueConstraintForeignKey) {
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "ALTER TABLE t ADD CONSTRAINT t_u_key UNIQUE (u)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE ch (id INT PRIMARY KEY, u INT REFERENCES t (u))"));
+  ASSERT_OK(conn.Execute("INSERT INTO ch VALUES (1, 5)"));
+  auto status = conn.ExecuteFormat("INSERT INTO ch VALUES (2, $0)", kNumRows + 1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "violates foreign key constraint");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
+// A top-level statement is not always the last one of its transaction: an event trigger, or the
+// next statement of a pipeline, can read the index after it.
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, TopLevelBuild) {
+  auto conn = ASSERT_RESULT(ConnectAtIsolation());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX NONCONCURRENTLY t_c ON t (c)"));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 5")), kRowsPerValue);
+}
+
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, PartitionedTable) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pt (k INT, c INT, PRIMARY KEY (k)) PARTITION BY RANGE (k)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE pt_1 PARTITION OF pt FOR VALUES FROM (1) TO (501)"));
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE pt_2 PARTITION OF pt FOR VALUES FROM (501) TO (1001)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO pt SELECT g, g % $0 FROM generate_series(1, $1) g", kNumDistinct, kNumRows));
+
+  auto conn = ASSERT_RESULT(BeginWithOldSnapshot());
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX pt_c ON pt (c)"));
+  const auto query = "SELECT count(*) FROM pt WHERE c = 5";
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasScanType(query, "Index Only")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(query)), kRowsPerValue);
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 } // namespace pgwrapper

@@ -54,3 +54,6 @@ extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
 													ScanDirection scandir);
 
 extern int yb_merge_scan_num_streams(List *stream_cols);
+
+extern Expr *yb_equality_index_clause(IndexOptInfo *index, List *indexclauses,
+									  int indexcol);

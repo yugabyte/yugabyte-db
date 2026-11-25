@@ -339,6 +339,19 @@ XClusterSourceManager::GetPostTabletCreateTasks(
             *table_info, outbound_replication_group->AutomaticDDLMode())) {
       continue;
     }
+    // The target accepts a colocation parent table only at setup (see
+    // ShouldAddTableToReplicationGroup). So fail the create of one that is not in the group
+    // already, instead of breaking the target.
+    if (table_info->IsColocationParentTable() &&
+        !outbound_replication_group->GetStreamId(namespace_id, table_info->id()).ok()) {
+      table_info->SetCreateTableErrorStatus(STATUS_FORMAT(
+          NotSupported,
+          "Cannot create a new colocation tablegroup in a database that is replicated by xCluster "
+          "replication group $0. xCluster can only replicate the tablegroups that existed when "
+          "replication was set up. Table: $1",
+          outbound_replication_group->Id(), table_info->ToString()));
+      return {};
+    }
     tasks.emplace_back(
         std::make_shared<AddTableToXClusterSourceTask>(
             outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));

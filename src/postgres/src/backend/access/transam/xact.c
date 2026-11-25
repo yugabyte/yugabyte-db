@@ -231,8 +231,7 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount; /* Count of objects that
 												 * require stickiness within a
 												 * certain transaction (e.g.
-												 * TEMP TABLES/WITH HOLD
-												 * CURSORS) */
+												 * TEMP TABLES) */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;

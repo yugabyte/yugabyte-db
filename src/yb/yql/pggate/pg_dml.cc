@@ -31,6 +31,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 namespace yb::pggate {
@@ -55,38 +56,68 @@ class IndexYbctidProvider : public YbctidProvider {
 // query is not routed.
 constexpr size_t kMaxVectorPartitionKeyPrefixes = 1024;
 
-// Encodes the partition key prefixes of the rows whose key columns have the given values: the
-// partition key (the encoded hash code) for a hash partitioned table, or the leading range
-// components without the closing group end for a range partitioned table, using the longest run
-// of leading range columns with values. Returns nothing when the values don't bound the partitions
-// the rows are in.
-Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
+// Encodes doc_key without the group end that closes its range group, which leaves a byte prefix of
+// every key whose leading key columns have the values of doc_key.
+Result<std::string> EncodeKeyPrefix(const dockv::DocKey& doc_key) {
+  auto key = doc_key.Encode();
+  const auto encoded = key.AsSlice();
+  RSTATUS_DCHECK(
+      !encoded.empty() && encoded[encoded.size() - 1] == dockv::KeyEntryTypeAsChar::kGroupEnd,
+      IllegalState, Format("Unexpected key encoding: $0", encoded.ToDebugHexString()));
+  return encoded.WithoutSuffix(1).ToBuffer();
+}
+
+struct KeyColumnValues {
+  SortingType sorting_type;
+  std::vector<const LWQLValuePB*> values;
+};
+
+struct KeyValues {
+  std::vector<KeyColumnValues> columns;
+  // The values of the routing columns expand to more than kMaxVectorPartitionKeyPrefixes partition
+  // key prefixes, so the query is not routed.
+  bool too_many_prefixes = false;
+};
+
+// Converts the values that the query compares the first num_columns key columns with, up to the
+// first key column it compares with nothing. The first num_routing_columns of them route the
+// query, unless their values expand to more than kMaxVectorPartitionKeyPrefixes partition key
+// prefixes. The tenant takes single values only, so values that routing does not use are converted
+// only up to the first key column with several values.
+Result<KeyValues> ConvertKeyColumnValues(
     ThreadSafeArena& arena, const PgTableDesc& table,
-    std::span<const YbcPgVectorKeyColumn> columns) {
-  const auto num_hash_key_columns = table.num_hash_key_columns();
-  struct KeyColumnValues {
-    SortingType sorting_type;
-    std::vector<const LWQLValuePB*> values;
-  };
-  std::vector<KeyColumnValues> key_columns;
-  size_t num_prefixes = 1;
-  const auto num_prefix_columns =
-      num_hash_key_columns ? num_hash_key_columns : table.num_key_columns();
-  for (size_t idx = 0; idx != num_prefix_columns; ++idx) {
-    PgColumn column(table.schema(), idx);
+    std::span<const YbcPgVectorKeyColumn> columns, size_t num_routing_columns,
+    size_t num_columns) {
+  KeyValues result;
+  auto find_column = [&columns](const PgColumn& column) {
     auto it = std::ranges::find(columns, column.attr_num(), &YbcPgVectorKeyColumn::attr_num);
-    if (it == columns.end() || it->nvalues == 0) {
+    return it == columns.end() || it->nvalues == 0 ? nullptr : &*it;
+  };
+  size_t num_prefixes = 1;
+  for (size_t idx = 0; idx != std::min(num_routing_columns, table.num_key_columns()); ++idx) {
+    const auto* key_column = find_column(PgColumn(table.schema(), idx));
+    if (!key_column) {
+      break;
+    }
+    num_prefixes *= key_column->nvalues;
+    if (num_prefixes > kMaxVectorPartitionKeyPrefixes) {
+      result.too_many_prefixes = true;
+      break;
+    }
+  }
+  const auto num_multi_value_columns = result.too_many_prefixes ? 0 : num_routing_columns;
+  for (size_t idx = 0; idx != std::min(num_columns, table.num_key_columns()); ++idx) {
+    PgColumn column(table.schema(), idx);
+    const auto* it = find_column(column);
+    if (!it || (idx >= num_multi_value_columns && it->nvalues != 1)) {
       break;
     }
     SCHECK_EQ(
         column.internal_type(), InternalTypeOf(it->type_entity), InvalidArgument,
         "Key value type does not match column type");
-    num_prefixes *= it->nvalues;
-    if (num_prefixes > kMaxVectorPartitionKeyPrefixes) {
-      return std::vector<std::string>();
-    }
-    auto& key_column = key_columns.emplace_back(KeyColumnValues{
+    auto& key_column = result.columns.emplace_back(KeyColumnValues{
         .sorting_type = column.desc().sorting_type(), .values = {}});
+    key_column.values.reserve(it->nvalues);
     for (auto datum : std::span(it->datums, it->nvalues)) {
       auto* value = arena.NewObject<LWQLValuePB>(&arena);
       DatumToQLValue(
@@ -95,8 +126,27 @@ Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
       key_column.values.push_back(value);
     }
   }
-  if (key_columns.empty() || key_columns.size() < num_hash_key_columns) {
+  return result;
+}
+
+// Encodes the partition key prefixes of the rows whose leading key columns have the given values:
+// the partition key (the encoded hash code) for a hash partitioned table, or the leading range
+// components without the closing group end for a range partitioned table. Returns nothing when the
+// values don't bound the partitions the rows are in.
+Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
+    const PgTableDesc& table, const KeyValues& key_values) {
+  const auto num_hash_key_columns = table.num_hash_key_columns();
+  std::span<const KeyColumnValues> key_columns = key_values.columns;
+  if (key_values.too_many_prefixes || key_columns.empty() ||
+      key_columns.size() < num_hash_key_columns) {
     return std::vector<std::string>();
+  }
+  if (num_hash_key_columns) {
+    key_columns = key_columns.first(num_hash_key_columns);
+  }
+  size_t num_prefixes = 1;
+  for (const auto& key_column : key_columns) {
+    num_prefixes *= key_column.values.size();
   }
 
   std::vector<std::string> result;
@@ -117,15 +167,7 @@ Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
         components.push_back(
             dockv::KeyEntryValue::FromQLValuePB(*values[i], key_columns[i].sorting_type));
       }
-      // Dropping the group end that closes the range group leaves a byte prefix of every key
-      // whose leading range columns have these values.
-      auto key = dockv::DocKey(std::move(components)).Encode();
-      const auto encoded = key.AsSlice();
-      RSTATUS_DCHECK(
-          !encoded.empty() &&
-              encoded[encoded.size() - 1] == dockv::KeyEntryTypeAsChar::kGroupEnd,
-          IllegalState, Format("Unexpected key encoding: $0", encoded.ToDebugHexString()));
-      result.push_back(encoded.WithoutSuffix(1).ToBuffer());
+      result.push_back(VERIFY_RESULT(EncodeKeyPrefix(dockv::DocKey(std::move(components)))));
     }
 
     size_t i = 0;
@@ -140,6 +182,37 @@ Result<std::vector<std::string>> BuildVectorPartitionKeyPrefixes(
     }
   }
   return result;
+}
+
+// Encodes the tenant of the rows whose first num_columns key columns have the given values, see
+// PgVectorReadOptionsPB::tenant. Returns an empty string when one of them has no single value.
+// TODO(#35388): IN lists of tenants.
+Result<std::string> BuildVectorTenant(
+    const PgTableDesc& table, std::span<const KeyColumnValues> key_columns, size_t num_columns) {
+  if (key_columns.size() < num_columns) {
+    return std::string();
+  }
+  const auto num_hash_key_columns = table.num_hash_key_columns();
+  std::vector<const LWQLValuePB*> hash_values;
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
+  for (size_t idx = 0; idx != num_columns; ++idx) {
+    const auto& key_column = key_columns[idx];
+    if (key_column.values.size() != 1) {
+      return std::string();
+    }
+    const auto* value = key_column.values.front();
+    auto component = dockv::KeyEntryValue::FromQLValuePB(*value, key_column.sorting_type);
+    if (idx < num_hash_key_columns) {
+      hash_values.push_back(value);
+      hashed_components.push_back(std::move(component));
+    } else {
+      range_components.push_back(std::move(component));
+    }
+  }
+  return EncodeKeyPrefix(VERIFY_RESULT(BuildDocKey(
+      table.partition_schema(), std::move(hashed_components), hash_values.data(),
+      std::move(range_components))));
 }
 
 } // namespace
@@ -369,12 +442,34 @@ Status PgDml::HnswSetReadOptions(int ef_search) {
 Status PgDml::ANNBindKeyFilter(std::span<const YbcPgVectorKeyColumn> columns) {
   auto* secondary_index = SecondaryIndexQuery();
   // The key columns belong to the indexed table, which is only read by an index scan.
-  // A colocated table has a single tablet, so there is nothing to route.
-  if (!secondary_index || !target_ || target_->IsColocated()) {
+  if (!secondary_index || !target_) {
     return Status::OK();
   }
-  const auto prefixes = VERIFY_RESULT(BuildVectorPartitionKeyPrefixes(arena(), *target_, columns));
-  for (const auto& prefix : prefixes) {
+  const auto& table = *target_;
+  const auto num_hash_key_columns = table.num_hash_key_columns();
+  // A colocated table has a single tablet, so there is nothing to route.
+  const size_t num_routing_columns = table.IsColocated()
+      ? 0 : num_hash_key_columns ? num_hash_key_columns : table.num_key_columns();
+  // All hash columns form the first tenant component, see
+  // Schema::HashGroupAndRangeComponentIndex.
+  const size_t num_tenant_components = secondary_index->target_->vector_index_tenant_components();
+  const size_t num_tenant_columns = !num_tenant_components
+      ? 0 : num_hash_key_columns ? num_hash_key_columns + num_tenant_components - 1
+                                 : num_tenant_components;
+  const auto key_values = VERIFY_RESULT(ConvertKeyColumnValues(
+      arena(), table, columns, num_routing_columns,
+      std::max(num_routing_columns, num_tenant_columns)));
+  if (num_tenant_columns) {
+    const auto tenant = VERIFY_RESULT(
+        BuildVectorTenant(table, key_values.columns, num_tenant_columns));
+    if (!tenant.empty()) {
+      secondary_index->ANNSetTenant(tenant);
+    }
+  }
+  if (!num_routing_columns) {
+    return Status::OK();
+  }
+  for (const auto& prefix : VERIFY_RESULT(BuildVectorPartitionKeyPrefixes(table, key_values))) {
     secondary_index->ANNAddPartitionKeyPrefix(prefix);
   }
   return Status::OK();

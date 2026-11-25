@@ -161,8 +161,6 @@ class YbHnswIndex :
 
   Result<std::vector<vector_index::VectorWithDistance<DistanceResult>>> DoSearch(
       const Vector& query_vector, const vector_index::SearchOptions& options) const {
-    SCHECK(options.tenant.empty() || index_.header().num_tenant_directory_blocks, InvalidArgument,
-           "Tenant search of a vector index without tenants");
     auto* context = search_contexts_.Pop();
     if (!context) {
       context = new SearchContextHolder;
