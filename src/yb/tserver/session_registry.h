@@ -30,6 +30,14 @@
 
 namespace yb::tserver {
 
+// Expiration of a session that was expired forcibly, see SessionRegistryBase::Expire. Touching such
+// a session does not postpone its expiration.
+inline constexpr CoarseTimePoint kForcedSessionExpiration = CoarseTimePoint::min();
+
+// Postpones the expiration to new_expiration, unless the session was expired forcibly.
+void PostponeSessionExpiration(
+    std::atomic<CoarseTimePoint>& expiration, CoarseTimePoint new_expiration);
+
 // A client session trackable by SessionRegistry.
 class ClientSession {
  public:
@@ -37,7 +45,7 @@ class ClientSession {
 
   virtual uint64_t id() const = 0;
   virtual CoarseTimePoint expiration() const = 0;
-  // Postpones the session expiration.
+  // Postpones the session expiration, unless the session was expired forcibly.
   virtual void Touch() = 0;
   virtual void SetExpiration(CoarseTimePoint value) = 0;
 

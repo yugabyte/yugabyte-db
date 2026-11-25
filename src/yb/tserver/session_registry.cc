@@ -34,15 +34,19 @@ ClientSessionBase::ClientSessionBase(uint64_t id)
     : id_(id), lifetime_(FLAGS_pg_client_session_expiration_ms * 1ms),
       expiration_(NewExpiration()) {}
 
-void ClientSessionBase::Touch() {
-  auto new_expiration = NewExpiration();
-  auto old_expiration = expiration_.load(std::memory_order_acquire);
-  while (new_expiration > old_expiration) {
-    if (expiration_.compare_exchange_weak(
+void PostponeSessionExpiration(
+    std::atomic<CoarseTimePoint>& expiration, CoarseTimePoint new_expiration) {
+  auto old_expiration = expiration.load(std::memory_order_acquire);
+  while (old_expiration != kForcedSessionExpiration && new_expiration > old_expiration) {
+    if (expiration.compare_exchange_weak(
         old_expiration, new_expiration, std::memory_order_acq_rel)) {
       break;
     }
   }
+}
+
+void ClientSessionBase::Touch() {
+  PostponeSessionExpiration(expiration_, NewExpiration());
 }
 
 void ClientSessionBase::SetExpiration(CoarseTimePoint value) {
@@ -105,7 +109,9 @@ void SessionRegistryBase::Expire(uint64_t session_id) {
     return;
   }
   VLOG(2) << "Requesting session expiry for session " << session_id;
-  it->second->SetExpiration(now);
+  // Requests of the session that arrive before the expired sessions check runs would otherwise
+  // postpone the expiration.
+  it->second->SetExpiration(kForcedSessionExpiration);
   session_expiration_queue_.emplace(now, session_id);
   ScheduleCheckExpiredSessions(now);
 }

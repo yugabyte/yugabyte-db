@@ -16,6 +16,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -104,8 +105,8 @@ class PgAdvisoryLockTest : public PgAdvisoryLockTestBase {
 
   // Session expiration / heartbeat interval to configure. Tests that exercise expired-session
   // cleanup use the short default; tests that do not should return a larger value so that a
-  // transient reactor stall under load cannot expire a live session (which would DFATAL from the
-  // next heartbeat in debug builds).
+  // transient reactor stall under load cannot expire a live session (whose next statement would
+  // then fail with an unknown session error).
   virtual int GetExpiredSessionCleanupMs() {
     return kExpiredSessionCleanupMs;
   }
@@ -184,6 +185,44 @@ TEST_F(PgAdvisoryLockTest, SessionAdvisoryLockAndUnlock) {
   ASSERT_OK(conn.Fetch("select pg_advisory_unlock(10)"));
 
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("select pg_advisory_unlock(10)")));
+}
+
+// Aborting the session level txn in the background releases the session's advisory locks, so the
+// session must not be allowed to continue.
+TEST_F(PgAdvisoryLockTest, SessionTerminatedOnSessionTxnAbort) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE foo (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn1.Fetch("select pg_advisory_lock(10)"));
+
+  ASSERT_OK(conn2.Execute("SET yb_locks_min_txn_age='0ms'"));
+  std::string session_txn_id;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(conn2.FetchRows<std::string>(
+        "SELECT ybdetails->>'transactionid' FROM pg_locks WHERE locktype = 'advisory'"));
+    if (rows.empty()) {
+      return false;
+    }
+    session_txn_id = rows.front();
+    return true;
+  }, 10s * kTimeMultiplier, "Wait for the session advisory lock to show up in pg_locks"));
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>(
+      Format("SELECT yb_cancel_transaction('$0')", session_txn_id))));
+
+  // The session gets expired once the session txn's heartbeat learns about the abort. Use a
+  // statement that reaches the tserver.
+  Status status;
+  int k = 0;
+  ASSERT_OK(WaitFor([&] {
+    status = conn1.ExecuteFormat("INSERT INTO foo VALUES ($0)", ++k);
+    return !status.ok();
+  }, 10s * kTimeMultiplier, "Wait for the session to be terminated"));
+  // The backend FATALs with an unknown session error, the client might only see the connection
+  // getting closed.
+  LOG(INFO) << "Session terminated with: " << status;
+  ASSERT_NOK(conn1.Execute("SELECT 1"));
+
+  ASSERT_TRUE(ASSERT_RESULT(conn2.FetchRow<bool>("select pg_try_advisory_lock(10)")));
 }
 
 TEST_F(PgAdvisoryLockTest, CleanupSessionAdvisoryLock) {
@@ -279,7 +318,9 @@ TEST_F(PgAdvisoryLockTest, SessionLockDeadlockWithRowLocks) {
   ASSERT_OK(conn1.Execute("UPDATE foo SET v=v+1 where k=1"));
   ASSERT_TRUE(status_future.wait_for(2s * kTimeMultiplier) == std::future_status::ready);
   ASSERT_NOK(status_future.get());
-  ASSERT_OK(conn2.RollbackTransaction());
+  // If the deadlock detector aborted conn2's session level txn, the session gets terminated and the
+  // rollback fails with an unknown session error.
+  WARN_NOT_OK(conn2.RollbackTransaction(), "Rollback failed");
   ASSERT_OK(conn1.CommitTransaction());
 }
 

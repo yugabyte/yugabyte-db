@@ -3106,6 +3106,54 @@ TEST_F(PgObjectLocksTest, YB_DISABLE_TEST_IN_TSAN(SessionLocksAreReleasedOnBacke
   ASSERT_OK(conn2.Execute("ALTER TABLE test ADD COLUMN v2 INT DEFAULT 0"));
 }
 
+// Aborting the session level txn in the background while it holds session object locks terminates
+// the session, which releases its session object locks.
+TEST_F(PgObjectLocksTest, YB_DISABLE_TEST_IN_TSAN(SessionTerminatedOnSessionTxnAbort)) {
+  auto* ts1 = cluster_->tablet_server(1);
+  auto* ts2 = cluster_->tablet_server(2);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test select generate_series(1, 100)"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_yb_disable_wait_for_backends_catalog_version", "false"));
+
+  // Stall the create index after it acquires the session lock on the table.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "true"));
+  LogWaiter pause_waiter(ts1, "Pausing due to flag TEST_pause_wait_for_lockers");
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() {
+    ASSERT_NOK(conn1.Execute("CREATE INDEX test_k ON test(k)"));
+  });
+  // Unpause on early failure so that the thread above finishes before thread_holder joins it.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
+  });
+  ASSERT_OK(pause_waiter.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  ASSERT_OK(conn2.Execute("SET yb_locks_min_txn_age='0ms'"));
+  auto txn_ids = ASSERT_RESULT(conn2.FetchRows<std::string>(
+      "SELECT DISTINCT ybdetails->>'transactionid' FROM pg_locks WHERE granted AND "
+      "relation = 'test'::regclass AND mode = 'ShareUpdateExclusiveLock'"));
+  ASSERT_FALSE(txn_ids.empty());
+
+  LogWaiter expire_waiter(ts1, "was aborted, expiring the session");
+  for (const auto& txn_id : txn_ids) {
+    LOG(INFO) << "Cancelling txn " << txn_id << ": " << ASSERT_RESULT(conn2.FetchRow<bool>(
+        Format("SELECT yb_cancel_transaction('$0')", txn_id)));
+  }
+  ASSERT_OK(expire_waiter.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
+  thread_holder.JoinAll();
+  // Alter should go through since terminating the session released its session object locks.
+  ASSERT_OK(conn2.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0"));
+}
+
 TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;

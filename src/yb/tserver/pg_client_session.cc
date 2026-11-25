@@ -3553,6 +3553,10 @@ class PgClientSession::Impl {
   void StartShutdown(bool pg_service_shutting_down) {
     VLOG(2) << "StartShutdown for session id: " << id();
     ClearReadTimePin();
+    if (const auto& txn = Transaction(PgClientSessionKind::kPgSession); txn) {
+      // The session is going away anyway, no need to expire it on a remote abort.
+      txn->RemoteAbortCallback({});
+    }
     if (!pg_service_shutting_down) {
       WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
 
@@ -4223,6 +4227,26 @@ class PgClientSession::Impl {
       // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
       // it as a single shard/fast-path transaction.
       RETURN_NOT_OK(txn->Init(IsolationLevel::READ_COMMITTED));
+      // The session level txn holds the session's advisory locks and session object locks. If it
+      // gets aborted in the background (missed heartbeats, deadlock etc), the advisory locks are
+      // released and deadlock detection no longer accounts for the session object locks, so it
+      // isn't safe for the session to continue. Expire the session so that its next request fails
+      // and the pg backend terminates, instead of checking the txn's status on every request.
+      txn->RemoteAbortCallback(
+          [session = shared_this_, expire_session = context_.expire_session, session_id = id_,
+           weak_txn = std::weak_ptr{txn}] {
+            // Don't take a reference to the session here, releasing the last one would run its
+            // destructor on the heartbeat thread. Expiring an unknown session id is a no-op anyway.
+            if (session.expired()) {
+              return;
+            }
+            // The txn id is assigned after the callback is registered, so look it up here. The
+            // heartbeat invoking this callback holds a reference to the txn.
+            const auto txn = weak_txn.lock();
+            LOG(WARNING) << "Session level transaction " << (txn ? txn->id() : TransactionId::Nil())
+                         << " of session " << session_id << " was aborted, expiring the session";
+            expire_session(session_id);
+          });
       session_data.session->SetTransaction(txn);
     }
     return session_data;
