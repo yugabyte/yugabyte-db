@@ -507,6 +507,21 @@ public class TestYsqlDump extends BasePgSQLTest {
     assertTrue(roleOids.containsKey("postgres"));
     assertTrue(roleOids.containsKey("app_admin"));
 
+    // FIRST_NORMAL_OID = 16384 (FirstNormalObjectId in PG).
+    // `initdb` assigns built-in roles an OID < FIRST_NORMAL_OID.
+    // User roles, including `yb_superuser`, have an OID >= FIRST_NORMAL_OID.
+    for (Map.Entry<String, String> role : roleOids.entrySet()) {
+      String name = role.getKey();
+      long oid = Long.parseLong(role.getValue());
+      boolean userRole = name.equals("yb_superuser") || name.equals("yb_superuser_extra")
+          || name.equals("app_admin");
+      if (userRole) {
+        assertTrue(name + " oid " + oid, oid >= FIRST_NORMAL_OID);
+      } else {
+        assertTrue(name + " oid " + oid, oid < FIRST_NORMAL_OID);
+      }
+    }
+
     for (Map.Entry<String, String> role : roleOids.entrySet()) {
       String name = role.getKey();
       String oid = role.getValue();
