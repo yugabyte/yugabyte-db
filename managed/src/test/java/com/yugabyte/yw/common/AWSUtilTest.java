@@ -1039,4 +1039,34 @@ public class AWSUtilTest extends FakeDBApplication {
             YbcBackupUtil.DEFAULT_REGION_STRING, "commonDir", null, s3Data, null);
     assertEquals(expectedRegion, spec.getCredsMap().get(AWSUtil.YBC_AWS_DEFAULT_REGION_FIELDNAME));
   }
+
+  /**
+   * An IAM role config made on a YBA on AWS has no credentials on its HA standby on GCP unless that
+   * host is set up with some: the error says to turn on Federated IAM there, and only there. It
+   * names what the AWS DB nodes then need, and a config that is federated already gets no such
+   * advice.
+   */
+  @Test
+  public void testIamRoleErrorAdvisesFederatedIamOnGcp() {
+    String error = "Unable to load AWS credentials";
+    CustomerConfigStorageS3Data iamRole = new CustomerConfigStorageS3Data();
+    iamRole.isIAMInstanceProfile = true;
+    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error));
+
+    when(mockHostCloudDetector.isHostCloud(com.yugabyte.yw.commissioner.Common.CloudType.gcp))
+        .thenReturn(true);
+    String advised = mockAWSUtil.withIamRoleAdviceOnGcp(iamRole, error);
+    assertTrue(advised, advised.startsWith(error + ". YBA runs on GCP"));
+    // Conditional: the host may have AWS credentials that AWS refused or throttled.
+    assertTrue(advised, advised.contains("only if this host is set up with them"));
+    assertTrue(advised, advised.contains("If it is not, turn on Federated IAM"));
+    assertTrue(advised, advised.contains("set its Signing Region to the bucket's region"));
+    assertTrue(advised, advised.contains("trust this YBA's service account"));
+    assertTrue(advised, advised.contains("AWS DB nodes use their own instance role"));
+
+    CustomerConfigStorageS3Data federated = new CustomerConfigStorageS3Data();
+    federated.isIAMInstanceProfile = true;
+    federated.useCrossCloudFederation = true;
+    assertEquals(error, mockAWSUtil.withIamRoleAdviceOnGcp(federated, error));
+  }
 }
