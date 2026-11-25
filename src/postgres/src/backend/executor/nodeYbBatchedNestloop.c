@@ -432,7 +432,6 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 	if (!bnlstate->bnl_tuple_sort)
 	{
 		TupleDesc	result_desc = result_slot->tts_tupleDescriptor;
-		bool		bounded = bnlstate->bound > 0;
 		int			sortopt = TUPLESORT_NONE;
 
 		/*
@@ -440,7 +439,7 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 		 * sort gets a cheaper tuple context, so only ask for it when a bound
 		 * is set.
 		 */
-		if (bounded)
+		if (bnlstate->bound)
 			sortopt |= TUPLESORT_ALLOWBOUNDED;
 
 		sorter = tuplesort_begin_heap(result_desc,
@@ -453,7 +452,7 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 									  NULL,
 									  sortopt);
 
-		if (bounded)
+		if (bnlstate->bound)
 			tuplesort_set_bound(sorter, bnlstate->bound);
 
 		bnlstate->bnl_tuple_sort = sorter;

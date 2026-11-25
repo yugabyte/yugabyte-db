@@ -1700,12 +1700,9 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 	else if (IsA(child_node, YbBatchedNestLoopState))
 	{
 		YbBatchedNestLoopState *bnl_state = (YbBatchedNestLoopState *) child_node;
+		YbBatchedNestLoop *bnl_plan = (YbBatchedNestLoop *) bnl_state->js.ps.plan;
 
-		/*
-		 * bnl_is_sorted is a runtime flag that each rescan clears. Test the
-		 * plan-level flag so the bound also applies to the first execution.
-		 */
-		if (bnl_state->bnl_needs_sorting)
+		if (bnl_plan->numSortCols > 0)
 		{
 			if (tuples_needed < 0)
 				bnl_state->bound = 0;
