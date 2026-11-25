@@ -185,7 +185,8 @@ class IntentSchemaState {
 
 // Erases each cached schema loaded while decoding a transaction's intents whose version differs
 // from the table's schema at the transaction's commit. The next record then reloads the schema and
-// sends a DDL record for it.
+// sends a DDL record for it. If the lookup fails, the schema stays cached and marked, and the end
+// of the next transaction checks it again.
 void EraseSchemasLoadedInTxn(
     client::YBClient* client, HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
   for (auto it = cached_schema_details->begin(); it != cached_schema_details->end();) {
@@ -194,18 +195,18 @@ void EraseSchemasLoadedInTxn(
       ++it;
       continue;
     }
-    details.loaded_in_txn = false;
     auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
     if (!commit_schema.ok()) {
       LOG(WARNING) << "Keeping cached schema version " << details.schema_version << " of table "
-                   << table_id << ", failed to get its schema at commit time " << commit_time
-                   << ": " << commit_schema.status();
+                   << table_id << " until the end of the next transaction, failed to get its "
+                   << "schema at commit time " << commit_time << ": " << commit_schema.status();
       ++it;
     } else if (commit_schema->second != details.schema_version) {
       VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
               << table_id << ", its schema version at commit is " << commit_schema->second;
       it = cached_schema_details->erase(it);
     } else {
+      details.loaded_in_txn = false;
       ++it;
     }
   }

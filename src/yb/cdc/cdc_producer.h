@@ -41,7 +41,7 @@ struct SchemaDetails {
   std::shared_ptr<Schema> schema;
   // Set when the schema was loaded while decoding a transaction's intents, so it can be a schema
   // from inside that transaction. Checked against the schema at commit once the transaction is
-  // streamed.
+  // streamed, and kept set until that check gets the schema.
   bool loaded_in_txn = false;
 };
 // We will maintain a map for each stream, tablet pait. The schema details will correspond to the

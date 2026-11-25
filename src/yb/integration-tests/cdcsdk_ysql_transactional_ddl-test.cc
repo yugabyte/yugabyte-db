@@ -20,6 +20,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/gutil/casts.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
@@ -534,11 +535,14 @@ class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
  protected:
   // A column added and dropped in the same transaction is removed from the schema right away
   // rather than marked for deletion. Records written after the transaction commits, and the last
-  // DDL record streamed before each of them, must not have the column.
-  void TestWritesAfterDropOfAddedColumn(bool packed_row);
+  // DDL record streamed before each of them, must not have the column. With restart_mid_txn, the
+  // tserver restarts after the first batch of the transaction's intents is streamed, before the
+  // records written while the column existed.
+  void TestWritesAfterDropOfAddedColumn(bool packed_row, bool restart_mid_txn);
 };
 
-void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
+void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(
+    bool packed_row, bool restart_mid_txn) {
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row;
   // With the rows inserted first, the transaction with the DDLs is streamed over several batches of
@@ -564,6 +568,8 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
       /* verify_snapshot_name */ false, test_namespace_name, kYbGrpcStreamIndicator));
 
   constexpr size_t kNumRowsBeforeDdl = 20;
+  // Unpacked UPDATEs, which hold no schema version, keep the transaction going after the DDLs.
+  constexpr size_t kNumRowsUpdatedAfterDdl = 20;
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO test_table SELECT i, i, i FROM generate_series(101, $0) AS i",
@@ -574,6 +580,9 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN d"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 20 WHERE key = 1"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 2"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test_table SET value_2 = value_2 + 1 WHERE key BETWEEN 101 AND $0",
+      100 + kNumRowsUpdatedAfterDdl));
   ASSERT_OK(conn.Execute("COMMIT"));
 
   // Writes after the commit: single-shard ones and a distributed transaction.
@@ -585,17 +594,47 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(DeleteRows(3 /* key */, &test_cluster_));
 
-  constexpr size_t kNumTxnRecords = kNumRowsBeforeDdl + 4;
+  constexpr size_t kNumTxnRecords = kNumRowsBeforeDdl + 4 + kNumRowsUpdatedAfterDdl;
   constexpr size_t kNumRecords = kNumTxnRecords + 5;
+
+  std::vector<CDCSDKProtoRecordPB> records;
+  size_t num_records_before_restart = 0;
+  CDCSDKCheckpointPB checkpoint;
+  const CDCSDKCheckpointPB* checkpoint_ptr = nullptr;
+  if (restart_mid_txn) {
+    bool in_txn = false;
+    for (int i = 0; i < 20 && !in_txn; ++i) {
+      auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, checkpoint_ptr));
+      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+        records.push_back(record);
+        if (IsDMLRecord(record)) {
+          ++num_records_before_restart;
+        }
+      }
+      checkpoint = change_resp.cdc_sdk_checkpoint();
+      checkpoint_ptr = &checkpoint;
+      in_txn = !checkpoint.key().empty() || checkpoint.write_id() != 0;
+    }
+    ASSERT_TRUE(in_txn);
+    ASSERT_GT(num_records_before_restart, 0);
+    ASSERT_LT(num_records_before_restart, kNumRowsBeforeDdl);
+
+    auto* tserver = test_cluster()->mini_tablet_server(0);
+    ASSERT_OK(tserver->Restart());
+    ASSERT_OK(tserver->WaitStarted());
+  }
+
   auto change_resp = GetAllPendingChangesFromCdc(
-      stream_id, tablets, nullptr /* cp */, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
-      0 /* wal_segment_index */, kNumRecords /* expected_records_count */);
+      stream_id, tablets, checkpoint_ptr, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
+      0 /* wal_segment_index */,
+      narrow_cast<int>(kNumRecords - num_records_before_restart) /* expected_records_count */);
+  records.insert(records.end(), change_resp.records.begin(), change_resp.records.end());
 
   std::vector<CDCSDKProtoRecordPB> dml_records;
   // The columns of the last DDL record streamed before each DML record.
   std::vector<std::vector<std::string>> ddl_columns_before_dml;
   std::vector<std::string> ddl_columns;
-  for (const auto& record : change_resp.records) {
+  for (const auto& record : records) {
     if (record.row_message().op() == RowMessage::DDL) {
       ddl_columns.clear();
       for (const auto& column : record.row_message().schema().column_info()) {
@@ -635,6 +674,9 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
   const auto& deleted = dml_records[kNumRowsBeforeDdl + 3];
   ASSERT_EQ(deleted.row_message().op(), RowMessage::DELETE);
   ASSERT_NO_FATALS(AssertBeforeImageKeyValue(deleted, 2, 2));
+  for (size_t i = kNumRowsBeforeDdl + 4; i < kNumTxnRecords; ++i) {
+    ASSERT_EQ(dml_records[i].row_message().op(), RowMessage::UPDATE) << i;
+  }
 
   ExpectedRecordWithThreeColumns expected_records[] = {
       {1, 30, 1}, {3, 3, 3}, {1, 40, 1}, {3, 33, 3}, {}};
@@ -654,11 +696,19 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(bool packed_row) {
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnPacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true);
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true, /* restart_mid_txn = */ false);
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnUnpacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false);
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false, /* restart_mid_txn = */ false);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnPacked) {
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true, /* restart_mid_txn = */ true);
+}
+
+TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnUnpacked) {
+  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false, /* restart_mid_txn = */ true);
 }
 
 }  // namespace cdc
