@@ -120,11 +120,10 @@ public class UniverseControllerRequestBinder {
   }
 
   /**
-   * Returns current's ports as JSON with the requested ports on top. A key that the request
-   * leaves out or sends as null keeps current's port. Any other non-object gives 400.
+   * Returns current's ports as JSON with the requested ports on top. A key that the request leaves
+   * out or sends as null keeps current's port. Any other non-object gives 400.
    */
-  public static ObjectNode mergePorts(
-      CommunicationPorts current, @Nullable JsonNode requested) {
+  public static ObjectNode mergePorts(CommunicationPorts current, @Nullable JsonNode requested) {
     ObjectNode merged = Json.mapper().valueToTree(current);
     if (requested == null || requested.isNull()) {
       return merged;
