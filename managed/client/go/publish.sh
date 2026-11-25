@@ -44,6 +44,11 @@ generated_files() {
 }
 grep -q '^package ywclient$' "$GEN_DIR/v1/client.go" \
   || die "v1 was generated with an old config (package is not ywclient). Run sbt swaggerGen."
+# Files from before the ywclient rename stay in v1, because the generator does not delete them.
+if OLD_PKG="$(grep -rl --include='*.go' '^package v1$' "$GEN_DIR/v1")"; then
+  die "v1 has files of the old package v1 (${OLD_PKG%%$'\n'*})." \
+    "Run sbt \"cleanClients; swaggerGen\"."
+fi
 grep -qx 'module github.com/yugabyte/platform-go-client' "$GEN_DIR/v1/go.mod" \
   || die "v1/go.mod has the wrong module path. Run sbt swaggerGen."
 
@@ -98,7 +103,7 @@ fi
 
 git -C "$CLIENT_REPO" rev-parse --git-dir >/dev/null 2>&1 \
   || die "$CLIENT_REPO is not a git clone."
-git -C "$CLIENT_REPO" remote get-url origin | grep -q 'yugabyte/platform-go-client' \
+git -C "$CLIENT_REPO" remote get-url origin | grep -qi 'yugabyte/platform-go-client' \
   || die "The origin of $CLIENT_REPO is not yugabyte/platform-go-client."
 # cleanup runs from /, so a relative clone path must become absolute.
 CLIENT_REPO="$(cd "$CLIENT_REPO" && pwd)"
@@ -257,6 +262,8 @@ check_consumer yba-cli "$MANAGED_DIR/yba-cli" '.' \
   || die "yba-cli does not build or pass its tests against the new client. Fix yba-cli first."
 TF_DIR="${TERRAFORM_PROVIDER_YBA_DIR:-$HOME/code/terraform-provider-yba}"
 if [[ -f "$TF_DIR/go.mod" ]]; then
+  # check_consumer runs go work init from another directory, so the path must be absolute.
+  TF_DIR="$(cd "$TF_DIR" && pwd)"
   # The provider bumps the client on its own schedule, so a break is reported, not fatal. The
   # check builds the local clone as it is, so local edits can also cause a failure.
   check_consumer terraform-provider-yba "$TF_DIR" '^$' \
@@ -328,9 +335,10 @@ BREAKS_TITLE+=" Go API changes that break callers (apidiff)"
 
 git push -q -u origin "$BRANCH"
 KEEP_BRANCH=true
-# GitHub refuses a review request from the PR author.
+# GitHub refuses a review request from the PR author. Logins are case-insensitive.
+lower() { tr '[:upper:]' '[:lower:]' <<< "$1"; }
 REVIEWER_ARGS=()
-if [[ "$(gh api user -q .login)" != "$CLIENT_REVIEWER" ]]; then
+if [[ "$(lower "$(gh api user -q .login)")" != "$(lower "$CLIENT_REVIEWER")" ]]; then
   REVIEWER_ARGS=(--reviewer "$CLIENT_REVIEWER")
 fi
 PR_URL="$(gh pr create --draft --repo yugabyte/platform-go-client --base master \

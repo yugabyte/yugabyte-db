@@ -33,6 +33,7 @@ $(GOIMPORTS):
 	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 # Mirror v1 and v2 into platform-go-client and open a draft PR.
-# Run sbt swaggerGen first. DRY_RUN=1 stops before push.
+# Run sbt swaggerGen first. DRY_RUN=1 stops before push. In a checkout that generated the
+# client before the ywclient package rename, run sbt "cleanClients; swaggerGen" once.
 publish:
 	./publish.sh $(if $(filter 1 true yes,$(DRY_RUN)),--dry-run)
