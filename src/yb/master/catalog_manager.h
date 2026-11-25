@@ -1649,8 +1649,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns true if the table is created internally by a YugabyteDB feature/extension (e.g.
   // xCluster DDL replication) and must be excluded from CDCSDK streams. Such tables look like
   // ordinary user PG tables but exist solely to drive those features, so they should never be
-  // streamed. This is the single place to register such tables: when a new feature/extension
-  // introduces a table that CDCSDK must exclude, add a check for it here.
+  // streamed. When a new feature/extension introduces a table that CDCSDK must exclude, add a
+  // check for it here and in yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c,
+  // which keeps the table out of every logical replication slot's table list.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
