@@ -1678,6 +1678,10 @@ void CDCSDKConsumptionConsistentChangesTest::TestVectorIndexAlterDoesNotLeakInde
   bool seen_table_ddl = false;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
+    // CREATE SCHEMA gives a DDL record without a table.
+    if (row_message.op() == RowMessage::DDL && row_message.table_id().empty()) {
+      continue;
+    }
     if (row_message.op() == RowMessage::DDL && !row_message.has_schema()) {
       ASSERT_EQ(row_message.table_id(), table.table_id()) << row_message.ShortDebugString();
       seen_table_ddl = true;
@@ -8040,6 +8044,10 @@ TEST_F(
   std::vector<uint64_t> ddl_record_times;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
+    // CREATE SCHEMA gives a DDL record without a table.
+    if (row_message.op() == RowMessage_Op_DDL && row_message.table_id().empty()) {
+      continue;
+    }
     if (row_message.op() == RowMessage_Op_INSERT) {
       ASSERT_EQ(row_message.table_id(), table.table_id());
       ASSERT_TRUE(row_message.has_record_time());
