@@ -10254,14 +10254,10 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
 }
 
 /*
- * Cost a ybgin index scan that ybgin cannot execute yet (TODO(#7850)).
- *
- * The scan costs yb_test_ybgin_disable_cost_factor times disable_cost.  The
- * planner compares disabled node counts before costs, so a factor above 1 also
- * counts the scan as a disabled node.  The scan then loses to a path whose
- * only penalty is one disabled node, such as a seq scan with enable_seqscan
- * off, just as its cost loses to one disable_cost.  A factor of 1 or less
- * leaves the count alone so that tests can force the scan.
+ * Cost a ybgin scan that ybgin cannot execute yet (#7850).  The planner
+ * compares disabled node counts before costs, so a factor above 1 also counts
+ * the scan as a disabled node, as its cost exceeds one disable_cost.  A factor
+ * of 1 or less lets tests force the scan.
  */
 static void
 yb_cost_unsupported_ybgin_scan(IndexPath *path, Cost *indexStartupCost,
