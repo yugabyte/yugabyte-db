@@ -63,6 +63,7 @@ func addDefaults(v *viper.Viper) {
 	v.SetDefault("prometheus.timeout", "30s")
 	v.SetDefault("prometheus.retention_time", "15d")
 	v.SetDefault("prometheus.enable_https", false)
+	v.SetDefault("prometheus.enable_hsts", false)
 	v.SetDefault("prometheus.enable_auth", false)
 	v.SetDefault("prometheus.auth_username", "prometheus")
 	v.SetDefault("prometheus.auth_password", "")

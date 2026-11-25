@@ -263,6 +263,12 @@ services:
           - {{ removeQuotes $suite }}
           {{ end }}
         {{ end }}
+      {{ if eq (yamlPath "prometheus.enableHsts") "true" }}
+      {{/* Same value the platform's HSTSFilter sends; HSTS is per-host, so the two should agree. */}}
+      http_server_config:
+        headers:
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+      {{ end }}
       {{ end }}
   - name: prometheusLogrotate
     fileName: "{{ logrotateD }}/prometheus"

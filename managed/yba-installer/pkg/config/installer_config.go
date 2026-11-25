@@ -114,6 +114,7 @@ type prometheusConfig struct {
 	Timeout           string            `mapstructure:"timeout"`
 	RetentionTime     string            `mapstructure:"retention_time"`
 	EnableHttps       bool              `mapstructure:"enable_https"`
+	EnableHsts        bool              `mapstructure:"enable_hsts"`
 	EnableAuth        bool              `mapstructure:"enable_auth"`
 	AuthUsername      string            `mapstructure:"auth_username"`
 	AuthPassword      string            `mapstructure:"auth_password"`
