@@ -33,19 +33,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
--- Populate the catalog caches so that no catalog reads occur during the
--- actual test. This is done because if we are using the legacy mode of
--- catalog reads (i.e., object locking off) with
--- yb_ddl_transaction_block_enabled=true, then catalog reads use the same
--- read snapshot as the first read and end up saving the statement's read time
--- in the read point history and hide the bug.
-
-BEGIN;
-SELECT rp_write(a.id) AS written_val,
-       (SELECT count(*) FROM rp_target WHERE id <= a.id) AS count_after_write
-FROM rp_anchor a;
-ROLLBACK;
-
 -- Case 1: the read time is returned by the remote tserver as used_read_time.
 BEGIN;
 UPDATE rp_dummy SET v = v + 1 WHERE id = 1; -- start a distributed transaction

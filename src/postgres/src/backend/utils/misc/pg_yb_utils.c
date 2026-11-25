@@ -2946,25 +2946,33 @@ YbTrackAlteredTableId(Oid relid)
 }
 
 /*
- * YbLockDatabaseToSerializeDdl
+ * YbLockDatabaseToBlockDdlConcurrency
  *
- * With ysql_enable_concurrent_ddl off, the DDL transactions in one database
- * that increment the catalog version run one at a time: each takes this lock
- * in EXCLUSIVE mode and holds it until it ends. With it on, no DDL takes the
- * lock, and DDLs run as concurrently as object locks allow. A DDL whose
- * mode does not increment the catalog version, such as CREATE TEMP TABLE,
- * takes no lock; a later DDL of its transaction that does takes it then.
- * An ANALYZE from the auto-analyze service takes no lock either, so that
- * background statistics collection never holds up the DDLs in its database.
+ * ysql_enable_concurrent_ddl takes effect only in a transaction with global
+ * object locks. Turning it off is a guardrail that reduces DDL concurrency:
+ * the DDL transactions in one database that increment the catalog version
+ * then run one at a time, even on unrelated objects. Each takes this lock in
+ * EXCLUSIVE mode on its own database and holds it until it ends. With the
+ * flag on, no DDL takes the lock, and object locks alone order DDLs.
+ *
+ * With the flag off, these still run concurrently with other DDLs:
+ * - A DDL whose mode does not increment the catalog version, such as CREATE
+ *   TEMP TABLE. A later DDL of its transaction that does takes the lock then.
+ * - An ANALYZE from the auto-analyze service, so that background statistics
+ *   collection never holds up the DDLs in its database.
+ * - A DDL in another database. A global DDL, one that changes a shared
+ *   catalog and increments the catalog version of every database, takes the
+ *   lock only in the database it runs in, so it does not wait for the DDLs in
+ *   other databases.
  */
 void
-YbLockDatabaseToSerializeDdl(YbDdlMode mode)
+YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode)
 {
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl &&
-		YBIsDdlTransactionBlockEnabled() &&
+		YBCUsingObjectLocksGloballyForCurrentTxn() &&
 		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
 		!(yb_use_internal_auto_analyze_service_conn && CheckIsAnalyzeDDL()))
-		LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
+		LockDatabaseObject(YbDdlConcurrencyLockOid, InvalidOid, 0,
 						   ExclusiveLock);
 }
 
@@ -3021,27 +3029,27 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 void
 YBAddDdlTxnState(YbDdlMode mode)
 {
-	YBAddDdlTxnStateExtended(mode, true /* serialize_ddl_in_database */ );
+	YBAddDdlTxnStateExtended(mode, true /* block_ddl_concurrency_in_db */ );
 }
 
 /*
  * YBAddDdlTxnStateExtended
  *
- * serialize_ddl_in_database is false for a DDL transaction that waits for
+ * block_ddl_concurrency_in_db is false for a DDL transaction that waits for
  * lockers right after it enters DDL state: the second transaction of DETACH
  * PARTITION CONCURRENTLY. The wait is registered under the session's
  * transaction, while the lock belongs to the DDL's transaction, so a writer
  * the wait waits for, running a DDL that queues on a lock the DDL already
  * held, would block with it until a timeout, with no deadlock reported. Such
- * a caller takes the lock with YbLockDatabaseToSerializeDdl after its wait.
+ * a caller takes the lock with YbLockDatabaseToBlockDdlConcurrency after its wait.
  */
 void
-YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
+YBAddDdlTxnStateExtended(YbDdlMode mode, bool block_ddl_concurrency_in_db)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
 
-	if (serialize_ddl_in_database)
-		YbLockDatabaseToSerializeDdl(mode);
+	if (block_ddl_concurrency_in_db)
+		YbLockDatabaseToBlockDdlConcurrency(mode);
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -3091,7 +3099,6 @@ YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
-	YbMaybeLockMasterCatalogVersion();
 	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
 }
 
@@ -3111,12 +3118,12 @@ YBMergeDdlTxnState()
  * Adds aspects to the mode of a DDL transaction that already entered DDL
  * state. If they include a catalog version increment, the transaction takes
  * the database DDL lock here, as it would have on entering DDL state with
- * them (see YbLockDatabaseToSerializeDdl).
+ * them (see YbLockDatabaseToBlockDdlConcurrency).
  */
 void
 YBAddModificationAspects(YbDdlMode mode)
 {
-	YbLockDatabaseToSerializeDdl(mode);
+	YbLockDatabaseToBlockDdlConcurrency(mode);
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 

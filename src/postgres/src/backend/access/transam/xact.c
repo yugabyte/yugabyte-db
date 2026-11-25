@@ -3405,25 +3405,25 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
  * statement that runs in several transactions, such as an ANALYZE of several
  * tables, and carries the statement's DDL state into the new transaction. The
  * new transaction takes the database DDL lock like any DDL transaction (see
- * YbLockDatabaseToSerializeDdl).
+ * YbLockDatabaseToBlockDdlConcurrency).
  */
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	YbCommitTransactionCommandIntermediateExtended(true /* serialize_ddl_in_database */ );
+	YbCommitTransactionCommandIntermediateExtended(true /* block_ddl_concurrency_in_db */ );
 }
 
 /*
  * YbCommitTransactionCommandIntermediateExtended
  *
- * With serialize_ddl_in_database false, the new transaction enters DDL state
+ * With block_ddl_concurrency_in_db false, the new transaction enters DDL state
  * without the database DDL lock. DETACH PARTITION CONCURRENTLY needs this: it
  * waits for lockers right after the new transaction starts, and holding the
  * lock during that wait can block a writer's DDL with no deadlock reported
  * (see YBAddDdlTxnStateExtended). It takes the lock after the wait.
  */
 void
-YbCommitTransactionCommandIntermediateExtended(bool serialize_ddl_in_database)
+YbCommitTransactionCommandIntermediateExtended(bool block_ddl_concurrency_in_db)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
@@ -3473,7 +3473,7 @@ YbCommitTransactionCommandIntermediateExtended(bool serialize_ddl_in_database)
 		 * decide whether to take the database DDL lock (ANALYZE does not).
 		 */
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
-		YBAddDdlTxnStateExtended(ddl_mode, serialize_ddl_in_database);
+		YBAddDdlTxnStateExtended(ddl_mode, block_ddl_concurrency_in_db);
 	}
 }
 

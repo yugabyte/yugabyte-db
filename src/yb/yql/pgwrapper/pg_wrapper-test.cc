@@ -1225,7 +1225,7 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
       {"ysql_enable_concurrent_ddl", "true"},
       {"enable_object_locking_for_table_locks", "true"},
   }));
-  // Object locking with concurrent DDL off serializes DDLs per database.
+  // Object locking with concurrent DDL off runs DDLs in a database one at a time.
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},

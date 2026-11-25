@@ -20578,7 +20578,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		/* commit the transaction and start new txn with the same ddl state. */
 		if (IsYugaByteEnabled())
-			YbCommitTransactionCommandIntermediateExtended(false /* serialize_ddl_in_database */ );
+			YbCommitTransactionCommandIntermediateExtended(false /* block_ddl_concurrency_in_db */ );
 		else
 		{
 			/* Make updated catalog entry visible */
@@ -20602,7 +20602,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		/* YB: Take the database DDL lock only after the wait. */
 		if (IsYugaByteEnabled() && YBCPgIsDdlMode())
-			YbLockDatabaseToSerializeDdl(YBGetCurrentDdlMode());
+			YbLockDatabaseToBlockDdlConcurrency(YBGetCurrentDdlMode());
 
 		/*
 		 * Now acquire locks in both relations again.  Note they may have been
