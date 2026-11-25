@@ -391,7 +391,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	{
 		const char *logdetail = NULL;
 
-		YbCheckPreHashedPasswordAllowed(password, InvalidOid /* new role */ );
+		YbCheckPreHashedPasswordAllowed(password, InvalidOid /* roleid */ );
 
 		/*
 		 * Don't allow an empty password. Libpq treats an empty password the

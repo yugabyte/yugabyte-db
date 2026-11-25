@@ -559,8 +559,9 @@ DROP USER phenc;
 -- Settings saved for a role and for all roles can still give a login both
 -- yb_allow_prehashed_passwords on and a reuse window: the SET-time checks
 -- see only this session's values. The role can still change its password
--- in plaintext, under its reuse policy; a pre-hashed one is refused. Its
--- window does not apply to another role's password, which is not compared.
+-- in plaintext, under its reuse policy; a pre-hashed one, MD5 or SCRAM, is
+-- refused. Its window does not apply to another role's password, which is
+-- not compared. A role with no window can set its own pre-hashed password.
 -- The role that logged in decides whose password is its own, also inside a
 -- SECURITY DEFINER function. A superuser's own password is checked the same
 -- way. A pre-hashed password an admin sets still goes into the role's
@@ -583,9 +584,14 @@ SHOW yb_password_reuse_history;
 ALTER ROLE app_user PASSWORD 'pw_two';
 ALTER ROLE app_user PASSWORD 'pw_two';              -- fail: reused
 ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail
+ALTER ROLE app_user PASSWORD 'SCRAM-SHA-256$4096:MDEyMzQ1Njc4OWFiY2RlZg==$AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='; -- fail
 SELECT set_app_user_prehashed();                    -- fail: its own password
 CREATE ROLE other_user LOGIN PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
 ALTER ROLE other_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
+ALTER ROLE other_user PASSWORD 'SCRAM-SHA-256$4096:MDEyMzQ1Njc4OWFiY2RlZg==$AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='; -- ok: another role
+\c yugabyte other_user
+SHOW yb_password_reuse_history;
+ALTER ROLE other_user PASSWORD 'SCRAM-SHA-256$4096:MDEyMzQ1Njc4OWFiY2RlZg==$AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8='; -- ok: no reuse window
 \c yugabyte admin
 SHOW yb_password_reuse_history;
 ALTER FUNCTION set_app_user_prehashed() OWNER TO app_user;

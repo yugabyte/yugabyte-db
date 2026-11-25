@@ -110,8 +110,9 @@ YbPasswordReusePolicyActive(int reuse_max, int reuse_time_mins,
 /*
  * Check the password given for role roleid (InvalidOid for a role being
  * created), in this order:
- * - A plaintext password is accepted.
- * - A binary upgrade or a restore (yb_binary_restore) is accepted.
+ * - A plaintext password is always accepted irrespective of policy.
+ * - A pre-hashed password is accepted on major version upgrade and restore
+ *   (yb_binary_restore).
  * - A pre-hashed password is refused when yb_allow_prehashed_passwords is
  *   off.
  * - A pre-hashed password for the role that logged in is refused when a
