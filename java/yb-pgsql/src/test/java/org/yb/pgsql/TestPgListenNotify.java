@@ -1844,6 +1844,16 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testNoDuplicateAfterRelistenWithSamePoller() throws Exception {
     final String channel = "relisten_replay";
 
+    // Under Connection Manager, keep LISTEN sticky so A re-LISTENs on the same backend; the
+    // duplicate-detection state is per backend.
+    if (isTestRunningWithConnectionManager()) {
+      setConnMgrReversibleStickinessExclusions("listen");
+      try (Connection conn = getConnectionBuilder().connect()) {
+        waitForCondition(conn,
+            "SELECT CASE WHEN current_setting('yb_conn_mgr_listen_permanent_sticky') = 'on'"
+            + " THEN 1 ELSE 0 END");
+      }
+    }
     try {
       // The poller now crashes after every queue write, before the CDC ack, so it keeps
       // replaying the same transaction.
@@ -1870,6 +1880,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
     } finally {
       setFatalAfterNotifsQueueWriteFlag(false);
+      if (isTestRunningWithConnectionManager()) {
+        setConnMgrReversibleStickinessExclusions("");
+      }
     }
 
     verifyListenNotifyWorks();
