@@ -201,7 +201,7 @@ POSIX message queues     (bytes, -q) 819200
 real-time priority              (-r) 0
 stack size              (kbytes, -s) 8192
 cpu time               (seconds, -t) unlimited
-max user processes              (-u) 12000
+max user processes              (-u) 64000
 virtual memory          (kbytes, -v) unlimited
 file locks                      (-x) unlimited
 ```
@@ -219,7 +219,7 @@ $ ulimit -n <value>
 -t (cpu time): unlimited
 -v (virtual memory): unlimited [1]
 -l (locked-in-memory size): unlimited
--n (open files): 64000
+-n (open files): 1048576
 -m (memory size): unlimited [1] [2]
 -u (processes/threads): 64000
 ```
@@ -243,14 +243,14 @@ Changes made using ulimit may revert following a system restart depending on the
 *                -       msgqueue        819200
 *                -       stack           8192
 *                -       cpu             unlimited
-*                -       nproc           12000
+*                -       nproc           64000
 *                -       locks           unlimited
 ```
 
 On CentOS, `/etc/security/limits.d/20-nproc.conf` must also be configured to match.
 
 ```conf
-*          soft    nproc     12000
+*          soft    nproc     64000
 ```
 
 After changing a ulimit setting in `/etc/security/limits.conf`, you will need to log out and back in. To update system processes, you may need to restart.
@@ -258,7 +258,7 @@ After changing a ulimit setting in `/etc/security/limits.conf`, you will need to
 {{< note title="Using other distributions" >}}
 If you're using a desktop-distribution, such as ubuntu-desktop, the preceding settings may not suffice. The operating system needs additional steps to change ulimit for GUI login.
 
-In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add `DefaultLimitNOFILE=64000` at the end of file.
+In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add `DefaultLimitNOFILE=1048576` at the end of file.
 
 Something similar may be needed for other distributions.
 {{< /note >}}
@@ -345,7 +345,7 @@ LimitCORE=      | ulimit -c            | infinity |
 LimitRSS=       | ulimit -m            | infinity |
 LimitNOFILE=    | ulimit -n            | 1048576  |
 LimitAS=        | ulimit -v            | infinity |
-LimitNPROC=     | ulimit -u            | 12000  |
+LimitNPROC=     | ulimit -u            | 64000  |
 LimitMEMLOCK=   | ulimit -l            | 64 |
 LimitLOCKS=     | ulimit -x            | infinity |
 LimitSIGPENDING=| ulimit -i            | 119934 |

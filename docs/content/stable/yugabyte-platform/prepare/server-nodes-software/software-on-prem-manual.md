@@ -186,14 +186,14 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     *                -       msgqueue        819200
     *                -       stack           8192
     *                -       cpu             unlimited
-    *                -       nproc           12000
+    *                -       nproc           64000
     *                -       locks           unlimited
     ```
 
 1. Modify the following line in the `/etc/security/limits.d/20-nproc.conf` file:
 
     ```text
-    *          soft    nproc     12000
+    *          soft    nproc     64000
     ```
 
 1. Execute the following to tune kernel settings:
@@ -424,7 +424,7 @@ You can install systemd-specific database service unit files, as follows:
     # ulimit
     LimitCORE=infinity
     LimitNOFILE=1048576
-    LimitNPROC=12000
+    LimitNPROC=64000
 
     [Install]
     WantedBy=default.target
@@ -462,7 +462,7 @@ You can install systemd-specific database service unit files, as follows:
     # ulimit
     LimitCORE=infinity
     LimitNOFILE=1048576
-    LimitNPROC=12000
+    LimitNPROC=64000
 
     [Install]
     WantedBy=default.target
@@ -545,7 +545,7 @@ You can install systemd-specific database service unit files, as follows:
     # ulimit
     LimitCORE=infinity
     LimitNOFILE=1048576
-    LimitNPROC=12000
+    LimitNPROC=64000
 
     [Install]
     WantedBy=default.target

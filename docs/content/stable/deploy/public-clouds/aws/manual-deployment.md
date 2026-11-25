@@ -239,7 +239,7 @@ To ensure proper ulimit settings needed for YugabyteDB, add these lines to `/etc
 ```output
 *       -       core    unlimited
 *       -       nofile  1048576
-*       -       nproc   12000
+*       -       nproc   64000
 ```
 
 Sample commands to set the above on all nodes.
@@ -249,7 +249,7 @@ for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       core    unlimited' | sudo tee -a /etc/security/limits.conf"; \
    ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nofile  1048576' | sudo tee -a /etc/security/limits.conf"; \
-   ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nproc   12000' | sudo tee -a /etc/security/limits.conf"; \
+   ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nproc   64000' | sudo tee -a /etc/security/limits.conf"; \
 done
 ```
 
@@ -260,7 +260,7 @@ $ cat /etc/security/limits.d/20-nproc.conf
 ```
 
 ```output
-*          soft    nproc     12000
+*          soft    nproc     64000
 root       soft    nproc     unlimited
 ```
 
@@ -269,7 +269,7 @@ A sample command to set the above on all nodes.
 ```sh
 for ip in $ALL_NODES; do \
    echo =======$ip=======; \
-   ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nproc   12000' | sudo tee -a /etc/security/limits.d/20-nproc.conf"; \
+   ssh -i $PEM $ADMIN_USER@$ip sudo "echo '*       -       nproc   64000' | sudo tee -a /etc/security/limits.d/20-nproc.conf"; \
 done
 ```
 
@@ -286,7 +286,7 @@ The values should be along the lines of:
 
 ```output
 open files                      (-n) 1048576
-max user processes              (-u) 12000
+max user processes              (-u) 64000
 core file size          (blocks, -c) unlimited
 ```
 
