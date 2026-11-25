@@ -664,10 +664,11 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
  * YB: The transaction priority bounds check each other on SET (lower <= the
  * current upper, upper >= the current lower), so replaying both can fail in
  * either fixed order, depending on what the backend holds. That is not always
- * a session value connection manager knows about: startup options, ALTER
- * ROLE/DATABASE ... SET and the config file set it too. Setting the lower
- * bound to 0 first makes the order safe: the upper bound then passes against
- * 0, and the client's lower bound passes against the client's upper bound.
+ * a session value: startup options are deployed before the session values,
+ * and ALTER ROLE/DATABASE ... SET and the config file set the bounds without
+ * connection manager tracking them. Setting the lower bound to 0 first makes
+ * the order safe: the upper bound then passes against 0, and the client's
+ * lower bound passes against the client's upper bound.
  *
  * lower and upper are the client's bounds that differ from the backend's, or
  * NULL. A single one is sent alone. That is safe when the other bound is
