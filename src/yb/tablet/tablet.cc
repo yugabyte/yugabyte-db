@@ -3422,8 +3422,9 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   // A restore can add back a vector index whose storage is still being destroyed, or was left by a
   // crash during its removal. The metadata must not list the index before the storage is gone, see
   // RemoveTable. Blocks the apply, but only in that case.
-  RETURN_NOT_OK(vector_indexes_->PrepareAddTable(
-      table_info.table_id(), index_info ? &*index_info : nullptr));
+  if (index_info && index_info->is_vector_index()) {
+    RETURN_NOT_OK(vector_indexes_->PrepareAddIndex(table_info.table_id(), *index_info));
+  }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the
   // table: a flush in between would record this operation as applied without the mark.

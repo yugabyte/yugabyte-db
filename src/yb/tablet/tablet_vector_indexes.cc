@@ -309,6 +309,7 @@ class TabletVectorIndexes::PendingDestroys
         : table_id(vector_index->table_id()), index(std::move(vector_index)) {}
 
     TableId table_id;
+    // Null while Process destroys the index.
     docdb::DocVectorIndexPtr index;
   };
 
@@ -471,14 +472,11 @@ Status TabletVectorIndexes::CreateSkippedIndexes(
   return Status::OK();
 }
 
-Status TabletVectorIndexes::PrepareAddTable(
-    const TableId& table_id, const qlexpr::IndexInfo* index_info) {
-  if (!index_info || !index_info->is_vector_index()) {
-    return Status::OK();
-  }
-  TEST_SYNC_POINT("TabletVectorIndexes::PrepareAddTable");
+Status TabletVectorIndexes::PrepareAddIndex(
+    const TableId& table_id, const qlexpr::IndexInfo& index_info) {
+  TEST_SYNC_POINT("TabletVectorIndexes::PrepareAddIndex");
   pending_destroys_->WaitDestroyed(table_id);
-  auto storage_dir = metadata().vector_index_dir(index_info->vector_idx_options());
+  auto storage_dir = metadata().vector_index_dir(index_info.vector_idx_options());
   if (!docdb::IsVectorIndexStorageMarkedRemoved(env(), storage_dir)) {
     return Status::OK();
   }

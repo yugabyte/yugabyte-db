@@ -106,17 +106,17 @@ class TabletVectorIndexes :
       EXCLUDES(vector_indexes_mutex_);
 
   // Takes the index out of the tablet and stops it, see DocVectorIndex::StartDestroy. Marks its
-  // storage as removed, see docdb::MarkRemovedVectorIndexStorage, for PrepareAddTable. Returns the
+  // storage as removed, see docdb::MarkRemovedVectorIndexStorage, for PrepareAddIndex. Returns the
   // completion of the removal, which destroys the storage, in the background unless the index was
   // skipped, see ScheduleDestroy. The caller runs it once the tablet metadata no longer lists the
   // index; dropping it keeps the storage.
   Result<std::function<void()>> Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
-  // Called before the tablet metadata lists the table again. Waits for the destroy of a removed
-  // vector index of the table, whose storage the table would use, and deletes that storage if a
-  // crash left it, see Remove. Only Raft applies remove indexes, one at a time like the caller, so
-  // none is queued after the wait.
-  Status PrepareAddTable(const TableId& table_id, const qlexpr::IndexInfo* index_info);
+  // Called before the tablet metadata lists the vector index. Waits for the destroy that an earlier
+  // removal of the index scheduled, since it deletes the storage the index uses, and deletes that
+  // storage if a crash left it, see Remove. Only Raft applies remove indexes, one at a time like
+  // the caller, so none is queued after the wait.
+  Status PrepareAddIndex(const TableId& table_id, const qlexpr::IndexInfo& index_info);
 
   // Instantiates vector indexes of the given indexed table that were skipped because the indexed
   // column was missing from the schema (see DoCreateIndex), once an alter brings the column back.

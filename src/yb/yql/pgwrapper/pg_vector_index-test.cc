@@ -4101,9 +4101,15 @@ void PgVectorIndexColocationOnlyTest::TestSkippedIndexStorageDestroyedOnRemove(
         return true;
       },
       60s * kTimeMultiplier, "Index removed from the tablets"));
-  for (const auto& dir : skipped_dirs) {
-    EXPECT_FALSE(Env::Default()->FileExists(dir)) << dir;
-  }
+  // The removal deletes the storage only after it flushes the metadata without the index.
+  ASSERT_OK(WaitFor(
+      [&skipped_dirs] {
+        auto* env = Env::Default();
+        return std::ranges::none_of(skipped_dirs, [env](const auto& dir) {
+          return env->FileExists(dir) || docdb::IsVectorIndexStorageMarkedRemoved(*env, dir);
+        });
+      },
+      30s * kTimeMultiplier, "Skipped index storage and its removal mark deleted"));
   for (const auto& dir : kept_dirs) {
     EXPECT_TRUE(Env::Default()->FileExists(dir)) << dir;
   }
@@ -9929,7 +9935,7 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
 // waiting there blocks the tablet and the heartbeats of its tservers (GH#38073). The removal does
 // not wait for the destroy of the index storage either, which waits for the queued inserts to skip
 // their vectors.
-TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
+TEST_P(PgVectorIndexColocationOnlyTest, CancelCreateIndexDuringBackfill) {
   constexpr size_t kNumRows = 2000;
   // With one insert thread and one vector per task, each replica needs kNumRows * kInsertDelay to
   // backfill, far longer than kRemoveTimeout.
@@ -10015,7 +10021,7 @@ TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
 // The removal of an index may delete its storage only once the tablet metadata no longer lists the
 // index: after a crash in between, bootstrap would open the index from its partly deleted storage
 // and fail the tablet.
-TEST_P(PgVectorIndexTest, RemoveIndexDeletesStorageAfterMetadataFlush) {
+TEST_P(PgVectorIndexColocationOnlyTest, RemoveIndexDeletesStorageAfterMetadataFlush) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
@@ -10075,7 +10081,7 @@ TEST_P(PgVectorIndexTest, RemoveIndexDeletesStorageAfterMetadataFlush) {
 // (see TabletVectorIndexes::DoCreateIndex), must wait for the destroy, which would otherwise delete
 // the storage the re-added index uses. The tablet metadata must not list the index meanwhile: a
 // flush of it followed by a crash would leave a listed index with partly deleted storage.
-TEST_P(PgVectorIndexTest, ReAddIndexWaitsForPendingDestroy) {
+TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexWaitsForPendingDestroy) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
@@ -10095,7 +10101,7 @@ TEST_P(PgVectorIndexTest, ReAddIndexWaitsForPendingDestroy) {
     destroys_held.Wait();
   });
   sync_point->SetCallBack(
-      "TabletVectorIndexes::PrepareAddTable", [&re_add_waiting](void*) {
+      "TabletVectorIndexes::PrepareAddIndex", [&re_add_waiting](void*) {
     re_add_waiting = true;
   });
   sync_point->EnableProcessing();
@@ -10138,7 +10144,7 @@ TEST_P(PgVectorIndexTest, ReAddIndexWaitsForPendingDestroy) {
 // A crash after the removal of an index flushed the tablet metadata, but before the destroy deleted
 // the storage, leaves the storage whole under its name. A replayed re-add of the index must not
 // reuse it: it holds the chunks and the backfill state of the removed index.
-TEST_P(PgVectorIndexTest, ReAddIndexDeletesStorageLeftByRemoval) {
+TEST_P(PgVectorIndexColocationOnlyTest, ReAddIndexDeletesStorageLeftByRemoval) {
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(100));
   ASSERT_OK(cluster_->FlushTablets());
@@ -10200,7 +10206,7 @@ TEST_P(PgVectorIndexTest, ReAddIndexDeletesStorageLeftByRemoval) {
 // A restore can put back the storage of an index whose removal left the mark, e.g. when its
 // destroy failed. The restore must delete the mark, or a re-sent AddTableToTablet would delete the
 // restored storage.
-TEST_P(PgVectorIndexTest, SnapshotRestoreDeletesRemovalMark) {
+TEST_P(PgVectorIndexColocationOnlyTest, SnapshotRestoreDeletesRemovalMark) {
   constexpr size_t kNumRows = 64;
   constexpr size_t kQueryLimit = 5;
 
