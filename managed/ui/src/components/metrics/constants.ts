@@ -429,7 +429,7 @@ export const MASTER_DISK_IO_METRIC_KEYS: Readonly<Record<string, string>> = {
 };
 
 // Panels fed only by PSS collection, which is off when the health check PSS interval is negative.
-// The Postgres PSS Memory panel stays: without PSS it shows the lower bound estimate.
+// The Postgres PSS Memory panel stays: without PSS it shows an approximation.
 export const PSS_ONLY_METRICS: readonly string[] = [
   'postgres_worker_pss_max',
   'postgres_worker_pss_p95'

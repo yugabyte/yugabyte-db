@@ -4194,7 +4194,7 @@ process_proportional_memory:
   operator: "/ 1024"
   filters:
     process: "yb-postmaster"
-    type: "proportional|proportional_lowerbound"
+    type: "proportional|proportional_approximation"
   group_by: "type"
   panel_group: "Per-process Metrics"
   layout:
@@ -4204,7 +4204,7 @@ process_proportional_memory:
     yaxis:
       alias:
         "proportional": "Postgres"
-        "proportional_lowerbound": "Postgres (lowerbound)"
+        "proportional_approximation": "Postgres (approximation)"
       ticksuffix: "&nbsp;MB"
 
 postgres_worker_pss_max:

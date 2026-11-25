@@ -64,7 +64,7 @@ POSTMASTER = "yb-postmaster"
 # real value; _merge_proc_results keeps it through summation.
 PSS_UNAVAILABLE = -1
 PSS_INTERVAL_SLACK_SECS = 10
-# /proc/<pid>/status fields used for the PSS lower bound estimate when PSS is not collected.
+# /proc/<pid>/status fields used for the PSS approximation when PSS is not collected.
 RSS_BREAKDOWN_KEYS = {
     'RssAnon:': 'rss_anon_kb',
     'RssShmem:': 'rss_shmem_kb',
@@ -2227,18 +2227,21 @@ class NodeChecker():
             values['backend_p95'] = 0
         return values
 
-    def _is_pss_lowerbound_due(self):
+    def _is_pss_approximation_due(self):
         # Cheap estimate from /proc/<pid>/status, reported in place of PSS when PSS collection
         # is disabled. Same source rules as PSS, so both runs don't write the series.
         return self.pss_collection_interval_secs < 0 and self._is_pss_source()
 
-    def _get_pss_lowerbound(self, res):
+    def _get_pss_approximation(self, res):
         """sum(RssAnon) + max(RssShmem) + max(RssFile) over the postgres tree, in kb.
 
         Anonymous memory is mostly private, so it is summed. Shared memory (shared_buffers,
         DSM) and file-backed pages (binary, libraries) are mapped into every process, so
-        taking the max counts them once. The union of pages touched by all processes can be
-        larger than the max, hence a lower bound for total PSS. None if not available.
+        taking the max counts them once. It can be off either way: the union of shared pages
+        touched by all processes can be larger than the max, while anonymous pages still
+        shared copy-on-write with the postmaster are counted in every process, and pages shared
+        with processes outside the tree (libc) count in full rather than proportionally.
+        None if not available.
         """
         stats = [pid_info['stats'] for pid_info in res['process_map'].values()]
         if not stats:
@@ -2298,11 +2301,11 @@ class NodeChecker():
             if pss and pss['total'] is not None:
                 metrics[1].add_value(pss['total'], labels=[
                     process, Label('type', 'proportional')])
-            if process_name == POSTMASTER and self._is_pss_lowerbound_due():
-                pss_lowerbound = self._get_pss_lowerbound(res)
-                if pss_lowerbound is not None:
-                    metrics[1].add_value(pss_lowerbound, labels=[
-                        process, Label('type', 'proportional_lowerbound')])
+            if process_name == POSTMASTER and self._is_pss_approximation_due():
+                pss_approximation = self._get_pss_approximation(res)
+                if pss_approximation is not None:
+                    metrics[1].add_value(pss_approximation, labels=[
+                        process, Label('type', 'proportional_approximation')])
             metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
                                                                        Label('type', 'virtual')])
             metrics[2].add_value(stat['io_write_kb'], labels=[process,
@@ -2709,6 +2712,25 @@ class NodeChecker():
                 res[key] = stat1[key]
         return res
 
+    def _fill_rss_breakdown_from_statm(self, pid, res):
+        """RSS breakdown for kernels before 4.5, whose status has no RssAnon/RssShmem/RssFile.
+
+        statm gives resident and shared pages, both plain counter reads. Before 4.5 the kernel
+        counts shmem pages as file pages, so shared is RssFile + RssShmem and resident - shared
+        is RssAnon. Shared goes into rss_file_kb and rss_shmem_kb stays 0, so the estimate takes
+        max(RssFile + RssShmem) instead of max(RssShmem) + max(RssFile), which is smaller or
+        equal.
+        """
+        fields = self._check_output('cat /proc/{}/statm'.format(pid)).split()
+        if len(fields) < 3 or not (fields[1].isdigit() and fields[2].isdigit()):
+            res['rss_anon_kb'] = PSS_UNAVAILABLE
+            return
+        page_kb = os.sysconf('SC_PAGE_SIZE') // 1024
+        resident, shared = int(fields[1]), int(fields[2])
+        res['rss_anon_kb'] = max(resident - shared, 0) * page_kb
+        res['rss_shmem_kb'] = 0
+        res['rss_file_kb'] = shared * page_kb
+
     def _get_process_stats_by_pid(self, pid, with_pss=False):
         res = self._get_empty_proc_results()
         cmd = 'cat /proc/{}/stat'.format(pid)
@@ -2758,8 +2780,8 @@ class NodeChecker():
                 res['proportional_memory_kb'] = PSS_UNAVAILABLE
         if (not with_pss and rss_found
                 and len(rss_breakdown_found) < len(RSS_BREAKDOWN_KEYS)):
-            # Live process without the breakdown (Linux < 4.5): the estimate can't be computed.
-            res['rss_anon_kb'] = PSS_UNAVAILABLE
+            # Live process without the breakdown (Linux < 4.5).
+            self._fill_rss_breakdown_from_statm(pid, res)
         if not rss_found:
             # smaps_rollup and smaps are unreadable for processes of another user.
             # Less precise, but works for any process.
