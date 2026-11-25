@@ -15,34 +15,61 @@ func TestDuplicateSystemdUnit(t *testing.T) {
 	const systemUnit = "/etc/systemd/system/" + service
 	const userCgroup = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/" + service
 	const systemCgroup = "0::/system.slice/" + service
-	originalShow, originalCgroup := ShowSystemUnitState, SelfCgroupPath
-	t.Cleanup(func() { ShowSystemUnitState, SelfCgroupPath = originalShow, originalCgroup })
+	originalShow, originalCgroup, originalUserDir := ShowSystemUnitState, SelfCgroupPath,
+		UserSystemdUnitDir
+	t.Cleanup(func() {
+		ShowSystemUnitState, SelfCgroupPath, UserSystemdUnitDir = originalShow, originalCgroup,
+			originalUserDir
+	})
 	SelfCgroupPath = filepath.Join(t.TempDir(), "cgroup")
 
 	tests := []struct {
-		name   string
-		cgroup string
-		state  SystemUnitState
-		want   string
+		name            string
+		cgroup          string
+		state           SystemUnitState
+		userUnitEnabled bool
+		want            string
 	}{
 		{"system unit looping", userCgroup,
-			SystemUnitState{"loaded", "disabled", "activating", systemUnit}, systemUnit},
+			SystemUnitState{"loaded", "disabled", "activating", systemUnit}, false, systemUnit},
 		{"system unit enabled but stopped", userCgroup,
-			SystemUnitState{"loaded", "enabled", "inactive", systemUnit}, systemUnit},
+			SystemUnitState{"loaded", "enabled", "inactive", systemUnit}, false, systemUnit},
 		{"system unit left disabled", userCgroup,
-			SystemUnitState{"loaded", "disabled", "inactive", systemUnit}, ""},
+			SystemUnitState{"loaded", "disabled", "inactive", systemUnit}, false, ""},
 		{"system unit masked", userCgroup,
-			SystemUnitState{"masked", "masked", "inactive", "/dev/null"}, ""},
+			SystemUnitState{"masked", "masked", "inactive", "/dev/null"}, false, ""},
 		{"no system unit", userCgroup,
-			SystemUnitState{"not-found", "", "inactive", ""}, ""},
+			SystemUnitState{"not-found", "", "inactive", ""}, false, ""},
 		// The live agent is the system unit; a leftover user unit file must not block upgrades.
 		{"running as system unit", systemCgroup,
-			SystemUnitState{"loaded", "enabled", "active", systemUnit}, ""},
+			SystemUnitState{"loaded", "enabled", "active", systemUnit}, false, ""},
+		// The system unit won the server lock and the user unit waits next to it.
+		{"running as system unit next to enabled user unit", systemCgroup,
+			SystemUnitState{"loaded", "enabled", "active", systemUnit}, true, systemUnit},
+		// Run by hand, not by a unit.
+		{"not run by a unit", "0::/user.slice/user-1000.slice/session-3.scope",
+			SystemUnitState{"loaded", "enabled", "active", systemUnit}, true, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := os.WriteFile(SelfCgroupPath, []byte(tc.cgroup+"\n"), 0644); err != nil {
 				t.Fatal(err)
+			}
+			userDir := t.TempDir()
+			UserSystemdUnitDir = func() (string, error) { return userDir, nil }
+			// A user unit file is there in every case; enabling it adds the .wants link.
+			if err := os.WriteFile(filepath.Join(userDir, service), nil, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.userUnitEnabled {
+				wants := filepath.Join(userDir, "default.target.wants")
+				if err := os.Mkdir(wants, 0755); err != nil {
+					t.Fatal(err)
+				}
+				err := os.Symlink(filepath.Join(userDir, service), filepath.Join(wants, service))
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			ShowSystemUnitState = func(context.Context, string) (SystemUnitState, error) {
 				return tc.state, nil

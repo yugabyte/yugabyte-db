@@ -377,7 +377,7 @@ public class NodeAgentPoller {
       if (response.getServerInfo().getDuplicateServerUnit()
           && (nodeAgent.getState() == State.UPGRADE
               || (nodeAgent.getState() == State.READY && maybeGetDeployType(nodeAgent) != null))) {
-        logUpgradeBlocked(nodeAgent);
+        log.error(upgradeBlockedMessage(nodeAgent));
         return;
       }
       switch (nodeAgent.getState()) {
@@ -551,13 +551,13 @@ public class NodeAgentPoller {
   }
 
   /**
-   * Logs why an upgrade does not start on a node where a second node agent server runs. It would
-   * undo the upgrade (PLAT-24106), so this is checked before new certs are generated. An UPGRADED
-   * agent is past that point and must still be finalized.
+   * Says why an upgrade does not start on a node where a second node agent server runs. It would
+   * undo the upgrade (PLAT-24106), so every upgrade path checks this before it saves the UPGRADE
+   * state or generates new certs. An UPGRADED agent is past that point and must still be finalized.
    */
-  private static void logUpgradeBlocked(NodeAgent nodeAgent) {
-    log.error(
-        "Cannot upgrade node agent {} because a system-level yb-node-agent unit also runs on the"
+  private static String upgradeBlockedMessage(NodeAgent nodeAgent) {
+    return String.format(
+        "Cannot upgrade node agent %s because a system-level yb-node-agent unit also runs on the"
             + " node. Disable and remove that unit to allow the upgrade.",
         nodeAgent);
   }
@@ -766,7 +766,7 @@ public class NodeAgentPoller {
     }
     if (response.getServerInfo().getDuplicateServerUnit()
         && nodeAgent.getState() != State.UPGRADED) {
-      logUpgradeBlocked(nodeAgent);
+      log.error(upgradeBlockedMessage(nodeAgent));
       // Go on with the current version, as when the node agent is not ready.
       return false;
     }
@@ -816,6 +816,13 @@ public class NodeAgentPoller {
         if (deployContext == null) {
           log.info("Node agent {} does not need an upgrade", nodeAgent);
           return false;
+        }
+        if (nodeAgent.getState() != State.UPGRADED
+            && nodeAgentClient
+                .waitForServerReady(nodeAgent, Duration.ofSeconds(2))
+                .getServerInfo()
+                .getDuplicateServerUnit()) {
+          throw new IllegalStateException(upgradeBlockedMessage(nodeAgent));
         }
         log.info("Starting explicit upgrade on node agent {}", nodeAgent);
         pollerTask.upgradeNodeAgentLocked(nodeAgent, deployContext);

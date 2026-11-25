@@ -67,6 +67,9 @@ func acquireServerLock() bool {
 				util.FileLogger().Fatalf(Context(),
 					"The other node agent server stopped. Exiting to restart on the current binary.")
 			}
+			if !errors.Is(err, util.ErrLockHeld) {
+				util.FileLogger().Fatalf(Context(), "Error locking %s - %s", lockPath, err.Error())
+			}
 		case <-sigs:
 			return false
 		}

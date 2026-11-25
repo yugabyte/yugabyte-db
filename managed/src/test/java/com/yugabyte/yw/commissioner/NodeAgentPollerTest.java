@@ -466,6 +466,17 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     pollerTask.waitForUpgrade();
     // Tasks and health checks upgrade through this path.
     assertFalse(nodeAgentPoller.upgradeNodeAgent(nodeAgent.getUuid()));
+    // The node agent upgrade task and API fail instead.
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deadNodeAgentRetention)))
+        .thenReturn(Duration.ofDays(7));
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            nodeAgentPoller.upgradeNodeAgent(
+                nodeAgentUuid,
+                false /* waitForInFlightUpgrade */,
+                n -> DeployContext.builder().deployType(DeployType.FULL).build()));
     nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     assertEquals(State.READY, nodeAgent.getState());
     verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());

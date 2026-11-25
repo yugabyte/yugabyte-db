@@ -37,8 +37,10 @@ func HandleUpgradeState(
 	upgradeInfo *pb.UpgradeInfo,
 ) error {
 	util.FileLogger().Info(ctx, "Starting the node agent upgrade process")
-	// Refuse before touching the config: a second server would write its stale config back over
-	// the upgraded one and serve the old cert (PLAT-24106). The error goes back to the YBA caller.
+	// Refuse before touching the config while both units run a server (PLAT-24106). The server lock
+	// keeps a second server of this version from serving, but one started from an older binary
+	// does not take it and can write its stale config back over the upgraded one and serve the old
+	// cert. The error goes back to the YBA caller.
 	if err := checkDuplicateServerUnits(ctx); err != nil {
 		util.FileLogger().Errorf(ctx, "Cannot upgrade node agent - %s", err.Error())
 		return err
@@ -69,7 +71,7 @@ func HandleUpgradeState(
 }
 
 // findDuplicateServerUnit returns the path of a system-level unit that runs a second server next to
-// this user-level one, or "" if there is none.
+// the user-level one, or "" if there is none.
 func findDuplicateServerUnit(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, duplicateUnitCheckTimeout)
 	defer cancel()

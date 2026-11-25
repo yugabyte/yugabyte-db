@@ -83,23 +83,45 @@ var ShowSystemUnitState = func(ctx context.Context, serviceName string) (SystemU
 // SelfCgroupPath tells which systemd manager started this process. A var for tests.
 var SelfCgroupPath = "/proc/self/cgroup"
 
-// Whether this process runs in a unit of a per-user systemd manager (user@<uid>.service).
-func runsUnderUserManager() (bool, error) {
-	data, err := os.ReadFile(SelfCgroupPath)
+// UserSystemdUnitDir returns the directory of this user's user-level units. A var for tests.
+var UserSystemdUnitDir = func() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, UserSystemdUnitPath), nil
+}
+
+// Whether serviceName is enabled in this user's user-level manager, which links it into a .wants
+// directory.
+func userUnitEnabled(serviceName string) (bool, error) {
+	dir, err := UserSystemdUnitDir()
 	if err != nil {
 		return false, err
 	}
-	return strings.Contains(string(data), "/user@"), nil
+	matches, err := filepath.Glob(filepath.Join(dir, "*.wants", serviceName))
+	return len(matches) > 0, err
 }
 
-// DuplicateSystemdUnit returns the path of the system-level serviceName unit when this process
-// runs under the user-level unit and the system-level one is also enabled or running, so both
-// start a server for the same install. It returns "" otherwise, including when this process is
-// the system-level one: the user-level unit is the target setup and is not reported.
+// DuplicateSystemdUnit returns the path of the system-level serviceName unit when both it and the
+// user-level one start a server for the same install, whichever of them this process runs under:
+// - Under the user-level unit, when the system-level one is enabled or running.
+// - Under the system-level unit, when the user-level one is enabled.
+// It returns "" otherwise. A user-level unit file that is not enabled starts nothing.
 func DuplicateSystemdUnit(ctx context.Context, serviceName string) (string, error) {
-	underUser, err := runsUnderUserManager()
-	if err != nil || !underUser {
+	cgroup, err := os.ReadFile(SelfCgroupPath)
+	if err != nil {
 		return "", err
+	}
+	switch {
+	case strings.Contains(string(cgroup), "/user@"):
+	case strings.Contains(string(cgroup), "/system.slice/"+serviceName):
+		enabled, err := userUnitEnabled(serviceName)
+		if err != nil || !enabled {
+			return "", err
+		}
+	default:
+		return "", nil
 	}
 	state, err := ShowSystemUnitState(ctx, serviceName)
 	if err != nil {
