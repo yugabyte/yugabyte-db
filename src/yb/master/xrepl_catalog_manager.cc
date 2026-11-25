@@ -1315,10 +1315,6 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_attribute and pg_namespace (when detecting DDL from catalog DML),
-  // pg_publication_rel, pg_replication_origin and pg_publication catalog tables to the stream
-  // metadata as we will poll them to figure out changes to the publications, replication origins
-  // and table schemas. This will not be done for gRPC streams or notifications slots.
   if (detect_publication_changes_implicitly) {
     auto catalog_table_ids =
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));

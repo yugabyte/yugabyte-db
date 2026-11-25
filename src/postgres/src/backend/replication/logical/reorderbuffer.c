@@ -2519,9 +2519,10 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					YBCInvalidateCachesForHistoricalReadContext();
 					/*
 					 * A DDL record without a table comes from a pg_namespace
-					 * change such as ALTER SCHEMA ... RENAME TO. The
-					 * namespace keeps its OID, so the cached pg_namespace row
-					 * would still give the RELATION message the old name.
+					 * change such as ALTER SCHEMA ... RENAME TO. In such
+					 * cases, we need to invalidate the catalog cache,
+					 * otherwise the old cached schema name will be sent in
+					 * the RELATION message.
 					 */
 					if (!OidIsValid(change->data.yb_ddl.table_oid))
 						CatalogCacheFlushCatalog(NamespaceRelationId);
