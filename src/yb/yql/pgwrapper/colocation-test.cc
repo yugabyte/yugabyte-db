@@ -43,8 +43,9 @@ class ColocatedDBTest : public LibPqTestBase {
     return ConnectToDB(db_name);
   }
 
+  // Looks the table up by name or by ID.
   Result<master::ListTablesResponsePB_TableInfo> GetTableFromMasterLeader(
-      const std::string& db_name, const std::string& table_name) {
+      const std::string& db_name, const std::string& table_name_or_id) {
     master::ListTablesRequestPB req;
     master::ListTablesResponsePB resp;
     req.mutable_namespace_()->set_name(db_name);
@@ -58,18 +59,18 @@ class ColocatedDBTest : public LibPqTestBase {
       return StatusFromPB(resp.error().status());
     }
     for (const auto& table : resp.tables()) {
-      if (table.name() == table_name) {
+      if (table.name() == table_name_or_id || table.id() == table_name_or_id) {
         return table;
       }
     }
-    return STATUS_FORMAT(NotFound, "Table $0 not found in $1", table_name, db_name);
+    return STATUS_FORMAT(NotFound, "Table $0 not found in $1", table_name_or_id, db_name);
   }
 
   // A failed lookup counts as false, so that it can be polled across a master leader change.
   bool TableHasState(
-      const std::string& db_name, const std::string& table_name,
+      const std::string& db_name, const std::string& table_name_or_id,
       master::SysTablesEntryPB::State state) {
-    auto table = GetTableFromMasterLeader(db_name, table_name);
+    auto table = GetTableFromMasterLeader(db_name, table_name_or_id);
     return table.ok() && table->state() == state;
   }
 };
@@ -483,19 +484,21 @@ TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
     return TableHasState(db_name, "t0", master::SysTablesEntryPB::PREPARING) &&
            TableHasState(db_name, "t1", master::SysTablesEntryPB::PREPARING);
   }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "Both tables PREPARING"));
-  const auto late_table_id = ASSERT_RESULT(GetTableFromMasterLeader(db_name, "t1")).id();
+  // A retried CREATE TABLE leaves another table with the same name, so use the IDs from here on.
+  const auto t0_id = ASSERT_RESULT(GetTableFromMasterLeader(db_name, "t0")).id();
+  const auto t1_id = ASSERT_RESULT(GetTableFromMasterLeader(db_name, "t1")).id();
 
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_table_to_tablet_table_id", late_table_id));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_table_to_tablet_table_id", t1_id));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "false"));
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 
-  ASSERT_OK(WaitFor([this, &db_name] {
-    return TableHasState(db_name, "t0", master::SysTablesEntryPB::RUNNING);
-  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "t0 RUNNING"));
-  auto status = WaitFor([this, &db_name] {
-    return TableHasState(db_name, "t1", master::SysTablesEntryPB::RUNNING);
+  auto status = WaitFor([this, &db_name, &t1_id] {
+    return TableHasState(db_name, t1_id, master::SysTablesEntryPB::RUNNING);
   }, MonoDelta::FromSeconds(3 * kTimeMultiplier), "t1 RUNNING");
   ASSERT_TRUE(status.IsTimedOut()) << status;
+  ASSERT_OK(WaitFor([this, &db_name, &t0_id] {
+    return TableHasState(db_name, t0_id, master::SysTablesEntryPB::RUNNING);
+  }, MonoDelta::FromSeconds(30 * kTimeMultiplier), "t0 RUNNING"));
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_table_to_tablet_table_id", ""));
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
