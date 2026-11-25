@@ -303,11 +303,6 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
   public static class ImageBundleUpgradeInfo {
     private UUID clusterUuid;
     private UUID imageBundleUuid;
-
-    @ApiModelProperty(
-        value = "Provider of the cluster, for multi-provider clusters.",
-        required = false)
-    @Nullable
-    private UUID providerUuid;
+    @Nullable private UUID providerUuid; // For multiprovider case.
   }
 }

@@ -90,8 +90,8 @@ var upgradeRollbackCmd = &cobra.Command{
 		req := ybaclient.RollbackUpgradeParams{
 			Clusters:                       universe.GetUniverseDetails().Clusters,
 			UpgradeOption:                  upgradeOption,
-			SleepAfterMasterRestartMillis:  &masterDelay,
-			SleepAfterTServerRestartMillis: &tserverDelay,
+			SleepAfterMasterRestartMillis:  masterDelay,
+			SleepAfterTServerRestartMillis: tserverDelay,
 			RollMaxBatchSize:               batchSize,
 		}
 
@@ -143,12 +143,8 @@ func init() {
 		"[Optional] Rollback options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime)")
 	upgradeRollbackCmd.Flags().Int32("delay-between-master-servers",
-		180000, "[Optional] Delay between Master server restarts (in milliseconds)."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
+		18000, "[Optional] Delay between Master server restarts (in milliseconds).")
 	upgradeRollbackCmd.Flags().Int32("delay-between-tservers",
-		180000, "[Optional] Delay between Tserver restarts (in milliseconds)."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
+		18000, "[Optional] Delay between Tserver restarts (in milliseconds).")
 	universeutil.AddRollMaxBatchSizeFlags(upgradeRollbackCmd)
 }

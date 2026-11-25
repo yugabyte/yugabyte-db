@@ -101,8 +101,8 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		requestBody := ybaclient.CertsRotateParams{
 			UpgradeOption:                  upgradeOption,
 			Clusters:                       clusters,
-			SleepAfterTServerRestartMillis: &tserverDelay,
-			SleepAfterMasterRestartMillis:  &masterDelay,
+			SleepAfterTServerRestartMillis: tserverDelay,
+			SleepAfterMasterRestartMillis:  masterDelay,
 			UniverseUUID:                   util.GetStringPointer(universeUUID),
 		}
 
@@ -304,12 +304,8 @@ func init() {
 			"Set true for rotating server and client certificates "+
 			"and when root CA and client root CA are same.")
 	certEncryptionInTransitCmd.Flags().Int32("delay-between-master-servers",
-		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
+		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	certEncryptionInTransitCmd.Flags().Int32("delay-between-tservers",
-		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
+		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 
 }

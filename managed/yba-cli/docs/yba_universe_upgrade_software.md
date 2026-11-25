@@ -33,8 +33,8 @@ yba universe upgrade software --name <universe-name> \
       --yb-db-version string                 [Required] Target YugabyteDB software version.
       --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime) (default "Rolling")
       --upgrade-system-catalog               [Optional] Upgrade System Catalog after software upgrade, defaults to true. (default true)
-      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). The CLI always sends this value, so the YBA runtime config yb.upgrade.sleep_after_master_restart_ms does not apply. (default 180000)
-      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). The CLI always sends this value, so the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms does not apply. (default 180000)
+      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
+      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
       --allow-rollback                       This is a preview flag (may change in future). [Optional] Keep the upgrade in PreFinalize state when the release needs a finalize, so that it can be rolled back. Then run "yba universe upgrade finalize" or "yba universe upgrade rollback". Defaults to true, same as the UI. Set to false to finalize in the same task. (default true)
   -h, --help                                 help for software
 ```

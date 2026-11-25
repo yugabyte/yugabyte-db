@@ -174,8 +174,8 @@ var upgradeVMImageCmd = &cobra.Command{
 			ImageBundles:                   imageBundleInfo,
 			Clusters:                       clusters,
 			UpgradeOption:                  "Rolling",
-			SleepAfterTServerRestartMillis: &tserverDelay,
-			SleepAfterMasterRestartMillis:  &masterDelay,
+			SleepAfterTServerRestartMillis: tserverDelay,
+			SleepAfterMasterRestartMillis:  masterDelay,
 		}
 
 		rUpgrade, response, err := authAPI.UpgradeVMImage(universeUUID).
@@ -207,14 +207,8 @@ func init() {
 			"Ignored if inherit-from-primary is set to true.")
 
 	upgradeVMImageCmd.Flags().Int32("delay-between-master-servers",
-		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
-			" On a node that runs a Master and a TServer, YBA waits the longer delay."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
+		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	upgradeVMImageCmd.Flags().Int32("delay-between-tservers",
-		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
-			" On a node that runs a Master and a TServer, YBA waits the longer delay."+
-			" The CLI always sends this value, so the YBA runtime config"+
-			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
+		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 
 }

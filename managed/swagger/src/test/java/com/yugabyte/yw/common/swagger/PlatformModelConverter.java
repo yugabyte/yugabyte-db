@@ -2,7 +2,6 @@ package com.yugabyte.yw.common.swagger;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.models.common.YBADeprecated;
@@ -14,16 +13,12 @@ import io.swagger.converter.ModelConverters;
 import io.swagger.models.Model;
 import io.swagger.models.properties.DateTimeProperty;
 import io.swagger.models.properties.Property;
-import io.swagger.util.Json;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,42 +122,7 @@ public class PlatformModelConverter implements ModelConverter {
     if (canSkip(type)) {
       return null;
     }
-    Model model = chain.next().resolve(type, context, chain);
-    findNullableRequired(type, model);
-    return model;
-  }
-
-  // Swagger ignores @Nullable: a field without @ApiModelProperty is required, so the generated
-  // clients make it a required constructor argument.
-  private static final Set<String> NULLABLE_REQUIRED = new ConcurrentSkipListSet<>();
-
-  /** Returns "Class.field" for each @Nullable field that the spec lists as required. */
-  public static Set<String> nullableRequiredFields() {
-    return NULLABLE_REQUIRED;
-  }
-
-  private void findNullableRequired(Type type, Model model) {
-    if (model == null || model.getProperties() == null) {
-      return;
-    }
-    Class<?> cls = Json.mapper().constructType(type).getRawClass();
-    for (Class<?> c = cls; c != null && c != Object.class; c = c.getSuperclass()) {
-      for (Field field : c.getDeclaredFields()) {
-        boolean nullable =
-            Arrays.stream(field.getAnnotations())
-                .anyMatch(a -> a.annotationType().getSimpleName().equals("Nullable"));
-        if (!nullable) {
-          continue;
-        }
-        JsonProperty jp = field.getAnnotation(JsonProperty.class);
-        String name = jp != null && !jp.value().isEmpty() ? jp.value() : field.getName();
-        Property property = model.getProperties().get(name);
-        if (property != null && property.getRequired()) {
-          // The declaring class, so an inherited field is reported once.
-          NULLABLE_REQUIRED.add(c.getName() + "." + field.getName());
-        }
-      }
-    }
+    return chain.next().resolve(type, context, chain);
   }
 
   private boolean canSkip(Type type) {

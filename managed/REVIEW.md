@@ -300,13 +300,6 @@ universe adds up until the JVM runs out of heap or the host runs out of threads,
   customer. For v2, see the contract rules in [AGENTS.md](AGENTS.md#contract-rules).
 - A new runtime config key has the right scope (global, customer, universe or provider), a safe
   default, and the `PUBLIC` tag only if users are meant to set it.
-- **Optional fields in a v1 model.** swagger lists a field that has no `@ApiModelProperty` as
-  required, and ignores `@Nullable`. A new optional field (`@Nullable`, has a default, or is used
-  only in some cases) needs `@ApiModelProperty(..., required = false)`. Otherwise the generated
-  clients make it a required constructor argument, which breaks every Go caller of that
-  constructor (PLAT-19555 broke Terraform this way). Check the field against the model's
-  `required` list in `swagger-all.json`, the spec the Go client is generated from (`sbt swaggerGen`
-  writes it; it is not committed). `swaggerGen` fails on a `@Nullable` field that is required.
 
 ## YBA high availability
 
