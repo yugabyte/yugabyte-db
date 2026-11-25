@@ -40,6 +40,7 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -150,6 +151,10 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @InheritConfiguration(name = "defaultMapping")
   public ProxyConfigUpdateParams toProxyConfigUpdateParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public VMImageUpgradeParams toVMImageUpgradeParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
   @Mapping(target = "spec", source = ".")

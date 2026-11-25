@@ -335,27 +335,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return new YBATask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
   }
 
-  private UniverseEditSpec inheritFromPrimaryBeforeMapping(
-      UniverseEditSpec universeEditSpec, ClusterSpec primaryCluster) {
-    if (primaryCluster == null) {
-      return universeEditSpec;
-    }
-
-    List<ClusterEditSpec> clusters = new ArrayList<>();
-    for (ClusterEditSpec cluster : universeEditSpec.getClusters()) {
-      if (cluster.getUuid().equals(primaryCluster.getUuid())) {
-        clusters.add(cluster);
-        continue;
-      }
-      ClusterEditSpec merged = new ClusterEditSpec();
-      ClusterMapper.INSTANCE.deepCopyInheritableClusterEditSpec(primaryCluster, merged);
-      ClusterMapper.INSTANCE.deepCopyClusterEditSpec(cluster, merged);
-      clusters.add(merged);
-    }
-    universeEditSpec.clusters(clusters);
-    return universeEditSpec;
-  }
-
   /**
    * The V2 model gives the ports, assign_public_ip and assign_static_public_ip a default, so one
    * that the edit leaves out would reset. Read the raw request JSON and keep the universe's value
@@ -401,7 +380,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     keepUnsentNetworking(request, universeEditSpec, dbUniverse.getUniverseDetails());
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
-    // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
@@ -412,10 +390,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
     ClusterSpec primaryV2Cluster =
         v2Universe.getClusters().stream()
-            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .filter(c -> ClusterTypeEnum.PRIMARY.equals(c.getClusterType()))
             .findAny()
-            .orElse(null);
-    universeEditSpec = inheritFromPrimaryBeforeMapping(universeEditSpec, primaryV2Cluster);
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        INTERNAL_SERVER_ERROR, "Cannot find primary cluster in db"));
     boolean isRREdited =
         universeEditSpec.getClusters().stream()
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))

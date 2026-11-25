@@ -52,7 +52,6 @@ class TserverXClusterContextIf;
     (ActiveSessionHistory) \
     (AlterDatabase) \
     (AlterTable) \
-    (BackfillIndex) \
     (StartTableBackfill) \
     (CancelTransaction) \
     (CheckIfPitrActive) \
@@ -132,6 +131,7 @@ class TserverXClusterContextIf;
 // Forwards call to corresponding PgClientSession async method (see
 // PG_CLIENT_SESSION_ASYNC_METHODS).
 #define YB_PG_CLIENT_ASYNC_METHODS \
+    (BackfillIndex) \
     (FinishTransaction) \
     (IsDatabaseColocated) \
     (OpenTable) \

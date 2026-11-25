@@ -115,3 +115,11 @@ func UnknownZoneRegions(
 	}
 	return unknown
 }
+
+// UnknownKeyError exits when a key-value flag has a key its parser does not know
+func UnknownKeyError(key, description string) {
+	logrus.Fatalln(
+		formatter.Colorize(
+			fmt.Sprintf("Unknown key \"%s\" in %s description\n", key, description),
+			formatter.RedColor))
+}

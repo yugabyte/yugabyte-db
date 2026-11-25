@@ -49,6 +49,8 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## Connector compatibility
 
+The YugabyteDB connector for logical replication is based on Debezium and is published as a Kafka Connect plugin. Download the JAR and read the release notes on the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+
 When installing the connector for the first time, always use the latest stable release, whatever version of YugabyteDB you have. After it's installed, you don't need to change it when you upgrade YugabyteDB, as long as you stay on the same major version (such as v2026.1).
 
 Connector versions follow one of these schemes.
@@ -1442,7 +1444,7 @@ See `slot.name` and `publication.name` on how to set a unique replication slot n
 
 ## Deployment
 
-To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
+To deploy the connector, you install the connector JAR, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
 **Prerequisites**
 
@@ -1451,10 +1453,9 @@ To deploy the connector, you install the connector archive, configure the connec
 
 **Procedure**
 
-1. Download the latest [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/).
-2. Extract the files into your Kafka Connect environment.
-3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
-4. Restart your Kafka Connect process to pick up the new JAR files.
+1. Download the latest connector JAR (`yugabytedb-source-connector-<version>-jar-with-dependencies.jar`) from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
+2. Copy the JAR into a directory on the Kafka Connect [plugin.path](https://kafka.apache.org/documentation/#connectconfigs).
+3. Restart your Kafka Connect process to pick up the new JAR.
 
 {{< note title="Note" >}}
 
