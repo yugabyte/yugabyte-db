@@ -310,19 +310,21 @@ od_frontend_attach(od_client_t *client, char *context,
 			return OD_OK;
 		}
 
-		int rc;
-		/* YB */
+		/* YB: Stop client read while backend connects to avoid busy looping epoll */
 		bool yb_restart_read = client->io.io &&
 				       od_io_read_active(&client->io);
-		/* YB */
 		if (yb_restart_read)
 			od_io_read_stop(&client->io);
+
+		int rc;
 		od_atomic_u32_inc(&router->servers_routing);
 		rc = od_backend_connect(server, context, route_params, client);
 		od_atomic_u32_dec(&router->servers_routing);
-		/* YB */
+
+		/* YB: Backend connected, start client read */
 		if (yb_restart_read)
 			od_io_read_start(&client->io);
+
 		if (rc == -1) {
 			/* In case of 'too many connections' error, retry attach attempt by
 			 * waiting for a idle server connection for pool_timeout ms
