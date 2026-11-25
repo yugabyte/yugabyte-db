@@ -395,6 +395,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
+      if (th != null && isLeaderBlacklistQueued()) {
+        // A tserver roll that fails between blacklisting a tserver's leaders and removing it from
+        // the blacklist leaves it there until a retry reaches the roll again. Clear it, as the K8s
+        // upgrade tasks do, without masking the edit's own error.
+        try {
+          setTaskQueueAndRun(
+              () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
+        } catch (Exception e) {
+          log.error("Failed to clear the leader blacklist after {} failed", getName(), e);
+        }
+      }
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),

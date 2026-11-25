@@ -3565,7 +3565,50 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     for (String node : added) {
       expected.addAll(ImmutableList.of("add " + node, "wait", "restart", "remove " + node));
     }
+    // The edit fails at its first helm upgrade (setupMasterMoveUniverse), so it then clears the
+    // leader blacklist.
+    expected.add("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]");
     assertEquals(expected, steps);
+  }
+
+  @Test
+  public void testFailedTserverRestartClearsLeaderBlacklist() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    // Get past the precheck to the first restart, which setupMasterMoveUniverse fails.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.nodes_safe_to_take_down.enabled", "false");
+    TaskInfo edit =
+        submitEdit(
+            tserverCpuChange(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo,
+            null);
+    List<TaskInfo> plan = plan(edit);
+
+    // The first tserver restart fails after the roll put that tserver on the leader blacklist.
+    TaskInfo failedRestart =
+        helmUpgrades(plan).stream()
+            .filter(t -> t.getTaskState() == Failure)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(describeFailure(edit)));
+    List<TaskInfo> leaderBlacklistChanges =
+        subtasks(plan, TaskType.ModifyBlackList, p -> p.path("isLeaderBlacklist").asBoolean());
+    TaskInfo blacklisted =
+        leaderBlacklistChanges.stream()
+            .filter(t -> t.getTaskParams().path("addNodes").size() > 0)
+            .findFirst()
+            .get();
+    assertEquals(Success, blacklisted.getTaskState());
+    assertTrue(blacklisted.getPosition() < failedRestart.getPosition());
+
+    TaskInfo cleanup = leaderBlacklistChanges.get(leaderBlacklistChanges.size() - 1);
+    assertTrue(cleanup.getPosition() > failedRestart.getPosition());
+    assertEquals(Success, cleanup.getTaskState());
+    assertEquals(
+        ImmutableList.of("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]"),
+        leaderBlacklistSteps(ImmutableList.of(cleanup)));
   }
 
   @Test

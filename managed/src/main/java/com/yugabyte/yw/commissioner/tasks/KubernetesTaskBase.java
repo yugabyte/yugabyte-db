@@ -75,6 +75,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected int leaderBacklistWaitTimeMs;
   protected boolean reconcilePgDataOwnershipToRoot = false;
+  // Set when upgradePodsTask queues a tserver roll that adds tservers to the leader blacklist.
+  private boolean leaderBlacklistQueued = false;
   public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
   protected final KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -94,6 +96,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   @Override
   protected boolean isBlacklistLeaders() {
     return false; // TODO: Modify blacklist is disabled by default for k8s now for some reason.
+  }
+
+  protected boolean isLeaderBlacklistQueued() {
+    return leaderBlacklistQueued;
   }
 
   protected boolean isSkipPrechecks() {
@@ -1519,7 +1525,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               false);
         }
         if (serverType == ServerType.TSERVER) {
-          addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
+          leaderBlacklistQueued |=
+              addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
         if (commandType == CommandType.POD_DELETE) {
           addParallelTasks(
