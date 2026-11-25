@@ -88,11 +88,12 @@ TEST_F(PgMemReportTest, RecordsEveryProcess) {
     if (fields["type"] == "postmaster") {
       found_postmaster = true;
     }
-    if (fields["type"] == "client_backend" && fields["db"] == "yugabyte") {
+    // Skip backends that never reached an idle point, e.g. ones that failed during startup.
+    if (fields["type"] == "client_backend" && fields["db"] == "yugabyte" &&
+        std::stoll(fields["idle_samples"]) > 0) {
       found_backend = true;
       ASSERT_GT(std::stoll(fields["peak_kb"]), 0) << line;
       ASSERT_GT(std::stoll(fields["idle_anon_kb"]), 0) << line;
-      ASSERT_GT(std::stoll(fields["idle_samples"]), 0) << line;
     }
   }
   ASSERT_TRUE(found_backend);

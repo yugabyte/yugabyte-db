@@ -14,9 +14,6 @@
 
 #include <unistd.h>
 
-#include <cstdio>
-#include <cstring>
-
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -99,15 +96,13 @@ std::string FlagValue(const std::string& name) {
   return value;
 }
 
-const std::string& Field(
-    const std::map<std::string, std::string>& fields, const std::string& key) {
-  static const std::string kMissing = "?";
+std::string Field(const std::map<std::string, std::string>& fields, const std::string& key) {
   auto it = fields.find(key);
-  return it == fields.end() ? kMissing : it->second;
+  return it == fields.end() ? "?" : it->second;
 }
 
 std::string FormatViolation(const std::map<std::string, std::string>& r) {
-  const auto& over = Field(r, "over");
+  const auto over = Field(r, "over");
   std::string type = Field(r, "type");
   if (auto it = r.find("bgw"); it != r.end() && !it->second.empty()) {
     type += Format(" ($0)", it->second);
@@ -262,7 +257,7 @@ PgMemReport PgMemReportCollector::Report() const {
       report.warnings.push_back(Format("Unparsable line: $0 ($1)", line, fields.status()));
       continue;
     }
-    const auto& pm = Field(*fields, "pm");
+    const auto pm = Field(*fields, "pm");
     if (line.find(kStartMarker) != std::string::npos) {
       postmasters.emplace(pm, 0);
       report.enforce = report.enforce || Field(*fields, "enforce") == "1";
@@ -270,7 +265,7 @@ PgMemReport PgMemReportCollector::Report() const {
     }
     ++report.num_records;
     ++postmasters[pm];
-    const auto& over = Field(*fields, "over");
+    const auto over = Field(*fields, "over");
     if (over != "-") {
       report.violations.push_back(FormatViolation(*fields));
     }
@@ -365,20 +360,34 @@ Result<std::map<std::string, std::string>> ParsePgMemLine(std::string_view line)
 }
 
 void StartPgMemStderrTee(int fd, std::shared_ptr<PgMemLogSource> source) {
+  // Plain read() rather than stdio: a FILE* blocked in fgets() holds its lock, and fflush(nullptr)
+  // (e.g. from gtest's CaptureStderr()) waits for every FILE lock, so it would hang until postgres
+  // writes another line.
   auto tee = [fd, source] {
-    FILE* fp = fdopen(fd, "r");
-    if (!fp) {
-      close(fd);
-      source->Close();
-      return;
+    std::string pending;
+    char buffer[65536];
+    for (;;) {
+      auto n = read(fd, buffer, sizeof(buffer));
+      if (n < 0 && errno == EINTR) {
+        continue;
+      }
+      if (n <= 0) {
+        break;
+      }
+      WriteFully(STDERR_FILENO, buffer, n);
+      pending.append(buffer, n);
+      size_t start = 0;
+      for (auto newline = pending.find('\n'); newline != std::string::npos;
+           newline = pending.find('\n', start)) {
+        source->AddLine(std::string_view(pending).substr(start, newline + 1 - start));
+        start = newline + 1;
+      }
+      pending.erase(0, start);
     }
-    std::string buffer(65536, '\0');
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), fp)) {
-      const size_t length = strlen(buffer.data());
-      WriteFully(STDERR_FILENO, buffer.data(), length);
-      source->AddLine(std::string_view(buffer.data(), length));
+    if (!pending.empty()) {
+      source->AddLine(pending);
     }
-    fclose(fp);
+    close(fd);
     source->Close();
   };
   // Dropping the returned ThreadPtr detaches the thread.
