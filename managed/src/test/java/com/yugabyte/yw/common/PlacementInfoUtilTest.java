@@ -5264,6 +5264,25 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         () -> PlacementInfoUtil.mergePlacements(Arrays.asList(first, second)));
   }
 
+  @Test
+  public void testGetDefaultRegionIgnoredWithPartitions() {
+    UUID regionUuid = UUID.randomUUID();
+    PlacementInfo placement = placementWithCloud(UUID.randomUUID(), "aws", regionUuid);
+    placement.cloudList.get(0).defaultRegion = regionUuid;
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, new UserIntent());
+    cluster.placementInfo = placement;
+
+    assertEquals(regionUuid, PlacementInfoUtil.getDefaultRegion(cluster));
+
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(true);
+    partition.setPlacement(placement);
+    cluster.setPartitions(Collections.singletonList(partition));
+
+    assertNull(PlacementInfoUtil.getDefaultRegion(cluster));
+  }
+
   private static PlacementInfo placementWithCloud(UUID cloudUuid, String code, UUID regionUuid) {
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementCloud cloud = new PlacementCloud();
