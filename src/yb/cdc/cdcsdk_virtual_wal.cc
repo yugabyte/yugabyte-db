@@ -294,7 +294,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
     const auto stream_table_ids = stream->GetTableIds();
-    for (const auto table_oid : {kPgAttributeTableOid, kPgPublicationRelPrpubidIndexOid}) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
       SCHECK_FORMAT(
           std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
               stream_table_ids.end(),
@@ -323,13 +323,15 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
       pg_attribute_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgAttributeTableOid);
       table_list.emplace(pg_attribute_table_id_);
+      pg_namespace_table_id_ = GetPgsqlTableId(pg_database_oid_, kPgNamespaceTableOid);
+      table_list.emplace(pg_namespace_table_id_);
       pg_publication_rel_prpubid_index_table_id_ =
           GetPgsqlTableId(pg_database_oid_, kPgPublicationRelPrpubidIndexOid);
       table_list.emplace(pg_publication_rel_prpubid_index_table_id_);
     }
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class"
                         << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
-                                ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                                ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                                 : "")
                         << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                            "polling list.";
@@ -842,8 +844,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
             << ", explicit_alter_publication_detected: " << explicit_alter_pub_detected;
         break;
       }
-      // When detecting DDL from catalog DML, eligible pg_class/pg_attribute records fall through
-      // so they can be converted into synthetic DDL records below. We also allow BEGIN/COMMIT
+      // When detecting DDL from catalog DML, eligible pg_class/pg_attribute/pg_namespace records
+      // fall through so they can be converted into synthetic DDL records below. A pg_namespace
+      // record has no published table to check. We also allow BEGIN/COMMIT
       // from sys-catalog tables to fall through too otherwise in some cases, the synthetic DDL
       // record won't have a BEGIN/COMMIT if the txn didn't involve any user tablets.
       // For example: auto commit ALTER TABLE ADD COLUMN needs an enclosing BEGIN/COMMIT to be
@@ -852,7 +855,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
           !(record->row_message().op() == RowMessage_Op_BEGIN ||
             record->row_message().op() == RowMessage_Op_COMMIT ||
             (IsDmlOnPgCatalogTableForDetectingDDL(record) &&
-             VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record))))) {
+             (record->row_message().table_id() == pg_namespace_table_id_ ||
+              VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record)))))) {
         continue;
       }
     }
@@ -2059,8 +2063,9 @@ bool CDCSDKVirtualWAL::IsCatalogTableEligibleForCDC(const TableId& table_id) con
   return table_id == pg_class_table_id_ || table_id == pg_publication_rel_table_id_ ||
          table_id == pg_replication_origin_table_id_ || table_id == pg_publication_table_id_ ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_id == pg_attribute_table_id_ ||
-           table_id == pg_publication_rel_prpubid_index_table_id_));
+          std::ranges::any_of(kTxnDdlCatalogTableOids, [&](uint32_t table_oid) {
+            return table_id == GetPgsqlTableId(pg_database_oid_, table_oid);
+          }));
 }
 
 bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
@@ -2082,6 +2087,12 @@ bool CDCSDKVirtualWAL::IsDmlOnPgCatalogTableForDetectingDDL(
       return oid && GetPublishedTableIdForOid(*oid).has_value();
     }
     return false;
+  }
+
+  // ALTER SCHEMA ... RENAME TO writes only pg_namespace. With packed-row, its UPDATE is reported
+  // as an INSERT.
+  if (table_id == pg_namespace_table_id_) {
+    return row_message.op() == RowMessage_Op_UPDATE || row_message.op() == RowMessage_Op_INSERT;
   }
   return table_id == pg_attribute_table_id_;
 }
@@ -2162,20 +2173,21 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
   }
 
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-    table_id == pg_attribute_table_id_) {
+    (table_id == pg_attribute_table_id_ || table_id == pg_namespace_table_id_)) {
     return PubRefreshTrigger::kNone;
   }
 
-  // We should only receive records corresponding to pg_class, pg_attribute (when detecting DDL
-  // from catalog DML), pg_publication_rel, pg_replication_origin and pg_publication tables. Only
-  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex:
-  // when a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting
-  // retention barriers and sends a DDL record.
+  // We should only receive records corresponding to pg_class, pg_attribute and pg_namespace (when
+  // detecting DDL from catalog DML), pg_publication_rel, pg_replication_origin and pg_publication
+  // tables. Only possibility of reaching here is when a DDL record is sent from sys catalog tablet,
+  // for ex: when a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for
+  // setting retention barriers and sends a DDL record.
   LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
       << "Records from an unexpected table: " << table_id
       << " received from sys catalog tablet in virtual WAL."
       << " pg_class_table_id_ = " << pg_class_table_id_
       << " pg_attribute_table_id_ = " << pg_attribute_table_id_
+      << " pg_namespace_table_id_ = " << pg_namespace_table_id_
       << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_
       << " pg_publication_rel_prpubid_index_table_id_ = "
       << pg_publication_rel_prpubid_index_table_id_
@@ -2187,18 +2199,26 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
 Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(
     const std::shared_ptr<CDCSDKProtoRecordPB>& record, GetConsistentChangesResponsePB* resp,
     GetConsistentChangesRespMetadata* metadata, uint64_t* resp_records_size) {
-  auto affected_table_id = VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record));
-
-  // Caller must ensure that the code never reaches here if this is not a catalog DML record.
-  // The check is performed earlier in GetConsistentChangesInternal.
-  RSTATUS_DCHECK(
-      affected_table_id, InternalError, "Table id is not found for catalog DML record");
-
   const auto& row_message = record->row_message();
+
+  // A pg_namespace change doesn't name the tables in the schema, so its DDL record has no table
+  // ID. The walsender then invalidates its cache entries for all tables.
+  std::optional<TableId> affected_table_id;
+  if (row_message.table_id() != pg_namespace_table_id_) {
+    affected_table_id = VERIFY_RESULT(GetPublishedTableIdFromPgCatalogRecord(record));
+
+    // Caller must ensure that the code never reaches here if this is not a catalog DML record.
+    // The check is performed earlier in GetConsistentChangesInternal.
+    RSTATUS_DCHECK(
+        affected_table_id, InternalError, "Table id is not found for catalog DML record");
+  }
+
   auto* ddl_record = resp->add_cdc_sdk_proto_records();
   auto* ddl_row_message = ddl_record->mutable_row_message();
   ddl_row_message->set_op(RowMessage_Op_DDL);
-  ddl_row_message->set_table_id(*affected_table_id);
+  if (affected_table_id) {
+    ddl_row_message->set_table_id(*affected_table_id);
+  }
   ddl_row_message->set_commit_time(row_message.commit_time());
   if (row_message.has_record_time()) {
     ddl_row_message->set_record_time(row_message.record_time());
