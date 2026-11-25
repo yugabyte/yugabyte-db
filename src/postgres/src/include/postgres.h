@@ -795,7 +795,6 @@ extern Datum Float8GetDatum(float8 X);
  */
 extern const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
 extern const char *YbRedactPasswordInCurrentQueryText(const char *queryStr);
-extern CommandTag YbParseCommandTag(const char *query_string);
 
 /*
  * Int64GetDatumFast

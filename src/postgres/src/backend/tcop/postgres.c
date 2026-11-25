@@ -5325,12 +5325,6 @@ yb_parse_query_silently(const char *query_string)
 	return parsetree_list;
 }
 
-CommandTag
-YbParseCommandTag(const char *query_string)
-{
-	return yb_parse_command_tag(query_string, NULL);
-}
-
 /*
  * Returns the first statement's tag. If may_carry_password is not NULL, also
  * sets it from every statement, so callers can redact before anything
@@ -8883,7 +8877,7 @@ YbRedactPasswordInCurrentQueryText(const char *queryStr)
 }
 
 /*
- * CMDTAG_UNKNOWN means the query did not parse, so its statements are unknown.
+ * Callers pass CMDTAG_UNKNOWN to redact regardless of the statement.
  * A DO block can run CREATE/ALTER ROLE ... PASSWORD.
  */
 static bool
