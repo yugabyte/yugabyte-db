@@ -67,6 +67,9 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("use_client_to_server_encryption", "true");
     flagMap.put("certs_for_client_dir", certsDir());
+    // 2025.2 defaults to auth backend. These tests check that the shared control backend used by
+    // auth passthrough stays up, so run them in auth passthrough mode.
+    flagMap.put("ysql_conn_mgr_use_auth_backend", "false");
     return flagMap;
   }
 
