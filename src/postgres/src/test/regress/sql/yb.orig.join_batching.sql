@@ -1,13 +1,15 @@
 --
 -- Batched nested loop joins that must be built and must run correctly
 --
--- The prelude leaves the batched join the one join method enabled, with
--- yb_prefer_bnl off so that YbBatchedNL and NestLoop hints are followed:
--- since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on keeps a
--- batched join from being disabled by yb_enable_batchednl or a hint while
--- nested loops are enabled.  The tests at the end of the file switch to the
--- cost model.  The tables shared with yb.orig.join_batching_negative come
--- from yb.orig.join_batching_setup; a test whose data carries a key type, a
+-- The prelude leaves the batched join the one join method enabled.  The
+-- tests force the batched join with its own controls, YbBatchedNL and
+-- yb_enable_batchednl, and a plain nested loop with NestLoop.  yb_prefer_bnl
+-- is off: since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on
+-- keeps the batched join enabled wherever nested loops are enabled, whatever
+-- yb_enable_batchednl says, as before the batched join had controls of its
+-- own.  The tests at the end of the file switch to the cost model.  The
+-- tables shared with yb.orig.join_batching_negative come from
+-- yb.orig.join_batching_setup; a test whose data carries a key type, a
 -- physical layout or a property of its own creates a table of its own, and
 -- no table is dropped.
 --
@@ -1383,10 +1385,10 @@ SELECT * FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
 SELECT COUNT(*) FROM p1 t1a, p5_subparts t2b WHERE t2b.a = t1a.a AND t1a.a < 60;
 
 -- Batched nested loop over a partitioned inner relation under the cost
--- model, forced the pre-hint way (#25078): each scanned partition takes the
--- batch, the partitions outside p.i <= 201 are pruned, and no Memoize sits
--- under the batched join (#25251).  Its hint turns yb_prefer_bnl and nested
--- loops on.
+-- model, forced as a variant of the nested loop (#25078): each scanned
+-- partition takes the batch, the partitions outside p.i <= 201 are pruned,
+-- and no Memoize sits under the batched join (#25251).  Its hint turns
+-- yb_prefer_bnl and nested loops on.
 CREATE TABLE t_part (i int, a int, b int) PARTITION BY RANGE (i);
 CREATE TABLE t_part1 PARTITION OF t_part FOR VALUES FROM (1) TO (200);
 CREATE TABLE t_part2 PARTITION OF t_part FOR VALUES FROM (200) TO (400);
