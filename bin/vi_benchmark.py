@@ -46,8 +46,9 @@ from typing import Dict, Iterable, List, Optional, Set
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, 'build', 'vi_cache')
-# curl's exit code when the partial file does not fit the remote file.
-CURL_BAD_DOWNLOAD_RESUME = 36
+# curl's exit codes when the partial file does not fit the remote file (36), or the server does
+# not resume downloads (33).
+CURL_RESUME_ERRORS = (33, 36)
 # The ground truth of the first Q queries, with the K nearest base vectors of each.
 GROUND_TRUTH_CACHE_RE = re.compile(r'gt\.q(\d+)\.k(\d+)\.ivecs')
 # hnsw_tool's default --k.
@@ -171,7 +172,7 @@ def download(url: str, path: str) -> None:
     cmd = ['curl', '--fail', '--location', '--show-error', '--continue-at', '-', '--output',
            partial, url]
     returncode = subprocess.call(cmd)
-    if returncode == CURL_BAD_DOWNLOAD_RESUME:
+    if returncode in CURL_RESUME_ERRORS:
         os.remove(partial)
         returncode = subprocess.call(cmd)
     if returncode != 0:
