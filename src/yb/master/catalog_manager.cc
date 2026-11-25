@@ -13409,14 +13409,28 @@ void CatalogManager::StartElectionIfReady(
         GetTableReplicationInfoWithDefault(table), &affinitized_zones);
   }
 
-  // Get the leader priority of every voter of the Raft config that can be a leader, whether or not
-  // its replica has reported yet. A lower value is a higher priority.
+  // Get the leader priority of every voter of the Raft config that can get the hint. A lower value
+  // is a higher priority.
+  // - Initial election (a tablet of a new table): every voter that can be a leader, whether or not
+  //   its replica has reported yet.
+  // - Non-initial election (mostly a split child tablet): only the voters whose replica is RUNNING.
+  //   The tablet has no leader yet, so a running voter of a lower priority gets the hint now
+  //   instead of waiting for a higher priority one. The load balancer can move the leader
+  //   afterwards.
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
   std::unordered_map<TabletServerId, size_t> voter_priorities;
   size_t best_priority = std::numeric_limits<size_t>::max();
   for (const auto& peer : cstate.config().peers()) {
     if (peer.member_type() != PeerMemberType::VOTER) {
       continue;
+    }
+    if (!initial_election) {
+      // Start hinted election only on running replicas if it's not initial election (create table).
+      auto it = replicas->find(peer.permanent_uuid());
+      if (it == replicas->end() || it->second.member_type != PeerMemberType::VOTER ||
+          it->second.state != RaftGroupStatePB::RUNNING) {
+        continue;
+      }
     }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == peer.permanent_uuid()) {
@@ -13437,11 +13451,6 @@ void CatalogManager::StartElectionIfReady(
   // When no voter is in a preferred zone, all voters tie and any of them is a candidate.
   std::vector<std::string> possible_leaders;
   for (const auto& replica : *replicas) {
-    // Start hinted election only on running replicas if it's not initial election (create table).
-    if (!initial_election && (replica.second.member_type != PeerMemberType::VOTER ||
-        replica.second.state != RaftGroupStatePB::RUNNING)) {
-      continue;
-    }
     auto it = voter_priorities.find(replica.first);
     if (it != voter_priorities.end() && it->second == best_priority) {
       possible_leaders.push_back(replica.first);
