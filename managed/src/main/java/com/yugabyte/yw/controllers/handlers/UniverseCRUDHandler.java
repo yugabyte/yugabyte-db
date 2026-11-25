@@ -1967,6 +1967,8 @@ public class UniverseCRUDHandler {
     }
   }
 
+  // This type of clusters was never used and is not really supported.
+  // It lacks validations and will be removed later.
   public UUID createAddOnCluster(
       Customer customer,
       Universe universe,
