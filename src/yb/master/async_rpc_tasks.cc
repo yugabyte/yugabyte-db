@@ -41,6 +41,10 @@ DEFINE_test_flag(string, stuck_add_table_to_tablet_id, "",
     "Tablet ID for which AddTableToTablet tasks get stuck, as with "
     "TEST_stuck_add_tablet_to_table_task_enabled.");
 
+DEFINE_test_flag(string, stuck_add_table_to_tablet_table_id, "",
+    "Table ID for which AddTableToTablet tasks get stuck, as with "
+    "TEST_stuck_add_tablet_to_table_task_enabled.");
+
 DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
                  "When set, transition all delete replica tasks to a failed state.");
 
@@ -1188,7 +1192,8 @@ Status AsyncAddTableToTablet::PickReplica() {
 
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
   if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled) ||
-      PREDICT_FALSE(tablet_id_ == FLAGS_TEST_stuck_add_table_to_tablet_id)) {
+      PREDICT_FALSE(tablet_id_ == FLAGS_TEST_stuck_add_table_to_tablet_id) ||
+      PREDICT_FALSE(table_->id() == FLAGS_TEST_stuck_add_table_to_tablet_table_id)) {
     LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
     return true;
   }
