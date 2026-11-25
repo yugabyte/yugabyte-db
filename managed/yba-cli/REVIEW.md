@@ -134,7 +134,8 @@ A fix on one path must hold on its siblings, or the PR must say why a sibling is
 Users upgrade the CLI without reading release notes. The first question for any change to an
 existing command: what does the same command line, in an existing script, do after the upgrade?
 Any answer but "the same thing" is a finding, unless the old behaviour changed state the user
-did not ask for. A note in the help text or the release notes does not make a change safe.
+did not ask for, or a default now matches the YBA API or UI default. A note in the help text or
+the release notes does not make a change safe.
 
 - Command paths, flag names, short flags, flag defaults, JSON output (`-o json`) fields and exit
   codes are used by scripts and the MCP server. To rename a GA flag, add the new name and keep
@@ -144,7 +145,8 @@ did not ask for. A note in the help text or the release notes does not make a ch
   flag or command without that deprecation is a finding. A preview flag or command may change
   without it.
 - Changing a flag's default changes what every existing script does. It is a finding unless the
-  old default was a bug that changed state the user did not ask for.
+  old default was a bug that changed state the user did not ask for, or the new default matches
+  the YBA API or UI default for the same setting. The PR body names the change.
 - A command that starts a YBA task honours the global `--wait` flag (default true) and waits
   through the shared `WaitForTask` helpers. With `--wait=false` it prints the task, so the
   caller can poll it with `yba task`.
