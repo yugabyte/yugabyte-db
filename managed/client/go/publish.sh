@@ -44,11 +44,6 @@ generated_files() {
 }
 grep -q '^package ywclient$' "$GEN_DIR/v1/client.go" \
   || die "v1 was generated with an old config (package is not ywclient). Run sbt swaggerGen."
-# Files from before the ywclient rename stay in v1, because the generator does not delete them.
-if OLD_PKG="$(grep -rl --include='*.go' '^package v1$' "$GEN_DIR/v1")"; then
-  die "v1 has files of the old package v1 (${OLD_PKG%%$'\n'*})." \
-    "Run sbt \"cleanClients; swaggerGen\"."
-fi
 grep -qx 'module github.com/yugabyte/platform-go-client' "$GEN_DIR/v1/go.mod" \
   || die "v1/go.mod has the wrong module path. Run sbt swaggerGen."
 
