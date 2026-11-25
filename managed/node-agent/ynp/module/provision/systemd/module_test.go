@@ -57,17 +57,23 @@ func stageModule(t *testing.T) string {
 	return base
 }
 
-// newYbHome creates a yb user home, with bin/ when withBin is set, as on a node that already ran
-// the servers.
-func newYbHome(t *testing.T, withBin bool) string {
+// newYbHome creates a yb user home, with bin/yb-server-ctl.sh when configured is set, as on a node
+// that already ran the servers.
+func newYbHome(t *testing.T, configured bool) string {
 	t.Helper()
 	ybHome := filepath.Join(t.TempDir(), "yugabyte")
 	dir := ybHome
-	if withBin {
+	if configured {
 		dir = filepath.Join(ybHome, "bin")
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("create %s: %v", dir, err)
+	}
+	if configured {
+		ctl := filepath.Join(dir, "yb-server-ctl.sh")
+		if err := os.WriteFile(ctl, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("write %s: %v", ctl, err)
+		}
 	}
 	return ybHome
 }
@@ -159,7 +165,7 @@ func assertInstalledLauncher(t *testing.T, ybHome, name string) {
 // Re-provisioning a live node writes the units and then starts the servers without running
 // ConfigureServer, so the launchers the units exec have to come with them (PLAT-23460).
 func TestRunInstallsLaunchersWithUnits(t *testing.T) {
-	ybHome := newYbHome(t, true /* withBin */)
+	ybHome := newYbHome(t, true /* configured */)
 	if output, err := runScript(t, ybHome, true /* configureCgroup */); err != nil {
 		t.Fatalf("run script: %v\n%s", err, output)
 	}
@@ -183,7 +189,7 @@ func TestRunInstallsLaunchersWithUnits(t *testing.T) {
 
 // The tserver unit only execs the cgroup launcher when cgroups are configured.
 func TestRunSkipsCgroupLauncherWithoutCgroup(t *testing.T) {
-	ybHome := newYbHome(t, true /* withBin */)
+	ybHome := newYbHome(t, true /* configured */)
 	if output, err := runScript(t, ybHome, false /* configureCgroup */); err != nil {
 		t.Fatalf("run script: %v\n%s", err, output)
 	}
@@ -196,7 +202,7 @@ func TestRunSkipsCgroupLauncherWithoutCgroup(t *testing.T) {
 // A blank node gets the launchers from ConfigureServer. Creating bin/ there would fail the clean
 // home directory check in the yugabyte precheck for manual on-prem nodes.
 func TestRunLeavesBlankNodeWithoutBin(t *testing.T) {
-	ybHome := newYbHome(t, false /* withBin */)
+	ybHome := newYbHome(t, false /* configured */)
 	if output, err := runScript(t, ybHome, true /* configureCgroup */); err != nil {
 		t.Fatalf("run script: %v\n%s", err, output)
 	}
@@ -206,13 +212,34 @@ func TestRunLeavesBlankNodeWithoutBin(t *testing.T) {
 	}
 }
 
+// On SLES, useradd copies /etc/skel/bin into the new home, so a blank node has an empty bin/.
+// Installing the launchers there would fail the clean home directory check (PLAT-24135).
+func TestRunLeavesSkelBinOnBlankNodeEmpty(t *testing.T) {
+	ybHome := newYbHome(t, false /* configured */)
+	bin := filepath.Join(ybHome, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatalf("create %s: %v", bin, err)
+	}
+	if output, err := runScript(t, ybHome, true /* configureCgroup */); err != nil {
+		t.Fatalf("run script: %v\n%s", err, output)
+	}
+	readUnit(t, ybHome, "yb-master.service")
+	entries, err := os.ReadDir(bin)
+	if err != nil {
+		t.Fatalf("read %s: %v", bin, err)
+	}
+	if len(entries) > 0 {
+		t.Fatalf("launchers installed into the skel bin/ of a blank node: %v", entries)
+	}
+}
+
 // The module scripts do not run with set -e, so a failed launcher install has to fail the module
 // itself rather than leave the units pointing at a missing file.
 func TestRunFailsWhenLauncherInstallFails(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can write to a read-only bin/")
 	}
-	ybHome := newYbHome(t, true /* withBin */)
+	ybHome := newYbHome(t, true /* configured */)
 	bin := filepath.Join(ybHome, "bin")
 	if err := os.Chmod(bin, 0o555); err != nil {
 		t.Fatalf("chmod %s: %v", bin, err)
