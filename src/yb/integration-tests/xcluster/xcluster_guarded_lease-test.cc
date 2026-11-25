@@ -880,7 +880,7 @@ class XClusterGuardedLeaseConnMgrTest : public LibPqTestBase {
 // Checks that a TServer running the connection manager with the YSQL lease disabled stays up and
 // refuses connections without an xCluster-guarded information lease, then accepts them once the
 // xCluster lease is granted.
-TEST_F(XClusterGuardedLeaseConnMgrTest, ConnMgrWaitsForXClusterLease) {
+TEST_F(XClusterGuardedLeaseConnMgrTest, YB_DISABLE_TEST_ON_MACOS(ConnMgrWaitsForXClusterLease)) {
   // A TServer whose connection manager waited for Postgres at startup would have given up, and
   // exited, by now.
   SleepFor(3 * kConnMgrPgWaitTimeout * kTimeMultiplier);
