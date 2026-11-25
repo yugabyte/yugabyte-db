@@ -27,6 +27,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_bool(TEST_disable_wal_retention_time);
@@ -70,6 +71,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
       bool use_grpc_stream, bool use_logical_replication_stream, bool add_dummy_grpc_slot_entry);
   void TestFailureOnAddingUnqualifiedTableToVWAL(bool add_expired_table, bool use_colocated);
   void TestVectorIndexAlterDoesNotLeakIndexSchema(bool colocated);
+  void TestHiddenObjectDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead(bool colocated);
   Result<bool> ConsumeDDLTxn(const xrepl::StreamId& stream_id);
 };
 
@@ -5535,6 +5537,60 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
             old_table.table_name()),
         std::nullopt, true /* include_catalog_tables */);
   }
+}
+
+// DoProcessCDCSDKTabletDeletion and DoProcessCDCSDKColocatedTableDeletion read each slot's row from
+// cdc_state. A read that stalls, as when the cdc_state tserver stops answering, must not block
+// catalog operations that need CatalogManager::mutex_.
+void CDCSDKConsumptionConsistentChangesTest::
+    TestHiddenObjectDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead(bool colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, colocated, true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, test_namespace_name, "dropped_table", 1 /* num_tablets */,
+      true /* add_primary_key */, colocated));
+  // The slot is never consumed, so the dropped table stays retained for CDC and every cleanup pass
+  // reads cdc_state.
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  std::atomic<bool> read_stalled{false};
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CDCTest::ReleaseCdcStateRead", "GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead"}});
+  SyncPoint::GetInstance()->SetCallBack(
+      "GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead",
+      [&read_stalled](void*) { read_stalled = true; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto release_read = ScopeExit([] {
+    TEST_SYNC_POINT("CDCTest::ReleaseCdcStateRead");
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table.table_name()));
+  ASSERT_OK(WaitFor(
+      [&read_stalled] { return read_stalled.load(); }, MonoDelta::FromSeconds(30),
+      "Timed out waiting for the cleanup task to reach its cdc_state read"));
+
+  // CreateNamespace takes CatalogManager::mutex_ exclusively, so it waits for any holder.
+  ASSERT_OK(test_client()->CreateNamespace(
+      "unrelated_namespace", YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
+      "" /* namespace_id */, "" /* source_namespace_id */, std::nullopt /* next_pg_oid */,
+      nullptr /* txn */, false /* colocated */,
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(10) * kTimeMultiplier /* deadline */));
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestHiddenTabletDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead) {
+  TestHiddenObjectDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead(/* colocated = */ false);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestHiddenColocatedTableDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead) {
+  TestHiddenObjectDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead(/* colocated = */ true);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
