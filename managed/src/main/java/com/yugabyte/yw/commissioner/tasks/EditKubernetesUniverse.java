@@ -126,6 +126,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     this.ybcManager = ybcManager;
   }
 
+  // The edit restarts tservers in place (upgradePodsTask) on an instance type change or a full pod
+  // roll, so move their leaders off first, as the K8s upgrade tasks and the VM edit do.
+  @Override
+  protected boolean isBlacklistLeaders() {
+    return getOrCreateExecutionContext().isBlacklistLeaders();
+  }
+
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);

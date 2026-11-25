@@ -3542,6 +3542,81 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testTserverResourceChangeBlacklistsLeadersAroundEachRestart() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    List<String> steps =
+        leaderBlacklistSteps(
+            planEdit(
+                tserverCpuChange(),
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo));
+
+    List<String> added =
+        steps.stream()
+            .filter(s -> s.startsWith("add "))
+            .map(s -> s.substring("add ".length()))
+            .collect(Collectors.toList());
+    assertEquals(
+        ImmutableSet.of("[yb-tserver-0_az-1]", "[yb-tserver-0_az-2]", "[yb-tserver-0_az-3]"),
+        new HashSet<>(added));
+    List<String> expected = new ArrayList<>();
+    expected.add("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]");
+    for (String node : added) {
+      expected.addAll(ImmutableList.of("add " + node, "wait", "restart", "remove " + node));
+    }
+    assertEquals(expected, steps);
+  }
+
+  @Test
+  public void testTserverResourceChangeWithLeaderBlacklistOffOnlyRestarts() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.ybUpgradeBlacklistLeaders.getKey(), "false");
+    List<String> steps =
+        leaderBlacklistSteps(
+            planEdit(
+                tserverCpuChange(),
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo));
+    assertEquals(ImmutableList.of("restart", "restart", "restart"), steps);
+  }
+
+  private UniverseDefinitionTaskParams.UserIntent tserverCpuChange() {
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = newIntent.tserverK8SNodeResourceSpec.cpuCoreCount + 1;
+    spec.memoryGib = newIntent.tserverK8SNodeResourceSpec.memoryGib;
+    newIntent.tserverK8SNodeResourceSpec = spec;
+    return newIntent;
+  }
+
+  /**
+   * The plan's leader blacklist changes ("add"/"remove" with the sorted node names), leader drain
+   * waits ("wait") and tserver pod restarts ("restart"), in plan order.
+   */
+  private static List<String> leaderBlacklistSteps(List<TaskInfo> plan) {
+    List<String> steps = new ArrayList<>();
+    for (TaskInfo t : plan) {
+      JsonNode p = t.getTaskParams();
+      if (t.getTaskType() == TaskType.ModifyBlackList && p.path("isLeaderBlacklist").asBoolean()) {
+        boolean add = p.path("addNodes").size() > 0;
+        List<String> names = new ArrayList<>();
+        p.path(add ? "addNodes" : "removeNodes")
+            .forEach(n -> names.add(n.path("nodeName").asText()));
+        Collections.sort(names);
+        steps.add((add ? "add " : "remove ") + names);
+      } else if (t.getTaskType() == TaskType.WaitForLeaderBlacklistCompletion) {
+        steps.add("wait");
+      } else if (t.getTaskType() == TaskType.KubernetesWaitForPod
+          && p.path("podName").asText().contains("yb-tserver")) {
+        steps.add("restart");
+      }
+    }
+    return steps;
+  }
+
+  @Test
   public void testMasterOnlyFullMoveMasterAddressPropagation() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
