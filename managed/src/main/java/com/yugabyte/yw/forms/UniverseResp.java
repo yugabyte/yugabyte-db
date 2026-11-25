@@ -311,6 +311,13 @@ public class UniverseResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
   public final Map<UUID, UniverseResourceDetails> resourcesPerProvider;
 
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Whether the health check collects PSS for the postgres processes of"
+              + " this universe")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
+  public final boolean postgresPssCollected;
+
   public UniverseResp(Universe entity) {
     this(
         entity,
@@ -373,6 +380,12 @@ public class UniverseResp {
     this.nodeExporterSidecarScraped =
         confGetter != null && KubernetesUtil.isNodeExporterSidecarEnabled(entity, confGetter);
     this.resourcesPerProvider = resourcesPerProvider;
+    // A negative interval disables PSS collection. Without a conf getter, keep the panels.
+    this.postgresPssCollected =
+        confGetter == null
+            || confGetter.getConfForScope(
+            entity, UniverseConfKeys.healthPostgresPssCollectionIntervalSecs)
+            >= 0;
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

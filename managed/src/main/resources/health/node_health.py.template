@@ -2174,8 +2174,7 @@ class NodeChecker():
         # The per-minute metrics-only run feeds the graphs through the textfile, so the full run
         # skips PSS, unless nothing scrapes that textfile
         # (k8s case or on-prem node with a customer-managed node_exporter).
-        return (self.metrics_only or self.is_k8s
-                or not self._is_textfile_collector_present())
+        return (self.is_k8s or (self.metrics_only == self._is_textfile_collector_present()))
 
     def _is_pss_collection_due(self):
         if not self._is_pss_source() or self.pss_collection_interval_secs < 0:
