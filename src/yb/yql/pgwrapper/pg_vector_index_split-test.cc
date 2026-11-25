@@ -31,6 +31,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -904,9 +905,18 @@ TEST_P(PgDistributedVectorIndexTest, CreateIndexWithLateTabletAcrossMasterRestar
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stuck_add_table_to_tablet_id) = late_tablet_id;
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this] {
+  std::atomic<int32_t> create_index_pid{0};
+  thread_holder.AddThreadFunctor([this, &create_index_pid] {
     auto conn = ASSERT_RESULT(Connect());
+    create_index_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
     ASSERT_OK(CreateIndex(conn));
+  });
+  // If the late tablet never gets the index, CREATE INDEX never returns: the backend polls for the
+  // index to be ready without checking for interrupts. Kill it, so the thread can be joined.
+  auto kill_create_index = ScopeExit([&create_index_pid] {
+    if (HasFailure() && create_index_pid) {
+      kill(create_index_pid, SIGKILL);
+    }
   });
 
   auto index_id = ASSERT_RESULT(WaitForPreparingVectorIndex(*cluster_))->id();
