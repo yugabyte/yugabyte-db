@@ -17,7 +17,6 @@
 
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
@@ -48,6 +47,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -774,34 +774,6 @@ std::string ParamsToString(
       !is_colocated.has_value() ? "" : *is_colocated ? "Colocated" : "Distributed",
       ToString(engine).substr(1),
       packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
-}
-
-Result<PGConn> PgVectorIndexColocationOnlyTest::CreateSourceTable(size_t num_rows) {
-  dimensions_ = 3;
-  auto admin_conn = VERIFY_RESULT(PgMiniTestBase::Connect());
-  RETURN_NOT_OK(admin_conn.ExecuteFormat(
-      "CREATE DATABASE $0$1", kSourceDb, IsColocated() ? " COLOCATION = true" : ""));
-  auto conn = VERIFY_RESULT(ConnectToDB(kSourceDb));
-  RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
-  RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(3))$0",
-      IsColocated() ? " WITH (COLOCATED = 1)" : " SPLIT INTO 1 TABLETS"));
-  for (size_t i = 1; i <= num_rows; ++i) {
-    RETURN_NOT_OK(conn.ExecuteFormat(
-        "INSERT INTO test (id, embedding) VALUES ($0, '$1')", i, AsString(Vector(i))));
-  }
-  return conn;
-}
-
-Status PgVectorIndexColocationOnlyTest::CreateSourceSnapshotSchedule() {
-  client::SnapshotTestUtil snapshot_util;
-  snapshot_util.SetProxy(&client_->proxy_cache());
-  snapshot_util.SetCluster(cluster_.get());
-  // Retention must outlive the clone, which takes minutes under sanitizers; otherwise the source
-  // snapshot is GC'd before the clone is applied.
-  return ResultToStatus(snapshot_util.CreateSchedule(
-      nullptr, YQL_DATABASE_PGSQL, kSourceDb,
-      client::WaitSnapshot::kTrue, 10s * kTimeMultiplier, 1h));
 }
 
 std::string TestKVFormatter::Format(
