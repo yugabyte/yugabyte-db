@@ -13361,8 +13361,8 @@ Status CatalogManager::SendCreateTabletRequests(
   return Status::OK();
 }
 
-// If responses have been received from sufficient replicas (including hinted leader),
-// pick proposed leader and start election.
+// If a majority of the voters have reported a running replica, pick proposed leader and start
+// election. For an initial election the proposed leader need not have reported yet.
 void CatalogManager::StartElectionIfReady(
     const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch,
     const TabletInfoPtr& tablet) {
@@ -13445,15 +13445,12 @@ void CatalogManager::StartElectionIfReady(
     }
   }
 
-  // Candidates are the replicas of the best priority. For an initial election a candidate need not
-  // have reported yet, because the first report adds every voter to the replica map. The exception
-  // is enable_register_ts_from_raft off: then a voter is added only when it reports itself.
-  // When no voter is in a preferred zone, all voters tie and any of them is a candidate.
+  // Candidates are the voters of the best priority. When no voter is in a preferred zone, all
+  // voters tie and any of them is a candidate.
   std::vector<std::string> possible_leaders;
-  for (const auto& replica : *replicas) {
-    auto it = voter_priorities.find(replica.first);
-    if (it != voter_priorities.end() && it->second == best_priority) {
-      possible_leaders.push_back(replica.first);
+  for (const auto& [ts_uuid, priority] : voter_priorities) {
+    if (priority == best_priority) {
+      possible_leaders.push_back(ts_uuid);
     }
   }
 
