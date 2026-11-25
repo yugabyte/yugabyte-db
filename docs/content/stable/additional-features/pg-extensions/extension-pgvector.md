@@ -343,7 +343,7 @@ Use the following table to decide what to do for each table.
 | The vector table was created on | What to do |
 | :--- | :--- |
 | v2025.2.6.0+<br>v2026.1.1.0+<br>after the upgrade to that release was finalized | Nothing. Upgrade as usual. |
-| v2024.2 | Drop the vector extension itself before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
+| v2024.2 | Save the DDL, export the data, and drop the tables, then drop the vector extension, before upgrading. See [Upgrade from v2024.2](#upgrade-from-v2024-2). |
 | v2025.1, or v2025.2.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade): drop the vector tables before upgrading. Current releases can't open vector indexes created on these releases, so the upgrade can't proceed while they exist. |
 | v2025.2.1 to v2025.2.5, or v2026.1.0.x | Use [Option 1](#option-1-rebuild-across-the-upgrade) or [Option 2](#option-2-rebuild-after-the-upgrade). Option 2 keeps the tables online during the upgrade. |
 | Not sure | Treat it as old and rebuild it. Rebuilding a table that already has the new layout does no harm. |
@@ -362,10 +362,10 @@ For every vector, YugabyteDB keeps a lookup entry that points from the vector ba
 
 Which layout a table uses is decided once, when the table is created with CREATE TABLE, and can't be changed afterwards. This has the following consequences:
 
-- Old-layout tables aren't supported on the new releases. They still return correct results, but every CREATE INDEX or DROP INDEX on them leaves lookup entries behind that are never cleaned up, so they waste storage indefinitely.
+- Old-layout tables aren't supported on the new releases. Tables created on v2025.2.1 to v2025.2.5 or v2026.1.0.x still return correct results, but every CREATE INDEX or DROP INDEX on them leaves lookup entries behind that are never cleaned up, so they waste storage indefinitely.
 - Only a new CREATE TABLE gives a table the new layout. REINDEX, dropping and recreating only the index, ALTER TABLE, restoring from a backup, point-in-time recovery, and database cloning all keep the table's existing layout. That's why the procedures recreate each table from its DDL and reload its data.
 - The new layout takes effect only after the upgrade is finalized. A table created while the upgrade is still in progress gets the old layout. Don't recreate vector tables until you have finalized the upgrade.
-- In a colocated database, all colocated tables share storage, so space already lost isn't reclaimed by recreating individual tables. See Colocated databases.
+- In a colocated database, all colocated tables share storage, so space already lost isn't reclaimed by recreating individual tables. See [Colocated databases](#colocated-databases).
 {{< /note >}}
 
 ### Upgrade from v2024.2
@@ -374,7 +374,7 @@ v2024.2 includes the `vector` extension as a tech preview, without vector index 
 
 1. Before upgrading, save the DDL of the tables that use the `vector` type (for example, using `ysql_dump --schema-only`), and export their data (for example, using `\copy <table> TO '<table>.csv' WITH (FORMAT csv)`).
 1. Drop those tables, and run `DROP EXTENSION vector;` in each database where the extension is installed.
-1. Upgrade to v2026.1.2.0 or later, and finalize the upgrade.
+1. Upgrade to the latest release in your series (no earlier than v2025.2.6.0 on the v2025.2 LTS series, or v2026.1.2.0 on the v2026.1 series), and finalize the upgrade.
 1. Run `CREATE EXTENSION vector;`, recreate the tables, and create any vector indexes you need using `ybhnsw`.
 1. Load the exported data.
 
@@ -382,7 +382,7 @@ Creating the vector indexes before loading the data avoids an index backfill.
 
 ### Upgrade from v2025.1, v2025.2, or v2026.1.0
 
-Rebuild each vector table using one of the following options. If you are upgrading from v2025.1, you must use Option 1.
+Rebuild each vector table using one of the following options. If you are upgrading from v2025.1 or v2025.2.0.x, you must use Option 1.
 
 #### Option 1: Rebuild across the upgrade
 
@@ -390,12 +390,12 @@ Use this option if the vector tables can be offline for the duration of the upgr
 
 1. Before upgrading, save the DDL of each vector table and its indexes, and export the table data.
 1. Drop the vector indexes, then drop the tables.
-1. Upgrade to v2026.1.2.0 or later, and finalize the upgrade.
+1. Upgrade to the latest release in your series (no earlier than v2025.2.6.0 on the v2025.2 LTS series, or v2026.1.2.0 on the v2026.1 series), and finalize the upgrade.
 1. Recreate each table from its DDL, create the vector indexes, and then load the exported data.
 
 #### Option 2: Rebuild after the upgrade
 
-Use this option to keep the tables available during the upgrade. Nothing is required before upgrading. After the upgrade is finalized, do the following for each vector table. Stop writes to the table from the start of the copy (step 3) until the tables are swapped (step 6). Rows written to the old table in that window are lost.
+Use this option to keep the tables available during the upgrade. It applies only to vector tables created on v2025.2.1 to v2025.2.5 or v2026.1.0.x. For those tables, nothing is required before upgrading. After the upgrade is finalized, do the following for each vector table. Stop writes to the table from the start of the copy (step 3) until the tables are swapped (step 6). Rows written to the old table in that window are lost.
 
 1. Drop the vector indexes on the table.
 1. Create a new empty table, such as `items_new`, using the original DDL under the new name (for example, from `ysql_dump --schema-only -t items`). Don't create the vector indexes yet.
