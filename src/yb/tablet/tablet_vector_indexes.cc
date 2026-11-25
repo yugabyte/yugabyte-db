@@ -1244,6 +1244,10 @@ void TabletVectorIndexes::StartShutdown() {
   }
 }
 
+void TabletVectorIndexes::WaitPendingDestroys() {
+  pending_destroys_->Wait();
+}
+
 void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) {
   auto scope = shutdown_controller_.CompleteShutdown();
   if (!scope) {

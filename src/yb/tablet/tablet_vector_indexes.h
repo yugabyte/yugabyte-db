@@ -183,6 +183,9 @@ class TabletVectorIndexes :
 
   void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
+
+  // Waits for the destroys of the removed indexes, see Remove.
+  void WaitPendingDestroys();
   bool ShutdownStarted() const { return !shutdown_controller_.IsRunning(); }
   // Adds finished and failed vector index backfills to the tablet status.
   void FillBackfillStatus(TabletStatusPB& tablet_status);
@@ -262,7 +265,8 @@ class TabletVectorIndexes :
   void DestroySkippedIndexStorage(const TableInfoPtr& table_info);
 
   // Destroy waits for the inserts of the index queued in the shared insert pool, e.g. a whole
-  // chunk of a backfill, so the Raft apply that removes the index does not run it.
+  // chunk of a backfill, so the Raft apply that removes the index does not run it, unless the pool
+  // refuses the task on tserver shutdown, see PendingDestroys::Task.
   void ScheduleDestroy(docdb::DocVectorIndexPtr index);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
