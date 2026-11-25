@@ -2951,10 +2951,9 @@ YbTrackAlteredTableId(Oid relid)
  * With ysql_enable_concurrent_ddl off, the DDL transactions in one database
  * that increment the catalog version run one at a time: each takes this lock
  * in EXCLUSIVE mode and holds it until it ends. With it on, no DDL takes the
- * lock, and DDLs run as concurrently as object locks allow. A DDL that does
- * not increment the catalog version, such as CREATE TEMP TABLE, cannot
- * conflict with another DDL, so it takes no lock; a later DDL of its
- * transaction that does takes it then.
+ * lock, and DDLs run as concurrently as object locks allow. A DDL whose
+ * mode does not increment the catalog version, such as CREATE TEMP TABLE,
+ * takes no lock; a later DDL of its transaction that does takes it then.
  */
 void
 YbLockDatabaseToSerializeDdl(YbDdlMode mode)

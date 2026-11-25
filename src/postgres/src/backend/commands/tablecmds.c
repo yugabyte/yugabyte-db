@@ -20599,6 +20599,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		SET_LOCKTAG_RELATION(tag, MyDatabaseId, parentrelid);
 		WaitForLockersMultiple(list_make1(&tag), AccessExclusiveLock, false);
+
 		/* YB: Take the database DDL lock only after the wait. */
 		if (IsYugaByteEnabled() && YBCPgIsDdlMode())
 			YbLockDatabaseToSerializeDdl(YBGetCurrentDdlMode());
