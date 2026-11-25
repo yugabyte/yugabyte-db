@@ -1487,8 +1487,10 @@ BinarySearchAshIndex(TimestampTz target_time, int oldest_index, int nsamples)
 	{
 		int			mid = left + (right - left) / 2;
 		int			slot = (oldest_index + mid) % yb_ash->max_entries;
+		/* sample_time is unsigned; compare signed for times before 2000 */
+		TimestampTz sample_time = cb[slot].sample_time;
 
-		if (cb[slot].sample_time < target_time)
+		if (sample_time < target_time)
 			left = mid + 1;
 		else
 			right = mid;
