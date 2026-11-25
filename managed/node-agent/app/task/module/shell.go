@@ -37,10 +37,12 @@ var (
 
 // CommandInfo holds command information.
 type CommandInfo struct {
-	User   string
-	Desc   string
-	Cmd    string
-	Args   []string
+	User string
+	Desc string
+	Cmd  string
+	Args []string
+	// Used by RunCmd only. It cannot override HOME, PWD or the user name vars.
+	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
 }
@@ -97,7 +99,7 @@ func RedactOutput(output string) string {
 		nameEnd := pos + i + len("passwd")
 		pos = nameEnd
 		if !strings.HasSuffix(output[:nameEnd], "ldapbindpasswd") &&
-			!strings.HasSuffix(output[:nameEnd], "ycql_ldap_bind_passwd") {
+			!hasYcqlLdapBindPasswdSuffix(output[:nameEnd]) {
 			continue
 		}
 		eq := nameEnd
@@ -126,6 +128,25 @@ func RedactOutput(output string) string {
 	return sb.String()
 }
 
+// hasYcqlLdapBindPasswdSuffix reports whether s ends with ycql_ldap_bind_passwd, any of whose
+// underscores may be dashes: gflags reads a dash in a flag name as an underscore.
+func hasYcqlLdapBindPasswdSuffix(s string) bool {
+	const name = "ycql_ldap_bind_passwd"
+	if strings.HasSuffix(s, name) {
+		return true
+	}
+	if len(s) < len(name) {
+		return false
+	}
+	s = s[len(s)-len(name):]
+	for i := 0; i < len(name); i++ {
+		if s[i] != name[i] && (name[i] != '_' || s[i] != '-') {
+			return false
+		}
+	}
+	return true
+}
+
 // RunCmd runs the command in the command info.
 func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	userDetail, err := util.UserInfo(cmdInfo.User)
@@ -135,6 +156,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
+	env = append(env, cmdInfo.Env...)
 	// Handle cancellation in runCommand. Otherwise, when the context is cancelled,
 	// the command is killed without cleaning up the process group.
 	cmd := createCmd(context.WithoutCancel(ctx), userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
@@ -253,11 +275,22 @@ func RunShellCmd(
 	user, desc, cmdStr string,
 	logOut util.Buffer,
 ) (*CommandInfo, error) {
+	return RunShellCmdWithEnv(ctx, user, desc, cmdStr, nil, logOut)
+}
+
+// RunShellCmdWithEnv runs a shell command with extra env vars, which are not logged.
+func RunShellCmdWithEnv(
+	ctx context.Context,
+	user, desc, cmdStr string,
+	env []string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
 	cmdInfo := &CommandInfo{
 		User:   user,
 		Desc:   desc,
 		Cmd:    util.DefaultShell,
 		Args:   []string{"-c", cmdStr},
+		Env:    env,
 		StdOut: util.NewBuffer(MaxBufferCapacity),
 		StdErr: util.NewBuffer(MaxBufferCapacity),
 	}

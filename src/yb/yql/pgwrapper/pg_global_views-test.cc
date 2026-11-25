@@ -348,6 +348,65 @@ TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
   ASSERT_EQ(res, (decltype(res){Format(kInsertQuery, "$1"), 3}));
 }
 
+TEST_F(PgGlobalViewsTest, TestPushedDownNowDuringExecution) {
+  // Must outlast the setup and the first EXECUTE below, so it scales with slow builds.
+  constexpr int kNowThresholdDelaySeconds = 5 * kTimeMultiplier;
+  constexpr auto kExecutePreparedQuery = "EXECUTE now_execution_query";
+  constexpr auto kPushedDownNowFilter =
+      "WHERE ((updated_at < $1::timestamp with time zone))";
+
+  ASSERT_OK(conn_->ExecuteFormat(R"(
+      DO $$$$ BEGIN
+          EXECUTE format(
+              'CREATE VIEW now_execution_test AS
+                  SELECT yb_get_local_tserver_uuid() AS server_uuid,
+                         to_timestamp(%s) AS updated_at',
+              EXTRACT(EPOCH FROM NOW() + interval '$0 seconds'));
+      END $$$$)",
+      kNowThresholdDelaySeconds));
+  ASSERT_OK(conn_->Execute(R"(
+      CREATE FOREIGN TABLE "gv$now_execution_test" (
+          server_uuid UUID,
+          updated_at TIMESTAMPTZ
+      )
+      SERVER gv_server
+      OPTIONS (schema_name 'public', table_name 'now_execution_test'))"));
+
+  // Remote global-view reads run as the non-superuser yb_global_views_user role
+  // (a member of pg_read_all_stats), so the view must grant it read access.
+  ASSERT_OK(conn_->Execute(
+      "GRANT SELECT ON now_execution_test TO pg_read_all_stats"));
+
+  ASSERT_OK(conn_->Execute("SET plan_cache_mode TO force_generic_plan"));
+  ASSERT_OK(conn_->Execute(R"(
+      PREPARE now_execution_query AS
+      SELECT COUNT(*) FROM "gv$now_execution_test"
+      WHERE updated_at < NOW())"));
+
+  TestThreadHolder log_waiter_threads;
+  // NOW() should be pushed down as an execution-time param, not as a stale
+  // constified value in the cached generic plan.
+  VerifyQueryPushdowns(&log_waiter_threads, kPushedDownNowFilter);
+
+  const auto count_before_threshold =
+      ASSERT_RESULT(conn_->FetchRow<int64_t>(kExecutePreparedQuery));
+  ASSERT_EQ(count_before_threshold, 0);
+
+  // Wait with a separate query, so the prepared statement still runs exactly twice.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    return conn_->FetchRow<bool>("SELECT NOW() > updated_at FROM now_execution_test");
+  }, 60s * kTimeMultiplier, "NOW() to pass the view's updated_at"));
+
+  const auto count_after_threshold =
+      ASSERT_RESULT(conn_->FetchRow<int64_t>(kExecutePreparedQuery));
+  ASSERT_EQ(count_after_threshold, GetNumTabletServers());
+
+  const auto plan_counts = ASSERT_RESULT((conn_->FetchRow<int64_t, int64_t>(R"(
+      SELECT generic_plans, custom_plans FROM pg_prepared_statements
+      WHERE name = 'now_execution_query')")));
+  ASSERT_EQ(plan_counts, (decltype(plan_counts){2, 0}));
+}
+
 TEST_F(PgGlobalViewsTest, TestDistinctIsNotPushedDown) {
   TestThreadHolder log_waiter_threads;
   VerifyQueryPushdowns(&log_waiter_threads,

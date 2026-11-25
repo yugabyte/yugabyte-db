@@ -78,8 +78,10 @@ HybridTime ClockBasedHistoryCutoff(server::Clock* clock) {
 
 TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
-    RaftGroupMetadata* metadata)
+    RaftGroupMetadata* metadata,
+    const IsTransactionalXClusterTargetProvider& is_transactional_xcluster_target_provider)
     : clock_(std::move(clock)), allowed_history_cutoff_provider_(allowed_history_cutoff_provider),
+      is_transactional_xcluster_target_provider_(is_transactional_xcluster_target_provider),
       metadata_(*metadata), is_sys_catalog_(metadata->IsSysCatalog()),
       log_prefix_(metadata->LogPrefix()),
       apply_history_cutoff_floor_(!metadata->IsSysCatalog()) {
@@ -122,9 +124,18 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return { history_cutoff, dockv::TableTTL(*metadata_.schema()),
-          docdb::ShouldRetainDeleteMarkersInMajorCompaction(
-              ShouldRetainDeleteMarkersInMajorCompaction()) };
+  const bool is_transactional_xcluster_target =
+      is_transactional_xcluster_target_provider_ &&
+      is_transactional_xcluster_target_provider_(metadata_.namespace_id());
+
+  return {
+    .history_cutoff = history_cutoff,
+    .table_ttl = dockv::TableTTL(*metadata_.schema()),
+    .retain_delete_markers_in_major_compaction =
+        docdb::ShouldRetainDeleteMarkersInMajorCompaction(
+            ShouldRetainDeleteMarkersInMajorCompaction()),
+    .is_transactional_xcluster_target = is_transactional_xcluster_target,
+  };
 }
 
 HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {

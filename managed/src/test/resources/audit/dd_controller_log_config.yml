@@ -1,7 +1,7 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
   datadog/controller_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
-    api: {key: apikey, site: ddsite}
+    api: {key: '${env:YB_OTEL_00000000_0000_0000_0000_000000000000_DD_API_KEY}', site: ddsite}
     retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m, max_interval: 10m}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension

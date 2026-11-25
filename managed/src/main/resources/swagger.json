@@ -1019,7 +1019,10 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE",
+            "HEALTH_CHECK_NOT_RUNNING",
+            "YBA_SCHEDULER_NOT_RUNNING"
           ],
           "type" : "string"
         },
@@ -1226,7 +1229,10 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE",
+            "HEALTH_CHECK_NOT_RUNNING",
+            "YBA_SCHEDULER_NOT_RUNNING"
           ],
           "type" : "string"
         },
@@ -1529,7 +1535,10 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE",
+            "HEALTH_CHECK_NOT_RUNNING",
+            "YBA_SCHEDULER_NOT_RUNNING"
           ],
           "type" : "string"
         },
@@ -2748,6 +2757,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -5821,6 +5832,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -9106,6 +9119,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -9989,6 +10004,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -11565,6 +11582,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -12350,6 +12369,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -13120,6 +13141,13 @@
     "ManagedLoadBalancerConfig" : {
       "description" : "Load balancers that YBA creates and manages for a cluster",
       "properties" : {
+        "dnsNames" : {
+          "description" : "DNS names that clients use to reach the load balancers, for example db.example.com or *.db.example.com. YBA adds them, and the load balancer address, to the server certs that its self-signed CA signs for the nodes behind the load balancers. IP addresses are rejected. In an edit, leaving this out keeps the current names, and an empty list clears them. To change the names, the setting must also set enablePrivate to true.",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array"
+        },
         "enablePrivate" : {
           "description" : "Create a private L4 load balancer in each region of the cluster",
           "type" : "boolean"
@@ -17322,6 +17350,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -18049,6 +18079,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -19174,6 +19206,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -20057,6 +20091,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -21656,6 +21692,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -22366,6 +22404,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -22814,6 +22854,8 @@
               "ProvisionUniverseNodes",
               "DeleteCustomerConfig",
               "DeleteCustomerStorageConfig",
+              "DeleteStorageConfig",
+              "EditStorageConfig",
               "ValidateStorageConfig",
               "ResizeNode",
               "RollbackResizeNode",
@@ -23416,6 +23458,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -24235,6 +24279,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -25443,6 +25489,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -26841,6 +26889,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -27567,6 +27617,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -28439,6 +28491,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -29130,6 +29184,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -29821,6 +29877,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -30452,6 +30510,13 @@
           "$ref" : "#/definitions/UniverseResourceDetails",
           "description" : "Universe resource details"
         },
+        "resourcesPerProvider" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/UniverseResourceDetails"
+          },
+          "description" : "WARNING: This is a preview API that could change.  Universe resource details per provider",
+          "type" : "object"
+        },
         "sampleAppCommandTxt" : {
           "description" : "Sample command",
           "type" : "string"
@@ -30511,35 +30576,6 @@
           "type" : "string"
         }
       },
-      "type" : "object"
-    },
-    "UpdateLoadBalancerConfig" : {
-      "properties" : {
-        "firstTry" : {
-          "type" : "boolean"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "retryLimit" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "sleepMultiplier" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "taskInfo" : {
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "firstTry",
-        "name",
-        "retryLimit",
-        "sleepMultiplier",
-        "taskInfo"
-      ],
       "type" : "object"
     },
     "UpdatePitrConfigParams" : {
@@ -31033,6 +31069,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -32304,6 +32342,8 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "DeleteStorageConfig",
+            "EditStorageConfig",
             "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
@@ -48721,7 +48761,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_lb_config" : {
       "put" : {
-        "description" : "WARNING: This is a preview API that could change.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task that updates the load balancers a universe uses. YBA does not create these load balancers. Send the current universe definition with `universeUUID` set to the universe in the path. For each existing cluster, YBA saves `userIntent.enableLB`, each region's `lbFQDN` and each zone's `lbName`. YBA registers the nodes in `nodeDetailsSet` on those load balancers and removes them from load balancers no longer named.",
         "operationId" : "updateLoadBalancerConfig",
         "parameters" : [
           {
@@ -48742,13 +48782,21 @@
             "in" : "query",
             "name" : "request",
             "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "UpdateLoadBalancerConfigRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/UniverseDefinitionTaskParams"
+            }
           }
         ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UpdateLoadBalancerConfig"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -48756,7 +48804,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UpdateLoadBalancerConfig"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },

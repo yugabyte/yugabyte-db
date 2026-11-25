@@ -237,8 +237,8 @@ def run_text(linter: Linter, files: list[str]) -> list[Message]:
     return msgs
 
 
-def run_pep8(linter: Linter, files: list[str]) -> list[Message]:
-    """Run pycodestyle (a.k.a. pep8) on ``files``."""
+def run_pycodestyle(linter: Linter, files: list[str]) -> list[Message]:
+    """Run pycodestyle on ``files``."""
     binary = linter.config.get("bin", "pycodestyle")
     flags = linter.config.get("flags", [])
     msgs: list[Message] = []
@@ -366,7 +366,7 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
 
 RUNNERS = {
     "text": run_text,
-    "pep8": run_pep8,
+    "flake8": run_pycodestyle,
     "googlecpplint": run_cpplint,
     "golint": run_golint,
     "script-and-regex": run_script_and_regex,
@@ -421,6 +421,9 @@ def main() -> int:
             continue
         runner = RUNNERS.get(linter.config.get("type"))
         if runner is None:
+            all_msgs.append(Message(".lint", None, "error", "no_runner",
+                                    f"no runner for type {linter.config.get('type')!r}",
+                                    linter.name))
             continue
         matched = [f for f in files if linter.matches(f)]
         if not matched:

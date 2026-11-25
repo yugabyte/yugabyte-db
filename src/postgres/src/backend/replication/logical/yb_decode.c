@@ -37,7 +37,6 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
-#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -104,7 +103,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				 record->yb_virtual_wal_record->table_oid,
 				 record->yb_virtual_wal_record->xid,
 				 record->yb_virtual_wal_record->commit_time_ht);
-			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			if (yb_enable_replication_slot_transactional_ddl)
 			{
 				YBDecodeDDL(ctx, record);
 			}
@@ -153,6 +152,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBDecodeCommit(ctx, record);
+				YBCDropAbortedSubtxnSets(record->yb_virtual_wal_record->commit_time_ht);
 
 				/*
 				 * Abort the transaction that we started upon receiving the
@@ -189,7 +189,7 @@ YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+	Assert(yb_enable_replication_slot_transactional_ddl);
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 	Assert(yb_record->record_time_ht != 0);
 	Assert(yb_record->has_docdb_txn_id);
@@ -220,7 +220,7 @@ YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
 	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
 	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
 
-	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+	Assert(yb_enable_replication_slot_transactional_ddl);
 
 	change->action = YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION;
 
@@ -551,7 +551,7 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 */
 	if (ctx->yb_inval_catalog_on_decode_commit)
 	{
-		Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+		Assert(yb_enable_replication_slot_transactional_ddl);
 		YBCInvalidateCachesForHistoricalReadContext();
 		ResetCatalogCaches();
 	}
@@ -656,7 +656,7 @@ YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
 	 * With transactional DDL, we use attr num to find column in the tuple
 	 * descriptor.
 	 */
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (yb_enable_replication_slot_transactional_ddl)
 	{
 		int			attr_num = col->column_attr_num;
 
@@ -737,7 +737,7 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 	{
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			{
-				if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+				if (yb_enable_replication_slot_transactional_ddl)
 					YBCInvalidateCachesForHistoricalReadContext();
 				else
 				{
@@ -827,7 +827,7 @@ YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
 						  uint64_t *read_time, uint64_t *in_txn_limit,
 						  const char **txn_id)
 {
-	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (!yb_enable_replication_slot_transactional_ddl)
 		return false;
 
 	if (yb_record->has_docdb_txn_id)

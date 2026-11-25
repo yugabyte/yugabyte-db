@@ -89,6 +89,8 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
               true,
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
+          // The node_exporter sidecar's scrape scheme follows node-to-node encryption.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 

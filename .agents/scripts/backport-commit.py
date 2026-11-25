@@ -239,11 +239,14 @@ def ensure_commit_local(commit: str, upstream_remote: str) -> str:
 def lookup_originating_pr(gh_repo: str, commit: str) -> tuple[Optional[int], Optional[str]]:
     """Return (pr_number, pr_url) for the merge PR of $commit, or (None, None)."""
     info(f"Looking up originating PR for {commit[:9]}")
-    data = gh_json([f"repos/{gh_repo}/commits/{commit}/pulls"], check=False)
-    if not data:
+    data = gh_json([f"repos/{gh_repo}/commits/{commit}/pulls"], check=False) or []
+    # The repo is squash-only, so the originating PR is the one whose merge
+    # commit is this commit. A Phorge-landed commit has none, but later PRs
+    # that contain it (e.g. merging master into pg19) are listed too.
+    pr = next((p for p in data if p.get("merge_commit_sha") == commit), None)
+    if pr is None:
         print("No originating PR found; backport body will reference the commit hash only.")
         return None, None
-    pr = data[0]
     print(f"Found originating PR: #{pr['number']} -> {pr['html_url']}")
     return pr["number"], pr["html_url"]
 
@@ -274,6 +277,50 @@ def detect_auto_reviewers(gh_repo: str, prnum: int, self_login: str) -> str:
         if x and x != self_login and x not in seen:
             seen.add(x)
             out.append(x)
+    return ",".join(out)
+
+
+# Internal roster mapping GitHub logins to Phorge usernames (and more).
+# Readable only by YugabyteDB org members.
+ROSTER_REPO = "yugabyte/eng-team"
+ROSTER_PATH = "scripts/lib/yb-eng.json"
+
+
+def detect_phorge_reviewers(commit: str, self_login: str) -> str:
+    """GitHub logins of the Phorge reviewers of a Phorge-landed $commit.
+
+    Phorge usernames differ from GitHub logins, so map them through the
+    roster. Names with no roster entry (Phorge projects such as `xCluster`)
+    and people who have left are dropped.
+    """
+    body = git("log", "-n1", "--format=%b", commit)
+    names: list[str] = []
+    for m in re.finditer(r"^(?:Reviewers|Reviewed By):(.*)$", body, re.M):
+        names += [n.strip() for n in m.group(1).split(",") if n.strip()]
+    if not names:
+        return ""
+    roster = gh_json(["-H", "Accept: application/vnd.github.raw",
+                      f"repos/{ROSTER_REPO}/contents/{ROSTER_PATH}"],
+                     check=False)
+    users = (roster or {}).get("users") if isinstance(roster, dict) else None
+    if not users:
+        warn(f"Could not read {ROSTER_REPO}/{ROSTER_PATH} to map Phorge "
+             f"reviewers ({', '.join(dict.fromkeys(names))}) to GitHub logins; "
+             "pass -r to request reviewers.")
+        return ""
+    by_phorge = {u.get("phorge"): login for login, u in users.items()
+                 if u.get("phorge") and not u.get("left")}
+    out: list[str] = []
+    skipped: list[str] = []
+    for n in dict.fromkeys(names):
+        login = by_phorge.get(n)
+        if not login:
+            skipped.append(n)
+        elif login != self_login and login not in out:
+            out.append(login)
+    if skipped:
+        warn(f"Phorge reviewers with no GitHub login in {ROSTER_PATH} (projects, "
+             f"or people missing from it), not requested: {', '.join(skipped)}")
     return ",".join(out)
 
 
@@ -763,6 +810,10 @@ def main(argv: list[str]) -> int:
         auto_reviewers = detect_auto_reviewers(gh_repo, prnum, gh_user)
         if auto_reviewers:
             print(f"Auto-detected reviewers from PR #{prnum}: {auto_reviewers}")
+    elif re.search(r"^Differential Revision:", git("log", "-n1", "--format=%b", full_commit), re.M):
+        auto_reviewers = detect_phorge_reviewers(full_commit, gh_user)
+        if auto_reviewers:
+            print(f"Auto-detected reviewers from the Phorge revision: {auto_reviewers}")
 
     # Resolve final reviewer list. -r overrides; -r '' explicitly disables.
     explicit_rev = normalize_reviewers(args.reviewers)

@@ -13,6 +13,7 @@ import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSettings;
 import api.v2.models.UniverseSpec;
+import api.v2.models.XClusterInfo;
 import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
 import api.v2.models.YbSoftwareDetails;
@@ -39,6 +40,7 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -151,6 +153,10 @@ public interface UniverseDefinitionTaskParamsMapper {
   public ProxyConfigUpdateParams toProxyConfigUpdateParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
+  @InheritConfiguration(name = "defaultMapping")
+  public VMImageUpgradeParams toVMImageUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
@@ -186,6 +192,16 @@ public interface UniverseDefinitionTaskParamsMapper {
   UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
   // below methods are used implicitly to generate other mapping
+
+  // These fields are computable, so omitting them in mapper.
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
+  UniverseDefinitionTaskParams.XClusterInfo toXClusterInfo(
+      UniverseDefinitionTaskParams.XClusterInfo source, @Context Request request);
+
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
+  XClusterInfo toV2XClusterInfo(UniverseDefinitionTaskParams.XClusterInfo source);
 
   UniverseSettings toV2UniverseSettings(
       UniverseDefinitionTaskParams.UniverseSettings universeSettings);

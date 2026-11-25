@@ -727,7 +727,7 @@ typedef struct {
 // caller frees it by resetting that context in PreProcessBeforeFetchingNextBatch.
 typedef struct {
   const char* column_name;
-  // When TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
+  // When ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
   // column_attr_num and column_name is NULL. Otherwise it is identified by column_name and
   // column_attr_num is 0.
   int column_attr_num;
@@ -781,11 +781,16 @@ typedef struct {
   // DocDB transaction id associated with the record.
   bool has_docdb_txn_id;
   char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
-  // Subtransactions of the DocDB transaction rolled back to a savepoint, run length encoded as in
-  // SubtxnSetPB. Only set on BEGIN records.
-  uint32_t* aborted_subtxn_set;
-  int aborted_subtxn_set_size;
 } YbcPgRowMessage;
+
+// Subtransactions of a DocDB transaction rolled back to a savepoint.
+typedef struct {
+  char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
+  uint64_t commit_time_ht;
+  // Run length encoded as in SubtxnSetPB.
+  uint32_t* set;
+  int set_size;
+} YbcPgAbortedSubtxnSet;
 
 typedef struct {
   int row_count;
@@ -795,6 +800,8 @@ typedef struct {
   bool explicit_alter_publication_detected;
   uint64_t publication_refresh_record_time;
   char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
+  YbcPgAbortedSubtxnSet* aborted_subtxn_sets;
+  int aborted_subtxn_sets_count;
   void* response;
 } YbcPgChangeRecordBatch;
 
@@ -1186,7 +1193,7 @@ typedef struct {
 typedef struct {
   // Position of the merge sort column in the index
   uint16_t att_idx;
-  // Position of the merge sort column in the table
+  // Position of the merge sort column's value in the rows that the merge compares
   uint16_t value_idx;
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;

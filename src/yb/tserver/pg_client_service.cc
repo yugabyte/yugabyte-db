@@ -2564,6 +2564,10 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     db_cache_.Clear();
   }
 
+  void BumpDatabaseSequenceCacheEpoch(PgOid db_oid) {
+    sequence_cache_.BumpDatabaseEpoch(db_oid);
+  }
+
   // Return the TabletServer hosting the specified status tablet.
   std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
       const TabletId& status_tablet_id, CoarseTimePoint deadline) {
@@ -3228,6 +3232,10 @@ void PgClientServiceImpl::Perform(
 void PgClientServiceImpl::InvalidateTableCache(
     const std::optional<PgTableCacheInvalidationFilter>& filter) {
   impl_->InvalidateTableCache(filter);
+}
+
+void PgClientServiceImpl::BumpDatabaseSequenceCacheEpoch(PgOid db_oid) {
+  impl_->BumpDatabaseSequenceCacheEpoch(db_oid);
 }
 
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(

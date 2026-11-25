@@ -67,7 +67,8 @@ def chunk_pdf_whole_file(
     chunk_count = 0
     for chunk in chunks:
         chunk_count += 1
-        yield from split_embed_text(chunk.to_embed_text(doc.title))
+        yield from split_embed_text(chunk.to_embed_text(doc.title),
+                                    header=chunk.embed_header(doc.title))
 
     logging.info(
         f"PDF fine-tuning chunker: file={file_location}, "

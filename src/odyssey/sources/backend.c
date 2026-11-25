@@ -818,7 +818,7 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 22;
+	const int max_default_args = 28;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
 	char *yb_client_cert = NULL;
@@ -895,7 +895,30 @@ static inline int od_backend_startup(od_server_t *server,
 			yb_kiwi_set_fe_arg(&argv[argc++], yb_server_cert_hash,
 					   yb_server_cert_hash_len);
 		}
+
+		/* send the logical client's addr/port to the auth backend. */
+		if (external_client->yb_ycm_client_addr[0] != '\0') {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_ADDR));
+			yb_kiwi_set_fe_arg(
+				&argv[argc++], external_client->yb_ycm_client_addr,
+				strlen(external_client->yb_ycm_client_addr) + 1);
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_PORT));
+			yb_kiwi_set_fe_arg(
+				&argv[argc++], external_client->yb_ycm_client_port,
+				strlen(external_client->yb_ycm_client_port) + 1);
+		}
 	}
+
+	/*
+	 * Must follow every reserved parameter: Postgres rejects reserved names
+	 * after it, which is where the logical client's settings go.
+	 */
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
