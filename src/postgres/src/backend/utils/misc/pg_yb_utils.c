@@ -3093,9 +3093,17 @@ YBMergeDdlTxnState()
 									has_change);
 }
 
+/*
+ * YBAddModificationAspects
+ *
+ * Adds aspects to the DDL after it entered DDL state, such as the catalog
+ * version increment of a CREATE TYPE that completes a shell type. The DDL
+ * entered without that increment, so it takes the database DDL lock here.
+ */
 void
 YBAddModificationAspects(YbDdlMode mode)
 {
+	YbLockDatabaseToSerializeDdl(mode);
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
