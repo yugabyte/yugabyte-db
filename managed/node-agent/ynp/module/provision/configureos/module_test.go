@@ -120,12 +120,13 @@ func readFile(t *testing.T, path string) string {
 // go test may run under, never matches.
 const ybUID = "4242"
 
-// userManagerEnv sets up stubs for the commands restart_yb_user_manager runs, in a state
-// directory:
+// userManagerEnv sets up stubs for the commands restart_yb_user_manager_for_memlock runs, in a
+// state directory:
 //   - active: present when user@<uid>.service is active.
 //   - memlock, memlock_after: the manager's hard memlock before and after a restart, in bytes or
 //     -1; a missing memlock file means it cannot be read.
 //   - restart_fails: present to make the restart fail.
+//   - reexec_fails: present to make the daemon-reexec fail.
 //   - cgroup: stands in for /proc/self/cgroup.
 //   - calls: the systemctl and su commands run, one per line.
 func userManagerEnv(t *testing.T) (stateDir string, env []string) {
@@ -140,7 +141,8 @@ func userManagerEnv(t *testing.T) (stateDir string, env []string) {
 	}
 	writeFile(t, filepath.Join(stubDir, "id"), "#!/bin/bash\necho "+ybUID+"\n", 0o755)
 	writeFile(t, filepath.Join(stubDir, "su"),
-		"#!/bin/bash\necho \"su $*\" >> \"$STATE_DIR/calls\"\n", 0o755)
+		"#!/bin/bash\necho \"su $*\" >> \"$STATE_DIR/calls\"\n"+
+			"[[ \"$*\" != *daemon-reexec* || ! -f \"$STATE_DIR/reexec_fails\" ]]\n", 0o755)
 	writeFile(t, filepath.Join(stubDir, "systemctl"), `#!/bin/bash
 echo "systemctl $*" >> "$STATE_DIR/calls"
 case "$1" in
@@ -158,7 +160,8 @@ esac
 	return stateDir, env
 }
 
-func TestRestartYbUserManager(t *testing.T) {
+// Applying the memlock is best effort: no case fails provisioning.
+func TestRestartYbUserManagerForMemlock(t *testing.T) {
 	const nodeAgentCgroup = "0::/user.slice/user-" + ybUID + ".slice/user@" + ybUID +
 		".service/app.slice/yb-node-agent.service\n"
 	const sshSessionCgroup = "0::/user.slice/user-" + ybUID + ".slice/session-3.scope\n"
@@ -168,8 +171,8 @@ func TestRestartYbUserManager(t *testing.T) {
 		memlock      string // Empty: the limit cannot be read.
 		memlockAfter string
 		restartFails bool
+		reexecFails  bool
 		cgroup       string
-		wantFail     bool
 		wantRestart  bool
 		wantReexec   bool
 		wantOutput   string
@@ -183,7 +186,7 @@ func TestRestartYbUserManager(t *testing.T) {
 			name:       "limit cannot be read",
 			active:     true,
 			cgroup:     sshSessionCgroup,
-			wantOutput: "Cannot read the memlock limit",
+			wantOutput: "WARNING: cannot read the memlock limit",
 		},
 		{
 			name:       "limit already set",
@@ -192,6 +195,15 @@ func TestRestartYbUserManager(t *testing.T) {
 			cgroup:     sshSessionCgroup,
 			wantReexec: true,
 			wantOutput: "no restart needed",
+		},
+		{
+			name:        "limit already set and daemon-reexec fails",
+			active:      true,
+			memlock:     requiredMemlockBytes,
+			reexecFails: true,
+			cgroup:      sshSessionCgroup,
+			wantReexec:  true,
+			wantOutput:  "WARNING: daemon-reexec of user@" + ybUID + ".service failed",
 		},
 		{
 			name:       "limit unlimited",
@@ -214,7 +226,7 @@ func TestRestartYbUserManager(t *testing.T) {
 			active:     true,
 			memlock:    "65536",
 			cgroup:     nodeAgentCgroup,
-			wantOutput: "not restarting it",
+			wantOutput: "WARNING: provisioning runs under",
 		},
 		{
 			name:         "restart does not raise the limit",
@@ -222,9 +234,8 @@ func TestRestartYbUserManager(t *testing.T) {
 			memlock:      "65536",
 			memlockAfter: "65536",
 			cgroup:       sshSessionCgroup,
-			wantFail:     true,
 			wantRestart:  true,
-			wantOutput:   "still 65536 after restart",
+			wantOutput:   "WARNING: user@" + ybUID + ".service memlock is still 65536 after restart",
 		},
 		{
 			name:         "restart fails",
@@ -232,15 +243,14 @@ func TestRestartYbUserManager(t *testing.T) {
 			memlock:      "65536",
 			restartFails: true,
 			cgroup:       sshSessionCgroup,
-			wantFail:     true,
 			wantRestart:  true,
-			wantOutput:   "Failed to restart",
+			wantOutput:   "WARNING: failed to restart",
 		},
 	}
 	run, _ := render(t, false /*systemLevel*/, false /*isPreflightCheck*/)
 	harness := shellLine(t, run, `(?m)^memlock_bytes=.*$`) +
 		shellFunc(t, run, "yb_user_manager_memlock") +
-		shellFunc(t, run, "restart_yb_user_manager") + `
+		shellFunc(t, run, "restart_yb_user_manager_for_memlock") + `
 # Read the limit from the state directory; TestYbUserManagerMemlock covers the real one.
 yb_user_manager_memlock() {
   [[ -f "$STATE_DIR/memlock" ]] || return 1
@@ -255,7 +265,7 @@ grep() {
   done
   command grep "${args[@]}"
 }
-restart_yb_user_manager
+restart_yb_user_manager_for_memlock
 `
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,11 +283,14 @@ restart_yb_user_manager
 			if tc.restartFails {
 				writeFile(t, filepath.Join(stateDir, "restart_fails"), "", 0o644)
 			}
+			if tc.reexecFails {
+				writeFile(t, filepath.Join(stateDir, "reexec_fails"), "", 0o644)
+			}
 			cmd := exec.Command("bash", "-c", harness)
 			cmd.Env = env
 			out, err := cmd.CombinedOutput()
-			if tc.wantFail != (err != nil) {
-				t.Fatalf("error = %v, want failure %t\n%s", err, tc.wantFail, out)
+			if err != nil {
+				t.Fatalf("harness failed: %v\n%s", err, out)
 			}
 			if !strings.Contains(string(out), tc.wantOutput) {
 				t.Errorf("output does not contain %q:\n%s", tc.wantOutput, out)
@@ -320,23 +333,20 @@ yb_user_manager_memlock ` + ybUID + ` || echo "no limit"
 	}
 }
 
-// Re-running YNP must not stop the user manager, and with it yb-node-agent, on every run.
-func TestRunDoesNotStopUserManagerUnconditionally(t *testing.T) {
+// On el8+ user-level provisioning stops and starts the user manager, which then gets the new
+// limits, so restart_yb_user_manager_for_memlock is needed only in the other branch. System level
+// never stops the user manager.
+func TestRunAppliesMemlockToUserManager(t *testing.T) {
 	for _, systemLevel := range []bool{false, true} {
 		run, _ := render(t, systemLevel, false /*isPreflightCheck*/)
-		if strings.Contains(run, "systemctl --user exit") {
-			t.Errorf("system level %t: run script stops the user manager", systemLevel)
+		if got := strings.Contains(run, "systemctl --user exit"); got == systemLevel {
+			t.Errorf("system level %t: run script stops the user manager = %t", systemLevel, got)
 		}
-		calls := strings.Count(run, "\nrestart_yb_user_manager\n") +
-			strings.Count(run, "\n    restart_yb_user_manager\n")
-		// User level calls it in the el8+ and the other branch; system level calls it once.
-		want := 2
-		if systemLevel {
-			want = 1
-		}
-		if calls != want {
-			t.Errorf("system level %t: restart_yb_user_manager called %d times, want %d",
-				systemLevel, calls, want)
+		calls := strings.Count(run, "\nrestart_yb_user_manager_for_memlock\n") +
+			strings.Count(run, "\n    restart_yb_user_manager_for_memlock\n")
+		if calls != 1 {
+			t.Errorf("system level %t: restart_yb_user_manager_for_memlock called %d times, want 1",
+				systemLevel, calls)
 		}
 	}
 }
