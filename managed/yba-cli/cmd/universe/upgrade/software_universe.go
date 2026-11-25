@@ -174,8 +174,8 @@ var upgradeSoftwareCmd = &cobra.Command{
 			Clusters:                       clusters,
 			UpgradeOption:                  upgradeOption,
 			UpgradeSystemCatalog:           upgradeSysCatalog,
-			SleepAfterTServerRestartMillis: tserverDelay,
-			SleepAfterMasterRestartMillis:  masterDelay,
+			SleepAfterTServerRestartMillis: &tserverDelay,
+			SleepAfterMasterRestartMillis:  &masterDelay,
 		}
 
 		// Preview only, with finalize and rollback; without it, finalize in the same task.
@@ -246,9 +246,13 @@ func init() {
 	upgradeSoftwareCmd.Flags().Bool("upgrade-system-catalog", true,
 		"[Optional] Upgrade System Catalog after software upgrade, defaults to true.")
 	upgradeSoftwareCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_master_restart_ms does not apply.")
 	upgradeSoftwareCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
+			" The CLI always sends this value, so the YBA runtime config"+
+			" yb.upgrade.sleep_after_tserver_restart_ms does not apply.")
 	previewFlags := pflag.NewFlagSet("preview", pflag.ContinueOnError)
 	previewFlags.Bool("allow-rollback", true,
 		"[Optional] Keep the upgrade in PreFinalize state when the release needs a finalize, "+

@@ -2590,10 +2590,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -3120,8 +3122,6 @@
         "installOtelCollector",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -3992,10 +3992,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -4067,8 +4069,6 @@
         "backupUUID",
         "creatingUser",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
         "universeUUID"
       ],
@@ -4614,10 +4614,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -4740,8 +4742,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
         "timeTakenPartial"
       ],
@@ -4954,10 +4954,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -5011,9 +5013,7 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "s3Bucket",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "s3Bucket"
       ],
       "type" : "object"
     },
@@ -5665,10 +5665,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -6195,8 +6197,6 @@
         "platformUrl",
         "selfSignedClientCertRotate",
         "selfSignedServerCertRotate",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -6299,10 +6299,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -6341,9 +6343,7 @@
       },
       "required" : [
         "creatingUser",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -6918,14 +6918,7 @@
       },
       "required" : [
         "certPath",
-        "compressor",
-        "serverCert",
-        "serverCertExpirySecs",
-        "serverCertLocalPath",
-        "serverKey",
-        "serverKeyLocalPath",
-        "signerPrivateKey",
-        "signerPublicKey"
+        "serverCertExpirySecs"
       ],
       "type" : "object"
     },
@@ -7088,10 +7081,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -7126,9 +7121,7 @@
       },
       "required" : [
         "creatingUser",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -8952,10 +8945,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -9483,8 +9478,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption",
         "upgradeSystemCatalog"
       ],
@@ -9831,10 +9824,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -10366,8 +10361,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "tserverGFlags",
         "upgradeOption"
       ],
@@ -10733,14 +10726,14 @@
           "type" : "string"
         },
         "providerUuid" : {
+          "description" : "Provider of the cluster, for multi-provider clusters.",
           "format" : "uuid",
           "type" : "string"
         }
       },
       "required" : [
         "clusterUuid",
-        "imageBundleUuid",
-        "providerUuid"
+        "imageBundleUuid"
       ],
       "type" : "object"
     },
@@ -11412,10 +11405,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -11944,8 +11939,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "universeOverrides",
         "upgradeOption"
       ],
@@ -12202,10 +12195,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -12734,8 +12729,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption",
         "useYbdbInbuiltYbc"
       ],
@@ -13633,10 +13626,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -13759,8 +13754,6 @@
         "creatingUser",
         "fullBackup",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "storageConfigUUID",
         "timeTakenPartial"
       ],
@@ -16624,11 +16617,13 @@
           "type" : "string"
         },
         "maxHistory" : {
+          "description" : "Number of rolled-over log files to keep.",
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
         },
         "rolloverPattern" : {
+          "description" : "Rollover pattern of the application log file.",
           "type" : "string"
         },
         "totalSizeCap" : {
@@ -16638,9 +16633,7 @@
         }
       },
       "required" : [
-        "level",
-        "maxHistory",
-        "rolloverPattern"
+        "level"
       ],
       "type" : "object"
     },
@@ -17183,10 +17176,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -17711,8 +17706,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -17912,10 +17905,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -18440,8 +18435,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -19033,10 +19026,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -19569,8 +19564,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "tserverGFlags",
         "upgradeOption"
       ],
@@ -19924,10 +19917,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -20452,8 +20447,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -20681,10 +20674,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -20734,8 +20729,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "universeUUID"
       ],
       "type" : "object"
@@ -21086,10 +21079,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -21129,9 +21124,7 @@
       },
       "required" : [
         "creatingUser",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -21525,10 +21518,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -22053,8 +22048,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -24112,10 +24105,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -24646,8 +24641,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption",
         "upgradeSystemCatalog",
         "ybSoftwareVersion"
@@ -25322,10 +25315,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -25850,8 +25845,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -25922,10 +25915,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -25982,8 +25977,6 @@
       "required" : [
         "creatingUser",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "tableDetails",
         "tableType",
         "tableUUID"
@@ -26722,10 +26715,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -27251,8 +27246,6 @@
         "forceAll",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -27450,10 +27443,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -27980,8 +27975,6 @@
         "enableNodeToNodeEncrypt",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -28324,10 +28317,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -28843,9 +28838,7 @@
         "clusters",
         "creatingUser",
         "newUI",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -29017,10 +29010,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -29535,9 +29530,7 @@
       "required" : [
         "clusters",
         "creatingUser",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -29710,10 +29703,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -30227,9 +30222,7 @@
       },
       "required" : [
         "clusters",
-        "creatingUser",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "creatingUser"
       ],
       "type" : "object"
     },
@@ -30655,10 +30648,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -30693,9 +30688,7 @@
       },
       "required" : [
         "creatingUser",
-        "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis"
+        "platformUrl"
       ],
       "type" : "object"
     },
@@ -30902,10 +30895,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -31430,8 +31425,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption"
       ],
       "type" : "object"
@@ -32167,10 +32160,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
+          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
+          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -32707,8 +32702,6 @@
         "forceVMImageUpgrade",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "sleepAfterMasterRestartMillis",
-        "sleepAfterTServerRestartMillis",
         "upgradeOption",
         "ybSoftwareVersion"
       ],

@@ -190,13 +190,35 @@ public class NodeAgent extends Model {
   @Setter
   public static class Config {
     private String certPath;
-    @Nullable private String serverCert;
-    @Nullable private String serverKey;
-    @Nullable private String serverCertLocalPath;
-    @Nullable private String serverKeyLocalPath;
-    @Nullable private String signerPublicKey;
-    @Nullable private String signerPrivateKey;
-    @Nullable private String compressor;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String serverCert;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String serverKey;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String serverCertLocalPath;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String serverKeyLocalPath;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String signerPublicKey;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String signerPrivateKey;
+
+    @ApiModelProperty(required = false)
+    @Nullable
+    private String compressor;
+
     private long serverCertExpirySecs;
   }
 
