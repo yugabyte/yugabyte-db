@@ -246,7 +246,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
       stmt.execute("SELECT pg_terminate_backend(" + pooledBackendPid + ")");
     }
 
-    /* Wait for upto 10s */
+    // Wait for up to 10s
     for (int i = 0; i < 100 && isProcessAlive(pooledBackendPid); ++i) {
       Thread.sleep(100);
     }
