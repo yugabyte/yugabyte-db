@@ -3044,39 +3044,24 @@ yb_set_hba_tserver_key(hbaPort *port)
 	if (is_allowed == NULL || strcmp(is_allowed, "1") != 0)
 		return false;
 
-	ListCell   *gucopts;
+	const char *value;
+	bool		result;
 
 	/*
 	 * Parsing and setting startup parameter happen after authentication.
 	 * Therefore, the YSQL Connection Manager tserver-key authentication
 	 * startup parameter is not yet set, so parse the startup parameter list.
 	 */
-	gucopts = list_head(port->guc_options);
-	while (gucopts)
-	{
-		char	   *name;
-		char	   *value;
+	value = YbGetStartupOption(port, YB_YCM_USE_TSERVER_KEY_AUTH);
+	if (value == NULL)
+		return false;
 
-		name = lfirst(gucopts);
-		gucopts = lnext(port->guc_options, gucopts);
+	if (!parse_bool(value, &result))
+		ereport(FATAL, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("parameter \"%s\" requires a Boolean "
+							   "value", YB_YCM_USE_TSERVER_KEY_AUTH)));
 
-		value = lfirst(gucopts);
-		gucopts = lnext(port->guc_options, gucopts);
-
-		if (strcasecmp(name, YB_YCM_USE_TSERVER_KEY_AUTH) == 0)
-		{
-			bool		result;
-
-			if (!parse_bool(value, &result))
-				ereport(FATAL, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								errmsg("parameter \"%s\" requires a Boolean "
-									   "value", name)));
-
-			return result;
-		}
-	}
-
-	return false;
+	return result;
 }
 
 /*

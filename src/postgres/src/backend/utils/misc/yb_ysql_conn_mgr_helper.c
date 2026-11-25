@@ -1176,6 +1176,30 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
 }
 
+const char *
+YbGetStartupOption(struct Port *port, const char *name)
+{
+	ListCell   *gucopts;
+
+	gucopts = list_head(port->guc_options);
+	while (gucopts)
+	{
+		char	   *optname;
+		char	   *value;
+
+		optname = lfirst(gucopts);
+		gucopts = lnext(port->guc_options, gucopts);
+
+		value = lfirst(gucopts);
+		gucopts = lnext(port->guc_options, gucopts);
+
+		if (pg_strcasecmp(optname, name) == 0)
+			return value;
+	}
+
+	return NULL;
+}
+
 /*
  * Whether this backend is starting as a Connection Manager pooled server.
  * InitPostgres calls this before it publishes databaseId, while the
@@ -1190,7 +1214,8 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 bool
 YbIsConnMgrPooledServerStartup(struct Port *port)
 {
-	ListCell   *gucopts;
+	const char *value;
+	bool		result;
 
 	if (!IsYugaByteEnabled() || port == NULL)
 		return false;
@@ -1203,22 +1228,6 @@ YbIsConnMgrPooledServerStartup(struct Port *port)
 		!port->yb_is_tserver_auth_method)
 		return false;
 
-	gucopts = list_head(port->guc_options);
-	while (gucopts)
-	{
-		char	   *name;
-		char	   *value;
-		bool		result;
-
-		name = lfirst(gucopts);
-		gucopts = lnext(port->guc_options, gucopts);
-
-		value = lfirst(gucopts);
-		gucopts = lnext(port->guc_options, gucopts);
-
-		if (pg_strcasecmp(name, YB_YCM_IS_CLIENT_YSQLCONNMGR) == 0)
-			return parse_bool(value, &result) && result;
-	}
-
-	return false;
+	value = YbGetStartupOption(port, YB_YCM_IS_CLIENT_YSQLCONNMGR);
+	return value && parse_bool(value, &result) && result;
 }

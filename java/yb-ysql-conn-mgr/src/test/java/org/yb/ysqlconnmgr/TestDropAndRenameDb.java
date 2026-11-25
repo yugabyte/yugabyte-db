@@ -227,9 +227,10 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
     assertFalse(isProcessAlive(backendPid));
   }
 
-  // A direct session must block DROP DATABASE even while the pool of the same database still counts
-  // an idle server that has already exited. Connection Manager notices a dead idle server only when
-  // it next tries to use it, so the stats keep reporting it as a physical connection.
+  // Kill the pool's idle server, then open a direct session and try DROP DATABASE. Connection
+  // Manager still counts the dead server as a physical connection until it next uses it, so the
+  // old check computed 1 direct + 0 logical - 1 physical = 0 sessions and let the DROP through.
+  // The direct session alone must make it fail.
   @Test
   public void testDropDbWithDirectSessionAndDeadPooledServer() throws Exception {
     int pooledBackendPid;
@@ -244,6 +245,8 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
         Statement stmt = conn.createStatement()) {
       stmt.execute("SELECT pg_terminate_backend(" + pooledBackendPid + ")");
     }
+
+    /* Wait for upto 10s */
     for (int i = 0; i < 100 && isProcessAlive(pooledBackendPid); ++i) {
       Thread.sleep(100);
     }

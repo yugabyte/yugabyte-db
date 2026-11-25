@@ -1412,7 +1412,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 * potential waiting; we may as well throw an error first if we're gonna
 		 * throw one.
 		 */
-		if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
+		if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts,
+								 /* yb_npooled */ NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("source database \"%s\" is being accessed by other users",
@@ -1932,7 +1933,8 @@ yb_removing_database_from_system:
 	}
 	else
 	{
-		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts,
+								 /* yb_npooled */ NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("database \"%s\" is being accessed by other users",
@@ -2126,7 +2128,8 @@ RenameDatabase(const char *oldname, const char *newname)
 		YbErrorIfDbInUse(db_id, oldname);
 	else
 	{
-		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts,
+								 /* yb_npooled */ NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("database \"%s\" is being accessed by other users",
@@ -2268,7 +2271,8 @@ movedb(const char *dbname, const char *tblspcname)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts,
+							 /* yb_npooled */ NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",
@@ -3692,7 +3696,7 @@ YbErrorIfDbInUse(Oid db_id, const char *dbname)
 	uint32_t	nphysical;
 	int			nsessions;
 
-	YbCountOtherDBBackends(db_id, &ndirect, &npooled, &nprepared);
+	CountOtherDBBackends(db_id, &ndirect, &nprepared, &npooled);
 
 	nsessions = ndirect;
 	if (YbGetNumYsqlConnMgrConnections(db_id, -1, &nlogical, &nphysical))
