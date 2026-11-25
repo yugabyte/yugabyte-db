@@ -1,17 +1,20 @@
 --
 -- Batched nested loop joins that must be built and must run correctly
 --
--- The prelude leaves the batched join the one join method enabled.  The
--- tests force the batched join with its own controls, YbBatchedNL and
--- yb_enable_batchednl, and a plain nested loop with NestLoop.  yb_prefer_bnl
--- is off so that NestLoop means a plain nested loop: since
--- 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on keeps the batched
--- join enabled wherever nested loops are enabled, whatever yb_enable_batchednl
--- says, as before the batched join had controls of its own.  The tests at the
--- end of the file switch to the cost model.  The tables shared with
--- yb.orig.join_batching_negative come from yb.orig.join_batching_setup; a test
--- whose data carries a key type, a physical layout or a property of its own
--- creates a table of its own, and no table is dropped.
+-- The prelude turns sequential scans and materialization off and leaves the
+-- batched join the one join method enabled.  Hints do not repeat these
+-- settings: a test that needs a sequential scan or another join method names
+-- it with SeqScan or the method's hint.  The tests force the batched join with
+-- its own controls, YbBatchedNL and yb_enable_batchednl, and a plain nested
+-- loop with NestLoop.  yb_prefer_bnl is off so that NestLoop means a plain
+-- nested loop: since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl
+-- on keeps the batched join enabled wherever nested loops are enabled,
+-- whatever yb_enable_batchednl says, as before the batched join had controls
+-- of its own.  The tests at the end of the file switch to the cost model.
+-- The tables shared with yb.orig.join_batching_negative come from
+-- yb.orig.join_batching_setup; a test whose data carries a key type, a
+-- physical layout or a property of its own creates a table of its own, and no
+-- table is dropped.
 --
 
 -- Force BNL
@@ -65,9 +68,9 @@ INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
 CREATE TABLE t12 (c4 int, c2 int, y int);
 INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
 
-EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) SeqScan(t11) SeqScan(t12) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
 
-/*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+/*+ Leading((t12 (t11 t10))) SeqScan(t11) SeqScan(t12) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
 
 CREATE TABLE strtable(a varchar(26), b varchar(23), primary key(a, b));
 CREATE TABLE strtable2(a varchar(26), b varchar(23), primary key(a, b));
@@ -235,11 +238,7 @@ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b + 123 and p1.b >= 22;
 -- baseline from rescanning 300x300 outer pairs.
 -------------------------------------------------------------------------
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
@@ -255,11 +254,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
  WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
@@ -276,11 +271,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
 
 -- Baseline: same join order with batching disabled.
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
   SeqScan(t1b)
@@ -295,11 +286,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
  WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Leading((t1b (t1a (t2b t2a))))
   SeqScan(t1a)
   SeqScan(t1b)
@@ -331,11 +318,7 @@ INSERT INTO p5_part SELECT * FROM p5;
 ANALYZE p5_part;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
@@ -350,11 +333,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
@@ -368,11 +347,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
@@ -387,11 +362,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
@@ -407,11 +378,7 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5_part t2b
 -- Baseline: same join order with batching disabled.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(enable_memoize off)
-  Set(enable_seqscan on)
   Leading((t1b (t1a t2b)))
   SeqScan(t1a)
   SeqScan(t1b)
@@ -429,8 +396,9 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2b
 -- joins, and the count matches that query's unbatched baseline.
 /*+
   Set(geqo_threshold 2)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
+  SeqScan(t1a)
+  SeqScan(t1b)
 */
 EXPLAIN (COSTS OFF)
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
@@ -438,8 +406,9 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
    AND t1a.a < 60 AND t1b.a < 60;
 /*+
   Set(geqo_threshold 2)
-  Set(enable_seqscan on)
   Set(yb_bnl_batch_size 3)
+  SeqScan(t1a)
+  SeqScan(t1b)
 */
 SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
  WHERE t2a.a = t1a.a AND t2b.a = t2a.b AND t2a.b = t1b.b + t1a.b
@@ -449,8 +418,8 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
 -- batch of s1.a and the plain parameter s2.b in the same index condition:
 -- s2's rows are not batched into a join whose outer, s1, cannot pass a batch
 -- on, though YbBatchedNL asks for a batched top join (#15156).
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) SeqScan(s1) SeqScan(s2) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) SeqScan(s1) SeqScan(s2) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
 
 -- The batched key is a placeholder value, the NULL constant the subquery
 -- supplies: the batched index condition is built from it as from a column,
@@ -467,6 +436,7 @@ RIGHT OUTER JOIN (
      LIMIT 1)) AS r2
 ON (r1.a = r2.nullcol);
 
+/*+Leading(r2 r1)*/
 SELECT *
 FROM rk1 r1
 RIGHT OUTER JOIN (
@@ -578,22 +548,14 @@ insert into q3 values
 analyze q3;
 
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
 */
 explain (costs off)
 select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
   on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2
 order by p1.c1, p1.c2;
 /*+
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
 */
 select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
   on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2
@@ -607,12 +569,7 @@ order by p1.c1, p1.c2;
 -- plan stability.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
 */
 explain (costs off)
 select * from
@@ -623,12 +580,7 @@ select * from
 order by p1.c1, p1.c2;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
 */
 select * from
     q1 p1 left join
@@ -649,12 +601,7 @@ order by p1.c1, p1.c2;
 -- made by the actual UPDATE are rolled back.
 BEGIN;
 /*+
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
   Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
@@ -664,12 +611,7 @@ update q1
   from q2
  where q1.c1 = q2.c1 and q1.c2 < q2.c2;
 /*+
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan off)
-  Set(enable_material off)
   Set(yb_enable_cbo on)
   Leading((q2 q1))
 */
@@ -680,24 +622,18 @@ update q1
 ROLLBACK;
 
 /*+
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
-  Set(enable_material off)
   Leading((q3 (q2 q1)))
+  SeqScan(q2)
+  SeqScan(q3)
 */
 explain (costs off)
 select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
 /*+
-  Set(enable_nestloop off)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
-  Set(enable_material off)
   Leading((q3 (q2 q1)))
+  SeqScan(q2)
+  SeqScan(q3)
 */
 select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2
 order by q1.c1, q2.c1, q3.a;
@@ -726,8 +662,8 @@ WHERE n.namespace_id = r.namespace_id AND n.name_id = r.ref_names[pos.i];
 -- The LIMIT equals the rows the two outer rows produce, so the first batch
 -- is sized to exactly the outer's rows and the outer is exhausted while the
 -- batch is built; every row must still be returned (#20707).
-/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
-/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
+/*+Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
+/*+Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from rk1 ss1, rk2 ss2 where ss1.a = ss2.a and ss1.a <= 2 order by ss1.a limit 10;
 
 -- The inner index orders its columns (b, a) against join clauses on (a, b):
 -- the batched index condition is built in index column order (#17115).
@@ -741,9 +677,9 @@ insert into main select i/1000, (i/100) % 10, (i/10) % 10, i % 10 from generate_
 insert into g1 values (1,3), (5,7);
 insert into g2 values (2,4), (6,8);
 
-/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ explain (costs off) select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+/*+Leading((g1 (g2 main))) SeqScan(g1) SeqScan(g2) Set(yb_bnl_batch_size 3)*/ explain (costs off) select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
 
-/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+/*+Leading((g1 (g2 main))) SeqScan(g1) SeqScan(g2) Set(yb_bnl_batch_size 3)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
 
 create table oidtable(a oid, primary key(a asc));
 create table int4table(a int4, primary key(a asc));
@@ -830,12 +766,12 @@ explain (costs off) select * from wide_vc1 t1, wide_vc2 t2 where t1.a = t2.a and
 -- index scan on ss3, where ss2's value would be missing: it stays in the
 -- filter of the join above, and the join of ss1 and ss3 is still batched
 -- (#21878).
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
+/*+Leading((ss2 (ss1 ss3)))
 */EXPLAIN (COSTS OFF) SELECT *
 FROM h ss1, h ss2, rk2 ss3
 WHERE ss1.a = ss3.a and ss3.v <= (SELECT a FROM rk2 ss3s where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
 
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
+/*+Leading((ss2 (ss1 ss3)))
 */SELECT *
 FROM h ss1, h ss2, rk2 ss3
 WHERE ss1.a = ss3.a and ss3.v <= (SELECT a FROM rk2 ss3s where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
@@ -844,7 +780,7 @@ WHERE ss1.a = ss3.a and ss3.v <= (SELECT a FROM rk2 ss3s where a < ss2.a + ss1.a
 -- an expression context of its own, as a hash join does, so running the
 -- subplan for a key does not disturb the per-tuple context, and every outer
 -- row finds its inner rows (#21266).
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */EXPLAIN (COSTS OFF)
+EXPLAIN (COSTS OFF)
 SELECT *
 FROM (
     SELECT ss1.a as a, other.a as othera
@@ -858,7 +794,6 @@ LEFT OUTER JOIN rk2 ss2 ON ss2.a = (
     WHERE other.a = ss1.a + cross_join.a limit 1
 );
 
-/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */
 SELECT *
 FROM (
     SELECT ss1.a as a, other.a as othera
@@ -881,12 +816,12 @@ IMMUTABLE PARALLEL SAFE STRICT
 AS 'SELECT 1, 1';
 EXPLAIN (COSTS OFF) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS ss WHERE t.oid = (ss.x).a;
 
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM rk2 tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.a = (ss.x).a AND tbl.b = (ss2.x2).a;
+/*+Set(yb_bnl_batch_size 3)*/ EXPLAIN (COSTS OFF) SELECT 1 FROM rk2 tbl, (SELECT dummy() as x) AS ss, (SELECT dummy() as x2) AS ss2 WHERE tbl.a = (ss.x).a AND tbl.b = (ss2.x2).a;
 
-/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
+/*+Set(yb_bnl_batch_size 3) NestLoop(tbl tbl2) YbBatchedNL(ss tbl tbl2) IndexScan(tbl) SeqScan(tbl2)*/
 EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss LEFT JOIN (SELECT tbl.a AS c1 FROM rk2 tbl, rk2 tbl2) j1 ON j1.c1 = (ss.x).a;
 
-/*+Set(enable_mergejoin off) Set(enable_hashjoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
+/*+Set(yb_bnl_batch_size 3) YbBatchedNL(tbl2 ss tbl) NestLoop(ss tbl) IndexScan(tbl)*/
 EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, rk2 tbl, rk2 tbl2 WHERE tbl2.a = (ss.x).a AND (ss.x).a < 40 AND tbl.a = ANY(ARRAY[(ss.x).a, (ss.x).a]);
 
 -- The batch holds the same key, a = 1, twice with different b, and the
@@ -902,15 +837,11 @@ insert into lk_outer1 values (1,1), (1,2);
 insert into lk_outer2 values (1,1), (1,2);
 insert into lk_inner values (1,1), (1,3);
 
-explain (costs off) /*+Set(enable_hashjoin off)
-Set(enable_material off)
-Set(enable_mergejoin off)
+explain (costs off) /*+
 Set(yb_bnl_batch_size 1024)
 NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from lk_outer1 ss1, lk_outer2 ss2, lk_inner p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
 
-/*+Set(enable_hashjoin off)
-Set(enable_material off)
-Set(enable_mergejoin off)
+/*+
 Set(yb_bnl_batch_size 1024)
 NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from lk_outer1 ss1, lk_outer2 ss2, lk_inner p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
 
@@ -1178,12 +1109,10 @@ ANALYZE w1, w2, w3, w4;
 -- join.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   IndexScan(w3)
   NestLoop(w1 w2 w3)
   YbBatchedNL(w1 w3)
@@ -1194,12 +1123,10 @@ SELECT w1.a, w2.j FROM w1, w2, w3
  ORDER BY 1, 2;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   IndexScan(w3)
   NestLoop(w1 w2 w3)
   YbBatchedNL(w1 w3)
@@ -1211,11 +1138,9 @@ SELECT w1.a, w2.j FROM w1, w2, w3
 -- Baseline: same join order with batching disabled.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   IndexScan(w3)
   NestLoop(w1 w2 w3)
   NestLoop(w1 w3)
@@ -1226,11 +1151,9 @@ SELECT w1.a, w2.j FROM w1, w2, w3
  ORDER BY 1, 2;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   IndexScan(w3)
   NestLoop(w1 w2 w3)
   NestLoop(w1 w3)
@@ -1243,10 +1166,9 @@ SELECT w1.a, w2.j FROM w1, w2, w3
 -- which has no equality condition to hash on.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   NestLoop(w1 w2 w3)
   HashJoin(w1 w3)
 */
@@ -1256,10 +1178,9 @@ SELECT w1.a, w2.j FROM w1, w2, w3
  ORDER BY 1, 2;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
-  Set(enable_seqscan on)
   Leading((w2 (w1 w3)))
+  SeqScan(w1)
+  SeqScan(w2)
   NestLoop(w1 w2 w3)
   HashJoin(w1 w3)
 */
@@ -1271,12 +1192,10 @@ SELECT w1.a, w2.j FROM w1, w2, w3
 -- withheld clause passes through the intermediate batched join on w4.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
+  SeqScan(w2)
+  SeqScan(w4)
   IndexScan(w3)
   NestLoop(w1 w2 w3 w4)
   YbBatchedNL(w1 w3 w4)
@@ -1287,12 +1206,10 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w2.j AND w4.j = w1.a AND w3.v < w1.b + w2.c;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
+  SeqScan(w2)
+  SeqScan(w4)
   IndexScan(w3)
   NestLoop(w1 w2 w3 w4)
   YbBatchedNL(w1 w3 w4)
@@ -1304,12 +1221,11 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
 -- The scalar parameter comes from the intermediate relation (w4) itself.
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
+  SeqScan(w1)
+  SeqScan(w2)
+  SeqScan(w4)
   IndexScan(w3)
   NestLoop(w1 w2 w3 w4)
   NestLoop(w1 w3 w4)
@@ -1320,12 +1236,11 @@ SELECT COUNT(*) FROM w1, w2, w3, w4
  WHERE w3.k = w1.a AND w3.j <= w4.j AND w4.j = w2.j AND w3.v < w1.b + w4.c;
 /*+
   Set(yb_enable_cbo on)
-  Set(enable_hashjoin off)
-  Set(enable_mergejoin off)
-  Set(enable_material off)
   Set(yb_bnl_batch_size 3)
-  Set(enable_seqscan on)
   Leading((w2 (w4 (w1 w3))))
+  SeqScan(w1)
+  SeqScan(w2)
+  SeqScan(w4)
   IndexScan(w3)
   NestLoop(w1 w2 w3 w4)
   NestLoop(w1 w3 w4)
