@@ -557,13 +557,10 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			od_readahead_reuse(&relay->src->readahead);
 
 			/*
-			 * YB: A relay paused after a Sync writes the Sync here,
-			 * after the frontend has stopped the client read. Starting
-			 * the read again would put the client back on epoll: with
-			 * client bytes left on the socket and the readahead full,
-			 * level-triggered epoll then wakes this coroutine in a busy
-			 * loop until ReadyForQuery. yb_resume_client_relay() starts
-			 * the read when the pause ends.
+			 * YB: Honour yb_paused and keep the client read stopped,
+			 * even though freeing the readahead above would let more
+			 * be read from the socket. yb_resume_client_relay() starts
+			 * it when the pause ends.
 			 */
 			if (!relay->yb_paused) {
 				rc = od_io_read_start(relay->src);
