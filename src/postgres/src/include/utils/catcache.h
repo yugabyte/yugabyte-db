@@ -274,4 +274,6 @@ extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2
 extern void YbHandleLogCatcacheStatsInterrupt(void);
 extern void YbProcessLogCatcacheStatsInterrupt(void);
 
+extern void YbCatalogCacheFlushCatalogWithoutCallbacks(Oid catId);
+
 #endif							/* CATCACHE_H */

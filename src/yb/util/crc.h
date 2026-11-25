@@ -42,11 +42,15 @@ namespace yb::crc {
 
 typedef crcutil_interface::CRC Crc;
 
-// Returns pointer to singleton instance of CRC32C implementation.
+// Returns the crcutil CRC32C implementation. Crc32c, Crc32cExtend and Crc32Accumulator use the
+// fastest implementation the CPU supports instead, see Crc32cImplementations().
 Crc* GetCrc32cInstance();
 
 // Helper function to simply calculate a CRC32C of the given data.
 uint32_t Crc32c(const void* data, size_t length);
+
+// Returns the CRC32C of the data that crc was computed for, followed by the length bytes at data.
+uint32_t Crc32cExtend(uint32_t crc, const void* data, size_t length);
 
 inline uint32_t Crc32c(Slice slice) {
   return Crc32c(slice.data(), slice.size());
@@ -54,7 +58,7 @@ inline uint32_t Crc32c(Slice slice) {
 
 class Crc32Accumulator {
  public:
-  explicit Crc32Accumulator(uint64_t state = 0) : state_(state) {}
+  explicit Crc32Accumulator(uint32_t state = 0) : state_(state) {}
 
   void Feed(Slice slice) {
     Feed(slice.data(), slice.size());
@@ -63,12 +67,11 @@ class Crc32Accumulator {
   void Feed(const void* data, size_t length);
 
   uint32_t result() const {
-    return static_cast<uint32_t>(state_);
+    return state_;
   }
 
  private:
-  // CRC32C has 64 bits state, but top 32 bits are always zero.
-  uint64_t state_;
+  uint32_t state_;
 };
 
 } // namespace yb::crc

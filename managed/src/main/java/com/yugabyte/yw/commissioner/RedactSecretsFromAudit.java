@@ -173,7 +173,8 @@ public class RedactSecretsFromAudit {
         DB.sqlQuery(
                 "SELECT id, additional_details FROM audit WHERE id IN (:ids)"
                     + " AND (additional_details LIKE '%ycql_ldap_bind_passwd%'"
-                    + " OR additional_details LIKE '%ldapbindpasswd%')")
+                    // In any case, and however quoted or split.
+                    + " OR LOWER(additional_details) LIKE '%ldap%bind%passwd%')")
             .setParameter("ids", ids)
             .findList();
     for (SqlRow row : rows) {

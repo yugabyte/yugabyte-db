@@ -21,12 +21,21 @@ are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side
 logic is under test.
 """
 
+import ast
+import fcntl
+import hashlib
+import inspect
+import io
 import os
+import shutil
+import subprocess
+import tarfile
 import sys
 import threading
 import time
 import types
-from typing import Any, List, Set
+import urllib.request
+from typing import Any, Iterator, List, Optional, Set
 
 import pytest
 
@@ -61,7 +70,8 @@ def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestD
 
 
 def make_result(descriptor_str: str, exit_code: int = 0,
-                skipped: bool = False) -> yb_dist_tests.TestResult:
+                skipped: bool = False,
+                failed_in_earlier_task_attempt: bool = False) -> yb_dist_tests.TestResult:
     """A minimal TestResult carrying only the fields the re-run orchestration reads."""
     return yb_dist_tests.TestResult(
         test_descriptor=test_descriptor.TestDescriptor(descriptor_str),
@@ -71,7 +81,8 @@ def make_result(descriptor_str: str, exit_code: int = 0,
         artifact_paths=None,
         artifact_copy_result=None,
         spark_error_copy_result=None,
-        skipped=skipped)
+        skipped=skipped,
+        failed_in_earlier_task_attempt=failed_in_earlier_task_attempt)
 
 
 def results_for(
@@ -1167,6 +1178,37 @@ def test_no_function_shadows_a_module_level_import() -> None:
         "whole function body: %s" % offenders)
 
 
+def test_main_calls_nothing_that_can_log_before_logging_is_configured() -> None:
+    """
+    A log call on the unconfigured root logger installs Python's default handler, which drops INFO,
+    and logging.basicConfig() in configure_logging() then changes nothing: the driver's whole INFO
+    log is lost, with no error. So before configure_logging(), main() may only build and run the
+    argument parser. Only a real run would show the loss, so this checks the source instead.
+    """
+    main_def = next(
+        node for node in ast.parse(inspect.getsource(rts)).body
+        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    early_call_roots: Set[str] = set()
+    configures_logging = False
+    for statement in main_def.body:
+        calls = [node for node in ast.walk(statement) if isinstance(node, ast.Call)]
+        if any(isinstance(call.func, ast.Name) and call.func.id == 'configure_logging'
+               for call in calls):
+            configures_logging = True
+            break
+        for call in calls:
+            func = call.func
+            while isinstance(func, ast.Attribute):
+                func = func.value
+            early_call_roots.add(func.id if isinstance(func, ast.Name) else type(func).__name__)
+    assert configures_logging, "main() does not call configure_logging()"
+    # 'Constant' is a method of a string literal (a help text's .format()); 'os' reads a default.
+    cannot_log = {'argparse', 'parser', 'os', 'Constant'}
+    assert early_call_roots <= cannot_log, (
+        "main() calls these before configure_logging(): %s" % sorted(
+            early_call_roots - cannot_log))
+
+
 # ---------------------------------------------------------------------------------------------
 # A CSI failure must not take the diff's re-runs down with the failed-tests-on-baseline job.
 # ---------------------------------------------------------------------------------------------
@@ -1774,6 +1816,32 @@ def test_a_new_test_that_skipped_itself_is_not_repeated(monkeypatch: pytest.Monk
         "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
 
 
+def test_a_test_that_failed_in_a_lost_task_attempt_is_a_failed_one(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A test that failed, lost its results with the executor, and passed when Spark ran the task
+    again: its exit code is 0, and it is still failed for what acts on a failure. As a new test it
+    is not repeated as one whose first attempt passed.
+    """
+    passed = make_result("tests-x/a-test:::A.New")
+    failed_before = make_result("tests-x/a-test:::A.NewFailedBefore",
+                                failed_in_earlier_task_attempt=True)
+    assert not passed.failed
+    assert failed_before.exit_code == 0 and failed_before.failed
+    assert make_result("tests-x/a-test:::A.NewBroken", exit_code=1).failed
+
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [failed_before, passed]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
+
+
 def test_two_results_for_one_test_repeat_it_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """A Spark task that reported and was then resubmitted leaves two results for one test."""
     known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
@@ -1894,3 +1962,566 @@ def test_a_cancelled_main_pass_repeats_nothing(monkeypatch: pytest.MonkeyPatch) 
         make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, True)
 
     assert submissions == []
+
+
+# ------------------------------------------------------------------------------------------------
+# Packing several tests into one Spark task (--pack_target_sec)
+# ------------------------------------------------------------------------------------------------
+
+def cpp_tests(names: List[str]) -> List[test_descriptor.TestDescriptor]:
+    return [test_descriptor.TestDescriptor("tests-x/a-test:::A." + name) for name in names]
+
+
+def pack_names(packs: List[List[test_descriptor.TestDescriptor]]) -> List[List[str]]:
+    """The packs as sorted lists of descriptor strings, in a stable order, for comparing."""
+    return sorted(sorted(td.descriptor_str for td in pack) for pack in packs)
+
+
+def use_packing(monkeypatch: pytest.MonkeyPatch, target_sec: float, expected_sec: Any,
+                free_cores: Any) -> None:
+    monkeypatch.setattr(rts, "g_pack_target_sec", target_sec)
+    monkeypatch.setattr(rts, "g_expected_test_time_sec", dict(expected_sec))
+    monkeypatch.setattr(rts, "get_free_cluster_cores", lambda: free_cores)
+
+
+def test_load_test_durations_skips_what_it_cannot_parse(tmp_path: Any) -> None:
+    """The file is what the pipeline writes from CSI: uniqueId, start time, end time."""
+    path = tmp_path / "test_durations.txt"
+    path.write_bytes(
+        b"tests-x/a-test:::A.Quick\t2026-01-31T10:20:30.250Z\t2026-01-31T10:20:31.750Z\n\n"
+        b"org.yb.SomeTest#testIt\t2026-01-31T23:58:00Z\t2026-02-01T00:02:00Z\n"
+        b"tests-x/a-test:::A.NoTimes\n"
+        b"tests-x/a-test:::A.NoEnd\t2026-01-31T10:20:30.250Z\n"
+        b"tests-x/a-test:::A.NotATime\tsoon\tlater\n"
+        b"tests-x/a-test:::A.EndsBeforeItStarts\t2026-01-31T10:20:31Z\t2026-01-31T10:20:30Z\n"
+        # Bytes that are not UTF-8 must not fail the read: the line is one that does not parse.
+        b"tests-x/a-test:::A.NotUtf8\t2026-01-31T10:20:30Z\t2026-01-31T10:20:\xff\xfe\n"
+        b"tests-x/a-test:::A.AfterIt\t2026-01-31T10:20:30Z\t2026-01-31T10:20:33Z\n")
+
+    assert rts.load_test_durations(str(path)) == {
+        "tests-x/a-test:::A.Quick": 1.5, "org.yb.SomeTest#testIt": 240.0,
+        "tests-x/a-test:::A.AfterIt": 3.0}
+
+
+def test_short_tests_share_tasks_up_to_the_target() -> None:
+    tests = cpp_tests(["A", "B", "C", "D", "E"])
+    expected_sec = {td.descriptor_str: 40.0 for td in tests}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    # Two 40-second tests fit under 100 seconds and a third does not.
+    assert sorted(len(pack) for pack in packs) == [1, 2, 2]
+    assert sorted(td.descriptor_str for pack in packs for td in pack) == sorted(
+        td.descriptor_str for td in tests)
+
+
+def test_a_long_test_and_a_test_without_history_are_alone() -> None:
+    tests = cpp_tests(["Long", "Unknown", "Quick1", "Quick2"])
+    expected_sec = {
+        "tests-x/a-test:::A.Long": 100.0,  # exactly the target: not packed
+        "tests-x/a-test:::A.Quick1": 10.0,
+        "tests-x/a-test:::A.Quick2": 10.0}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    assert pack_names(packs) == [
+        ["tests-x/a-test:::A.Long"],
+        ["tests-x/a-test:::A.Quick1", "tests-x/a-test:::A.Quick2"],
+        ["tests-x/a-test:::A.Unknown"]]
+
+
+def test_attempts_of_one_test_never_share_a_task() -> None:
+    """Ten repetitions of two quick tests: every task gets one attempt of each, never two of one."""
+    attempts = (make_attempts("tests-x/a-test:::A.Flaky", 10) +
+                make_attempts("org.yb.SomeTest#testIt", 10))
+    expected_sec = {"tests-x/a-test:::A.Flaky": 5.0, "org.yb.SomeTest#testIt": 5.0}
+
+    packs = rts.pack_tests(attempts, expected_sec, target_sec=600)
+
+    assert len(packs) == 10
+    for pack in packs:
+        assert sorted(td.descriptor_str_without_attempt_index for td in pack) == [
+            "org.yb.SomeTest#testIt", "tests-x/a-test:::A.Flaky"]
+
+
+def test_packing_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 0, {td.descriptor_str: 1.0 for td in tests}, 100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_that_fits_the_cluster_is_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=2)
+
+    packs = rts.plan_spark_tasks(tests, "a-job", False)
+
+    assert sorted(len(pack) for pack in packs) == [1, 3]
+
+
+@pytest.mark.parametrize("free_cores", [None, 0, 1])
+def test_a_job_the_cluster_cannot_hold_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, free_cores: Any) -> None:
+    """
+    Unknown free cores, or fewer of them than the packed job has tasks: one test per task, which
+    is what the cluster scaling daemon knows how to grow a cluster for.
+    """
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_beside_another_counts_half_the_free_cores(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two tasks fit three free cores, but not the half of them a shared context leaves."""
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=3)
+
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+    assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
+
+
+def test_a_job_with_little_history_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """8 of 10 tests have an expected run time, under PACK_MIN_KNOWN_RATIO: none are packed."""
+    tests = cpp_tests([str(i) for i in range(10)])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, free_cores=100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_over_the_size_limit_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, free_cores=100)
+
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 4)
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 3)
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_long_test_costs_the_job_one_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    300 one-second tests and 50 tests of twice the target make 3 + 50 tasks, which 60 free cores
+    hold: a long test is alone in a task however long it is.
+    """
+    quick = cpp_tests(["Quick%d" % i for i in range(300)])
+    slow = cpp_tests(["Slow%d" % i for i in range(50)])
+    expected_sec = {td.descriptor_str: 1.0 for td in quick}
+    expected_sec.update({td.descriptor_str: 200.0 for td in slow})
+    use_packing(monkeypatch, 100, expected_sec, free_cores=60)
+
+    assert len(rts.plan_spark_tasks(quick + slow, "a-job", False)) == 53
+
+
+def test_free_cores_are_read_from_the_master_status_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: List[str] = []
+
+    class FakeResponse:
+        def __enter__(self) -> 'FakeResponse':
+            return self
+
+        def __exit__(self, *exc_info: Any) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return b'{"aliveworkers": 180, "cores": 180, "coresused": 12}'
+
+    def fake_urlopen(url: str, timeout: float) -> FakeResponse:
+        asked.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
+
+    # The cores other applications hold are not this job's to count on.
+    assert rts.get_free_cluster_cores() == 168
+    assert asked == ["http://spark-master.example.com:8080/json/"]
+
+
+def test_an_unreachable_master_leaves_the_free_cores_unknown(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_urlopen(url: str, timeout: float) -> Any:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080")
+    assert rts.get_free_cluster_cores() is None
+
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", None)
+    assert rts.get_free_cluster_cores() is None
+
+
+class RecordingSparkContext(FakeSparkContext):
+    """A FakeSparkContext that keeps what run_tests_job hands to parallelize."""
+
+    def __init__(self) -> None:
+        super().__init__([])
+        self.parallelized: List[Any] = []
+        self.num_slices: List[int] = []
+
+    def accumulator(self, value: Any, accum_param: Any = None) -> FakeAccumulator:
+        return FakeAccumulator([] if accum_param is not None else 0)
+
+    def parallelize(self, values: Any, numSlices: int = 1) -> FakeRDD:  # noqa: N803
+        self.parallelized.append(values)
+        self.num_slices.append(numSlices)
+        return FakeRDD()
+
+
+def run_job_recording_its_tasks(
+        monkeypatch: pytest.MonkeyPatch,
+        tests: List[test_descriptor.TestDescriptor]) -> RecordingSparkContext:
+    spark_context = RecordingSparkContext()
+    monkeypatch.setattr(rts, "spark_context", spark_context)
+    rts.run_tests_job(
+        list(tests), rerun=False, conf=FAKE_CONF, env_vars=FAKE_ENV,
+        job_group=rts.ALL_TESTS_ON_DIFF_JOB_GROUP, shares_context=False,
+        stop_on_failure_limit=False)
+    return spark_context
+
+
+def test_without_packing_a_job_has_one_task_per_test(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [3]
+    assert sorted(spark_context.parallelized[0]) == [[td.descriptor_str] for td in tests]
+
+
+def test_a_packed_job_has_one_task_per_pack(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, free_cores=5)
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [1]
+    assert [sorted(task) for task in spark_context.parallelized[0]] == [
+        [td.descriptor_str for td in tests]]
+
+
+# The worker archive through GCS (YB_SPARK_ARCHIVE_GCS_PREFIX).
+
+ARCHIVE_SHA = 'ab' * 32
+
+
+def make_archive_conf(tmp_path: Any, sha: str = ARCHIVE_SHA) -> yb_dist_tests.TestConfig:
+    archive = tmp_path / 'archive_for_tests_on_spark.tar.gz.spark-no-extract'
+    archive.write_bytes(b'archive')
+    return yb_dist_tests.TestConfig(
+        build_root=str(tmp_path / 'src' / 'build' / 'debug-clang21-dynamic-ninja'),
+        build_type='debug',
+        yb_src_root=str(tmp_path / 'src'),
+        archive_for_workers=str(archive),
+        rel_build_root='build/debug-clang21-dynamic-ninja',
+        archive_sha256sum=sha,
+        compiler_type='clang21')
+
+
+GCS_PREFIX = 'gs://a-bucket/spark-archives/'
+
+
+@pytest.fixture
+def gcs_publish(monkeypatch: pytest.MonkeyPatch) -> List[List[str]]:
+    """Linux, no object in GCS yet; returns the gcloud copy commands run."""
+    copies: List[List[str]] = []
+    monkeypatch.setattr(rts, 'is_macos', lambda: False)
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: None)
+    monkeypatch.setattr(rts.subprocess, 'check_call', lambda args: copies.append(args))
+    return copies
+
+
+def test_the_archive_is_published_and_kept_out_of_spark(
+        gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    url = 'gs://a-bucket/spark-archives/%s.tar.gz' % ARCHIVE_SHA
+    assert conf.archive_gcs_url == url
+    assert gcs_publish == [['gcloud', 'storage', 'cp', conf.archive_for_workers, url]]
+    assert not rts.archive_sent_through_spark(conf)
+
+
+def test_a_recent_object_is_reused(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: 600.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is not None
+    assert gcs_publish == []
+
+
+def test_an_old_object_is_uploaded_again(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    """A lifecycle rule could delete it during the run, so it is replaced, which resets its age."""
+    monkeypatch.setattr(rts, 'gcs_object_age_sec',
+                        lambda url: rts.ARCHIVE_GCS_MAX_REUSE_AGE_SEC + 1.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert len(gcs_publish) == 1
+
+
+def test_a_failed_upload_falls_back_to_spark(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    def failing_copy(args: List[str]) -> None:
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(rts.subprocess, 'check_call', failing_copy)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert rts.archive_sent_through_spark(conf)
+
+
+@pytest.mark.parametrize(
+    'prefix', [None, '', 'a-bucket/spark-archives', 's3://a-bucket/spark-archives'])
+def test_without_a_gs_prefix_nothing_is_uploaded(
+        gcs_publish: List[List[str]], tmp_path: Any, prefix: Optional[str]) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, prefix)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_macos_keeps_the_spark_path(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'is_macos', lambda: True)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_parse_gcs_url() -> None:
+    assert rts.parse_gcs_url('gs://a-bucket/a/b.tar.gz') == ('a-bucket', 'a/b.tar.gz')
+    for bad in ['s3://a-bucket/b', 'gs://a-bucket', 'gs:///b', 'a-bucket/b']:
+        with pytest.raises(ValueError):
+            rts.parse_gcs_url(bad)
+
+
+def fake_gcs(monkeypatch: pytest.MonkeyPatch, content: bytes) -> List[str]:
+    """Fakes the metadata server and GCS; returns the URLs requested."""
+    requested: List[str] = []
+
+    def fake_urlopen(request: Any, timeout: float) -> io.BytesIO:
+        requested.append(request.full_url)
+        if request.full_url == rts.GCP_METADATA_TOKEN_URL:
+            assert request.get_header('Metadata-flavor') == 'Google'
+            return io.BytesIO(b'{"access_token": "a-token"}')
+        assert request.get_header('Authorization') == 'Bearer a-token'
+        return io.BytesIO(content)
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+    monkeypatch.setattr(rts.time, 'sleep', lambda sec: None)
+    return requested
+
+
+def test_the_download_is_checked_and_moved_into_place(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    content = b'the archive bytes' * 1000
+    requested = fake_gcs(monkeypatch, content)
+    dest = tmp_path / 'archive.tar.gz'
+    rts.download_archive_from_gcs(
+        'gs://a-bucket/spark-archives/x.tar.gz', str(dest), hashlib.sha256(content).hexdigest())
+    assert dest.read_bytes() == content
+    assert requested[-1] == ('https://storage.googleapis.com/storage/v1/b/a-bucket/o/'
+                             'spark-archives%2Fx.tar.gz?alt=media')
+    assert os.listdir(tmp_path) == ['archive.tar.gz']
+
+
+def test_a_corrupt_download_is_retried_then_refused(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    requested = fake_gcs(monkeypatch, b'truncated')
+    dest = tmp_path / 'archive.tar.gz'
+    with pytest.raises(IOError):
+        rts.download_archive_from_gcs('gs://a-bucket/x.tar.gz', str(dest), ARCHIVE_SHA)
+    # A token and a download per attempt, and nothing left behind.
+    assert len(requested) == 2 * rts.GCS_DOWNLOAD_ATTEMPTS
+    assert os.listdir(tmp_path) == []
+
+
+def test_an_extracted_tree_needs_no_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write(ARCHIVE_SHA + '\n')
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    rts.fetch_archive_from_gcs_if_needed(conf, str(tmp_path / 'fetched.tar.gz'))
+
+
+def test_a_different_tree_triggers_the_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write('cd' * 32)
+    downloads: List[Any] = []
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', lambda *args: downloads.append(args))
+    dest = str(tmp_path / 'fetched.tar.gz')
+    rts.fetch_archive_from_gcs_if_needed(conf, dest)
+    assert downloads == [('gs://a-bucket/x.tar.gz', dest, ARCHIVE_SHA)]
+
+
+def lock_is_held(lock_path: str) -> bool:
+    """Whether someone else holds the flock on lock_path (flock is per open file)."""
+    with open(lock_path, 'a') as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        return False
+
+
+def test_the_archive_lock_excludes_and_gives_up(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    lock_path = str(tmp_path / 'lock')
+    with rts.hold_archive_lock(lock_path):
+        assert lock_is_held(lock_path)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_WAIT_SEC', 0.05)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_POLL_SEC', 0.01)
+        with pytest.raises(IOError):
+            with rts.hold_archive_lock(lock_path):
+                pass
+    assert not lock_is_held(lock_path)
+    with rts.hold_archive_lock(lock_path):
+        pass
+
+
+class WorkerSide:
+    """A Spark worker about to set up a task: its Spark files directory, the conf of a one-file
+    tree, the archive of that tree (as the driver has it), and the untar scripts run."""
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        tree = tmp_path / 'tree-on-the-driver'
+        tree.mkdir()
+        (tree / 'a-file').write_text('content')
+        self.driver_archive = str(tmp_path / 'driver' / 'archive.tar.gz.spark-no-extract')
+        os.makedirs(os.path.dirname(self.driver_archive))
+        with tarfile.open(self.driver_archive, 'w:gz') as archive:
+            archive.add(str(tree / 'a-file'), arcname='a-file')
+        with open(self.driver_archive, 'rb') as archive_file:
+            sha = hashlib.sha256(archive_file.read()).hexdigest()
+        self.conf = make_archive_conf(tmp_path, sha)
+        self.conf.archive_for_workers = self.driver_archive
+        self.files_dir = str(tmp_path / 'spark-files')
+        os.makedirs(self.files_dir)
+        self.archive_path = os.path.join(self.files_dir, os.path.basename(self.driver_archive))
+        self.lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            self.conf.yb_src_root.replace('/', '__'))
+        # (the script's text, whether the caller held the lock while it ran, the descriptors the
+        # caller passed to it)
+        self.scripts: List[Any] = []
+
+        files_dir = self.files_dir
+
+        class FakeSparkFiles:
+            @staticmethod
+            def get(path: str) -> str:
+                return os.path.join(files_dir, os.path.basename(path))
+
+            @staticmethod
+            def getRootDirectory() -> str:
+                return files_dir
+
+        monkeypatch.setitem(
+            sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=FakeSparkFiles))
+        # initialize_remote_task sets these; monkeypatch restores them.
+        monkeypatch.setenv('BUILD_ROOT', '')
+        monkeypatch.setenv('YB_COMPILER_TYPE', '')
+        real_check_call = subprocess.check_call
+
+        def check_call(args: Any, **kwargs: Any) -> None:
+            if isinstance(args, str) and 'untar_archive_once_' in args:
+                with open(args) as script_file:
+                    self.scripts.append((script_file.read(), lock_is_held(self.lock_path),
+                                         kwargs.get('pass_fds', ())))
+            real_check_call(args, **kwargs)
+
+        monkeypatch.setattr(rts.subprocess, 'check_call', check_call)
+
+    def tree_sha(self) -> Optional[str]:
+        sha_file_path = os.path.join(self.conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME)
+        if not os.path.isfile(sha_file_path):
+            return None
+        with open(sha_file_path) as sha_file:
+            return sha_file.read().strip()
+
+
+@pytest.fixture
+def worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[WorkerSide]:
+    side = WorkerSide(monkeypatch, tmp_path)
+    yield side
+    if os.path.exists(side.lock_path):
+        os.remove(side.lock_path)
+
+
+def test_a_worker_downloads_and_extracts_under_one_hold_of_the_lock(
+        monkeypatch: pytest.MonkeyPatch, worker: WorkerSide) -> None:
+    worker.conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    downloads: List[bool] = []
+
+    def download(gcs_url: str, dest_path: str, sha: str) -> None:
+        assert (gcs_url, dest_path, sha) == (
+            'gs://a-bucket/x.tar.gz', worker.archive_path, worker.conf.archive_sha256sum)
+        downloads.append(lock_is_held(worker.lock_path))
+        shutil.copyfile(worker.driver_archive, dest_path)
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', download)
+    rts.initialize_remote_task(worker.conf, {})
+
+    with open(os.path.join(worker.conf.yb_src_root, 'a-file')) as extracted_file:
+        assert extracted_file.read() == 'content'
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    # The download and the untar script both ran while this task held the lock, and the script
+    # was given the locked descriptor and did not wait for the lock again.
+    assert downloads == [True]
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert lock_held
+    assert len(passed_fds) == 1
+    assert rts.UNTAR_SCRIPT_LOCK_HELD_CMD in script
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD not in script
+    assert not lock_is_held(worker.lock_path)
+
+    # A second task, in another executor's files directory, finds the tree and downloads nothing.
+    worker.files_dir = worker.files_dir + '-of-another-executor'
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    os.makedirs(worker.files_dir)
+    second = types.SimpleNamespace(
+        get=lambda path: os.path.join(worker.files_dir, os.path.basename(path)),
+        getRootDirectory=lambda: worker.files_dir)
+    monkeypatch.setitem(sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=second))
+    rts.initialize_remote_task(worker.conf, {})
+    assert len(worker.scripts) == 2
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+
+
+@pytest.mark.skipif(shutil.which('flock') is None, reason="the untar script needs flock")
+def test_an_archive_sent_through_spark_is_extracted_under_the_scripts_own_lock(
+        worker: WorkerSide) -> None:
+    shutil.copyfile(worker.driver_archive, worker.archive_path)
+    rts.initialize_remote_task(worker.conf, {})
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert not lock_held
+    assert passed_fds == ()
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD in script
+
+
+def test_an_archive_missing_on_the_spark_path_fails_the_task(worker: WorkerSide) -> None:
+    with pytest.raises(IOError, match="Archive not found"):
+        rts.initialize_remote_task(worker.conf, {})

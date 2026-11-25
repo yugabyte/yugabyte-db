@@ -352,6 +352,8 @@ func upgradeCmd() *cobra.Command {
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}
+			// The upgrade can no longer roll back, so the previous version's packages are not needed.
+			common.PruneNodeAgentPackages(nodeAgentReleasesDir(), state.Version)
 			common.PostUpgrade()
 		},
 	}

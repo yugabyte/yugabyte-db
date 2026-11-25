@@ -50,6 +50,7 @@
 /* YB includes */
 #include "catalog/yb_catalog_version.h"
 #include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 /*
  * We don't want to waste a lot of memory on an error queue which, most of
@@ -1289,6 +1290,16 @@ ProcessParallelMessage(ParallelContext *pcxt, int i, StringInfo msg)
 			{
 				shm_mq_detach(pcxt->worker[i].error_mqh);
 				pcxt->worker[i].error_mqh = NULL;
+				break;
+			}
+
+		case '7':				/* YB: YbObjectDropped */
+			{
+				char		yb_kind = pq_getmsgbyte(msg);
+				Oid			yb_oid = pq_getmsgint(msg, 4);
+
+				pq_getmsgend(msg);
+				YbSendConnMgrObjectDropped(yb_kind, yb_oid);
 				break;
 			}
 

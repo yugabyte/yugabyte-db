@@ -63,8 +63,8 @@ public final class SupportBundleV2EstimateRegistry {
 
   /**
    * Derives the estimate entrypoint from the collection one by the {@code create_<x>_bundle} ->
-   * {@code estimate_<x>_size} naming convention that {@code node_utils.sh} follows, so a manifest
-   * can add a collection entrypoint and get its estimate counterpart for free.
+   * {@code estimate_<x>_size} naming convention that {@code support_bundle_utils.sh} follows, so a
+   * manifest can add a collection entrypoint and get its estimate counterpart for free.
    *
    * <p>An entrypoint outside that convention -- the {@code collect_*} ones, for instance -- returns
    * empty rather than a guessed name, and the caller derives from the component name instead.

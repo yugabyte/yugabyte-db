@@ -147,7 +147,7 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 
@@ -190,7 +190,7 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 
 	return true;
@@ -229,7 +229,7 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 	 * Clamp uncertainty window.
 	 */
 	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
-		&& !YBCIsLegacyModeForCatalogOps())
+		&& YBCUsingObjectLocksGloballyForCurrentTxn())
 		YBCPgSetClampUncertaintyWindow(true);
 }
 

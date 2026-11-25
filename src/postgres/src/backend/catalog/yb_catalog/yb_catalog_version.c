@@ -123,7 +123,7 @@ YbMaybeLockMasterCatalogVersion()
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
 		!YBCurrentStmtCannotIncrementCatalogVersion() &&
-		YBCIsLegacyModeForCatalogOps() &&
+		!YBCUsingObjectLocksGloballyForCurrentTxn() &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
@@ -523,7 +523,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
-	if (!YBCIsLegacyModeForCatalogOps())
+	if (YBCUsingObjectLocksGloballyForCurrentTxn())
 		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
 
 	if (YbIsInvalidationMessageEnabled())
@@ -773,7 +773,7 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
 
-	if (!YBCIsLegacyModeForCatalogOps())
+	if (YBCUsingObjectLocksGloballyForCurrentTxn())
 		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
 
 	/*
@@ -879,7 +879,7 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
 
-	if (!YBCIsLegacyModeForCatalogOps())
+	if (YBCUsingObjectLocksGloballyForCurrentTxn())
 		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
 
 	/*

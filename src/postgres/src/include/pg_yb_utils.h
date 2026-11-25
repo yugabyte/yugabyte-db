@@ -1163,6 +1163,7 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YbUsingObjectLocksLocally(void);
 
 /*
  * Snapshot of the current top-level DDL statement identity. Used to preserve
@@ -1919,6 +1920,7 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
+extern void YbValidateFunctionSetItem(const VariableSetStmt *sstmt);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);

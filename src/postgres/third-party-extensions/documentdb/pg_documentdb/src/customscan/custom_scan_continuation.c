@@ -960,7 +960,7 @@ UpdatePathsWithExtensionStreamingCursorPlans(PlannerInfo *root, RelOptInfo *rel,
 						root, info, NIL /* yb_bitmap_idx_pushdowns */, NIL, NIL, NIL, NIL, ForwardScanDirection, false,
 						rel->lateral_relids,
 						1, false,
-						NULL);	/* yb_merge_scan_stream_cols */
+						NULL);	/* yb_merge_scan_info */
 				}
 				else if ((rel->amflags & AMFLAG_HAS_TID_RANGE) != 0)
 				{
