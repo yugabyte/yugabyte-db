@@ -2571,12 +2571,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -3969,12 +3969,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -4591,12 +4591,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -4931,12 +4931,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -5619,12 +5619,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -6253,12 +6253,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -7035,12 +7035,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -8895,12 +8895,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -9766,12 +9766,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -11339,12 +11339,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -12113,12 +12113,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -13544,12 +13544,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -17037,12 +17037,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -17762,12 +17762,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -18866,12 +18866,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -19753,12 +19753,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -20506,12 +20506,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -20907,12 +20907,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -21342,12 +21342,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -23925,12 +23925,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -25131,12 +25131,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -25731,12 +25731,12 @@
           "type" : "string"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -26527,12 +26527,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -27251,12 +27251,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -28121,12 +28121,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -28810,12 +28810,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -29499,12 +29499,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -30444,12 +30444,12 @@
           "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -30687,12 +30687,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
@@ -31881,12 +31881,12 @@
           "type" : "boolean"
         },
         "sleepAfterMasterRestartMillis" : {
-          "description" : "Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each master restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
         "sleepAfterTServerRestartMillis" : {
-          "description" : "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
+          "description" : "Used only by upgrade tasks. Wait after each tserver restart, in ms. When not set, YBA uses the value stored with the universe, or the runtime config when none is stored.",
           "format" : "int32",
           "type" : "integer"
         },
