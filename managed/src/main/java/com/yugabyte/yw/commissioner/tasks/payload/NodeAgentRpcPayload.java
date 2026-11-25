@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.payload;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
@@ -50,9 +51,7 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
-import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
@@ -522,6 +521,18 @@ public class NodeAgentRpcPayload {
       refreshScriptOnly = !params.otelCollectorEnabled;
     }
 
+    boolean installsConfig =
+        !refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig);
+    List<TelemetryProvider> exporters =
+        installsConfig ? getVmExporters(telemetryConfig) : List.of();
+    if (installsConfig) {
+      // Checked before any upload, so a failure leaves nothing on the node.
+      Map<String, String> secretEnv = new HashMap<>();
+      exporters.forEach(e -> secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(e)));
+      checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
+      installOtelCollectorInputBuilder.putAllOtelColSecretEnv(secretEnv);
+    }
+
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
@@ -586,7 +597,7 @@ public class NodeAgentRpcPayload {
     }
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
+    if (installsConfig) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
@@ -610,15 +621,13 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      // Same helper the legacy NodeManager path uses, so every export section contributes its
-      // credential-bearing exporters rather than only audit and query logs.
-      for (UUID exporterUUID : OtelCollectorUtil.getActiveExporterUuids(telemetryConfig)) {
+      for (TelemetryProvider exporter : exporters) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,
                 nodeAgent,
                 customTmpDirectory,
-                exporterUUID,
+                exporter,
                 taskParams.getUniverseUUID(),
                 taskParams.nodeUuid);
       }
@@ -627,30 +636,42 @@ public class NodeAgentRpcPayload {
     return installOtelCollectorInputBuilder.build();
   }
 
-  public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
+  @VisibleForTesting
+  List<TelemetryProvider> getVmExporters(TelemetryConfig telemetryConfig) {
+    List<TelemetryProvider> exporters = new ArrayList<>();
+    for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
+      exporters.add(telemetryProviderService.getOrBadRequest(exporterUUID));
+    }
+    return exporters;
+  }
+
+  /** An old node-agent would drop otelColSecretEnv but install the config that uses it. */
+  @VisibleForTesting
+  static void checkNodeAgentReadsSecretEnv(NodeAgent nodeAgent, Map<String, String> secretEnv) {
+    if (!secretEnv.isEmpty()
+        && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
+      throw new IllegalStateException(
+          String.format(
+              "Node agent %s is at version %s, not %s. Retry after its upgrade completes.",
+              nodeAgent.getIp(), nodeAgent.getVersion(), Util.getYbaVersion()));
+    }
+  }
+
+  private InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
       InstallOtelCollectorInput.Builder installOtelCollectorInputBuilder,
       NodeAgent nodeAgent,
       String customTmpDirectory,
-      UUID exporterUUID,
+      TelemetryProvider telemetryProvider,
       UUID universeUUID,
       UUID nodeUUID) {
-    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    UUID exporterUUID = telemetryProvider.getUuid();
+    Pair<String, String> awsKeys = OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
+    if (awsKeys != null) {
+      log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
+      setAwsCredentialsInBuilder(
+          awsKeys.getFirst(), awsKeys.getSecond(), installOtelCollectorInputBuilder);
+    }
     switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH -> {
-        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        setAwsCredentialsInBuilder(
-            awsCloudWatchConfig.getAccessKey(),
-            awsCloudWatchConfig.getSecretKey(),
-            installOtelCollectorInputBuilder);
-      }
-      case S3 -> {
-        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        setAwsCredentialsInBuilder(
-            s3Config.getAccessKey(), s3Config.getSecretKey(), installOtelCollectorInputBuilder);
-      }
       case GCP_CLOUD_MONITORING -> {
         log.info("Setting GCP credentials in builder for exporter UUID: {}", exporterUUID);
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

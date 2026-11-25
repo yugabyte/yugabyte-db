@@ -42,9 +42,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -53,6 +58,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.RelationType;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -278,6 +285,24 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   private void validateChange(JsonObject jsonObject, int origin_id, int count) {
     assertEquals(jsonObject.get("origin").getAsInt(), origin_id);
     assertEquals(jsonObject.getAsJsonArray("change").size(), count);
+  }
+
+  private PGReplicationStream openStream(
+      Connection conn, String slotName, String pubName, int walSenderTimeoutMs) throws Exception {
+    if (walSenderTimeoutMs > 0) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("SET wal_sender_timeout = " + walSenderTimeoutMs);
+        stmt.execute("SET yb_test_walsender_keepalive_after_each_record = true");
+      }
+    }
+    return conn.unwrap(PGConnection.class).getReplicationAPI().replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", pubName)
+        .withStatusInterval(60, TimeUnit.SECONDS)
+        .start();
   }
 
   // TODO(#20726): Add more test cases covering:
@@ -4432,6 +4457,269 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testStartReplicationWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "2");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 4; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_1");
+    streamOnceOnTServer(0, "slot_2");
+
+    assertStartReplicationRefused(0, "slot_3");
+
+    // Drop slot_1 via tserver 1. Only the dropping node releases its own entry, so tserver 0
+    // keeps a stale entry for slot_1.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT pg_drop_replication_slot('slot_1')");
+    }
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery(
+            "SELECT count(*) FROM pg_replication_slots WHERE slot_name = 'slot_1'");
+        return rs.next() && rs.getInt(1) == 0;
+      }
+    }, 10000);
+
+    streamOnceOnTServer(0, "slot_3");
+
+    assertStartReplicationRefused(0, "slot_4");
+
+    streamOnceOnTServer(1, "slot_4");
+
+    // An exclusive-lock drop takes no local entry, so it works through tserver 0 too.
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt.execute("SELECT pg_drop_replication_slot('slot_4')");
+    }
+  }
+
+  @Test
+  public void testConcurrentStartReplicationWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "4");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 9; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    for (int i = 1; i <= 4; i++) {
+      streamOnceOnTServer(0, "slot_" + i);
+    }
+
+    // Leaves stale entries on tserver 0.
+    try (Connection conn = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt = conn.createStatement()) {
+      for (int i = 1; i <= 4; i++) {
+        stmt.execute("SELECT pg_drop_replication_slot('slot_" + i + "')");
+      }
+    }
+    TestUtils.waitFor(() -> {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet rs = stmt.executeQuery("SELECT count(*) FROM pg_replication_slots"
+            + " WHERE slot_name IN ('slot_1', 'slot_2', 'slot_3', 'slot_4')");
+        return rs.next() && rs.getInt(1) == 0;
+      }
+    }, 10000);
+
+    AtomicReference<Exception> error = new AtomicReference<>();
+    List<Thread> threads = new ArrayList<>();
+    for (int i = 5; i <= 8; i++) {
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      String slotName = "slot_" + i;
+      threads.add(new Thread(() -> {
+        try (Connection c = conn) {
+          openStream(c, slotName, "pub", 0).close();
+        } catch (Exception e) {
+          error.compareAndSet(null, e);
+        }
+      }));
+    }
+    threads.forEach(Thread::start);
+    for (Thread t : threads) {
+      t.join(60000);
+      assertFalse(t.isAlive());
+    }
+    if (error.get() != null) {
+      throw new AssertionError("Concurrent START_REPLICATION failed", error.get());
+    }
+
+    assertStartReplicationRefused(0, "slot_9");
+  }
+
+  @Test
+  public void testMaxReplicationSlotsGucFollowsTServerFlag() throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    masterFlags.put("max_replication_slots", "11");
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "11");
+    // Overridden by the tserver flag.
+    appendToYsqlPgConf(tserverFlags, "max_replication_slots=5");
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      assertEquals("11", getSingleRow(stmt, "SHOW max_replication_slots").getString(0));
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    for (int i = 1; i <= 11; i++) {
+      createSlot(replConnection, "slot_" + i, YB_OUTPUT_PLUGIN_NAME);
+    }
+    createConn.close();
+
+    // More slots than the GUC default (10) fit in one node's array.
+    for (int i = 1; i <= 11; i++) {
+      streamOnceOnTServer(0, "slot_" + i);
+    }
+  }
+
+  @Test
+  public void testExclusiveDropReleasesLockOnError() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().withTServer(0).connect();
+         Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt2.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+
+      // This drop fails after it takes the slot's lock. If the lock stayed held until conn1
+      // closes, the drop on conn2 would fail to acquire it.
+      runInvalidQuery(stmt1, "SELECT pg_drop_replication_slot('test_slot')", "does not exist");
+
+      stmt2.execute("SELECT pg_create_logical_replication_slot('test_slot', 'pgoutput')");
+      stmt2.execute("SELECT pg_drop_replication_slot('test_slot')");
+    }
+  }
+
+  @Test
+  public void testExclusiveAcquireReleasesLockOnError() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().withTServer(0).connect();
+         Connection conn2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement()) {
+      stmt1.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt2.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+
+      // Acquire (the same code START_REPLICATION runs) fails after it takes the slot's lock.
+      // If the lock stayed held until conn1 closes, the drop on conn2 would fail to acquire it.
+      runInvalidQuery(stmt1, "SELECT pg_replication_slot_advance('test_slot', '0/1')",
+          "does not exist");
+
+      stmt2.execute("SELECT pg_create_logical_replication_slot('test_slot', 'pgoutput')");
+      stmt2.execute("SELECT pg_drop_replication_slot('test_slot')");
+    }
+  }
+
+  @Test
+  public void testSqlAcquireWhenLocalSlotArrayIsFull() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "1");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createSlot(replConnection, "slot_2", YB_OUTPUT_PLUGIN_NAME);
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      runInvalidQuery(stmt, "SELECT pg_replication_slot_advance('slot_2', '0/1')",
+          "all replication slots are in use");
+      // The error cleanup releases the acquired slot; the session must survive it.
+      stmt.execute("SELECT 1");
+    }
+  }
+
+  @Test
+  public void testExclusiveDropFreesLocalEntry() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("max_replication_slots", "1");
+    restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id int PRIMARY KEY)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection createConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection =
+        createConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createSlot(replConnection, "slot_2", YB_OUTPUT_PLUGIN_NAME);
+
+    streamOnceOnTServer(0, "slot_1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET yb_enable_replication_slot_exclusive_lock = on");
+      stmt.execute("SELECT pg_drop_replication_slot('slot_1')");
+    }
+
+    // slot_1 exists again, so only the drop can have freed its entry for slot_2.
+    createSlot(replConnection, "slot_1", YB_OUTPUT_PLUGIN_NAME);
+    createConn.close();
+
+    streamOnceOnTServer(0, "slot_2");
+  }
+
+  private void streamOnceOnTServer(int tserver, String slotName) throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(tserver).replicationConnect();
+    PGReplicationStream stream = openStream(conn, slotName, "pub", 0);
+    stream.close();
+    conn.close();
+  }
+
+  private void assertStartReplicationRefused(int tserver, String slotName) throws Exception {
+    Connection conn = getConnectionBuilder().withTServer(tserver).replicationConnect();
+    try {
+      openStream(conn, slotName, "pub", 0);
+      fail("START_REPLICATION should fail when the local slot array is full");
+    } catch (PSQLException e) {
+      assertTrue("Unexpected error: " + e.getMessage(),
+          e.getMessage().contains("all replication slots are in use"));
+    } finally {
+      conn.close();
+    }
+  }
+
+  @Test
   public void testPgVectorWithLogicalReplication() throws Exception {
     final String slotName = "test_pgvector_cdc_slot";
 
@@ -4734,6 +5022,211 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       }
     };
 
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testAddExtensionTypeColumnAfterSlotCreation() throws Exception {
+    final String slotName = "test_add_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the new column'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'with hstore' "
+            + "hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // #36725: the type did not exist when the slot was created, and the change before the DDLs uses
+  // the old schema while sharing a GetConsistentChanges batch with the change after them. The
+  // domain and array columns resolve to their base type when converting the values.
+  @Test
+  public void testCreateExtensionAndAddColumnsAfterSlotCreation() throws Exception {
+    final String slotName = "test_create_extension_after_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP EXTENSION IF EXISTS hstore CASCADE");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text, x int)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the DDLs', 10)");
+      stmt.execute("CREATE EXTENSION hstore");
+      stmt.execute("CREATE DOMAIN hstore_domain AS hstore");
+      stmt.execute("ALTER TABLE test_table DROP COLUMN x");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_array hstore[]");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_domain hstore_domain");
+      stmt.execute("INSERT INTO test_table VALUES "
+          + "(2, 'after the DDLs', 'a=>1', ARRAY['b=>2'::hstore], 'c=>3')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the DDLs' "
+            + "x[integer]:10",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'after the DDLs' "
+            + "hs[hstore]:'\"a\"=>\"1\"' hs_array[hstore[]]:'{\"\\\"b\\\"=>\\\"2\\\"\"}' "
+            + "hs_domain[hstore_domain]:'\"c\"=>\"3\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testUpdateAndDeleteExtensionTypeColumnAddedAfterSlotCreation() throws Exception {
+    final String slotName = "test_update_delete_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("ALTER TABLE test_table REPLICA IDENTITY FULL");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (1, 'row', 'a=>1')");
+      stmt.execute("UPDATE test_table SET hs = 'a=>2' WHERE id = 1");
+      stmt.execute("DELETE FROM test_table WHERE id = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 9);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: UPDATE: old-key: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"1\"' new-tuple: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: DELETE: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testAddExtensionTypeColumnAfterSlotCreationWithYbOutput() throws Exception {
+    final String slotName = "test_add_extension_type_column_yboutput_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // Read through the second transaction's COMMIT and keep the relations and inserts, so the
+    // check does not depend on the LSNs or on the TYPE messages sent for hstore.
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    int commits = 0;
+    while (commits < 2) {
+      PgOutputMessage message = receiveMessage(stream, 1).get(0);
+      if (message instanceof PgOutputCommitMessage) {
+        commits++;
+      } else if (message instanceof PgOutputRelationMessage
+                 || message instanceof PgOutputInsertMessage) {
+        result.add(message);
+      }
+    }
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("before the new column")))),
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25),
+                PgOutputRelationMessageColumn.CreateForComparison("hs"))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("with hstore"),
+                new PgOutputMessageTupleColumnValue("\"a\"=>\"1\"")))));
     assertEquals(expectedResult, result);
 
     stream.close();
@@ -6185,5 +6678,151 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream1.close();
     replConn1.close();
+  }
+
+  // The master leaves the yb_xcluster_ddl_replication tables out of every CDC stream, so a slot
+  // that covers all tables streams only once its walsender leaves them out of its table list too.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesCreatedBeforeIt() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE TABLE yb_xcluster_ddl_replication.t2 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
+          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "t2"));
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    // The walsender asks the master for every table in its list, so the list must equal the user
+    // tables in each slot's stream. The stream also holds the catalog tables that CDC polls.
+    Set<String> walsenderTables;
+    List<Row> slots;
+    try (Statement stmt = connection.createStatement()) {
+      walsenderTables = getRowList(stmt,
+          "SELECT schemaname || '.' || tablename FROM pg_publication_tables").stream()
+          .map(row -> row.getString(0))
+          .collect(Collectors.toSet());
+      slots = getRowList(stmt, "SELECT slot_name, yb_stream_id FROM pg_replication_slots");
+    }
+    assertEquals(2, slots.size());
+    Map<String, String> userTableNamesById = new HashMap<>();
+    for (TableInfo table :
+        miniCluster.getClient().getTablesList(null, false, null).getTableInfoList()) {
+      if (table.getRelationType() == RelationType.USER_TABLE_RELATION) {
+        userTableNamesById.put(
+            table.getId().toStringUtf8(), table.getPgschemaName() + "." + table.getName());
+      }
+    }
+    for (Row slot : slots) {
+      Set<String> streamTables = miniCluster.getClient().getDBStreamInfo(slot.getString(1))
+          .getTableInfoList().stream()
+          .map(table -> userTableNamesById.get(table.getTableId().toStringUtf8()))
+          .filter(Objects::nonNull)
+          .collect(Collectors.toSet());
+      assertEquals(slot.getString(0), walsenderTables, streamTables);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_decoding_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    stream.close();
+    conn.close();
+
+    conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    stream = openStream(conn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+    stream.close();
+    conn.close();
+  }
+
+  // Adding a database to xCluster creates the extension while its slots stream.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesCreatedWhileStreaming() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_decoding_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    Connection pubConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream pubStream = openStream(pubConn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(pubStream, 4).contains(PgOutputInsertMessage.Create("1")));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:2", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(pubStream, 3).contains(PgOutputInsertMessage.Create("2")));
+    stream.close();
+    conn.close();
+    pubStream.close();
+    pubConn.close();
+  }
+
+  // Slots also leave these tables out when a publication lists them explicitly, whether they are
+  // listed on CREATE PUBLICATION or added with ALTER PUBLICATION while the slot streams.
+  @Test
+  public void slotSkipsXClusterDdlReplicationTablesListedInPublication() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, yb_xcluster_ddl_replication.ddl_queue");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    createSlot(conn.unwrap(PGConnection.class).getReplicationAPI(), "test_slot",
+        YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = openStream(conn, "test_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.replicated_ddls");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(stream, 3).contains(PgOutputInsertMessage.Create("2")));
+    stream.close();
+    conn.close();
   }
 }

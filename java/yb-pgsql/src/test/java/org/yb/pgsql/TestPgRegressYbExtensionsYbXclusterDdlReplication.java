@@ -35,6 +35,9 @@ public class TestPgRegressYbExtensionsYbXclusterDdlReplication extends BasePgReg
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
+    // 2026.1 defaults the GUC to off. Pin it to on so that the variables captured in the
+    // ddl_queue match the expected output shared with master.
+    appendToYsqlPgConf(flagMap, "yb_alter_type_reuse_expr_and_partial_indexes=on");
     return flagMap;
   }
 

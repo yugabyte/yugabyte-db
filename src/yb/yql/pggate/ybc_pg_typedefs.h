@@ -704,17 +704,23 @@ typedef struct {
   uint64_t active_pid;
 } YbcSlotEntryDescriptor;
 
-// Upon adding any more palloc'd members in the below struct, add logic to free it in
-// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
+// YBCPgGetCDCConsistentChanges allocates this with YBCPAlloc in the cached_records_context; the
+// caller frees it by resetting that context in PreProcessBeforeFetchingNextBatch.
 typedef struct {
   const char* column_name;
+  // Entity for the type oid that DocDB recorded for the column. NULL when DocDB recorded none
+  // (column type 0, as for extension types) or pggate does not know the oid; the caller then
+  // resolves it from the relation.
+  const YbcPgTypeEntity* type_entity;
+  // The values are opaque const QLValuePB pointers into the batch's response, for
+  // YBCQLValueToDatum, and NULL when omitted.
   // Null indicates that the value is explicitly null while Omitted indicates that the value is
   // present but was just not sent from the CDC service due to the Replica Identity (CHANGE,
   // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES).
-  uint64_t after_op_datum;
+  const void* after_op_ql_value;
   bool after_op_is_null;
   bool after_op_is_omitted;
-  uint64_t before_op_datum;
+  const void* before_op_ql_value;
   bool before_op_is_null;
   bool before_op_is_omitted;
 } YbcPgDatumMessage;
@@ -729,8 +735,6 @@ typedef enum {
   YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
 } YbcPgRowMessageAction;
 
-// Upon adding any more palloc'd members in the below struct, add logic to free it in
-// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct {
   int col_count;
   YbcPgDatumMessage* cols;
@@ -749,13 +753,12 @@ typedef struct {
   uint32_t xrepl_origin_id;
 } YbcPgRowMessage;
 
-// Upon adding any more palloc'd members in the below struct, add logic to free it in
-// DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct {
   int row_count;
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  void* response;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
@@ -1136,7 +1139,7 @@ typedef struct {
 typedef struct {
   // Position of the merge sort column in the index
   uint16_t att_idx;
-  // Position of the merge sort column in the table
+  // Position of the merge sort column's value in the rows that the merge compares
   uint16_t value_idx;
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;

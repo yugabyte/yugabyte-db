@@ -1679,8 +1679,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns true if the table is created internally by a YugabyteDB feature/extension (e.g.
   // xCluster DDL replication) and must be excluded from CDCSDK streams. Such tables look like
   // ordinary user PG tables but exist solely to drive those features, so they should never be
-  // streamed. This is the single place to register such tables: when a new feature/extension
-  // introduces a table that CDCSDK must exclude, add a check for it here.
+  // streamed. When a new feature/extension introduces a table that CDCSDK must exclude, add a
+  // check for it here and in yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c,
+  // which keeps the table out of every logical replication slot's table list.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
 
   // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.
@@ -2881,6 +2882,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
+  // Deletes or hides the tablets of a table dropped by DeleteTableInternal(). A secondary table,
+  // e.g. a vector index, is removed from the tablets it lives on instead.
+  Status DeleteOrHideTablets(const DeletingTableData& table, const LeaderEpoch& epoch);
+
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
       EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
@@ -3145,7 +3150,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateNewCdcsdkStream(
       const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const std::optional<const NamespaceId>& namespace_id,
+      bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(

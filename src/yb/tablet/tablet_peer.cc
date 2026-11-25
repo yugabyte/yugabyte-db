@@ -473,6 +473,11 @@ void TabletPeer::ListenNumSSTFilesChanged(std::function<void()> listener) {
   tablet_->ListenNumSSTFilesChanged(std::move(listener));
 }
 
+bool TabletPeer::PendingPostSplitCompaction() {
+  auto tablet = shared_tablet_maybe_null();
+  return tablet && tablet->ShouldDisableLbMove();
+}
+
 Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::OperationType op_type) {
   return tablet_->CheckOperationAllowed(op_id, op_type);
 }
@@ -1125,15 +1130,22 @@ Result<log::MinRetainLogIndexInfo> TabletPeer::GetEarliestNeededLogIndex(
   // - Power is lost and the server reboots, losing committed data.
   //
   // If we read last committed op id BEFORE reading last persistent op id (CORRECT):
-  // - We read the last committed op id.
+  // - We read the last committed / majority-replicated / PRE_VOTER retention op ids.
   // - We read max persistent op id and find there is no new data, so we ignore it.
   // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
   // - We still don't garbage-collect the logs containing the committed but unflushed data,
   //   because the earlier value of the last committed op id that we read prevents us from doing so.
-  auto last_committed_op_id = VERIFY_RESULT(GetConsensus())->GetLastCommittedOpId();
-  min_index = std::min(min_index, last_committed_op_id.index);
+  auto wal_gc_retention_info = VERIFY_RESULT(GetRaftConsensus())->GetWalGcRetentionOpIdInfo();
+  min_index = std::min(min_index, wal_gc_retention_info.committed_op_id.index);
+  min_index = std::min(min_index, wal_gc_retention_info.majority_replicated_op_id.index);
+  min_index = std::min(min_index, wal_gc_retention_info.min_progressing_pre_voter_op_id.index);
   if (details) {
-    *details += Format("Last committed op id: $0\n", last_committed_op_id);
+    *details += Format("Last committed op id: $0\n", wal_gc_retention_info.committed_op_id);
+    *details += Format(
+        "Majority replicated op id: $0\n", wal_gc_retention_info.majority_replicated_op_id);
+    *details += Format(
+        "Min progressing PRE_VOTER op id: $0\n",
+        wal_gc_retention_info.min_progressing_pre_voter_op_id);
   }
 
   if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {

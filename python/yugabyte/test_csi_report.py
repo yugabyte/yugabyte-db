@@ -12,17 +12,21 @@
 
 
 """
-Unit tests for csi_report.classify_execution, the retry_kind decision table.
+Unit tests for csi_report.classify_execution, the retry_kind decision table, and for the
+conn_mgr attribute on created test items.
 
 Backport note: master's test_csi_report.py also covers the CSI GET retry helpers, which
-do not exist on this branch; only the classify_execution table is carried here.
+do not exist on this branch; only the classify_execution table and the conn_mgr tests are
+carried here.
 """
 
-from typing import Any
+import json
+from typing import Any, Dict, List
 
 import pytest
 
 from yugabyte import csi_report
+from yugabyte import test_descriptor
 
 
 # ---------------------------------------------------------------------------------------------
@@ -51,3 +55,61 @@ from yugabyte import csi_report
 def test_classify_execution(rerun: bool, attempt: int, reps: str, attempt_index: int,
                             expected: Any) -> None:
     assert csi_report.classify_execution(rerun, attempt, reps, attempt_index) == expected
+
+
+class FakeCreated:
+    status_code = 201
+
+    def json(self) -> Any:
+        return {'id': 'new-item-uuid'}
+
+
+def serve_create(monkeypatch: pytest.MonkeyPatch) -> List[Any]:
+    """A configured CSI that accepts item creation and records each request body, and that
+    fails the test if any query is made."""
+    monkeypatch.setenv('CSI_SERVER', 'csi.example.com')
+    monkeypatch.setenv('CSI_TOKEN', 'a-token')
+    monkeypatch.setenv('CSI_PROJ', 'DBFT')
+    monkeypatch.setenv('YB_CSI_LID', 'some-launch-uuid')
+    monkeypatch.delenv('YB_CSI_REPS', raising=False)
+    created: List[Any] = []
+
+    def post(url: str, headers: Any = None, data: Any = None) -> Any:
+        created.append(json.loads(data))
+        return FakeCreated()
+
+    def get(url: str, headers: Any = None, params: Any = None) -> Any:
+        raise AssertionError("this execution must not query CSI for a previous item: " + url)
+
+    monkeypatch.setattr(csi_report.requests, 'post', post)
+    monkeypatch.setattr(csi_report.requests, 'get', get)
+    return created
+
+
+# The conn_mgr attribute must follow the env vars each language's test harness reads: detective
+# builds the rerun command from it.
+@pytest.mark.parametrize('descriptor,env,tagged', [
+    ('org.yb.pgsql.TestFoo#testBar', {}, False),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'true'}, True),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS': 'TRUE'}, True),
+    ('org.yb.pgsql.TestFoo#testBar', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'false'}, False),
+    ('tests-x/a-test:::A.B', {'YB_ENABLE_YSQL_CONN_MGR_IN_TESTS': 'true'}, True),
+    # The Java-only override does not reach C++ tests.
+    ('tests-x/a-test:::A.B', {'YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS': 'true'}, False),
+])
+def test_create_test_tags_conn_mgr(
+        monkeypatch: pytest.MonkeyPatch, descriptor: str, env: Dict[str, str],
+        tagged: bool) -> None:
+    monkeypatch.delenv('YB_ENABLE_YSQL_CONN_MGR_IN_TESTS', raising=False)
+    monkeypatch.delenv('YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS', raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv('YB_CSI_Java', 'some-suite-uuid')
+    monkeypatch.setenv('YB_CSI_C++', 'some-suite-uuid')
+    created = serve_create(monkeypatch)
+
+    assert csi_report.create_test(
+        test_descriptor.TestDescriptor(descriptor), 0.0, 0, rerun=False) == 'new-item-uuid'
+
+    [item] = created
+    assert ({'key': 'conn_mgr', 'value': 'true'} in item['attributes']) == tagged

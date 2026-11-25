@@ -155,7 +155,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
-val bouncyCastleFipsVersion = "2.1.1"
+val bouncyCastleFipsVersion = "2.1.3"
 val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
@@ -164,7 +164,7 @@ libraryDependencies ++= Seq(
   javaWs,
   filters,
   guice,
-  "org.postgresql" % "postgresql" % "42.7.14",
+  "org.postgresql" % "postgresql" % "42.7.15",
   "net.logstash.logback" % "logstash-logback-encoder" % "8.1",
   "ch.qos.logback" % "logback-classic" % "1.6.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
@@ -181,10 +181,11 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
-  // bc-fips is the FIPS 140-3 validated module itself, so it tracks the newest *certified*
-  // build rather than the newest published one: 2.1.1 is CMVP certificate #4943 (17 Jan 2025),
-  // while 2.1.2 and 2.1.3 carry no certificate of their own. The rest are outside the validated
-  // boundary and track latest. See the dependencyOverrides below - declaring them is not enough.
+  // bc-fips is the FIPS 140-3 validated module itself, so it does not track latest. 2.1.3 is a
+  // patch release of 2.1.1 (CMVP certificate #4943), which Bouncy Castle permits in its place; it
+  // fixes CVE-2026-8798, an unbounded RDSEED retry in the native entropy code. The rest are outside
+  // the validated boundary and track latest. See the dependencyOverrides below - declaring them is
+  // not enough.
   "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion,
   "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion,
   "org.bouncycastle" % "bcpkix-fips" % "2.1.12",
@@ -1061,12 +1062,12 @@ runPlatform := {
 
 // bcpkix-fips and bctls-fips depend on bcutil-fips by version range, and bcutil-fips depends on
 // bc-fips by range, so a plain declaration loses to the range: a build declaring bc-fips 2.1.0
-// was resolving 2.1.3, an uncertified module. Only an override fixes the FIPS module version.
+// was resolving the newest 2.1.x instead. Only an override fixes the FIPS module version.
 dependencyOverrides += "org.bouncycastle" % "bc-fips" % bouncyCastleFipsVersion
 dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFipsVersion
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.115.3-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b14"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

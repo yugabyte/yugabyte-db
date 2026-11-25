@@ -67,6 +67,35 @@ func (a *AuthAPIClient) UpgradeSoftware(
 	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// UpgradeDBVersion upgrades the universe YugabyteDB version and keeps it in PreFinalize state
+func (a *AuthAPIClient) UpgradeDBVersion(
+	uUUID string,
+) ybaclient.UniverseUpgradesManagementAPIUpgradeDBVersionRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeDBVersion(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// FinalizeUpgrade finalizes the software upgrade of the universe
+func (a *AuthAPIClient) FinalizeUpgrade(
+	uUUID string,
+) ybaclient.UniverseUpgradesManagementAPIFinalizeUpgradeRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.FinalizeUpgrade(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// PreFinalizeSoftwareUpgradeInfo lists the xCluster universes impacted by finalize
+func (a *AuthAPIClient) PreFinalizeSoftwareUpgradeInfo(
+	uUUID string,
+) ybaclient.UniverseUpgradesManagementAPIPreFinalizeSoftwareUpgradeInfoRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.PreFinalizeSoftwareUpgradeInfo(
+		a.ctx, a.CustomerUUID, uUUID)
+}
+
+// RollbackUpgrade rolls back the software upgrade of the universe
+func (a *AuthAPIClient) RollbackUpgrade(
+	uUUID string,
+) ybaclient.UniverseUpgradesManagementAPIRollbackUpgradeRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.RollbackUpgrade(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UpdatePrimaryCluster to edit primary cluster components
 func (a *AuthAPIClient) UpdatePrimaryCluster(
 	uUUID string,

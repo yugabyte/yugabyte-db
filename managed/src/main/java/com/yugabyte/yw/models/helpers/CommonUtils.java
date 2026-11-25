@@ -8,14 +8,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Iterables;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
@@ -24,6 +20,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
@@ -76,12 +73,6 @@ public class CommonUtils {
   public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
 
   public static final String MIN_LIVE_TABLET_SERVERS_RELEASE = "2.8.0.0";
-
-  private static final Configuration JSONPATH_CONFIG =
-      Configuration.builder()
-          .jsonProvider(new JacksonJsonNodeJsonProvider())
-          .mappingProvider(new JacksonMappingProvider())
-          .build();
 
   // Sensisitve field substrings
   private static final List<String> sensitiveFieldSubstrings =
@@ -242,7 +233,8 @@ public class CommonUtils {
         "$",
         config,
         CommonUtils::isSensitiveField,
-        (key, value, path) -> getMaskedValue(key, value));
+        (key, value, path) -> getMaskedValue(key, value),
+        CustomerConfig.ARRAY_IDENTITY_FIELDS);
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
@@ -304,6 +296,9 @@ public class CommonUtils {
     }
   }
 
+  // NOTE: unmaskObject uses unmaskJsonObject without an array identity map, so sensitive fields
+  // inside arrays are left as-is. For configs with array-sensitive fields, call unmaskJsonObject
+  // directly with an explicit identity map (e.g. CustomerConfig.ARRAY_IDENTITY_FIELDS).
   @SuppressWarnings("unchecked")
   public static <T> T unmaskObject(T originalObject, T object) {
     try {
@@ -319,26 +314,219 @@ public class CommonUtils {
   }
 
   /**
-   * Removes masks from the config. If some fields are sensitive but were updated, these fields are
-   * remain the same (with the new values).
-   *
-   * @param originalData Previous config data. All masked data recovered from it.
-   * @param data The new config data.
-   * @return Updated config (all masked fields are recovered).
+   * Removes masks from the config. Sensitive fields whose incoming value is a ****-mask placeholder
+   * are restored from originalData, so clients can do read-modify-write without re-entering
+   * credentials. Arrays without a registered identity field are left unchanged (no per-element
+   * merge of sensitive fields inside them).
    */
   public static ObjectNode unmaskJsonObject(ObjectNode originalData, ObjectNode data) {
-    return originalData == null
-        ? data
-        : processData(
-            "$",
-            data,
-            CommonUtils::isSensitiveField,
-            (key, value, path) -> {
-              JsonPath jsonPath = JsonPath.compile(path + "." + key);
-              return StringUtils.equals(value, getMaskedValue(key, value))
-                  ? ((TextNode) jsonPath.read(originalData, JSONPATH_CONFIG)).asText()
-                  : value;
+    return unmaskJsonObject(originalData, data, Collections.emptyMap());
+  }
+
+  /**
+   * Same as unmaskJsonObject(originalData, data) but also restores masked values inside the arrays
+   * named in arrayIdentityFields, pairing each incoming element with the stored element it came
+   * from by the listed keys. E.g. {"REGION_LOCATIONS" -> [REGION, LOCATION]} keeps an element's
+   * token when the array is reordered or when one of its REGION and LOCATION changes. Elements with
+   * no stored counterpart (new elements) are kept as-is.
+   *
+   * @throws PlatformServiceException (BAD_REQUEST) if an array element would keep a masked value
+   *     that can't be traced to exactly one stored value, so that a mask is never saved in place of
+   *     a secret and a secret is never restored into an element it didn't come from.
+   */
+  public static ObjectNode unmaskJsonObject(
+      ObjectNode originalData, ObjectNode data, Map<String, List<String>> arrayIdentityFields) {
+    if (originalData == null || data == null) return data;
+    return unmaskObjectNode(originalData, data, arrayIdentityFields);
+  }
+
+  private static ObjectNode unmaskObjectNode(
+      ObjectNode original, ObjectNode incoming, Map<String, List<String>> arrayIdentityFields) {
+    ObjectNode result = incoming.deepCopy();
+    for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
+      Entry<String, JsonNode> entry = it.next();
+      String key = entry.getKey();
+      JsonNode incomingVal = entry.getValue();
+      JsonNode originalVal = original.get(key);
+
+      if (incomingVal.isObject() && originalVal != null && originalVal.isObject()) {
+        result.set(
+            key,
+            unmaskObjectNode(
+                (ObjectNode) originalVal, (ObjectNode) incomingVal, arrayIdentityFields));
+      } else if (incomingVal.isArray()) {
+        if (!arrayIdentityFields.containsKey(key)) {
+          continue;
+        }
+        result.set(
+            key,
+            unmaskArrayNode(
+                key,
+                originalVal,
+                (ArrayNode) incomingVal,
+                arrayIdentityFields.get(key),
+                arrayIdentityFields));
+      } else if (isSensitiveField(key) && incomingVal.isTextual()) {
+        result.put(key, unmaskSensitiveValue(key, incomingVal.asText(), originalVal));
+      }
+    }
+    return result;
+  }
+
+  private static ArrayNode unmaskArrayNode(
+      String arrayField,
+      JsonNode originalArray,
+      ArrayNode incomingArray,
+      List<String> identityFields,
+      Map<String, List<String>> arrayIdentityFields) {
+    List<ObjectNode> stored = new ArrayList<>();
+    if (originalArray != null && originalArray.isArray()) {
+      for (JsonNode elem : originalArray) {
+        if (elem.isObject()) {
+          stored.add((ObjectNode) elem);
+        }
+      }
+    }
+    ObjectNode[] matches = matchArrayElements(stored, incomingArray, identityFields);
+
+    ArrayNode processed = Json.newArray();
+    for (int i = 0; i < incomingArray.size(); i++) {
+      JsonNode elem = incomingArray.get(i);
+      if (!elem.isObject()) {
+        processed.add(elem);
+        continue;
+      }
+      ObjectNode match = matches[i];
+      ObjectNode result =
+          match != null
+              ? unmaskObjectNode(match, (ObjectNode) elem, arrayIdentityFields)
+              : (ObjectNode) elem;
+      String maskedField = findUnresolvedMask(result, match);
+      if (maskedField != null) {
+        String fields = String.join(" or ", identityFields);
+        String reason;
+        if (match != null) {
+          reason = "the stored element it matches has no value to restore";
+        } else if (stored.stream().noneMatch(s -> anyIdentityFieldEqual(s, elem, identityFields))) {
+          reason = "no stored element matches it by " + fields;
+        } else {
+          reason =
+              "by "
+                  + fields
+                  + " it matches more than one stored element, or one that another element in the"
+                  + " request also matches";
+        }
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "%s[%d].%s is masked, but %s. Send the actual value.",
+                arrayField, i, maskedField, reason));
+      }
+      processed.add(result);
+    }
+    return processed;
+  }
+
+  // Pairs incoming elements that hold a mask with stored ones, one to one. An element first takes a
+  // stored element equal on every identity field. Failing that, it takes the only stored element
+  // equal on any identity field, as long as no other unpaired element could take that one too.
+  // Anything less certain stays unpaired (null), so its masked values are rejected rather than
+  // guessed. Elements without a mask have nothing to restore, so they don't take part: otherwise a
+  // new element could take the stored element a masked one came from, depending on array order.
+  private static ObjectNode[] matchArrayElements(
+      List<ObjectNode> stored, ArrayNode incoming, List<String> identityFields) {
+    ObjectNode[] matches = new ObjectNode[incoming.size()];
+    boolean[] claimed = new boolean[stored.size()];
+    for (int i = 0; i < incoming.size(); i++) {
+      if (!hasMaskedSensitiveField(incoming.get(i))) continue;
+      for (int j = 0; j < stored.size(); j++) {
+        if (!claimed[j] && allIdentityFieldsEqual(stored.get(j), incoming.get(i), identityFields)) {
+          matches[i] = stored.get(j);
+          claimed[j] = true;
+          break;
+        }
+      }
+    }
+
+    Map<Integer, List<Integer>> candidates = new HashMap<>();
+    int[] demand = new int[stored.size()];
+    for (int i = 0; i < incoming.size(); i++) {
+      if (matches[i] != null || !hasMaskedSensitiveField(incoming.get(i))) continue;
+      List<Integer> elemCandidates = new ArrayList<>();
+      for (int j = 0; j < stored.size(); j++) {
+        if (!claimed[j] && anyIdentityFieldEqual(stored.get(j), incoming.get(i), identityFields)) {
+          elemCandidates.add(j);
+          demand[j]++;
+        }
+      }
+      candidates.put(i, elemCandidates);
+    }
+    for (Entry<Integer, List<Integer>> entry : candidates.entrySet()) {
+      List<Integer> elemCandidates = entry.getValue();
+      if (elemCandidates.size() == 1 && demand[elemCandidates.get(0)] == 1) {
+        matches[entry.getKey()] = stored.get(elemCandidates.get(0));
+      }
+    }
+    return matches;
+  }
+
+  private static boolean allIdentityFieldsEqual(JsonNode a, JsonNode b, List<String> fields) {
+    return fields.stream().allMatch(f -> Objects.equals(textOrNull(a, f), textOrNull(b, f)));
+  }
+
+  private static boolean anyIdentityFieldEqual(JsonNode a, JsonNode b, List<String> fields) {
+    return fields.stream()
+        .anyMatch(
+            f -> {
+              String value = textOrNull(a, f);
+              return value != null && value.equals(textOrNull(b, f));
             });
+  }
+
+  private static String textOrNull(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    return value != null && value.isTextual() ? value.asText() : null;
+  }
+
+  private static boolean hasMaskedSensitiveField(JsonNode elem) {
+    return elem.isObject() && findUnresolvedMask((ObjectNode) elem, null) != null;
+  }
+
+  // Returns a sensitive field that still holds a mask after unmasking, unless that mask is already
+  // what's stored for it (left by an earlier bug), which the edit doesn't make any worse.
+  private static String findUnresolvedMask(ObjectNode elem, ObjectNode storedMatch) {
+    for (Iterator<Entry<String, JsonNode>> it = elem.fields(); it.hasNext(); ) {
+      Entry<String, JsonNode> entry = it.next();
+      String key = entry.getKey();
+      JsonNode value = entry.getValue();
+      if (isSensitiveField(key)
+          && value.isTextual()
+          && isMaskedValue(key, value.asText())
+          && (storedMatch == null || !value.equals(storedMatch.get(key)))) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  private static boolean isMaskedValue(String key, String value) {
+    return StringUtils.equals(value, getMaskedValue(key, value));
+  }
+
+  private static String unmaskSensitiveValue(
+      String key, String incomingValue, JsonNode originalNode) {
+    if (!isMaskedValue(key, incomingValue)) {
+      return incomingValue; // Not a ****-mask placeholder; store as-is.
+    }
+    if (originalNode != null && originalNode.isTextual()) {
+      String originalValue = originalNode.asText();
+      // Don't restore if the original is also a ****-mask placeholder (e.g. previously clobbered
+      // by a bug). In that case keep the incoming value so the user can supply a real token.
+      if (!isMaskedValue(key, originalValue)) {
+        return originalValue;
+      }
+    }
+    return incomingValue;
   }
 
   public static Map<String, String> encryptProviderConfig(
@@ -396,19 +584,50 @@ public class CommonUtils {
       String path,
       JsonNode data,
       Predicate<String> selector,
-      TriFunction<String, String, String, String> getter) {
+      TriFunction<String, String, String, String> getter,
+      Map<String, List<String>> arrayIdentityFields) {
     if (data == null) {
       return Json.newObject();
     }
     ObjectNode result = data.deepCopy();
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue().isArray()) {
+        if (!arrayIdentityFields.containsKey(entry.getKey())) {
+          continue;
+        }
+        ArrayNode arrayNode = (ArrayNode) entry.getValue();
+        ArrayNode processed = Json.newArray();
+        for (int i = 0; i < arrayNode.size(); i++) {
+          JsonNode elem = arrayNode.get(i);
+          if (elem == null || elem.isNull() || elem.isMissingNode()) {
+            processed.addNull();
+          } else if (elem.isObject()) {
+            processed.add(
+                processData(
+                    path + "." + entry.getKey() + "[" + i + "]",
+                    elem,
+                    selector,
+                    getter,
+                    arrayIdentityFields));
+          } else {
+            processed.add(elem);
+          }
+        }
+        result.set(entry.getKey(), processed);
+        continue;
+      }
       if (entry.getValue().isObject()) {
         result.set(
             entry.getKey(),
-            processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
+            processData(
+                path + "." + entry.getKey(),
+                entry.getValue(),
+                selector,
+                getter,
+                arrayIdentityFields));
       }
-      if (selector.test(entry.getKey())) {
+      if (selector.test(entry.getKey()) && entry.getValue().isTextual()) {
         result.put(
             entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
       }

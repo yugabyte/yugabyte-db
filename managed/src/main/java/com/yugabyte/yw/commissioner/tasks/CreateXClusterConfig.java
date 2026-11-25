@@ -245,13 +245,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     boolean taskSucceeded = false;
     try {
-      // Lock the target universe.
+      // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
-          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
-        // Lock the source universe.
+        // Lock the target universe.
         lockAndFreezeUniverseForUpdate(
-            sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
         // Check equality of auto flags on both universes only if universe is used for DR.
         createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse, xClusterConfig.isUsedForDr())
@@ -304,45 +304,45 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
         getRunnableTask().runSubTasks();
         taskSucceeded = true;
-      } catch (Exception e) {
-        log.error("{} hit error : {}", getName(), e.getMessage());
-        xClusterConfig.refresh();
-        // Set xCluster config status to failed.
-        xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
-        // Set tables in updating status to failed.
-        Set<String> tablesInPendingStatus =
-            xClusterConfig.getTableIdsInStatus(
-                getTableIds(taskParams().getTableInfoList()),
-                X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
-        xClusterConfig.updateStatusForTables(
-            tablesInPendingStatus, XClusterTableConfig.Status.Failed);
-
-        if (xClusterConfig.isUsedForDr()) {
-          // Prevent all other DR tasks except delete from running.
-          log.info(
-              "Setting the dr config state of xCluster config {} to {} from {}",
-              xClusterConfig.getUuid(),
-              State.Failed,
-              xClusterConfig.getDrConfig().getState());
-          xClusterConfig.getDrConfig().setState(State.Failed);
-          xClusterConfig.getDrConfig().update();
-        }
-
-        // Set backup and restore status to failed and alter load balanced.
-        boolean isLoadBalancerAltered = false;
-        for (Restore restore : restoreList) {
-          isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
-        }
-        handleFailedBackupAndRestore(
-            backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
-        throw new RuntimeException(e);
       } finally {
-        // Unlock the source universe.
-        unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
+        // Unlock the target universe.
+        unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
+    } catch (Exception e) {
+      log.error("{} hit error : {}", getName(), e.getMessage());
+      xClusterConfig.refresh();
+      // Set xCluster config status to failed.
+      xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
+      // Set tables in updating status to failed.
+      Set<String> tablesInPendingStatus =
+          xClusterConfig.getTableIdsInStatus(
+              getTableIds(taskParams().getTableInfoList()),
+              X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
+      xClusterConfig.updateStatusForTables(
+          tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+
+      if (xClusterConfig.isUsedForDr()) {
+        // Prevent all other DR tasks except delete from running.
+        log.info(
+            "Setting the dr config state of xCluster config {} to {} from {}",
+            xClusterConfig.getUuid(),
+            State.Failed,
+            xClusterConfig.getDrConfig().getState());
+        xClusterConfig.getDrConfig().setState(State.Failed);
+        xClusterConfig.getDrConfig().update();
+      }
+
+      // Set backup and restore status to failed and alter load balanced.
+      boolean isLoadBalancerAltered = false;
+      for (Restore restore : restoreList) {
+        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
+      }
+      handleFailedBackupAndRestore(
+          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
+      throw new RuntimeException(e);
     } finally {
-      // Unlock the target universe.
-      unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
+      // Unlock the source universe.
+      unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
       if (xClusterConfig.isUsedForDr()) {
         DrConfig drConfig = xClusterConfig.getDrConfig();
         drConfig.refresh();

@@ -94,6 +94,8 @@ extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 
 extern void YBCDropIndex(Relation index);
 
+extern bool YbAddColumnUsesDocdbMissingValue(Expr *cooked_default);
+
 extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
 								  Oid relationId,
@@ -155,8 +157,7 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YbcPgChangeRecordBatch **record_batch,
-									   YbcTypeEntityProvider type_entity_provider);
+									   YbcPgChangeRecordBatch **record_batch);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,

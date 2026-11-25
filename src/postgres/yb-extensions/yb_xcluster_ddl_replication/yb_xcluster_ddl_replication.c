@@ -24,6 +24,7 @@
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
+#include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
@@ -121,6 +122,18 @@ InsideProcessedDdlSubtree()
 {
 	return processed_ddl_depth != 0 &&
 		   current_process_utility_depth > processed_ddl_depth;
+}
+
+/*
+ * The end-of-statement handlers depend on state set by handle_ddl_start
+ * (replication role, processed_ddl_depth).  Use this to skip statements it
+ * did not process, such as the CREATE EXTENSION that creates our triggers.
+ */
+static bool
+IsProcessedDdl()
+{
+	return processed_ddl_depth != 0 &&
+		   processed_ddl_depth == current_process_utility_depth;
 }
 
 /*
@@ -324,7 +337,7 @@ ValidateExtensionScriptStatement(CommandTag command_tag)
 	char	   *extension_name = get_extension_name(CurrentExtensionObject);
 
 	if (extension_name != NULL &&
-		strcmp(extension_name, EXTENSION_NAME) == 0)
+		strcmp(extension_name, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0)
 		return;
 
 	if (IsPassThroughDdlCommandSupported(command_tag))
@@ -432,7 +445,7 @@ InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 	appendStringInfo(&query_buf,
 					 "INSERT INTO %s.%s (ddl_end_time, query_id, yb_data) values "
 					 "($1,$2,$3)",
-					 EXTENSION_NAME, table_name);
+					 YB_XCLUSTER_DDL_REPLICATION_NAME, table_name);
 
 	arg_types[0] = INT8OID;
 	arg_vals[0] = Int64GetDatum(ddl_end_time);
@@ -469,7 +482,8 @@ InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
-	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
+	InsertIntoTable(YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME, ddl_end_time,
+					query_id, jsonb);
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
 }
@@ -537,7 +551,8 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
 		int64		query_id = random();
 
-		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+		InsertIntoTable(YB_XCLUSTER_DDL_QUEUE_TABLE_NAME, epoch_time, query_id,
+						jsonb);
 
 		/*
 		 * Also insert into the replicated_ddls table to handle switchovers.
@@ -760,7 +775,7 @@ DetectSelfExtensionDdl(CommandTag command_tag)
 	char	   *extension_name = GetExtensionName(command_tag);
 
 	if (extension_name != NULL &&
-		strcmp(extension_name, EXTENSION_NAME) == 0 &&
+		strcmp(extension_name, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0 &&
 		self_extension_ddl_depth == 0)
 		self_extension_ddl_depth = current_process_utility_depth;
 }
@@ -813,7 +828,7 @@ handle_ddl_end(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -840,7 +855,7 @@ handle_sql_drop(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
@@ -860,7 +875,7 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
 		elog(ERROR, "not fired by event trigger manager");
 
-	if (IsDisabled())
+	if (IsDisabled() || !IsProcessedDdl())
 		PG_RETURN_NULL();
 
 	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;

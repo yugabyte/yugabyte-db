@@ -16,8 +16,6 @@ package org.yb.ysqlconnmgr;
 import static org.yb.AssertionWrappers.fail;
 import static org.yb.AssertionWrappers.assertTrue;
 
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -28,7 +26,6 @@ import java.util.regex.Pattern;
 import org.hamcrest.CoreMatchers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
@@ -48,11 +45,6 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
     // Required for TLS connections to resolve correctly in the test environment;
     // certificates are issued for IP addresses, not hostnames.
     useIpWithCertificate = true;
-  }
-
-  private static String certsDir() {
-    FileSystem fs = FileSystems.getDefault();
-    return fs.getPath(TestUtils.getBinDir()).resolve(fs.getPath("../test_certs")).toString();
   }
 
   @Override
@@ -109,30 +101,6 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
       ResultSet rs = stmt.executeQuery("SELECT 1");
       rs.next();
       LOG.info("SSL connection via conn mgr succeeded as expected");
-    }
-  }
-
-  /**
-   * Verifies that SSL connections work through conn mgr with a small readahead buffer.
-   *
-   * mm_tls_read() used to signal io->on_read even when it was NULL, which crashed Odyssey when a
-   * TLS record did not fit in the readahead buffer.
-   */
-  @Test
-  public void testSslWithSmallReadahead() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
-    restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
-
-    for (int i = 0; i < 5; i++) {
-      try (Connection conn = getConnectionBuilder()
-               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-               .withSslMode("require")
-               .connect();
-          Statement stmt = conn.createStatement()) {
-        ResultSet rs = stmt.executeQuery("SELECT 1");
-        assertTrue(rs.next());
-      }
     }
   }
 

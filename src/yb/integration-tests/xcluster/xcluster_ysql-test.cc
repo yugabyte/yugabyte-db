@@ -59,6 +59,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -66,6 +67,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
@@ -77,9 +79,10 @@ using std::string;
 
 DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
-DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 
@@ -104,17 +107,21 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(TEST_vector_index_exact);
@@ -2317,7 +2324,6 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   }
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1));
 
   // 2. Setup replication.
@@ -3591,6 +3597,106 @@ TEST_F(XClusterYsqlTest, VectorIndex) {
       table_name.table_name())));
   ASSERT_EQ(p_search, c_search);
   ASSERT_EQ(p_search, "0; 1; 2; 3; 4");
+}
+
+// The non-transactional stream variant of
+// XClusterDBScopedAutomaticModeTest.VectorIndexDeleteOfUnappliedInsertTargetSplit:
+// such a stream also stores a replicated transaction as external intents on the target,
+// and applies it only when its apply record arrives.
+TEST_F(XClusterYsqlTest, VectorIndexDeleteOfUnappliedInsertTargetSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The delete has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  ASSERT_OK(SetUpClusters(SetupParams{
+    .num_consumer_tablets = {1},
+    .num_producer_tablets = {1},
+    .extra_columns = "embedding vector(3)",
+    .create_vector_extension = true,
+  }));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+  // The poller recreated for the split children resumes from the cdc_state checkpoint. Keep it
+  // current, so the delete is not replicated again after the split.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
+
+  const auto table_name = producer_table_->name().table_name();
+  const auto& db_name = producer_table_->name().namespace_name();
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(db_name));
+  const auto create_index = Format(
+      "CREATE INDEX vec_idx ON $0 USING ybhnsw (embedding vector_l2_ops)", table_name);
+  ASSERT_OK(p_conn.Execute(create_index));
+  ASSERT_OK(c_conn.Execute(create_index));
+  constexpr int kNumRows = 10;
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, ARRAY[i, i, i]::vector FROM generate_series(1, $1) i",
+      table_name, kNumRows));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  auto producer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(producer_cluster(), table_name, ListPeersFilter::kLeaders));
+  ASSERT_EQ(producer_peers.size(), 1);
+  auto producer_tablet = ASSERT_RESULT(producer_peers.front()->shared_tablet());
+  auto consumer_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(consumer_cluster(), table_name, ListPeersFilter::kLeaders));
+  ASSERT_EQ(consumer_peers.size(), 1);
+  const auto consumer_tablet_id = consumer_peers.front()->tablet_id();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin. The flag
+  // holds the applies of the target cluster too, which runs no transactions of its own here.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(p_conn.Execute("BEGIN"));
+  ASSERT_OK(p_conn.ExecuteFormat("INSERT INTO $0 VALUES (100, '[0.5, 0.5, 0.5]')", table_name));
+  ASSERT_OK(p_conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The delete reads the row from the intents, and is applied on both sides.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(p_conn.ExecuteFormat("DELETE FROM $0 WHERE key = 100", table_name));
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 1;
+  }, 10s * kTimeMultiplier, "Delete applied on the source"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto delete_op_id = producer_peers.front()->GetLatestLogEntryOpId();
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  auto cdc_state_table = cdc::MakeCDCStateTable(producer_client());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto entry = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+        {producer_tablet->tablet_id(), stream_id},
+        cdc::CDCStateTableEntrySelector().IncludeCheckpoint()));
+    return entry && entry->checkpoint && entry->checkpoint->index >= delete_op_id.index;
+  }, 60s * kTimeMultiplier, "Delete applied on the target"));
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(consumer_cluster(), consumer_tablet_id));
+  // Still not applied, so the target has not received the apply record.
+  ASSERT_EQ(producer_tablet->transaction_participant()->GetNumRunningTransactions(), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitFor([&producer_tablet]() {
+    return producer_tablet->transaction_participant()->GetNumRunningTransactions() == 0;
+  }, MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier, "Insert applied"));
+
+  // The deleted row is back with a far vector, so its old vector would come first if its reverse
+  // mapping were live.
+  ASSERT_OK(p_conn.ExecuteFormat("INSERT INTO $0 VALUES (100, '[100, 100, 100]')", table_name));
+  ASSERT_OK(VerifyWrittenRecords());
+  const auto search = Format(
+      "SELECT key FROM $0 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5", table_name);
+  ASSERT_EQ(AsString(ASSERT_RESULT(p_conn.FetchRows<int32_t>(search))), "[1, 2, 3, 4, 5]");
+  ASSERT_EQ(AsString(ASSERT_RESULT(c_conn.FetchRows<int32_t>(search))), "[1, 2, 3, 4, 5]");
 }
 
 }  // namespace yb

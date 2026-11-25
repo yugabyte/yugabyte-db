@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
@@ -132,6 +133,13 @@ DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
     "number of times we attempt to remote bootstrap a new peer from a closest non-leader peer "
     "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
+DEFINE_RUNTIME_uint32(retain_wal_secs_for_progressing_prevoter, 900,
+    "Seconds to pin WAL for a PRE_VOTER after its first pin request. During the first tenth of "
+    "this window the WAL is always pinned. After that, each GetWalGcPeerRetentionInfo() call pins "
+    "the WAL only while this window is still open and the PRE_VOTER has advanced at least as far "
+    "as the majority-replicated op since the previous call.");
+TAG_FLAG(retain_wal_secs_for_progressing_prevoter, advanced);
+
 DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
 
@@ -176,7 +184,7 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
       MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds();
   return YB_STRUCT_TO_STRING(
       (peer, uuid), is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap,
+      is_last_exchange_successful, needs_remote_bootstrap, requested_wal_pin_info,
       (member_type, PeerMemberType_Name(member_type)), num_sst_files, last_applied,
       (last_successful_communication_time,
        std::to_string(time_since_last_communication_ms) + "ms ago"),
@@ -253,6 +261,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_op_id,
   queue_state_.committed_op_id = committed_op_id;
   queue_state_.last_applied_op_id = last_applied_op_id;
   queue_state_.majority_replicated_op_id = committed_op_id;
+  queue_state_.previous_wal_gc_majority_replicated_op_id = OpId::Max();
   queue_state_.pending_config_op_id = pending_config_op_id;
   queue_state_.active_config.reset(new RaftConfigPB(active_config));
   CHECK(IsRaftConfigVoter(local_peer_uuid_, *queue_state_.active_config))
@@ -475,7 +484,8 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         LWReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         PeerMemberType* member_type,
-                                        bool* last_exchange_successful) {
+                                        bool* last_exchange_successful,
+                                        bool* batch_reaches_majority_replicated) {
   static constexpr uint64_t kSendUnboundedLogOps = std::numeric_limits<uint64_t>::max();
   DCHECK(request->ops().empty()) << request->ShortDebugString();
 
@@ -658,6 +668,18 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       }
 
       peer->last_num_messages_sent = result->messages.size();
+      if (batch_reaches_majority_replicated &&
+          queue_state_.majority_replicated_op_id.is_valid_not_empty()) {
+        const auto majority_index = queue_state_.majority_replicated_op_id.index;
+        int64_t index_after_batch;
+        if (!request->ops().empty()) {
+          index_after_batch = request->ops().rbegin()->id().index();
+        } else {
+          index_after_batch = peer->last_received.index;
+        }
+        *batch_reaches_majority_replicated =
+            majority_index > 0 && index_after_batch >= majority_index;
+      }
     }
 
     ScopedTrackedConsumption consumption;
@@ -709,6 +731,89 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   return Status::OK();
+}
+
+PeerMessageQueue::WalGcPeerRetentionInfo PeerMessageQueue::GetWalGcPeerRetentionInfo() {
+  LockGuard lock(queue_lock_);
+  WalGcPeerRetentionInfo result;
+  if (queue_state_.mode != Mode::LEADER) {
+    return result;
+  }
+
+  // Majority replicated op could drop when PRE_VOTER is promoted to VOTER. Prevent WAL GC
+  // from reclaiming the logs needed by the new VOTER. This is necessary to maintain a
+  // healthy quorum when few of the existing VOTERs are lagging.
+  // The new VOTER could still not have enough logs to catch up if other existing voters
+  // advance the majority replicated op, but we would still have a healthy quorum in that
+  // case, and kick the new VOTER out.
+  auto majority_replicated = OpIdWatermark();
+  if (majority_replicated != OpId::Min()) {
+    result.majority_replicated_op_id = majority_replicated.index == MaximumOpId().index()
+        ? local_peer_->last_received
+        : majority_replicated;
+  }
+
+  // Track advancement of the majority replicated op since the last WAL GC in the same term.
+  const auto previous_majority_replicated =
+      queue_state_.previous_wal_gc_majority_replicated_op_id;
+  int64_t majority_advancement_since_previous_gc = 0;
+  if (previous_majority_replicated != OpId::Max() &&
+      result.majority_replicated_op_id.term == previous_majority_replicated.term &&
+      result.majority_replicated_op_id.index >= previous_majority_replicated.index) {
+    majority_advancement_since_previous_gc =
+        result.majority_replicated_op_id.index - previous_majority_replicated.index;
+  }
+
+  const auto now = MonoTime::Now();
+  const auto kRetainWalPreVoterSecs = FLAGS_retain_wal_secs_for_progressing_prevoter;
+  // Hold WAL for PRE_VOTERs which are catching up at a rate as fast as the majority voters,
+  // for a max period of FLAGS_retain_wal_secs_for_progressing_prevoter, this is best effort.
+  // Called at maintenance_manager_polling_interval_ms (default 250ms). After warmup, a PRE_VOTER
+  // whose in-flight batch has not acked can look slower than the majority, though unlikely:
+  // majority advancement needs several peers, so it rarely outpaces one catching-up PRE_VOTER
+  // in a single poll.
+  for (const auto& entry : peers_map_) {
+    auto& peer = *entry.second;
+    if (peer.member_type != PeerMemberType::PRE_VOTER ||
+        !peer.is_last_exchange_successful ||
+        peer.needs_remote_bootstrap ||
+        !peer.last_received.is_valid_not_empty()) {
+      continue;
+    }
+
+    auto& prev_wal_pin_info = peer.requested_wal_pin_info;
+    auto se = ScopeExit([&]() {
+      prev_wal_pin_info.op_id = peer.last_received;
+    });
+    const bool first_pin_request =
+        prev_wal_pin_info.first_requested_time == MonoTime::kUninitialized ||
+        prev_wal_pin_info.op_id == OpId::Max();
+    if (first_pin_request) {
+      prev_wal_pin_info.first_requested_time = now;
+    }
+
+    const auto requested_pin_duration =
+        now.GetDeltaSince(prev_wal_pin_info.first_requested_time);
+    const bool retain_wal_time_window_active =
+        requested_pin_duration.ToSeconds() < kRetainWalPreVoterSecs;
+    if (!retain_wal_time_window_active) {
+      continue;
+    }
+
+    if (!first_pin_request &&
+        previous_majority_replicated != OpId::Max() &&
+        result.majority_replicated_op_id != OpId::Max() &&
+        requested_pin_duration > kRetainWalPreVoterSecs * 1s / 10 &&
+        peer.last_received.index - prev_wal_pin_info.op_id.index <
+            majority_advancement_since_previous_gc) {
+      continue;
+    }
+    result.min_progressing_pre_voter_op_id =
+        std::min(result.min_progressing_pre_voter_op_id, peer.last_received);
+  }
+
+  queue_state_.previous_wal_gc_majority_replicated_op_id = result.majority_replicated_op_id;
+  return result;
 }
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
@@ -1052,9 +1157,16 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
 Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerForBootstrap(
     const TrackedPeer* remote_tracked_peer) {
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
+  // Prefer a source that finished post-split compaction, so the new peer doesn't copy the split
+  // parent's data, unless it's outside the new peer's region.
+  auto score = [&src_cloud_info](const TrackedPeer& peer) {
+    auto level = TablespaceParser::GetLocalityLevel(src_cloud_info, peer.cloud_info.value());
+    bool compacted = !peer.pending_post_split_compaction;
+    bool compacted_in_region = compacted && level >= LocalityLevel::kRegion;
+    return std::tuple(compacted_in_region, level, compacted);
+  };
   // initializing rbs_source as the leader itself.
-  LocalityLevel best_locality_level =
-      TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
+  auto best_score = score(*local_peer_);
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
@@ -1076,10 +1188,9 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
       continue;
     }
 
-    auto cur_locality_level =
-        TablespaceParser::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
-    if (cur_locality_level > best_locality_level) {
-      best_locality_level = cur_locality_level;
+    auto cur_score = score(*it->second);
+    if (cur_score > best_score) {
+      best_score = cur_score;
       rbs_source = it->second;
     }
   }
@@ -1089,6 +1200,11 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
+  // Read here rather than on local appends, which stop on a tablet without writes and leave the
+  // value stale. Outside queue_lock_ because the check takes a ScopedRWOperation and the metadata
+  // mutex.
+  const bool local_pending_post_split_compaction =
+      context_ && context_->PendingPostSplitCompaction();
   TrackedPeer* peer = nullptr;
   const TrackedPeer* rbs_source = nullptr;
   int64_t current_term;
@@ -1097,6 +1213,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
     DCHECK_NE(uuid, local_peer_uuid_);
+    local_peer_->pending_post_split_compaction = local_pending_post_split_compaction;
     peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
@@ -1606,6 +1723,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     peer->is_last_exchange_successful = true;
     peer->num_sst_files = response.num_sst_files();
+    peer->pending_post_split_compaction = response.pending_post_split_compaction();
 
     if (response.has_responder_term()) {
       // The peer must have responded with a term that is greater than or equal to the last known

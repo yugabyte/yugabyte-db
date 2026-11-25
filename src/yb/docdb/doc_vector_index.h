@@ -117,6 +117,10 @@ class DocVectorIndexReverseMappingReader {
   // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
   // no ybctid is found or kTombstone corresponds to the specified vector_id.
   Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
+
+  // Read restart data for entries the fetches observed in the uncertainty window, see
+  // IntentAwareIterator::GetReadRestartData.
+  virtual Result<ReadRestartData> GetReadRestartData() const = 0;
 };
 
 using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
@@ -181,6 +185,8 @@ class DocVectorIndex {
   // Capacity of a new mutable chunk when the insert does not specify one.
   virtual size_t DefaultChunkCapacity() const = 0;
 
+  // Also returns the vectors tied in distance with the last of options.max_num_results vectors, up
+  // to vector_index_max_extra_tied_results of them.
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;
@@ -291,6 +297,12 @@ struct DocVectorIndexThreadPools {
   PriorityThreadPoolTokenPtr compaction_token;
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
+
+// The counterpart of DocVectorIndex::ModifyFlushedFrontier with kForce for a vector index that is
+// not open: sets the OpId of every chunk of the index stored in storage_dir to op_id, and adds a
+// chunk without a file carrying it, see vector_index::VectorLSMMetadataModifyChunkFrontiers.
+// Does nothing if storage_dir does not exist. Returns false if its manifest could not be loaded.
+Result<bool> ForceVectorIndexStorageOpId(const std::string& storage_dir, const OpId& op_id);
 
 // Doc vector index starts with background compactions disabled, they must be enabled explicitly:
 // don't forget to call EnableAutoCompactions().

@@ -585,10 +585,7 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
     "Delay creating child tablets and upserting them to sys catalog");
 
-DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
-namespace deprecated_flag_do_not_use {
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
-}
 
 DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
     "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
@@ -4585,16 +4582,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       !colocated || req.has_table_id(), InvalidArgument,
       "Colocated table should specify a table ID");
 
-  // If colocated tables with tablespaces are not enabled then tablespaces cannot be specified for
-  // indexes on colocated tables. The deprecated flag counts as well, because postgres honors it
-  // too (see AppendPgGFlags). Vector indexes are exempt: they are copartitioned with (and stored
-  // on) the indexed table's tablets, so a tablespace recorded for them only mirrors the indexed
-  // table's tablespace for catalog consistency and is never used for the vector index's (shared)
-  // placement.
+  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
+  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
+  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
+  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
+  // vector index's (shared) placement.
   SCHECK(
-      FLAGS_ysql_yb_enable_colocated_tables_with_tablespaces ||
-          deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces ||
-          !colocated || !IsIndex(req) || is_vector_index || !req.has_tablespace_id(),
+      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
+          is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
@@ -7431,49 +7426,27 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
+  // The deletion is persisted and committed, so a failure from here on is not rolled back. A
+  // failure to delete the tablets of a table is returned at the end, after the steps below have
+  // run.
+  Status delete_tablets_status;
   for (const auto& table : tables) {
     LOG(INFO) << "Deleting table: " << table.ToString();
 
-    // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
-        *table.table_info_with_write_lock, table.delete_retainer, epoch));
-    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
-    // it is possible that the tablet is already removed from table by a racing thread and
-    // in that case colocated_tablet will be nullptr.
-    if (table.table_info_with_write_lock->IsSecondaryTable()) {
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
-      for (const auto& colocated_tablet :
-               VERIFY_RESULT(table.table_info_with_write_lock->GetTabletsIncludeInactive())) {
-        // Send a RemoveTableFromTablet() request to each
-        // colocated parent tablet replica in the table.
-        if (!table.delete_retainer.IsHideOnly()) {
-          LOG(INFO)
-              << "Notifying tablet with id " << colocated_tablet->tablet_id()
-              << " to remove this colocated table " << table.table_info_with_write_lock->name()
-              << " from its metadata.";
-          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-              master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
-              epoch);
-          table.table_info_with_write_lock->AddTask(call);
-          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-        } else {
-          // Set the snapshot schedules that prevented the table from getting deleted.
-          const auto retained_by_snapshot_schedules =
-              table.delete_retainer.RetainedBySnapshotSchedules();
-          if (!retained_by_snapshot_schedules.empty()) {
-            auto tablet_lock = colocated_tablet->LockForWrite();
+    // Don't stop on a failure as nothing retries the remaining tables -- their tablets
+    // would keep running and the DDL verification would never complete (#37744).
+    auto status = DeleteOrHideTablets(table, epoch);
 
-            *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-                retained_by_snapshot_schedules;
+    std::pair<const TableInfo*, Status*> sync_point_arg {
+        table.table_info_with_write_lock.info.get(), &status };
+    TEST_SYNC_POINT_CALLBACK("DeleteTableInternal::AfterDeleteOrHideTablets", &sync_point_arg);
 
-            // Upsert to sys catalog and commit to memory.
-            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
-            tablet_lock.Commit();
-          }
-          CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
-        }
+    if (!status.ok()) {
+      status = status.CloneAndPrepend(
+          Format("Failed to delete or hide tablets of $0", table.ToString()));
+      LOG(WARNING) << status;
+      if (delete_tablets_status.ok()) {
+        delete_tablets_status = std::move(status);
       }
     }
   }
@@ -7526,15 +7499,17 @@ Status CatalogManager::DeleteTableInternal(
     TRACE("No system tables to delete");
   }
 
-  LOG(INFO) << "Successfully initiated deletion of "
-            << (req->is_index_table() ? "index" : "table") << " with "
-            << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  if (delete_tablets_status.ok()) {
+    LOG(INFO) << "Successfully initiated deletion of "
+              << (req->is_index_table() ? "index" : "table") << " with "
+              << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  }
 
   TEST_SYNC_POINT("DeleteTableInternal::End");
 
   // Asynchronously cleans up the final memory traces of the deleted database.
   background_tasks_->Wake();
-  return Status::OK();
+  return delete_tablets_status;
 }
 
 Status CatalogManager::DeleteTableInMemoryAcquireLocks(
@@ -11663,6 +11638,60 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
   return Status::OK();
 }
 
+Status CatalogManager::DeleteOrHideTablets(
+    const DeletingTableData& table, const LeaderEpoch& epoch) {
+  // Send a DeleteTablet() request to each tablet replica in the table.
+  RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
+      *table.table_info_with_write_lock, table.delete_retainer, epoch));
+  if (!table.table_info_with_write_lock->IsSecondaryTable()) {
+    return Status::OK();
+  }
+
+  // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+  // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+  // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+  // it is possible that the tablet is already removed from table by a racing thread and
+  // in that case colocated_tablet will be nullptr.
+  RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
+
+  // A vector index lives on the tablets of its indexed table. When both are dropped, the tablets
+  // may be freed by the background cleanup before the index gets here. It is ok to skip them as
+  // a freed tablet is already deleted -- there is nothing to remove the index from.
+  auto colocated_tablets = VERIFY_RESULT(
+      table.table_info_with_write_lock->GetTabletsIncludeInactive(SkipFreedTablets::kTrue));
+  for (const auto& colocated_tablet : colocated_tablets) {
+    // Send a RemoveTableFromTablet() request to each
+    // colocated parent tablet replica in the table.
+    if (table.delete_retainer.IsHideOnly()) {
+      // Set the snapshot schedules that prevented the table from getting deleted.
+      const auto retained_by_snapshot_schedules =
+          table.delete_retainer.RetainedBySnapshotSchedules();
+      if (!retained_by_snapshot_schedules.empty()) {
+        auto tablet_lock = colocated_tablet->LockForWrite();
+
+        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+            retained_by_snapshot_schedules;
+
+        // Upsert to sys catalog and commit to memory.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
+        tablet_lock.Commit();
+      }
+      CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
+    } else {
+      LOG(INFO)
+          << "Notifying tablet with id " << colocated_tablet->tablet_id()
+          << " to remove this colocated table " << table.table_info_with_write_lock->name()
+          << " from its metadata.";
+      auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+          master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+          epoch);
+      table.table_info_with_write_lock->AddTask(call);
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
@@ -12579,9 +12608,11 @@ void CatalogManager::StartElectionIfReady(
   }
 
   ReplicationInfoPB replication_info;
+  BlacklistSet leader_blacklist;
   {
     auto l = ClusterConfig()->LockForRead();
     replication_info = l->pb.replication_info();
+    leader_blacklist = ToBlacklistSet(GetBlacklist(l->pb, /* blacklist_leader */ true));
   }
 
   // Find tservers that can be leaders for a tablet.
@@ -12596,7 +12627,8 @@ void CatalogManager::StartElectionIfReady(
     }
     for (const auto& ts_desc : ts_descs) {
       if (ts_desc->permanent_uuid() == replica.first) {
-        if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
+        if (ts_desc->IsAcceptingLeaderLoad(replication_info) &&
+            !ts_desc->IsBlacklisted(leader_blacklist)) {
           possible_leaders.push_back(replica.first);
         }
         break;

@@ -552,7 +552,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           /*masterAddresses*/ "",
           newPlacement,
           curPlacement,
-          false /* enableYbc */,
+          universe.isYbcEnabled(),
           /* Use previous gflags checksum only if can use and no pod restart is required */
           supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */,
           fullMoveMasterAZs);
@@ -565,7 +565,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)
         || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
-        // Ybc is not present on master-only nodes currently
         createFullMoveTasks(
             universe,
             curPlacement,
@@ -578,8 +577,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isReadOnlyCluster,
             newNamingStyle,
             masterAddresses,
-            false /* enableYbc */,
-            null /* ybcSoftwareVersion */);
+            universe.isYbcEnabled(),
+            ybcManager.getStableYbcVersion());
       }
       if (CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
         createFullMoveTasks(

@@ -48,7 +48,8 @@ public class TestConnMgrShutdown extends BaseYsqlConnMgr {
         String.valueOf(SHUTDOWN_DELAY_MS));
   }
 
-  private Connection connectToConnMgr() throws Exception {
+  @Override
+  protected Connection connectToConnMgr() throws Exception {
     return getConnectionBuilder()
         .withTServer(TSERVER_IDX)
         .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
