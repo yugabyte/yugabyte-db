@@ -85,6 +85,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     return UpgradeTaskBase.restartsMasters(taskParams().upgradeOption, getNodesToBeRestarted());
   }
 
+  // The operator reruns a failed upgrade as a new task with skipNodeChecks.
+  @Override
+  protected boolean finishesStartedTask() {
+    return super.finishesStartedTask() || Boolean.TRUE.equals(taskParams().skipNodeChecks);
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();

@@ -189,6 +189,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return restartsMasters(taskParams().upgradeOption, getNodesToBeRestarted());
   }
 
+  // The operator reruns a failed upgrade as a new task with skipNodeChecks.
+  @Override
+  protected boolean finishesStartedTask() {
+    return super.finishesStartedTask() || Boolean.TRUE.equals(taskParams().skipNodeChecks);
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
@@ -974,8 +980,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-      // If there are no universe keys on the universe, it will have no effect.
-      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+      // Only masters get the key from YBA. A tserver gets it from the master leader at start.
+      if (processType == ServerType.MASTER
+          && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
     }

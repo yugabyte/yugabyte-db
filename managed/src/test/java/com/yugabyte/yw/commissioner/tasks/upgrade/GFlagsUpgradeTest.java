@@ -82,6 +82,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
@@ -473,6 +474,54 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .applyToTservers()
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  // Tservers get the key from the master leader, so a tserver-only change needs no KMS.
+  @Test
+  public void testRollingTserverOnlyGFlagsSkipsKmsCheckAndKeyPush() {
+    assertTserverOnlyGFlagsSkipsKms(UpgradeOption.ROLLING_UPGRADE);
+  }
+
+  @Test
+  public void testNonRollingTserverOnlyGFlagsSkipsKmsCheckAndKeyPush() {
+    assertTserverOnlyGFlagsSkipsKms(UpgradeOption.NON_ROLLING_UPGRADE);
+  }
+
+  private void assertTserverOnlyGFlagsSkipsKms(UpgradeOption option) {
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = option;
+    TaskInfo taskInfo = submitTask(taskParams);
+    String failed =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == Failure)
+            .map(t -> t.getTaskType() + ": " + t.getErrorMessage())
+            .collect(Collectors.joining("; "));
+    assertEquals(failed, Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(
+                t ->
+                    t.getTaskType() == TaskType.CheckUniverseKeyInKms
+                        || t.getTaskType() == TaskType.SetActiveUniverseKeys));
+  }
+
+  // The non-rolling flow pushes the key once, after the master pass.
+  @Test
+  public void testNonRollingPushesKeyOnlyAfterMasterPass() {
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), true /* kmsWorks */);
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(
+        1,
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.SetActiveUniverseKeys)
+            .count());
   }
 
   @Test
