@@ -11585,3 +11585,54 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 
 	return get_relname_relid(table_name, namespace_oid);
 }
+
+/*
+ * Restoring statistics from a ysql_dump script writes pg_class and
+ * pg_statistic once per relation and once per column.  As a DDL, each write
+ * increments the catalog version, which makes restoring statistics cost one
+ * catalog version increment per column.
+ *
+ * When yb_stats_restore_defer_catalog_version_increment is set, the writes
+ * are plain catalog writes in the caller's transaction instead, and the
+ * caller increments the catalog version once at the end of the restore.  The
+ * same applies to pg_clear_relation_stats() and pg_clear_attribute_stats(),
+ * which share these writes, although restore scripts do not call them.
+ * ysql_dump --include-yb-metadata scripts increment the catalog version with
+ * no invalidation messages, which makes the backends of the database refresh
+ * their whole catalog cache.  Until then, other backends of the database keep
+ * the statistics they cached before the restore.  Usually there are none:
+ * clone keeps its target database closed to other connections, and backup
+ * restore normally creates the database it restores into.  A backup restore
+ * that applies the schema to an existing database (YBC with
+ * ignore_restore_errors) leaves that window open until the final increment.
+ *
+ * Only per-database catalog version mode defers: the restore script
+ * increments the version of its own database.
+ */
+bool		yb_stats_restore_defer_catalog_version_increment = false;
+
+bool
+YbStatsCatalogWriteBegin(void)
+{
+	if (!IsYugaByteEnabled())
+		return false;
+	if (yb_stats_restore_defer_catalog_version_increment && YBIsDBCatalogVersionMode())
+		return false;
+
+	if (YBIsDdlTransactionBlockEnabled())
+		YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
+	else
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
+	return true;
+}
+
+void
+YbStatsCatalogWriteEnd(bool in_ddl)
+{
+	if (!in_ddl)
+		return;
+	if (YBIsDdlTransactionBlockEnabled())
+		YBMergeDdlTxnState();
+	else
+		YBDecrementDdlNestingLevel();
+}

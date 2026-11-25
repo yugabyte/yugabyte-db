@@ -16,6 +16,12 @@ BEGIN
   END IF;
 END $$;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_stats_restore_defer_catalog_version_increment') THEN
+    EXECUTE 'SET yb_stats_restore_defer_catalog_version_increment TO true';
+  END IF;
+END $$;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -397,6 +403,8 @@ COPY public.t7 (a, b, c, d) FROM stdin;
 -- Statistics for Name: t1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
@@ -407,9 +415,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -421,9 +433,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t3; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -435,9 +451,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t4; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -449,9 +469,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t5; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -463,9 +487,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t6; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -477,9 +505,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t7; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -490,6 +522,8 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relallvisible', '0'::integer
 );
 
+
+COMMIT;
 
 --
 -- Name: i1; Type: INDEX; Schema: public; Owner: yugabyte_test
@@ -603,6 +637,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- Statistics for Name: i1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
@@ -613,9 +649,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: i2; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -627,9 +667,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: i21; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -641,9 +685,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: i3; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -654,6 +702,8 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relallvisible', '0'::integer
 );
 
+
+COMMIT;
 
 --
 -- Name: mv1; Type: MATERIALIZED VIEW DATA; Schema: public; Owner: yugabyte_test
@@ -666,6 +716,8 @@ REFRESH MATERIALIZED VIEW public.mv1;
 -- Statistics for Name: mv1; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+BEGIN;
+
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
 	'schemaname', 'public',
@@ -676,9 +728,13 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 --
 -- Statistics for Name: t7_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
 --
+
+BEGIN;
 
 SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'version', '150012'::integer,
@@ -690,11 +746,23 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 );
 
 
+COMMIT;
+
 -- YB: re-enable auto analyze after all catalog changes
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_disable_auto_analyze') THEN
     EXECUTE format('ALTER DATABASE %I SET yb_disable_auto_analyze TO off', current_database());
+  END IF;
+END $$;
+
+-- YB: increment the catalog version once for the restored statistics
+DO $$
+BEGIN
+  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN
+    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(
+      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),
+      false, NULL, 2147483647);
   END IF;
 END $$;
 

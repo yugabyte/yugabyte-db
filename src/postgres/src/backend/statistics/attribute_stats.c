@@ -807,15 +807,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 {
 	HeapTuple	newtup;
 
-	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
-
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
-		else
-			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
-	}
+	bool		yb_in_ddl = YbStatsCatalogWriteBegin();
 
 	if (HeapTupleIsValid(oldtup))
 	{
@@ -829,13 +821,7 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 		CatalogTupleInsert(starel, newtup);
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBMergeDdlTxnState();
-		else
-			YBDecrementDdlNestingLevel();
-	}
+	YbStatsCatalogWriteEnd(yb_in_ddl);
 
 	heap_freetuple(newtup);
 
@@ -852,36 +838,25 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 	HeapTuple	oldtup;
 	bool		result = false;
 
+	bool		yb_in_ddl;
+
 	/* Is there already a pg_statistic tuple for this attribute? */
 	oldtup = SearchSysCache3(STATRELATTINH,
 							 ObjectIdGetDatum(reloid),
 							 Int16GetDatum(attnum),
 							 BoolGetDatum(stainherit));
 
-	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
-
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
-		else
-			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
-	}
+	yb_in_ddl = YbStatsCatalogWriteBegin();
 
 	if (HeapTupleIsValid(oldtup))
 	{
+		/* YB: CatalogTupleDelete() takes the tuple, not its TID */
 		CatalogTupleDelete(sd, oldtup);
 		ReleaseSysCache(oldtup);
 		result = true;
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBMergeDdlTxnState();
-		else
-			YBDecrementDdlNestingLevel();
-	}
+	YbStatsCatalogWriteEnd(yb_in_ddl);
 
 	table_close(sd, RowExclusiveLock);
 

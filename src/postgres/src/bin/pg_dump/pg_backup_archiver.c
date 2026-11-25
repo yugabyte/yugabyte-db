@@ -153,6 +153,10 @@ static void inhibit_data_for_failed_table(ArchiveHandle *AH, TocEntry *te);
 
 static void StrictNamesCheck(RestoreOptions *ropt);
 
+/* YB declarations */
+static bool ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te);
+static void ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH);
+
 /* YB variables */
 static bool IsYugabyteEnabled = true;
 
@@ -820,6 +824,10 @@ RestoreArchive(Archive *AHX)
 		YbBackwardCompatibleSetGuc(AH, "yb_disable_auto_analyze", "off", true);
 		ahprintf(AH, "\n");
 	}
+
+	/* YB: see ybEmitStatsRestoreCatalogVersionIncrement */
+	if (AH->public.dopt->include_yb_metadata && ropt->dumpStatistics)
+		ybEmitStatsRestoreCatalogVersionIncrement(AH);
 
 	if (ropt->single_txn)
 	{
@@ -3377,6 +3385,10 @@ _doSetFixedOutputState(ArchiveHandle *AH)
 		ahprintf(AH, "SET yb_ignore_pg_class_oids = false;\n");
 		YbBackwardCompatibleSetGuc(AH, "yb_ignore_relfilenode_ids", "false", false);
 		ahprintf(AH, "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n");
+		/* See ybEmitStatsRestoreCatalogVersionIncrement */
+		if (ropt && ropt->dumpStatistics)
+			YbBackwardCompatibleSetGuc(AH, "yb_stats_restore_defer_catalog_version_increment",
+									   "true", false);
 	}
 	ahprintf(AH, "SET statement_timeout = 0;\n");
 	ahprintf(AH, "SET lock_timeout = 0;\n");
@@ -3879,6 +3891,8 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 {
 	RestoreOptions *ropt = AH->public.ropt;
 
+	bool		yb_own_txn = ybStatsNeedOwnTransaction(AH, te);
+
 	/* Select owner, schema, tablespace and default AM as necessary */
 	_becomeOwner(AH, te);
 	_selectOutputSchema(AH, te->namespace);
@@ -3934,6 +3948,10 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 			AH->PrintExtraTocPtr(AH, te);
 		ahprintf(AH, "--\n\n");
 	}
+
+	/* YB: see ybStatsNeedOwnTransaction */
+	if (yb_own_txn)
+		ahprintf(AH, "BEGIN;\n\n");
 
 	/*
 	 * Actually print the definition.
@@ -4056,6 +4074,10 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, const char *pfx)
 				ahprintf(AH, "%s\n\n", te->defn);
 		}
 	}
+
+	/* YB: see ybStatsNeedOwnTransaction */
+	if (yb_own_txn)
+		ahprintf(AH, "COMMIT;\n\n");
 
 	/*
 	 * If we aren't using SET SESSION AUTH to determine ownership, we must
@@ -5340,4 +5362,67 @@ DeCloneArchive(ArchiveHandle *AH)
 		free(AH->savedPassword);
 
 	free(AH);
+}
+
+/*
+ * YB: whether to wrap a STATISTICS DATA entry in its own transaction block.
+ *
+ * Only for --include-yb-metadata scripts, the restore scripts of backup
+ * restore and clone, so that other dumps keep upstream's output.  On a
+ * server that defers the catalog version increments (see
+ * ybEmitStatsRestoreCatalogVersionIncrement), those scripts restore
+ * statistics as plain catalog writes, and the block makes the writes of one
+ * relation, one per column, commit once.  As a consequence, when the
+ * script runs without ON_ERROR_STOP, a failing statistics call discards the
+ * statistics of its whole relation, not only its own.
+ *
+ * Only plain-text output needs this.  When restoring directly to a database,
+ * the entry is sent as a single request, which already runs as one implicit
+ * transaction.  --single-transaction already wraps the whole script, and a
+ * nested BEGIN/COMMIT would end that transaction early.
+ */
+static bool
+ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
+{
+	return AH->public.dopt->include_yb_metadata &&
+		strcmp(te->desc, "STATISTICS DATA") == 0 &&
+		!RestoringToDB(AH) &&
+		!AH->public.ropt->single_txn;
+}
+
+/*
+ * YB: increment the catalog version once after restoring statistics.
+ *
+ * The fixed output state of a --include-yb-metadata script with statistics
+ * sets yb_stats_restore_defer_catalog_version_increment, so the server restores
+ * statistics without incrementing the catalog version for each relation and
+ * column.  This increments it once at the end, for the current database, with
+ * no invalidation messages (NULL), so that its backends refresh their whole
+ * catalog cache instead of keeping statistics they read before the restore.
+ *
+ * The increment only runs when the parameter is on: a server that does not
+ * have the parameter already incremented the catalog version for each call.
+ *
+ * The last argument, expiration_sec, only makes the call delete the
+ * database's invalidation messages older than that many seconds.  INT_MAX
+ * deletes none, leaving that to the database's next catalog version
+ * increment, which uses the server's expiration, or to dropping the
+ * database.  A script cannot compute that expiration, which depends on the
+ * heartbeat interval.  With invalidation messages disabled, neither deletes
+ * the row, which stays until they are enabled again; nothing reads it
+ * meanwhile.
+ */
+static void
+ybEmitStatsRestoreCatalogVersionIncrement(ArchiveHandle *AH)
+{
+	ahprintf(AH, "-- YB: increment the catalog version once for the restored statistics\n");
+	ahprintf(AH,
+			 "DO $$\n"
+			 "BEGIN\n"
+			 "  IF current_setting('yb_stats_restore_defer_catalog_version_increment', true) = 'on' THEN\n"
+			 "    PERFORM pg_catalog.yb_increment_db_catalog_version_with_inval_messages(\n"
+			 "      (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()),\n"
+			 "      false, NULL, 2147483647);\n"
+			 "  END IF;\n"
+			 "END $$;\n\n");
 }

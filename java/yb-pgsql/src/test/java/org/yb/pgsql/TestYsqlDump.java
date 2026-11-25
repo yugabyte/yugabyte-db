@@ -23,10 +23,12 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -766,6 +768,133 @@ public class TestYsqlDump extends BasePgSQLTest {
       "results/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* outputDescribeFileRelativePath */
     );
+  }
+
+  /**
+   * Restoring a relation's statistics is a catalog-version-incrementing DDL per
+   * pg_restore_*_stats() call, and a dump has one call per column.  A --include-yb-metadata
+   * restore script (backup restore, clone) defers those increments with
+   * yb_stats_restore_defer_catalog_version_increment and increments the catalog version once at
+   * the end, so restoring the statistics adds one catalog version whatever the number of
+   * columns, with or without transactional DDL.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnce() throws Exception {
+    assertStatisticsRestoreCatalogVersions(
+        /* useLegacyDdlMode */ false, /* includeYbMetadata */ true);
+  }
+
+  @Test
+  public void ysqlDumpStatisticsRestoreIncrementsCatalogVersionOnceLegacyDdlMode()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(
+        /* useLegacyDdlMode */ true, /* includeYbMetadata */ true);
+  }
+
+  /**
+   * Without --include-yb-metadata, the script is unchanged: each pg_restore_*_stats() call
+   * increments the catalog version.
+   */
+  @Test
+  public void ysqlDumpStatisticsRestoreWithoutYbMetadataIncrementsCatalogVersionPerCall()
+      throws Exception {
+    assertStatisticsRestoreCatalogVersions(
+        /* useLegacyDdlMode */ false, /* includeYbMetadata */ false);
+  }
+
+  private void assertStatisticsRestoreCatalogVersions(
+      boolean useLegacyDdlMode, boolean includeYbMetadata) throws Exception {
+    Map<String, String> masterFlags = getMasterFlags();
+    Map<String, String> tserverFlags = getTServerFlags();
+    toggleDDLMode(masterFlags, useLegacyDdlMode);
+    toggleDDLMode(tserverFlags, useLegacyDdlMode);
+    restartClusterWithFlags(masterFlags, tserverFlags);
+
+    final int numTables = 3;
+    final int numColumns = 20;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE stats_src");
+    }
+    try (Connection conn = getConnectionBuilder().withDatabase("stats_src").connect();
+         Statement stmt = conn.createStatement()) {
+      for (int t = 1; t <= numTables; ++t) {
+        StringBuilder cols = new StringBuilder();
+        for (int c = 1; c <= numColumns; ++c) {
+          cols.append(String.format(", c%d int DEFAULT %d", c, c));
+        }
+        stmt.execute(String.format("CREATE TABLE t%d (k int PRIMARY KEY%s)", t, cols));
+        stmt.execute(String.format("INSERT INTO t%d (k) SELECT generate_series(1, 10)", t));
+      }
+      stmt.execute("ANALYZE");
+    }
+
+    // Restore the schema without statistics and with statistics into two new databases.  The
+    // difference in their catalog versions is what restoring the statistics cost.
+    int tserverIndex = 0;
+    File testDir = TestUtils.getClassResourceDir(getClass());
+    File ysqlDumpExec = new File(PgRegressBuilder.getPgBinDir(), "ysql_dump");
+    File ysqlshExec = new File(pgBinDir, "ysqlsh");
+    Map<String, Long> versions = new HashMap<>();
+    int numStatsEntries = 0;
+    int numStatsCalls = 0;
+    for (String target : Arrays.asList("stats_none", "stats_restored")) {
+      boolean withStats = target.equals("stats_restored");
+      File dump = new File(testDir, "results/yb.orig.ysql_dump_" + target + ".out");
+      dump.getParentFile().mkdirs();
+      List<String> args = new ArrayList<>(Arrays.asList(
+          ysqlDumpExec.toString(),
+          "-h", getPgHost(tserverIndex),
+          "-p", Integer.toString(getPgPort(tserverIndex)),
+          "-U", DEFAULT_PG_USER,
+          "-f", dump.toString(),
+          "--schema-only",
+          "--create",
+          "--rename-database=" + target,
+          withStats ? "--with-statistics" : "--no-statistics"));
+      if (includeYbMetadata) {
+        args.add("--include-yb-metadata");
+      }
+      args.add("stats_src");
+      ProcessUtil.executeSimple(args, "ysql_dump");
+      if (withStats) {
+        List<String> lines = FileUtils.readLines(dump, StandardCharsets.UTF_8);
+        numStatsEntries = (int) lines.stream()
+            .filter(l -> l.contains("Type: STATISTICS DATA;")).count();
+        numStatsCalls = (int) lines.stream()
+            .filter(l -> l.startsWith("SELECT * FROM pg_catalog.pg_restore_")).count();
+        // Only --include-yb-metadata scripts wrap the statistics in transaction blocks.
+        assertEquals(includeYbMetadata ? numStatsEntries : 0,
+            (int) lines.stream().filter(l -> l.equals("BEGIN;")).count());
+      }
+      ProcessUtil.executeSimple(Arrays.asList(
+          ysqlshExec.toString(),
+          "-h", getPgHost(tserverIndex),
+          "-p", Integer.toString(getPgPort(tserverIndex)),
+          "-U", DEFAULT_PG_USER,
+          "-v", "ON_ERROR_STOP=1",
+          "-f", dump.toString()), "ysqlsh");
+      try (Statement stmt = connection.createStatement()) {
+        versions.put(target, getSingleRow(stmt, String.format(
+            "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = " +
+            "(SELECT oid FROM pg_database WHERE datname = '%s')", target)).getLong(0));
+      }
+    }
+
+    // All the column statistics were restored.  Read them from another node, whose backend
+    // loads its catalog cache after the restore.
+    try (Connection conn = getConnectionBuilder().withTServer(1)
+             .withDatabase("stats_restored").connect();
+         Statement stmt = conn.createStatement()) {
+      assertEquals((long) numTables * numColumns, getSingleRow(stmt,
+          "SELECT count(*) FROM pg_statistic s JOIN pg_class c ON c.oid = s.starelid " +
+          "WHERE c.relname LIKE 't%' AND s.staattnum > 1").getLong(0).longValue());
+    }
+    // One entry per table and one per primary key index.
+    assertEquals(2 * numTables, numStatsEntries);
+    assertEquals(
+        String.format("catalog versions: %s", versions),
+        includeYbMetadata ? 1L : (long) numStatsCalls,
+        versions.get("stats_restored") - versions.get("stats_none"));
   }
 
   void ysqlDumpTester(final String binaryName,

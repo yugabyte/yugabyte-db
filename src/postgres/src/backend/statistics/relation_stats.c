@@ -79,6 +79,8 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	bool		nulls[3] = {0};
 	int			nreplaces = 0;
 
+	bool		yb_in_ddl;
+
 	stats_check_required_arg(fcinfo, relarginfo, RELSCHEMA_ARG);
 	stats_check_required_arg(fcinfo, relarginfo, RELNAME_ARG);
 
@@ -127,15 +129,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 	 */
 	crel = table_open(RelationRelationId, RowExclusiveLock);
 
-	bool		yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
-
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
-		else
-			YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
-	}
+	yb_in_ddl = YbStatsCatalogWriteBegin();
 
 	ctup = SearchSysCache1(RELOID, ObjectIdGetDatum(reloid));
 	if (!HeapTupleIsValid(ctup))
@@ -177,13 +171,7 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 
 	ReleaseSysCache(ctup);
 
-	if (IsYugaByteEnabled())
-	{
-		if (yb_use_regular_txn_block)
-			YBMergeDdlTxnState();
-		else
-			YBDecrementDdlNestingLevel();
-	}
+	YbStatsCatalogWriteEnd(yb_in_ddl);
 
 	/* release the lock, consistent with vac_update_relstats() */
 	table_close(crel, RowExclusiveLock);
