@@ -100,6 +100,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/tablet/tablet_types.pb.h"
 
@@ -2800,6 +2801,9 @@ void TSTabletManager::OpenTablet(
     }
   }
 
+  // A removal replayed by the bootstrap destroys the storage of its index in the background, and
+  // the sweep would delete that storage under the destroy.
+  tablet->vector_indexes().WaitPendingDestroys();
   DeleteStartupUnlistedVectorIndexStorages(*meta);
 
   auto pool_tag = PoolTagForTablet(tablet);

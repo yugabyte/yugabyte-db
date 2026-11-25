@@ -3075,11 +3075,16 @@ void RaftGroupMetadata::DeleteUnlistedVectorIndexStorages(
       continue;
     }
     auto dir = docdb::GetStorageDir(kv_store_.rocksdb_dir, storage_name);
-    if (listed_dirs.contains(dir) || !env->DirExists(dir)) {
+    // A removal mark is deleted with its storage, after it.
+    if (auto marked_dir = docdb::StorageOfRemovedVectorIndexMark(dir)) {
+      dir = std::move(*marked_dir);
+    }
+    if (listed_dirs.contains(dir)) {
       continue;
     }
-    LOG_WITH_PREFIX(INFO) << "Deleting storage of vector index not in the tablet: " << dir;
-    auto status = env->DeleteRecursively(dir);
+    LOG_IF_WITH_PREFIX(INFO, env->DirExists(dir))
+        << "Deleting storage of vector index not in the tablet: " << dir;
+    auto status = docdb::DeleteVectorIndexStorage(*env, dir);
     LOG_IF_WITH_PREFIX(WARNING, !status.ok())
         << "Failed to delete vector index storage " << dir << ": " << status;
   }

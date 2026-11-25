@@ -485,8 +485,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Storage dirs of the vector indexes this tablet lists.
   std::vector<std::string> vector_index_dirs() const;
   // Deletes the storage dir of each "vi-*" name in storage_names, see
-  // docdb::GetVectorIndexStorageName, whose index this tablet does not list. Ignores other names.
-  // DeleteTabletData destroys only the storages of listed indexes. Best effort.
+  // docdb::GetVectorIndexStorageName, whose index this tablet does not list, with its removal mark.
+  // Ignores other names. DeleteTabletData destroys only the storages of listed indexes.
+  // Best effort.
   void DeleteUnlistedVectorIndexStorages(const std::vector<std::string>& storage_names) const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
