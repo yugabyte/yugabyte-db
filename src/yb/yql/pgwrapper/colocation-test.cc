@@ -445,8 +445,8 @@ TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
 TEST_F(ColocatedDBTest, MasterFailoverPromotesEachPreparingTable) {
   const std::string db_name = "test_db";
   auto conn = ASSERT_RESULT(CreateColocatedDB(db_name));
-  // The first colocated table creates the colocation tablet. Create it up front, so that both tables
-  // below join the same tablet.
+  // The first colocated table creates the colocation tablet. Create it up front, so that both
+  // tables below join the same tablet.
   ASSERT_OK(conn.Execute("CREATE TABLE t_first (key INT PRIMARY KEY)"));
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_stuck_add_tablet_to_table_task_enabled", "true"));
