@@ -147,7 +147,8 @@ DEFINE_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
     "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
     "idle backends are destroyed immediately after execution of ALTER and stale active backends "
     "are destroyed when they get idle. A runtime change applies to ALTERs executed after it; "
-    "backends already scheduled for termination by an earlier ALTER keep their termination time.");
+    "backends already scheduled for termination by an earlier ALTER keep their termination time, "
+    "unless the new value is 0, which destroys them once idle as above.");
 
 DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "

@@ -368,7 +368,7 @@ static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
 	} else if (server->yb_expiry_time_us == UINT64_MAX) {
 		/*
 		 * server could already have expiry time due to some previous ALTER's TTL so we
-		 * don't modify that. The backend will expire before our TTL anyway.
+		 * don't modify that.
 		 */
 		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
 		od_debug(
