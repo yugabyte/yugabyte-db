@@ -592,6 +592,7 @@ ALTER FUNCTION set_app_user_prehashed() OWNER TO app_user;
 SELECT set_app_user_prehashed();                    -- ok: another role
 ALTER ROLE app_user PASSWORD 'pw_three';            -- ok: admin reset
 ALTER ROLE app_user PASSWORD 'md57062f046990197ecc4363fbbacbf6cd8'; -- ok: admin reset, pw_four pre-hashed
+SELECT count(*) FROM pg_yb_password_history WHERE pwdhstpassword = 'md57062f046990197ecc4363fbbacbf6cd8'; -- 1: recorded
 ALTER ROLE admin PASSWORD 'pw_admin';               -- ok: its own password
 ALTER ROLE admin PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail: its own password
 SET yb_binary_restore = true;
@@ -604,6 +605,7 @@ ALTER ROLE app_user PASSWORD 'pw_six';
 ALTER ROLE app_user PASSWORD 'pw_seven';
 ALTER ROLE app_user PASSWORD 'pw_four';             -- ok: aged out
 \c yugabyte yugabyte
+SELECT count(*) FROM pg_yb_password_history WHERE pwdhstpassword = 'md57062f046990197ecc4363fbbacbf6cd8'; -- 0: pruned
 DROP FUNCTION set_app_user_prehashed();
 DROP ROLE other_user;
 DROP ROLE app_user;
