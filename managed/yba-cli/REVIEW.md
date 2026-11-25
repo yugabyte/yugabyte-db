@@ -47,8 +47,9 @@ Most CLI bugs that reach users are update commands that change more than the use
   (`forms/`, `api/v2/models`) and check its default. A non-null default (default ports, a 24 h
   interval, `null` meaning "delete all") replaces the stored value. Send the current value, and
   file the server bug: a missing field must mean "keep".
-- **Boolean flags that describe state** (`--root-and-client-root-ca-same`, `--use-time-sync`)
-  take their default from the object read, not from a constant.
+- **Boolean flags that describe state** take their default from the object read, not from a
+  constant. Known gap: `--root-and-client-root-ca-same` in `eit cert` and `eit tls` defaults
+  to `true`.
 - **No side effects.** A command never turns on a server feature or a runtime config key that the
   user did not name. A new behaviour gets its own flag, default off.
 - **Required flags** are required on create. On update, a flag whose stored value exists is
@@ -102,7 +103,8 @@ Most CLI bugs that reach users are update commands that change more than the use
   path), the fix goes into YBA. A CLI check may be added on top, for a clearer message only.
 - **UI parity.** When the UI form and the server form disagree on a default (`useTimeSync`:
   UI true, server false), a CLI create takes the UI's value, so a universe created by the CLI
-  matches one created in the UI.
+  matches one created in the UI. Known gap: `universe create` does not send `useTimeSync` yet,
+  so it gets the server's `false`.
 - **Every gate lists all its conditions.** A command or usage text that states when something
   works names each condition: version floor, runtime config key, prior setup step, VM or
   Kubernetes. "On universes that support it" is a finding.
@@ -193,8 +195,10 @@ the release notes does not make a change safe.
   `describe` (`get`), `create` (`add`), `update` (`edit`), `delete` (`remove`, `rm`). Get the
   client with `ybaAuthClient.NewAuthAPIClientAndCustomer()`.
 - **Flag names** are kebab-case (`--storage-config-name`). The short flags `-n` (name),
-  `-u` (uuid), `-f` (force) and `-s` (skip-validations) mean the same thing on every command;
-  a new flag does not reuse one of these letters for another meaning.
+  `-u` (uuid), `-f` (force) and `-s` (skip-validations) keep these meanings; a new flag does
+  not reuse one of these letters for another meaning. Older exceptions: `-s` in
+  `universe detach` (`--skip-releases`) and `backup pitr create`
+  (`--schedule-interval-in-secs`), and `-f` in `ha replication start` (`--frequency-ms`).
 - **PreRun checks input, Run calls the API.** A command with input that `MarkFlagRequired` cannot
   check (an empty value, flags that exclude each other, a flag needed only with another) checks
   it in `PreRun`. When a needed value is missing, it calls `cmd.Help()` and exits with a red

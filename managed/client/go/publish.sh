@@ -78,14 +78,16 @@ V2_STALE="$(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/op
 # sbt rebuilds the v2 spec only when its inputs change content, not mtime. cleanV2ServerStubs
 # forces the rebuild.
 [[ -z "$V2_STALE" ]] || STALE+=" $V2_STALE. Run sbt \"cleanV2ServerStubs; swaggerGen\"."
-# The generator's own templates and config change the client without changing the spec. One
-# newer than the generated client.go means the client predates it. swaggerGen regenerates both.
+# The generator's templates, config, version (plugins.sbt) and settings (build.sbt) change the
+# client without changing the spec. One newer than the generated client.go means the client
+# predates it. swaggerGen regenerates both clients.
 for v in v1 v2; do
   cfg=openapi-go-config.json
   [[ "$v" == v1 ]] || cfg=openapi-go-config-v2.json
-  newer="$(cd "$GEN_DIR" && git ls-files -z -- templates "$cfg" | existing \
+  newer="$(cd "$MANAGED_DIR" && git ls-files -z -- client/go/templates "client/go/$cfg" \
+    build.sbt project/plugins.sbt | existing \
     | xargs -0 -r sh -c 'find "$@" -newer "$0" -print -quit' "$GEN_DIR/$v/client.go")"
-  [[ -z "$newer" ]] || STALE+=" client/go/$newer is newer than the $v client. Run sbt swaggerGen."
+  [[ -z "$newer" ]] || STALE+=" $newer is newer than the $v client. Run sbt swaggerGen."
 done
 STALE="${STALE# }"
 if [[ -n "$STALE" ]]; then
@@ -120,8 +122,12 @@ $DRY_RUN && BRANCH="${BRANCH}-dryrun"
 # push. A dry run warns, so it reports what the real run will do.
 HEADS="$(git -C "$CLIENT_REPO" ls-remote --heads origin)" \
   || die "Cannot list the branches of platform-go-client."
-EXISTING="$(awk -v re="^refs/heads/client-.*-${SRC_SHA}\$" \
-  '$2 ~ re { sub("^refs/heads/", "", $2); print $2; exit }' <<< "$HEADS")"
+# Match the branch's SHA suffix as a prefix of the full SHA, so a branch named with another
+# abbreviation length is found too.
+FULL_SHA="$(git -C "$MANAGED_DIR" rev-parse HEAD)"
+EXISTING="$(awk -v full="$FULL_SHA" '{ b = $2; sub("^refs/heads/", "", b) }
+  b ~ /^client-.*-[0-9a-f]+$/ { s = b; sub(/.*-/, "", s)
+    if (length(s) >= 7 && index(full, s) == 1) { print b; exit } }' <<< "$HEADS")"
 if [[ -n "$EXISTING" ]]; then
   PR_URL="$(gh pr list --repo yugabyte/platform-go-client --head "$EXISTING" --state all \
     --json url --jq '.[0].url // empty')" \
