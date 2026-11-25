@@ -45,6 +45,16 @@ grep -q '^package ywclient$' "$GEN_DIR/v1/client.go" \
 grep -qx 'module github.com/yugabyte/platform-go-client' "$GEN_DIR/v1/go.mod" \
   || die "v1/go.mod has the wrong module path. Run sbt swaggerGen."
 
+# Passes on only the paths that exist, so find does not fail. The uncommitted-changes check
+# reports a deleted source, and the copy step reports a missing generated file.
+existing() {
+  local f
+  while IFS= read -r -d '' f; do
+    [[ -e "$f" ]] && printf '%s\0' "$f"
+  done
+  return 0
+}
+
 # The generated trees and their input specs are gitignored, so git status cannot see that they
 # are stale. A checkout, merge or rebase rewrites the files it changes, so a tracked source newer
 # than the spec, or a generated file older than it, means the client does not match HEAD.
@@ -52,10 +62,10 @@ stale_client() {
   local v="$1" spec="$2"; shift 2
   [[ -f "$spec" ]] || { echo "$spec is missing"; return; }
   local newer
-  newer="$(cd "$MANAGED_DIR" && git ls-files -z -- "$@" \
+  newer="$(cd "$MANAGED_DIR" && git ls-files -z -- "$@" | existing \
     | xargs -0 -r sh -c 'find "$@" -newer "$0" -print -quit' "$spec")"
   [[ -z "$newer" ]] || { echo "${newer%%$'\n'*} is newer than $spec"; return; }
-  newer="$(cd "$GEN_DIR/$v" && generated_files "$v" \
+  newer="$(cd "$GEN_DIR/$v" && generated_files "$v" | existing \
     | xargs -0 -r sh -c 'find "$@" -name "*.go" ! -newer "$0" -print -quit' "$spec")"
   [[ -z "$newer" ]] || echo "$newer is older than $spec"
 }

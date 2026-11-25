@@ -417,6 +417,10 @@ public class UniverseControllerRequestBinder {
       throws JsonProcessingException {
     // Merging with universe details.
     ObjectNode universeDetailsNode = Json.mapper().valueToTree(universe.getUniverseDetails());
+    // Restart waits apply per request. A stored value (0 from an older client's create) must not
+    // replace an omitted one, which means the runtime config.
+    universeDetailsNode.remove("sleepAfterMasterRestartMillis");
+    universeDetailsNode.remove("sleepAfterTServerRestartMillis");
     CommonUtils.deepMerge(universeDetailsNode, paramsJson);
     universeDetailsNode.remove("targetXClusterConfigs");
     universeDetailsNode.remove("sourceXClusterConfigs");
