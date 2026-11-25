@@ -1,6 +1,6 @@
 /* Copyright (c) YugabyteDB, Inc. */
 
-// Scoped to .queries-viewer: aligns the Slow/Live/Recommendations headers with the other
+// Scoped to .queries-viewer: aligns the Slow/Live/Optimize headers with the other
 // Monitoring views.
 
 $title-color: #0b1117;
@@ -32,7 +32,7 @@ $control-height: 32px;
       margin-bottom: 16px;
     }
 
-    // Header controls, including Recommendations' title row, share the other views' 32px height.
+    // Header controls, including the Optimize view's title row, share the other views' 32px height.
     .content-panel > .header .btn,
     .content-panel > .header .dropdown-toggle,
     .perfAdvisor__containerTitleFlex .btn {

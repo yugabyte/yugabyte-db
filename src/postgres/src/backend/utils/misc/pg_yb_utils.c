@@ -141,6 +141,7 @@
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
+#include "utils/portal.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/snapmgr.h"
@@ -9043,11 +9044,8 @@ YbSyncSplitOptionsAndPresplit(YbOptSplit **split_options, List **options)
 }
 
 /*
- * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
- * that requires the sticky connection
- * These objects are
- * 1. WITH HOLD CURSORS
- * 2. TEMP TABLE
+ * ```ysql_conn_mgr_sticky_object_count``` is the count of TEMP TABLEs, the only
+ * database objects counted towards a sticky connection.
  */
 int			ysql_conn_mgr_sticky_object_count = 0;
 
@@ -9078,11 +9076,19 @@ bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
 
 bool		yb_ysql_conn_mgr_sticky_prepare = false;
 
+bool		yb_ysql_conn_mgr_sticky_listen = false;
+
 bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
+
+bool		yb_ysql_conn_mgr_sticky_cursor = false;
 
 bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
 
 bool		yb_conn_mgr_prepare_permanent_sticky = false;
+
+bool		yb_conn_mgr_listen_permanent_sticky = false;
+
+bool		yb_conn_mgr_cursor_permanent_sticky = false;
 
 bool		yb_enable_mage = false;
 
@@ -9136,7 +9142,15 @@ YbIsStickyConnection(int *change)
 		yb_ysql_conn_mgr_sticky_replication_origin ||
 		YbHasReplicationOriginSetup() ||
 		yb_ysql_conn_mgr_sticky_prepare ||
-		YbHasSqlPreparedStatement();
+		YbHasSqlPreparedStatement() ||
+		yb_ysql_conn_mgr_sticky_listen ||
+		/*
+		 * Unsticking a listener makes it miss its notifications, and the next
+		 * client on this backend receives them.
+		 */
+		YbIsListening() ||
+		yb_ysql_conn_mgr_sticky_cursor ||
+		YbHasHoldablePortal();
 }
 
 void	  **

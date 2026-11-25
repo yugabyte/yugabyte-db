@@ -354,6 +354,7 @@ static SlruCtlData NotifyCtlData;
 bool		yb_enable_listen_notify = false;
 bool		yb_test_fatal_after_notifs_queue_write = false;
 bool		yb_test_notifs_poller_error_holding_queue_lock = false;
+bool		yb_test_notifs_poller_error_before_init = false;
 int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
@@ -603,13 +604,19 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
-/* Element of ybNotifsPollerPendingEntries. */
+/*
+ * Element of ybNotifsPollerPendingEntries.
+ *
+ * A whole transaction is buffered until its COMMIT, so only qe.length bytes of
+ * qe are allocated: sizeof(AsyncQueueEntry) is about 8 KB, while a typical
+ * entry is under 100 bytes.  qe must therefore stay the last field.
+ */
 typedef struct YbNotifsPollerPendingEntry
 {
-	AsyncQueueEntry qe;
 	/* sort keys, see ybNotifsPollerPendingEntryCmp */
 	char		docdb_txn_id[37];	/* empty if the row has none */
 	int32		seq;
+	AsyncQueueEntry qe;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -785,7 +792,7 @@ static int	ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
-static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
+static bool ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe, int32 *seq);
 static void ybSignalAllListeners(void);
 
@@ -1614,16 +1621,8 @@ Exec_ListenCommit(const char *channel)
 	listenChannels = lappend(listenChannels, pstrdup(channel));
 	MemoryContextSwitchTo(oldcontext);
 
-	/*
-	 * If connection manager is used, mark the connection as sticky. Not doing
-	 * so can cause the listening client to miss notifications, while
-	 * non-listening clients receive spurious notifications.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Incrementing sticky object count for LISTEN %s", channel);
-		increment_sticky_object_count();
-	}
+	if (YbIsClientYsqlConnMgr() && yb_conn_mgr_listen_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_listen = true;
 }
 
 /*
@@ -2053,7 +2052,12 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	while (nextNotify != NULL)
 	{
 		if (IsYugaByteEnabled())
-			qe = ((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
+		{
+			YbNotifsPollerPendingEntry *entry = lfirst(nextNotify);
+
+			Assert(entry->qe.length <= sizeof(AsyncQueueEntry));
+			memcpy(&qe, &entry->qe, entry->qe.length);
+		}
 		else
 		{
 			Notification *n = (Notification *) lfirst(nextNotify);
@@ -3282,8 +3286,6 @@ ybStartNotifsPollerBgWorker(void)
 	BackgroundWorker worker;
 	BackgroundWorkerHandle *local_handle;
 	BackgroundWorkerHandle *shm_handle;
-	BgwHandleStatus status;
-	pid_t		pid;
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 
@@ -3317,31 +3319,71 @@ ybStartNotifsPollerBgWorker(void)
 	poller_data->has_bgw_handle = true;
 	LWLockRelease(NotifyQueueLock);
 
-	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
-	if (status != BGWH_STARTED)
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("could not start background process"),
-				 errhint("More details may be available in the server log.")));
-
+	/*
+	 * Don't wait for the worker to start here: ybWaitForNotifsPollerInit,
+	 * called next, already waits for that, and also reports a worker that
+	 * exits before it initializes with a clearer error.
+	 */
 	pfree(local_handle);
 }
 
 /*
- * Wait for the node's notifications poller to initialize, and fail if it does
- * not. The poller reports how its initialization went in init_status, and so
- * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller that fails its first
- * initialization is restarted until ybCleanupListenState terminates it as the
- * last listener unregisters, which is right away, as every listener is
- * waiting here and fails with it. Later failures go through
- * ybNotifsPollerExitOnError instead.
+ * Has the node's notifications poller exited since this backend last saw it
+ * running? *seen_pid is the pid it was last seen running with, or 0. An
+ * exited worker shows as stopped until it is restarted, and with a new pid
+ * after that.
+ */
+static bool
+ybNotifsPollerExited(YbNotifsPollerShmemData *poller_data, pid_t *seen_pid)
+{
+	static BackgroundWorkerHandle *shm_handle = NULL;
+	BgwHandleStatus status = BGWH_NOT_YET_STARTED;
+	pid_t		pid = 0;
+
+	if (shm_handle == NULL)
+	{
+		bool		found;
+
+		shm_handle = ybShmemNotifsPollerBgwHandle(&found);
+	}
+
+	/*
+	 * No handle: the LISTEN starting the poller has not registered it yet,
+	 * or the poller was stopped, which happens only after init_status is set
+	 * to FAILED or once no listeners remain.
+	 */
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	if (poller_data->has_bgw_handle)
+		status = GetBackgroundWorkerPid(shm_handle, &pid);
+	LWLockRelease(NotifyQueueLock);
+
+	switch (status)
+	{
+		case BGWH_NOT_YET_STARTED:
+			return false;
+		case BGWH_STARTED:
+			if (*seen_pid == 0)
+				*seen_pid = pid;
+			return pid != *seen_pid;
+		default:
+			return true;
+	}
+}
+
+/*
+ * Wait for the node's notifications poller to initialize. Fail if init_status
+ * is set to FAILED, by the poller or by ybCleanupListenState when the LISTEN
+ * that started the poller unregisters, or if the poller exits with init_status
+ * still unset. A failed poller is restarted until the last listener
+ * unregisters, which on a first startup is right away, as every listener fails
+ * here. Later failures go through ybNotifsPollerExitOnError instead.
  */
 static void
 ybWaitForNotifsPollerInit(void)
 {
 	static YbNotifsPollerShmemData *poller_data = NULL;
 	char		error_message[sizeof(poller_data->error_message)];
+	pid_t		poller_pid = 0;
 
 	if (poller_data == NULL)
 	{
@@ -3352,6 +3394,11 @@ ybWaitForNotifsPollerInit(void)
 
 	for (;;)
 	{
+		/*
+		 * Check for an exit before reading init_status, so that a status the
+		 * poller set just before exiting is not missed.
+		 */
+		bool		exited = ybNotifsPollerExited(poller_data, &poller_pid);
 		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
@@ -3364,13 +3411,15 @@ ybWaitForNotifsPollerInit(void)
 			strlcpy(error_message, poller_data->error_message,
 					sizeof(error_message));
 			LWLockRelease(NotifyQueueLock);
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("notifications poller background worker "
-							"failed to initialize"),
-					 (error_message[0] ? errdetail("%s", error_message) : 0),
-					 errhint("Retry the LISTEN. If it keeps failing, check the "
-							 "server log.")));
+			break;
+		}
+
+		if (exited)
+		{
+			strlcpy(error_message,
+					"The notifications poller exited before it initialized.",
+					sizeof(error_message));
+			break;
 		}
 
 		/*
@@ -3383,6 +3432,14 @@ ybWaitForNotifsPollerInit(void)
 		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
 	}
+
+	ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("notifications poller background worker "
+					"failed to initialize"),
+			 (error_message[0] ? errdetail("%s", error_message) : 0),
+			 errhint("Retry the LISTEN. If it keeps failing, check the "
+					 "server log.")));
 }
 
 static BackgroundWorkerHandle *
@@ -3404,7 +3461,16 @@ YbNotifsPollerMain(Datum main_arg)
 {
 	/* Set up signal handlers */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+
+	/*
+	 * Ignore SIGINT (e.g. pg_cancel_backend()). The poller has no query to
+	 * cancel, and it can't skip the transaction it is processing without
+	 * losing notifications. Exiting with code 0 would make the postmaster
+	 * unregister it, silently stopping delivery on the node. Like the
+	 * bgwriter and walreceiver, which also ignore SIGINT, it is stopped with
+	 * SIGTERM.
+	 */
+	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, die);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
 
@@ -3415,6 +3481,13 @@ YbNotifsPollerMain(Datum main_arg)
 	if (ybIsStaleNotifsPoller())
 		ybExitStaleNotifsPoller(NULL);
 	LWLockRelease(NotifyQueueLock);
+
+	/*
+	 * Test-only: exit before reporting an init status. The postmaster restarts
+	 * the poller.
+	 */
+	if (yb_test_notifs_poller_error_before_init)
+		elog(ERROR, "notifications poller failing before it initializes, for testing");
 
 	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
@@ -3695,9 +3768,6 @@ ybNotifsPollerLoop()
 			ProcessConfigFile(PGC_SIGHUP);
 		}
 
-		if (ShutdownRequestPending)
-			proc_exit(0);
-
 		/*
 		 * YBCReadRecord sleeps using yb_walsender_poll_sleep_duration_*_ms.
 		 * Override them with notifications poller specific values after a
@@ -3816,11 +3886,18 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 static void
 ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
-	YbNotifsPollerPendingEntry *entry =
-		palloc0(sizeof(YbNotifsPollerPendingEntry));
+	AsyncQueueEntry qe;
+	int32		seq;
+	MemoryContext oldcontext;
+	YbNotifsPollerPendingEntry *entry;
 
-	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq);
+	if (!ybRecordToAsyncQueueEntry(record, &qe, &seq))
+		return;
+
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
+	memcpy(&entry->qe, &qe, qe.length);
+	entry->seq = seq;
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT &&
 		record->has_docdb_txn_id)
 		strlcpy(entry->docdb_txn_id, record->docdb_txn_id,
@@ -4086,9 +4163,10 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 
 /*
  * Fill the AsyncQueueEntry at *qe using the record received from the
- * replication slot.
+ * replication slot.  Returns false, leaving *qe unfilled, for a row whose data
+ * is not a NUL-terminated channel followed by a NUL-terminated payload.
  */
-static void
+static bool
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 						  AsyncQueueEntry *qe, int32 *seq)
 {
@@ -4097,7 +4175,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
 	{
 		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
-		return;
+		return true;
 	}
 
 	HeapTuple	tuple = YBGetHeapTuplesForRecord(record);
@@ -4122,7 +4200,26 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	const void *data = DatumGetPointer(data_datum);
 	size_t		datalen = VARSIZE_ANY_EXHDR(data);
 
-	memcpy(qe->data, VARDATA_ANY(data), datalen);
+	const char *bytes = VARDATA_ANY(data);
+
+	/*
+	 * The table also takes plain SQL writes.  Listeners read the channel and
+	 * payload with strlen, so both must end inside the entry.
+	 */
+	if (datalen < 2 || datalen > NAMEDATALEN + NOTIFY_PAYLOAD_MAX_LENGTH ||
+		bytes[datalen - 1] != '\0' ||
+		memchr(bytes, '\0', datalen - 1) == NULL)
+	{
+		ereport(WARNING,
+				(errmsg("notifications poller skipped a malformed row of "
+						"pg_yb_notifications (xid %u, data length %zu)",
+						(TransactionId) record->xid, datalen)));
+		pfree(desc);
+		pfree(tuple);
+		return false;
+	}
+
+	memcpy(qe->data, bytes, datalen);
 
 	/*
 	 * Both AsyncQueueEntryEmptySize and datalen count the two null terminators
@@ -4162,6 +4259,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	pfree(desc);
 	pfree(tuple);
+	return true;
 }
 
 /* Build the extra_options value of a pg_yb_notifications row. */
@@ -4311,6 +4409,12 @@ YbRollbackPendingNotifiesTo(int mark)
 		hash_destroy((*notifies)->hashtab);
 		(*notifies)->hashtab = NULL;
 	}
+}
+
+bool
+YbIsListening(void)
+{
+	return listenChannels != NIL;
 }
 
 static void

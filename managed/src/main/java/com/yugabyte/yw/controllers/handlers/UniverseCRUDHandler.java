@@ -254,7 +254,7 @@ public class UniverseCRUDHandler {
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
                 != currentCluster.userIntent.enableExposingService
-            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
+            || ManagedLoadBalancerUtil.isChanged(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -406,30 +406,23 @@ public class UniverseCRUDHandler {
     if (provider.getCloudCode() != Common.CloudType.aws) {
       return false;
     }
-    String curArnString = currentCluster.userIntent.awsArnString;
-    String newArnString = cluster.userIntent.awsArnString;
-    if (cluster.userIntent.isMulticloudSupport()) {
-      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
-          cluster.userIntent.getProviderSpecification(provider.getUuid());
-      if (providerSpecification == null) {
-        /* Basically that should never happen, but since this method should be
-          used to determine whether we should do a full move or not,
-          it is better just to return false.
-        */
-        return false;
-      }
-      curArnString = null;
-      newArnString = providerSpecification.getAwsInstanceProfile();
-      UniverseDefinitionTaskParams.ProviderSpecification oldProviderSpec =
-          currentCluster.userIntent.getProviderSpecification(provider.getUuid());
-      if (oldProviderSpec != null) {
-        curArnString = oldProviderSpec.getAwsInstanceProfile();
-      } else {
-        return false;
-      }
+    if (!currentCluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())
+        || !cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
+      return false;
     }
-    return (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
-        && !Objects.equals(curArnString, newArnString);
+
+    String curArnString =
+        currentCluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
+    String newArnString = cluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
+
+    boolean result =
+        (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
+            && !Objects.equals(curArnString, newArnString);
+
+    if (result) {
+      LOG.debug("awsArnString info has changed from {} to {}", curArnString, newArnString);
+    }
+    return result;
   }
 
   public static boolean areCommunicationPortsChanged(
@@ -472,6 +465,11 @@ public class UniverseCRUDHandler {
     }
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
+    }
+    // A universe UUID that doesn't exist yet configures a new universe.
+    if (taskParams.getUniverseUUID() != null
+        && Universe.maybeGet(taskParams.getUniverseUUID()).isPresent()) {
+      Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     }
     Cluster cluster = getClusterFromTaskParams(taskParams);
     if (taskParams.clusterOperation == ClusterOperationType.CREATE
@@ -3160,7 +3158,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change master gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curMasterGFlags, curIntent),
+                    redactGFlags(newMasterGFlags, curIntent)));
           }
           if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
             throw new PlatformServiceException(
@@ -3168,7 +3168,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change tserver gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curTserverGFlags, curIntent),
+                    redactGFlags(newTserverGFlags, curIntent)));
           }
 
           if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
@@ -3216,6 +3218,10 @@ public class UniverseCRUDHandler {
         newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
+  }
+
+  private Map<String, String> redactGFlags(Map<String, String> gflags, UserIntent userIntent) {
+    return RedactingService.redactGFlags(gflags, userIntent.ybSoftwareVersion, gFlagsValidation);
   }
 
   private void verifyDeviceUnchanged(

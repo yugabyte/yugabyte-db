@@ -36,6 +36,8 @@ extern Oid	get_tablegroup_oid(const char *tablegroupname, bool missing_ok);
 extern char *get_tablegroup_name(Oid grp_oid);
 extern Oid	YbLockImplicitTablegroup(Oid tablespaceoid);
 extern bool YbLockImplicitTablegroupForDrop(Oid grp_oid);
+extern bool YbLockImplicitTablegroupForMove(Oid grp_oid,
+											Oid new_tablespaceoid);
 
 extern void RemoveTablegroupById(Oid grp_oid, bool remove_implicit);
 extern char *get_implicit_tablegroup_name(Oid oidSuffix);

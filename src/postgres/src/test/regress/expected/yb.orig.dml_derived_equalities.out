@@ -106,7 +106,78 @@ EXECUTE order_query(100, 2);
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
 (1 row)
 
-DROP TABLE orders;
+-- An equality the query already has on the bucket key is not derived again
+SELECT $$
+:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Index Scan using orders_pkey on orders
+   Index Cond: ((bucket_id = 4) AND (user_id = 100) AND (order_id = 1))
+(2 rows)
+
+SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
+(1 row)
+
+SELECT $$
+:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_created_idx on orders
+   Index Cond: (((yb_hash_code(created_at) % 3) = 0) AND (created_at = 'Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone))
+(2 rows)
+
+/*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
+(1 row)
+
+-- An equality condition on yb_hash_code(bucket_id) is pushed down as
+-- YB_SK_SEARCHHASHCODE.  It is kept with the index clauses on bucket_id, but
+-- it is not an equality on the column.  An equality on bucket_id is still
+-- derived in this case.
+CREATE TABLE orders_hash (
+    order_id int,
+    user_id int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(user_id) % 5) STORED,
+    PRIMARY KEY (bucket_id HASH, user_id ASC, order_id ASC)
+);
+INSERT INTO orders_hash SELECT i, 100 + i % 10 FROM generate_series(1, 20) i;
+ANALYZE orders_hash;
+\set query ':P SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
+                                                      QUERY PLAN                                                       
+-----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: order_id
+   ->  Index Scan using orders_hash_pkey on orders_hash
+         Index Cond: ((yb_hash_code(bucket_id) = 49348) AND (bucket_id = (yb_hash_code(105) % 5)) AND (user_id = 105))
+(4 rows)
+
+SELECT * FROM orders_hash WHERE yb_hash_code(bucket_id) = yb_hash_code(2) AND user_id = 105 ORDER BY order_id;
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        5 |     105 |         2
+       15 |     105 |         2
+(2 rows)
+
+DROP TABLE orders, orders_hash;
 -- Tests for joins
 CREATE TABLE users (
     id int,
@@ -259,6 +330,29 @@ EXPLAIN (COSTS OFF) /*+ NestLoop(u o) IndexScan(o) */ SELECT * FROM users u JOIN
          Storage Filter: (id = ANY ('{50,60,70}'::integer[]))
    ->  Index Scan using orders_gen_pkey on orders_gen o
          Index Cond: ((bucket_id = (yb_hash_code(u.id) % 5)) AND (user_id = u.id))
+(5 rows)
+
+-- A join equality on the bucket key.  The equality that the join clause on
+-- user_id would derive is not added to the batch.
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.user_id = u.id AND o.bucket_id = yb_hash_code(u.id) % 5;
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((u.id = o.user_id) AND ((yb_hash_code(u.id) % 5) = o.bucket_id))
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+(5 rows)
+
+-- The join equality does not suppress the equality derived from a constant
+:explain /*+ YbBatchedNL(u o) IndexScan(o) */ SELECT * FROM users u JOIN orders_gen o ON o.bucket_id = yb_hash_code(u.id) % 5 WHERE o.user_id = 50;
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((yb_hash_code(u.id) % 5) = o.bucket_id)
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = ANY (ARRAY[(yb_hash_code(u.id) % 5), (yb_hash_code($1) % 5), (yb_hash_code($2) % 5), ..., (yb_hash_code($1023) % 5)])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
 (5 rows)
 
 -- Equality conditions in outer joins
@@ -679,6 +773,34 @@ EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE
         2 |      50 |         0
 (2 rows)
 
+-- An OR arm that already has an equality on the bucket key does not get a
+-- derived one.  The other arm still does.
+\set query ':P :hint SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: user_id, order_id
+   ->  YB Bitmap Table Scan on orders_gen
+         Recheck Cond: (((bucket_id = 0) AND (user_id = 50)) OR ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = 0) AND (user_id = 50))
+               ->  Bitmap Index Scan on orders_gen_pkey
+                     Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+(9 rows)
+
+/*+ BitmapScan(orders_gen) */ SELECT * FROM orders_gen WHERE (bucket_id = yb_hash_code(50) % 5 AND user_id = 50) OR user_id = 60 ORDER BY user_id, order_id;
+ order_id | user_id | bucket_id 
+----------+---------+-----------
+        1 |      50 |         0
+        2 |      50 |         0
+        3 |      60 |         1
+(3 rows)
+
 -- TODO(#31672): within an OR arm an equality is only followed one step.
 -- bucket_id is computed from z, so deriving it needs a constant value for z.
 -- In arm 1, (x = 5 AND z = y), the only path to a constant is the chain z = y,
@@ -1063,6 +1185,31 @@ EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FRO
 (5 rows)
 
 /*+ IndexScan(t_mixed_expr t_mixed_expr_idx) */ SELECT * FROM t_mixed_expr WHERE b = 4 ORDER BY a;
+ a | b 
+---+---
+ 2 | 4
+(1 row)
+
+-- An equality the query already has on the first expression column does not
+-- stop the derivation for the second one.
+CREATE INDEX NONCONCURRENTLY t_mixed_expr_idx2
+    ON t_mixed_expr ((b + 1), (b * 2)) INCLUDE (a);
+\set hint '/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */'
+\set query ':P :hint SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Sort
+   Sort Key: a
+   ->  Index Scan using t_mixed_expr_idx2 on t_mixed_expr
+         Index Cond: (((b + 1) = 5) AND ((b * 2) = (4 * 2)))
+         Storage Filter: (b = 4)
+(5 rows)
+
+/*+ IndexScan(t_mixed_expr t_mixed_expr_idx2) */ SELECT * FROM t_mixed_expr WHERE b + 1 = 5 AND b = 4 ORDER BY a;
  a | b 
 ---+---
  2 | 4

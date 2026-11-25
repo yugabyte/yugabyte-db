@@ -76,6 +76,7 @@ DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
@@ -401,6 +402,7 @@ class PgObjectLocksImplicitTablegroupTest : public PgObjectLocksTestRF1 {
     PgObjectLocksTestRF1::SetUp();
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLESPACE ts LOCATION '/data'"));
+    ASSERT_OK(conn.Execute("CREATE TABLESPACE ts2 LOCATION '/data'"));
     ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kDbName));
   }
 
@@ -438,7 +440,32 @@ class PgObjectLocksImplicitTablegroupTest : public PgObjectLocksTestRF1 {
     ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(second, "t2"));
   }
 
+  Result<std::string> TablegroupOf(PGConn& conn, const std::string& table) {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT grpname FROM pg_yb_tablegroup WHERE oid = "
+        "(SELECT tablegroup_oid FROM yb_table_properties('$0'::regclass))", table));
+  }
+
+  Result<std::string> TablespaceOf(PGConn& conn, const std::string& table) {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT COALESCE(s.spcname, 'pg_default') FROM pg_class c "
+        "LEFT JOIN pg_tablespace s ON s.oid = c.reltablespace WHERE c.oid = '$0'::regclass",
+        table));
+  }
+
+  Status SetColocatedTablesWithTablespaces(PGConn& conn, bool enabled) {
+    RETURN_NOT_OK(SET_FLAG(ysql_yb_enable_colocated_tables_with_tablespaces, enabled));
+    return WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(conn.FetchRow<std::string>(
+          "SHOW yb_enable_colocated_tables_with_tablespaces")) == (enabled ? "on" : "off");
+    }, 10s * kTimeMultiplier, "Timed out waiting for the setting to reach postgres");
+  }
+
   static constexpr auto kDbName = "colo";
+  static constexpr auto kMoveTablegroupStmt =
+      "ALTER TABLE ALL IN TABLESPACE ts SET TABLESPACE ts2 CASCADE";
+  static constexpr auto kCreateInTargetTablespaceStmt =
+      "CREATE TABLE t2 (k INT PRIMARY KEY) TABLESPACE ts2";
 };
 
 TEST_F(PgObjectLocksImplicitTablegroupTest, DropOfLastTableWaitsForCreate) {
@@ -566,22 +593,174 @@ TEST_F(PgObjectLocksImplicitTablegroupTest, EmptyDefaultTablegroupIsKept) {
 
 TEST_F(PgObjectLocksImplicitTablegroupTest, DefaultTablegroupInTablespaceIsKept) {
   auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
-  auto set_feature = [&](bool enabled) -> Status {
-    RETURN_NOT_OK(SET_FLAG(ysql_yb_enable_colocated_tables_with_tablespaces, enabled));
-    return WaitFor([&]() -> Result<bool> {
-      return VERIFY_RESULT(conn.FetchRow<std::string>(
-          "SHOW yb_enable_colocated_tables_with_tablespaces")) == (enabled ? "on" : "off");
-    }, 10s * kTimeMultiplier, "Timed out waiting for the setting to reach postgres");
-  };
-
   // While the feature is off, the first table puts the default tablegroup in its tablespace.
-  ASSERT_OK(set_feature(false));
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, false));
   ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
-  ASSERT_OK(set_feature(true));
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, true));
   ASSERT_OK(conn.Execute("DROP TABLE t1"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_tablegroup "
       "WHERE grpname = 'default' AND grptablespace != 0")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupWaitsForCreate) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_OK(move_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts2");
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateWaitsForMoveOfTablegroup) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(kMoveTablegroupStmt));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(CreateTableStmt("t2"));
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  // The tablegroup of t1 left ts, so t2 is in a new one.
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t1")), "ts2");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 2);
+  ASSERT_OK(creator.Execute("INSERT INTO t2 VALUES (1)"));
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM t2")), 1);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, FirstCreateInTargetTablespaceWaitsForMoveOfTablegroup) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(kMoveTablegroupStmt));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(kCreateInTargetTablespaceStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_OK(create_future.get());
+
+  ASSERT_NO_FATALS(CheckUsableInSingleTablegroup(creator, "t2"));
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupWaitsForFirstCreateInTargetTablespace) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(kCreateInTargetTablespaceStmt));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_NOK_STR_CONTAINS(move_future.get(), "as it contains existing colocated relation");
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t1")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(creator.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_yb_tablegroup")), 2);
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, CreateDoesNotWaitForMoveByNonOwner) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(creator.Execute("CREATE ROLE non_owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON TABLESPACE ts2 TO non_owner"));
+
+  ASSERT_OK(mover.Execute("SET ROLE non_owner"));
+  ASSERT_OK(mover.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(mover.Execute(
+      "ALTER TABLE ALL IN TABLESPACE ts OWNED BY non_owner SET TABLESPACE ts2 CASCADE"));
+  auto create_future = std::async(std::launch::async, [&]() {
+    return creator.Execute(CreateTableStmt("t2"));
+  });
+  const auto create_status = create_future.wait_for(10s * kTimeMultiplier);
+  ASSERT_OK(mover.CommitTransaction());
+  ASSERT_EQ(create_status, std::future_status::ready);
+  ASSERT_OK(create_future.get());
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfTablegroupByOwnerWaitsForCreate) {
+  auto creator = ASSERT_RESULT(ConnectToDB(kDbName));
+  auto mover = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(creator.Execute("CREATE ROLE owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON SCHEMA public TO owner"));
+  ASSERT_OK(creator.Execute("GRANT CREATE ON TABLESPACE ts, ts2 TO owner"));
+  ASSERT_OK(creator.Execute("SET ROLE owner"));
+  ASSERT_OK(mover.Execute("SET ROLE owner"));
+  ASSERT_OK(mover.Execute(CreateTableStmt("t1")));
+
+  ASSERT_OK(creator.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(creator.Execute(CreateTableStmt("t2")));
+  auto move_future = std::async(std::launch::async, [&]() {
+    return mover.Execute(kMoveTablegroupStmt);
+  });
+  ASSERT_OK(WaitForLockWaiter());
+  ASSERT_OK(creator.CommitTransaction());
+  ASSERT_OK(move_future.get());
+
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(creator, "t2")), "ts2");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveOfDefaultTablegroupIsRefused) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1", false /* in_tablespace */)));
+  ASSERT_OK(conn.Execute("CREATE ROLE owner"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 OWNER TO owner"));
+
+  for (const auto* stmt : {
+      "ALTER TABLE ALL IN TABLESPACE pg_default COLOCATED WITH t1 SET TABLESPACE ts CASCADE",
+      "ALTER TABLE ALL IN TABLESPACE pg_default OWNED BY owner SET TABLESPACE ts CASCADE",
+      "ALTER TABLE ALL IN TABLESPACE pg_default OWNED BY owner SET TABLESPACE ts"}) {
+    SCOPED_TRACE(stmt);
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), "cannot move the default tablegroup");
+  }
+  ASSERT_EQ(ASSERT_RESULT(TablegroupOf(conn, "t1")), "default");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "pg_default");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveToDefaultTablespaceIsRefused) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE ALL IN TABLESPACE ts SET TABLESPACE pg_default CASCADE"),
+      "cannot move colocated relations to the database default tablespace");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "ts");
+}
+
+TEST_F(PgObjectLocksImplicitTablegroupTest, MoveSeesDefaultTablegroupInTablespace) {
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // While the feature is off, the first table puts the default tablegroup in its tablespace.
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, false));
+  ASSERT_OK(conn.Execute(CreateTableStmt("t1")));
+  ASSERT_OK(SetColocatedTablesWithTablespaces(conn, true));
+
+  ASSERT_NOK_STR_CONTAINS(conn.Execute(kMoveTablegroupStmt), "cannot move the default tablegroup");
+  ASSERT_OK(conn.Execute(kCreateInTargetTablespaceStmt));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE ALL IN TABLESPACE ts2 SET TABLESPACE ts CASCADE"),
+      "as it contains existing colocated relation");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t1")), "ts");
+  ASSERT_EQ(ASSERT_RESULT(TablespaceOf(conn, "t2")), "ts2");
 }
 
 // A DDL blocked on a conflicting object lock used to fail with a transport timeout naming neither
@@ -3753,6 +3932,45 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ASSERT_OK(conn.Execute("INSERT INTO pk VALUES(3000, 0)"));
   ASSERT_EQ(num_initial_locks, NumGrantedLocks());
   ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// Forces a full relcache preload on every new connection.
+class PgObjectLocksTestRF1FullPreload : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+// The relcache preload reads catalogs at a versioned catalog snapshot and must not take object
+// locks on them, so a new connection must not wait on a conflicting catalog lock. Catalog reads
+// outside the preload still lock.
+TEST_F(PgObjectLocksTestRF1FullPreload, RelcachePreloadDoesNotTakeCatalogObjectLocks) {
+  // pg_index is read under AccessShareLock by YBUpdateRelationsIndicies during the preload.
+  auto lock_holder = ASSERT_RESULT(Connect());
+  ASSERT_OK(lock_holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(lock_holder.Execute("LOCK TABLE pg_index IN ACCESS EXCLUSIVE MODE"));
+
+  auto connect_future = std::async(std::launch::async, [this] { return Connect(); });
+  const auto connect_status = connect_future.wait_for(std::chrono::seconds(30 * kTimeMultiplier));
+  if (connect_status != std::future_status::ready) {
+    // Unblock the connection so the future's destructor does not wait out the RPC timeout.
+    ASSERT_OK(lock_holder.CommitTransaction());
+  }
+  ASSERT_EQ(connect_status, std::future_status::ready)
+      << "New connection blocked on the catalog lock held by another session";
+  auto conn = ASSERT_RESULT(connect_future.get());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  // A catalog read outside the preload still takes its lock and waits on the holder.
+  ASSERT_OK(conn.Execute("SET lock_timeout = '2s'"));
+  auto status = conn.Fetch("SELECT count(*) FROM pg_index");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.status().ToString(), "canceling statement due to lock timeout");
+
+  ASSERT_OK(lock_holder.CommitTransaction());
+  ASSERT_OK(conn.Fetch("SELECT count(*) FROM pg_index"));
 }
 
 class PgObjectLocksBothPathsTest : public PgObjectLocksTestRF1,

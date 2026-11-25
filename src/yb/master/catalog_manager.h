@@ -1798,8 +1798,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns true if the table is created internally by a YugabyteDB feature/extension (e.g.
   // xCluster DDL replication) and must be excluded from CDCSDK streams. Such tables look like
   // ordinary user PG tables but exist solely to drive those features, so they should never be
-  // streamed. This is the single place to register such tables: when a new feature/extension
-  // introduces a table that CDCSDK must exclude, add a check for it here.
+  // streamed. When a new feature/extension introduces a table that CDCSDK must exclude, add a
+  // check for it here and in yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c,
+  // which keeps the table out of every logical replication slot's table list.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
 
   // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.
@@ -2179,6 +2180,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   FRIEND_TEST(TestCatalogManager, PlaceReplicasExcludesOtherPlacementUuids);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasBlockWithTooFewTservers);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasOverlappingBlocksFail);
+  FRIEND_TEST(MasterTestXRepl, TestXReplBgTasksRunDuringSharedLockHold);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -3359,7 +3361,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateNewCdcsdkStream(
       const CreateCDCStreamRequestPB& req, const std::vector<TableId>& table_ids,
-      const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
+      const std::optional<const NamespaceId>& namespace_id,
+      bool detect_publication_changes_implicitly, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
   Status PopulateCDCStateTable(
@@ -3638,6 +3641,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
+  // Submits DoReleaseObjectLocksIfNecessary for txn_id to the background pool.
+  void ScheduleReleaseObjectLocks(const TransactionId& txn_id);
+
+  // Releases the object locks of txns in ysql_ddl_txns_release_all_deferred_, i.e. those whose
+  // deferred release-all was carried across a sys catalog reload but got no verification entry.
+  void ReleaseObjectLocksOfDeferredTxnsPostLoad() EXCLUDES(ddl_txn_verifier_mutex_);
+
   Status RegisterFlagCallbacks();
 
   // Should be bumped up when tablet locations are changed.
@@ -3703,6 +3713,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Stores the transaction ids of all the transactions undergoing rollback to a sub-transaction.
   std::unordered_map<TransactionId, YsqlDdlSubTransactionRollbackMetadata>
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
+
+  // Txns whose release_all_deferred was set when a reload in the same term (e.g. after a PITR)
+  // cleared ysql_ddl_txn_verfication_state_map_. The flag lives only in memory and the finished
+  // txn will not resend its release-all, so it is reattached to the txn's reloaded entry.
+  std::unordered_set<TransactionId> ysql_ddl_txns_release_all_deferred_
+      GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 

@@ -2339,6 +2339,8 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
 TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   constexpr int kRows = 20;
   constexpr uint64_t kPageLimit = kRows / 2;
+  // Otherwise the load balancer can move the leader onto the frozen follower.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
   const size_t lagging_idx = replicas.follower_idxs[0];

@@ -460,19 +460,26 @@ void PgVectorIndexSingleServerTest::TestSearchWithConcurrentUpdates(
     std::iota(ids.begin(), ids.end(), 1);
     while (!stop_flag.load(std::memory_order_acquire)) {
       std::shuffle(ids.begin(), ids.end(), ThreadLocalRandom());
-      ASSERT_OK(write_conn.Execute("BEGIN"));
-      for (size_t i = 0; i != kRowsPerTransaction; ++i) {
-        auto id = ids[i];
-        auto vector = Vector(id);
-        if (RandomUniformBool()) {
-          for (auto& coordinate : vector) {
-            coordinate = -coordinate;
+      auto status = [&]() -> Status {
+        RETURN_NOT_OK(write_conn.Execute("BEGIN"));
+        for (size_t i = 0; i != kRowsPerTransaction; ++i) {
+          auto id = ids[i];
+          auto vector = Vector(id);
+          if (RandomUniformBool()) {
+            for (auto& coordinate : vector) {
+              coordinate = -coordinate;
+            }
           }
+          RETURN_NOT_OK(write_conn.ExecuteFormat(
+              "UPDATE test SET embedding = '$0' WHERE id = $1", AsString(vector), id));
         }
-        ASSERT_OK(write_conn.ExecuteFormat(
-            "UPDATE test SET embedding = '$0' WHERE id = $1", AsString(vector), id));
+        return write_conn.Execute("COMMIT");
+      }();
+      if (!status.ok()) {
+        // A non-first statement of a snapshot isolation transaction cannot restart its read.
+        ASSERT_TRUE(IsRetryable(status)) << status;
+        ASSERT_OK(write_conn.Execute("ROLLBACK"));
       }
-      ASSERT_OK(write_conn.Execute("COMMIT"));
     }
   });
 

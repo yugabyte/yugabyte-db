@@ -1248,7 +1248,7 @@
         "advisor": {
           "Recommendation": "Recommendation",
           "Separator": ": ",
-          "NoPerformanceIssues": "Performance Advisor didn't find any performance issues",
+          "NoPerformanceIssues": "The Optimization scan didn't find any performance issues",
           "FailedToLoad": "Failed to load. Try again later",
           "ReviewLoadBalancing": "If you are load balancing in your application or client, review your implementation.",
           "RebalanceAndTroubleshoot": "Rebalance and troubleshoot the cluster. ",

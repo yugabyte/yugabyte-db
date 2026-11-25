@@ -4,8 +4,11 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
 
@@ -19,6 +22,11 @@ import lombok.Data;
 public class ManagedLoadBalancerState {
 
   private List<ManagedLoadBalancer> loadBalancers = new ArrayList<>();
+
+  // Node name -> lower-cased load balancer names in the client cert its tserver runs. Here, not on
+  // NodeDetails: an edit saves the nodes its request sent. Gone with the last load balancer, when
+  // every cert is stale for the next one anyway.
+  private Map<String, Set<String>> certNames = new HashMap<>();
 
   public Optional<ManagedLoadBalancer> find(UUID clusterUuid, UUID regionUuid, String name) {
     return loadBalancers.stream()

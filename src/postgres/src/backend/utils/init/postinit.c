@@ -1205,7 +1205,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbAuthPrefetchKind(), false, false);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
+			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind(), false);
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1663,6 +1663,22 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(MyDatabaseId, YbTablegroupRelationId,
 										&YbTablegroupCatalogExists));
+
+	/*
+	 * YB: Test-only delay after the database recheck and before
+	 * RelationCacheInitializePhase3, so that a test can drop the database in
+	 * between. The test waits for the log line to know the delay has begun.
+	 */
+	if (IsYugaByteEnabled() &&
+		*YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms > 0)
+	{
+		uint32_t	delay_ms = *YBCGetGFlags()->TEST_ysql_delay_before_relcache_init_phase3_ms;
+
+		ereport(LOG,
+				(errmsg("delaying %u ms before RelationCacheInitializePhase3 "
+						"for database %u", delay_ms, MyDatabaseId)));
+		pg_usleep(delay_ms * 1000L);
+	}
 
 	RelationCacheInitializePhase3();
 

@@ -325,6 +325,8 @@ static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													  void *extra);
 static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra);
 static void yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra);
+static void yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra);
+static void yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -4390,6 +4392,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_error_before_init", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller raises an ERROR "
+						 "before it initializes, so it exits and is restarted "
+						 "without reporting an init status."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_notifs_poller_error_before_init,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_skip_ensure_read_time_in_parallel_execution", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Skip forcing ENSURE_READ_TIME_IS_SET during parallel execution."),
 			gettext_noop("When true, parallel execution will not force read time to be "
@@ -4438,6 +4453,34 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_conn_mgr_prepare_permanent_sticky,
 		false,
 		NULL, yb_assign_conn_mgr_prepare_permanent_sticky, NULL
+	},
+
+	{
+		{"yb_conn_mgr_listen_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that listens on a "
+						 "channel sticky until disconnect instead of unsticking it "
+						 "once it stops listening."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_listen_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_listen_permanent_sticky, NULL
+	},
+
+	{
+		{"yb_conn_mgr_cursor_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that declares a "
+						 "WITH HOLD cursor sticky until disconnect instead of "
+						 "unsticking it once all such cursors are closed."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_cursor_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_cursor_permanent_sticky, NULL
 	},
 
 	{
@@ -7421,6 +7464,13 @@ static struct config_string ConfigureNamesString[] =
 		{"default_tablespace", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The tablespace might have been dropped
+			 * between the SET and the replay, making the replay fail. So,
+			 * setting this GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_tablespace,
@@ -7432,6 +7482,13 @@ static struct config_string ConfigureNamesString[] =
 		{"temp_tablespaces", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the tablespace(s) to use for temporary tables and sort files."),
 			NULL,
+			/*
+			 * YB: The check hook resolves the names to tablespace OIDs, so a
+			 * ConnMgr replay after a DROP or RENAME TABLESPACE would resolve
+			 * them differently. So, setting this GUC makes the connection
+			 * sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_LIST_INPUT | GUC_LIST_QUOTE
 		},
 		&temp_tablespaces,
@@ -8712,7 +8769,12 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
-			0
+			/*
+			 * ConnMgr can't replay this since the check hook rejects it
+			 * inside a transaction block, so setting it makes the connection
+			 * sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY
 		},
 		&yb_read_after_commit_visibility,
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
@@ -18363,6 +18425,10 @@ check_yb_password_reuse(int *newVal, void **extra, GucSource source)
  *
  * Do not allow users to set yb_read_after_commit_visibility
  * from within a txn block.
+ *
+ * ConnMgr can't replay a GUC that uses this hook, since the replay runs
+ * inside a transaction block. Such a GUC must also be marked
+ * GUC_YB_CONN_MGR_STICKY.
  */
 static bool
 yb_check_no_txn(int *newVal, void **extra, GucSource source)
@@ -18371,17 +18437,6 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 	{
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
-	}
-
-	/*
-	 * If YSQL Connection Manager is enabled, make the connection sticky
-	 * for any variables that can only be set outside the context of an
-	 * explicit transaction block.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Making connection sticky for non-transactional GUC variable");
-		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 	return true;
 }
@@ -18607,6 +18662,20 @@ yb_assign_conn_mgr_prepare_permanent_sticky(bool newval, void *extra)
 {
 	if (newval && YbHasSqlPreparedStatement())
 		yb_ysql_conn_mgr_sticky_prepare = true;
+}
+
+static void
+yb_assign_conn_mgr_listen_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbIsListening())
+		yb_ysql_conn_mgr_sticky_listen = true;
+}
+
+static void
+yb_assign_conn_mgr_cursor_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasHoldablePortal())
+		yb_ysql_conn_mgr_sticky_cursor = true;
 }
 
 static bool

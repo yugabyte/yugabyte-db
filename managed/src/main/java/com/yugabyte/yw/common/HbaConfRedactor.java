@@ -192,7 +192,7 @@ public final class HbaConfRedactor {
         valueBelow = false;
       } else {
         foldIndent = -1;
-        if (line.startsWith(GFLAG_LINE_PREFIX, k)) {
+        if (isGFlagLine(line, k)) {
           int valueStart = k + GFLAG_LINE_PREFIX.length();
           String value = line.substring(valueStart);
           String redacted = redact(value);
@@ -213,6 +213,18 @@ public final class HbaConfRedactor {
       p = next;
     }
     return out.toString();
+  }
+
+  /**
+   * Whether line holds a --ysql_hba_conf_csv= gflag at k, its name spelled with any mix of dashes
+   * and underscores.
+   */
+  private static boolean isGFlagLine(String line, int k) {
+    int end = k + GFLAG_LINE_PREFIX.length();
+    return end <= line.length()
+        && line.startsWith("--", k)
+        && GFlagsUtil.canonicalGFlagName(line.substring(k + 2, end))
+            .equals(GFLAG_LINE_PREFIX.substring(2));
   }
 
   /** Whether s ends with REDACTED, past any closing quotes. */

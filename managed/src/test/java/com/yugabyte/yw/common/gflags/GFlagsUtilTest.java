@@ -1178,6 +1178,109 @@ public class GFlagsUtilTest extends FakeDBApplication {
     }
   }
 
+  /** gflags reads a dash in a flag name as an underscore, so these name the same secrets. */
+  @Test
+  public void testSensitiveGFlagNamesWithDashesRestoredAndChecked() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pw ldaptls=0";
+      Map<String, String> stored =
+          Map.of(
+              "ysql-hba-conf-csv", hba,
+              "ycql-ldap-bind-passwd", "dummy-ycql-pw",
+              "webserver_port", "9000");
+      ObjectNode tserver = Json.newObject();
+      stored.forEach(tserver::put);
+      ObjectNode universe = Json.newObject();
+      universe
+          .putArray("clusters")
+          .addObject()
+          .putObject("userIntent")
+          .set("tserverGFlags", tserver);
+
+      Map<String, String> fromApi =
+          tserverGFlagsFromUniverseJson(
+              RedactingService.filterSecretFields(
+                  universe, RedactionTarget.APIS, null, null, true));
+      assertEquals(SECRET_REPLACEMENT, fromApi.get("ycql-ldap-bind-passwd"));
+      assertTrue(fromApi.get("ysql-hba-conf-csv").contains(SECRET_REPLACEMENT));
+      assertEquals(
+          stored, GFlagsUtil.mergeSensitiveGFlags(stored, fromApi, gFlagsValidation, "2.18"));
+
+      assertEquals(
+          Map.of("ycql_ldap_bind_passwd", "dummy-ycql-pw"),
+          GFlagsUtil.mergeSensitiveGFlags(
+              Map.of("ycql-ldap-bind-passwd", "dummy-ycql-pw"),
+              Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT),
+              gFlagsValidation,
+              "2.18"));
+      PlatformServiceException noStored =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      Map.of("webserver_port", "9000"),
+                      Map.of("ycql-ldap-bind-passwd", SECRET_REPLACEMENT),
+                      gFlagsValidation,
+                      "2.18"));
+      assertEquals(BAD_REQUEST, noStored.getHttpStatus());
+
+      UserIntent create = new UserIntent();
+      create.tserverGFlags = new HashMap<>(Map.of("ycql-ldap-bind-passwd", SECRET_REPLACEMENT));
+      PlatformServiceException onCreate =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(create, "2.25.0.0", null));
+      assertEquals(BAD_REQUEST, onCreate.getHttpStatus());
+    }
+  }
+
+  /** A gflag stored with a null value under another spelling has nothing to restore. */
+  @Test
+  public void testSensitiveGFlagStoredAsNullUnderAnotherSpelling() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      Map<String, String> stored = new HashMap<>();
+      stored.put("ycql-ldap-bind-passwd", null);
+      stored.put("ysql-hba-conf-csv", null);
+
+      Map<String, String> changed =
+          Map.of(
+              "ycql_ldap_bind_passwd", "dummy-new-pw",
+              "ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-new-pw");
+      assertEquals(
+          changed, GFlagsUtil.mergeSensitiveGFlags(stored, changed, gFlagsValidation, "2.18"));
+
+      for (Map.Entry<String, String> redacted :
+          Map.of(
+                  "ycql_ldap_bind_passwd",
+                  SECRET_REPLACEMENT,
+                  "ysql_hba_conf_csv",
+                  "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT)
+              .entrySet()) {
+        PlatformServiceException e =
+            assertThrows(
+                PlatformServiceException.class,
+                () ->
+                    GFlagsUtil.mergeSensitiveGFlags(
+                        stored,
+                        Map.of(redacted.getKey(), redacted.getValue()),
+                        gFlagsValidation,
+                        "2.18"));
+        assertEquals(redacted.getKey(), BAD_REQUEST, e.getHttpStatus());
+      }
+    }
+  }
+
   /**
    * Changing other HBA fields while keeping REDACTED ldapbindpasswd throws BAD_REQUEST; the user
    * must supply the full ysql_hba_conf_csv with the actual ldapbindpasswd when editing HBA fields.
@@ -1214,6 +1317,40 @@ public class GFlagsUtilTest extends FakeDBApplication {
                       existingGFlags, newGFlags, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex.getHttpStatus());
     }
+  }
+
+  @Test
+  public void testRedactSensitiveSpecificGFlags() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812";
+    UUID azUuid = UUID.randomUUID();
+    PerProcessFlags azFlags = new PerProcessFlags();
+    azFlags.value =
+        ImmutableMap.of(
+            ServerType.TSERVER, ImmutableMap.of("ycql_ldap_bind_passwd", "dummy-az-lr23812"));
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("m", "1"),
+            ImmutableMap.of(
+                "ycql_ldap_bind_passwd", "dummy-lr23812", YSQL_HBA_CONF_CSV, hba, "t", "1"));
+    specificGFlags.setPerAZ(ImmutableMap.of(azUuid, azFlags));
+    specificGFlags.setGflagGroups(List.of(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY));
+
+    SpecificGFlags redacted =
+        GFlagsUtil.redactSensitiveSpecificGFlags(specificGFlags, gFlagsValidation, "2.18");
+
+    Map<String, String> tserver = redacted.getPerProcessFlags().value.get(ServerType.TSERVER);
+    assertEquals(SECRET_REPLACEMENT, tserver.get("ycql_ldap_bind_passwd"));
+    assertEquals(
+        hba.replace("dummy-hba-lr23812", SECRET_REPLACEMENT), tserver.get(YSQL_HBA_CONF_CSV));
+    assertEquals("1", tserver.get("t"));
+    assertEquals("1", redacted.getPerProcessFlags().value.get(ServerType.MASTER).get("m"));
+    assertEquals(
+        SECRET_REPLACEMENT,
+        redacted.getPerAZ().get(azUuid).value.get(ServerType.TSERVER).get("ycql_ldap_bind_passwd"));
+    assertEquals(specificGFlags.getGflagGroups(), redacted.getGflagGroups());
+    assertEquals(
+        hba,
+        specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER).get(YSQL_HBA_CONF_CSV));
   }
 
   @Test

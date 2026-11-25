@@ -3200,4 +3200,37 @@ SELECT k FROM tz_expr_pushdown
  1
 (1 row)
 
+RESET yb_enable_expression_pushdown;
 DROP TABLE tz_expr_pushdown;
+-- age() subtracts local date and time in the session time zone. The two
+-- timestamps are 24 hours apart: 1 day in UTC. In America/New_York, daylight
+-- saving time began between them on 2024-03-10, so it is 1 day 1 hour.
+CREATE TABLE age_tz_pushdown(k int primary key, ts timestamptz);
+SET yb_enable_expression_pushdown=on;
+INSERT INTO age_tz_pushdown VALUES (1, '2024-03-11 00:00:00+00');
+EXPLAIN (COSTS OFF) SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Seq Scan on age_tz_pushdown
+   Filter: (age(ts, 'Sat Mar 09 16:00:00 2024 PST'::timestamp with time zone) > '@ 1 day'::interval)
+(2 rows)
+
+SET TIME ZONE 'UTC';
+SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+ k 
+---
+(0 rows)
+
+SET TIME ZONE 'America/New_York';
+SELECT k FROM age_tz_pushdown
+  WHERE age(ts, '2024-03-10 00:00:00+00') > interval '1 day';
+ k 
+---
+ 1
+(1 row)
+
+RESET TIME ZONE;
+RESET yb_enable_expression_pushdown;
+DROP TABLE age_tz_pushdown;

@@ -38,6 +38,7 @@ extern "C" {
 #include "utils/fmgrprotos.h" // pg_sequence_last_value
 #include "utils/lsyscache.h"  // get_relname_relid
 /* YB includes */
+#include "storage/ipc.h"  // on_proc_exit
 #include "storage/lmgr.h" // LockRelationOid
 }
 
@@ -90,6 +91,62 @@ ToString(char *value) {
 	config.options.ddb_option_name = duckdb_##ddb_option_name;                                                         \
 	elog(DEBUG2, "[PGDuckDB] Set DuckDB option: '" #ddb_option_name "'=%s", ToString(duckdb_##ddb_option_name).c_str());
 
+/*
+ * YB: returns this backend's DuckDB spill folder, <duckdb.temporary_directory>/<pid>. DuckDB 1.4
+ * names spill files without a process id (duckdb_temp_storage_<size>-<n>.tmp, n counting from 0 in
+ * every instance) and opens them without locking, so backends sharing one folder overwrite each
+ * other's spill data (corrupt results, crashes); an exiting instance also deletes every
+ * duckdb_temp_* file in its folder. DuckDB 2.0 fixes this (duckdb/duckdb#24811); drop this then.
+ *
+ * duckdb.temporary_directory is pinned to <DataDir>/pg_duckdb/temp (see InitGUC), so everything
+ * under it is ours. DuckDB creates the folder on first spill but never removes it, because the
+ * backend exits without destroying its DuckDB instance; so the folder is removed at backend exit.
+ * A backend killed with SIGKILL leaves its folder behind: it is removed by the next backend with
+ * the same pid, or by YbRemoveStaleSpillFolders at postmaster start.
+ */
+static std::string yb_spill_dir;
+
+static void
+YbRemoveSpillFolder(const std::string &dir, int elevel) {
+	std::error_code ec;
+	std::filesystem::remove_all(dir, ec);
+	if (ec) {
+		elog(elevel, "[PGDuckDB] could not remove DuckDB spill folder \"%s\": %s", dir.c_str(), ec.message().c_str());
+	}
+}
+
+static void
+YbRemoveSpillFolderAtExit(int /*code*/, Datum /*arg*/) {
+	YbRemoveSpillFolder(yb_spill_dir, LOG);
+}
+
+static std::string
+YbBackendTemporaryDirectory() {
+	if (yb_spill_dir.empty()) {
+		yb_spill_dir = (std::filesystem::path(duckdb_temporary_directory) / std::to_string(MyProcPid)).string();
+		YbRemoveSpillFolder(yb_spill_dir, WARNING); /* left by a dead backend that had this pid */
+		on_proc_exit(YbRemoveSpillFolderAtExit, 0);
+	}
+	return yb_spill_dir;
+}
+
+/* YB: called at postmaster start, when no backend can be using a spill folder. */
+void
+YbRemoveStaleSpillFolders() {
+	std::error_code ec;
+	auto it = std::filesystem::directory_iterator(duckdb_temporary_directory, ec);
+	if (ec) {
+		return; /* not created yet */
+	}
+	for (; !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+		YbRemoveSpillFolder(it->path().string(), WARNING);
+	}
+	if (ec) {
+		elog(WARNING, "[PGDuckDB] could not list DuckDB spill folders in \"%s\": %s", duckdb_temporary_directory,
+		     ec.message().c_str());
+	}
+}
+
 void
 DuckDBManager::Initialize() {
 	elog(DEBUG2, "(PGDuckDB/DuckDBManager) Creating DuckDB instance");
@@ -122,6 +179,9 @@ DuckDBManager::Initialize() {
 	SET_DUCKDB_OPTION(autoload_known_extensions);
 	SET_DUCKDB_OPTION(temporary_directory);
 	SET_DUCKDB_OPTION(extension_directory);
+
+	/* YB: a spill folder per backend, see YbBackendTemporaryDirectory */
+	config.options.temporary_directory = YbBackendTemporaryDirectory();
 
 	if (duckdb_maximum_memory > 0) {
 		// Convert the memory limit from MB (as set by Postgres GUC_UNIT_MB, which is actually MiB; see

@@ -50,6 +50,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/pgsql_read_request_ybctid_provider.h"
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/dockv/doc_path.h"
@@ -147,6 +148,12 @@ DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
 DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
     "Whether to skip filter check during vector index search if table does not have "
     "updates/deletions.");
+
+DEFINE_RUNTIME_AUTO_bool(legacy_ybctid_batch_pagination, kLocalVolatile, true, false,
+    "Whether ybctid batch returns batch_arg_count to paginate. "
+    "In legacy mode batch_arg_count is returned when it is tablet split safe: the scan bound is "
+    "before the current tablet bound. If legacy mode is off, ybctid batch populates "
+    "the batch_keys_processed field of the paging_state.");
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
@@ -687,6 +694,11 @@ concept BoundsProvider = requires(T& key_provider) {
 };
 
 template <typename T>
+concept PagingStateProvider = requires(T& key_provider) {
+    { key_provider.UpdatePagingState() } -> std::same_as<Status>;
+};
+
+template <typename T>
 YbctidBounds Bounds(const T& key_provider) {
   if constexpr (BoundsProvider<T>) {
     return key_provider.Bounds();
@@ -923,7 +935,7 @@ class VectorIndexKeyProvider {
         num_top_vectors_to_remove_(num_top_vectors_to_remove), max_results_(max_results),
         result_buffer_(result_buffer) {}
 
-  Slice FetchKey() {
+  Result<Slice> FetchKey() {
     if (index_ >= result_entries_.size()) {
       VLOG_WITH_FUNC(4) << vector_index_.ToString()
                         << ", returned: " << response_.vector_index_distances().size()
@@ -2364,72 +2376,6 @@ Status PgsqlWriteOperation::FillRemovedVectorId(
   return Status::OK();
 }
 
-class PgsqlReadRequestYbctidProvider {
- public:
-  explicit PgsqlReadRequestYbctidProvider(
-      const DocReadContext& doc_read_context, const PgsqlReadRequestMsg& request,
-      PgsqlResponseMsg& response)
-      : request_(request), response_(response) {
-    const auto& batch_args = request_.batch_arguments();
-
-    VLOG_WITH_FUNC(3) << "batch_args.size(): " << batch_args.size();
-
-    Slice min_arg;
-    Slice max_arg;
-
-    batch_arg_it_ = batch_args.begin();
-
-    if (!batch_args.empty()) {
-      min_arg = batch_arg_it_->ybctid().value().binary_value();
-      max_arg = min_arg;
-    }
-
-    for (auto& batch_arg_it : batch_args) {
-      const auto& val = batch_arg_it.ybctid().value().binary_value();
-      if (min_arg > val) {
-        min_arg = val;
-      }
-
-      if (max_arg < val) {
-        max_arg = val;
-      }
-    }
-
-    bounds_ = {min_arg, max_arg};
-  }
-
-  YbctidBounds Bounds() const { return bounds_; }
-
-  Slice FetchKey() {
-    if (!valid_ || batch_arg_it_ == request_.batch_arguments().end()) {
-      valid_ = false;
-      return Slice();
-    }
-
-    Slice ret = batch_arg_it_->ybctid().value().binary_value();
-    if (batch_arg_it_->has_order()) {
-      current_order_ = batch_arg_it_->order();
-    }
-
-    ++batch_arg_it_;
-    return ret;
-  }
-
-  void AddedKeyToResultSet() {
-    if (current_order_.has_value()) {
-      response_.add_batch_orders(*current_order_);
-    }
-  }
-
- private:
-  bool valid_ = true;
-  const PgsqlReadRequestMsg& request_;
-  PgsqlResponseMsg& response_;
-  PgsqlBatchArgumentMsgs::const_iterator batch_arg_it_;
-  YbctidBounds bounds_;
-  std::optional<int64> current_order_;
-};
-
 Result<size_t> PgsqlReadOperation::Execute() {
   // Verify that this request references no columns marked for deletion.
   RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(data_.doc_read_context.schema(), request_));
@@ -2447,7 +2393,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
   bool has_paging_state = false;
   if (request_.batch_arguments_size() > 0) {
     PgsqlReadRequestYbctidProvider key_provider(data_.doc_read_context, request_, response_);
-    fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
+    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   } else if (request_.has_sampling_state()) {
     if (data_.doc_read_context.is_index) {
       return STATUS_FORMAT(
@@ -2968,7 +2914,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice, intent_keys,
       options.num_top_vectors_to_remove(), max_results, *result_buffer_);
-  auto result_size = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
+  auto [result_size, _] = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
   auto passed = MonoTime::Now() - key_provider.merge_done_time();
   auto read_intents_time = key_provider.prefetch_done_time() - read_start_time;
   auto merge_time = key_provider.merge_done_time() - key_provider.prefetch_done_time();
@@ -3134,7 +3080,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 }
 
 template <class KeyProvider>
-Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
+Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   // We limit the response's size.
   uint64_t response_size_limit = FLAGS_rpc_max_message_size *
                                  FLAGS_max_buffer_size_to_rpc_limit_ratio;
@@ -3142,8 +3088,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
   VLOG_WITH_FUNC(3) << "Started, response size limit: " << response_size_limit
-                    << " request_.batch_arguments_size(): " << request_.batch_arguments_size()
                     << " tablet: " << data_.ql_storage.ToString();
+  VLOG_WITH_FUNC(4) << "Request: " << request_.ShortDebugString();
 
   const auto& doc_read_context = data_.doc_read_context;
   auto projection = CreateProjection(doc_read_context.schema(), request_);
@@ -3165,7 +3111,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   }
 
   for (;;) {
-    auto key = key_provider.FetchKey();
+    auto key = VERIFY_RESULT(key_provider.FetchKey());
     if (key.empty()) {
       break;
     }
@@ -3186,6 +3132,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     switch (fetch_result) {
       case FetchResult::NotFound:
         ++not_found_rows;
+        if constexpr (PagingStateProvider<KeyProvider>) {
+          key_provider.KeyNotFound();
+        }
         // rebuild iterator on next iteration
         iter = std::nullopt;
         break;
@@ -3196,26 +3145,30 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
         ++found_rows;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
-        } else {
+        } else if constexpr (PagingStateProvider<KeyProvider>) { // NOLINT(readability/braces)
           auto row_start = result_buffer_->Position();
           RETURN_NOT_OK(PopulateResultSet(row, result_buffer_));
+          // To make sure that the batch makes progress it is sufficient to check that the
+          // processed_keys is greater than 0. However we don't check the size limit until there's
+          // at least one row in the buffer for efficiency. With processed_keys > 0 here, if the
+          // very first row in the buffer after some processed is about to exceed the limit,
+          // we would just return empty response, and for the next page would be in the same
+          // position, about to return one-enormous-row response. So we basically eliminating
+          // empty response roundtrips.
           if (fetched_rows > 0 && result_buffer_->size() > response_size_limit) {
-            VLOG(1) << "Response size exceeded after " << found_rows << " rows fetched (out of "
-                    << request_.batch_arguments_size() << " matches). Also " << filtered_rows
-                    << " rows filtered, " << not_found_rows << " rows not found. "
-                    << "Response buffer size: " << result_buffer_->size()
-                    << ", response size limit: " << response_size_limit;
+            VLOG_WITH_FUNC(1) << "Response size exceeded after " << found_rows << " rows fetched. "
+                              << "Also " << filtered_rows << " rows filtered, "
+                              << not_found_rows << " rows not found. "
+                              << "Response buffer size: " << result_buffer_->size()
+                              << ", response size limit: " << response_size_limit;
             RETURN_NOT_OK(result_buffer_->Truncate(row_start));
-            // This key is not counted in batch_arg_count, so the client resends it and the
-            // request it is resent with accounts for its row.  Returns before the accounting
-            // below.
-            // TODO GHI #25788, for now fail instead of returning incomplete results
-            RSTATUS_DCHECK(!request_.batch_arguments().empty(),
-                           IllegalState, "Pagination is required, but not supported");
-            DCHECK(processed_keys < static_cast<size_t>(request_.batch_arguments_size()));
-            response_.set_batch_arg_count(processed_keys);
-            return fetched_rows;
+            RETURN_NOT_OK(key_provider.UpdatePagingState());
+            return std::tuple<size_t, bool>{fetched_rows, response_.has_paging_state()};
           }
+          key_provider.AddedKeyToResultSet();
+          ++fetched_rows;
+        } else { // non-paginating provider, fetch until the end
+          RETURN_NOT_OK(PopulateResultSet(row, result_buffer_));
           key_provider.AddedKeyToResultSet();
           ++fetched_rows;
         }
@@ -3233,22 +3186,17 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
     ++fetched_rows;
   }
 
-  VLOG(1) << "Request completed after " << found_rows << " rows fetched (out of "
-          << request_.batch_arguments_size() << " matches). Also " << filtered_rows
-          << " rows filtered, " << not_found_rows << " rows not found. "
-          << "Response buffer size: " << result_buffer_->size()
-          << ", response size limit: " << response_size_limit;
+  VLOG_WITH_FUNC(1) << "Request completed after " << found_rows << " rows fetched. "
+                    << "Also " << filtered_rows << " rows filtered, "
+                    << not_found_rows << " rows not found. "
+                    << "Response buffer size: " << result_buffer_->size()
+                    << ", response size limit: " << response_size_limit;
 
-  // TODO GHI #25789 the KeyProvider should track processed_keys and paginate
-  if (request_.batch_arguments_size() > 0) {
-    DCHECK(processed_keys == static_cast<size_t>(request_.batch_arguments_size()));
-    response_.set_batch_arg_count(processed_keys);
-  }
-
-  VLOG_WITH_FUNC(3) << "Stopped, filtered_rows: " << filtered_rows << " found_rows: " << found_rows
+  VLOG_WITH_FUNC(3) << "Stopped, fetched_rows: " << fetched_rows
+                    << " processed_keys: " << processed_keys
                     << ". DocDB stats:\n"
                     << DocDbStatsToString(data_.read_operation_data.statistics);
-  return fetched_rows;
+  return std::tuple<size_t, bool>{fetched_rows, response_.has_paging_state()};
 }
 
 Result<bool> PgsqlReadOperation::SetPagingState(
