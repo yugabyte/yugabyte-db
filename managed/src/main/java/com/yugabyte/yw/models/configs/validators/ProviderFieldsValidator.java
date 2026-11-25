@@ -22,8 +22,10 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -118,6 +120,60 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
             null);
       }
     }
+  }
+
+  /**
+   * Validates {@code provider}, plus the checks that depend on the provider as it is saved: {@code
+   * existingProvider}, which an edit passes and a create passes as null.
+   */
+  public void validate(Provider provider, @Nullable Provider existingProvider) {
+    validate(provider);
+    validateGcpFederationAudience(provider, existingProvider);
+  }
+
+  /**
+   * A gcp audience must name the workload identity pool provider, the only form STS takes; any
+   * other is refused only once a backup runs. An edit keeps the gcp audience the provider is saved
+   * with, so that edits of its other fields, which an in-use provider still takes, are not refused
+   * for it.
+   */
+  private void validateGcpFederationAudience(
+      Provider provider, @Nullable Provider existingProvider) {
+    CloudInfoInterface info = CloudInfoInterface.get(provider);
+    if (info == null || !info.isFederatedIamEnabled()) {
+      return;
+    }
+    String savedAudience = gcpAudienceOf(existingProvider);
+    for (CrossCloudFederationTarget target : info.getEffectiveFederationTargets()) {
+      if (target != null
+          && target.targetCloud == CloudType.gcp
+          && !CrossCloudFederationTarget.isValidGcpAudience(target.audience)
+          && !Objects.equals(target.audience, savedAudience)) {
+        throwBeanProviderValidatorError(
+            "FEDERATED_IAM_AUDIENCE",
+            "Federated IAM audience for target gcp must name the workload identity pool provider:"
+                + " //iam.googleapis.com/projects/<project-number>/locations/global/"
+                + "workloadIdentityPools/<pool>/providers/<provider>.",
+            null);
+      }
+    }
+  }
+
+  /**
+   * The gcp audience {@code provider} uses: null for a create, and for a provider saved with
+   * federation off, whose targets were never checked and are not in use.
+   */
+  @Nullable
+  private static String gcpAudienceOf(@Nullable Provider provider) {
+    CloudInfoInterface info = provider == null ? null : CloudInfoInterface.get(provider);
+    if (info == null || !info.isFederatedIamEnabled()) {
+      return null;
+    }
+    return info.getEffectiveFederationTargets().stream()
+        .filter(t -> t != null && t.targetCloud == CloudType.gcp && t.audience != null)
+        .map(t -> t.audience)
+        .findFirst()
+        .orElse(null);
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {

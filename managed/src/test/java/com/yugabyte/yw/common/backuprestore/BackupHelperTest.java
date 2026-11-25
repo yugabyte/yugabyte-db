@@ -96,6 +96,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.actor.CoordinatedShutdown;
 import org.junit.Assume;
 import org.junit.Before;
@@ -1913,10 +1914,14 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals("aud", gcsData.crossCloudFederationAudience);
   }
 
-  /** Use GCP IAM alone is native GCP access: a federation snapshot does not apply to it. */
+  /**
+   * Use GCP IAM alone is native GCP access: a federation snapshot does not apply to it while YBA's
+   * host has Google credentials of its own, even on AWS.
+   */
   @Test
   public void testGcsSnapshotIsNotStampedWithoutFederation() {
     hostCloud(CloudType.aws);
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
     CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
     gcsData.useGcpIam = true;
     gcsData.useCrossCloudFederation = false;
@@ -2002,6 +2007,180 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
 
     assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  private static CustomerConfigStorageGCSData gcpIamGcs() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    return gcsData;
+  }
+
+  /**
+   * A GCP IAM config federated with no audience, which GCPUtil does not probe as YBA's own
+   * identity. Master checks this with GCPUtil.isUnresolvedFederationConfig, which 2026.2 lacks.
+   */
+  private static boolean isUnresolvedFederation(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useGcpIam
+        && gcsData.useCrossCloudFederation
+        && StringUtils.isBlank(gcsData.crossCloudFederationAudience);
+  }
+
+  /**
+   * A GCP IAM GCS config made on a YBA on GCP, which needs no federation flag there, is used by its
+   * HA standby on AWS once promoted: YBA federates with its providers' entry for GCP instead of
+   * calling GCS with no identity.
+   */
+  @Test
+  public void testGcpIamGcsConfigFederatesForYbaOnAws() {
+    hostCloud(CloudType.aws);
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+    CustomerConfigStorageGCSData gcsData = gcpIamGcs();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
+
+    assertTrue(gcsData.useCrossCloudFederation);
+    assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  /** Deleting such a config's backup takes the entry the backup was made with. */
+  @Test
+  public void testGcpIamGcsBackupDeletionUsesSnapshotOnAws() {
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = gcpIamGcs();
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        gcsData, backupWithSnapshot(GCS_AUDIENCE, null));
+
+    assertTrue(gcsData.useCrossCloudFederation);
+    assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  /**
+   * The storage checks that gate a backup deletion, and a config deletion, read their own copy of
+   * the config. On an AWS YBA with no Google credentials, that copy of a GCP IAM GCS config is
+   * federated too, with no audience as there is no universe, so GCPUtil defers the check to the
+   * nodes instead of calling GCS with no identity. On GCP the copy is left as it is.
+   */
+  @Test
+  public void testGcpIamGcsDeletionCheckDefersOnAws() {
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    ArgumentCaptor<CustomerConfigData> checked = ArgumentCaptor.forClass(CustomerConfigData.class);
+    CustomerConfig config = gcsIamConfig();
+
+    hostCloud(CloudType.aws);
+    spyBackupHelper.validateStorageConfig(config);
+    verify(mockGCPUtil).validateStorageConfig(checked.capture());
+    assertTrue(isUnresolvedFederation((CustomerConfigStorageGCSData) checked.getValue()));
+
+    Backup backup = mock(Backup.class);
+    when(backup.getBackupParamsCollection()).thenReturn(Collections.emptyList());
+    spyBackupHelper.validateStorageConfigOnBackup(config, backup);
+    verify(mockGCPUtil).validateStorageConfigOnBackup(checked.capture(), any());
+    assertTrue(isUnresolvedFederation((CustomerConfigStorageGCSData) checked.getValue()));
+
+    hostCloud(CloudType.gcp);
+    spyBackupHelper.validateStorageConfig(config);
+    verify(mockGCPUtil, times(2)).validateStorageConfig(checked.capture());
+    assertFalse(((CustomerConfigStorageGCSData) checked.getValue()).useCrossCloudFederation);
+  }
+
+  /**
+   * A backup or restore check with a universe defers too: the universe's gcp entry is not stamped
+   * on a config federated only in memory, so YBA does not probe the bucket as itself, which the
+   * pool may not admit, where it skipped the check before.
+   */
+  @Test
+  public void testGcpIamGcsPrecheckWithUniverseDefersOnAws() {
+    Universe universe = universeOnFederatingProvider(CloudType.aws, true);
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = gcpIamGcs();
+
+    spyBackupHelper.applyCrossCloudFederationAudience(gcsData, universe);
+
+    assertTrue(isUnresolvedFederation(gcsData));
+  }
+
+  /** The restore's file check reads such a config federated on AWS as well. */
+  @Test
+  public void testGcpIamGcsRestoreFileCheckIsFederatedOnAws() {
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    hostCloud(CloudType.aws);
+    ArgumentCaptor<CustomerConfigData> checked = ArgumentCaptor.forClass(CustomerConfigData.class);
+
+    spyBackupHelper.checkFileExistsOnBackupLocation(
+        gcsIamConfig(), Set.of("gs://foo/bk"), testUniverse.getUniverseUUID(), "marker", false);
+
+    verify(mockGCPUtil)
+        .checkFileExists(checked.capture(), any(), anyString(), any(UUID.class), anyBoolean());
+    assertTrue(isUnresolvedFederation((CustomerConfigStorageGCSData) checked.getValue()));
+  }
+
+  /**
+   * A YBC restore checks the success marker's locations with its own copy of the config, which is
+   * federated on AWS as well, so GCPUtil makes no call to GCS with no identity.
+   */
+  @Test
+  public void testGcpIamGcsYbcRestoreCheckIsFederatedOnAws() {
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    when(mockGCPUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    when(mockRuntimeConfGetter.getConfForScope(
+            eq(testUniverse), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
+        .thenReturn(false);
+    when(mockConfigService.getOrBadRequest(any(), any())).thenCallRealMethod();
+    hostCloud(CloudType.aws);
+    YbcBackupResponse successMarker =
+        YbcBackupUtil.parseYbcBackupResponse(
+            TestUtils.readResource("backup/ybc_success_file_without_regions.json"));
+    ArgumentCaptor<CustomerConfigData> checked = ArgumentCaptor.forClass(CustomerConfigData.class);
+
+    spyBackupHelper.validateStorageConfigForYbcRestoreTask(
+        gcsIamConfig().getConfigUUID(),
+        testCustomer.getUuid(),
+        testUniverse.getUniverseUUID(),
+        List.of(successMarker));
+
+    verify(mockGCPUtil).checkListObjectsWithYbcSuccessMarkerCloudStore(checked.capture(), any());
+    assertTrue(isUnresolvedFederation((CustomerConfigStorageGCSData) checked.getValue()));
+  }
+
+  /**
+   * Left as it is on GCP, where YBA reaches GCS natively; on an AWS host with Google credentials,
+   * which it keeps using; and with a service account key.
+   */
+  @Test
+  public void testGcpIamGcsConfigKeepsItsWayWhereItHasOne() {
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageGCSData onGcp = gcpIamGcs();
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        onGcp, backupWithSnapshot(GCS_AUDIENCE, null));
+    assertFalse(onGcp.useCrossCloudFederation);
+    assertNull(onGcp.crossCloudFederationAudience);
+
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData withKey = gcpIamGcs();
+    withKey.gcsCredentialsJson = "{}";
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(withKey, testCustomer.getUuid(), null));
+    assertFalse(withKey.useCrossCloudFederation);
+    assertNull(withKey.crossCloudFederationAudience);
+
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
+    CustomerConfigStorageGCSData withHostCredentials = gcpIamGcs();
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(
+            withHostCredentials, testCustomer.getUuid(), null));
+    assertFalse(withHostCredentials.useCrossCloudFederation);
+    assertNull(withHostCredentials.crossCloudFederationAudience);
+  }
+
+  /** With no entry anywhere, YBA reports that it has no way to the bucket. */
+  @Test
+  public void testGcpIamGcsConfigWithoutEntryOnAwsIsUnreachable() {
+    hostCloud(CloudType.aws);
+
+    assertFalse(
+        spyBackupHelper.applyYbaFederatedIdentity(gcpIamGcs(), testCustomer.getUuid(), null));
   }
 
   /**
