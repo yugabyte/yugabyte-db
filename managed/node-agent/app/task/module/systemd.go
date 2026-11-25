@@ -11,8 +11,11 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -83,17 +86,36 @@ var ShowSystemUnitState = func(ctx context.Context, serviceName string) (SystemU
 // SelfCgroupPath tells which systemd manager started this process. A var for tests.
 var SelfCgroupPath = "/proc/self/cgroup"
 
-// UserSystemdUnitDir returns the directory of this user's user-level units. A var for tests.
+// UserSystemdUnitDir returns the user-level unit directory of the user that owns this install. A
+// system-level unit can run as another user, e.g. root, so this is not the home of this process.
+// A var for tests.
 var UserSystemdUnitDir = func() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := ownerHomeDir(util.MustGetHomeDirectory())
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, UserSystemdUnitPath), nil
 }
 
-// Whether serviceName is enabled in this user's user-level manager, which links it into a .wants
-// directory.
+// ownerHomeDir returns the home directory of the user that owns path.
+func ownerHomeDir(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", fmt.Errorf("unable to get the owner of %s", path)
+	}
+	owner, err := user.LookupId(strconv.FormatUint(uint64(stat.Uid), 10))
+	if err != nil {
+		return "", err
+	}
+	return owner.HomeDir, nil
+}
+
+// Whether serviceName is enabled in the user-level manager of the install owner, which links it
+// into a .wants directory.
 func userUnitEnabled(serviceName string) (bool, error) {
 	dir, err := UserSystemdUnitDir()
 	if err != nil {
@@ -106,7 +128,7 @@ func userUnitEnabled(serviceName string) (bool, error) {
 // DuplicateSystemdUnit returns the path of the system-level serviceName unit when both it and the
 // user-level one start a server for the same install, whichever of them this process runs under:
 // - Under the user-level unit, when the system-level one is enabled or running.
-// - Under the system-level unit, when the user-level one is enabled.
+// - Under the system-level unit, when the user-level one of the install owner is enabled.
 // It returns "" otherwise. A user-level unit file that is not enabled starts nothing.
 func DuplicateSystemdUnit(ctx context.Context, serviceName string) (string, error) {
 	cgroup, err := os.ReadFile(SelfCgroupPath)

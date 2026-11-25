@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 )
@@ -92,6 +93,21 @@ func TestDuplicateSystemdUnit(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
+}
+
+// A system-level unit can run as root, so the user-level unit is looked up for the install owner.
+func TestOwnerHomeDir(t *testing.T) {
+	current, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ownerHomeDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != current.HomeDir {
+		t.Fatalf("got %q, want %q", got, current.HomeDir)
+	}
 }
 
 func TestParseSystemdProperties(t *testing.T) {
