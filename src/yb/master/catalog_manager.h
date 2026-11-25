@@ -3464,9 +3464,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
 
   // Returns true if stream_ids is non-empty and the streams are logical replication streams, i.e.
-  // they have a slot entry in cdc_state.
-  bool AreCdcLogicalReplicationStreams(const std::unordered_set<xrepl::StreamId>& stream_ids)
-      REQUIRES_SHARED(mutex_);
+  // they have a slot entry in cdc_state. Returns NotFound if none of the streams is in
+  // cdc_stream_map_.
+  Result<bool> AreCdcLogicalReplicationStreams(
+      const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
 
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.

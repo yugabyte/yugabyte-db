@@ -6409,7 +6409,7 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
   return stream_ids;
 }
 
-bool CatalogManager::AreCdcLogicalReplicationStreams(
+Result<bool> CatalogManager::AreCdcLogicalReplicationStreams(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
   if (stream_ids.empty()) {
     return false;
@@ -6423,7 +6423,7 @@ bool CatalogManager::AreCdcLogicalReplicationStreams(
       return IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id]);
     }
   }
-  return true;
+  return STATUS_FORMAT(NotFound, "None of the streams $0 found in cdc_stream_map_", stream_ids);
 }
 
 Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
@@ -6957,7 +6957,8 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      are_cdc_logical_replication_streams = AreCdcLogicalReplicationStreams(stream_ids);
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
       if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
@@ -7099,7 +7100,8 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
-      are_cdc_logical_replication_streams = AreCdcLogicalReplicationStreams(stream_ids);
+      are_cdc_logical_replication_streams =
+          VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
       if (are_cdc_logical_replication_streams) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
