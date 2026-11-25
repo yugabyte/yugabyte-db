@@ -213,7 +213,8 @@ func TestRunLeavesBlankNodeWithoutBin(t *testing.T) {
 }
 
 // On SLES, useradd copies /etc/skel/bin into the new home, so a blank node has an empty bin/.
-// Installing the launchers there would fail the clean home directory check (PLAT-24135).
+// The clean home directory check passes an empty bin/ (see the yugabyte module tests), but
+// installing the launchers there would fail it (PLAT-24135).
 func TestRunLeavesSkelBinOnBlankNodeEmpty(t *testing.T) {
 	ybHome := newYbHome(t, false /* configured */)
 	bin := filepath.Join(ybHome, "bin")
