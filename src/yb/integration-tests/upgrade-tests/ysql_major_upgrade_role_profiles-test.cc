@@ -41,7 +41,9 @@ class YsqlMajorUpgradeTestWithRoleProfile : public YsqlMajorUpgradeTestBase {
   }
 };
 
-TEST_F(YsqlMajorUpgradeTestWithRoleProfile, RoleProfile) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeTestWithRoleProfile);
+
+TEST_P(YsqlMajorUpgradeTestWithRoleProfile, RoleProfile) {
   ASSERT_OK(ExecuteStatements(
     {"CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3",
       "CREATE PROFILE profile_2_failed LIMIT FAILED_LOGIN_ATTEMPTS 2",

@@ -210,8 +210,10 @@ class YsqlMajorUpgradeRpcsTest : public YsqlMajorUpgradeTestBase {
   }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeRpcsTest);
+
 // Start multiple ysql major upgrade RPCs simultaneously. Only one RPC should succeed.
-TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
+TEST_P(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
   ASSERT_OK(ValidateYsqlMajorCatalogUpgradeState(master::YSQL_MAJOR_CATALOG_UPGRADE_DONE));
 
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
@@ -260,7 +262,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousUpgrades) {
 }
 
 // Start multiple ysql major upgrade rollback RPCs simultaneously. Only one RPC should succeed.
-TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
+TEST_P(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
   // Calling rollback before upgrade should succeed immediately.
@@ -314,7 +316,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, SimultaneousRollback) {
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
 // Disabling in debug builds since this test times out on it.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
+TEST_P(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade)) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto master_leader = cluster_->GetLeaderMaster();
 
@@ -359,7 +361,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashDuringUpgrade))
 }
 
 // Make sure rollback works after a master restart inside the catalog copy window.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespacePreparing)) {
+TEST_P(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespacePreparing)) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   auto* master_leader = cluster_->GetLeaderMaster();
 
@@ -392,7 +394,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(MasterCrashWhileNamespaceP
 }
 
 // Make sure a namespace left in PREPARING before the upgrade is still reaped.
-TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
+TEST_P(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReaped)) {
   const std::string kStaleDb = "stale_db";
 
   // Hang the creation so the database stays in PREPARING on disk. The hook has to be one the old
@@ -419,7 +421,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, YB_RELEASE_ONLY_TEST(StaleNamespaceIsStillReape
 }
 
 // Make sure ysql major catalog upgrade works with a master crash during the upgrade.
-TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringMonitoring) {
+TEST_P(YsqlMajorUpgradeRpcsTest, MasterCrashDuringMonitoring) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
@@ -438,7 +440,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, MasterCrashDuringMonitoring) {
   ASSERT_OK(CompleteUpgradeAndValidate());
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterUpgrade) {
+TEST_P(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterUpgrade) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
@@ -448,7 +450,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterUpgrade) {
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterRollback) {
+TEST_P(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterRollback) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
@@ -462,7 +464,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterRollback) {
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
+TEST_P(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
   ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 
@@ -479,7 +481,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CompactSysCatalogAfterEveryPhase) {
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
+TEST_P(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
   const auto db_name = "db1";
   ASSERT_TRUE(ASSERT_RESULT(HasPreviousVersionCatalogTables()));
   ASSERT_FALSE(ASSERT_RESULT(HasPreviousVersionCatalogTables(db_name)));
@@ -519,7 +521,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, CleanupPreviousCatalog) {
   ASSERT_OK(WaitForPreviousVersionCatalogDeletion());
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
+TEST_P(YsqlMajorUpgradeRpcsTest, TestTableIds) {
   const auto kPgClass = "pg_class";
   const auto kUnversioned = "30008000";
   const auto kOldVersion = "30008001";
@@ -560,7 +562,7 @@ TEST_F(YsqlMajorUpgradeRpcsTest, TestTableIds) {
   ASSERT_NO_FATALS(validate_catalog_table_id({kNewVersion}));
 }
 
-TEST_F(YsqlMajorUpgradeRpcsTest, TestNamespaceIds) {
+TEST_P(YsqlMajorUpgradeRpcsTest, TestNamespaceIds) {
   std::map<std::string, std::string> db_ids {
     std::make_pair("template0", std::string()),
     std::make_pair("template1", std::string()),
@@ -600,12 +602,14 @@ class YsqlMajorUpgradeYbAdminTest : public YsqlMajorUpgradeTestBase {
   }
 };
 
-TEST_F(YsqlMajorUpgradeYbAdminTest, Upgrade) {
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeYbAdminTest);
+
+TEST_P(YsqlMajorUpgradeYbAdminTest, Upgrade) {
   ASSERT_OK(TestUpgradeWithSimpleTable());
   // Finalize should be idempotent.
   ASSERT_OK(FinalizeUpgrade());
 }
 
-TEST_F(YsqlMajorUpgradeYbAdminTest, Rollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
+TEST_P(YsqlMajorUpgradeYbAdminTest, Rollback) { ASSERT_OK(TestRollbackWithSimpleTable()); }
 
 }  // namespace yb

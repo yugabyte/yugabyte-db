@@ -33,13 +33,15 @@ class YsqlMajorUpgradeTestWithConnMgr : public YsqlMajorUpgradeTestBase {
   }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeTestWithConnMgr);
+
 // YB_TODO: Enable Connection Manager C++ tests.
-TEST_F(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableUpgrade)) {
+TEST_P(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableUpgrade)) {
   ASSERT_OK(TestUpgradeWithSimpleTable());
 }
 
 // YB_TODO: Enable Connection Manager C++ tests.
-TEST_F(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableRollback)) {
+TEST_P(YsqlMajorUpgradeTestWithConnMgr, YB_DISABLE_TEST(SimpleTableRollback)) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 }
 

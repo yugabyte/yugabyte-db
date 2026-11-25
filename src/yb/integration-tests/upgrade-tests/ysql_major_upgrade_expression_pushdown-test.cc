@@ -822,8 +822,10 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
   }
 };
 
+INSTANTIATE_YSQL_MAJOR_UPGRADE_TEST_SUITE(YsqlMajorUpgradeExpressionPushdownTest);
 
-TEST_F(YsqlMajorUpgradeExpressionPushdownTest, Pushdowns) {
+
+TEST_P(YsqlMajorUpgradeExpressionPushdownTest, Pushdowns) {
   ASSERT_OK(TestPushdowns({
       ASSERT_RESULT(ScalarArrayOpExprsCase()),
       ASSERT_RESULT(TableFiltersCase()),

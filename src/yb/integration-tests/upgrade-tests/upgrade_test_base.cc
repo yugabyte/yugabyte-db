@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <tuple>
+#include <utility>
 
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -278,6 +279,9 @@ bool IsUpgradeSupported(const std::string& from_version) {
   // Only versions that accept ysql_yb_major_version_upgrade_compatibility=15 are supported.
   if (major == 2) {
     return minor >= 31;
+  }
+  if (major == 2025) {
+    return std::make_pair(minor, patch) >= std::make_pair(2, 9);
   }
   return std::make_tuple(major, minor, patch) >= std::make_tuple(2026, 1, 4);
 }
