@@ -5,7 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { getS3IamOptions } from './iamOptionsByHost';
+import { getS3IamOptions, regionRequiredForFederatedIam } from './iamOptionsByHost';
 import './StorageConfiguration.scss';
 
 const required = (value) => {
@@ -66,13 +66,7 @@ class AwsStorageConfiguration extends Component {
     } = this.props;
     // Either kind of role-based access means no access keys are entered or stored.
     const credentialsDisabled = iamRoleEnabled || federatedIamEnabled;
-    const hostOptions = getS3IamOptions(
-      ybaHost,
-      isEdited,
-      iamRoleEnabled,
-      federatedIamEnabled,
-      showFederatedIam
-    );
+    const hostOptions = getS3IamOptions(ybaHost, isEdited, iamRoleEnabled, showFederatedIam);
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -109,9 +103,17 @@ class AwsStorageConfiguration extends Component {
                 subLabel="Whether to use instance's IAM role for S3 backup."
               />
             </Col>
+            {showFederatedIam && (
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="IAM Role"
+                  content="YBA gets AWS credentials from its host, on AWS its instance role, and by default hands them to the database nodes. A YBA on GCP has them only if its host is set up with an AWS profile or a web identity token. With an HA standby on GCP, use Federated IAM instead."
+                />
+              </Col>
+            )}
           </Row>
           )}
-          {showFederatedIam && hostOptions.showFederatedIam && (
+          {showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Federated IAM</div>
@@ -127,7 +129,7 @@ class AwsStorageConfiguration extends Component {
             <Col lg={1} className="config-zone-tooltip">
               <YBInfoTip
                 title="Federated IAM"
-                content="For GCP database nodes backing up to S3. Each node exchanges its GCP identity for temporary AWS credentials, so no access keys are stored."
+                content="No access keys are stored. A GCP database node, or a YBA on GCP, exchanges its GCP identity for temporary AWS credentials; an AWS node, or a YBA on AWS, uses its own IAM role, which needs access to the bucket. Works from a YBA on either cloud, as an HA standby on the other cloud needs."
               />
             </Col>
           </Row>
@@ -230,7 +232,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          {enableSigningRegion && (
+          {(enableSigningRegion || federatedIamEnabled) && (
             <Row className="config-provider-row">
               <Col lg={2}>
                 <div className="form-item-custom-label">Signing Region</div>
@@ -240,13 +242,18 @@ class AwsStorageConfiguration extends Component {
                   name="SIGNING_REGION"
                   placeHolder="us-east-1"
                   component={YBTextInputWithLabel}
+                  validate={regionRequiredForFederatedIam}
                   isReadOnly={this.disableInputFields(isEdited, 'SIGNING_REGION')}
                 />
               </Col>
               <Col lg={1} className="config-zone-tooltip">
                 <YBInfoTip
                   title="Signing Region"
-                  content="Used for cases when YBA cannot internally determine the bucket region"
+                  content={
+                    federatedIamEnabled
+                      ? "The bucket's region. YBA does not look it up for Federated IAM, so set it unless the host base names it, as s3.<region>.amazonaws.com does."
+                      : 'Used for cases when YBA cannot internally determine the bucket region'
+                  }
                 />
               </Col>
             </Row>

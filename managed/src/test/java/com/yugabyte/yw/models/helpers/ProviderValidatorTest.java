@@ -4,7 +4,9 @@ package com.yugabyte.yw.models.helpers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -13,7 +15,9 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -264,5 +268,39 @@ public class ProviderValidatorTest extends FakeDBApplication {
       assertEquals(
           "Duplicate AZ code az-1. AZ code must be unique for a provider", exception.getMessage());
     }
+  }
+
+  private static void federateToGcp(Provider p, String audience) {
+    ProviderDetails details = p.getDetails();
+    if (details.getCloudInfo() == null) {
+      details.setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.enableFederatedIam = true;
+    CrossCloudFederationTarget target = new CrossCloudFederationTarget();
+    target.targetCloud = CloudType.gcp;
+    target.audience = audience;
+    info.crossCloudFederationTargets = List.of(target);
+    details.getCloudInfo().setOnprem(info);
+  }
+
+  /**
+   * The gcp audience check needs the provider as saved: a create refuses a principalSet audience,
+   * and an edit of a provider saved with it keeps it.
+   */
+  @Test
+  public void testGcpAudienceCheckGetsTheSavedProvider() {
+    String principalSet =
+        "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/"
+            + "attribute.aws_role/yb-node-role";
+    federateToGcp(provider, principalSet);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class, () -> providerValidator.validate(provider, null));
+    assertTrue(e.getMessage(), e.getMessage().contains("workload identity pool provider"));
+
+    Provider saved = ModelFactory.newProvider(customer, CloudType.onprem, "saved-onprem");
+    federateToGcp(saved, principalSet);
+    providerValidator.validate(provider, saved);
   }
 }

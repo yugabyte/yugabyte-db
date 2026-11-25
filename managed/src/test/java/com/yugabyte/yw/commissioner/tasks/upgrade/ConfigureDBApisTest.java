@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
@@ -9,7 +10,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -22,39 +26,54 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoadBalancerConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import com.yugabyte.yw.nodeagent.ServerControlInput;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -178,6 +197,151 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     verify(cloudAPI)
         .ensureManagedLoadBalancer(
             any(), eq("region-1"), any(), any(), eq(List.of(5434, 9042)), any());
+  }
+
+  @Test
+  public void testReissuesTheCertsOnlyWhenEnsureGivesTheLoadBalancerANewAddress() throws Exception {
+    Universe universe = givenManagedLoadBalancerWithSelfSignedClientTls();
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-0123.elb.us-west-2.amazonaws.com");
+
+    TaskInfo unchanged = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, unchanged.getTaskState());
+    assertEquals(Set.of(), certCopiesRun());
+    // The rolling restart's stop only.
+    assertEquals(tservers.stream().collect(Collectors.toMap(n -> n, n -> 1L)), tserverStopsRun());
+
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
+    // Deleted outside YBA, so ensure recreates it under a new name.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    TaskInfo moved = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, moved.getTaskState());
+    assertEquals(tservers, certCopiesRun());
+    // One more stop per tserver, to load the new cert.
+    assertEquals(tservers.stream().collect(Collectors.toMap(n -> n, n -> 2L)), tserverStopsRun());
+  }
+
+  private Universe givenManagedLoadBalancerWithSelfSignedClientTls() throws Exception {
+    CertificateInfo ca =
+        ModelFactory.createCertificateInfo(
+            defaultCustomer.getUuid(),
+            createTempFile("configure_db_apis_test", "ca.crt", "test content"),
+            CertConfigType.SelfSigned);
+    // The agent's IP tells tserverStopsRun the node.
+    when(mockNodeAgentClient.getAndUpgradeOrThrow(any()))
+        .thenAnswer(
+            invocation -> {
+              NodeAgent agent = new NodeAgent();
+              agent.setIp(invocation.getArgument(0));
+              return agent;
+            });
+    return Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.rootCA = ca.getUuid();
+          details.rootAndClientRootCASame = true;
+          UserIntent userIntent = details.getPrimaryCluster().userIntent;
+          userIntent.enableNodeToNodeEncrypt = true;
+          userIntent.enableClientToNodeEncrypt = true;
+          ManagedLoadBalancerConfig config = new ManagedLoadBalancerConfig();
+          config.setEnablePrivate(true);
+          userIntent.setManagedLoadBalancer(config);
+          UUID clusterUuid = details.getPrimaryCluster().uuid;
+          ManagedLoadBalancerState state = new ManagedLoadBalancerState();
+          state.put(
+              new ManagedLoadBalancer(
+                  clusterUuid,
+                  region.getUuid(),
+                  ManagedLoadBalancer.Scheme.PRIVATE,
+                  u.getNodes().stream().map(n -> n.azUuid).distinct().collect(Collectors.toList()),
+                  ManagedLoadBalancerUtil.getPrivateName(clusterUuid),
+                  "lbi-0123.elb.us-west-2.amazonaws.com"));
+          details.setManagedLoadBalancerState(state);
+          // As NodeManager records them when it signs the certs.
+          details.nodeDetailsSet.stream()
+              .filter(n -> n.isTserver)
+              .forEach(
+                  n ->
+                      state
+                          .getCertNames()
+                          .put(
+                              n.nodeName,
+                              ManagedLoadBalancerUtil.getCertNames(details, n).keySet().stream()
+                                  .map(name -> name.toLowerCase(Locale.ROOT))
+                                  .collect(Collectors.toSet())));
+        });
+  }
+
+  @Test
+  public void testRunAfterAFailedCertCopyStillReissuesTheCerts() throws Exception {
+    Universe universe = givenManagedLoadBalancerWithSelfSignedClientTls();
+    Set<String> tservers =
+        universe.getTServers().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    ConfigureDBApiParams params = new ConfigureDBApiParams();
+    params.enableYSQL = true;
+    params.enableYCQL = true;
+    // Deleted outside YBA, so ensure recreates it under a new name, which the task saves.
+    when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
+        .thenReturn("lbi-4567.elb.us-west-2.amazonaws.com");
+    AtomicBoolean copyFails = new AtomicBoolean(true);
+    doAnswer(i -> copyFails.get() ? ShellResponse.create(1, "copy failed") : new ShellResponse())
+        .when(mockNodeManager)
+        .nodeCommand(
+            eq(NodeManager.NodeCommandType.Configure),
+            argThat(
+                p ->
+                    p instanceof AnsibleConfigureServers.Params
+                        && ((AnsibleConfigureServers.Params) p).type
+                            == UpgradeTaskParams.UpgradeTaskType.Certs));
+
+    assertEquals(
+        Failure, submitTask(params, TaskType.ConfigureDBApis, commissioner, -1).getTaskState());
+    copyFails.set(false);
+    clearInvocations(mockNodeManager, mockNodeAgentClient);
+    TaskInfo rerun = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
+
+    assertEquals(Success, rerun.getTaskState());
+    assertEquals(tservers, certCopiesRun());
+  }
+
+  // A skipped subtask ends in Success too, so ask the mocks what ran.
+  private Set<String> certCopiesRun() {
+    return Mockito.mockingDetails(mockNodeManager).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("nodeCommand"))
+        .filter(i -> i.getArgument(0) == NodeManager.NodeCommandType.Configure)
+        .map(i -> i.getArgument(1))
+        .filter(p -> p instanceof AnsibleConfigureServers.Params)
+        .map(p -> (AnsibleConfigureServers.Params) p)
+        .filter(p -> p.type == UpgradeTaskParams.UpgradeTaskType.Certs)
+        .map(p -> p.nodeName)
+        .collect(Collectors.toSet());
+  }
+
+  private Map<String, Long> tserverStopsRun() {
+    Map<String, String> nodeNameByIp =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+            .collect(Collectors.toMap(n -> n.cloudInfo.private_ip, n -> n.nodeName));
+    return Mockito.mockingDetails(mockNodeAgentClient).getInvocations().stream()
+        .filter(i -> i.getMethod().getName().equals("runServerControl"))
+        .filter(
+            i -> {
+              ServerControlInput input = i.getArgument(1);
+              return (input.getServerName() + " " + input.getControlType())
+                  .equals("yb-tserver STOP");
+            })
+        .collect(
+            Collectors.groupingBy(
+                i -> nodeNameByIp.get(((NodeAgent) i.getArgument(0)).getIp()),
+                Collectors.counting()));
   }
 
   @Test

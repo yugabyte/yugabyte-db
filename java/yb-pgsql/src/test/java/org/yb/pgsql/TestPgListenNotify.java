@@ -95,8 +95,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
     flagMap.put("tserver_unresponsive_timeout_ms",
         String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
-    flagMap.put("xcluster_guarded_lease_duration_ms",
-        String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS));
     return flagMap;
   }
 
@@ -423,6 +421,44 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       waitForNotification(listenerConn, channel, "after_restart");
       LOG.info("New notification received after poller restart");
+    }
+  }
+
+  /**
+   * pg_cancel_backend() on the notifications poller must not stop notification delivery. The
+   * poller ignores SIGINT: it has no query to cancel, and exiting with code 0 would make the
+   * postmaster unregister it, leaving every listener on the node without notifications.
+   */
+  @Test
+  public void testCancelPollerKeepsDeliveringNotifications() throws Exception {
+    final String channel = "poller_cancel";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+
+      int pollerPid = getPollerPid(listenerStmt);
+      LOG.info("Notifications poller PID: " + pollerPid);
+
+      Row cancelled = getSingleRow(listenerStmt,
+          "SELECT pg_cancel_backend(" + pollerPid + ")");
+      assertTrue("pg_cancel_backend should signal the poller", cancelled.getBoolean(0));
+
+      // Give a poller that wrongly reacted to SIGINT time to exit.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      List<Row> pollers = getRowList(listenerStmt,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("The poller should keep running after pg_cancel_backend",
+          1, pollers.size());
+      assertEquals("The poller should not have been restarted",
+          pollerPid, pollers.get(0).getInt(0).intValue());
+
+      try (Connection notifierConn = getConnectionBuilder().connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", 'after_cancel'");
+      }
+
+      waitForNotification(listenerConn, channel, "after_cancel");
     }
   }
 
@@ -2152,7 +2188,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * pg_yb_notifications also takes plain SQL writes. A malformed extra_options value must not
-   * break the poller (an error there terminates every listener on the node).
+   * break the poller (an error there terminates every listener on the node). The data is a
+   * well-formed empty channel and payload, so the poller gets as far as extra_options.
    */
   @Test
   public void testPollerToleratesMalformedExtraOptions() throws Exception {
@@ -2172,7 +2209,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           stmt.execute("INSERT INTO pg_yb_notifications"
               + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data,"
               + " extra_options) VALUES (gen_random_uuid(), gen_random_uuid(), 0, 0, false,"
-              + " '\\x00', " + opts + ")");
+              + " '\\x0000', " + opts + ")");
         }
       }
 
@@ -2295,6 +2332,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   @Test
   public void testSlotCleanupOnTServerDecommission() throws Exception {
     final String channel = "decommission_test";
+    // Only this test needs the short lease. Set for the whole class, it expires on every TServer
+    // whenever the master stalls longer, e.g. the multi-second snapshot flush in
+    // testListenNotifyWithDbClone on sanitizer builds, and their OID allocations fail.
+    restartClusterWithFlags(
+        Collections.singletonMap("xcluster_guarded_lease_duration_ms",
+            String.valueOf(XCLUSTER_GUARDED_LEASE_DURATION_MS)),
+        Collections.emptyMap());
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
     YBClient client = miniCluster.getClient();
 
     markClusterNeedsRecreation();
@@ -2361,6 +2406,74 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       assertTrue("Notifications replication slot should have been deleted after decommission,"
           + " but found: " + slotsAfter, slotsAfter.isEmpty());
       LOG.info("Notifications slot successfully cleaned up after decommission");
+    }
+  }
+
+  /**
+   * The notifications poller must not poll the sys catalog tablet on the master leader: otherwise
+   * every LISTEN depends on the master leader being available (#36720).
+   */
+  @Test
+  public void testPollerDoesNotPollMaster() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listenerConn, CHANNEL, PAYLOAD);
+
+      // An idle poller polls every yb_notifications_poll_sleep_duration_empty_ms (100ms).
+      long before = getTotalMasterGetChangesCount();
+      Thread.sleep(2000);
+      long delta = getTotalMasterGetChangesCount() - before;
+      assertEquals("GetChanges RPCs served by the masters while a listener idles", 0, delta);
+    }
+  }
+
+  /**
+   * Notifications slots use pub refresh instead of polling the catalog. Notifications must keep
+   * flowing across pub refreshes.
+   */
+  @Test
+  public void testNotificationsAcrossPubRefreshes() throws Exception {
+    setPubRefreshIntervalSecs("1");
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      // The interval is read only when the next refresh is scheduled, and the schedule lives with
+      // the slot. A slot left by an earlier test would keep its next refresh ~900s away, so make
+      // the LISTEN create a new slot.
+      waitForPollerAndSlotCleanup(listenerConn);
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      for (int i = 0; i < 3; i++) {
+        String payload = "after_refresh_" + i;
+        try (Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + payload + "'");
+        }
+        waitForNotification(listenerConn, CHANNEL, payload);
+        Thread.sleep(1500);
+      }
+    } finally {
+      setPubRefreshIntervalSecs("900");
+    }
+  }
+
+  private long getTotalMasterGetChangesCount() throws Exception {
+    long total = 0;
+    for (MiniYBDaemon master : miniCluster.getMasters().values()) {
+      total += new Metrics(master.getLocalhostIP(), master.getWebPort(), "server")
+          .getHistogram("handler_latency_yb_cdc_CDCService_GetChanges").totalCount;
+    }
+    return total;
+  }
+
+  private void setPubRefreshIntervalSecs(String value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "cdcsdk_publication_list_refresh_interval_secs", value);
     }
   }
 

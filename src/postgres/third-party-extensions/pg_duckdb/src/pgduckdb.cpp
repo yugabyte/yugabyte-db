@@ -28,6 +28,10 @@ _PG_init(void) {
 	}
 
 	pgduckdb::InitGUC();
+	/* YB: after InitGUC, which sets duckdb.temporary_directory */
+	if (!IsUnderPostmaster) {
+		pgduckdb::YbRemoveStaleSpillFolders();
+	}
 	pgduckdb::InitGUCHooks();
 	DuckdbInitHooks();
 	DuckdbInitNode();

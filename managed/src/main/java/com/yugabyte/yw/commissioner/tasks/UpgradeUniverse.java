@@ -471,8 +471,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               }
 
               CreateRootVolumes.Params params = new CreateRootVolumes.Params();
-              UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-              fillCreateParamsForNode(params, userIntent, node);
+              Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
+              fillCreateParamsForNode(
+                  cluster.getProviderUUIDForNode(node), params, cluster.userIntent, node);
               params.numVolumes = numVolumes;
               params.setMachineImage(machineImage);
               params.bootDisksPerNodePerZone = replacementRootVolumes;

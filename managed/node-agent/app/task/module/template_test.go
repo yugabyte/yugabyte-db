@@ -277,7 +277,11 @@ func TestChronyTemplate(t *testing.T) {
 			// sed/grep take the file after a quoted arg, echo after >>.
 			for _, old := range []string{"' /etc/chrony.conf", ">> /etc/chrony.conf"} {
 				if strings.Contains(output, old) {
-					t.Fatalf("Expected writes to go through CHRONY_CONF, found %q:\n%s", old, output)
+					t.Fatalf(
+						"Expected writes to go through CHRONY_CONF, found %q:\n%s",
+						old,
+						output,
+					)
 				}
 			}
 			if strings.Contains(output, ntsRm) != tc.wantRm {

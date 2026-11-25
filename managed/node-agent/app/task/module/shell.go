@@ -99,7 +99,7 @@ func RedactOutput(output string) string {
 		nameEnd := pos + i + len("passwd")
 		pos = nameEnd
 		if !strings.HasSuffix(output[:nameEnd], "ldapbindpasswd") &&
-			!strings.HasSuffix(output[:nameEnd], "ycql_ldap_bind_passwd") {
+			!hasYcqlLdapBindPasswdSuffix(output[:nameEnd]) {
 			continue
 		}
 		eq := nameEnd
@@ -126,6 +126,25 @@ func RedactOutput(output string) string {
 	}
 	sb.WriteString(output[copied:])
 	return sb.String()
+}
+
+// hasYcqlLdapBindPasswdSuffix reports whether s ends with ycql_ldap_bind_passwd, any of whose
+// underscores may be dashes: gflags reads a dash in a flag name as an underscore.
+func hasYcqlLdapBindPasswdSuffix(s string) bool {
+	const name = "ycql_ldap_bind_passwd"
+	if strings.HasSuffix(s, name) {
+		return true
+	}
+	if len(s) < len(name) {
+		return false
+	}
+	s = s[len(s)-len(name):]
+	for i := 0; i < len(name); i++ {
+		if s[i] != name[i] && (name[i] != '_' || s[i] != '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // RunCmd runs the command in the command info.

@@ -3106,6 +3106,7 @@ typedef struct YbPrefetcherStarterNoCache
 	/* YbPrefetcherStarterFunctor have to be the first field due to cast */
 	YbPrefetcherStarterFunctor functor;
 	YbcPgSysTablePrefetchKind kind;
+	bool		part_of_connection_prefetch;
 } YbPrefetcherStarterNoCache;
 
 static bool
@@ -3113,7 +3114,8 @@ YbPrefetcherStarterNoCacheCall(YbPrefetcherStarterFunctor *functor)
 {
 	const YbPrefetcherStarterNoCache *this = (const YbPrefetcherStarterNoCache *) functor;
 
-	YBCStartSysTablePrefetchingNoCache(this->kind);
+	YBCStartSysTablePrefetchingNoCache(this->kind,
+									   this->part_of_connection_prefetch);
 	return false;
 }
 
@@ -3423,6 +3425,7 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 			.call = &YbPrefetcherStarterNoCacheCall
 		},
 			.kind = kind,
+			.part_of_connection_prefetch = is_full_connection_start,
 	};
 
 	/*
@@ -4287,11 +4290,11 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	 *
 	 * Beyond the core tables this round adds only pg_auth_members and pg_db_role_setting, and
 	 * both are names ysql_catalog_preload_additional_table_list accepts. An operator who lists
-	 * them leaves nothing registered here, YbPrefetch issues no request, and with no request
-	 * there is nothing to cache and no version recorded -- the stale read then stays unavailable
-	 * on that node, in the preload configuration it is meant for. Issuing the round regardless
-	 * would need pggate to accept a prefetch with no tables registered, which its Prefetch
-	 * DCHECKs against.
+	 * them leaves nothing registered here and YbPrefetch issues no request. With no request
+	 * there is nothing to cache, no version recorded, and nothing carrying
+	 * completes_connection_prefetch -- the stale read stays unavailable on that node, in the
+	 * preload configuration it is meant for, and this connection's claim on the database is held
+	 * until the backend sends something that is not part of a prefetch.
 	 */
 	status = YbPrefetch(prefetcher, ctx->completes_connection_prefetch);
 	if (status)
@@ -7583,8 +7586,21 @@ YbTriggerInternalRelcacheBuild()
 {
 	const char *dbname = YBCGetDatabaseName(MyDatabaseId);
 	MemoryContext oldcxt;
-
 	int			i;
+
+	/*
+	 * This is the first live (non-prefetched) read of pg_database during
+	 * connection startup. The post-lock recheck in InitPostgres reads the
+	 * prefetched copy, which predates the database lock, so a DROP DATABASE
+	 * that committed while this backend was starting is first visible here.
+	 * Fail just this connection with FATAL, as that recheck does.
+	 */
+	if (dbname == NULL)
+		ereport(FATAL,
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database %u does not exist", MyDatabaseId),
+				 errdetail("It seems to have just been dropped.")));
+
 	for (i = 0; i < 20; i++)
 	{
 		/* Trigger an internal connection to rebuild the relcache file. */

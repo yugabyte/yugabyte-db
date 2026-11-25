@@ -601,13 +601,19 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
-/* Element of ybNotifsPollerPendingEntries. */
+/*
+ * Element of ybNotifsPollerPendingEntries.
+ *
+ * A whole transaction is buffered until its COMMIT, so only qe.length bytes of
+ * qe are allocated: sizeof(AsyncQueueEntry) is about 8 KB, while a typical
+ * entry is under 100 bytes.  qe must therefore stay the last field.
+ */
 typedef struct YbNotifsPollerPendingEntry
 {
-	AsyncQueueEntry qe;
 	/* sort keys, see ybNotifsPollerPendingEntryCmp */
 	char		docdb_txn_id[37];	/* empty if the row has none */
 	int32		seq;
+	AsyncQueueEntry qe;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -768,7 +774,7 @@ static int	ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b);
 static void ybFillBeginAsyncQueueEntry(AsyncQueueEntry *qe, TransactionId xid);
 static bool ybIsAsyncQueueBeginEntry(const AsyncQueueEntry *qe);
 static void ybAsyncQueueHandleBeginEntry(const AsyncQueueEntry *qe);
-static void ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
+static bool ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 									  AsyncQueueEntry *qe, int32 *seq);
 static void ybSignalAllListeners(void);
 
@@ -2028,7 +2034,12 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	while (nextNotify != NULL)
 	{
 		if (IsYugaByteEnabled())
-			qe = ((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
+		{
+			YbNotifsPollerPendingEntry *entry = lfirst(nextNotify);
+
+			Assert(entry->qe.length <= sizeof(AsyncQueueEntry));
+			memcpy(&qe, &entry->qe, entry->qe.length);
+		}
 		else
 		{
 			Notification *n = (Notification *) lfirst(nextNotify);
@@ -3378,7 +3389,16 @@ YbNotifsPollerMain(Datum main_arg)
 {
 	/* Set up signal handlers */
 	pqsignal(SIGHUP, SignalHandlerForConfigReload);
-	pqsignal(SIGINT, SignalHandlerForShutdownRequest);
+
+	/*
+	 * Ignore SIGINT (e.g. pg_cancel_backend()). The poller has no query to
+	 * cancel, and it can't skip the transaction it is processing without
+	 * losing notifications. Exiting with code 0 would make the postmaster
+	 * unregister it, silently stopping delivery on the node. Like the
+	 * bgwriter and walreceiver, which also ignore SIGINT, it is stopped with
+	 * SIGTERM.
+	 */
+	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, die);
 	/* SIGQUIT handler was already set up by InitPostmasterChild */
 
@@ -3537,9 +3557,6 @@ ybNotifsPollerLoop()
 			ProcessConfigFile(PGC_SIGHUP);
 		}
 
-		if (ShutdownRequestPending)
-			proc_exit(0);
-
 		/*
 		 * YBCReadRecord sleeps using yb_walsender_poll_sleep_duration_*_ms.
 		 * Override them with notifications poller specific values after a
@@ -3669,11 +3686,18 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 static void
 ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
-	YbNotifsPollerPendingEntry *entry =
-		palloc0(sizeof(YbNotifsPollerPendingEntry));
+	AsyncQueueEntry qe;
+	int32		seq;
+	MemoryContext oldcontext;
+	YbNotifsPollerPendingEntry *entry;
 
-	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq);
+	if (!ybRecordToAsyncQueueEntry(record, &qe, &seq))
+		return;
+
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
+	memcpy(&entry->qe, &qe, qe.length);
+	entry->seq = seq;
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT &&
 		record->has_docdb_txn_id)
 		strlcpy(entry->docdb_txn_id, record->docdb_txn_id,
@@ -3939,9 +3963,10 @@ ybNotifsPollerAddPendingEntriesToQueue(void)
 
 /*
  * Fill the AsyncQueueEntry at *qe using the record received from the
- * replication slot.
+ * replication slot.  Returns false, leaving *qe unfilled, for a row whose data
+ * is not a NUL-terminated channel followed by a NUL-terminated payload.
  */
-static void
+static bool
 ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 						  AsyncQueueEntry *qe, int32 *seq)
 {
@@ -3950,7 +3975,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_BEGIN)
 	{
 		ybFillBeginAsyncQueueEntry(qe, (TransactionId) record->xid);
-		return;
+		return true;
 	}
 
 	HeapTuple	tuple = YBGetHeapTuplesForRecord(record);
@@ -3975,7 +4000,26 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	const void *data = DatumGetPointer(data_datum);
 	size_t		datalen = VARSIZE_ANY_EXHDR(data);
 
-	memcpy(qe->data, VARDATA_ANY(data), datalen);
+	const char *bytes = VARDATA_ANY(data);
+
+	/*
+	 * The table also takes plain SQL writes.  Listeners read the channel and
+	 * payload with strlen, so both must end inside the entry.
+	 */
+	if (datalen < 2 || datalen > NAMEDATALEN + NOTIFY_PAYLOAD_MAX_LENGTH ||
+		bytes[datalen - 1] != '\0' ||
+		memchr(bytes, '\0', datalen - 1) == NULL)
+	{
+		ereport(WARNING,
+				(errmsg("notifications poller skipped a malformed row of "
+						"pg_yb_notifications (xid %u, data length %zu)",
+						(TransactionId) record->xid, datalen)));
+		pfree(desc);
+		pfree(tuple);
+		return false;
+	}
+
+	memcpy(qe->data, bytes, datalen);
 
 	/*
 	 * Both AsyncQueueEntryEmptySize and datalen count the two null terminators
@@ -4015,6 +4059,7 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	pfree(desc);
 	pfree(tuple);
+	return true;
 }
 
 /* Build the extra_options value of a pg_yb_notifications row. */

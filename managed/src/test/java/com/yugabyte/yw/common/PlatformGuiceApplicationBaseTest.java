@@ -14,9 +14,14 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import org.apache.pekko.stream.Materializer;
@@ -26,7 +31,14 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.rules.TestRule;
+import org.junit.runners.model.Statement;
 import org.mockito.Mockito;
+import org.mockito.internal.junit.UnnecessaryStubbingsReporter;
+import org.mockito.internal.progress.MockingProgressImpl;
+import org.mockito.internal.progress.ThreadSafeMockingProgress;
+import org.mockito.listeners.MockCreationListener;
 import org.pac4j.play.LogoutController;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -102,6 +114,98 @@ public abstract class PlatformGuiceApplicationBaseTest {
   // Whether the current test method is running against the shared reusable app (vs a freshly built
   // per-method app). Controls teardown behaviour.
   private boolean usingReusableApp;
+
+  // The mocks the running test created on the test thread: in field initializers, @Before methods
+  // and the test body. See releaseTestMocks.
+  private static final List<Object> testMocks = new ArrayList<>();
+  private static final MockCreationListener testMockCollector =
+      (mock, settings) -> testMocks.add(mock);
+  private static boolean testRunning;
+
+  {
+    // Runs before the subclass field initializers. Mocks created before the test instance belong
+    // to the class and are left alone. A running test can build another instance of this class
+    // (TestPostgres does, to migrate the template database), and that must not drop its mocks.
+    if (!testRunning) {
+      testMocks.clear();
+    }
+  }
+
+  /**
+   * Releases the mocks the test created. Otherwise Mockito holds them until the class ends, with
+   * every call recorded on them and every stub, and through them the test instance and its
+   * application. A class with many tests then runs out of heap. Two things hold a mock:
+   *
+   * <ul>
+   *   <li>The inline mock maker never drops a mock that one of its own stubbed answers can reach. A
+   *       reset removes the stubs and the recorded calls.
+   *   <li>The strict MockitoJUnitRunner lists every mock of the class, to report unused stubs at
+   *       the end. A listed spy keeps the object it wraps even after a reset, so the mocks are
+   *       taken off that list, and the report no longer covers them.
+   * </ul>
+   *
+   * <p>This is the outermost rule, so it runs after the {@code @After} methods and after Mockito's
+   * own rule, which reads the stubs when the test ends.
+   */
+  @Rule(order = Integer.MIN_VALUE)
+  public final TestRule releaseTestMocks =
+      (base, description) ->
+          new Statement() {
+            @Override
+            public void evaluate() throws Throwable {
+              testRunning = true;
+              Throwable failure = null;
+              try {
+                base.evaluate();
+              } catch (Throwable t) {
+                failure = t;
+              }
+              testRunning = false;
+              List<Object> mocks = new ArrayList<>(testMocks);
+              testMocks.clear();
+              removeFromStrictRunner(mocks);
+              try {
+                Mockito.reset(mocks.toArray());
+              } catch (RuntimeException e) {
+                // Mockito refuses when the test left a stubbing or a verification unfinished. The
+                // test's own failure is the one to report.
+                if (failure == null) {
+                  failure = e;
+                } else {
+                  failure.addSuppressed(e);
+                }
+              }
+              if (failure != null) {
+                throw failure;
+              }
+            }
+          };
+
+  // Mockito has no API for this, so it reads two private fields. A Mockito upgrade that renames
+  // them fails every test here, which is better than the heap growth coming back unseen.
+  private static void removeFromStrictRunner(List<Object> mocks) {
+    Set<Object> released = identitySet(mocks);
+    try {
+      Field listeners = MockingProgressImpl.class.getDeclaredField("listeners");
+      listeners.setAccessible(true);
+      Field listed = UnnecessaryStubbingsReporter.class.getDeclaredField("mocks");
+      listed.setAccessible(true);
+      for (Object listener : (Set<?>) listeners.get(ThreadSafeMockingProgress.mockingProgress())) {
+        if (listener instanceof UnnecessaryStubbingsReporter) {
+          ((List<?>) listed.get(listener)).removeIf(released::contains);
+        }
+      }
+    } catch (ReflectiveOperationException | ClassCastException e) {
+      throw new IllegalStateException(
+          "Mockito internals changed: update PlatformGuiceApplicationBaseTest", e);
+    }
+  }
+
+  private static Set<Object> identitySet(Collection<?> objects) {
+    Set<Object> set = Collections.newSetFromMap(new IdentityHashMap<>());
+    set.addAll(objects);
+    return set;
+  }
 
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
     mockHealthChecker = mock(HealthChecker.class);
@@ -232,6 +336,15 @@ public abstract class PlatformGuiceApplicationBaseTest {
   @BeforeClass
   public static void clearMocks() {
     Mockito.framework().clearInlineMocks();
+    // Mockito rejects a second listener of the same type on a thread, so remove before adding.
+    Mockito.framework().removeListener(testMockCollector);
+    Mockito.framework().addListener(testMockCollector);
+  }
+
+  @AfterClass
+  public static void stopCollectingTestMocks() {
+    Mockito.framework().removeListener(testMockCollector);
+    testMocks.clear();
   }
 
   @Before
@@ -249,7 +362,11 @@ public abstract class PlatformGuiceApplicationBaseTest {
       if (reusableApp == null || !className.equals(reusableAppClass)) {
         // First method of this reusable class (or a stale app from a previous class): build once.
         stopReusableApplication();
+        int mocksBeforeBuild = testMocks.size();
         Application built = provideApplication();
+        // The mocks bound into the application belong to the class, not to this test: the ones
+        // provideApplication() creates, and below the ones held in fields.
+        testMocks.subList(mocksBeforeBuild, testMocks.size()).clear();
         TestServer server = Helpers.testServer(providePort(), built);
         server.start();
         reusableApp = built;
@@ -258,6 +375,7 @@ public abstract class PlatformGuiceApplicationBaseTest {
         reusableAppClass = className;
         app = built;
         reusableMockFields = snapshotMockFields();
+        testMocks.removeIf(identitySet(reusableMockFields.values())::contains);
       } else {
         // Reuse the app built for the first method: push the captured mock instances into this
         // (fresh) test instance so the test stubs the very objects the application holds.

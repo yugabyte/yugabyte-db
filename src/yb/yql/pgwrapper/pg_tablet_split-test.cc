@@ -11,9 +11,11 @@
 // under the License.
 //
 
+#include <map>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <sstream>
 #include <unordered_set>
 #include <vector>
 
@@ -66,6 +68,7 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/scope_exit.h"
@@ -84,6 +87,7 @@ DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_scan_choices_variable_bloom_filter);
+DECLARE_bool(legacy_ybctid_batch_pagination);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(use_cross_split_key_detection_algorithm);
 DECLARE_bool(ysql_enable_packed_row);
@@ -103,6 +107,7 @@ DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_pause_apply_tablet_split);
 DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_pause_perform_with_paging_state);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_bool(TEST_skip_post_split_compaction);
@@ -638,6 +643,280 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   counter.join();
 
   ASSERT_OK(WaitForSplitCompletion(table_id));
+}
+
+// Runs an index scan over a wide row table and splits the main table's only tablet in the middle.
+// An index scan fetches the main table rows by batched ybctid; wide payloads push a single batch
+// past the response size limit, so the fetch has to paginate mid-batch.
+class PgWideRowIndexScanSplitTest : public PgTabletSplitTest {
+ protected:
+  // k, i, length(payload)
+  using Row = std::tuple<int32_t, int32_t, int32_t>;
+
+  static constexpr int32_t kNumRows = 400;
+  static constexpr int32_t kPayloadSize = 64 * 1024;
+  // Below kNumRows, so the index scan spans several pages. That gives the scan a continuation
+  // request to be parked on, which is how the split is made to land mid-scan.
+  static constexpr int32_t kFetchRowLimit = 100;
+  // Well below kFetchRowLimit * kPayloadSize, so one index page's worth of main table rows does not
+  // fit into a single response and the batched ybctid fetch is forced to paginate.
+  static constexpr size_t kFetchSizeLimit = 1_MB;
+
+  static constexpr std::string_view kQuery {
+      "/*+ IndexScan(t t_i_idx) */ SELECT k, i, length(payload) FROM t ORDER BY i"};
+
+  // Make comma separated list of values from start to end for an IN clause.
+  static std::string MakeInValues(int32_t start, int32_t end) {
+    std::ostringstream values;
+    for (int32_t i = start; i <= end; ++i) {
+      if (i > start) {
+        values << ", ";
+      }
+      values << i;
+    }
+    return values.str();
+  }
+
+  Result<TableId> CreateWideRowTableWithIndex(PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute(
+        "CREATE TABLE t(k INT, i INT, payload TEXT, PRIMARY KEY (k ASC))"));
+    RETURN_NOT_OK(conn->Execute("CREATE INDEX t_i_idx ON t(i ASC)"));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t SELECT i, i * 2 % 201, repeat('x', $0) FROM generate_series(0, $1) i",
+        kPayloadSize, kNumRows - 1));
+
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName("t"));
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK_EQ(peers.size(), 1, IllegalState, "Expected the table to have a single tablet");
+    RETURN_NOT_OK(WaitForIntentsAppliedAndFlush());
+    RETURN_NOT_OK(WaitForAnySstFiles(peers.front()));
+    return table_id;
+  }
+
+  // Returns the outcome of the scan itself; infrastructure failures are returned as their own
+  // statuses, so callers expecting the scan to fail should also check the error message.
+  Result<std::vector<Row>> IndexScanAcrossSplit(
+      PGConn* conn, const TableId& table_id,
+      std::string_view query = kQuery, std::string_view index = "t_i_idx",
+      int32_t fetch_row_limit = kFetchRowLimit, size_t fetch_size_limit = kFetchSizeLimit) {
+    RETURN_NOT_OK(conn->ExecuteFormat("SET yb_fetch_row_limit = $0", fetch_row_limit));
+    RETURN_NOT_OK(conn->ExecuteFormat("SET yb_fetch_size_limit = $0", fetch_size_limit));
+
+    // Also warms up the relcache, so that the request parked below is the scan's own rather than a
+    // catalog read issued by the same backend.
+    const auto plan = VERIFY_RESULT(conn->FetchAllAsString(Format("EXPLAIN $0", query)));
+    SCHECK_FORMAT(
+        plan.find(Format("Index Scan using $0 on t", index)) != std::string::npos, IllegalState,
+        "Query does not use an index scan: $0", plan);
+
+    Result<std::vector<Row>> rows = STATUS(Uninitialized, "");
+    {
+      StringWaiterLogSink pause_waiter("Pausing due to flag TEST_pause_perform_with_paging_state");
+      TestThreadHolder threads;
+      // Declared after `threads` so it runs before they are joined: an early return has to release
+      // the parked request, otherwise joining the scan thread would hang.
+      auto resume_on_exit = ScopeExit([] {
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_perform_with_paging_state) = false;
+      });
+
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_perform_with_paging_state) = true;
+      threads.AddThreadFunctor([conn, &rows, &query] {
+        rows = conn->FetchRows<int32_t, int32_t, int32_t>(static_cast<std::string>(query));
+      });
+
+      // Parks on the continuation request for the second index page. By then the first page's rows
+      // have been fetched from the parent tablet, so the split lands in the middle of the scan
+      // rather than before or after it.
+      RETURN_NOT_OK(pause_waiter.WaitFor(60s * kTimeMultiplier));
+
+      RETURN_NOT_OK(SplitSingleTablet(table_id));
+      RETURN_NOT_OK(WaitForSplitCompletion(table_id));
+    }
+    return rows;
+  }
+
+  static void CheckAllRowsOnce(const std::vector<Row>& rows, int32_t expected_num_rows) {
+    std::map<int32_t, int> counts;
+    for (const auto& [k, i, payload_length] : rows) {
+      ++counts[k];
+    }
+    int duplicates = 0;
+    int missing = 0;
+    for (int32_t n = 0; n < expected_num_rows; ++n) {
+      auto it = counts.find(n);
+      if (it == counts.end()) {
+        ++missing;
+      } else {
+        duplicates += it->second - 1;
+      }
+    }
+    LOG(INFO) << "Rows: " << rows.size() << ", duplicates: " << duplicates
+              << ", missing: " << missing;
+    ASSERT_EQ(duplicates, 0);
+    ASSERT_EQ(missing, 0);
+    ASSERT_EQ(rows.size(), static_cast<size_t>(expected_num_rows));
+  }
+};
+
+// Ordered scan by secondary index.
+
+// New pagination correctly handles scan across a split.
+TEST_F(PgWideRowIndexScanSplitTest, BatchAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Legacy pagination fails if encounters missing keys.
+TEST_F(PgWideRowIndexScanSplitTest, LegacyBatchFailsAfterSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto result = IndexScanAcrossSplit(&conn, table_id);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().ToString(), "Some keys were not found, it is unsafe to paginate");
+}
+
+// The case when batch splits in the middle of the scan.
+// Higher limit allows to read all the rows from the index, so the scan stops for tablet split in
+// the middle of the base table scan.
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchSplitIndexed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto rows = ASSERT_RESULT(
+      IndexScanAcrossSplit(&conn, table_id, kQuery, "t_i_idx", kNumRows));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Ordered pagination fails in legacy mode.
+TEST_F(PgWideRowIndexScanSplitTest, LegacyMidBatchSplitIndexed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto result = IndexScanAcrossSplit(&conn, table_id, kQuery, "t_i_idx", kNumRows);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().ToString(), "Some keys were not found, it is unsafe to paginate");
+}
+
+class PgWideRowIndexScanSplitTestP :
+    public PgWideRowIndexScanSplitTest, public ::testing::WithParamInterface<bool> {
+ protected:
+  void SetUp() override {
+    PgWideRowIndexScanSplitTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = GetParam();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(PgWideRowIndexScanSplit, PgWideRowIndexScanSplitTestP, ::testing::Bool());
+
+// Unordered scan pagination is safe, as the keys are ordered internally. Once scan reaches a key
+// from the sibling, no key will be found and scan will proceed to the end of the keys to be
+// forwarded to the next tablet without popping.
+TEST_P(PgWideRowIndexScanSplitTestP, BatchAfterSplitUnordered) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const std::string query =
+      "/*+ IndexScan(t t_i_idx) */ SELECT k, i, length(payload) FROM t WHERE i >= 0";
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// The IN condition on PK is converted to a list of unordered keys.
+// Scan by PK starts before the split, gets stopped when it paginates, then continues to scan
+// children tablets. Tests make sure there are no gaps and duplicate rows due to overlap.
+
+// Due to low limit scan paginates early and continues with the lower child tablet.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchLowerSplitIn) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(0, kNumRows - 1));
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Higher limits make the scan to paginate when on the upper child tablet.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchUpperSplitIn) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(0, kNumRows - 1));
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Same as above, with missing keys in the IN clause.
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchLowerSplitInWithMissing) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(-1, kNumRows));
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+TEST_P(PgWideRowIndexScanSplitTestP, MidBatchUpperSplitInWithMissing) {
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  auto query = Format(
+      "SELECT k, i, length(payload) FROM t WHERE k IN ($0)", MakeInValues(-1, kNumRows));
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// For some reason BNL sets up forward direction on the inner scan.
+// We skip legacy tests for those cases, since it fails very first pagination attempt.
+// No chance to catch the scan in the middle to split the tablet.
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchLowerSplitOrderedBNL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto query = Format(
+      "/*+ YbBatchedNL(t v) */ SELECT k, i, length(payload) "
+      "FROM t, generate_series(-1, $0) v WHERE k = v", kNumRows);
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(&conn, table_id, query, "t_pkey"));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
+}
+
+// Same as above, but with fetch size to fit the whole lower child tablet, and a part of the upper
+// child tablet into one page
+TEST_F(PgWideRowIndexScanSplitTest, MidBatchUpperSplitOrderedBNL) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_legacy_ybctid_batch_pagination) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_id = ASSERT_RESULT(CreateWideRowTableWithIndex(&conn));
+
+  const auto query = Format(
+      "/*+ YbBatchedNL(t v) */ SELECT k, i, length(payload) "
+      "FROM t, generate_series(-1, $0) v WHERE k = v", kNumRows);
+  const size_t fetch_size_limit = (kNumRows - 1) * kPayloadSize;
+  const auto rows = ASSERT_RESULT(IndexScanAcrossSplit(
+      &conn, table_id, query, "t_pkey", kNumRows, fetch_size_limit));
+  ASSERT_NO_FATALS(CheckAllRowsOnce(rows, kNumRows));
 }
 
 #ifndef NDEBUG

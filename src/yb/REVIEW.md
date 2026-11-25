@@ -15,6 +15,7 @@ Flag new code that departs from the C++ rules in the [coding style guide](../../
 - `ASSERT_OK` and `EXPECT_OK` are do/while macros and accept no `<<` streaming; a suggestion to add one is itself a bug.
 - Prefer `MiniCluster` to `ExternalMiniCluster` unless the test needs separate processes.
 - Test-only flags and functions carry the `TEST_` prefix, and a delay flag treats 0 as "off".
+- In a `YBTest` fixture, a missing end-of-test gflag reset is not a finding unless setting the flag ran its `REGISTER_CALLBACK`, which the restore does not rerun.
 
 ## Concurrency
 
