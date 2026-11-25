@@ -217,7 +217,7 @@ struct ApplyStateWithCommitInfo {
   ApplyTransactionState state;
   HybridTime commit_ht;
   OpId apply_op_id;
-  // Invalid when missing; older versions did not store it.
+  // Invalid if the stored state was written by a version that did not store it.
   HybridTime log_ht;
 
   template <class PB>
