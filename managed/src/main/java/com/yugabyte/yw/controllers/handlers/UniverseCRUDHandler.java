@@ -222,6 +222,7 @@ public class UniverseCRUDHandler {
 
   @Data
   public static class UpdateOptionsState {
+    private boolean hasResizeChanges;
     private Set<String> resizeRestrictions = new HashSet<>();
     private Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions = new HashSet<>();
   }
@@ -343,6 +344,7 @@ public class UniverseCRUDHandler {
         result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
       }
     }
+    result.hasResizeChanges = !ResizeNodeParams.NOTHING_CHANGED.equals(smartResizeRestriction);
     if (smartResizePossible
         && nonNodeChanges.isEmpty()
         && samePlacement
@@ -357,19 +359,14 @@ public class UniverseCRUDHandler {
         result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
     } else {
-      if (!ResizeNodeParams.NOTHING_CHANGED.equals(smartResizeRestriction)) {
-        if (smartResizeRestriction != null) {
-          result.resizeRestrictions.add(smartResizeRestriction);
-        }
-        if (!samePlacement) {
-          result.resizeRestrictions.add("Placement has changed");
-        }
-        result.resizeRestrictions.addAll(nodeSettingsChanges);
-        result.resizeRestrictions.addAll(nonNodeChanges);
-      } else {
-        // If there are no resize changes - we don't need additional reasoning.
+      if (result.hasResizeChanges && smartResizeRestriction != null) {
         result.resizeRestrictions.add(smartResizeRestriction);
       }
+      if (!samePlacement) {
+        result.resizeRestrictions.add("Placement has changed");
+      }
+      result.resizeRestrictions.addAll(nodeSettingsChanges);
+      result.resizeRestrictions.addAll(nonNodeChanges);
     }
     return result;
   }

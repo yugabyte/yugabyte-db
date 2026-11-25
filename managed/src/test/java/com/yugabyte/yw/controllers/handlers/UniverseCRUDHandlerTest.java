@@ -886,10 +886,12 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
             specProviderCluster(providerUUID), legacyProviderCluster(providerUUID)));
   }
 
-  // Changing a provider spec field that no other check covers (here the access key) must not be
-  // reported as a provider change or force an UPDATE.
-  @Test
-  public void getUpdateOptions_specFieldChangeIsNotProviderChange() {
+  /*--- Tests for getUpdateOptions ---*/
+
+  private static final String TAGS_CHANGED = "There are changes in tags";
+
+  // Universe whose primary cluster uses a provider specification (multicloud-style intent).
+  private Universe createSpecUniverse() {
     Universe universe = ModelFactory.createFromConfig(provider, "spec-u", "r1-az1-3-3");
     universe =
         Universe.saveDetails(
@@ -903,9 +905,20 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
                   .setAccessCode("demo-access");
             });
     assertTrue(universe.getUniverseDetails().getPrimaryCluster().userIntent.isMulticloudSupport());
+    return universe;
+  }
 
-    UniverseDefinitionTaskParams taskParams =
-        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+  // A separate copy of the universe details to modify as the edit request.
+  private UniverseDefinitionTaskParams editParams(Universe universe) {
+    return Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+  }
+
+  // Changing a provider spec field that no other check covers (here the access key) must not be
+  // reported as a provider change or force an UPDATE.
+  @Test
+  public void getUpdateOptions_specFieldChangeIsNotProviderChange() {
+    Universe universe = createSpecUniverse();
+    UniverseDefinitionTaskParams taskParams = editParams(universe);
     Cluster cluster = taskParams.getPrimaryCluster();
     cluster.userIntent.getProviderSpecification(provider.getUuid()).setAccessKeyCode("other");
 
@@ -913,11 +926,91 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
         UniverseCRUDHandler.getUpdateOptions(
             taskParams, ClusterOperationType.EDIT, cluster, universe);
 
+    assertFalse(state.isHasResizeChanges());
     assertFalse(
         state.getResizeRestrictions().toString(),
         state.getResizeRestrictions().contains(PROVIDER_SPECS_CHANGED));
     assertFalse(
         state.getUpdateOptions().toString(),
         state.getUpdateOptions().contains(UpdateOptions.UPDATE));
+  }
+
+  // With nothing changed there are no resize changes and "Nothing changed" is no longer reported
+  // as a restriction.
+  @Test
+  public void getUpdateOptions_noChanges() {
+    Universe universe = createSpecUniverse();
+    UniverseDefinitionTaskParams taskParams = editParams(universe);
+    Cluster cluster = taskParams.getPrimaryCluster();
+
+    UniverseCRUDHandler.UpdateOptionsState state =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, ClusterOperationType.EDIT, cluster, universe);
+
+    assertFalse(state.isHasResizeChanges());
+    assertTrue(state.getResizeRestrictions().toString(), state.getResizeRestrictions().isEmpty());
+  }
+
+  // Non-resize changes are reported as restrictions even when there is nothing to resize.
+  @Test
+  public void getUpdateOptions_nonResizeChangeWithoutResizeChanges() {
+    Universe universe = createSpecUniverse();
+    UniverseDefinitionTaskParams taskParams = editParams(universe);
+    Cluster cluster = taskParams.getPrimaryCluster();
+    TestUtils.specificationProviderInitializer(cluster.userIntent, provider.getUuid())
+        .setInstanceTags(new HashMap<>(Map.of("key", "value")));
+
+    UniverseCRUDHandler.UpdateOptionsState state =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, ClusterOperationType.EDIT, cluster, universe);
+
+    assertFalse(state.isHasResizeChanges());
+    assertEquals(Set.of(TAGS_CHANGED), state.getResizeRestrictions());
+    assertTrue(
+        state.getUpdateOptions().toString(),
+        state.getUpdateOptions().contains(UpdateOptions.UPDATE));
+  }
+
+  // A resize-only change allows smart resize and is still flagged as a resize change.
+  @Test
+  public void getUpdateOptions_resizeOnlyChange() {
+    Universe universe = createSpecUniverse();
+    UniverseDefinitionTaskParams taskParams = editParams(universe);
+    Cluster cluster = taskParams.getPrimaryCluster();
+    TestUtils.specificationProviderInitializer(cluster.userIntent, provider.getUuid())
+        .setCGroupSize(2048);
+
+    UniverseCRUDHandler.UpdateOptionsState state =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, ClusterOperationType.EDIT, cluster, universe);
+
+    assertTrue(state.isHasResizeChanges());
+    assertTrue(state.getResizeRestrictions().toString(), state.getResizeRestrictions().isEmpty());
+    assertTrue(
+        state.getUpdateOptions().toString(),
+        state.getUpdateOptions().contains(UpdateOptions.SMART_RESIZE_NON_RESTART));
+  }
+
+  // A resize change combined with a non-resize change: smart resize is blocked, the resize changes
+  // are flagged and the blocking change is reported.
+  @Test
+  public void getUpdateOptions_resizeChangeBlockedByNonResizeChange() {
+    Universe universe = createSpecUniverse();
+    UniverseDefinitionTaskParams taskParams = editParams(universe);
+    Cluster cluster = taskParams.getPrimaryCluster();
+    TestUtils.specificationProviderInitializer(cluster.userIntent, provider.getUuid())
+        .setCGroupSize(2048)
+        .setInstanceTags(new HashMap<>(Map.of("key", "value")));
+
+    UniverseCRUDHandler.UpdateOptionsState state =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, ClusterOperationType.EDIT, cluster, universe);
+
+    assertTrue(state.isHasResizeChanges());
+    assertEquals(Set.of(TAGS_CHANGED), state.getResizeRestrictions());
+    assertFalse(
+        state.getUpdateOptions().toString(),
+        state.getUpdateOptions().contains(UpdateOptions.SMART_RESIZE)
+            || state.getUpdateOptions().contains(UpdateOptions.SMART_RESIZE_NON_RESTART));
   }
 }
