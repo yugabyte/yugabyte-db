@@ -871,8 +871,8 @@ extern bool yb_test_invalidate_relcache_in_planner;
 extern bool yb_test_fail_next_inc_catalog_version;
 
 /*
- * This number times disable_cost is added to the cost for some unsupported
- * ybgin index scans.  Unless it is 0, such a scan also counts as a disabled
+ * This number times disable_cost is the index cost of a ybgin index scan that
+ * ybgin cannot execute.  Unless it is 0, such a scan also counts as a disabled
  * node.
  */
 extern double yb_test_ybgin_disable_cost_factor;

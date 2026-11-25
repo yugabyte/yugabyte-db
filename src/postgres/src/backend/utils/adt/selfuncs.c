@@ -8846,8 +8846,8 @@ gincost_pattern(IndexOptInfo *index, int indexcol,
 		 * TODO(#7850): for ybgin, non-default search mode queries aren't
 		 * supported yet.
 		 *
-		 * Piggyback on attHasFullScan, which the caller translates to
-		 * disable_cost.
+		 * Piggyback on attHasFullScan, which the caller costs with
+		 * yb_cost_unsupported_ybgin_scan.
 		 */
 		counts->attHasFullScan[indexcol] = true;
 		return true;
@@ -10258,6 +10258,8 @@ yb_adjust_scansel_for_restrictions(PlannerInfo *root, Oid collation,
  * compares disabled node counts before costs, so the scan also counts as a
  * disabled node, unless yb_test_ybgin_disable_cost_factor is 0, which lets
  * tests force the scan.
+ *
+ * TODO(#39306): add the penalty to the GIN estimate instead of replacing it.
  */
 static void
 yb_cost_unsupported_ybgin_scan(IndexPath *path, Cost *indexStartupCost,
