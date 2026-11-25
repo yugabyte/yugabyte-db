@@ -345,7 +345,8 @@ od_frontend_attach(od_client_t *client, char *context,
 				continue;
 			}
 
-			if (yb_restart_read) /* YB */
+			/* YB */
+			if (yb_restart_read)
 				od_io_read_start(&client->io);
 
 			/* YB: check auth failure status codes to update OID status */
@@ -357,7 +358,8 @@ od_frontend_attach(od_client_t *client, char *context,
 			return OD_ESERVER_CONNECT;
 		}
 
-		if (yb_restart_read) /* YB */
+		/* YB */
+		if (yb_restart_read)
 			od_io_read_start(&client->io);
 
 		/* YB: In case we create a new server but the logical client version of
