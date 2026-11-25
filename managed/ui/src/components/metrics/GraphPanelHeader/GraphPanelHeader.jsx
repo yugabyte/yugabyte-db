@@ -38,11 +38,19 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
+import { MonitoringMetricsHeader } from '../MonitoringMetrics/MonitoringMetricsHeader';
+import { MonitoringMetricsActions } from '../MonitoringMetrics/MonitoringMetricsActions';
+import { MetricsCardActionsContext } from '../MonitoringMetrics/MetricsCardContext';
+import { MetricsContainerWidthContext } from '../MetricsContainerWidthContext';
 import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
 import { RedirectToUniverseTelemetryExportModal } from '@app/redesign/features/export-telemetry/RedirectToUniverseTelemetryExportModal';
 import { isUniverseRevampExperienceEnabled } from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import {
+  MonitoringItem,
+  getMonitoringItemPath
+} from '@app/components/universes/Monitoring/monitoringUrlHelpers';
 
 import './GraphPanelHeader.scss';
 import 'react-widgets/dist/css/react-widgets.css';
@@ -291,7 +299,7 @@ class GraphPanelHeader extends Component {
     }
   };
 
-  handleFilterChange = (eventKey, event) => {
+  handleFilterChange = (eventKey) => {
     const filterInfo = filterTypes[eventKey] || filterTypes[DEFAULT_FILTER_KEY];
     const newParams = _.cloneDeep(this.state);
     newParams.filterLabel = filterInfo.label;
@@ -313,7 +321,7 @@ class GraphPanelHeader extends Component {
       filterValue: filterInfo.value
     });
 
-    if (event.target.getAttribute('data-filter-type') !== 'custom') {
+    if (filterInfo.type !== 'custom') {
       const endMoment = moment();
       const startMoment = moment().subtract(filterInfo.value, filterInfo.type);
       newParams.startMoment = startMoment;
@@ -536,6 +544,14 @@ class GraphPanelHeader extends Component {
     this.setState({ endMoment: moment(dateStr) });
   };
 
+  setCustomRange = (start, end) => {
+    const startMoment = moment(start);
+    const endMoment = moment(end);
+    this.setState({ startMoment, endMoment }, () =>
+      this.updateGraphQueryParams(startMoment, endMoment)
+    );
+  };
+
   applyCustomFilter = () => {
     this.updateGraphQueryParams(this.state.startMoment, this.state.endMoment);
   };
@@ -578,14 +594,220 @@ class GraphPanelHeader extends Component {
     this.props.changeGraphQueryFilters(filterParams);
   };
 
+  downloadGrafanaJson = () => {
+    this.props
+      .getGrafanaJson()
+      .then((response) => {
+        return new Blob([JSON.stringify(response.data, null, 2)], {
+          type: 'application/json'
+        });
+      })
+      .catch((error) => {
+        toast.error('Error in downloading Grafana JSON: ' + error.message);
+        return null;
+      })
+      .then((blob) => {
+        // eslint-disable-next-line eqeqeq
+        if (blob != null) {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = 'Grafana_Dashboard.json';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        }
+      });
+  };
+
+  openMetricsExport = (isV2EditUniverseUIEnabled) => {
+    this.setState(
+      isV2EditUniverseUIEnabled
+        ? { isRedirectToTelemetryExportModalOpen: true }
+        : { isUniverseMetricsExportModalOpen: true }
+    );
+  };
+
+  openMetricsPdfPreview = () => {
+    this.setState({
+      openPreviewMetricsModal: true,
+      pdfDownloadInProgress: false,
+      downloadPercent: 0
+    });
+  };
+
+  renderModals() {
+    const { origin, showModal, closeModal, visibleModal, enableNodeComparisonModal } = this.props;
+    const { selectedRegionClusterUUID } = this.state;
+    return (
+      <>
+        {this.state.isUniverseMetricsExportModalOpen && (
+          <UniverseMetricsExportConfigModal
+            universeUuid={this.props.universe.currentUniverse.data.universeUUID}
+            modalProps={{
+              open: this.state.isUniverseMetricsExportModalOpen,
+              onClose: () => {
+                this.setState({
+                  isUniverseMetricsExportModalOpen: false
+                });
+              }
+            }}
+          />
+        )}
+        {this.state.isRedirectToTelemetryExportModalOpen && (
+          <RedirectToUniverseTelemetryExportModal
+            universeUuid={this.props.universe.currentUniverse.data.universeUUID}
+            open={this.state.isRedirectToTelemetryExportModalOpen}
+            onClose={() => {
+              this.setState({
+                isRedirectToTelemetryExportModalOpen: false
+              });
+            }}
+          />
+        )}
+        <YBModal
+          open={this.state.openPreviewMetricsModal}
+          size="fit"
+          title="Preview All Metrics"
+          submitLabel={`${
+            this.state.pdfDownloadInProgress ? 'Downloading' : 'Download'
+          } Metrics pdf`}
+          cancelLabel="Close"
+          buttonProps={{
+            primary: {
+              disabled: this.state.pdfDownloadInProgress
+            }
+          }}
+          isSubmitting={this.state.pdfDownloadInProgress}
+          onClose={() => {
+            this.setState({
+              openPreviewMetricsModal: false
+            });
+          }}
+          footerAccessory={
+            this.state.pdfDownloadInProgress && (
+              <Box display={'flex'} flexDirection={'row'} alignItems={'center'}>
+                <Typography variant="body2">
+                  Please wait while Download metrics to pdf is in Progress, Closing the preview
+                  modal may abort the operation.
+                </Typography>{' '}
+                &nbsp; &nbsp;
+                <YBProgress value={Math.round(this.state.downloadPercent)} />
+              </Box>
+            )
+          }
+          onSubmit={async () => {
+            try {
+              this.setState({
+                pdfDownloadInProgress: true
+              });
+              const tabs = document.getElementById('print-metrics');
+
+              const pdf = new jsPDF('p', 'pt', 'a4');
+              pdf.setFontSize(22);
+              pdf.text('Metrics', 250, 25, null, null, 'center');
+              const allCharts = [];
+              const charts = tabs.querySelectorAll('.metrics-panel-container');
+              for (let j = 0; j < charts.length; j++) {
+                const svgs = charts[j].querySelectorAll('svg');
+                allCharts.push(svgs);
+              }
+
+              const positions = [
+                [0, 0],
+                [1, 0],
+                [0, 1],
+                [1, 1]
+              ];
+
+              for (let i = 0; i < allCharts.length; i++) {
+                if (allCharts[i].type !== 'br') {
+                  if (i !== 0 && i % 4 === 0) {
+                    pdf.addPage();
+                  }
+
+                  for (let j = 0; j < allCharts[i].length; j++) {
+                    const svg = allCharts[i][j];
+                    const pos = i % 4;
+                    const svgData = new XMLSerializer().serializeToString(svg);
+                    const svgDataBase64 = btoa(unescape(encodeURIComponent(svgData)));
+                    const svgDataUrl = `data:image/svg+xml;charset=utf-8;base64,${svgDataBase64}`;
+
+                    const image = new Image();
+                    image.src = svgDataUrl;
+                    await image.decode();
+
+                    const preset = presets.offscreen();
+
+                    const canvas = new OffscreenCanvas(1500, 1500);
+
+                    const dimension = pdf.internal.pageSize.width / 2 - 10;
+                    const ctx = canvas.getContext('2d');
+                    const v = await Canvg.fromString(ctx, svgData, preset);
+                    v.resize(500, 500, 'xMidYMid meet');
+                    await v.render();
+
+                    const blob = await canvas.convertToBlob();
+                    const imgURL = URL.createObjectURL(blob);
+
+                    pdf.addImage(
+                      imgURL,
+                      'PNG',
+                      positions[pos][0] * dimension + 5,
+                      positions[pos][1] * dimension + 40,
+                      dimension,
+                      dimension,
+                      '',
+                      'FAST'
+                    );
+                    this.setState({
+                      downloadPercent: (i / charts.length) * 100
+                    });
+                  }
+                } else {
+                  pdf.addPage();
+                }
+              }
+
+              pdf.save(`metrics-${Date.now()}.pdf`);
+              this.setState({
+                pdfDownloadInProgress: false
+              });
+            } catch (e) {
+              console.warn(e);
+              this.setState({
+                pdfDownloadInProgress: false
+              });
+            }
+          }}
+        >
+          <MetricsContainerWidthContext.Provider value={null}>
+            <CustomerMetricsPanel {...this.props} printMode={true} />
+          </MetricsContainerWidthContext.Provider>
+        </YBModal>
+        {enableNodeComparisonModal ? (
+          <MetricsComparisonModal
+            visible={showModal && visibleModal === 'metricsComparisonModal'}
+            onHide={closeModal}
+            selectedUniverse={this.state.currentSelectedUniverse}
+            origin={origin}
+            selectedRegionClusterUUID={selectedRegionClusterUUID}
+          />
+        ) : (
+          ''
+        )}
+      </>
+    );
+  }
+
   render() {
     const {
       origin,
       universe: { currentUniverse },
       prometheusQueryEnabled,
       showModal,
-      closeModal,
-      visibleModal,
       enableNodeComparisonModal,
       printMode,
       customer: { runtimeConfigs, customerRuntimeConfigs, currentUser }
@@ -602,26 +824,12 @@ class GraphPanelHeader extends Component {
     } = this.state;
 
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
-    let datePicker = null;
     const sessionTimezone =
       !this.state.selectedTimezone ||
       isEmptyString(this.state.selectedTimezone) ||
       this.state.selectedTimezone === DEFAULT_TIMEZONE.value
         ? currentUser.data.timezone
         : this.state.selectedTimezone;
-
-    if (this.state.filterLabel === 'Custom') {
-      datePicker = (
-        <CustomDatePicker
-          startMoment={startMoment}
-          endMoment={endMoment}
-          handleTimeframeChange={this.applyCustomFilter}
-          setStartMoment={this.handleStartDateChange}
-          setEndMoment={this.handleEndDateChange}
-          timezone={sessionTimezone}
-        />
-      );
-    }
 
     const isDownloadMetricsAllowed =
       customerRuntimeConfigs?.data?.configEntries?.find(
@@ -640,6 +848,142 @@ class GraphPanelHeader extends Component {
       currentUser?.data?.role
     );
 
+    let splitType = SplitType.NONE;
+    const metricMeasure = this.state.metricMeasure;
+    if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
+      splitType = SplitType.TABLE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER_DATABASES) {
+      splitType = SplitType.NAMESPACE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER) {
+      splitType = SplitType.NODE;
+    }
+
+    // TODO: Need to fix handling of query params on Metrics tab
+    const liveQueriesLink =
+      this.state.currentSelectedUniverse &&
+      this.state.nodeName !== MetricConsts.ALL &&
+      this.state.nodeName !== MetricConsts.TOP &&
+      `${getMonitoringItemPath(
+        this.state.currentSelectedUniverse.universeUUID,
+        MonitoringItem.QUERIES
+      )}?tab=live-queries&nodeName=${this.state.nodeName}`;
+    const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
+    const isK8Universe = getIsKubernetesUniverse(this.state.currentSelectedUniverse);
+
+    if (origin === MetricOrigin.UNIVERSE) {
+      const cardActions = (
+        <MonitoringMetricsActions
+          seeQueriesLink={!universePaused && liveQueriesLink ? liveQueriesLink : null}
+          showCompare={!!enableNodeComparisonModal}
+          compareDisabled={filterType === 'custom' || currentSelectedUniverse === MetricConsts.ALL}
+          onCompare={() => showModal('metricsComparisonModal')}
+          intervalTypes={intervalTypes}
+          refreshInterval={this.state.refreshInterval}
+          onIntervalChange={this.handleIntervalChange}
+          refreshDisabled={filterType === 'custom'}
+          onRefresh={this.refreshGraphQuery}
+          prometheusQueryEnabled={prometheusQueryEnabled}
+          onTogglePrometheusQuery={this.props.togglePrometheusQuery}
+          onDownloadGrafanaJson={this.downloadGrafanaJson}
+          showExportMetrics={isMetricsExportEnabled}
+          exportMetricsIcon={
+            isV2EditUniverseUIEnabled ? <InternalLinkIcon width={24} height={24} /> : null
+          }
+          onExportMetrics={() => this.openMetricsExport(isV2EditUniverseUIEnabled)}
+          showDownloadMetrics={isDownloadMetricsAllowed}
+          onDownloadMetrics={this.openMetricsPdfPreview}
+        />
+      );
+      return (
+        <div className="graph-panel-header">
+          <div className="graph-panel monitoring-metrics">
+            {!printMode && (
+              <>
+                <MonitoringMetricsHeader
+                  currentTimestamp={
+                    isMetricsSessionTZEnabled ? (
+                      <YBFormatDate
+                        date={this.state.currentDate}
+                        timeFormat={YBTimeFormats.YB_DEFAULT_TIMESTAMP}
+                        timezone={this.state.selectedTimezone}
+                      />
+                    ) : (
+                      ybFormatDate(this.state.currentDate)
+                    )
+                  }
+                  timezoneSelector={
+                    isMetricsSessionTZEnabled && (
+                      <GraphPanelHeaderTimezone
+                        selectedTimezone={this.state.selectedTimezone}
+                        handleTZChange={this.handleTZChange}
+                      />
+                    )
+                  }
+                  customRange={
+                    this.state.filterLabel === 'Custom'
+                      ? {
+                          start: startMoment.toDate(),
+                          end: endMoment.toDate(),
+                          timezone: sessionTimezone || undefined,
+                          onChange: this.setCustomRange
+                        }
+                      : null
+                  }
+                  filterTypes={filterTypes}
+                  filterLabel={this.state.filterLabel}
+                  onFilterChange={this.handleFilterChange}
+                  universe={currentSelectedUniverse}
+                  provider={this.props.provider}
+                  currentSelectedRegion={currentSelectedRegion}
+                  selectedRegionClusterUUID={selectedRegionClusterUUID}
+                  selectedRegionCode={this.state.selectedRegionCode}
+                  selectedZoneName={this.state.selectedZoneName}
+                  selectedNode={this.state.nodeName}
+                  currentSelectedNodeType={currentSelectedNodeType}
+                  isDedicatedNodes={isDedicatedNodes}
+                  onRegionChanged={this.onRegionChanged}
+                  onNodeTypeChanged={this.onNodeTypeChanged}
+                  onNodeChanged={this.nodeItemChanged}
+                  showSplitSelector={currentSelectedUniverse !== MetricConsts.ALL}
+                  metricMeasureTypes={metricMeasureTypes}
+                  metricMeasure={metricMeasure}
+                  onMetricMeasureChanged={this.onMetricMeasureChanged}
+                  isSingleNodeSelected={this.state.isSingleNodeSelected}
+                  isK8Universe={isK8Universe}
+                  outlierTypes={outlierTypes}
+                  outlierType={this.state.outlierType}
+                  onOutlierTypeChanged={this.onOutlierTypeChanged}
+                  outlierNumNodes={this.state.outlierNumNodes}
+                  onOutlierNumNodesChanged={this.setNumNodeValue}
+                  splitType={splitType}
+                />
+                {this.renderModals()}
+              </>
+            )}
+            <MetricsCardActionsContext.Provider value={printMode ? null : cardActions}>
+              {React.cloneElement(this.props.children, {
+                selectedUniverse: this.state.currentSelectedUniverse
+              })}
+            </MetricsCardActionsContext.Provider>
+          </div>
+        </div>
+      );
+    }
+
+    let datePicker = null;
+    if (this.state.filterLabel === 'Custom') {
+      datePicker = (
+        <CustomDatePicker
+          startMoment={startMoment}
+          endMoment={endMoment}
+          handleTimeframeChange={this.applyCustomFilter}
+          setStartMoment={this.handleStartDateChange}
+          setEndMoment={this.handleEndDateChange}
+          timezone={sessionTimezone}
+        />
+      );
+    }
+
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
       const key = 'graph-filter-' + idx;
@@ -650,7 +994,6 @@ class GraphPanelHeader extends Component {
       return (
         <MenuItem
           onSelect={self.handleFilterChange}
-          data-filter-type={filter.type}
           key={key}
           eventKey={idx}
           active={filter.label === self.state.filterLabel}
@@ -674,24 +1017,6 @@ class GraphPanelHeader extends Component {
       );
     });
 
-    let splitType = SplitType.NONE;
-    const metricMeasure = this.state.metricMeasure;
-    if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
-      splitType = SplitType.TABLE;
-    } else if (metricMeasure === MetricMeasure.OUTLIER_DATABASES) {
-      splitType = SplitType.NAMESPACE;
-    } else if (metricMeasure === MetricMeasure.OUTLIER) {
-      splitType = SplitType.NODE;
-    }
-
-    // TODO: Need to fix handling of query params on Metrics tab
-    const liveQueriesLink =
-      this.state.currentSelectedUniverse &&
-      this.state.nodeName !== MetricConsts.ALL &&
-      this.state.nodeName !== MetricConsts.TOP &&
-      `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
-    const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
-    const isK8Universe = getIsKubernetesUniverse(this.state.currentSelectedUniverse);
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -800,13 +1125,7 @@ class GraphPanelHeader extends Component {
                           {isDownloadMetricsAllowed && (
                             <YBButton
                               btnText="Download Metrics"
-                              onClick={() => {
-                                this.setState({
-                                  openPreviewMetricsModal: true,
-                                  pdfDownloadInProgress: false,
-                                  downloadPercent: 0
-                                });
-                              }}
+                              onClick={this.openMetricsPdfPreview}
                             />
                           )}
                         </div>
@@ -824,48 +1143,12 @@ class GraphPanelHeader extends Component {
                                 ? 'Disable Prometheus query'
                                 : 'Enable Prometheus query'}
                             </MenuItem>
-                            <MenuItem
-                              onClick={() => {
-                                self.props
-                                  .getGrafanaJson()
-                                  .then((response) => {
-                                    return new Blob([JSON.stringify(response.data, null, 2)], {
-                                      type: 'application/json'
-                                    });
-                                  })
-                                  .catch((error) => {
-                                    toast.error(
-                                      'Error in downloading Grafana JSON: ' + error.message
-                                    );
-                                    return null;
-                                  })
-                                  .then((blob) => {
-                                    // eslint-disable-next-line eqeqeq
-                                    if (blob != null) {
-                                      const url = window.URL.createObjectURL(blob);
-                                      const a = document.createElement('a');
-                                      a.style.display = 'none';
-                                      a.href = url;
-                                      a.download = 'Grafana_Dashboard.json';
-                                      document.body.appendChild(a);
-                                      a.click();
-                                      window.URL.revokeObjectURL(url);
-                                      a.remove();
-                                    }
-                                  });
-                              }}
-                            >
+                            <MenuItem onClick={this.downloadGrafanaJson}>
                               {'Download Grafana JSON'}
                             </MenuItem>
                             {isMetricsExportEnabled && (
                               <MenuItem
-                                onSelect={() => {
-                                  this.setState(
-                                    isV2EditUniverseUIEnabled
-                                      ? { isRedirectToTelemetryExportModalOpen: true }
-                                      : { isUniverseMetricsExportModalOpen: true }
-                                  );
-                                }}
+                                onSelect={() => this.openMetricsExport(isV2EditUniverseUIEnabled)}
                               >
                                 {isV2EditUniverseUIEnabled ? (
                                   <span className="export-metrics-menu-item">
@@ -929,159 +1212,7 @@ class GraphPanelHeader extends Component {
                       )}
                   </FlexGrow>
                 </FlexContainer>
-                {this.state.isUniverseMetricsExportModalOpen && (
-                  <UniverseMetricsExportConfigModal
-                    universeUuid={this.props.universe.currentUniverse.data.universeUUID}
-                    modalProps={{
-                      open: this.state.isUniverseMetricsExportModalOpen,
-                      onClose: () => {
-                        this.setState({
-                          isUniverseMetricsExportModalOpen: false
-                        });
-                      }
-                    }}
-                  />
-                )}
-                {this.state.isRedirectToTelemetryExportModalOpen && (
-                  <RedirectToUniverseTelemetryExportModal
-                    universeUuid={this.props.universe.currentUniverse.data.universeUUID}
-                    open={this.state.isRedirectToTelemetryExportModalOpen}
-                    onClose={() => {
-                      this.setState({
-                        isRedirectToTelemetryExportModalOpen: false
-                      });
-                    }}
-                  />
-                )}
-                <YBModal
-                  open={this.state.openPreviewMetricsModal}
-                  size="fit"
-                  title="Preview All Metrics"
-                  submitLabel={`${
-                    this.state.pdfDownloadInProgress ? 'Downloading' : 'Download'
-                  } Metrics pdf`}
-                  cancelLabel="Close"
-                  buttonProps={{
-                    primary: {
-                      disabled: this.state.pdfDownloadInProgress
-                    }
-                  }}
-                  isSubmitting={this.state.pdfDownloadInProgress}
-                  onClose={() => {
-                    this.setState({
-                      openPreviewMetricsModal: false
-                    });
-                  }}
-                  footerAccessory={
-                    this.state.pdfDownloadInProgress && (
-                      <Box display={'flex'} flexDirection={'row'} alignItems={'center'}>
-                        <Typography variant="body2">
-                          Please wait while Download metrics to pdf is in Progress, Closing the
-                          preview modal may abort the operation.
-                        </Typography>{' '}
-                        &nbsp; &nbsp;
-                        <YBProgress value={Math.round(this.state.downloadPercent)} />
-                      </Box>
-                    )
-                  }
-                  onSubmit={async () => {
-                    try {
-                      this.setState({
-                        pdfDownloadInProgress: true
-                      });
-                      const tabs = document.getElementById('print-metrics');
-
-                      const pdf = new jsPDF('p', 'pt', 'a4');
-                      pdf.setFontSize(22);
-                      pdf.text('Metrics', 250, 25, null, null, 'center');
-                      const allCharts = [];
-                      const charts = tabs.querySelectorAll('.metrics-panel-container');
-                      for (let j = 0; j < charts.length; j++) {
-                        const svgs = charts[j].querySelectorAll('svg');
-                        allCharts.push(svgs);
-                      }
-
-                      const positions = [
-                        [0, 0],
-                        [1, 0],
-                        [0, 1],
-                        [1, 1]
-                      ];
-
-                      for (let i = 0; i < allCharts.length; i++) {
-                        if (allCharts[i].type !== 'br') {
-                          if (i !== 0 && i % 4 === 0) {
-                            pdf.addPage();
-                          }
-
-                          for (let j = 0; j < allCharts[i].length; j++) {
-                            const svg = allCharts[i][j];
-                            const pos = i % 4;
-                            const svgData = new XMLSerializer().serializeToString(svg);
-                            const svgDataBase64 = btoa(unescape(encodeURIComponent(svgData)));
-                            const svgDataUrl = `data:image/svg+xml;charset=utf-8;base64,${svgDataBase64}`;
-
-                            const image = new Image();
-                            image.src = svgDataUrl;
-                            await image.decode();
-
-                            const preset = presets.offscreen();
-
-                            const canvas = new OffscreenCanvas(1500, 1500);
-
-                            const dimension = pdf.internal.pageSize.width / 2 - 10;
-                            const ctx = canvas.getContext('2d');
-                            const v = await Canvg.fromString(ctx, svgData, preset);
-                            v.resize(500, 500, 'xMidYMid meet');
-                            await v.render();
-
-                            const blob = await canvas.convertToBlob();
-                            const imgURL = URL.createObjectURL(blob);
-
-                            pdf.addImage(
-                              imgURL,
-                              'PNG',
-                              positions[pos][0] * dimension + 5,
-                              positions[pos][1] * dimension + 40,
-                              dimension,
-                              dimension,
-                              '',
-                              'FAST'
-                            );
-                            this.setState({
-                              downloadPercent: (i / charts.length) * 100
-                            });
-                          }
-                        } else {
-                          pdf.addPage();
-                        }
-                      }
-
-                      pdf.save(`metrics-${Date.now()}.pdf`);
-                      this.setState({
-                        pdfDownloadInProgress: false
-                      });
-                    } catch (e) {
-                      console.warn(e);
-                      this.setState({
-                        pdfDownloadInProgress: false
-                      });
-                    }
-                  }}
-                >
-                  <CustomerMetricsPanel {...this.props} printMode={true} />
-                </YBModal>
-                {enableNodeComparisonModal ? (
-                  <MetricsComparisonModal
-                    visible={showModal && visibleModal === 'metricsComparisonModal'}
-                    onHide={closeModal}
-                    selectedUniverse={this.state.currentSelectedUniverse}
-                    origin={origin}
-                    selectedRegionClusterUUID={selectedRegionClusterUUID}
-                  />
-                ) : (
-                  ''
-                )}
+                {this.renderModals()}
               </div>
             )
           }

@@ -1152,6 +1152,7 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YBIsDdlTxnBlockCommitInProgress();
 extern bool YbUsingObjectLocksLocally(void);
 
 /*
@@ -1368,9 +1369,10 @@ bool		IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * These functions are unsafe to run in a multi-threaded environment. There is
- * no specific attribute that identifies them as such, so we have to manually
- * identify them.
+ * These functions are unsafe to evaluate in DocDB: they are not thread-safe,
+ * need a resource owner, or depend on session state DocDB doesn't have. There
+ * is no specific attribute that identifies them as such, so we have to
+ * manually identify them.
  */
 extern const uint32 yb_funcs_unsafe_for_pushdown[];
 
@@ -1965,5 +1967,14 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
+
+/*
+ * The yb_xcluster_ddl_replication extension and its tables. The extension
+ * creates its tables in a schema of the same name. The master's copies are in
+ * src/yb/cdc/xcluster_types.h.
+ */
+#define YB_XCLUSTER_DDL_REPLICATION_NAME		"yb_xcluster_ddl_replication"
+#define YB_XCLUSTER_DDL_QUEUE_TABLE_NAME		"ddl_queue"
+#define YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME	"replicated_ddls"
 
 #endif							/* PG_YB_UTILS_H */

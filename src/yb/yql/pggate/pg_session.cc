@@ -560,7 +560,9 @@ class PgSession::RunHelper {
         read_only, pg_session_.pg_txn_manager_->GetTxnPriorityRequirement(row_mark_type));
   }
 
-  Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
+  Result<PerformFuture> Flush(
+      std::optional<CacheOptions>&& cache_options,
+      PgConnectionPrefetchOptions connection_prefetch) {
     if (ops_info_.ops.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
@@ -575,6 +577,7 @@ class PgSession::RunHelper {
         std::move(ops_info_.ops), {.use_legacy_catalog_session = IsLegacyCatalog(),
                                    .has_catalog_ops = has_catalog_ops_,
                                    .cache_options = std::move(cache_options),
+                                   .connection_prefetch = connection_prefetch,
                                    .in_txn_limit = in_txn_limit_});
   }
 
@@ -1061,6 +1064,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
+  options.set_part_of_connection_prefetch(
+      ops_options.connection_prefetch.part_of_connection_prefetch);
+  options.set_completes_connection_prefetch(
+      ops_options.connection_prefetch.completes_connection_prefetch);
 
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
@@ -1069,9 +1076,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     caching_info.set_key_value(std::move(cache_options.key_value));
     caching_info.set_catalog_version(cache_options.catalog_version);
     caching_info.set_lookup_only(cache_options.lookup_only);
-    caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
     caching_info.set_send_away_if_fill_in_flight(cache_options.send_away_if_fill_in_flight);
-    caching_info.set_part_of_connection_prefetch(cache_options.part_of_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -1287,7 +1292,8 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, const RunOptions& options,
-    std::optional<CacheOptions>&& cache_options) {
+    std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
@@ -1360,7 +1366,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         IllegalState, "All operations in a batch must have the same skip_intents state");
     RETURN_NOT_OK(processor(table_op));
   }
-  auto result = runner.Flush(std::move(cache_options));
+  auto result = runner.Flush(std::move(cache_options), connection_prefetch);
   if (read_point_before_catalog_ops) {
     LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
         << "Restoring original read time serial no to "
@@ -1379,22 +1385,23 @@ Result<PerformFuture> PgSession::RunAsync(
       using TO = TableOperation<PgsqlOpPtr>;
       return i != end ? TO{.operation = &*i++, .table = t} : TO();
   };
-  return DoRunAsync(make_lw_function(generator), options);
+  return DoRunAsync(make_lw_function(generator), options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
     const OperationGenerator& generator, const RunOptions& options) {
-  return DoRunAsync(generator, options);
+  return DoRunAsync(generator, options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options) {
+    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   if (cache_options) {
     RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
     // Ensure no buffered requests will be added to cached request.
     RETURN_NOT_OK(buffer_.Flush(PgFlushDebugContext::CatalogTablePrefetch()));
   }
-  return DoRunAsync(generator, {}, std::move(cache_options));
+  return DoRunAsync(generator, {}, std::move(cache_options), connection_prefetch);
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
@@ -1458,14 +1465,16 @@ Status PgSession::AcquireObjectLock(
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
     return Status::OK();
   }
-  // While yb_enable_global_object_locking_infra is being promoted, a CREATE INDEX with global
-  // object locks waits for writers only through object locks. If a transaction without global
-  // object locks (one that latched the flag as off) sent no locks, the CREATE INDEX would backfill
-  // under its uncommitted UPDATE, and the index would miss the update once it commits (#36572). So
-  // a transaction without global object locks sends the locks a writer takes. It sends nothing
-  // stronger, so its LOCK TABLE and DDLs keep their pre-promotion behavior: LOCK TABLE t IN ACCESS
-  // EXCLUSIVE MODE still takes no object lock. PG records every lock in its own lock table either
-  // way.
+  // A CREATE INDEX with global object locks waits for writers only through object locks. A
+  // transaction without global object locks runs alongside it while
+  // yb_enable_global_object_locking_infra is being promoted (it latched the flag as off), and on a
+  // node with disable_global_object_locks on. If such a transaction sent no locks, the CREATE INDEX
+  // would backfill under its uncommitted UPDATE, and the index would miss the update once it
+  // commits (#36572, #37355). So a transaction without global object locks sends the locks its
+  // reads and writes take, up to ROW EXCLUSIVE; a reader's lock is what makes a table rewrite wait
+  // for it. It sends nothing stronger, so its LOCK TABLE and DDLs behave as without global object
+  // locks: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every lock
+  // in its own lock table either way.
   if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn() &&
       (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();

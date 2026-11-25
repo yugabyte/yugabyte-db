@@ -193,6 +193,7 @@ namespace cdc {
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 YB_STRONGLY_TYPED_BOOL(RetryInit);
+YB_STRONGLY_TYPED_BOOL(TransactionalDdl);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
@@ -248,6 +249,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
     bool has_publication_refresh_indicator = false;
+    std::map<std::string, CDCSDKAbortedSubtxnsPB> aborted_subtxns;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
@@ -1013,6 +1015,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestSchemaPackingNotFoundForConcurrentDDLAndDML(bool multiple_responses);
 
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);

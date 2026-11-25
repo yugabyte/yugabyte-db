@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, call, patch
 
+import oci
+
 from ybops.cloud.oci.cloud import OciCloud
 from ybops.cloud.oci.method import OciReplaceRootVolumeMethod
 from ybops.cloud.oci.utils import OciCloudAdmin
@@ -49,12 +51,15 @@ class TestReplaceBootVolume(TestCase):
         self.blockstorage.get_boot_volume.return_value.data = SimpleNamespace(
             id="current", freeform_tags={"team": "db"}, size_in_gbs=100,
             kms_key_id="ocid1.key.oc1..cmk", image_id="ocid1.image.oc1..current",
-            vpus_per_gb=10, time_created=3)
+            vpus_per_gb=10, time_created=3, is_hydrated=True)
 
         def update_boot_volume(volume_id, details):
             if details.vpus_per_gb is not None:
-                self.blockstorage.get_boot_volume(volume_id).data.vpus_per_gb = (
-                    details.vpus_per_gb)
+                volume = self.blockstorage.get_boot_volume(volume_id).data
+                if not volume.is_hydrated:
+                    raise oci.exceptions.ServiceError(
+                        409, "Conflict", {}, "vpus may not be updated while hydrating")
+                volume.vpus_per_gb = details.vpus_per_gb
 
         self.blockstorage.update_boot_volume.side_effect = update_boot_volume
 
@@ -86,31 +91,55 @@ class TestReplaceBootVolume(TestCase):
         # The new volume has the old one's VPUs, so only the tags were updated.
         self.blockstorage.update_boot_volume.assert_called_once()
 
-    def test_restores_vpus_of_old_volume_on_new_volume(self):
+    def replaced_by(self, replacement):
+        """The current volume is at 20 VPUs/GB, and replacement is attached in its place."""
         current = self.blockstorage.get_boot_volume.return_value.data
         current.vpus_per_gb = 20
-        volumes = {
-            "current": current,
-            "replacement": SimpleNamespace(
-                id="replacement", vpus_per_gb=10, lifecycle_state="AVAILABLE"),
-        }
+        volumes = {"current": current, replacement.id: replacement}
         self.blockstorage.get_boot_volume.side_effect = (
             lambda volume_id: SimpleNamespace(data=volumes[volume_id]))
         attached = ["current"]
 
         def update_instance(*_):
-            attached[0] = "replacement"
+            attached[0] = replacement.id
             return SimpleNamespace(headers={"opc-work-request-id": "work-request-1"})
 
         self.compute.update_instance.side_effect = update_instance
         self.compute.list_boot_volume_attachments.side_effect = lambda *_, **__: [
             SimpleNamespace(lifecycle_state="ATTACHED", boot_volume_id=attached[0])]
 
+    def test_restores_vpus_of_old_volume_on_new_volume(self):
+        self.replaced_by(SimpleNamespace(
+            id="replacement", vpus_per_gb=10, lifecycle_state="AVAILABLE", is_hydrated=True))
+
         self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
 
         (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
         self.assertEqual("replacement", volume_id)
         self.assertEqual(20, details.vpus_per_gb)
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    def test_restores_vpus_once_new_volume_is_hydrated(self, sleep):
+        replacement = SimpleNamespace(
+            id="replacement", vpus_per_gb=10, lifecycle_state="AVAILABLE", is_hydrated=False)
+        self.replaced_by(replacement)
+        sleep.side_effect = lambda _: setattr(replacement, "is_hydrated", True)
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.assertEqual(20, replacement.vpus_per_gb)
+        sleep.assert_called_once_with(10)
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 1800])
+    def test_hydration_that_never_finishes_times_out(self, _, sleep):
+        boot_volume = self.blockstorage.get_boot_volume.return_value.data
+        boot_volume.is_hydrated = False
+
+        with self.assertRaises(YBOpsRuntimeError) as ctx:
+            self.admin._set_boot_volume_vpus(boot_volume, 20)
+        self.assertIn("to finish hydrating", str(ctx.exception))
+        self.blockstorage.update_boot_volume.assert_not_called()
 
     def replaced_earlier(self, *kept_boot_volumes):
         """The attached volume is from IMAGE_ID at 10 VPUs/GB, the earlier ones were kept."""

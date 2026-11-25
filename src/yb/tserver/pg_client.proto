@@ -86,6 +86,8 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
+  rpc RestartTransactionForRetry(PgRestartTransactionForRetryRequestPB)
+      returns (PgRestartTransactionForRetryResponsePB);
 
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
@@ -858,7 +860,6 @@ message PgPerformOpPB {
 
 enum ReadTimeManipulation {
   NONE = 0;
-  RESTART = 1;
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
@@ -879,16 +880,6 @@ message PgPerformOptionsPB {
     // catalog to be read afresh and then stored under that older version's key.
     bool lookup_only = 5;
 
-    // This request is the last of a connection start's prefetch, so once it is cached this node
-    // holds every entry such a connection needs at catalog_version. The tserver records the
-    // version only for these, because the load worth sparing the master leader is the large
-    // catalog read a connection start makes, and a connection skips it only when the whole set
-    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
-    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
-    // relcache preload -- cost the leader little, so a version recorded from one of them would
-    // advertise a saving that does not exist.
-    bool completes_connection_prefetch = 6;
-
     // If a fill is already under way anywhere in this key group, answer Incomplete rather than
     // queueing this caller behind it. The caller then reads the older version this node holds
     // and catches up from there.
@@ -905,19 +896,14 @@ message PgPerformOptionsPB {
     // so a prefetch that keeps failing cannot bounce between the two.
     bool send_away_if_fill_in_flight = 7;
 
-    // Every round of a connection start's prefetch carries this; completes_connection_prefetch
-    // marks the last request of it, every round of that one included, so the round that ends
-    // the prefetch is the one that also runs out of paging state. It makes the database count
-    // as busy for the whole prefetch rather than only while one of its requests is in flight,
-    // so a connection arriving while this one is building its relcache -- seconds of CPU with
-    // nothing outstanding -- finds that fill instead of starting a second whole-catalog read.
-    bool part_of_connection_prefetch = 8;
+    // 6 and 8 moved to PgPerformOptionsPB as completes_connection_prefetch and
+    // part_of_connection_prefetch, which a connection start reading without the cache also sets.
+    reserved 6, 8;
   }
 
   message ReadTimeOptionsPB {
     uint64 read_time_serial_no = 1;
     uint64 read_time_serial_no_history_min = 2;
-    bool restart_transaction = 3;
     bool defer_read_point = 4;
     ReadTimeManipulation read_time_manipulation = 5;
     ReadHybridTimePB read_time = 6;
@@ -927,6 +913,11 @@ message PgPerformOptionsPB {
     // See the commit desc for more info.
     bool clamp_uncertainty_window = 7;
     OptionalUint32PB follower_read_staleness_ms = 8;
+    // While a statement is retried after a read restart, read points picked for it get a global
+    // limit no later than this, so the retry's uncertainty windows shrink and it converges.
+    fixed64 global_limit_cap_ht = 9;
+    // Per-tablet counterpart of global_limit_cap_ht, keyed by tablet id.
+    map<string, fixed64> local_limit_caps = 10;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -996,6 +987,40 @@ message PgPerformOptionsPB {
   // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
+
+  // The transaction takes object locks, at least local ones; PgSession::AcquireObjectLock says why
+  // a transaction without global object locks takes them. Its fast path writes carry the lock
+  // owner, or the deadlock detector misses a cycle between a row lock wait and an object lock wait
+  // (#37328).
+  bool using_table_locks_locally = 42;
+
+  // Every round of a connection start's prefetch carries this. It keeps the database counted
+  // busy across the prefetch's requests rather than only while one of them is in flight, so a
+  // connection arriving meanwhile -- seconds of CPU building a relcache, with nothing
+  // outstanding -- is sent away to the version this node holds instead of starting a second
+  // whole-catalog read.
+  //
+  // It keeps a count; it never starts one. What counts the database is the fill a caching round
+  // takes, so a prefetch reading without the cache holds only what an earlier caching attempt of
+  // the same connection left, and a connection that reads without the cache from its first
+  // request runs uncounted.
+  //
+  // Here rather than in caching_info because a prefetch reading without the cache sends no
+  // caching info and still carries this.
+  bool part_of_connection_prefetch = 43;
+
+  // The last request of that prefetch, carried by every round of it, so the round that ends the
+  // prefetch is the one that also runs out of paging state. That round releases the count. Where
+  // the tserver has no response to judge -- a round queued behind another session's fill, or one
+  // answered while the database's cache is off -- it releases on whichever round of this request
+  // arrives, which can be a round or two early.
+  //
+  // Where the request also caches, this is what lets the tserver record the catalog version:
+  // once the request is cached the node holds every entry such a connection reads. A connection
+  // reads every request back, so a partial set would send it to the master leader anyway. The
+  // small prefetches elsewhere -- the pre-auth pair of tables, the few read after a relcache
+  // preload -- do not carry it, so no version is recorded from them.
+  bool completes_connection_prefetch = 44;
 }
 
 message PgRequestSequenceNumPB {
@@ -1041,6 +1066,29 @@ message PgRollbackToSubTransactionRequestPB {
 
 message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgRestartTransactionForRetryRequestPB {
+  enum Kind {
+    // Retries of errors other than read restarts (conflicts, deadlocks, aborts): set up the session
+    // as the options dictate, where pggate's bumped txn_serial_no replaces the transaction.
+    DEFAULT = 0;
+    // Replace the distributed transaction with a new one, keeping the txn_serial_no.
+    REPLACE_DIST_TRANSACTION_ONLY = 1;
+    // Only return the limits of the read point that faced the restart; used by READ COMMITTED
+    // statement retries, which don't restart the transaction.
+    FETCH_GLOBAL_LOCAL_LIMITS_ONLY = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  Kind kind = 3;
+}
+
+message PgRestartTransactionForRetryResponsePB {
+  AppStatusPB status = 1;
+  // Global and per-tablet local limits of the plain session's read point before the restart.
+  fixed64 global_limit_ht = 2;
+  map<string, fixed64> local_limits = 3;
 }
 
 message PgTabletServerCountRequestPB {

@@ -45,6 +45,8 @@ Review the requirements for your upgrade:
 
 - cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later.
 
+- Starting with v2025.2.9.0, the PostgreSQL database bundled with YugabyteDB Anywhere is upgraded from version 14 to version 18. YBA Installer performs the upgrade automatically using the standard PostgreSQL major version upgrade (`pg_upgrade`), and no action is required.
+
 For more information, refer to [Prepare to upgrade](../prepare-to-upgrade/).
 
 ## Upgrade using YBA Installer

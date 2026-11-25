@@ -1048,7 +1048,7 @@ YbShouldPushdownScanKey(YbScanPlan scan_plan, AttrNumber attnum,
 		 * NOT IN will generate <> which is not a supported LSM/BTREE
 		 * operator, so it should not get to this point.
 		 */
-		return key->sk_strategy == BTEqualStrategyNumber;
+		return YbCanBindSearchArray(key->sk_strategy);
 	}
 
 	if (key->sk_flags & SK_ROW_MEMBER)
@@ -3350,6 +3350,36 @@ ybHasSeparateIndexRequest(YbOpaque ybScan)
 }
 
 /*
+ * Map merge sort column indexattno to the attno of its value in the rows that
+ * the merge compares:
+ * - index attno: an index-only scan or a scan with a separate index request
+ * - table attno: otherwise
+ *
+ * TODO(#38296): share this mapping with ybcSetupScanPlan.
+ */
+static AttrNumber
+ybMergeSortTargetAttno(YbOpaque ybScan, AttrNumber indexattno)
+{
+	AttrNumber	attno;
+
+	if (ybScan->prepare_params.index_only_scan ||
+		ybHasSeparateIndexRequest(ybScan))
+		return indexattno;
+
+	/*
+	 * A table row has no value for an expression index column, so the planner
+	 * keeps such columns out of the merge sort columns of an embedded index
+	 * (see yb_finalize_merge_scan_info).  A primary key has no expression
+	 * columns.
+	 */
+	attno = ybScan->index->rd_index->indkey.values[indexattno - 1];
+	if (attno == InvalidAttrNumber)
+		elog(ERROR, "merge sort column %d of index \"%s\" is an expression",
+			 indexattno, RelationGetRelationName(ybScan->index));
+	return attno;
+}
+
+/*
  * YbAddSortTarget - add specified attribute to the secondary index scan as a target
  *
  * Typically the only target on the secondary index scan is the base table ybctid.
@@ -3372,27 +3402,39 @@ YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
 }
 
 /*
- * If a merge scan has a separate index request, sets up its merge sort columns
- * as targets of that request, since the merge runs on that request's rows.
- * The merge compares every merge sort column, so the request must read each
- * one.
- *
- * TODO(#38147): read the merge sort columns in the main request too, when the
- * merge runs on its rows.
+ * Sets up targets for a merge scan.  The merge compares every merge sort
+ * column, so the scan must read each one.  attnums is an in/out param for the
+ * main request's set of targeted columns, or it is NULL if the caller sets up
+ * the main request's targets itself, which works only for a scan with a
+ * separate index request.
  */
 static void
-ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan)
+ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
+						YbAttnumBmsState *attnums)
 {
 	YbMergeScanInfo *merge_scan_info = ybGetMergeScanInfo(scan);
 	YbSortInfo *sort_info;
+	bool		separate_index_request;
 
-	if (!merge_scan_info || !ybHasSeparateIndexRequest(ybScan))
+	if (!merge_scan_info)
 		return;
+	separate_index_request = ybHasSeparateIndexRequest(ybScan);
+	if (!separate_index_request && !attnums)
+		elog(ERROR, "merge scan of index \"%s\" cannot read its merge sort columns",
+			 RelationGetRelationName(ybScan->index));
 
 	sort_info = merge_scan_info->sort_cols;
 	for (int i = 0; i < sort_info->numCols; i++)
-		YbAddSortTarget(ybScan->handle, RelationGetDescr(ybScan->index),
-						sort_info->sortColIdx[i]);
+	{
+		AttrNumber	attno = ybMergeSortTargetAttno(ybScan,
+												   sort_info->sortColIdx[i]);
+
+		if (separate_index_request)
+			YbAddSortTarget(ybScan->handle, RelationGetDescr(ybScan->index),
+							attno);
+		else
+			ybcAttnumBmsAdd(attnums, attno);
+	}
 }
 
 static void
@@ -3401,6 +3443,8 @@ ybcSetupTargets(YbOpaque yb_scan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	YbAttnumBmsState required_attrs = ybcBuildRequiredAttrs(yb_scan,
 															scan_plan,
 															pg_scan_plan);
+
+	ybSetupMergeSortTargets(yb_scan, pg_scan_plan, &required_attrs);
 
 	Assert(!ybcAttnumBmsIsEmpty(&required_attrs));
 	int			idx = -1;
@@ -3445,7 +3489,6 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 	YbSortInfo *sort_info;
 	ScanDirection indexorderdir;
 	bool		reverse;
-	int16	   *indkey_values = NULL;
 
 	if (!merge_scan_info)
 		return;
@@ -3458,17 +3501,6 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 	Assert(!ScanDirectionIsNoMovement(indexorderdir));
 	reverse = ScanDirectionIsBackward(indexorderdir);
 
-	/*
-	 * Key columns of a primary or embedded index may have different attribute numbers than
-	 * the respective columns of the base table. So we need to provide their positions in
-	 * the DocDB tuple.
-	 *
-	 * TODO(#38296): share this mapping with ybcSetupScanPlan.
-	 */
-	if (!ybScan->prepare_params.index_only_scan &&
-		!ybHasSeparateIndexRequest(ybScan))
-		indkey_values = ybScan->index->rd_index->indkey.values;
-
 	/* Create and apply sort keys */
 	YbcPgStatement stmt = ybScan->handle;
 	YbcSortKey *yb_sort_keys = (YbcSortKey *) palloc(sort_info->numCols * sizeof(YbcSortKey));
@@ -3478,7 +3510,8 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 		YbcSortKey *key = &yb_sort_keys[i];
 
 		key->att_idx = sort_info->sortColIdx[i] - 1;
-		key->value_idx = indkey_values ? indkey_values[key->att_idx] - 1 : key->att_idx;
+		key->value_idx = ybMergeSortTargetAttno(ybScan,
+												sort_info->sortColIdx[i]) - 1;
 		key->comparator = yb_sort_comparator_adapter;
 		key->sortstate = palloc0(sizeof(SortSupportData));
 		SortSupport sort_support = (SortSupport) key->sortstate;
@@ -3634,16 +3667,21 @@ YbBeginScan(Relation table,
 	 * - not aggregate pushdown
 	 * This ought to be reworked once aggregate pushdown supports a mix of
 	 * non-aggregate and aggregate targets.
-	 *
-	 * Either way, ybSetupMergeSortTargets then adds the merge sort columns to
-	 * a separate index request, if the scan has one.
 	 */
 	if (aggrefs != NIL)
+	{
 		YbDmlAppendTargetsAggregate(aggrefs, pg_scan_plan, ybScan->target_desc,
 									index, xs_want_itup, ybScan->handle);
+
+		/*
+		 * TODO(#38305): once merge scans are refused aggregate pushdown, no
+		 * merge scan reaches this branch, so drop this call and make the
+		 * attnums of ybSetupMergeSortTargets required.
+		 */
+		ybSetupMergeSortTargets(ybScan, pg_scan_plan, NULL);
+	}
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
-	ybSetupMergeSortTargets(ybScan, pg_scan_plan);
 
 	YbApplyPrimaryPushdown(ybScan->handle, rel_pushdown);
 	YbApplySecondaryIndexPushdown(ybScan->handle, idx_pushdown);

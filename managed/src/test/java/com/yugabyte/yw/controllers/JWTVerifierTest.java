@@ -41,7 +41,11 @@ public class JWTVerifierTest {
 
   @Before
   public void setup() throws Exception {
-    Security.addProvider(new BouncyCastleFipsProvider());
+    // Install BC-FIPS the way MainModule does. Appending it instead leaves it behind SunEC for
+    // the rest of the forked JVM, since MainModule's insert is a no-op once the name is taken.
+    if (Security.getProvider(BouncyCastleFipsProvider.PROVIDER_NAME) == null) {
+      Security.insertProviderAt(new BouncyCastleFipsProvider("C:HYBRID;ENABLE{All};"), 1);
+    }
     verfier = new JWTVerifier(keyProvider);
     keyPair = CertificateHelper.getKeyPairObject();
   }

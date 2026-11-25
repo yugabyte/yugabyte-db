@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_type.h"
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
@@ -1175,21 +1176,26 @@ DefineIndex(Oid relationId,
 			is_colocated_via_database && !MyColocatedDatabaseLegacy)
 		{
 			char	   *tablegroup_name = NULL;
+			Oid			grp_tablespace_id = tablespaceId;
 
-			if (OidIsValid(tablespaceId))
+			/* The database's default tablespace means no tablespace. */
+			if (grp_tablespace_id == MyDatabaseTableSpace)
+				grp_tablespace_id = InvalidOid;
+
+			if (OidIsValid(grp_tablespace_id))
 			{
 				/*
 				 * We look in pg_shdepend rather than directly use the derived name,
 				 * as later we might need to associate an existing implicit tablegroup to a tablespace
 				 */
-				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+				tablegroupId = YbLockImplicitTablegroup(grp_tablespace_id);
 
 				/*
 				 * If we do not find a tablegroup corresponding to the given tablespace, we
 				 * would have to create one. We derive the name from tablespace OID.
 				 */
 				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
-					get_implicit_tablegroup_name(tablespaceId);
+					get_implicit_tablegroup_name(grp_tablespace_id);
 
 			}
 			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
@@ -1255,11 +1261,11 @@ DefineIndex(Oid relationId,
 			else
 			{
 				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				tablegroupId = YbLockImplicitTablegroup(InvalidOid);
 			}
 
-			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
-										   get_tablespace_name(tablespaceId) :
+			char	   *tablespace_name = (OidIsValid(grp_tablespace_id) ?
+										   get_tablespace_name(grp_tablespace_id) :
 										   NULL);
 
 			/* Tablegroup doesn't exist, so create it. */
@@ -2685,6 +2691,44 @@ YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
 }
 
 /*
+ * YbCheckOpClassInputType
+ *		An lsm key is stored in the encoding of the column type, so DocDB orders
+ *		and compares it as the column type's default lsm operator class would.
+ * Disallow an operator class if its input type and the column type have
+ * different default lsm operator classes, such as bpchar_ops on a text column
+ * or oid_ops on an int4 column. A type that cannot be an lsm key keeps its
+ * existing "not yet supported" error.
+ */
+static void
+YbCheckOpClassInputType(Oid atttype, Oid opclassoid)
+{
+	HeapTuple	classtup;
+	Form_pg_opclass classform;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	if (classform->opcintype != getBaseType(atttype) &&
+		GetDefaultOpClass(atttype, LSM_AM_OID) !=
+		GetDefaultOpClass(classform->opcintype, LSM_AM_OID) &&
+		YbDataTypeIsValidForKey(atttype))
+	{
+		/* Print bpchar, not "character", which means char(1) in a cast. */
+		char	   *opctypename = format_type_extended(classform->opcintype, -1,
+													   FORMAT_TYPE_TYPEMOD_GIVEN);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column type %s",
+						NameStr(classform->opcname), format_type_be(atttype)),
+				 errhint("Use a column or an index expression of type %s instead.",
+						 opctypename)));
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
  * Compute per-index-column information, including indexed column numbers
  * or index expressions, opclasses and their options. Note, all output vectors
  * should be allocated for all columns, including "including" ones.
@@ -2988,6 +3032,16 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		 */
 		if (IsYugaByteEnabled() && YBIsCollationValidNonC(attcollation))
 			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
+
+		/*
+		 * YB: binary upgrade and restore recreate indexes that already hold
+		 * data, and an xCluster target replays DDL its source already ran, so
+		 * do not reject those.
+		 */
+		if (IsYugaByteEnabled() && accessMethodId == LSM_AM_OID &&
+			!IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_xcluster_automatic_mode_target_ddl)
+			YbCheckOpClassInputType(atttype, classOidP[attn]);
 
 		if (OidIsValid(ddl_userid))
 		{

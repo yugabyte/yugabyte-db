@@ -791,7 +791,7 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
   const auto txn_ddl = ASSERT_RESULT(cluster_->GetFlag(
-      pg_ts, "TEST_ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
+      pg_ts, "ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this, txn_ddl]() {
     std::vector<std::string> argv = {

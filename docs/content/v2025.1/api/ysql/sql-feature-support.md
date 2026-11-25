@@ -25,7 +25,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | `COLLATE`                                                                 | [Collations](../../../explore/ysql-language-features/advanced-features/collations/)                   |
 | {{<icon/yes>}} | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL`                                   | [Date and time data types](../datatypes/type_datetime/)                     |
 | {{<icon/yes>}} | `DEC`, `DECIMAL`, `NUMERIC`                                               | [Fixed point numbers](../datatypes/type_numeric/#fixed-point-numbers)       |
-| {{<icon/yes>}} | `ENUM`                                                                    | [Enumerations](../../../explore/ysql-language-features/data-types/#enumerations-enum-type)            |
+| {{<icon/yes>}} | `ENUM`                                                                    | [Enumerations](../the-sql-language/statements/ddl_create_type/#create-enum-type)            |
 | {{<icon/yes>}} | `FLOAT`, `REAL`, `DOUBLE PRECISION`                                       | [Floating-point numbers](../datatypes/type_numeric/#floating-point-numbers) |
 | {{<icon/yes>}} | `JSON`, `JSONB`                                                           | [JSON data types](../datatypes/type_json/)                                  |
 | {{<icon/yes>}} | `MONEY`                                                                   | [Money data types](../datatypes/type_money/)                                |
@@ -49,7 +49,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/partial>}} | Altering a column's data type     |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                         |
 |   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../the-sql-language/statements/ddl_alter_table/)                                                        |
-|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints)              |
+|   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint)              |
 |   {{<icon/yes>}}   | Removing constraints              | [DROP CONSTRAINT](../the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade)   |
 |   {{<icon/no>}}    | Altering indexes                  |                                                                                                                                      |
 |   {{<icon/yes>}}   | Adding indexes                    | [CREATE INDEX](../the-sql-language/statements/ddl_create_index/)                                                      |
@@ -66,11 +66,11 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                    |                    Feature                    |                                      Documentation                                      |
 | :----------------: | :-------------------------------------------- | :-------------------------------------------------------------------------------------- |
-|   {{<icon/yes>}}   | Check                                         | [Check constraint](../../../explore/ysql-language-features/data-manipulation/#check-constraint)       |
-|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../../../explore/ysql-language-features/data-manipulation/#unique-constraint)     |
+|   {{<icon/yes>}}   | Check                                         | [Check constraint](../the-sql-language/statements/ddl_create_table/#check)       |
+|   {{<icon/yes>}}   | Unique                                        | [Unique constraint](../the-sql-language/statements/ddl_create_table/#unique)     |
 |   {{<icon/yes>}}   | Not Null                                      | [Not Null constraint](../../../explore/ysql-language-features/data-manipulation/#not-null-constraint) |
-|   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../../../explore/ysql-language-features/indexes-constraints/primary-key-ysql/)                             |
-|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../../../explore/ysql-language-features/data-manipulation/#foreign-key-constraint/)                             |
+|   {{<icon/yes>}}   | Primary Key                                   | [Primary keys](../the-sql-language/statements/ddl_create_table/#primary-key)                             |
+|   {{<icon/yes>}}   | Foreign Key                                   | [Foreign keys](../the-sql-language/statements/ddl_create_table/#foreign-key)                             |
 | {{<icon/partial>}} | Default Value                                 |                                                                                         |
 | {{<icon/partial>}} | Deferrable Foreign Key constraints            |                                                                                         |
 |   {{<icon/no>}}    | Deferrable Primary Key and Unique constraints |                                                                                         |
@@ -83,10 +83,10 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | :------------: | :------------------- | :--------------------------------------------------------------------- |
 | {{<icon/yes>}} | Indexes              | [Indexes and constraints](../../../explore/ysql-language-features/indexes-constraints/)                  |
 | {{<icon/yes>}} | GIN indexes          | [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/)                          |
-| {{<icon/yes>}} | Partial indexes      | [Partial indexes](../../../explore/ysql-language-features/indexes-constraints/partial-index-ysql/)       |
-| {{<icon/yes>}} | Expression indexes   | [Expression indexes](../../../explore/ysql-language-features/indexes-constraints/expression-index-ysql/) |
+| {{<icon/yes>}} | Partial indexes      | [Partial indexes](../the-sql-language/statements/ddl_create_index/#partial-indexes)       |
+| {{<icon/yes>}} | Expression indexes   | [Expression indexes](../the-sql-language/statements/ddl_create_index/#expression-indexes) |
 | {{<icon/yes>}} | Multi-column indexes | [Multi-column indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/#multi-column-index) |
-| {{<icon/yes>}} | Covering indexes     | [Covering indexes](../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/)     |
+| {{<icon/yes>}} | Covering indexes     | [Covering indexes](../the-sql-language/statements/ddl_create_index/#include-clause)     |
 | {{<icon/no>}}  | GiST indexes         |                                                                        |
 | {{<icon/no>}}  | BRIN indexes         |                                                                        |
 | {{<icon/yes>}} | B-tree indexes       | B-tree index is treated as an LSM index.                               |
@@ -96,7 +96,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                |          Feature           |                                       Documentation                                        |
 | :------------: | :------------------------- | :----------------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Transactions               | [Transactions](../../../explore/transactions/)                                                        |
+| {{<icon/yes>}} | Transactions               | [Transactions](../../../architecture/transactions/)                                                        |
 | {{<icon/yes>}} | `BEGIN`                    | [BEGIN](../the-sql-language/statements/txn_begin/)                          |
 | {{<icon/yes>}} | `COMMIT`                   | [COMMIT](../the-sql-language/statements/txn_commit/)                        |
 | {{<icon/yes>}} | `ROLLBACK`                 | [ROLLBACK](../the-sql-language/statements/txn_rollback/)                    |
@@ -122,33 +122,33 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
-| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#group-data)                                       |
+| {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#grouping)                                       |
 | {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
 | {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)                                   |
 | {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)                     |
-| {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../../../explore/ysql-language-features/queries/#ctes)       |
-| {{<icon/yes>}} | Upserts (INSERT ... ON CONFLICT DO NOTHING/UPDATE)                  | [Upsert](../../../explore/ysql-language-features/data-manipulation/#upsert)                                     |
+| {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../the-sql-language/with-clause/)       |
+| {{<icon/yes>}} | Upserts (INSERT ... ON CONFLICT DO NOTHING/UPDATE)                  | [Upsert](../the-sql-language/statements/dml_insert/#on-conflict-clause)                                     |
 {.sno-1}
 
 ## Advanced SQL
 
 |                |                      Component                       |                                      Details                                       |
 | :------------: | :--------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../../../explore/ysql-language-features/advanced-features/stored-procedures/)                                         |
+| {{<icon/yes>}} | Stored procedures                                    | [Stored procedures](../the-sql-language/statements/ddl_create_procedure/)                                         |
 | {{<icon/yes>}} | User-defined functions                               | [Functions](../user-defined-subprograms-and-anon-blocks/#functions) |
-| {{<icon/yes>}} | Cursors                                              | [Cursors](../../../explore/ysql-language-features/advanced-features/cursor/)                                            |
+| {{<icon/yes>}} | Cursors                                              | [Cursors](../cursors/)                                            |
 | {{<icon/yes>}} | Row-level triggers (BEFORE, AFTER, INSTEAD OF)       |                                                                                    |
 | {{<icon/yes>}} | Statement-level triggers (BEFORE, AFTER, INSTEAD OF) |                                                                                    |
 | {{<icon/no>}}  | Deferrable triggers                                  |                                                                                    |
 | {{<icon/no>}}  | Transition tables (REFERENCING clause for triggers)  |                                                                                    |
-| {{<icon/yes>}} | Sequences                                            | [Auto-Increment column values](../../../explore/ysql-language-features/data-manipulation/#auto-increment-column-values) |
+| {{<icon/yes>}} | Sequences                                            | [CREATE SEQUENCE](../the-sql-language/statements/ddl_create_sequence/) |
 | {{<icon/yes>}} | Identity columns                                     |                                                                                    |
-| {{<icon/yes>}} | Views                                                | [Views](../../../explore/ysql-language-features/advanced-features/views/)                                               |
+| {{<icon/yes>}} | Views                                                | [Views](../the-sql-language/statements/ddl_create_view/)                                               |
 | {{<icon/yes>}} | Table inheritance {{<tags/feature/tp idea="2158">}}  | [Table inheritance](../the-sql-language/ddl-inherit/)                                                                   |
-| {{<icon/yes>}} | Materialized views                                   | [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views)               |
+| {{<icon/yes>}} | Materialized views                                   | [Materialized views](../the-sql-language/statements/ddl_create_matview/)               |
 | {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                      |
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
 | {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)                                         |
-| {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../../../explore/ysql-language-features/advanced-features/foreign-data-wrappers/)               |
+| {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../the-sql-language/statements/ddl_create_foreign_data_wrapper/)               |
 | {{<icon/no>}}  | Large objects                                        |                                                                                    |
 {.sno-1}
