@@ -736,6 +736,15 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 */
 		foreach(j, index->indextlist)
 		{
+			/*
+			 * Only key columns can be merge sort columns.  The loop reaches a
+			 * non-key column when no key column matches, as for the pathkey
+			 * that yb_make_hash_code_pathkey makes on yb_hash_code() of the
+			 * hash columns, since no index column holds that expression.
+			 */
+			if (foreach_current_index(j) >= index->nkeycolumns)
+				break;
+
 			if (bms_is_member(foreach_current_index(j), saop_idxs))
 				continue;
 			tle = (TargetEntry *) lfirst(j);
@@ -754,9 +763,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 			return NULL;
 
 		/*
-		 * build_index_pathkeys makes pathkeys only from key columns, so this
-		 * column and the gap columns before it are key columns, as the merge
-		 * sort arrays assume.
+		 * The lookup takes only key columns, so this column and the gap
+		 * columns before it are key columns, as the merge sort arrays assume.
 		 */
 		Assert(tle->resno <= index->nkeycolumns);
 

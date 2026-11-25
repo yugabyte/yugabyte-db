@@ -71,6 +71,28 @@ CREATE INDEX NONCONCURRENTLY h3r2n_part_idx ON h3r2n ((h1, h2, h3) HASH, r1 ASC,
 \unset Q3
 DROP INDEX h3r2n_part_idx;
 
+-- yb_hash_code ORDER BY with an INCLUDE column tied to the hash code
+-- yb_hash_code(h) = c puts the INCLUDE column c in the class of the pathkey on
+-- yb_hash_code(h), which no key column matches.  Only key columns can be merge
+-- sort columns, so the index path does not merge.  The hints turn sort and
+-- incremental sort off so that a merge path, if the planner built one, would be
+-- chosen.
+CREATE TABLE hc_inc_tbl (k int PRIMARY KEY, h int, r int, c int);
+CREATE INDEX NONCONCURRENTLY hc_inc_tbl_idx ON hc_inc_tbl (h HASH, r ASC) INCLUDE (c);
+-- c = yb_hash_code(h) for the rows the query returns, and differs from it for
+-- the rest.
+INSERT INTO hc_inc_tbl SELECT k, h, r, yb_hash_code(h) + d
+    FROM (VALUES (1, 1, 10, 0), (2, 1, 30, 0), (3, 2, 20, 0), (4, 1, 1, -1),
+                 (5, 1, 2, 1), (6, 2, 3, -1), (7, 2, 4, 1)) v(k, h, r, d);
+ANALYZE hc_inc_tbl;
+\set Q1 '/*+IndexOnlyScan(hc_inc_tbl hc_inc_tbl_idx) Set(enable_sort off) Set(enable_incremental_sort off) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(hc_inc_tbl hc_inc_tbl_idx) Set(enable_sort off) Set(enable_incremental_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT h, r, c FROM hc_inc_tbl WHERE h IN (1, 2) AND yb_hash_code(h) = c ORDER BY yb_hash_code(h), r;'
+\i :run_query
+\set Q1 ':off'
+\set Q2 ':on'
+DROP TABLE hc_inc_tbl;
+
 -- #30096: Merge scan shouldn't be used in a parallel scan.
 -- Explain without ANALYZE because a parallel query does not necessarily get
 -- the workers the planner asked for, so the per worker row counts, loop
