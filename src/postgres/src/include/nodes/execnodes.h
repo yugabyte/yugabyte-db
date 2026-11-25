@@ -2361,7 +2361,6 @@ typedef struct YbBatchedNestLoopState
 	int			batch_size;
 	int			first_batch_size;	/* LIMIT-trimmed first batch, 0 = full */
 
-	bool		bnl_needs_sorting;
 	bool		bnl_is_sorted;
 	Tuplesortstate *bnl_tuple_sort;
 	int64		bound;
