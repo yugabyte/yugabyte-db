@@ -207,10 +207,10 @@ func init() {
 			"Ignored if inherit-from-primary is set to true.")
 
 	upgradeVMImageCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds)."+
 			" On a node that runs a Master and a TServer, YBA waits the longer delay.")
 	upgradeVMImageCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds)."+
 			" On a node that runs a Master and a TServer, YBA waits the longer delay.")
 
 }

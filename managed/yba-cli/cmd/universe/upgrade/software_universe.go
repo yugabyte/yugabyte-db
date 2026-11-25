@@ -246,9 +246,9 @@ func init() {
 	upgradeSoftwareCmd.Flags().Bool("upgrade-system-catalog", true,
 		"[Optional] Upgrade System Catalog after software upgrade, defaults to true.")
 	upgradeSoftwareCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	upgradeSoftwareCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 	previewFlags := pflag.NewFlagSet("preview", pflag.ContinueOnError)
 	previewFlags.Bool("allow-rollback", true,
 		"[Optional] Keep the upgrade in PreFinalize state when the release needs a finalize, "+

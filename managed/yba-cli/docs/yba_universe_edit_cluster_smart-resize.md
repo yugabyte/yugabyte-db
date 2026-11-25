@@ -24,8 +24,8 @@ yba universe edit cluster smart-resize \
       --volume-size int                         [Optional] The size of each volume in each instance.
       --dedicated-master-instance-type string   [Optional] Instance Type for the each master instance. Applied only when universe has dedicated master nodes.
       --dedicated-master-volume-size int        [Optional] The size of each volume in each master instance. Applied only when universe has dedicated master nodes.
-      --delay-between-master-servers int32      [Optional] Upgrade delay between Master servers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 18000)
-      --delay-between-tservers int32            [Optional] Upgrade delay between Tservers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 18000)
+      --delay-between-master-servers int32      [Optional] Upgrade delay between Master servers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 180000)
+      --delay-between-tservers int32            [Optional] Upgrade delay between Tservers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 180000)
   -h, --help                                    help for smart-resize
 ```
 

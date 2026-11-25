@@ -300,9 +300,9 @@ func init() {
 		"[Optional] Upgrade Options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime), Non-Restart")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	setGflagsUniverseCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 
 	universeutil.AddRollMaxBatchSizeFlags(setGflagsUniverseCmd)
 

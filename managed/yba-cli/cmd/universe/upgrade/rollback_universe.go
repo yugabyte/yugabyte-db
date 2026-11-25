@@ -143,8 +143,8 @@ func init() {
 		"[Optional] Rollback options, defaults to Rolling. "+
 			"Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime)")
 	upgradeRollbackCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Delay between Master server restarts (in milliseconds).")
+		180000, "[Optional] Delay between Master server restarts (in milliseconds).")
 	upgradeRollbackCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Delay between Tserver restarts (in milliseconds).")
+		180000, "[Optional] Delay between Tserver restarts (in milliseconds).")
 	universeutil.AddRollMaxBatchSizeFlags(upgradeRollbackCmd)
 }

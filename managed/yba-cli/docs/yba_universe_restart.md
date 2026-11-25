@@ -22,8 +22,8 @@ yba universe restart --name <universe-name>
   -n, --name string                          [Required] The name of the universe to be restarted.
   -f, --force                                [Optional] Bypass the prompt for non-interactive usage.
   -s, --skip-validations                     [Optional] Skip validations before running the CLI command.
-      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
-      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
+      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 180000)
+      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 180000)
       --upgrade-option string                [Optional] Upgrade Options, defaults to Rolling. Allowed values (case sensitive): Rolling, Non-Rolling (involves DB downtime). Only a "Rolling" type of restart is allowed on a Kubernetes universe. (default "Rolling")
       --primary-batch-size int32             [Optional] Number of primary-cluster tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)
       --read-replica-batch-size int32        [Optional] Number of read-replica tservers to restart in each rolling batch. Only applied when --upgrade-option is Rolling. (default 1)

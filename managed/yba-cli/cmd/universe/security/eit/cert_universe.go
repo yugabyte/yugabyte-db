@@ -304,8 +304,8 @@ func init() {
 			"Set true for rotating server and client certificates "+
 			"and when root CA and client root CA are same.")
 	certEncryptionInTransitCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	certEncryptionInTransitCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 
 }

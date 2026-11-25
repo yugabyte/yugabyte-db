@@ -119,9 +119,9 @@ func init() {
 		"[Optional] Skip validations before running the CLI command.")
 
 	RestartCmd.Flags().Int32("delay-between-master-servers",
-		18000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Master servers (in miliseconds).")
 	RestartCmd.Flags().Int32("delay-between-tservers",
-		18000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
+		180000, "[Optional] Upgrade delay between Tservers (in miliseconds).")
 
 	RestartCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+
