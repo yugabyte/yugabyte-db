@@ -98,6 +98,7 @@ set(DOCDB_SRCS
         ql_rowwise_iterator_interface.cc
         redis_operation.cc
         rocksdb_writer.cc
+        sample_block_resolver.cc
         scan_choices.cc
         shared_lock_manager.cc
         transaction_dump.cc
@@ -173,6 +174,7 @@ ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(non_transactional_batch_writer-test)
 ADD_YB_TEST(randomized_docdb-test)
+ADD_YB_TEST(sample_block_resolver-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)

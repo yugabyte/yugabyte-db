@@ -113,8 +113,8 @@ struct IndexValue {
   std::optional<uint64_t> cumulative_entry_count;
 
   IndexValue() = default;
-  explicit IndexValue(
-      const BlockHandle& handle_, std::optional<uint64_t> cumulative_entry_count_ = std::nullopt)
+  explicit IndexValue(const BlockHandle& handle_) : handle(handle_) {}
+  IndexValue(const BlockHandle& handle_, uint64_t cumulative_entry_count_)
       : handle(handle_), cumulative_entry_count(cumulative_entry_count_) {}
 
   // Writes the handle, then the count's tag and varint if cumulative_entry_count is set.

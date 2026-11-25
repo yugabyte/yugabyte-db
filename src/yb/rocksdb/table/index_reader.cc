@@ -13,6 +13,8 @@
 
 #include "yb/rocksdb/table/index_reader.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
@@ -466,7 +468,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       auto* iter = bottom_level_iter_;
       bottommost_positioned_iter_ = iter;
       if (position < num_entries) {
-        iter->SeekToRestart(static_cast<uint32_t>(position));
+        iter->SeekToRestart(narrow_cast<uint32_t>(position));
       } else {
         // Past the end: step off the last entry, if there is one, so the iterator is invalid.
         iter->SeekToLast();
@@ -517,20 +519,14 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       bottommost_positioned_iter_ = iter;
     }
     RETURN_NOT_OK(iter->status());
-    const uint64_t num_restarts = iter->iter()->GetNumRestarts();
-    if (num_entries != num_restarts) {
-      // The bottom block is loaded but not positioned, so leave the iterator invalid.
+    const auto leaf_status = CheckLeafEntryCount(iter, num_entries);
+    if (!leaf_status.ok()) {
+      // The bottom block is loaded but not positioned, so leave the iterator invalid. It can still
+      // be repositioned with Seek.
       bottommost_positioned_iter_ = iter - 1;
-      // Any restart interval above 1 gives fewer restart points than entries; more, or none, means
-      // the block doesn't match its parent's count.
-      if (num_restarts == 0 || num_restarts > num_entries) {
-        return fail_count_mismatch();
-      }
-      // Entries share restart points (index_block_restart_interval > 1), so the entry can't be
-      // reached directly. The iterator can still be repositioned with Seek.
-      return STATUS(NotSupported, "SeekToPosition() requires index_block_restart_interval = 1");
+      return leaf_status;
     }
-    iter->SeekToRestart(static_cast<uint32_t>(position - entries_before));
+    iter->SeekToRestart(narrow_cast<uint32_t>(position - entries_before));
     RETURN_NOT_OK(iter->status());
     return iter->Valid() ? Entry() : fail_count_mismatch();
   }
@@ -579,22 +575,19 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     }
     const auto entries_through =
         VERIFY_RESULT(save_error(GetCumulativeEntryCount(*(bottom_level_iter_ - 1))));
-    const uint64_t num_restarts = bottom_level_iter_->iter()->GetNumRestarts();
-    // As in SeekToPosition: any restart interval above 1 gives fewer restart points than entries;
-    // more, or none, means the block doesn't match its parent's count.
-    if (entries_through < entries_before || num_restarts == 0 ||
-        num_restarts > entries_through - entries_before) {
+    if (entries_through < entries_before) {
       const auto status = STATUS_FORMAT(
-          Corruption,
-          "Index block doesn't match its parent's entry count, entries before: $0, entries through: "
-          "$1, restart points: $2", entries_before, entries_through, num_restarts);
+          Corruption, "Cumulative entry counts decrease, entries before: $0, entries through: $1",
+          entries_before, entries_through);
       SaveError(status);
       return status;
     }
-    if (num_restarts != entries_through - entries_before) {
-      // Entries share restart points (index_block_restart_interval > 1), so a restart index isn't
-      // the entry's index within the block.
-      return STATUS(NotSupported, "PositionOf() requires index_block_restart_interval = 1");
+    const auto leaf_status =
+        CheckLeafEntryCount(bottom_level_iter_, entries_through - entries_before);
+    if (!leaf_status.ok()) {
+      // The check stays in the loaded leaf, so this puts the iterator back where Seek put it.
+      bottom_level_iter_->Seek(target);
+      return leaf_status;
     }
     return entries_before + bottom_level_iter_->iter()->GetCurrentRestart();
   }
@@ -773,6 +766,45 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     if (status_.ok() && !s.ok()) status_ = s;
   }
 
+  // Whether every entry of the block `iter` is over starts a restart interval, so that a restart
+  // index is an entry's position: true for index_block_restart_interval = 1. `block_iter` is the
+  // BlockIter that `iter` moves. Moves `iter` within the block. The block builder uses one interval
+  // for the whole block, so the second entry decides. Like SeekToPosition's other errors, a read
+  // error stays in status().
+  template <class Iter>
+  Result<bool> EveryEntryIsRestart(Iter* iter, const BlockIter& block_iter) {
+    iter->SeekToFirst();
+    if (iter->Valid()) {
+      iter->Next();
+    }
+    if (!iter->status().ok()) {
+      SaveError(iter->status());
+      return iter->status();
+    }
+    return !iter->Valid() || block_iter.GetCurrentRestart() == 1;
+  }
+
+  // Checks the bottom-level block loaded in `leaf` against the `num_entries` its parent's counts
+  // give it. Any restart interval above 1 gives fewer restart points than entries, which is
+  // NotSupported. More, none, or fewer while every entry is a restart point means the block
+  // doesn't match the counts: Corruption, which status() keeps reporting. Moves `leaf` within its
+  // block when the numbers differ.
+  Status CheckLeafEntryCount(BlockIterWrapper* leaf, uint64_t num_entries) {
+    const uint64_t num_restarts = leaf->iter()->GetNumRestarts();
+    if (num_restarts == num_entries) {
+      return Status::OK();
+    }
+    if (num_restarts != 0 && num_restarts < num_entries &&
+        !VERIFY_RESULT(EveryEntryIsRestart(leaf, *leaf->iter()))) {
+      return STATUS(NotSupported, "Positions require index_block_restart_interval = 1");
+    }
+    const auto status = STATUS_FORMAT(
+        Corruption, "Index block doesn't match its parent's entry count, entries: $0, restart "
+        "points: $1", num_entries, num_restarts);
+    SaveError(status);
+    return status;
+  }
+
   // For a single-level index: the number of entries. NotSupported if entries share restart points
   // (index_block_restart_interval > 1), so that a restart index isn't an entry's position. Uses its
   // own iterator over the block, so the shared one stays where it is.
@@ -781,22 +813,15 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     BlockIter iter;
     top_level_index_block_->NewIndexBlockIterator(comparator_, &iter);
     iter.SeekToFirst();
-    const bool empty = !iter.Valid();
-    if (!empty) {
-      // The block builder uses one interval for the whole block, so it is enough to check that the
-      // second entry starts the second restart interval.
-      iter.Next();
-    }
-    if (!iter.status().ok()) {
-      // Like SeekToPosition's other errors, status() keeps reporting it.
-      SaveError(iter.status());
-      return iter.status();
-    }
-    if (empty) {
+    if (!iter.Valid()) {
+      if (!iter.status().ok()) {
+        SaveError(iter.status());
+        return iter.status();
+      }
       // An empty block still has one restart point.
       return 0;
     }
-    if (iter.Valid() && iter.GetCurrentRestart() != 1) {
+    if (!VERIFY_RESULT(EveryEntryIsRestart(&iter, iter))) {
       return STATUS(NotSupported, "Positions require index_block_restart_interval = 1");
     }
     return iter.GetNumRestarts();

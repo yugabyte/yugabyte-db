@@ -26,6 +26,7 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/sample_block_resolver.h"
 
 #include "yb/rocksdb/util/statistics.h"
 
@@ -297,17 +298,6 @@ Result<Slice> ExtractDocKey(Slice encoded_key) {
   const auto doc_key_size = VERIFY_RESULT(
       dockv::DocKey::EncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey));
   return Slice(encoded_key.data(), doc_key_size);
-}
-
-// If encoded_key_prefix contains full encoded doc key - extract encoded doc key and return it.
-// Otherwise, return encoded_key itself.
-Slice TryExtractDocKey(Slice encoded_key) {
-  const auto doc_key_size =
-      dockv::DocKey::TryGetEncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
-  if (doc_key_size) {
-    return Slice(encoded_key.data(), *doc_key_size);
-  }
-  return encoded_key;
 }
 
 class SampleBlocksIterator {
@@ -715,9 +705,7 @@ Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
   auto index_iter =
       doc_db_.regular->NewDataBlockAwareIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
 
-  Slice table_rows_start = partition_lower_bound_key.empty()
-                               ? Slice(&dockv::kMinRegularDbTableRowFirstByte, 1)
-                               : partition_lower_bound_key;
+  const auto table_rows_start = TableRowsStart(partition_lower_bound_key);
   index_iter->Seek(table_rows_start);
   if (index_iter->Valid() && index_iter->key() == table_rows_start) {
     // Index iterator points to data block with keys <= table_rows_start, skip it.

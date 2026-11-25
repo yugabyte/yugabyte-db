@@ -5487,6 +5487,35 @@ std::unique_ptr<DataBlockAwareIndexIterator> DBImpl::NewDataBlockAwareIndexItera
       read_options, skip_last_index_entry, column_family);
 }
 
+SstFileIndexIterators::SstFileIndexIterators() = default;
+
+// Members are destroyed before the Cleanable base runs its cleanup, so the iterators go before the
+// version.
+SstFileIndexIterators::~SstFileIndexIterators() = default;
+
+yb::Result<std::unique_ptr<SstFileIndexIterators>> DBImpl::NewSstFileIndexIterators(
+    const ReadOptions& read_options) {
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
+  if (read_options.read_tier != kReadAllTier || read_options.managed || read_options.tailing) {
+    return STATUS(
+        NotSupported,
+        "NewSstFileIndexIterators() supports only ReadTier::kReadAllTier, without managed and "
+        "tailing iterators");
+  }
+  // The merged index iterator drops the files these filters reject.
+  if (read_options.file_filter || read_options.iterator_filter) {
+    return STATUS(NotSupported, "NewSstFileIndexIterators() doesn't support file filters");
+  }
+  auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
+  SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
+  auto result = std::make_unique<SstFileIndexIterators>();
+  result->RegisterCleanup(CleanupIteratorState, new IterState(this, &mutex_, sv), nullptr);
+  result->comparator = cfd->internal_comparator();
+  result->files =
+      VERIFY_RESULT(sv->current->NewSstFileIndexIterators(read_options, env_options_));
+  return result;
+}
+
 Status DBImpl::NewIterators(
     const ReadOptions& read_options,
     const std::vector<ColumnFamilyHandle*>& column_families,

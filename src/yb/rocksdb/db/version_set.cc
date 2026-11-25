@@ -76,6 +76,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/math_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -970,6 +971,42 @@ void Version::AddIndexIterators(
         return NewIndexIterator<typename MergeIteratorBuilderType::IteratorType>(
             read_options, cfd_->table_cache(), trwh);
       });
+}
+
+yb::Result<std::vector<SstFileIndexIterators::File>> Version::NewSstFileIndexIterators(
+    const ReadOptions& read_options, const EnvOptions& soptions) {
+  DCHECK(storage_info_.finalized_);
+
+  std::vector<SstFileIndexIterators::File> files;
+  if (storage_info_.num_non_empty_levels() == 0) {
+    return files;
+  }
+  if (storage_info_.num_non_empty_levels() != 1) {
+    return STATUS_FORMAT(
+        NotSupported, "Only a single level is supported, levels: $0",
+        storage_info_.num_non_empty_levels());
+  }
+
+  const auto& level_files = storage_info_.LevelFilesBrief(0);
+  files.reserve(level_files.num_files);
+  for (size_t i = 0; i < level_files.num_files; ++i) {
+    TableCache::TableReaderWithHandle trwh;
+    RETURN_NOT_OK(cfd_->table_cache()->GetTableReaderForIterator(
+        read_options, soptions, cfd_->internal_comparator(), level_files.files[i].fd, &trwh,
+        cfd_->internal_stats()->GetFileReadHist(0), /* for_compaction = */ false));
+    const auto properties = trwh.table_reader->GetTableProperties();
+    if (!properties) {
+      return STATUS_FORMAT(
+          NotSupported, "No table properties for file $0", level_files.files[i].fd.GetNumber());
+    }
+    SstFileIndexIterators::File file;
+    file.num_data_blocks = properties->num_data_blocks;
+    // The iterator takes over the table cache handle.
+    file.index_iter.reset(cfd_->table_cache()->NewDataBlockAwareIndexIterator(read_options, &trwh));
+    RETURN_NOT_OK(file.index_iter->status());
+    files.push_back(std::move(file));
+  }
+  return files;
 }
 
 template void Version::AddIndexIterators(
