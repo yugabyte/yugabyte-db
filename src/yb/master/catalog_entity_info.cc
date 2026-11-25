@@ -1044,7 +1044,7 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {
     if (index_info_pb.table_id() == index_id) {
-      return qlexpr::IndexInfo(index_info_pb);
+      return qlexpr::IndexInfo(index_info_pb, HybridTime::kInvalid);
     }
   }
   return qlexpr::IndexInfo();

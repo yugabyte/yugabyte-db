@@ -180,6 +180,10 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual bool SkipCatalogVersionChecks() { return false; }
 
+  virtual bool IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const {
+    return false;
+  }
+
   virtual const std::string& permanent_uuid() const = 0;
 
   virtual Result<std::string> GetUniverseUuid() const = 0;
