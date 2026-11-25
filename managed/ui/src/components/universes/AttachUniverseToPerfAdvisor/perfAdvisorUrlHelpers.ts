@@ -1,14 +1,14 @@
 import { URL_TAB_PATH, isNonEmptyString } from '@yugabytedb/perf-advisor-ui';
-import { PERF_ADVISOR_PATH } from '@app/redesign/helpers/constants';
+import { MONITORING_PATH } from '@app/redesign/helpers/constants';
 
 /**
  * Shared helpers for reading Perf Advisor drilldown state from the browser URL.
  */
 
 const anomalyUuidPattern = new RegExp(`/${URL_TAB_PATH.ANOMALIES}/([^/]+)`);
-const perfAdvisorDrilldownPattern = new RegExp(`/${PERF_ADVISOR_PATH}/([^/?#]+)`);
+const perfAdvisorDrilldownPattern = new RegExp(`/${MONITORING_PATH}/([^/?#]+)`);
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** queryId from the search string — set when a query drilldown is opened. */
 export const getQueryIdFromUrl = (): string | null =>

@@ -107,7 +107,6 @@ DECLARE_bool(use_node_hostname_for_local_tserver);
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pggate {
 namespace {
@@ -182,7 +181,8 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const YbcPgTableLocalityInfo& locality_info,
     const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_info);
+    return PgSelectIndex::Make(
+        pg_session, index_id, locality_info, IndexSkipIntentsInfo(skip_intents_info));
   }
   return PgSelect::Make(
       pg_session, table_id, locality_info, skip_intents_info, MakeIndexQueryInfo(index_id, params));
@@ -506,11 +506,6 @@ Result<bool> RetrieveYbctidsImpl(
       });
 }
 
-[[nodiscard]] bool ShouldEnableTableLocks() {
-  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
-         !YBCIsBinaryUpgrade();
-}
-
 tserver::TServerSharedData& GetTServerSharedData() {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
@@ -783,8 +778,10 @@ PgApiImpl::PgApiImpl(
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+      pg_txn_manager_(new PgTxnManager(
+          &pg_client_, pg_callbacks_,
+          /* backend_should_take_object_locks= */
+          !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade() && !is_parallel_worker_,
           pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
@@ -914,7 +911,7 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called);
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -923,7 +920,7 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -933,7 +930,7 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -947,7 +944,7 @@ Status PgApiImpl::FetchSequenceTuple(
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), fetch_count, inc_by,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -962,7 +959,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -2223,13 +2220,11 @@ Status PgApiImpl::BeginTransaction(int64_t start_time, uint64_t origination_time
 }
 
 Status PgApiImpl::RecreateTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RecreateTransaction();
+  return pg_txn_manager_->RecreateTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::RestartTransaction() {
-  ClearSessionState();
-  return pg_txn_manager_->RestartTransaction();
+  return pg_txn_manager_->RestartTransaction(ClearSessionState());
 }
 
 Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {
@@ -2241,11 +2236,15 @@ Status PgApiImpl::EnsureReadPoint() {
 }
 
 Status PgApiImpl::RestartReadPoint() {
-  return pg_txn_manager_->RestartReadPoint();
+  return pg_txn_manager_->RestartReadPoint(ClearSessionState());
 }
 
-bool PgApiImpl::IsRestartReadPointRequested() {
-  return pg_txn_manager_->IsRestartReadPointRequested();
+void PgApiImpl::ResetRetryReadLimitCaps() {
+  pg_txn_manager_->ResetRetryReadLimitCaps();
+}
+
+bool PgApiImpl::IsReadRestartRetryInProgress() const {
+  return pg_txn_manager_->IsReadRestartRetryInProgress();
 }
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
@@ -2400,8 +2399,12 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
-  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+bool PgApiImpl::UsingObjectLocksLocally() const {
+  return pg_txn_manager_->UsingObjectLocksLocally();
+}
+
+bool PgApiImpl::UsingObjectLocksGloballyForCurrentTxn() const {
+  return pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {

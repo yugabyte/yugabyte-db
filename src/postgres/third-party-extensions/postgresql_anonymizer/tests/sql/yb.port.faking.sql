@@ -5,7 +5,6 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS anon CASCADE;
 
 BEGIN; -- YB: Workaround for read time error, check #25665
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.init();
 COMMIT; -- YB: Workaround for read time error, check #25665
 

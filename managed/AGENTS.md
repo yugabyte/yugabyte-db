@@ -1,5 +1,10 @@
 # AGENTS.md: YugabyteDB Anywhere (managed/)
 
+PRs, commits and review comments for `managed/` are public. They follow
+[`src/AGENTS.md` § Confidentiality](../src/AGENTS.md#confidentiality--never-leak-customer-data-yugabytedb-secrets-or-pii),
+and security fixes follow its
+[disclosure tiers](../src/AGENTS.md#security-and-customer-sensitive-changes).
+
 ## v2 REST API
 
 The v2 API is defined in OpenAPI and its Play controllers are generated. API clients include

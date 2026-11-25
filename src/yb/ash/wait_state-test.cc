@@ -13,6 +13,11 @@
 
 #include "yb/ash/wait_state.h"
 
+#include <memory>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/common/common.pb.h"
 
 #include "yb/util/format.h"
@@ -23,6 +28,10 @@ namespace yb {
 
 using yb::ash::AshAuxInfo;
 using yb::ash::AshMetadata;
+using yb::ash::kMaxWaitStateTrackerNumShards;
+using yb::ash::WaitStateInfo;
+using yb::ash::WaitStateInfoPtr;
+using yb::ash::WaitStateTracker;
 
 class WaitStateTest : public YBTest {};
 
@@ -103,6 +112,103 @@ TEST(WaitStateTest, TestUpdate) {
   ASSERT_EQ(meta1.user_id, meta1_copy.user_id);
   ASSERT_EQ(meta1.rpc_request_id, pb2.rpc_request_id());
   ASSERT_EQ(meta1.client_host_port, meta1_copy.client_host_port);
+}
+
+void TestTrackUntrack(WaitStateTracker* tracker) {
+  ASSERT_TRUE(tracker->GetWaitStates().empty());
+
+  // Untracking something that was never tracked, and tracking a null pointer, are both no-ops.
+  auto untracked = std::make_shared<WaitStateInfo>();
+  tracker->Untrack(untracked);
+  tracker->Track(nullptr);
+  ASSERT_TRUE(tracker->GetWaitStates().empty());
+
+  constexpr size_t kNumEntries = 100;
+  std::vector<WaitStateInfoPtr> entries;
+  for (size_t i = 0; i < kNumEntries; ++i) {
+    entries.push_back(std::make_shared<WaitStateInfo>());
+    tracker->Track(entries.back());
+  }
+  ASSERT_EQ(tracker->GetWaitStates().size(), kNumEntries);
+
+  // Tracking the same entry again should not duplicate it.
+  tracker->Track(entries.front());
+  ASSERT_EQ(tracker->GetWaitStates().size(), kNumEntries);
+
+  // The snapshot should contain exactly what was tracked.
+  std::unordered_set<WaitStateInfoPtr> expected(entries.begin(), entries.end());
+  for (const auto& entry : tracker->GetWaitStates()) {
+    ASSERT_EQ(expected.erase(entry), 1) << "Unexpected entry in snapshot";
+  }
+  ASSERT_TRUE(expected.empty());
+
+  for (const auto& entry : entries) {
+    tracker->Untrack(entry);
+  }
+  ASSERT_TRUE(tracker->GetWaitStates().empty());
+}
+
+TEST(WaitStateTest, TestTrackerTrackUntrack) {
+  // A single shard degenerates to the unsharded behavior; more shards spread the entries out.
+  // 10 is deliberately not a power of two, since an operator override need not be one.
+  for (size_t num_shards :
+       {size_t(1), size_t(4), size_t(8), size_t(10), size_t(kMaxWaitStateTrackerNumShards)}) {
+    WaitStateTracker sharded_tracker(num_shards);
+    TestTrackUntrack(&sharded_tracker);
+  }
+}
+
+TEST(WaitStateTest, TestShardedTrackerSpreadsEntries) {
+  constexpr size_t kNumShards = 8;
+  constexpr size_t kNumEntries = 100 * kNumShards;
+
+  WaitStateTracker tracker(kNumShards);
+  std::vector<WaitStateInfoPtr> entries;
+  for (size_t i = 0; i < kNumEntries; ++i) {
+    entries.push_back(std::make_shared<WaitStateInfo>());
+    tracker.Track(entries.back());
+  }
+  ASSERT_EQ(tracker.GetWaitStates().size(), kNumEntries);
+
+  // Hashing the pointer should reach every shard. Using the raw address does not: make_shared
+  // allocations are evenly spaced, so the low bits are nearly constant and whole shards go unused.
+  ASSERT_EQ(tracker.TEST_NumNonEmptyShards(), kNumShards);
+}
+
+TEST(WaitStateTest, TestShardedTrackerConcurrency) {
+  constexpr size_t kNumThreads = 8;
+  constexpr size_t kNumIterations = 2000;
+  WaitStateTracker tracker(4);
+
+  // Entries that stay tracked for the duration of the test, so the concurrent GetWaitStates()
+  // snapshots have something stable to observe.
+  std::vector<WaitStateInfoPtr> pinned;
+  for (size_t i = 0; i < kNumThreads; ++i) {
+    pinned.push_back(std::make_shared<WaitStateInfo>());
+    tracker.Track(pinned.back());
+  }
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < kNumThreads; ++i) {
+    threads.emplace_back([&tracker, &pinned]() {
+      for (size_t iter = 0; iter < kNumIterations; ++iter) {
+        auto entry = std::make_shared<WaitStateInfo>();
+        tracker.Track(entry);
+        ASSERT_GE(tracker.GetWaitStates().size(), pinned.size());
+        tracker.Untrack(entry);
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  // Only the pinned entries should be left behind.
+  ASSERT_EQ(tracker.GetWaitStates().size(), pinned.size());
+  for (const auto& entry : pinned) {
+    tracker.Untrack(entry);
+  }
+  ASSERT_TRUE(tracker.GetWaitStates().empty());
 }
 
 }  // namespace yb

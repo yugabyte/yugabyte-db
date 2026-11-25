@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -19,30 +20,40 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.bouncycastle.asn1.x509.GeneralName;
 
 public class ManagedLoadBalancerUtil {
 
   // "lb-" is reserved for public load balancers.
   public static final String PRIVATE_NAME_PREFIX = "lbi-";
+
+  private static final Pattern DNS_LABEL =
+      Pattern.compile("[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?");
 
   /**
    * Returns the lowercase, unpadded base32 form of the UUID (26 characters). YBM's CommonUtil uses
@@ -95,6 +106,11 @@ public class ManagedLoadBalancerUtil {
     return cluster.userIntent.isManagedLoadBalancerEnabled();
   }
 
+  // Add-on clusters run no master or tserver, so a load balancer would serve nothing.
+  private static boolean runsTservers(Cluster cluster) {
+    return cluster.clusterType == ClusterType.PRIMARY || cluster.clusterType == ClusterType.ASYNC;
+  }
+
   public static boolean isPrivateEnabled(Cluster cluster) {
     ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
     return config != null && config.isEnablePrivate();
@@ -103,6 +119,55 @@ public class ManagedLoadBalancerUtil {
   public static boolean isPublicEnabled(Cluster cluster) {
     ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
     return config != null && config.isEnablePublic();
+  }
+
+  public static List<String> getDnsNames(Cluster cluster) {
+    ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
+    return config == null || config.getDnsNames() == null
+        ? Collections.emptyList()
+        : config.getDnsNames();
+  }
+
+  /**
+   * SANs that let a client pass the host name check through the passthrough load balancer, which
+   * shows the node's own cert. Read at signing time: create and the edit's freeze save the setting,
+   * and EnsureManagedLoadBalancer the address, before any node is configured.
+   */
+  public static Map<String, Integer> getCertNames(
+      UniverseDefinitionTaskParams details, @Nullable NodeDetails node) {
+    Map<String, Integer> names = new LinkedHashMap<>();
+    Cluster cluster = node == null ? null : details.getClusterByUuid(node.placementUuid);
+    if (cluster == null || !node.isTserver || !isEnabled(cluster)) {
+      return names;
+    }
+    ManagedLoadBalancerState state = details.getManagedLoadBalancerState();
+    if (state != null) {
+      state.getLoadBalancers().stream()
+          .filter(lb -> lb.getClusterUuid().equals(cluster.uuid))
+          .filter(lb -> lb.getAzUuids().contains(node.azUuid))
+          .map(ManagedLoadBalancer::getAddress)
+          .filter(StringUtils::isNotEmpty)
+          // IP on GCP and Azure, NLB DNS name on AWS.
+          .forEach(
+              address ->
+                  names.put(
+                      address,
+                      Util.isIpAddress(address) ? GeneralName.iPAddress : GeneralName.dNSName));
+    }
+    getDnsNames(cluster).forEach(name -> names.putIfAbsent(name, GeneralName.dNSName));
+    return names;
+  }
+
+  /** getCertNames in lower case: DNS names ignore case, so a case change restarts no tserver. */
+  public static Set<String> getCertNameSet(
+      UniverseDefinitionTaskParams details, @Nullable NodeDetails node) {
+    return toCertNameSet(getCertNames(details, node));
+  }
+
+  public static Set<String> toCertNameSet(Map<String, Integer> certNames) {
+    return certNames.keySet().stream()
+        .map(name -> name.toLowerCase(Locale.ROOT))
+        .collect(Collectors.toSet());
   }
 
   /**
@@ -116,13 +181,14 @@ public class ManagedLoadBalancerUtil {
    * <p>Name: the saved state's, so a taken-over load balancer keeps its name; else the zones'
    * lbName, set only in the edit that turns this on; else {@link #getPrivateName(UUID, Region)}.
    *
-   * @return nothing for a null cluster or one without a managed load balancer.
+   * @return nothing for a null cluster, an add-on cluster, or one without a managed load balancer.
    */
   public static List<ManagedLoadBalancer> planLoadBalancers(
       @Nullable Cluster cluster, @Nullable ManagedLoadBalancerState state) {
     PlacementInfo placement = cluster == null ? null : cluster.getOverallPlacement();
-    // validateNewCluster rejects enablePublic until PLAT-22813 adds public load balancers.
-    if (placement == null || !isPrivateEnabled(cluster)) {
+    // validateNewCluster rejects enablePublic until PLAT-22813 adds public load balancers. An
+    // add-on cluster can carry the setting: createAddOnCluster copies it without validating.
+    if (placement == null || !isPrivateEnabled(cluster) || !runsTservers(cluster)) {
       return Collections.emptyList();
     }
     Map<UUID, String> names = new HashMap<>();
@@ -205,14 +271,19 @@ public class ManagedLoadBalancerUtil {
     return tags;
   }
 
-  /** Rejects a new cluster that asks for a managed load balancer that YBA cannot create. */
+  /**
+   * Rejects a new cluster that asks for a managed load balancer that YBA cannot create.
+   *
+   * @param clusters every cluster of the universe once the new one is added, the new one included.
+   */
   public static void validateNewCluster(
       Cluster cluster,
-      @Nullable Cluster primaryCluster,
+      Collection<Cluster> clusters,
       RuntimeConfGetter confGetter,
       CloudAPI.Factory cloudAPIFactory) {
-    validateNoLbNames(primaryCluster, cluster);
+    validateNoMixedLoadBalancers(clusters, null /* universe */);
     validateEnablesSomething(cluster);
+    validateDnsNames(cluster);
     if (!isEnabled(cluster)) {
       return;
     }
@@ -221,9 +292,10 @@ public class ManagedLoadBalancerUtil {
 
   private static void validateCanEnable(
       Cluster cluster, RuntimeConfGetter confGetter, CloudAPI.Factory cloudAPIFactory) {
-    if (cluster.clusterType != ClusterType.PRIMARY) {
+    if (!runsTservers(cluster)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "A managed load balancer is available only for the primary cluster");
+          BAD_REQUEST,
+          "A managed load balancer is available only for the primary and read replica clusters");
     }
     // A flag that YBA accepted and ignored would mislead.
     if (isPublicEnabled(cluster)) {
@@ -259,22 +331,19 @@ public class ManagedLoadBalancerUtil {
    * An edit may turn the managed load balancer on or off. Turning it on takes over the load
    * balancer that each region's zones name with lbName; otherwise lbName stays out of a managed
    * universe.
+   *
+   * @param clustersAfterEdit every cluster of the universe as the edit leaves it.
    */
   public static void validateEditedCluster(
       Universe universe,
-      @Nullable Cluster primaryAfterEdit,
+      Collection<Cluster> clustersAfterEdit,
       Cluster current,
       Cluster updated,
       RuntimeConfGetter confGetter,
       CloudAPI.Factory cloudAPIFactory) {
+    validateDnsNames(updated);
     if (!isEnabled(current) && isEnabled(updated)) {
       validateCanEnable(updated, confGetter, cloudAPIFactory);
-      // Only the primary's load balancers can be taken over.
-      for (Cluster other : universe.getUniverseDetails().clusters) {
-        if (!other.uuid.equals(updated.uuid)) {
-          validateNoLbNames(updated, other);
-        }
-      }
       // The freeze names them on the saved zones (nameTakeoversOnZones); a new region has none.
       Map<UUID, String> takeoverNames = getTakeoverNames(updated);
       Set<UUID> currentRegions =
@@ -293,9 +362,7 @@ public class ManagedLoadBalancerUtil {
                             + " edit.",
                         region.code));
               });
-      return;
-    }
-    if (isEnabled(current) && !isEnabled(updated)) {
+    } else if (isEnabled(current) && !isEnabled(updated)) {
       ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
       Set<String> deletedNames =
           state == null
@@ -304,7 +371,8 @@ public class ManagedLoadBalancerUtil {
                   .filter(lb -> lb.getClusterUuid().equals(current.uuid))
                   .map(ManagedLoadBalancer::getName)
                   .collect(Collectors.toSet());
-      getPlacements(updated)
+      clustersAfterEdit.stream()
+          .flatMap(ManagedLoadBalancerUtil::getPlacements)
           .flatMap(PlacementInfo::azStream)
           .map(az -> az.lbName)
           .filter(deletedNames::contains)
@@ -322,22 +390,96 @@ public class ManagedLoadBalancerUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, "Public load balancers are not supported yet");
     }
-    validateNoLbNames(primaryAfterEdit, updated);
+    validateNoMixedLoadBalancers(clustersAfterEdit, universe);
   }
 
-  /** Missing keeps the setting (older clients omit it); one that enables nothing turns it off. */
+  /**
+   * Missing keeps the setting (older clients omit it); one that enables nothing turns it off.
+   * Missing dnsNames keep the names, so a client that sends only enablePrivate doesn't wipe them
+   * and restart the tservers. A turn-off may repeat the current names (a client that read the
+   * setting) but not change them: v1 can't tell a missing enablePrivate from false, so new names
+   * there may mean "add a name", and the edit would delete the load balancers.
+   */
   @Nullable
   public static ManagedLoadBalancerConfig getEditedSetting(
       @Nullable ManagedLoadBalancerConfig current, @Nullable ManagedLoadBalancerConfig requested) {
     if (requested == null) {
       return current;
     }
-    return requested.isEnablePrivate() || requested.isEnablePublic() ? requested : null;
+    if (!requested.isEnablePrivate() && !requested.isEnablePublic()) {
+      List<String> names = requested.getDnsNames();
+      if (names != null
+          && !names.isEmpty()
+          && !sameDnsNames(names, current == null ? null : current.getDnsNames())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "managedLoadBalancer changes dnsNames but enables no load balancer. Set enablePrivate"
+                + " to true to change the names. To turn the load balancer off, leave dnsNames"
+                + " out or send the current names.");
+      }
+      return null;
+    }
+    if (requested.getDnsNames() == null && current != null && current.getDnsNames() != null) {
+      ManagedLoadBalancerConfig edited = requested.clone();
+      edited.setDnsNames(new ArrayList<>(current.getDnsNames()));
+      return edited;
+    }
+    return requested;
   }
 
-  public static boolean isTurnedOnOrOff(Cluster current, Cluster updated) {
+  /** On or off, or other dnsNames. */
+  public static boolean isChanged(Cluster current, Cluster updated) {
     return isPrivateEnabled(current) != isPrivateEnabled(updated)
-        || isPublicEnabled(current) != isPublicEnabled(updated);
+        || isPublicEnabled(current) != isPublicEnabled(updated)
+        || !sameDnsNames(getDnsNames(current), getDnsNames(updated));
+  }
+
+  // DNS names are case-insensitive, so a case change alone is no change.
+  private static boolean sameDnsNames(@Nullable List<String> a, @Nullable List<String> b) {
+    return lowerCaseSet(a).equals(lowerCaseSet(b));
+  }
+
+  private static Set<String> lowerCaseSet(@Nullable List<String> names) {
+    return names == null
+        ? Collections.emptySet()
+        : names.stream().map(name -> name.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+  }
+
+  /**
+   * Checked at submit: a bad name would fail provisioning halfway through a create. IPs rejected:
+   * YBA adds the LB IP itself, and an IP needs an iPAddress SAN. Hand-written: commons
+   * DomainValidator rejects private zones such as .internal.
+   */
+  private static void validateDnsNames(Cluster cluster) {
+    for (String name : getDnsNames(cluster)) {
+      if (!isValidDnsName(name)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "managedLoadBalancer.dnsNames has an invalid DNS name: '%s'. Use a name such as"
+                    + " db.example.com or *.db.example.com. IP addresses are not allowed.",
+                name));
+      }
+    }
+  }
+
+  private static boolean isValidDnsName(@Nullable String name) {
+    if (name == null || name.length() > 253) {
+      return false;
+    }
+    boolean wildcard = name.startsWith("*.");
+    String[] labels = (wildcard ? name.substring(2) : name).split("\\.", -1);
+    // *.com would match every name in a top-level domain.
+    if (wildcard && labels.length < 2) {
+      return false;
+    }
+    for (String label : labels) {
+      if (!DNS_LABEL.matcher(label).matches()) {
+        return false;
+      }
+    }
+    // Rejects IPv4, even mistyped like 10.0.0.256.
+    return !StringUtils.isNumeric(labels[labels.length - 1]);
   }
 
   /** At create, an empty config is a mistake; in an edit it means off (see getEditedSetting). */
@@ -353,10 +495,52 @@ public class ManagedLoadBalancerUtil {
 
   /**
    * A universe uses load balancers that YBA manages or load balancers that the user creates, never
-   * both. The primary cluster decides which, because only it can have a managed load balancer.
+   * both: once any cluster has a managed load balancer, no cluster sets lbName. The exception is a
+   * cluster that the request turns on, whose lbName names the load balancer that it takes over. It
+   * can't take over one that another cluster has, because deleting either cluster would delete it.
+   *
+   * @param clusters every cluster of the universe as the request leaves it.
+   * @param universe the universe before the request, or null when the request creates the clusters
+   *     that it checks.
    */
-  public static void validateNoLbNames(@Nullable Cluster primaryCluster, Cluster cluster) {
-    if (primaryCluster == null || !isEnabled(primaryCluster)) {
+  public static void validateNoMixedLoadBalancers(
+      Collection<Cluster> clusters, @Nullable Universe universe) {
+    ManagedLoadBalancerState state =
+        universe == null ? null : universe.getUniverseDetails().getManagedLoadBalancerState();
+    // The cluster that has each load balancer, by region and name.
+    Map<Pair<UUID, String>, UUID> owners = new HashMap<>();
+    if (state != null) {
+      state
+          .getLoadBalancers()
+          .forEach(
+              lb -> owners.put(Pair.of(lb.getRegionUuid(), lb.getName()), lb.getClusterUuid()));
+    }
+    for (Cluster cluster : clusters) {
+      Cluster saved = universe == null ? null : universe.getCluster(cluster.uuid);
+      boolean takesOver = saved != null && !isEnabled(saved) && isEnabled(cluster);
+      if (!takesOver) {
+        validateNoLbNames(clusters, cluster);
+        continue;
+      }
+      getTakeoverNames(cluster)
+          .forEach(
+              (regionUuid, name) -> {
+                UUID owner = owners.putIfAbsent(Pair.of(regionUuid, name), cluster.uuid);
+                if (owner != null && !owner.equals(cluster.uuid)) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      String.format(
+                          "Another cluster of the universe has load balancer %s, so this cluster"
+                              + " can't take it over",
+                          name));
+                }
+              });
+    }
+  }
+
+  /** Rejects lbName on the cluster when any of the clusters has a managed load balancer. */
+  public static void validateNoLbNames(Collection<Cluster> clusters, Cluster cluster) {
+    if (clusters.stream().noneMatch(ManagedLoadBalancerUtil::isEnabled)) {
       return;
     }
     getPlacements(cluster)

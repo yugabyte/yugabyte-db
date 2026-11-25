@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "yb/common/entity_ids_types.h"
@@ -72,6 +73,11 @@ static const uint32_t kPgPublicationRelPrpubidIndexOid = 6116;
 
 // Hardcoded for pg_replication_origin (in pg_replication_origin.h).
 static const uint32_t kPgReplicationOriginOid = 6000;
+
+// Catalog tables that logical replication also polls when
+// ysql_yb_enable_replication_slot_transactional_ddl is on.
+inline constexpr std::array<uint32_t, 3> kTxnDdlCatalogTableOids = {
+    kPgAttributeTableOid, kPgNamespaceTableOid, kPgPublicationRelPrpubidIndexOid};
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;

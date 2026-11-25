@@ -208,21 +208,10 @@ class YBClient::Data {
       const TransactionMetadata* txn,
       const SubTransactionId sub_transaction_id);
 
-  Status BackfillIndex(YBClient* client,
-                       const YBTableName& table_name,
-                       const TableId& table_id,
-                       CoarseTimePoint deadline,
-                       std::optional<TransactionMetadata> requester_transaction,
-                       bool wait = true);
-  Status IsBackfillIndexInProgress(YBClient* client,
-                                   const TableId& table_id,
-                                   const TableId& index_id,
-                                   CoarseTimePoint deadline,
-                                   bool* backfill_in_progress);
-  Status WaitForBackfillIndexToFinish(YBClient* client,
-                                      const TableId& table_id,
-                                      const TableId& index_id,
-                                      CoarseTimePoint deadline);
+  void BackfillIndexAsync(
+      YBClient* client, const YBTableName& index_name, TableIdView index_id,
+      const std::optional<TransactionMetadata>& requester_transaction,
+      CoarseTimePoint deadline, BackfillIndexCallback&& callback);
 
   // Has the index entered the backfill stage yet?
   // Returns true if the backfill has started or has already completed.

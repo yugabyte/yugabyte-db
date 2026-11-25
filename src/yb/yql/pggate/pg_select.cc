@@ -63,7 +63,8 @@ Status PgSelect::Prepare(
     }
 
     SetSecondaryIndex(VERIFY_RESULT(PgSelectIndex::Make(
-        pg_session_, index_info->id, locality_info, skip_intents_info, std::move(index_req))));
+        pg_session_, index_info->id, locality_info, IndexSkipIntentsInfo(skip_intents_info),
+        std::move(index_req))));
   }
 
   // Prepare binds for the request.

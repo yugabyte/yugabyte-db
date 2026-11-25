@@ -121,7 +121,7 @@ class TestClaimBatch:
 
         # candidates (sub-claim A, sub-claim B), then claim UPSERT, then fetch.
         mock_cur.fetchall.side_effect = [
-            [("row-1",)],  # sub-claim A candidates
+            [("row-1", "row-1", "tenant-a")],  # sub-claim A candidates
             [],  # sub-claim B candidates
             [("row-1",)],  # claim UPSERT RETURNING
             [("row-1", "tenant-a", None)],  # fetched full row
@@ -140,7 +140,7 @@ class TestClaimBatch:
         poller, mock_pool, mock_conn, mock_cur = _create_poller(mock_pool_cls)
         registration = _registration()
         mock_cur.fetchall.side_effect = [
-            [("row-1",)],
+            [("row-1", "row-1", "tenant-a")],
             [],
             [],  # another worker won the race -- nothing RETURNING
         ]
@@ -163,20 +163,74 @@ class TestClaimBatch:
 
 
 @pytest.mark.unit
+class TestKeyedLookups:
+    @patch('work_queue.registration_poller.TargetConnectionPool')
+    def test_fetch_rows_groups_by_tenant_and_binds_native_keys(self, mock_pool_cls):
+        poller, _, _, mock_cur = _create_poller(mock_pool_cls)
+        registration = _registration()
+        mock_cur.description = [("id",), ("tenant_id",)]
+        mock_cur.fetchall.return_value = []
+
+        poller._fetch_rows(
+            mock_cur,
+            registration,
+            {"a": ("a", "t1"), "b": ("b", "t1"), "c": ("c", "t2")},
+        )
+
+        assert mock_cur.execute.call_count == 2
+        query, params = mock_cur.execute.call_args_list[0][0]
+        text = query.as_string(None)
+        assert "::text" not in text
+        assert '"tenant_id" = %s AND "id" = ANY(%s)' in text
+        assert params == ["t1", ["a", "b"]]
+        assert mock_cur.execute.call_args_list[1][0][1] == ["t2", ["c"]]
+
+    @patch('work_queue.registration_poller.TargetConnectionPool')
+    def test_without_tenant_column_keys_on_pk_alone(self, mock_pool_cls):
+        poller, _, _, mock_cur = _create_poller(mock_pool_cls)
+        registration = _registration(destination_tenant_column=None)
+        mock_cur.description = [("id",)]
+        mock_cur.fetchall.return_value = []
+
+        poller._fetch_rows(mock_cur, registration, {"a": ("a", None)})
+
+        query, params = mock_cur.execute.call_args[0]
+        assert "tenant" not in query.as_string(None)
+        assert '"id" = ANY(%s)' in query.as_string(None)
+        assert params == [["a"]]
+
+    @patch('work_queue.registration_poller.TargetConnectionPool')
+    def test_candidates_carry_native_pk_and_tenant(self, mock_pool_cls):
+        poller, _, _, mock_cur = _create_poller(mock_pool_cls)
+        registration = _registration(destination_priority_column=None)
+        mock_cur.fetchall.return_value = [("id-1", "id-1", "t1")]
+
+        assert poller._find_candidates(mock_cur, registration) == {"id-1": ("id-1", "t1")}
+        query, _ = mock_cur.execute.call_args[0]
+        assert 'd."tenant_id"' in query.as_string(None)
+
+
+@pytest.mark.unit
 class TestFinalize:
     @patch('work_queue.registration_poller.TargetConnectionPool')
     def test_finalize_success_writes_embedding_and_deletes_progress(self, mock_pool_cls):
         poller, mock_pool, mock_conn, mock_cur = _create_poller(mock_pool_cls)
         registration = _registration()
         claimed_row = ClaimedRow(
-            registration=registration, row={"id": "row-1"}, claimed_at=None
+            registration=registration,
+            row={"id": "row-1", "tenant_id": "tenant-a"},
+            claimed_at=None,
         )
 
         poller.finalize_success(claimed_row, embedding=[0.1, 0.2])
 
         update_sql, update_params = mock_cur.execute.call_args_list[0][0]
         assert "UPDATE" in update_sql.as_string(None)
-        assert update_params == ([0.1, 0.2], "row-1")
+        # Key compared in its own type (no ::text cast) with the tenant bound,
+        # so the write is a PK point lookup rather than a table scan.
+        assert "::text" not in update_sql.as_string(None)
+        assert '"tenant_id" = %s' in update_sql.as_string(None)
+        assert update_params == [[0.1, 0.2], "tenant-a", "row-1"]
         delete_sql, delete_params = mock_cur.execute.call_args_list[1][0]
         assert "DELETE FROM dist_rag.column_embedding_progress" in delete_sql
         assert delete_params == (str(registration.id), "row-1")

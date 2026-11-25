@@ -36,6 +36,15 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to update\n", formatter.RedColor))
 		}
+		if cmd.Flags().Changed("ssh-port") {
+			sshPort, err := cmd.Flags().GetInt("ssh-port")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if _, err := providerutil.SSHPort(sshPort); err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -234,11 +243,20 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerRegions = removeOnpremRegions(removeRegions, providerRegions)
 
 		providerRegions = editOnpremRegions(editRegions, addZones, removeZones, providerRegions)
 
 		providerRegions = addOnpremRegions(addRegions, addZones, providerRegions)
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		provider.SetRegions(providerRegions)
 
@@ -291,7 +309,9 @@ func init() {
 			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
-			"Each zone needs to be removed using a separate --remove-zone flag.")
+			"Each zone needs to be removed using a separate --remove-zone flag. "+
+			"Removing every zone of a region is rejected; remove the region with "+
+			"--remove-region instead.")
 
 	updateOnpremProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the On-premises provider. "+
