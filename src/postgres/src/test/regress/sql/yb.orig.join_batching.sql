@@ -4,14 +4,14 @@
 -- The prelude leaves the batched join the one join method enabled.  The
 -- tests force the batched join with its own controls, YbBatchedNL and
 -- yb_enable_batchednl, and a plain nested loop with NestLoop.  yb_prefer_bnl
--- is off: since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on
--- keeps the batched join enabled wherever nested loops are enabled, whatever
--- yb_enable_batchednl says, as before the batched join had controls of its
--- own.  The tests at the end of the file switch to the cost model.  The
--- tables shared with yb.orig.join_batching_negative come from
--- yb.orig.join_batching_setup; a test whose data carries a key type, a
--- physical layout or a property of its own creates a table of its own, and
--- no table is dropped.
+-- is off so that NestLoop means a plain nested loop: since
+-- 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on keeps the batched
+-- join enabled wherever nested loops are enabled, whatever yb_enable_batchednl
+-- says, as before the batched join had controls of its own.  The tests at the
+-- end of the file switch to the cost model.  The tables shared with
+-- yb.orig.join_batching_negative come from yb.orig.join_batching_setup; a test
+-- whose data carries a key type, a physical layout or a property of its own
+-- creates a table of its own, and no table is dropped.
 --
 
 -- Force BNL
@@ -448,9 +448,9 @@ SELECT COUNT(*) FROM p1 t1a, p1 t1b, p5 t2a, p5 t2b
 -- Under a nested loop with s2 outer, the batched join of s1 and s3 takes a
 -- batch of s1.a and the plain parameter s2.b in the same index condition:
 -- s2's rows are not batched into a join whose outer, s1, cannot pass a batch
--- on (#15156).
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s2 s3) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s2 s3) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+-- on, though YbBatchedNL asks for a batched top join (#15156).
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s2 s3) YbBatchedNL(s1 s3)*/ select s3.* from p1 s1, p2 s2, p5 s3 where s3.a = s1.a and s3.b = s2.b and s1.c = s2.c order by s3.a, s3.b;
 
 -- The batched key is a placeholder value, the NULL constant the subquery
 -- supplies: the batched index condition is built from it as from a column,

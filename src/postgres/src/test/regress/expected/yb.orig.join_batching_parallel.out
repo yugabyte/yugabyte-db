@@ -42,10 +42,11 @@ SET yb_bnl_batch_size = 3;
 -- the next call replaces them.
 --
 -- `query` carries its own hint comment, with YbBatchedNL on each join it
--- batches; the unbatched run replaces those hints with NestLoop.  pg_hint_plan
--- prefers a nested statement's own hints to the caller's, and everything built
--- in front of the comment here -- EXPLAIN options, a table name -- stays within
--- the characters it allows to precede a hint.  The settings are local, so the
+-- batches.  The unbatched run replaces those hints with NestLoop and sets the
+-- batch size to 1, so none of its joins batches.  pg_hint_plan prefers a
+-- nested statement's own hints to the caller's, and everything built in front
+-- of the comment here -- EXPLAIN options, a table name -- stays within the
+-- characters it allows to precede a hint.  The settings are local, so the
 -- caller's session is unchanged on return.
 create function bnl_variants(query text) returns setof text
 language plpgsql as $$
@@ -71,8 +72,11 @@ begin
                        true);
     perform set_config('max_parallel_workers_per_gather',
                        case regime when 'parallel' then '2' else '0' end, true);
+    perform set_config('yb_bnl_batch_size',
+                       case regime when 'unbatched' then '1' else '3' end, true);
     rquery := case regime
-                when 'unbatched' then replace(query, 'YbBatchedNL(', 'NestLoop(')
+                when 'unbatched' then regexp_replace(query, '\mYbBatchedNL\(',
+                                                     'NestLoop(', 'g')
                 else query
               end;
 
