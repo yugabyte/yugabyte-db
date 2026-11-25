@@ -1015,10 +1015,6 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
-// Keep BouncyCastle on its Java code. Its native entropy source reads RDSEED, which often fails
-// to return entropy on K8s nodes, and SecureRandom then fails; the Java code seeds from the kernel.
-Universal / javaOptions += "-Dorg.bouncycastle.native.cpu_variant=java"
-
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {

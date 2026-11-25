@@ -1824,4 +1824,13 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
 
+/*
+ * The yb_xcluster_ddl_replication extension and its tables. The extension
+ * creates its tables in a schema of the same name. The master's copies are in
+ * src/yb/cdc/xcluster_types.h.
+ */
+#define YB_XCLUSTER_DDL_REPLICATION_NAME		"yb_xcluster_ddl_replication"
+#define YB_XCLUSTER_DDL_QUEUE_TABLE_NAME		"ddl_queue"
+#define YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME	"replicated_ddls"
+
 #endif							/* PG_YB_UTILS_H */

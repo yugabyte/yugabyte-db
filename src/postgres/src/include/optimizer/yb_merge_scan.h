@@ -49,3 +49,6 @@ extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
 													int *yb_distinct_nkeys,
 													bool embedded,
 													ScanDirection scandir);
+
+extern Expr *yb_equality_index_clause(IndexOptInfo *index, List *indexclauses,
+									  int indexcol);
