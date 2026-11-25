@@ -106,6 +106,30 @@ create statistics ce_rc_b_e_mod100 on ((b % 100)), ((e % 100)) from ce.rC;
 alter statistics ce_rc_b_e_mod100 set statistics 10000;
 analyze ce.r;
 analyze ce.rC;
+-- Dependent columns: s = k % 5, so a value of k implies its s.  With the
+-- dependency statistics, "k = .. and s = .." is estimated as the condition on
+-- k alone; without them the two selectivities are multiplied.  v is as wide
+-- as ce.r's.  The colocated table's secondary index is named rc*, by which
+-- check_roundtrip_estimates takes an index as colocated.
+create table ce.rd (
+    pk int,
+    k int,
+    s int,
+    v char(666),
+    primary key (pk asc)
+) with (colocation = off);
+create index nonconcurrently rd_k_idx on ce.rd (k asc) include (s);
+insert into ce.rd
+    select i, i % 10, i % 5, lpad(sha512(('x'||i)::bytea)::bpchar, 666, '#')
+    from generate_series(1, 12345) i;
+create table ce.rdC (like ce.rd, primary key (pk asc))
+    with (colocation = on);
+create index nonconcurrently rcd_k_idx on ce.rdC (k asc) include (s);
+insert into ce.rdC select * from ce.rd;
+create statistics ce_rd_k_s (dependencies) on k, s from ce.rd;
+create statistics ce_rdc_k_s (dependencies) on k, s from ce.rdC;
+analyze ce.rd;
+analyze ce.rdC;
 -- Schema "sn": seeknext_estimate-style tables.
 drop schema if exists sn cascade;
 create schema sn;

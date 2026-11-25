@@ -8380,16 +8380,16 @@ yb_bitmap_index_selectivity(IndexPath *path,
 		if (index_only && index->yb_num_decoded_pk_cols > 0)
 			non_pushable_attnums = yb_get_non_pushable_attnums(index);
 
-		yb_extract_pushdown_clauses(filter_quals,
-									index,
-									true,	/* bitmapindex */
-									&local_quals,
-									&rel_remote_quals,
-									&rel_colrefs,
-									&index_remote_quals,
-									&index_colrefs,
-									baserel_oid,
-									non_pushable_attnums);
+		yb_extract_pushdown_restrictinfos(filter_quals,
+										  index,
+										  true, /* bitmapindex */
+										  &local_quals,
+										  &rel_remote_quals,
+										  &rel_colrefs,
+										  &index_remote_quals,
+										  &index_colrefs,
+										  baserel_oid,
+										  non_pushable_attnums);
 
 		bms_free(non_pushable_attnums);
 		list_free(local_quals);
@@ -9784,16 +9784,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (index_only && index->yb_num_decoded_pk_cols > 0)
 		non_pushable_attnums = yb_get_non_pushable_attnums(index);
 
-	yb_extract_pushdown_clauses(qpquals,
-								need_remote_index_filters ? index : NULL,
-								false,	/* bitmapindex */
-								&local_clauses,
-								&base_table_pushed_down_filters,
-								&base_table_colrefs,
-								&index_pushed_down_filters,
-								&index_colrefs,
-								baserel_oid,
-								non_pushable_attnums);
+	yb_extract_pushdown_restrictinfos(qpquals,
+									  need_remote_index_filters ? index : NULL,
+									  false,	/* bitmapindex */
+									  &local_clauses,
+									  &base_table_pushed_down_filters,
+									  &base_table_colrefs,
+									  &index_pushed_down_filters,
+									  &index_colrefs,
+									  baserel_oid,
+									  non_pushable_attnums);
 
 	bms_free(non_pushable_attnums);
 
