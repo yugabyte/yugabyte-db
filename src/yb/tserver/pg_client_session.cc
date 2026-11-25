@@ -4316,6 +4316,9 @@ class PgClientSession::Impl {
           InvalidArgument,
           Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
       txn->SetActiveSubTransaction(options.active_sub_transaction_id());
+      if (options.cdc_skip_active_sub_transaction()) {
+        RETURN_NOT_OK(txn->SkipSubTransactionInCdc(options.active_sub_transaction_id()));
+      }
       if (const auto& pg_session_txn = Transaction(PgClientSessionKind::kPgSession);
           pg_session_txn) {
         pg_session_txn->SetBackgroundTransaction(txn);

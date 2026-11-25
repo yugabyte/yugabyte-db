@@ -740,3 +740,28 @@ SELECT count(*) FROM add_col_default_test WHERE c1 = 42;
 RESET enable_seqscan;
 DROP TABLE add_col_default_test;
 DROP FUNCTION add_col_default_fn();
+
+-- A copy that fails rolls back the subtransaction it runs in (see
+-- YbBeginRewriteCopySubtxn) and leaves the session usable.  With the fast path
+-- off, every copy gets that subtransaction.
+SET yb_enable_new_relation_fastpath_write = off;
+CREATE TABLE rewrite_copy_error (k int PRIMARY KEY, v int);
+INSERT INTO rewrite_copy_error VALUES (1, 1), (2, 2);
+ALTER TABLE rewrite_copy_error ALTER COLUMN v TYPE bigint USING (v / 0);
+SELECT * FROM rewrite_copy_error ORDER BY k;
+BEGIN;
+ALTER TABLE rewrite_copy_error ALTER COLUMN v TYPE bigint USING (v / 0);
+ROLLBACK;
+BEGIN;
+INSERT INTO rewrite_copy_error VALUES (3, 3);
+SAVEPOINT s;
+ALTER TABLE rewrite_copy_error ALTER COLUMN v TYPE bigint USING (v / 0);
+ROLLBACK TO SAVEPOINT s;
+INSERT INTO rewrite_copy_error VALUES (4, 4);
+COMMIT;
+SELECT * FROM rewrite_copy_error ORDER BY k;
+-- The same through YB's copy for a primary key column type change.
+ALTER TABLE rewrite_copy_error ALTER COLUMN k TYPE bigint USING (k / 0);
+SELECT * FROM rewrite_copy_error ORDER BY k;
+RESET yb_enable_new_relation_fastpath_write;
+DROP TABLE rewrite_copy_error;

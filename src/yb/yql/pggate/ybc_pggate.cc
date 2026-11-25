@@ -2132,6 +2132,10 @@ YbcStatus YBCPgSetActiveSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
 }
 
+void YBCPgSkipSubTransactionInCdc(uint32_t id) {
+  pgapi->SkipSubTransactionInCdc(id);
+}
+
 YbcStatus YBCPgRollbackToSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
 }

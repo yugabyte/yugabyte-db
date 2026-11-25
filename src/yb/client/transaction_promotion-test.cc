@@ -273,7 +273,7 @@ TEST_F(TransactionPromotionTest, PromotedTransactionIntentsReadableForCDC) {
   std::vector<docdb::IntentKeyValueForCDC> intents;
   docdb::ApplyTransactionState stream_state;
   ASSERT_OK(tablet->GetIntentsForCDC(
-      t.transaction->id(), SubtxnSet(), &intents, &stream_state));
+      t.transaction->id(), SubtxnSet(), SubtxnSet(), &intents, &stream_state));
   EXPECT_GT(intents.size(), 0)
       << "CDC intents fetch returned nothing for a promoted transaction's provisional write";
 

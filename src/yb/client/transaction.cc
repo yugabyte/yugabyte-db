@@ -231,12 +231,13 @@ YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 
 std::string YBSubTransaction::ToString() const {
   return Format(
-      "{ sub_txn_: $0 highest_subtransaction_id_: $1 }", sub_txn_, highest_subtransaction_id_);
+      "{ sub_txn_: $0 highest_subtransaction_id_: $1 cdc_skipped_: $2 }", sub_txn_,
+      highest_subtransaction_id_, cdc_skipped_);
 }
 
 bool YBSubTransaction::operator==(const YBSubTransaction& other) const {
   return highest_subtransaction_id_ == other.highest_subtransaction_id_ &&
-      sub_txn_ == other.sub_txn_;
+      sub_txn_ == other.sub_txn_ && cdc_skipped_ == other.cdc_skipped_;
 }
 
 void YBSubTransaction::SetActiveSubTransaction(SubTransactionId id) {
@@ -259,6 +260,10 @@ Status YBSubTransaction::RollbackToSubTransaction(SubTransactionId id) {
     InternalError,
     "Attempted to rollback to non-existent savepoint.");
   return sub_txn_.aborted.SetRange(id, highest_subtransaction_id_);
+}
+
+Status YBSubTransaction::SkipInCdc(SubTransactionId id) {
+  return cdc_skipped_.SetRange(id, id);
 }
 
 void YBSubTransaction::SetAborted(SubtxnSet aborted) {
@@ -1134,6 +1139,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
+  Status SkipSubTransactionInCdc(SubTransactionId id) {
+    VLOG_WITH_PREFIX(2) << "skip sub txn " << id << " in CDC";
+    return subtransaction_.SkipInCdc(id);
+  }
+
   std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
     if (!subtransaction_.active()) {
       return std::nullopt;
@@ -1770,6 +1780,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (subtransaction_.active()) {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
+    }
+    // Not under active(): a subtransaction released back to the first one leaves the metadata in
+    // its default state.
+    if (const auto& cdc_skipped = subtransaction_.cdc_skipped(); !cdc_skipped.IsEmpty()) {
+      cdc_skipped.ToPB(state.mutable_cdc_skipped_subtxns()->mutable_set());
     }
 
     auto* status_tablet = status_tablet_.get();
@@ -3155,6 +3170,10 @@ void YBTransaction::EnsureTraceCreated() {
 
 void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
+}
+
+Status YBTransaction::SkipSubTransactionInCdc(SubTransactionId id) {
+  return impl_->SkipSubTransactionInCdc(id);
 }
 
 std::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {

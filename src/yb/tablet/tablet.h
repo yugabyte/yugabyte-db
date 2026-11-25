@@ -512,6 +512,7 @@ class Tablet : public AbstractTablet,
   Status GetIntentsForCDC(
       const TransactionId& id,
       const SubtxnSet& aborted,
+      const SubtxnSet& cdc_skipped_subtxns,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 

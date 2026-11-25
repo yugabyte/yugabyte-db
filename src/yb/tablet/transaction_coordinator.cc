@@ -167,6 +167,7 @@ struct NotifyApplyingData {
   HybridTime commit_time;
   bool sealed;
   uint32_t xrepl_origin_id = 0;
+  SubtxnSetPB cdc_skipped_subtxns;
   // Only for external/xcluster transactions. How long to wait before retrying a failed apply
   // transaction.
   std::string ToString() const {
@@ -484,6 +485,12 @@ class TransactionState {
     return aborted_subtxn_info_;
   }
 
+  void UpdateCdcSkippedSubtxns(const LWTransactionStatePB& state) {
+    if (state.has_cdc_skipped_subtxns()) {
+      state.cdc_skipped_subtxns().ToGoogleProtobuf(&cdc_skipped_subtxns_);
+    }
+  }
+
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
     switch (status_) {
@@ -620,7 +627,8 @@ class TransactionState {
                  .aborted = GetAbortedSubtxnInfo()->pb(),
                  .commit_time = commit_time_,
                  .sealed = status_ == TransactionStatus::SEALED,
-                 .xrepl_origin_id = xrepl_origin_id_});
+                 .xrepl_origin_id = xrepl_origin_id_,
+                 .cdc_skipped_subtxns = cdc_skipped_subtxns_});
           }
         }
       }
@@ -936,6 +944,7 @@ class TransactionState {
 
     // TODO(savepoints) Savepoints with sealed transactions is not yet tested
     RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
+    UpdateCdcSkippedSubtxns(data.state);
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
@@ -987,6 +996,7 @@ class TransactionState {
     MaybeOverrideCommitTimeForTest();
     first_entry_raft_index_ = data.op_id.index;
     RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
+    UpdateCdcSkippedSubtxns(data.state);
 
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
@@ -1076,6 +1086,7 @@ class TransactionState {
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED,
             .xrepl_origin_id = xrepl_origin_id_,
+            .cdc_skipped_subtxns = cdc_skipped_subtxns_,
         });
       }
     }
@@ -1167,6 +1178,7 @@ class TransactionState {
   // based on which the coordinator forwards the wait-for probe to the deadlock detector.
   bool forward_probe_to_detector_ = false;
   uint32_t xrepl_origin_id_ = 0;
+  SubtxnSetPB cdc_skipped_subtxns_;
 };
 
 struct CompleteWithStatusEntry {
@@ -1729,6 +1741,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       state.set_xrepl_origin_id(action.xrepl_origin_id);
     }
     *state.mutable_aborted() = action.aborted;
+    if (!action.cdc_skipped_subtxns.set().empty()) {
+      *state.mutable_cdc_skipped_subtxns() = action.cdc_skipped_subtxns;
+    }
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {

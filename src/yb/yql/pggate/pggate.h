@@ -725,6 +725,7 @@ class PgApiImpl {
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
   Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
+  void SkipSubTransactionInCdc(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;

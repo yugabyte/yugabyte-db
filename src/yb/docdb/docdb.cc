@@ -367,6 +367,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
     const SubtxnSet& aborted,
+    const SubtxnSet& cdc_skipped_subtxns,
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* key_value_intents) {
   KeyBytes txn_reverse_index_prefix;
@@ -456,7 +457,8 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
                 intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted)) {
+            if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted) ||
+                cdc_skipped_subtxns.Test(decoded_value.subtransaction_id)) {
               reverse_index_iter.Next();
               continue;
             }

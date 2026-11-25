@@ -146,6 +146,13 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_transactional_ddl,
     kLocalPersisted, false, true,
     "When set, logical replication with transactional DDL support is enabled.");
 
+// Persisted: the skipped subtransactions are recorded in the status tablet's and the participants'
+// WAL.
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_cdc_skip_table_rewrite_copy, kLocalPersisted, false,
+    true,
+    "When set, the rows a table rewrite copies into the new table are not streamed by CDC, as in "
+    "PostgreSQL's logical decoding.");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");

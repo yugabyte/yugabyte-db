@@ -1905,6 +1905,18 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
+
+/* State of a rewrite copy's subtransaction; see YbBeginRewriteCopySubtxn. */
+typedef struct YbRewriteCopySubtxn
+{
+	bool		opened;
+	MemoryContext oldcontext;
+	ResourceOwner oldowner;
+} YbRewriteCopySubtxn;
+
+extern YbRewriteCopySubtxn YbBeginRewriteCopySubtxn(Relation new_rel);
+extern void YbEndRewriteCopySubtxn(const YbRewriteCopySubtxn *subtxn);
+extern void YbAbortRewriteCopySubtxn(const YbRewriteCopySubtxn *subtxn) pg_attribute_noreturn();
 extern void YbValidateFunctionSetItem(const VariableSetStmt *sstmt);
 
 extern const unsigned char *YbGetLocalTServerUuid();

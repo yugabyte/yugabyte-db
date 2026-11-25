@@ -824,6 +824,7 @@ YbcStatus YBCPgExitSeparateDdlTxnMode(YbcPgOid db_oid, bool is_silent_altering);
 YbcStatus YBCPgClearSeparateDdlTxnMode();
 YbcStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YbcStatus YBCPgRollbackToSubTransaction(uint32_t id);
+void YBCPgSkipSubTransactionInCdc(uint32_t id);
 double YBCGetTransactionPriority();
 YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);

@@ -1021,6 +1021,10 @@ message PgPerformOptionsPB {
   // small prefetches elsewhere -- the pre-auth pair of tables, the few read after a relcache
   // preload -- do not carry it, so no version is recorded from them.
   bool completes_connection_prefetch = 44;
+
+  // The active subtransaction copies rows for a table rewrite, so CDC must not stream its writes.
+  // See TransactionStatePB::cdc_skipped_subtxns.
+  bool cdc_skip_active_sub_transaction = 45;
 }
 
 message PgRequestSequenceNumPB {
