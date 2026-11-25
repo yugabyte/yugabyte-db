@@ -239,9 +239,11 @@ reset join_collapse_limit;
 -- No Leading hint: that hint is what enables the join pruning that rejects a
 -- Gather at an intermediate join (#28510), and without it that pruning never
 -- runs.  The explicit joins and the collapse limit fix the join tree instead,
--- and the data fixes each join's direction: t1a and t1b are small, t2 is not,
--- so each join is cheapest with the t1 side, or the filtered t2b, as its
--- batched outer.
+-- and the data fixes the direction of the batched joins: t1a is small, t2 is
+-- not, so each batched join is cheapest with t1a, or the filtered t2b, as its
+-- batched outer.  t1b stays the outer of the top join only while the session
+-- turns sequential scans off: with them on, the serial plan puts t1b, which a
+-- sequential scan reads, on the inner side, where no join batches t1b.
 -- Expected: the top join cannot batch t1b without splitting the expression
 -- across two joins, so it stays a plain nested loop despite its YbBatchedNL
 -- hint, and all three runs return the same rows.

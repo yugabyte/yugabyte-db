@@ -5,14 +5,15 @@
 -- batched join the one join method enabled.  Hints do not repeat these
 -- settings: a test that needs a sequential scan or another join method names
 -- it with SeqScan or the method's hint.  The tests force the batched join with
--- its own controls, YbBatchedNL and yb_enable_batchednl, and a plain nested
--- loop with NestLoop.  yb_prefer_bnl is off so that NestLoop means a plain
--- nested loop: since 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl
--- on keeps the batched join enabled wherever nested loops are enabled,
--- whatever yb_enable_batchednl says, as before the batched join had controls
--- of its own.  The #25078 test turns yb_prefer_bnl and nested loops back on,
--- to force the batched join as a variant of the nested loop.  The tests at the
--- end of the file switch to the cost model.
+-- its own hint, YbBatchedNL, and a plain nested loop with NestLoop;
+-- yb_enable_batchednl stays at its default, on.  yb_prefer_bnl is off so that
+-- NestLoop means a plain nested loop: since
+-- 49725c1bbeeca09e87d4eba296a6b1800382d357, yb_prefer_bnl on keeps the batched
+-- join enabled wherever nested loops are enabled, whatever yb_enable_batchednl
+-- says, as before the batched join had controls of its own.  The #25078 test
+-- turns yb_prefer_bnl and nested loops back on, to force the batched join as a
+-- variant of the nested loop.  The tests at the end of the file switch to the
+-- cost model.
 -- The tables shared with yb.orig.join_batching_negative come from
 -- yb.orig.join_batching_setup; a test whose data carries a key type, a
 -- physical layout or a property of its own creates a table of its own, and no
