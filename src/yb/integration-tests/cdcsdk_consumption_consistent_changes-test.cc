@@ -15,6 +15,7 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {
@@ -5072,6 +5073,54 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
       return resp.cdc_sdk_proto_records_size() == 0;
     },
     MonoDelta::FromSeconds(10), "Expected 0 records (both transactions rolled back)"));
+}
+
+// DoProcessCDCSDKTabletDeletion reads each slot's row from cdc_state. A read that stalls, as when
+// the cdc_state tserver stops answering, must not block catalog operations that need
+// CatalogManager::mutex_.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestHiddenTabletDeletionDoesNotHoldCatalogMutexOnStalledCdcStateRead) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  // The slot is never consumed, so the split parent tablet stays retained for CDC and every cleanup
+  // pass reads cdc_state.
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(WriteRowsHelper(0, 100, &test_cluster_, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+
+  std::atomic<bool> read_stalled{false};
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CDCTest::ReleaseCdcStateRead", "GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead"}});
+  SyncPoint::GetInstance()->SetCallBack(
+      "GetMinRestartTimeAcrossSlots::BeforeSlotEntryRead",
+      [&read_stalled](void*) { read_stalled = true; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  auto release_read = ScopeExit([] {
+    TEST_SYNC_POINT("CDCTest::ReleaseCdcStateRead");
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(WaitFor(
+      [&read_stalled] { return read_stalled.load(); }, MonoDelta::FromSeconds(30),
+      "Timed out waiting for the cleanup task to reach its cdc_state read"));
+
+  // CreateNamespace takes CatalogManager::mutex_ exclusively, so it waits for any holder.
+  ASSERT_OK(test_client()->CreateNamespace(
+      "unrelated_namespace", YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
+      "" /* namespace_id */, "" /* source_namespace_id */, boost::none /* next_pg_oid */,
+      nullptr /* txn */, false /* colocated */,
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(10) * kTimeMultiplier /* deadline */));
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseOfRetentionBarriersOnDynamicIndexTablet) {
