@@ -1083,7 +1083,7 @@ extern bool yb_enable_docdb_vector_type;
 /*
  * Makes advisory lock functions succeed without locking while advisory locks
  * are unavailable, i.e. until a YSQL major upgrade from a release without them
- * is finalized.  See YbSilenceAdvisoryLocksUnavailable in lockfuncs.c.
+ * is finalized.  See YbHandleAdvisoryLocksUnavailable in lockfuncs.c.
  */
 extern bool yb_silence_advisory_locks_not_supported_error;
 

@@ -14,6 +14,7 @@
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -192,12 +193,17 @@ class PgAdvisoryLocksSilencedMajorUpgradeTest : public YsqlMajorUpgradeTestBase 
     return conn.CommitTransaction();
   }
 
-  Status ValidateDisabledWithoutSilence(size_t ts_id) {
+  Status ValidateUnavailableWithoutSilence(size_t ts_id) {
     auto conn = VERIFY_RESULT(CreateConnToTs(ts_id));
     RETURN_NOT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = off"));
-    auto s = conn.Fetch("SELECT pg_advisory_lock(1)");
-    SCHECK(!s.ok(), IllegalState, "Expected advisory lock to fail without the silence GUC");
-    SCHECK_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are disabled");
+    for (const auto* query : {"SELECT pg_advisory_lock(1)", "SELECT pg_advisory_unlock(1)"}) {
+      auto s = conn.Fetch(query);
+      SCHECK(!s.ok(), IllegalState, Format("Expected $0 to fail without the silence GUC", query));
+      SCHECK_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are not available yet");
+      SCHECK(
+          PgsqlError(s.status()) == YBPgErrorCode::YB_PG_FEATURE_NOT_SUPPORTED, IllegalState,
+          Format("Unexpected SQLSTATE: $0", s.status()));
+    }
     return Status::OK();
   }
 };
@@ -208,11 +214,18 @@ TEST_F(PgAdvisoryLocksSilencedMajorUpgradeTest, NoOpUntilFinalize) {
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg15));
   ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg11));
-  ASSERT_OK(ValidateDisabledWithoutSilence(kMixedModeTserverPg15));
+  ASSERT_OK(ValidateUnavailableWithoutSilence(kMixedModeTserverPg15));
 
   ASSERT_OK(UpgradeAllTserversFromMixedMode());
   ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg15));
   ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg11));
+
+  // The no-op depends on the advisory locks table, not on ysql_yb_enable_advisory_locks: no node
+  // can hold a DocDB advisory lock without the table, even with the flag turned on early.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(kMixedModeTserverPg15), "ysql_yb_enable_advisory_locks", "true"));
+  ASSERT_OK(ValidateSilencedNoOp(kMixedModeTserverPg15));
+  ASSERT_OK(ValidateUnavailableWithoutSilence(kMixedModeTserverPg15));
 
   ASSERT_OK(FinalizeUpgrade());
 

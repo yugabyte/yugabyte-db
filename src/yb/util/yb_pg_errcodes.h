@@ -382,6 +382,7 @@ enum class YBPgErrorCode : uint32_t {
   YB_PG_YB_DEADLOCK = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '0', '4'),
   YB_PG_YB_TXN_SKIP_LOCKING = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '1', '0'),
   YB_PG_YB_TXN_LOCK_NOT_FOUND = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '1', '1'),
+  YB_PG_YB_ADVISORY_LOCKS_UNAVAILABLE = YB_PG_MAKE_SQLSTATE('Y', 'B', '0', '1', '2'),
 };
 
 #undef YB_PG_MAKE_SQLSTATE

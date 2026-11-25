@@ -434,25 +434,23 @@ TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10);")));
 }
 
-// With advisory locks disabled, the silence GUC turns acquires into successful no-ops. A lock taken
-// before they were disabled is still released through DocDB, since the advisory locks table exists.
-TEST_F(PgAdvisoryLockTest, SilenceGucWhileAdvisoryLocksDisabled) {
+// Once the advisory locks table exists, the silence GUC must not turn locks into no-ops, even with
+// ysql_yb_enable_advisory_locks turned off: acquires fail, and a lock taken before the flag was
+// turned off is still released through DocDB.
+TEST_F(PgAdvisoryLockTest, SilenceGucIgnoredWhileAdvisoryLocksDisabled) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(10)"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
   ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = on"));
-  ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(11)"));
-  ASSERT_OK(conn.Fetch("SELECT pg_advisory_xact_lock(11)"));
-  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_try_advisory_lock(11)")));
+  for (const auto* query : {
+           "SELECT pg_advisory_lock(11)", "SELECT pg_try_advisory_lock(11)"}) {
+    auto s = conn.Fetch(query);
+    ASSERT_NOK(s);
+    ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are disabled");
+  }
   ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10)")));
   ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_advisory_unlock(10)")));
-
-  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = off"));
-  auto s = conn.Fetch("SELECT pg_advisory_lock(11)");
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.status().message().ToBuffer(), "advisory locks are disabled");
-  ASSERT_EQ(PgsqlError(s.status()), YBPgErrorCode::YB_PG_FEATURE_NOT_SUPPORTED);
 }
 
 class PgAdvisoryLockTestMultipleTablets : public PgAdvisoryLockTest {

@@ -77,35 +77,38 @@ HandleStatusIgnoreSkipLocking(YbcStatus status)
 }
 
 /*
- * Returns true, consuming the status, if the tserver reported that advisory
- * locks are unavailable and yb_silence_advisory_locks_not_supported_error is
- * set.  The caller then returns success without taking or releasing a lock.
- *
- * Any FEATURE_NOT_SUPPORTED (0A000) error from an advisory lock call is
- * ignored when the GUC is set.  The tserver returns 0A000 only when it can't
- * have taken or released a lock (see AdvisoryLocksDisabledStatus in
- * pg_client_session.cc): on acquire while ysql_yb_enable_advisory_locks is
- * off, and on release while that flag is off and the advisory locks table
- * doesn't exist.
+ * Handles ERRCODE_YB_ADVISORY_LOCKS_UNAVAILABLE, which the tserver returns
+ * only while the advisory locks table doesn't exist (see
+ * AdvisoryLocksUnavailableStatus in pg_client_session.cc).  With
+ * yb_silence_advisory_locks_not_supported_error set, consumes the status and
+ * returns true: the caller then returns success without taking or releasing a
+ * lock.  Otherwise raises it as FEATURE_NOT_SUPPORTED.  Any other status is
+ * left to the caller.
  *
  * On a cluster upgraded from a release without DocDB advisory locks (2024.2
- * and earlier), advisory locks stay unavailable until the YSQL major upgrade
- * is finalized: only then is the ysql_yb_enable_advisory_locks AutoFlag
- * promoted and the advisory locks table created.  On those releases the GUC
- * made every advisory lock function a successful no-op, and applications
- * rely on that, so keep it until advisory locks become available.  After
- * that the GUC has no effect.
+ * and earlier), the master doesn't create the advisory locks table until the
+ * YSQL major upgrade is finalized.  On those releases the GUC made every
+ * advisory lock function a successful no-op, and applications rely on that,
+ * so keep it until then.  No node can hold a DocDB advisory lock without the
+ * table, so the no-op can't let two sessions both believe they hold the same
+ * lock.  Once the table exists, the GUC has no effect.
  */
 static bool
-YbSilenceAdvisoryLocksUnavailable(YbcStatus status)
+YbHandleAdvisoryLocksUnavailable(YbcStatus status)
 {
-	if (status && yb_silence_advisory_locks_not_supported_error &&
-		YBCStatusPgsqlError(status) == ERRCODE_FEATURE_NOT_SUPPORTED)
-	{
-		YBCFreeStatus(status);
+	if (!status ||
+		YBCStatusPgsqlError(status) != ERRCODE_YB_ADVISORY_LOCKS_UNAVAILABLE)
+		return false;
+
+	YBCFreeStatus(status);
+	if (yb_silence_advisory_locks_not_supported_error)
 		return true;
-	}
-	return false;
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("advisory locks are not available yet"),
+			 errdetail("The advisory locks table is created when the YSQL "
+					   "major upgrade is finalized.")));
+	return false;				/* keep compiler quiet */
 }
 
 /*
@@ -120,7 +123,7 @@ do { \
 			GetYBAdvisoryLockId(tag), mode, /* wait= */ false, session_level); \
 		bool		yb_ret_status; \
 		\
-		if (YbSilenceAdvisoryLocksUnavailable(yb_status)) \
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
 			PG_RETURN_BOOL(true); \
 		yb_ret_status = HandleStatusIgnoreSkipLocking(yb_status); \
 		if (yb_ret_status && YbIsClientYsqlConnMgr() && session_level) \
@@ -140,7 +143,7 @@ do { \
 		YbcStatus	yb_status = YBCAcquireAdvisoryLock( \
 			GetYBAdvisoryLockId(tag), mode, /* wait= */ true, session_level); \
 		\
-		if (YbSilenceAdvisoryLocksUnavailable(yb_status)) \
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
 			PG_RETURN_VOID(); \
 		HandleYBStatus(yb_status); \
 		if (YbIsClientYsqlConnMgr() && session_level) \
@@ -156,7 +159,7 @@ do { \
 		YbcStatus	yb_status = YBCReleaseAdvisoryLock( \
 			GetYBAdvisoryLockId(tag), mode); \
 		\
-		if (YbSilenceAdvisoryLocksUnavailable(yb_status)) \
+		if (YbHandleAdvisoryLocksUnavailable(yb_status)) \
 			PG_RETURN_BOOL(true); \
 		PG_RETURN_BOOL(HandleStatusIgnoreLockNotFound(yb_status, mode)); \
 	} \
@@ -1232,7 +1235,7 @@ pg_advisory_unlock_all(PG_FUNCTION_ARGS)
 	{
 		YbcStatus	yb_status = YBCReleaseAllAdvisoryLocks(MyDatabaseId);
 
-		if (!YbSilenceAdvisoryLocksUnavailable(yb_status))
+		if (!YbHandleAdvisoryLocksUnavailable(yb_status))
 			HandleYBStatus(yb_status);
 		PG_RETURN_VOID();
 	}

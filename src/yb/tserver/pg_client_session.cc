@@ -1659,18 +1659,17 @@ YsqlAdvisoryLocksTableLockId MakeAdvisoryLockId(uint32_t db_oid, const AdvisoryL
           .objsubid = lock_pb.objsubid()};
 }
 
-// With yb_silence_advisory_locks_not_supported_error set, YSQL ignores any FEATURE_NOT_SUPPORTED
-// (0A000) error from the advisory lock RPCs and returns success without locking, as releases
-// without DocDB advisory locks did. So the advisory lock RPCs must return 0A000 only via this
-// function, and only in two cases:
-// - Acquire, while ysql_yb_enable_advisory_locks is off.
-// - Release, while ysql_yb_enable_advisory_locks is off and the advisory locks table doesn't exist,
-//   so no advisory lock can be held.
-// Returning it in any other case would turn a real lock or unlock failure into a silent success.
-Status AdvisoryLocksDisabledStatus() {
+// With yb_silence_advisory_locks_not_supported_error set, YSQL turns this error into a successful
+// no-op, as releases without DocDB advisory locks did. So return it only while the advisory locks
+// table doesn't exist: the master creates it when a YSQL major upgrade from such a release is
+// finalized. Until then no node can hold a DocDB advisory lock, so a no-op can't let two sessions
+// both believe they hold the same lock. Returning it in any other case, including while
+// ysql_yb_enable_advisory_locks is off but the table exists, would turn a real lock or unlock
+// failure into a silent success.
+Status AdvisoryLocksUnavailableStatus() {
   return STATUS(
-      NotSupported, "advisory locks are disabled", Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_FEATURE_NOT_SUPPORTED));
+      NotSupported, "advisory locks table doesn't exist", Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_ADVISORY_LOCKS_UNAVAILABLE));
 }
 
 size_t RenewSignature(UsedReadTime& used_read_time) {
@@ -3220,9 +3219,10 @@ class PgClientSession::Impl {
       const PgAcquireAdvisoryLockRequestPB& req, PgAcquireAdvisoryLockResponsePB* resp,
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
-    if (!FLAGS_ysql_yb_enable_advisory_locks) {
-      return AdvisoryLocksDisabledStatus();
+    if (!VERIFY_RESULT(advisory_locks_table().TableExists())) {
+      return AdvisoryLocksUnavailableStatus();
     }
+    SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     const auto deadline = context->GetClientDeadline();
     auto* primary_session_data = &GetSessionData(GetSessionKindBasedOnDDLOptions(
         req.has_options() && req.options().ddl_mode(),
@@ -3279,11 +3279,9 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     VLOG(2) << "Servicing ReleaseAdvisoryLock: " << req.ShortDebugString();
     // Release doesn't require ysql_yb_enable_advisory_locks, so that locks taken before the flag
-    // was turned off can still be released. Without the advisory locks table, which isn't created
-    // until a YSQL major upgrade is finalized, no lock can be held, so treat that as disabled too.
-    if (!FLAGS_ysql_yb_enable_advisory_locks &&
-        !VERIFY_RESULT(advisory_locks_table().TableExists())) {
-      return AdvisoryLocksDisabledStatus();
+    // was turned off can still be released.
+    if (!VERIFY_RESULT(advisory_locks_table().TableExists())) {
+      return AdvisoryLocksUnavailableStatus();
     }
     // Release Advisory lock api is only invoked for session advisory locks.
     const auto& session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(
