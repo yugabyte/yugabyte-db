@@ -60,12 +60,17 @@ stale_client() {
   [[ -z "$newer" ]] || echo "$newer is older than $spec"
 }
 STALE="$(stale_client v1 "$MANAGED_DIR/src/main/resources/swagger-all.json" \
-  src/main/java src/main/resources/routes src/main/resources/v1.routes swagger/src)
-$(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/openapi.json" \
+  src/main/java src/main/resources/routes src/main/resources/v1.routes swagger/src)"
+[[ -z "$STALE" ]] || STALE="$STALE. Run sbt swaggerGen."
+V2_STALE="$(stale_client v2 "$MANAGED_DIR/target/openapi/src/main/java/public/openapi.json" \
   src/main/resources/openapi)"
-if [[ -n "${STALE//$'\n'/}" ]]; then
-  $DRY_RUN || die "The generated client is stale. Run sbt swaggerGen. ${STALE//$'\n'/ }"
-  echo "WARNING: the generated client is stale: ${STALE//$'\n'/ }" >&2
+# sbt rebuilds the v2 spec only when its inputs change content, not mtime. cleanV2ServerStubs
+# forces the rebuild.
+[[ -z "$V2_STALE" ]] || STALE+=" $V2_STALE. Run sbt \"cleanV2ServerStubs; swaggerGen\"."
+STALE="${STALE# }"
+if [[ -n "$STALE" ]]; then
+  $DRY_RUN || die "The generated client is stale: $STALE"
+  echo "WARNING: the generated client is stale: $STALE" >&2
 fi
 
 git -C "$CLIENT_REPO" rev-parse --git-dir >/dev/null 2>&1 \

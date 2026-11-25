@@ -170,9 +170,11 @@ func init() {
 
 	resizeNodeCmd.Flags().Int32("delay-between-master-servers", 0,
 		"[Optional] Wait after each Master server restart, in milliseconds. "+
-			"Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.")
+			"Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms. "+
+			"On a node that runs a Master and a TServer, YBA waits the longer delay.")
 	resizeNodeCmd.Flags().Int32("delay-between-tservers", 0,
 		"[Optional] Wait after each TServer restart, in milliseconds. "+
-			"Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.")
+			"Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms. "+
+			"On a node that runs a Master and a TServer, YBA waits the longer delay.")
 
 }

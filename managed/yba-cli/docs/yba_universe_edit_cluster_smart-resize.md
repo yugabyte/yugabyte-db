@@ -24,8 +24,8 @@ yba universe edit cluster smart-resize \
       --volume-size int                         [Optional] The size of each volume in each instance.
       --dedicated-master-instance-type string   [Optional] Instance Type for the each master instance. Applied only when universe has dedicated master nodes.
       --dedicated-master-volume-size int        [Optional] The size of each volume in each master instance. Applied only when universe has dedicated master nodes.
-      --delay-between-master-servers int32      [Optional] Wait after each Master server restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms.
-      --delay-between-tservers int32            [Optional] Wait after each TServer restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms.
+      --delay-between-master-servers int32      [Optional] Wait after each Master server restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms. On a node that runs a Master and a TServer, YBA waits the longer delay.
+      --delay-between-tservers int32            [Optional] Wait after each TServer restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms. On a node that runs a Master and a TServer, YBA waits the longer delay.
   -h, --help                                    help for smart-resize
 ```
 
