@@ -2339,6 +2339,8 @@ TEST_F(PgThinClientFollowerReadTest, StaleReadIsServedByAFollower) {
 TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   constexpr int kRows = 20;
   constexpr uint64_t kPageLimit = kRows / 2;
+  // The leader stays where it is, so the frozen follower stays a follower.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   const auto replicas = ASSERT_RESULT(FindReplicas());
   const size_t lagging_idx = replicas.follower_idxs[0];
@@ -2350,8 +2352,14 @@ TEST_F(PgThinClientFollowerReadTest, LaggingFollowerHandsTheReadOver) {
   ASSERT_EQ(UpsertKeys(client.get(), table.get(), kHashKey, 0, kRows).code, YBTHIN_OK);
   const auto written_ht = NowOn(lagging_idx);
 
-  // Freeze the follower the Perform lands on: with no more UpdateConsensus its safe time stops.
+  // A follower that never heard from the leader refuses the read as stale, before the counter.
   auto lagging_peer = ASSERT_RESULT(PeerOn(replicas, lagging_idx));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(FollowerSafeTime(lagging_peer)) >= written_ht;
+      },
+      30s * kTimeMultiplier, "the follower to catch up before it is frozen"));
+  // Freeze the follower the Perform lands on: with no more UpdateConsensus its safe time stops.
   auto lagging_consensus = ASSERT_RESULT(lagging_peer->GetRaftConsensus());
   lagging_consensus->TEST_PauseUpdateConsensus(true);
   auto resume = ScopeExit([&lagging_consensus] {
