@@ -3,8 +3,6 @@ title: pgvector extension
 headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
-tags:
-  feature: early-access
 menu:
   v2025.2:
     identifier: extension-pgvector
@@ -14,6 +12,12 @@ rightNav:
   hideH4: true
 type: docs
 ---
+
+{{< note title="GA in v2025.2.6.0 or later" >}}
+
+Vector indexes are GA starting in v2026.1.1.0 and v2025.2.6.0. These releases store vector tables in a new layout. Tables created on earlier releases retain the old layout. A table can't be converted in place, so each vector table created before these releases must be rebuilt once, from its DDL and DML, as part of the upgrade. See [Upgrade vector indexes](#upgrade-vector-indexes).
+
+{{< /note >}}
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
