@@ -74,21 +74,16 @@ class PgAnonymizerTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
         "--enable_pg_anonymizer=true");
-    if (options->IsYsqlConnMgrEnabled()) {
-      options->extra_tserver_flags.push_back("--ysql_conn_mgr_alter_guc_adoption_strategy=gradual");
-      options->extra_tserver_flags.push_back("--ysql_conn_mgr_alter_guc_stale_backend_ttl_ms=500");
-    }
   }
 
-  Status AnonStartup(const std::string& function_name) {
-    RETURN_NOT_OK(conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    // function_name updates pg_seclabel and is not a DDL, so
-    // yb_non_ddl_txn_for_sys_tables_allowed is needed
-    RETURN_NOT_OK(conn_->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE"));
-    auto res = VERIFY_RESULT(conn_->FetchRow<bool>(Format("SELECT $0", function_name)));
-    SCHECK_EQ(res, true, IllegalState, Format("$0 returned false", function_name));
-    RETURN_NOT_OK(conn_->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE"));
-    return conn_->CommitTransaction();
+  Status AnonInit() {
+    auto res = VERIFY_RESULT(conn_->FetchRow<bool>("SELECT anon.init()"));
+    SCHECK_EQ(res, true, IllegalState, "anon.init() returned false");
+    return Status::OK();
+  }
+
+  Status EnableTransparentDynamicMasking() {
+    return conn_->Execute("ALTER DATABASE yugabyte SET anon.transparent_dynamic_masking TO true");
   }
 
  protected:
@@ -107,7 +102,8 @@ TEST_F(PgAnonymizerTest, TestMaskedUser) {
   constexpr auto kLastName = "Doe";
   constexpr auto kPhone = "1234567890";
 
-  ASSERT_OK(AnonStartup("anon.start_dynamic_masking()"));
+  ASSERT_OK(AnonInit());
+  ASSERT_OK(EnableTransparentDynamicMasking());
 
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE TABLE $0 ($1 TEXT, $2 TEXT, $3 TEXT)",
@@ -145,9 +141,7 @@ TEST_F(PgAnonymizerTest, TestMaskedUser) {
     ASSERT_NE(row, (decltype(row){kFirstName, kLastName, kPhone}));
   }
 
-  auto is_unmasked = ASSERT_RESULT(conn_->FetchRow<bool>(
-      Format("SELECT anon.unmask_role('$0')", kMaskedUser)));
-  ASSERT_EQ(is_unmasked, true);
+  ASSERT_OK(conn_->ExecuteFormat("SECURITY LABEL FOR anon ON ROLE $0 IS NULL", kMaskedUser));
 
   // now, we should be able to read the original values
   for (auto* ts : cluster_->tserver_daemons()) {
@@ -162,7 +156,7 @@ TEST_F(PgAnonymizerTest, TestCatalogTables) {
   constexpr auto kTableName = "test_table";
   constexpr auto kUser = "test_user";
 
-  ASSERT_OK(AnonStartup("anon.start_dynamic_masking()"));
+  ASSERT_OK(EnableTransparentDynamicMasking());
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k TEXT, v TEXT)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("CREATE ROLE $0 LOGIN", kUser));
 
@@ -188,9 +182,10 @@ TEST_F(PgAnonymizerTest, TestCatalogTables) {
   ASSERT_EQ(masked_role, (decltype(masked_role){kUser, role_label.GetLabel()}));
 
   const auto column_labels = ASSERT_RESULT((conn_->FetchRows<std::string, std::string>(
-      "SELECT relname, label FROM pg_class JOIN pg_seclabel ON objoid = oid")));
+      "SELECT relname, label FROM pg_class JOIN pg_seclabel ON objoid = oid ORDER BY objsubid")));
 
   // check that the column labels are present on pg_seclabel
+  ASSERT_EQ(column_labels.size(), sec_labels.size());
   for (size_t i = 0; i < column_labels.size(); ++i) {
     ASSERT_EQ(column_labels[i],
         (decltype(column_labels[i]){kTableName, sec_labels[i].GetLabel()}));
@@ -202,7 +197,7 @@ TEST_F(PgAnonymizerTest, TestPopulate) {
   constexpr auto kNumRows = 500;
   constexpr auto kTableName = "anon.email";
 
-  ASSERT_OK(AnonStartup("anon.init()"));
+  ASSERT_OK(AnonInit());
   ASSERT_OK(conn_->ExecuteFormat("TRUNCATE $0", kTableName));
 
   for (int i = 1; i <= kNumRows; ++i) {

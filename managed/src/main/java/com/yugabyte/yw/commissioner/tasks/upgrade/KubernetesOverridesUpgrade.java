@@ -72,6 +72,8 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.KubernetesHandleNamespacedService);
           // Persist new overrides in the DB.
           addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape scheme follows the TLS this upgrade rendered.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 

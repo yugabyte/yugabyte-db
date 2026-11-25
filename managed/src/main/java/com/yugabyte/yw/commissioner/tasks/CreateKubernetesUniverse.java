@@ -308,6 +308,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     stableYbcVersion);
       }
 
+      createRecordNodeExporterTlsTask(primaryCluster.userIntent.ybSoftwareVersion);
+
       createConfigureUniverseTasks(
           primaryCluster,
           null /* masterNodes */,

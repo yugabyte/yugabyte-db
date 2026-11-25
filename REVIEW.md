@@ -10,7 +10,7 @@ A **backport** is a PR whose title starts with `[BACKPORT <release-branch>]`, e.
 Original commit: <SHA> / #<PR>
 ```
 
-placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number) that already passed full review when its original PR merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
+placed immediately above the `## Test plan` section (or appended to the end if there is no test plan). The `<SHA>` is the full originating commit on `master` (followed by ` / #<PR>` referencing the original PR number, or ` / D<id>` if the original landed via Phorge) that already passed full review when it merged. The cherry-pick onto the release branch may have been clean or may have required conflict resolution.
 
 When you review a backport PR, **switch to backport mode**:
 
@@ -161,6 +161,12 @@ Inversions to flag at HIGH:
 - A COW lock taken before `CatalogManager::mutex_` on the same thread, or a `SCOPED_LEADER_SHARED_LOCK` taken while `mutex_` or a COW lock is held.
 - Several objects of one kind locked without sorting by id.
 - A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
+
+## Review comments are public
+
+A review comment on a PR is as public as the code. Don't write in one how a defect could be used against YugabyteDB, or which releases, branches, images or components lack a fix. If a finding needs that context, state the code-level problem and ask the author to continue in the linked JIRA ticket.
+
+This matters most for security fixes, whose descriptions are plain on purpose (`src/AGENTS.md` § Security and customer-sensitive changes). Don't ask the author to add the motivation or the impact to such a PR.
 
 ## What to ignore entirely
 

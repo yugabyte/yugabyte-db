@@ -74,7 +74,9 @@ std::string GenerateRandomReplicationSlotName() {
 }
 
 int NumberOfCatalogTablesBeingPolledByCDC() {
-  return FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 4;
+  return 4 + (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
+                  ? static_cast<int>(kTxnDdlCatalogTableOids.size())
+                  : 0);
 }
 
 void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableId>* table_ids) {
@@ -82,9 +84,10 @@ void AddCatalogTableIdsPolledByCDC(PgOid database_oid, std::unordered_set<TableI
   table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
   table_ids->insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
   table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationOid));
-  if (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids->insert(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-    table_ids->insert(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+  if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids->insert(GetPgsqlTableId(database_oid, table_oid));
+    }
   }
 }
 

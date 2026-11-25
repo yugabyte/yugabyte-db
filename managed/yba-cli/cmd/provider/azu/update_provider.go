@@ -230,6 +230,12 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerRegions = removeAzureRegions(removeRegions, providerRegions)
 
 		providerRegions = editAzureRegions(
@@ -241,6 +247,9 @@ var updateAzureProviderCmd = &cobra.Command{
 		)
 
 		providerRegions = addAzureRegions(addRegions, addZones, providerRegions)
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
@@ -262,7 +271,17 @@ var updateAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerImageBundles = removeAzureImageBundles(removeImageBundles, providerImageBundles)
+		if err := providerutil.ValidateImageBundleEdits(
+			removeImageBundles, editImageBundles, nil, providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		providerImageBundles = editAzureImageBundles(
 			editImageBundles,
@@ -359,7 +378,9 @@ func init() {
 			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
-			"Each zone needs to be removed using a separate --remove-zone flag.")
+			"Each zone needs to be removed using a separate --remove-zone flag. "+
+			"Removing every zone of a region is rejected; remove the region with "+
+			"--remove-region instead.")
 
 	updateAzureProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the Azure provider. "+
@@ -620,26 +641,6 @@ func addAzureZones(
 	return zones
 }
 
-func removeAzureImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
-}
-
 func editAzureImageBundles(
 	editImageBundles []string,
 	providerImageBundles []ybaclient.ImageBundle,
@@ -660,16 +661,11 @@ func editAzureImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 
 					ib.SetDetails(details)
@@ -720,14 +716,9 @@ func addAzureImageBundles(
 					formatter.RedColor))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

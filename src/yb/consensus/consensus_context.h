@@ -23,6 +23,12 @@
 namespace yb {
 namespace consensus {
 
+// State that ConsensusContext::PostponeApply keeps for the operation it postponed.
+class PostponedApply {
+ public:
+  virtual ~PostponedApply() = default;
+};
+
 class ConsensusContext {
  public:
   // Factory for replica transactions.
@@ -54,6 +60,13 @@ class ConsensusContext {
   // UpdateConsensus RPCs before acquiring update_mutex_, preventing RPC thread pile-up
   // when a DB is stalled. See #30728.
   virtual bool AreWritesStopped() = 0;
+
+  // Returns non-null if a follower should postpone applying the non-write operation, without
+  // holding ReplicaState's lock, until a later update from the leader. The result is passed back to
+  // the next call for the same operation. Leaders do not postpone.
+  // Called under ReplicaState's lock, so it must not block.
+  virtual PostponedApplyPtr PostponeApply(
+      const LWReplicateMsg& replicate_msg, PostponedApplyPtr postponed) = 0;
 
   // Performs steps to prepare request for peer.
   // For instance it could enqueue some operations to the Raft.

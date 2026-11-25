@@ -4270,5 +4270,44 @@ TEST_F(
       "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 }
 
+class YBBackupTestPgDuckdb : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_yb_enable_pg_duckdb");
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_pg_duckdb=true");
+  }
+};
+
+// The restore replays pg_duckdb's members one by one and creates the secret's FOREIGN SERVER
+// before any extension sequence. The server's validator opens a DuckDB connection, which must not
+// depend on duckdb.extensions_table_seq existing yet.
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(PgDuckdbSecretRestore), YBBackupTestPgDuckdb) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION pg_duckdb"));
+  ASSERT_OK(conn.Fetch(
+      "SELECT duckdb.create_simple_secret(type := 'S3', key_id := 'k', secret := 's', "
+      "region := 'us-west-2')"));
+
+  const std::string kServerQuery =
+      "SELECT s.srvname, s.srvtype, s.srvoptions::text, m.umuser::regrole::text, "
+      "m.umoptions::text FROM pg_foreign_server s "
+      "JOIN pg_user_mapping m ON m.umserver = s.oid ORDER BY 1";
+  const auto expected = ASSERT_RESULT(conn.FetchAllAsString(kServerQuery));
+  ASSERT_STR_CONTAINS(expected, "simple_s3_secret");
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  const std::string restored_db_name{"restored_pgd_db"};
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restored_db_name),
+       "restore"}));
+
+  auto restored_conn = ASSERT_RESULT(cluster_->ConnectToDB(restored_db_name));
+  ASSERT_EQ(ASSERT_RESULT(restored_conn.FetchAllAsString(kServerQuery)), expected);
+}
+
 }  // namespace tools
 }  // namespace yb

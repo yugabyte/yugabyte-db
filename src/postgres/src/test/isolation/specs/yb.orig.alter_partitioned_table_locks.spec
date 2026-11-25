@@ -76,6 +76,7 @@ step s2_detach_sib		{ ALTER TABLE sib_p DETACH PARTITION sib_p_a; }
 step s2_owner_sib		{ ALTER TABLE sib_p OWNER TO CURRENT_USER; }
 step s2_only_default_sib	{ ALTER TABLE ONLY sib_p ALTER COLUMN b SET DEFAULT 5; }
 step s2_attach_sib		{ ALTER TABLE sib_p ATTACH PARTITION sib_q FOR VALUES FROM (300) TO (400); }
+step s2_noop			{ ; }
 
 session s3
 step s3_insert_ac		{ INSERT INTO ac_p VALUES (702, 0, 'r'), (703, 1, 'r'); }
@@ -86,11 +87,13 @@ step s3_count			{ SELECT count(*) FROM ap_p_7_b1; }
 step s3_insert_fk_bad	{ INSERT INTO fk_p_7_b1 VALUES (751, 1, 99); }
 step s3_count_fk		{ SELECT count(*) FROM fk_p_7_b1; }
 
-permutation s1_begin s1_create_ac_part s2_add_column s1_commit s3_insert_ac s3_select_ac
-permutation s1_begin s1_create_dc_part s2_drop_pk_column s1_commit s3_insert_dc s3_select_dc
-permutation s1_begin_rr s1_count s2_add_pk s1_count s1_commit s3_count
-permutation s1_begin_rr s1_count_fk s2_add_fk s1_count_fk s1_commit s3_insert_fk_bad
-permutation s1_begin s1_insert_fk_bad s2_add_fk s1_commit s3_count_fk
+# s2_noop makes the next s3 step wait for the ALTER that s1_commit unblocks,
+# however slow.
+permutation s1_begin s1_create_ac_part s2_add_column s1_commit s2_noop s3_insert_ac s3_select_ac
+permutation s1_begin s1_create_dc_part s2_drop_pk_column s1_commit s2_noop s3_insert_dc s3_select_dc
+permutation s1_begin_rr s1_count s2_add_pk s1_count s1_commit s2_noop s3_count
+permutation s1_begin_rr s1_count_fk s2_add_fk(yb_never_waits) s1_count_fk s1_commit s3_insert_fk_bad
+permutation s1_begin s1_insert_fk_bad s2_add_fk s1_commit s2_noop s3_count_fk
 permutation s1_begin s1_count_sib s2_detach_sib s1_count_sib_root s1_commit
 permutation s1_begin s1_count_sib s2_owner_sib s1_commit
 permutation s1_begin s1_count_sib s2_only_default_sib s1_commit

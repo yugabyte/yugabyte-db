@@ -5,6 +5,10 @@
 extern "C" {
 extern bool IsSubTransaction(void);
 
+/* YB declarations */
+extern bool IsYBReadCommitted(void);
+extern bool YBTransactionContainsNonReadCommittedSavepoint(bool skip_backward_compat_escape_hatch);
+
 #define FirstCommandId ((CommandId)0)
 
 /*
