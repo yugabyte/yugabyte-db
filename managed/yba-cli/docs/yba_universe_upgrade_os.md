@@ -23,8 +23,8 @@ yba universe upgrade os --name <universe-name> \
       --primary-linux-version string         [Required] Primary cluster linux OS version name to be applied as listed in the provider.
       --inherit-from-primary                 [Optional] Apply the same linux OS version of primary cluster to read replica cluster. (default true)
       --rr-linux-version string              [Optional] Read replica cluster linux OS version name to be applied. Ignored if inherit-from-primary is set to true.
-      --delay-between-master-servers int32   [Optional] Wait after each Master server restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_master_restart_ms. On a node that runs a Master and a TServer, YBA waits the longer delay.
-      --delay-between-tservers int32         [Optional] Wait after each TServer restart, in milliseconds. Default: the YBA runtime config yb.upgrade.sleep_after_tserver_restart_ms. On a node that runs a Master and a TServer, YBA waits the longer delay.
+      --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 18000)
+      --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). On a node that runs a Master and a TServer, YBA waits the longer delay. (default 18000)
   -h, --help                                 help for os
 ```
 

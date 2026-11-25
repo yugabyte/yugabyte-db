@@ -741,19 +741,6 @@ func GetFlagValueAsStringIfSet(cmd *cobra.Command, flagName string) string {
 	return ""
 }
 
-// GetInt32FlagIfChanged returns the flag value, or nil when the user did not set the flag.
-// A nil value lets YBA use its own default. An explicit 0 is kept.
-func GetInt32FlagIfChanged(cmd *cobra.Command, flagName string) (*int32, error) {
-	if !cmd.Flags().Changed(flagName) {
-		return nil, nil
-	}
-	v, err := cmd.Flags().GetInt32(flagName)
-	if err != nil {
-		return nil, err
-	}
-	return &v, nil
-}
-
 // IsValidJSON checks if the given string is a valid JSON
 func IsValidJSON(str string) error {
 	var js json.RawMessage

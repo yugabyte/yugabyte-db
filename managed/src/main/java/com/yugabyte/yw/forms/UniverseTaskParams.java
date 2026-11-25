@@ -28,13 +28,17 @@ import lombok.Setter;
 
 public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(
-      value = "Wait after each master restart, in ms. Uses the runtime config when not set.",
+      value =
+          "Wait after each master restart, in ms. When not set, YBA uses the value stored with"
+              + " the universe, or the runtime config when none is stored.",
       required = false)
   @Nullable
   public Integer sleepAfterMasterRestartMillis;
 
   @ApiModelProperty(
-      value = "Wait after each tserver restart, in ms. Uses the runtime config when not set.",
+      value =
+          "Wait after each tserver restart, in ms. When not set, YBA uses the value stored with"
+              + " the universe, or the runtime config when none is stored.",
       required = false)
   @Nullable
   public Integer sleepAfterTServerRestartMillis;
