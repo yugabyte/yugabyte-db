@@ -22,7 +22,6 @@ click==8.4.2
 cryptography==50.0.2
 deepdiff==8.6.2
 distro==1.5.0
-fabric==2.2.1
 geomet==0.2.1.post1
 google-api-core==1.22.0
 google-api-python-client==1.10.0
@@ -33,7 +32,7 @@ grpcio==1.84.2
 grpcio-tools==1.76.0
 httplib2==0.32.0
 idna==3.19
-invoke==1.7.3
+invoke==3.0.3
 isodate==0.7.2
 Jinja2==3.1.6
 jmespath==1.1.0
@@ -47,7 +46,7 @@ oauth2client==3.0.0
 oauthlib==4.0.1
 orderly-set==5.5.0
 packaging==26.2
-paramiko==3.4.0
+paramiko==5.0.0
 pip==26.3
 protobuf==6.33.5
 psycopg2==2.9.12
