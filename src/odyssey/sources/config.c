@@ -98,6 +98,14 @@ void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 		new_config->yb_tcmalloc_gc_interval;
 	current_config->yb_backend_drain_timeout_ms =
 		new_config->yb_backend_drain_timeout_ms;
+	current_config->yb_alter_guc_stale_backend_ttl_ms =
+		new_config->yb_alter_guc_stale_backend_ttl_ms;
+	current_config->keepalive = new_config->keepalive;
+	current_config->keepalive_keep_interval =
+		new_config->keepalive_keep_interval;
+	current_config->keepalive_probes = new_config->keepalive_probes;
+	current_config->keepalive_usr_timeout =
+		new_config->keepalive_usr_timeout;
 }
 
 static void od_config_listen_free(od_config_listen_t *);

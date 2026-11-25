@@ -141,12 +141,13 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(string, alter_guc_adoption_strategy, "gradual",
     "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
     "modes, new sessions will always see effects of ALTERs executed before they were created");
 
-DEFINE_NON_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
+DEFINE_RUNTIME_CONN_MGR_FLAG(int32, alter_guc_stale_backend_ttl_ms, 60000,
     "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
     "positive value, stale backends will be terminated uniformly till the TTL period after "
     "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
     "idle backends are destroyed immediately after execution of ALTER and stale active backends "
-    "are destroyed when they get idle");
+    "are destroyed when they get idle. A runtime change applies to ALTERs executed after it; "
+    "backends already scheduled for termination by an earlier ALTER keep their termination time.");
 
 DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "

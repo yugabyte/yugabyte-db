@@ -1,5 +1,6 @@
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
@@ -7,6 +8,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -95,6 +97,54 @@ public class TestClientAuthTimeout extends BaseYsqlConnMgr {
       fail("Unexpected Exception during authentication: " + e);
     } finally {
       builder.setMaxConnectionAttempts(max_attempts);
+    }
+  }
+
+  // Logs in with a client that waits 2.5 s before answering the password request. That fails
+  // with the 2 s timeout. After ysql_conn_mgr_auth_msg_timeout is raised to 10 s at runtime,
+  // the same login succeeds. After it is lowered back to 2 s, it fails again.
+  @Test
+  public void testClientAuthTimeoutRuntimeChange() throws Exception {
+    assertLoginFails();
+
+    setAuthMsgTimeout(10000);
+    try (Connection connection = delayedLoginBuilder().connect(delayedLoginProps())) {
+      LOG.info("Logged in after raising ysql_conn_mgr_auth_msg_timeout");
+    }
+
+    setAuthMsgTimeout(AUTH_MSG_TIMEOUT);
+    assertLoginFails();
+  }
+
+  private void setAuthMsgTimeout(int timeoutMs) throws Exception {
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, 0);
+    setServerFlagOnAll("ysql_conn_mgr_auth_msg_timeout", String.valueOf(timeoutMs));
+    assertNotNull("Expected odyssey to reload its config",
+        tailer.waitForLogRegex("reconfigure rules", 10, TimeUnit.SECONDS));
+  }
+
+  private Properties delayedLoginProps() {
+    Properties props = new Properties();
+    props.setProperty("socketTimeout", String.valueOf(socketTimeout));
+    props.setProperty("socketFactory", "org.yb.ysqlconnmgr.CloseAfterAuthRequestSocketFactory");
+    props.setProperty("socketFactoryDelayMs", String.valueOf(driverSleepTime_ms));
+    props.setProperty("socketFactoryCloseAfterAuth", "false");
+    return props;
+  }
+
+  private ConnectionBuilder delayedLoginBuilder() {
+    return getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withUser(USER)
+        .withPassword(PASS);
+  }
+
+  private void assertLoginFails() throws Exception {
+    ConnectionBuilder builder = delayedLoginBuilder();
+    builder.setMaxConnectionAttempts(1);
+    try (Connection connection = builder.connect(delayedLoginProps())) {
+      fail("Should not have been able to log in due to conn mgr auth timeout.");
+    } catch (SQLException e) {
+      LOG.info("Expected failure: " + e.getMessage());
     }
   }
 }
