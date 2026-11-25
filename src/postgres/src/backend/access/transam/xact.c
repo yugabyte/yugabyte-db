@@ -3410,7 +3410,7 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	YbCommitTransactionCommandIntermediateExtended(true /* serialize_ddl_in_database */ );
+	YbCommitTransactionCommandIntermediateExtended(true);
 }
 
 /*
