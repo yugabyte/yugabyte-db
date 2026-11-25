@@ -663,9 +663,9 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 						   sizeof(FixedParallelExecutorState));
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
 
+	/* Estimate space for query text. */
+
 	/*
-	 * Estimate space for query text.
-	 *
 	 * YB: workers publish this text to pg_stat_activity and error STATEMENT
 	 * lines, but don't have the leader's password-redaction flag, so send them
 	 * the redacted text.
