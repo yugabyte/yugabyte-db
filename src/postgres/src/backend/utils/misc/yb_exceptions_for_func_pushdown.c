@@ -74,6 +74,12 @@ const uint32 yb_funcs_unsafe_for_pushdown[] = {
 	F_TS_MATCH_TT,
 	F_TS_MATCH_TQ,
 
+	/*
+	 * age(timestamptz, timestamptz) is marked IMMUTABLE upstream, but its
+	 * result depends on the session TimeZone, which DocDB does not have.
+	 */
+	F_AGE_TIMESTAMPTZ_TIMESTAMPTZ,
+
 	/* Crypto hash functions require resource owner */
 	F_MD5_BYTEA,
 	F_MD5_TEXT,
