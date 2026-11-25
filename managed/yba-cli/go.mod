@@ -17,8 +17,8 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816
-	github.com/yugabyte/platform-go-client v0.0.0-20260922032319-ae8e27387c37
-	github.com/yugabyte/platform-go-client/v2 v2.0.0-20260922032319-ae8e27387c37
+	github.com/yugabyte/platform-go-client v0.0.0-20261125093722-f2ecbdcd3aee
+	github.com/yugabyte/platform-go-client/v2 v2.0.0-20261125093722-f2ecbdcd3aee
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/term v0.48.0
 	gopkg.in/yaml.v2 v2.4.0
