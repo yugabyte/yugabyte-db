@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Set;
@@ -23,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RestartUniverseTest extends UpgradeTaskTest {
@@ -162,6 +164,49 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     setUpUniverseKeyInKms(
         defaultUniverse.getUniverseUUID(), false /* kmsWorks */, false /* activateKey */);
     verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, false);
+  }
+
+  // A retry finishes a started restart, so with the key in the YBA cache it skips the check.
+  @Test
+  public void testRestartRetryWithCachedKeySkipsKmsCheck() {
+    TaskInfo taskInfo = submitRestartRetryWithKmsDown(true /* keyCached */);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
+
+  // A YBA restart empties the cache, so the retry checks the key before it stops a process.
+  @Test
+  public void testRestartRetryWithEmptyKeyCacheRunsKmsCheck() {
+    TaskInfo taskInfo = submitRestartRetryWithKmsDown(false /* keyCached */);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+  }
+
+  private TaskInfo submitRestartRetryWithKmsDown(boolean keyCached) {
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    if (keyCached) {
+      cacheUniverseKey(defaultUniverse.getUniverseUUID());
+    }
+    UUID previousTaskUUID = UUID.randomUUID();
+    TaskInfo previousTask = new TaskInfo(TaskType.RestartUniverse, previousTaskUUID);
+    previousTask.setTaskParams(Json.newObject());
+    previousTask.setOwner("");
+    previousTask.setTaskState(TaskInfo.State.Failure);
+    previousTask.save();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getUniverseDetails().updatingTaskUUID = previousTaskUUID);
+    RestartTaskParams taskParams = new RestartTaskParams();
+    taskParams.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE;
+    taskParams.setPreviousTaskUUID(previousTaskUUID);
+    // -1: saving updatingTaskUUID changed the universe version.
+    return submitTask(taskParams, TaskType.RestartUniverse, commissioner, -1);
   }
 
   private void verifyRestartFailsBeforeStop(UpgradeTaskParams.UpgradeOption option) {

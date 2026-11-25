@@ -89,7 +89,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
-    if (needsUniverseKeyCheck()) {
+    if (checksUniverseKeyOnThisTry(universe) && needsUniverseKeyCheck()) {
       createCheckUniverseKeyInKmsTask(universe);
     }
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE

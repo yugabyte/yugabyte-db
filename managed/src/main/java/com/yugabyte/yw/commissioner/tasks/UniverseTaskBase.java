@@ -1229,6 +1229,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             != null;
   }
 
+  /**
+   * Whether this try runs the KMS key check. A retry finishes a started task, so it skips the check
+   * if the key push can use the YBA cache, which a YBA restart empties.
+   */
+  protected boolean checksUniverseKeyOnThisTry(Universe universe) {
+    return isFirstTry() || !isActiveUniverseKeyCached(universe);
+  }
+
   public SubTaskGroup createDestroyEncryptionAtRestTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DestroyEncryptionAtRest");
     DestroyEncryptionAtRest task = createTask(DestroyEncryptionAtRest.class);

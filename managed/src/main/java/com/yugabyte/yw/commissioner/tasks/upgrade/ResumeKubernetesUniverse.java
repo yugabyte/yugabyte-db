@@ -44,9 +44,7 @@ public class ResumeKubernetesUniverse extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
-    // A retry skips the check only if the key push can use the YBA cache, which a YBA restart
-    // empties.
-    if (isFirstTry() || !isActiveUniverseKeyCached(universe)) {
+    if (checksUniverseKeyOnThisTry(universe)) {
       createCheckUniverseKeyInKmsTask(universe);
     }
   }

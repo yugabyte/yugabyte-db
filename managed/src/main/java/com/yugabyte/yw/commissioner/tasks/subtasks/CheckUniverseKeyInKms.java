@@ -84,7 +84,7 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
           kmsError);
     }
     log.info(
-        "Got the active universe key from KMS config '{}' for universe {}",
+        "Got the universe key from KMS config '{}' for universe {}",
         kmsConfig.getName(),
         universeUUID);
   }
