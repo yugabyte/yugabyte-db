@@ -8,7 +8,6 @@ reuses its PR-diff index.
 ```bash
 python3 issue_check.py --issue 38288                    # plain-text report
 python3 issue_check.py --issue 38288 --format github    # the comment the workflow would post
-python3 issue_check.py --jira DB-26593 --format jira    # needs JIRA_AUTH="email:token"
 python3 pr_overlap.py 38804                             # open PRs changing the same code
 ```
 
@@ -16,36 +15,21 @@ python3 pr_overlap.py 38804                             # open PRs changing the 
 
 - Terms come from the issue: test names, error text after `ERROR:`/`FATAL:`/`Check failed:`
   (cut at the first number, address or quoted name), and snake_case/CamelCase identifiers.
-  Tokens in URLs and the lines the Jira sync adds are ignored.
+  Tokens in URLs are ignored.
 - PRs are matched against their diff, title, body and paths. A PR whose title or body already
-  names the issue, by its GitHub number (`#N`) or its Jira key, is skipped: its author has
-  linked it already. For a Jira issue the GitHub number comes from its "GitHub issue link"
-  field. Issues are matched through GitHub search and Jira JQL on the six most specific terms.
-  A term that more than 1% of open PRs, or more than 25 issues in either tracker, contain is
-  ignored.
+  names the issue (`#N`) is skipped: its author has linked it already. Issues are matched
+  through GitHub search on the six most specific terms. A term that more than 1% of open PRs,
+  or more than 25 open issues, contain is ignored.
 - A comment lists an item only if it shares a test name or at least two terms with the issue.
   A PR needs three when the issue has 20 or more terms, because long reports share vocabulary
   with many PRs. A comment shows at most three items per section. The script prints nothing and
-  exits 0 when nothing qualifies, when the issue has no terms, and for the GitHub copy of a
-  Jira-filed issue, whose text is not on GitHub.
+  exits 0 when nothing qualifies or the issue has no terms. An issue filed in Jira reaches
+  GitHub with only its title, so it is checked on the title alone.
 - **Rollout:** the workflow posts only when the repository variable `ISSUE_OVERLAP_POST` is
   `true`. Until then, each run writes the comment it would post to the job summary.
-- **Jira-filed issues are not checked by the workflow.** Checking one needs a Jira credential,
-  which must not be a secret of this public repository: anyone with write access can recover a
-  repository secret, and some collaborators have no Jira access. `--jira` mode is meant to run
-  internally (Jenkins or the Jira sync service) with its own credential.
-- **Jira text stays in Jira.** GitHub comments never include Jira results, and `--format github`
-  never queries Jira. In `--jira` mode, terms are never sent to GitHub search (each GitHub issue
-  has a Jira copy, so the Jira search finds GitHub-filed duplicates), and errors print only
-  their type, because a CI log may be read by people without Jira access.
 
 ## Gotchas
 
-- An issue filed in Jira has its text in `description`. An issue filed on GitHub has an empty
-  `description` and its text in "Github Public Description (Read-Only)" (`customfield_10885`).
-  `--jira` reads both.
-- Jira answers a search from a rejected token with an empty result, not an error, so the script
-  checks the token first and fails loudly.
 - The first run on an empty cache fetches the changed files of every open PR (about 600 API
   calls). Later runs fetch only PRs whose head SHA changed. The workflow saves one cache entry
   a day.

@@ -3,11 +3,8 @@ name: "issue-overlap"
 # When an issue is filed, comment with open PRs and issues that look like the
 # same work, so two people don't investigate or fix it in parallel.
 #
-# Only GitHub-filed issues are checked here. An issue filed in Jira reaches
-# GitHub with an empty body, so it can only be checked from Jira, and that needs
-# a Jira credential that must not live in this public repository's secrets.
-# issue_check.py --jira is meant to run internally for those (Jenkins or the
-# Jira sync service).
+# The workflow never reads Jira. An issue filed in Jira reaches GitHub with
+# only its title, so it is checked on the title alone.
 #
 # Rollout: comments are posted only when the repository variable
 # ISSUE_OVERLAP_POST is "true". Until then each run writes what it would post
@@ -52,8 +49,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE: ${{ github.event.issue.number }}
         run: |
-          # Prints nothing (exit 0) for the GitHub copy of a Jira-filed issue,
-          # whose text is not on GitHub, and for an issue with no terms.
+          # Prints nothing (exit 0) when nothing matches or the issue has no
+          # terms.
           python3 .github/scripts/issue_overlap/issue_check.py \
             --issue "$ISSUE" --format github > "$RUNNER_TEMP/comment.md"
           if [[ ! -s "$RUNNER_TEMP/comment.md" ]]; then
