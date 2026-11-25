@@ -143,6 +143,10 @@ estimate_node_agent_size() {
   _run_support_bundle_estimate_wrapper create_node_agent_bundle "$@"
 }
 
+estimate_node_health_logs_size() {
+  _run_support_bundle_estimate_wrapper create_node_health_logs_bundle "$@"
+}
+
 estimate_core_files_size() {
   _run_support_bundle_estimate_wrapper create_core_files_bundle "$@"
 }
@@ -3024,6 +3028,165 @@ create_node_agent_bundle() {
   echo "BUNDLE_STATUS=OK"
   echo "BUNDLE_PATH=$remote_tar_path"
   echo "Created node agent bundle at $remote_tar_path"
+}
+
+# As v1's NodeHealthLogsComponent: the node_exporter textfiles in <YB home>/metrics, and the health
+# check's daily logs in metrics/logs for the window plus the newest one dated before it.
+create_node_health_logs_bundle() {
+  node_home_dir=""
+  start_date=""
+  end_date=""
+  remote_tar_path=""
+
+  take_server_conf_redaction_args "$@"
+  set -- "${sb_remaining_args[@]}"
+
+  while [ "$#" -gt 0 ]
+  do
+    case "$1" in
+      --node_home_dir)
+        node_home_dir=$2
+        shift 2
+        ;;
+      --start_date)
+        start_date=$2
+        shift 2
+        ;;
+      --end_date)
+        end_date=$2
+        shift 2
+        ;;
+      --remote_tar_path)
+        remote_tar_path=$2
+        shift 2
+        ;;
+      *)
+        echo "Unknown argument: $1"
+        echo "BUNDLE_STATUS=FAILED"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [ -z "$node_home_dir" ] || [ -z "$start_date" ] \
+    || [ -z "$end_date" ] || [ -z "$remote_tar_path" ]
+  then
+    echo "Missing required args for create_node_health_logs_bundle"
+    echo "BUNDLE_STATUS=FAILED"
+    exit 1
+  fi
+
+  if ! start_date_sortable=$(normalize_date_to_sortable "$start_date") \
+    || [ -z "$start_date_sortable" ]
+  then
+    echo "Invalid start_date format: $start_date"
+    echo "BUNDLE_STATUS=FAILED"
+    exit 1
+  fi
+  if ! end_date_sortable=$(normalize_date_to_sortable "$end_date") \
+    || [ -z "$end_date_sortable" ]
+  then
+    echo "Invalid end_date format: $end_date"
+    echo "BUNDLE_STATUS=FAILED"
+    exit 1
+  fi
+
+  metrics_dir="$node_home_dir/metrics"
+  textfiles=()
+  if [ -d "$metrics_dir" ]
+  then
+    while IFS= read -r source_file
+    do
+      textfiles+=("$source_file")
+    done < <(find "$metrics_dir" -maxdepth 1 -type f)
+  else
+    echo "NodeHealthLogs: no metrics directory at $metrics_dir"
+  fi
+
+  # metrics/logs is a symlink onto the data volume; find descends into it only with the slash.
+  health_log_dir="$metrics_dir/logs/"
+  health_logs=()
+  if [ -d "$health_log_dir" ]
+  then
+    listed_count=0
+    dated_logs=()
+    while IFS= read -r source_file
+    do
+      listed_count=$((listed_count + 1))
+      if [[ "$(basename "$source_file")" =~ ^(.*node_health-)([0-9]{8})(\.log.*)?$ ]]
+      then
+        dated_logs+=("${BASH_REMATCH[2]}000000|$source_file")
+      fi
+    done < <(find "$health_log_dir" -maxdepth 1 -type f)
+
+    if [ ${#dated_logs[@]} -gt 0 ]
+    then
+      # One log per day: those inside the window, then the newest one before it, which holds the
+      # start day's lines.
+      while IFS='|' read -r file_timestamp source_file
+      do
+        if [ "$file_timestamp" -gt "$end_date_sortable" ]
+        then
+          continue
+        fi
+        health_logs+=("$source_file")
+        if [ "$file_timestamp" -lt "$start_date_sortable" ]
+        then
+          break
+        fi
+      done < <(printf '%s\n' "${dated_logs[@]}" | sort -t'|' -k1,1r)
+    fi
+    echo "NodeHealthLogs: kept ${#health_logs[@]} of $listed_count health log file(s)" \
+      "between $start_date and $end_date"
+  else
+    echo "NodeHealthLogs: no health log directory at $health_log_dir"
+  fi
+
+  if [ "${SUPPORT_BUNDLE_ESTIMATE_ONLY:-}" = "1" ]
+  then
+    total=0
+    for source_file in "${textfiles[@]}" "${health_logs[@]}"
+    do
+      total=$((total + $(_byte_size_for_path "$source_file")))
+    done
+    _emit_estimate_result "$total"
+    exit 0
+  fi
+
+  tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/node-health-logs.XXXXXX")"
+  staging_dir="$tmp_root/staging"
+  mkdir -p "$staging_dir"
+  cleanup_cmd() {
+    rm -rf "$tmp_root"
+  }
+  trap cleanup_cmd EXIT
+
+  for source_file in "${textfiles[@]}"
+  do
+    mkdir -p "$staging_dir/metrics"
+    copy_or_report -p "$source_file" "$staging_dir/metrics/$(basename "$source_file")" || true
+  done
+  for source_file in "${health_logs[@]}"
+  do
+    mkdir -p "$staging_dir/metrics/logs"
+    copy_or_report -p "$source_file" "$staging_dir/metrics/logs/$(basename "$source_file")" \
+      || true
+  done
+
+  if [ -z "$(find "$staging_dir" -type f -print -quit)" ]
+  then
+    echo "No files found for node health logs bundle."
+    echo "REDACTION_STATUS=NOT_APPLICABLE"
+    echo "BUNDLE_STATUS=EMPTY"
+    exit 0
+  fi
+
+  redact_staged_server_conf_or_exit "$staging_dir" "$redact_bin" "$yb_software_version" \
+    "$sensitive_gflags_b64" "$drop_server_conf"
+  create_bundle_tar_or_fail "$remote_tar_path" "$staging_dir"
+  echo "BUNDLE_STATUS=OK"
+  echo "BUNDLE_PATH=$remote_tar_path"
+  echo "Created node health logs bundle at $remote_tar_path"
 }
 
 create_core_files_bundle() {

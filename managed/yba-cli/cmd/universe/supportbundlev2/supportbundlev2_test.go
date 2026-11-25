@@ -1387,6 +1387,33 @@ func TestBuildNodeAgentParamsResolution(t *testing.T) {
 	}
 }
 
+// NodeHealthLogs goes through the generic builder; the server adds the YB home and the window.
+// SupportBundleV2ManifestMergerTest pins the same argv on the server side.
+func TestBuildNodeHealthLogsParams(t *testing.T) {
+	cfg, err := loadSupportBundleV2Config("../../../../devops/bin/support_bundlev2_manifest.yaml")
+	if err != nil {
+		t.Fatalf("loadSupportBundleV2Config() error = %v", err)
+	}
+	componentCfg := cfg.Spec.ComponentConfigs["NodeHealthLogs"]
+	params, err := buildComponentParams(cfg, "NodeHealthLogs", componentCfg)
+	if err != nil {
+		t.Fatalf("buildComponentParams(NodeHealthLogs) error = %v", err)
+	}
+	want := []string{
+		"create_node_health_logs_bundle",
+		"--node_home_dir", "",
+		"--remote_tar_path", "/tmp/node-health-logs-${bundleUuid}-${nodeName}.tar.gz",
+	}
+	if !reflect.DeepEqual(params, want) {
+		t.Fatalf("NodeHealthLogs params = %#v, want %#v", params, want)
+	}
+	componentType, err := resolveNodeComponentType(cfg, "NodeHealthLogs")
+	if err != nil || componentType != "FilesComponent" {
+		t.Fatalf("resolveNodeComponentType(NodeHealthLogs) = %q, %v; want FilesComponent",
+			componentType, err)
+	}
+}
+
 func TestAllComponentsAreYbaScript(t *testing.T) {
 	cfg, err := loadSupportBundleV2Config("../../../../devops/bin/support_bundlev2_manifest.yaml")
 	if err != nil {

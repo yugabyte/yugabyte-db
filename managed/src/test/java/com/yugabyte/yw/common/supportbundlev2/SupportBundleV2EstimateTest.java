@@ -457,6 +457,7 @@ public class SupportBundleV2EstimateTest {
             Map.entry("create_consensus_meta_bundle", "estimate_consensus_meta_size"),
             Map.entry("create_tablet_meta_bundle", "estimate_tablet_meta_size"),
             Map.entry("create_node_agent_bundle", "estimate_node_agent_size"),
+            Map.entry("create_node_health_logs_bundle", "estimate_node_health_logs_size"),
             Map.entry("create_application_logs_bundle", "estimate_application_logs_size"));
     expected.forEach(
         (createEntrypoint, estimateEntrypoint) ->

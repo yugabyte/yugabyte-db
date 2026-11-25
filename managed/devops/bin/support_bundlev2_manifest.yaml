@@ -57,6 +57,7 @@ spec:
       - ConsensusMeta
       - TabletMeta
       - NodeAgent
+      - NodeHealthLogs
       - CoreFiles
       - YbcLogs
     Bash:
@@ -314,6 +315,19 @@ spec:
           - "logs"
           - "config"
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/node-agent-\
+          ${bundleUuid}-${nodeName}.tar.gz"
+
+    NodeHealthLogs:
+      enabled: true
+      # The node health check's daily logs in <yb_home>/metrics/logs, kept for the collection
+      # window, and the node_exporter textfiles in <yb_home>/metrics.
+      script:
+        scriptFile: "bin/support_bundle_utils.sh"
+        entrypoint: "create_node_health_logs_bundle"
+      params:
+        # Resolved on the server from the provider's YB home; the window comes from the bundle.
+        nodeHomeDir: ""
+        remoteTarPathTemplate: "${defaults.remoteTmpDir}/node-health-logs-\
           ${bundleUuid}-${nodeName}.tar.gz"
 
     CoreFiles:
