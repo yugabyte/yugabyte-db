@@ -3106,9 +3106,10 @@ YBMergeDdlTxnState()
 /*
  * YBAddModificationAspects
  *
- * Adds aspects to the DDL after it entered DDL state, such as the catalog
- * version increment of a CREATE TYPE that completes a shell type. The DDL
- * entered without that increment, so it takes the database DDL lock here.
+ * Adds aspects to the mode of a DDL transaction that already entered DDL
+ * state. If they include a catalog version increment, the transaction takes
+ * the database DDL lock here, as it would have on entering DDL state with
+ * them (see YbLockDatabaseToSerializeDdl).
  */
 void
 YBAddModificationAspects(YbDdlMode mode)
