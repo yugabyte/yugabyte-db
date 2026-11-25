@@ -192,7 +192,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 		switch (bnlstate->bnl_currentstatus)
 		{
 			case BNL_INIT:
-				if (bnlstate->bnl_needs_sorting)
+				if (batchnl->numSortCols > 0)
 				{
 					TupleTableSlot *result = ProcessSorting(bnlstate);
 
@@ -369,7 +369,7 @@ ExecYbBatchedNestLoop(PlanState *pstate)
 static void
 EndSorting(YbBatchedNestLoopState *bnlstate)
 {
-	if (!bnlstate->bnl_needs_sorting)
+	if (((YbBatchedNestLoop *) bnlstate->js.ps.plan)->numSortCols == 0)
 		return;
 
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
@@ -404,11 +404,10 @@ ProcessSorting(YbBatchedNestLoopState *bnlstate)
 {
 	TupleTableSlot *result_slot = bnlstate->js.ps.ps_ResultTupleSlot;
 	Tuplesortstate *sorter = bnlstate->bnl_tuple_sort;
-
-	if (!bnlstate->bnl_needs_sorting)
-		return NULL;
-
 	YbBatchedNestLoop *batchnl_plan = (YbBatchedNestLoop *) bnlstate->js.ps.plan;
+
+	if (batchnl_plan->numSortCols == 0)
+		return NULL;
 
 	if (sorter)
 	{
@@ -1121,7 +1120,6 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	bnlstate->bnl_outerdone = false;
 
 	/* Initialize sorting structures. */
-	bnlstate->bnl_needs_sorting = plan->numSortCols > 0;
 	bnlstate->bnl_is_sorted = false;
 	bnlstate->bnl_tuple_sort = NULL;
 
