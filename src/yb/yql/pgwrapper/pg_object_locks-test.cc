@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/common/common_flags.h"
@@ -24,6 +25,7 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
@@ -664,6 +666,121 @@ TEST_F(PgObjectLocksTestRF1SessionExpiry, CleanupReadOnlyLocksOnExpiredSessions)
   ExpireSession(conn);
   ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
 }
+
+#ifndef NDEBUG
+// A release of all of a txn's locks is applied at the tservers before the master's own lock
+// manager. An acquire of the same txn that is queued at the master must not be granted in that
+// window and fanned out to tservers that already applied the release, which would leave the lock
+// there until the acquire's deadline (#38442). An acquire for the txn that reaches the master after
+// the release must be rejected too.
+TEST_F(PgObjectLocksTestRF1SessionExpiry, QueuedAcquireOfReleasedTxnDoesNotLeakLocks) {
+  auto conn_a = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_a.Execute("CREATE TABLE other_table (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn_a.Execute("BEGIN"));
+  ASSERT_OK(conn_a.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE"));
+
+  auto conn_b = ASSERT_RESULT(Connect());
+  auto pid_b = ASSERT_RESULT(conn_b.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  ASSERT_OK(conn_b.Execute("BEGIN"));
+  ASSERT_OK(conn_b.Execute("LOCK TABLE other_table IN ACCESS EXCLUSIVE MODE"));
+  auto txn_b = ASSERT_RESULT(TransactionId::FromString(
+      ASSERT_RESULT(conn_b.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"))));
+  LOG(INFO) << "Txn of the session to terminate: " << txn_b;
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn_b] {
+    // Queued at the master behind conn_a's lock. Fails once the backend is terminated.
+    ASSERT_NOK(conn_b.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE"));
+  });
+  ASSERT_OK(WaitFor(
+      [this] { return NumWaitingLocksOnMaster() > 0; }, 10s * kTimeMultiplier,
+      "Wait for the acquire to be queued at the master"));
+
+  // Without the fix, txn_b's release reaches the tservers and then pauses here, before the master
+  // releases locally. With the fix, the release is deferred while the acquire is in flight.
+  std::atomic<bool> release_deferred{false};
+  std::atomic<bool> release_paused{false};
+  std::atomic<bool> resume_release{false};
+  std::atomic<bool> conn_a_committed{false};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "ObjectLockInfoManager::Impl::UnlockObject:DeferredForInFlightAcquires",
+      [&](void* arg) {
+        if (*static_cast<TransactionId*>(arg) == txn_b) {
+          release_deferred = true;
+        }
+      });
+  sync_point->SetCallBack(
+      "UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs:BeforeLocalRelease",
+      [&](void* arg) {
+        if (*static_cast<TransactionId*>(arg) != txn_b || conn_a_committed) {
+          return;
+        }
+        release_paused = true;
+        while (!resume_release) {
+          SleepFor(10ms);
+        }
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point, &resume_release] {
+    resume_release = true;
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ExpireSessionWithPid(pid_b);
+  ASSERT_OK(WaitFor(
+      [&] { return release_deferred || release_paused; }, kSessionTimeout * 2,
+      "Wait for the release of the terminated session's txn"));
+  thread_holder.JoinAll();
+
+  // Frees the lock that txn_b's queued acquire waits for at the master.
+  conn_a_committed = true;
+  ASSERT_OK(conn_a.Execute("COMMIT"));
+  ASSERT_OK(WaitFor(
+      [this] { return NumWaitingLocksOnMaster() == 0; }, 10s * kTimeMultiplier,
+      "Wait for the queued acquire to resume at the master"));
+  // Give a resumed acquire time to fan out before letting a paused release continue.
+  SleepFor(1s * kTimeMultiplier);
+  resume_release = true;
+
+  // The deferred release is relaunched by the master's cleanup poll.
+  ASSERT_OK(WaitToReleaseAllLocks(30s * kTimeMultiplier));
+  ASSERT_TRUE(ts_lock_manager_->TEST_GetLockStateMapForTxn(txn_b).empty());
+
+  // An acquire for txn_b that reaches the master after the release is rejected.
+  auto* tserver = cluster_->mini_tablet_server(0)->server();
+  auto lease_info = ASSERT_RESULT(tserver->GetYSQLLeaseInfo());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_oid = ASSERT_RESULT(conn_a.FetchRow<pgwrapper::PGOid>(
+      "SELECT 'test_table'::regclass::oid"));
+  auto db_oid = ASSERT_RESULT(conn_a.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_database WHERE datname = current_database()"));
+  master::AcquireObjectLocksGlobalRequestPB req;
+  req.set_txn_id(txn_b.data(), txn_b.size());
+  req.set_subtxn_id(1);
+  req.set_session_host_uuid(tserver->permanent_uuid());
+  req.set_lease_epoch(lease_info.lease_epoch);
+  req.set_status_tablet("fake_status_tablet");
+  const auto deadline = CoarseMonoClock::Now() + 10s * kTimeMultiplier;
+  req.set_ignore_after_hybrid_time(
+      tserver->clock()->Now().AddDelta(10s * kTimeMultiplier).ToUint64());
+  auto* lock = req.add_object_locks();
+  lock->set_database_oid(db_oid);
+  lock->set_relation_oid(table_oid);
+  lock->set_object_oid(0);
+  lock->set_object_sub_oid(0);
+  lock->set_lock_type(TableLockType::ACCESS_EXCLUSIVE);
+  Synchronizer sync;
+  client->AcquireObjectLocksGlobalAsync(
+      req, sync.AsStdStatusCallback(), deadline, [] { return Status::OK(); });
+  auto status = sync.Wait();
+  LOG(INFO) << "Late acquire status: " << status;
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "were already released");
+  ASSERT_EQ(NumGrantedLocksOnMaster(), 0);
+}
+#endif
 
 class PgObjectLocksTestRF1SessionExpiryWithDdl
     : public PgObjectLocksTestRF1SessionExpiry,

@@ -100,6 +100,9 @@ class TSLocalLockManager {
   void TrackDeadlineForGlobalAcquire(
       const TransactionId& txn_id, const SubTransactionId& subtxn_id,
       CoarseTimePoint apply_after_ht);
+  // The latest deadline across the global acquires tracked for the transaction, as a hybrid time.
+  // Unset if none are tracked.
+  std::optional<HybridTime> MaxAcquireDeadlineHtForTxn(const TransactionId& txn_id);
   void ScheduleReleaseForLostMessages(
       yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
