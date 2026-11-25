@@ -763,8 +763,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 			return NULL;
 
 		/*
-		 * The lookup takes only key columns, so this column and the gap
-		 * columns before it are key columns, as the merge sort arrays assume.
+		 * The loop above stops at the first non-key column, so this column and
+		 * the gap columns before it are key columns.
 		 */
 		Assert(tle->resno <= index->nkeycolumns);
 
