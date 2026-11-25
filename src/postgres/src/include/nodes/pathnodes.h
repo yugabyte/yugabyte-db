@@ -1331,11 +1331,6 @@ typedef struct YbPathInfo
  * 'first_fetch_limit' is the row bound the LIMIT clause puts on the scan's
  * first fetch (LIMIT count + OFFSET); 0 if none.  Unlike the other fields it
  * is not an estimate but derived from the query and plan shape.
- *
- * 'first_batch_rows' is the number of the path's rows that its startup_cost
- * pays for: the rows of a scan's first response
- * (yb_charge_startup_cost_by_first_batch), or the rows the leader of a Gather
- * or Gather Merge can read when the node returns its first row.
  */
 typedef struct YbPlanInfo
 {
@@ -1351,7 +1346,6 @@ typedef struct YbPlanInfo
 	double		estimated_num_bmscan_seeks;
 	double		estimated_num_bmscan_result_pages;
 	double		first_fetch_limit;	/* LIMIT bound on first fetch; 0 = none */
-	double		first_batch_rows;	/* rows paid for by startup_cost */
 } YbPlanInfo;
 
 /*
@@ -1449,6 +1443,15 @@ typedef struct YbIndexPathInfo
  * ordering of the path's output rows.
  *
  * 'yb_path_info' contains info propagated for YugabyteDB.
+ *
+ * YB: 'yb_startup_rows' is the number of the path's rows that its
+ * startup_cost pays for, so that its run cost is the cost of the later rows
+ * only: the rows of a scan's first response
+ * (yb_charge_startup_cost_by_first_batch), or the rows the leader of a Gather
+ * or Gather Merge can read when the node returns its first row.  It is 0 for
+ * a path whose run cost is spread over all of its rows.  Read it with
+ * yb_path_startup_rows(), which looks through the path types that do not
+ * store it.
  */
 typedef struct Path
 {
@@ -1479,6 +1482,7 @@ typedef struct Path
 	uint32		ybUniqueId;		/* unique id of Path */
 	bool		ybIsHinted;		/* does this represent a hint path? */
 	bool		ybHasHintedUid; /* force this path using UID? */
+	Cardinality yb_startup_rows;	/* rows that startup_cost pays for */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */

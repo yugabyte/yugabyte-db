@@ -178,6 +178,10 @@ from
 -- cost, its total less its startup cost, is 0 exactly when no stream of the
 -- scan made a request after its first.  A Limit that reads its whole input is
 -- not compared.
+-- With LIMIT 1 the rows the Limit skips for its OFFSET are all but one of the
+-- rows it reads, so its startup cost, which pays for the skipped rows, is
+-- compared in the same way: it is the startup cost of the Limit's input
+-- exactly when no stream of the scan made a request after its first.
 create view check_limit_run_cost as
 with limits as (
     select
@@ -185,6 +189,8 @@ with limits as (
         js.explain_line::jsonb #>> '{0,Plan,Node Type}' top_type,
         (js.explain_line::jsonb #>> '{0,Plan,Total Cost}')::numeric -
         (js.explain_line::jsonb #>> '{0,Plan,Startup Cost}')::numeric limit_run_cost,
+        (js.explain_line::jsonb #>> '{0,Plan,Startup Cost}')::numeric -
+        (js.explain_line::jsonb #>> '{0,Plan,Plans,0,Startup Cost}')::numeric limit_startup_run_cost,
         (js.explain_line::jsonb #>> '{0,Plan,Plan Rows}')::float8 limit_rows,
         (js.explain_line::jsonb #>> '{0,Plan,Plans,0,Plan Rows}')::float8 input_rows
     from
@@ -205,9 +211,14 @@ select
     case
         when l.limit_rows >= l.input_rows then 'whole input'
         when (s."Storage Table Read Requests" <= 1
-              and s."Storage Index Read Requests" <= 1) = (l.limit_run_cost = 0)
-            then 'passed'
-        else 'failed'
+              and s."Storage Index Read Requests" <= 1) <> (l.limit_run_cost = 0)
+            then 'failed'
+        when l.limit_rows = 1
+             and (s."Storage Table Read Requests" <= 1
+                  and s."Storage Index Read Requests" <= 1) <>
+                 (l.limit_startup_run_cost = 0)
+            then 'failed'
+        else 'passed'
     end "Limit Cost"
 from
     limits l
@@ -247,7 +258,8 @@ insert into queries values
 insert into queries values
     (83001, $$select * from ce.r where pk between 1 and 12345 limit 10 offset 90$$),
     (83002, $$select b from ce.r where b between 1 and 12345 limit 100 offset 1000$$),
-    (83003, $$select v from ce.rC where b between 1 and 12345 limit 5 offset 2$$);
+    (83003, $$select v from ce.rC where b between 1 and 12345 limit 5 offset 2$$),
+    (83004, $$select b from ce.r where b between 1 and 12345 limit 1 offset 3000$$);
 -- 84xxx: no trim, but the scan is fully consumed: est == act full pull.
 insert into queries values
     (84001, $$select v, b from ce.r where b between 1 and 12345 order by e limit 10$$),
@@ -363,6 +375,7 @@ select * from queries order by qid;
  83001 | select * from ce.r where pk between 1 and 12345 limit 10 offset 90
  83002 | select b from ce.r where b between 1 and 12345 limit 100 offset 1000
  83003 | select v from ce.rC where b between 1 and 12345 limit 5 offset 2
+ 83004 | select b from ce.r where b between 1 and 12345 limit 1 offset 3000
  84001 | select v, b from ce.r where b between 1 and 12345 order by e limit 10
  84002 | select b % 100, count(*) from ce.r where b between 1 and 5000 group by b % 100 limit 10
  84003 | select * from ce.r where pk between 1 and 2000 offset 1900
@@ -395,7 +408,7 @@ select * from queries order by qid;
  89003 | select pk, a, b, e from ce.r order by pk, e limit 5
  89004 | select pk, a, b, e from ce.r order by a, b limit 5
  89013 | select pk, a, b, e from ce.rC order by pk, e limit 5
-(84 rows)
+(85 rows)
 
 update explain_query_options set with_analyze = true;
 -- Baseline: scan node shapes and the pushed-down bound decisions.  Later
@@ -461,6 +474,7 @@ select * from baseline_scan_nodes order by qid, nid;
  83001 |   1 | Index Scan               | r_pkey     | ((pk >= 1) AND (pk <= 12345)) |                      |                     |                                     |               100
  83002 |   1 | Index Only Scan          | r_b_idx    | ((b >= 1) AND (b <= 12345))   |                      |                     |                                     |              1100
  83003 |   1 | Index Scan               | rc_b_idx   | ((b >= 1) AND (b <= 12345))   |                      |                     |                                     |                 7
+ 83004 |   1 | Index Only Scan          | r_b_idx    | ((b >= 1) AND (b <= 12345))   |                      |                     |                                     |              3001
  84001 |   1 | Index Scan               | r_b_idx    | ((b >= 1) AND (b <= 12345))   |                      |                     |                                     |                 0
  84002 |   1 | Index Only Scan          | r_b_idx    | ((b >= 1) AND (b <= 5000))    |                      |                     |                                     |                 0
  84003 |   1 | Index Scan               | r_pkey     | ((pk >= 1) AND (pk <= 2000))  |                      |                     |                                     |                 0
@@ -493,7 +507,7 @@ select * from baseline_scan_nodes order by qid, nid;
  89003 |   1 | Index Scan               | r_pkey     |                               |                      |                     |                                     |                 0
  89004 |   1 | Index Scan               | r_a_idx    |                               |                      |                     |                                     |                 0
  89013 |   1 | Index Scan               | rc_pkey    |                               |                      |                     |                                     |                 0
-(84 rows)
+(85 rows)
 
 -- should not return any row.
 select qid, nid, "Node Type", "Index Name",

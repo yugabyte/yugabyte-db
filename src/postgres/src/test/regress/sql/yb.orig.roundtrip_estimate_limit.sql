@@ -185,6 +185,10 @@ from
 -- cost, its total less its startup cost, is 0 exactly when no stream of the
 -- scan made a request after its first.  A Limit that reads its whole input is
 -- not compared.
+-- With LIMIT 1 the rows the Limit skips for its OFFSET are all but one of the
+-- rows it reads, so its startup cost, which pays for the skipped rows, is
+-- compared in the same way: it is the startup cost of the Limit's input
+-- exactly when no stream of the scan made a request after its first.
 create view check_limit_run_cost as
 with limits as (
     select
@@ -192,6 +196,8 @@ with limits as (
         js.explain_line::jsonb #>> '{0,Plan,Node Type}' top_type,
         (js.explain_line::jsonb #>> '{0,Plan,Total Cost}')::numeric -
         (js.explain_line::jsonb #>> '{0,Plan,Startup Cost}')::numeric limit_run_cost,
+        (js.explain_line::jsonb #>> '{0,Plan,Startup Cost}')::numeric -
+        (js.explain_line::jsonb #>> '{0,Plan,Plans,0,Startup Cost}')::numeric limit_startup_run_cost,
         (js.explain_line::jsonb #>> '{0,Plan,Plan Rows}')::float8 limit_rows,
         (js.explain_line::jsonb #>> '{0,Plan,Plans,0,Plan Rows}')::float8 input_rows
     from
@@ -212,9 +218,14 @@ select
     case
         when l.limit_rows >= l.input_rows then 'whole input'
         when (s."Storage Table Read Requests" <= 1
-              and s."Storage Index Read Requests" <= 1) = (l.limit_run_cost = 0)
-            then 'passed'
-        else 'failed'
+              and s."Storage Index Read Requests" <= 1) <> (l.limit_run_cost = 0)
+            then 'failed'
+        when l.limit_rows = 1
+             and (s."Storage Table Read Requests" <= 1
+                  and s."Storage Index Read Requests" <= 1) <>
+                 (l.limit_startup_run_cost = 0)
+            then 'failed'
+        else 'passed'
     end "Limit Cost"
 from
     limits l
@@ -259,7 +270,8 @@ insert into queries values
 insert into queries values
     (83001, $$select * from ce.r where pk between 1 and 12345 limit 10 offset 90$$),
     (83002, $$select b from ce.r where b between 1 and 12345 limit 100 offset 1000$$),
-    (83003, $$select v from ce.rC where b between 1 and 12345 limit 5 offset 2$$);
+    (83003, $$select v from ce.rC where b between 1 and 12345 limit 5 offset 2$$),
+    (83004, $$select b from ce.r where b between 1 and 12345 limit 1 offset 3000$$);
 
 -- 84xxx: no trim, but the scan is fully consumed: est == act full pull.
 insert into queries values
