@@ -620,6 +620,9 @@ func (h *InstallOtelCollector) stopOtelCollectorsForInstall(
 ) error {
 	if err := h.disableUserUnit(ctx); err != nil {
 		util.FileLogger().Error(ctx, err.Error())
+		if h.rootStopTurnedOff(ctx) {
+			return err
+		}
 		inUse, checkErr := h.rootInUse(ctx)
 		switch {
 		case checkErr != nil:
@@ -643,9 +646,7 @@ func (h *InstallOtelCollector) stopOtelCollectorsForInstall(
 // A failure only warns. On the install path, a root collector that still runs can then make the
 // user collector start fail. YBA can turn the stop off with skipRootCollectorStop.
 func (h *InstallOtelCollector) stopRootOtelCollector(ctx context.Context) {
-	if h.param.GetSkipRootCollectorStop() {
-		util.FileLogger().Infof(ctx, "The root-level %s stop is turned off",
-			otelCollectorRootUnitName)
+	if h.rootStopTurnedOff(ctx) {
 		return
 	}
 	msg := ""
@@ -662,6 +663,15 @@ func (h *InstallOtelCollector) stopRootOtelCollector(ctx context.Context) {
 		util.FileLogger().Warnf(ctx, "%s", msg)
 		h.logOut.WriteLine("%s", msg)
 	}
+}
+
+// rootStopTurnedOff reports whether YBA turned the root stop off, with one log line if it did.
+func (h *InstallOtelCollector) rootStopTurnedOff(ctx context.Context) bool {
+	if h.param.GetSkipRootCollectorStop() {
+		util.FileLogger().Infof(ctx, "The root-level %s stop is turned off",
+			otelCollectorRootUnitName)
+	}
+	return h.param.GetSkipRootCollectorStop()
 }
 
 // tryStopRootOtelCollector stops and disables the root unit when it is active or enabled. That

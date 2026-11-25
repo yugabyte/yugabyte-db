@@ -162,7 +162,8 @@ func TestHandleDisableWithRootStopTurnedOff(t *testing.T) {
 }
 
 // The install stops the root collector last, after the user stop and the configure pass, so a
-// failed step leaves it exporting. Only a failed user stop names it. A failed root stop warns.
+// failed step leaves it exporting. Only a failed user stop names it, unless the root stop is
+// turned off. A failed root stop warns.
 func TestStopOtelCollectorsForInstall(t *testing.T) {
 	userErr := errors.New("user stop failed")
 	configErr := errors.New("configure failed")
@@ -184,6 +185,8 @@ func TestStopOtelCollectorsForInstall(t *testing.T) {
 			wantErr: userErr, wantRoot: true},
 		{name: "user stop fails, root state unknown", rootErr: errors.New("is-active failed"),
 			userErr: userErr, wantCalls: "user", wantErr: userErr, wantRoot: true},
+		{name: "user stop fails, root stop turned off", rootInUse: true, skipRoot: true,
+			userErr: userErr, wantCalls: "user", wantErr: userErr},
 		{name: "configure fails", configErr: configErr, wantCalls: "user,configure",
 			wantErr: configErr},
 		{name: "root stopped", rootStop: rootOtelCollectorNotRunning,
@@ -200,6 +203,9 @@ func TestStopOtelCollectorsForInstall(t *testing.T) {
 			handler := newDisableCollectorHandler(t, t.TempDir())
 			handler.param.SkipRootCollectorStop = tc.skipRoot
 			handler.rootInUse = func(context.Context) (bool, error) {
+				if tc.skipRoot {
+					t.Fatalf("the root unit was read with the root stop turned off")
+				}
 				return tc.rootInUse, tc.rootErr
 			}
 			var calls []string
