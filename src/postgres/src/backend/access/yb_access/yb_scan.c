@@ -1091,7 +1091,7 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 		 * NOT IN will generate <> which is not a supported LSM/BTREE
 		 * operator, so it should not get to this point.
 		 */
-		return key->sk_strategy == BTEqualStrategyNumber;
+		return YbCanBindSearchArray(key->sk_strategy);
 	}
 
 	if (key->sk_flags & SK_ROW_MEMBER)
@@ -1273,6 +1273,18 @@ static bool YbIsScanCompatible(Oid column_typid,
 			/* Conservatively return false. */
 			return false;
 	}
+}
+
+/*
+ * Whether a YB index scan binds a search array condition, indexkey op ANY
+ * (array), of the given strategy.  DocDB binds an array only as an IN list,
+ * so only the equality strategy qualifies.
+ * TODO(#37239): bind an inequality on a range column as a range bound.
+ */
+bool
+YbCanBindSearchArray(StrategyNumber strategy)
+{
+	return strategy == BTEqualStrategyNumber;
 }
 
 static bool YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
