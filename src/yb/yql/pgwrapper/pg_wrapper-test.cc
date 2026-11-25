@@ -1215,7 +1215,6 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
       {{"enable_object_locking_for_table_locks", "true"}},
       "enable_object_locking_for_table_locks"));
   // Object locking requires transactional DDL, so the two have to move together, in any order.
-  // ysql_enable_concurrent_ddl is not tied to either.
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
