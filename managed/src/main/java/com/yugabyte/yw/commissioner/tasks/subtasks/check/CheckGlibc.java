@@ -21,7 +21,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,20 +55,12 @@ public class CheckGlibc extends UniverseTaskBase {
     return (CheckGlibc.Params) taskParams;
   }
 
-  protected Map<UUID, UniverseDefinitionTaskParams.UserIntent> getUserIntentMap() {
-    if (params().userIntentMap != null) {
-      return params().userIntentMap;
-    }
-    Map<UUID, UniverseDefinitionTaskParams.UserIntent> result = new HashMap<>();
-    return getUniverse().getUniverseDetails().clusters.stream()
-        .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent));
-  }
-
   @Override
   public void run() {
     try {
       Universe universe = getUniverse();
-      Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap = getUserIntentMap();
+      Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap =
+          getUserIntentMap(params().userIntentMap);
       if (userIntentMap.values().stream()
           .anyMatch(u -> u.getAllCloudTypes().contains(Common.CloudType.local))) {
         log.info("Skipping check for local provider");

@@ -2934,11 +2934,10 @@ public class UniverseCRUDHandler {
     }
   }
 
-  // TODO This is used by calls originating from the UI that are not in swagger APIs. More
-  // validations may be needed later like checking the fields of all NodeDetails objects because
-  // the existing nodes in the universe are replaced by these nodes in the task params. UI sends
-  // all the nodes irrespective of the cluster. Only the cluster getting updated, is sent in the
-  // request.
+  // TODO More validations may be needed later like checking the fields of all NodeDetails objects
+  //  because the existing nodes in the universe are replaced by these nodes in the task params.
+  //  UI sends all the nodes irrespective of the cluster. Only the cluster getting updated,
+  //  is sent in the request.
   public void checkTaskParamsForUpdate(
       Universe universe,
       Customer customer,

@@ -968,6 +968,35 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return cluster.userIntent;
   }
 
+  /**
+   * Pending intents of the clusters of {@code nodes}, by cluster UUID, for subtasks that run before
+   * the intent is saved. See {@link #getUpdatedUserIntent(UUID)}.
+   *
+   * @param nodes nodes whose clusters are needed
+   * @return map from cluster UUID to its pending intent
+   */
+  protected Map<UUID, UserIntent> getUpdatedUserIntentMap(Iterable<NodeDetails> nodes) {
+    Map<UUID, UserIntent> userIntentMap = new HashMap<>();
+    nodes.forEach(
+        node -> userIntentMap.computeIfAbsent(node.placementUuid, this::getUpdatedUserIntent));
+    return userIntentMap;
+  }
+
+  /**
+   * Intents by cluster UUID that a subtask got in its params, or, when it got none (params from
+   * before the field existed), the intents of all clusters persisted on the universe.
+   *
+   * @param userIntentMap the map from the subtask params, may be null
+   * @return map from cluster UUID to intent
+   */
+  protected Map<UUID, UserIntent> getUserIntentMap(@Nullable Map<UUID, UserIntent> userIntentMap) {
+    if (userIntentMap != null) {
+      return userIntentMap;
+    }
+    return getUniverse().getUniverseDetails().clusters.stream()
+        .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent));
+  }
+
   protected Optional<UserIntent> getUserIntent(
       ClusterType clusterType, UniverseDefinitionTaskParams udtp) {
     List<Cluster> clusters = udtp.getClusterByType(clusterType);
@@ -2309,12 +2338,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           CheckLocale.Params params = new CheckLocale.Params();
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-          params.userIntentMap = new HashMap<>();
-          nodes.forEach(
-              node -> {
-                params.userIntentMap.computeIfAbsent(
-                    node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
-              });
+          params.userIntentMap = getUpdatedUserIntentMap(nodes);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
@@ -2331,12 +2355,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.ybSoftwareVersion = ybSoftwareVersion;
           params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
-          params.userIntentMap = new HashMap<>();
-          nodes.forEach(
-              node -> {
-                params.userIntentMap.computeIfAbsent(
-                    node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
-              });
+          params.userIntentMap = getUpdatedUserIntentMap(nodes);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
@@ -2520,6 +2539,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean deleteRootVolumes,
       boolean skipDestroyPrecheck,
       boolean skipUpdateNodeState) {
+    return createDestroyServerTasks(
+        universe,
+        nodes,
+        isForceDelete,
+        deleteNode,
+        deleteRootVolumes,
+        skipDestroyPrecheck,
+        skipUpdateNodeState,
+        node -> universe.getCluster(node.placementUuid).userIntent);
+  }
+
+  /**
+   * Like {@link #createDestroyServerTasks(Universe, Collection, Function, boolean, boolean,
+   * boolean, boolean)}, but the destroy of each node uses the intent {@code userIntentResolver}
+   * returns for it. The intent decides the access key, SSH user and device info of the destroy, so
+   * it must know the provider of the node.
+   */
+  public SubTaskGroup createDestroyServerTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      Function<NodeDetails, Boolean> isForceDelete,
+      boolean deleteNode,
+      boolean deleteRootVolumes,
+      boolean skipDestroyPrecheck,
+      boolean skipUpdateNodeState,
+      Function<NodeDetails, UserIntent> userIntentResolver) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     nodes = filterUniverseNodes(universe, nodes, n -> true);
 
@@ -2529,8 +2574,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     for (NodeDetails node : nodes) {
-      Cluster cluster = universe.getCluster(node.placementUuid);
-      UserIntent userIntent = cluster.userIntent;
+      UserIntent userIntent = userIntentResolver.apply(node);
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);

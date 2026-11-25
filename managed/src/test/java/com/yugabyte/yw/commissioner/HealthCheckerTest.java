@@ -450,7 +450,7 @@ public class HealthCheckerTest extends FakeDBApplication {
               return null;
             })
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
 
     healthChecker.runHealthCheck(checkParams(u), true).get();
 
@@ -487,7 +487,7 @@ public class HealthCheckerTest extends FakeDBApplication {
               return null;
             })
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
 
     healthChecker.runHealthCheck(checkParams(u), true).get();
 
@@ -538,21 +538,22 @@ public class HealthCheckerTest extends FakeDBApplication {
     Pattern pattern = Pattern.compile("SCRIPT_FINGERPRINT = '([^']*)'");
     doAnswer(
             i -> {
-              String target = i.getArgument(3);
+              String target = i.getArgument(2);
               if (target.endsWith("node_health.py")) {
-                Matcher m = pattern.matcher(Files.readString(Paths.get((String) i.getArgument(2))));
+                Matcher m = pattern.matcher(Files.readString(Paths.get((String) i.getArgument(1))));
                 assertTrue(m.find());
-                fingerprints.put(((NodeDetails) i.getArgument(0)).nodeName, m.group(1));
+                fingerprints.put(
+                    ((NodeUniverseContext) i.getArgument(0)).getNode().nodeName, m.group(1));
               }
               return null;
             })
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
     return fingerprints;
   }
 
   private void mockReportWithFingerprint(Function<String, String> fingerprintByNode) {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             i ->
                 ShellResponse.create(
@@ -561,7 +562,8 @@ public class HealthCheckerTest extends FakeDBApplication {
                         + Json.newObject()
                             .put(
                                 HealthChecker.SCRIPT_FINGERPRINT_FIELD,
-                                fingerprintByNode.apply(((NodeDetails) i.getArgument(0)).nodeName))
+                                fingerprintByNode.apply(
+                                    ((NodeUniverseContext) i.getArgument(0)).getNode().nodeName))
                             .set("data", Json.newArray())));
   }
 
@@ -596,10 +598,10 @@ public class HealthCheckerTest extends FakeDBApplication {
   // The "Node exporter" entry reporting node_exporter as not running, first, then a check carrying
   // one node metric.
   private void mockHealthResponseWithNodeMetrics() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             i -> {
-              NodeDetails nodeDetails = i.getArgument(0);
+              NodeDetails nodeDetails = ((NodeUniverseContext) i.getArgument(0)).getNode();
               String node =
                   "''node'':''"
                       + nodeDetails.cloudInfo.private_ip

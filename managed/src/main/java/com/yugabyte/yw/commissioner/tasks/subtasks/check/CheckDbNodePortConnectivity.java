@@ -18,12 +18,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
@@ -78,15 +76,6 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
     return (Params) taskParams;
   }
 
-  protected Map<UUID, UniverseDefinitionTaskParams.UserIntent> getUserIntentMap() {
-    if (taskParams().userIntentMap != null) {
-      return taskParams().userIntentMap;
-    }
-    Map<UUID, UniverseDefinitionTaskParams.UserIntent> result = new HashMap<>();
-    return getUniverse().getUniverseDetails().clusters.stream()
-        .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent));
-  }
-
   @Override
   public String getName() {
     Params p = taskParams();
@@ -138,7 +127,8 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
       Universe universe,
       List<NodeDetails> targetNodes,
       boolean cloudEnabled) {
-    Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap = getUserIntentMap();
+    Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap =
+        getUserIntentMap(taskParams().userIntentMap);
     for (NodeDetails targetNode : targetNodes) {
       if (sourceNode.nodeName.equals(targetNode.nodeName)) {
         continue;

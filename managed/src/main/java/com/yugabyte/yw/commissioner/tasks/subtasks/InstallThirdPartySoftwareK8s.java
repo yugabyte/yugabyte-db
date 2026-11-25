@@ -138,8 +138,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
                   NodeUniverseContext.of(universe, node, context),
                   jwksFile.getAbsolutePath(),
                   remoteGFlagPath + jwksFile.getName(),
-                  JWKS_FILE_PERMISSIONS,
-                  context);
+                  JWKS_FILE_PERMISSIONS);
             }
           }
 

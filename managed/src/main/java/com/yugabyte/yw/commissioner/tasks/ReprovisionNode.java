@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collections;
@@ -81,7 +80,10 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion, null /* Txn callback */);
 
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      // The node's own provider: a read replica may use another one than the primary cluster.
+      boolean isLocalProvider =
+          universe.getCluster(currentNode.placementUuid).getProviderCloudType(currentNode)
+              == CloudType.local;
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
@@ -110,8 +112,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       // node-agent-provision.sh, so skip them here to avoid failing on the missing sudo
       // SSH access.
       boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
-      if (!userIntent.getAllCloudTypes().contains(CloudType.local)
-          && !isUniverseManuallyProvisioned) {
+      if (!isLocalProvider && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         createYNPProvisioningTask(universe, nodeCollection, (n, p) -> p.isDataPresent = true)
@@ -122,7 +123,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
-      if (userIntent.getAllCloudTypes().contains(CloudType.local)) {
+      if (isLocalProvider) {
         createSetupServerTasks(nodeCollection, params -> {})
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       }

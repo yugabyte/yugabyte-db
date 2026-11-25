@@ -70,8 +70,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -891,6 +891,150 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       assertEquals(newProvider.getUuid(), createParams.getProvider().getUuid());
     }
     assertTrue(sawNewProviderCreate);
+  }
+
+  @Test
+  public void testRollbackOfFailedEditDestroysNodesOfAddedProvider() throws InterruptedException {
+    // An edit that adds a provider and fails before UpdateUniverseIntent leaves the stored intent
+    // without that provider. The rollback must still destroy the nodes it added there.
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent intent =
+                  u.getUniverseDetails().getPrimaryCluster().userIntent;
+              TestUtils.specificationProviderInitializer(intent, defaultProvider.getUuid())
+                  .setProviderType(defaultProvider.getCloudCode())
+                  .setInstanceType(intent.instanceType)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setAccessCode(intent.accessKeyCode);
+            });
+    Provider newProvider = ModelFactory.newProvider(defaultCustomer, CloudType.azu, "azu");
+    Region newRegion = Region.create(newProvider, "region-2", "Region 2", "yb-image-2");
+    AvailabilityZone newZone =
+        AvailabilityZone.createOrThrow(newRegion, "az-new", "AZ new", "subnet-new");
+    createAccessKeyForProvider("default-key-azu", newProvider);
+    enableManualEditRollback(universe);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent.clone();
+    primaryCluster.userIntent = newIntent;
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    deviceInfo.volumeSize = 100;
+    deviceInfo.storageType = PublicCloudConstants.StorageType.Premium_LRS;
+    TestUtils.specificationProviderInitializer(newIntent, newProvider.getUuid())
+        .setProviderType(newProvider.getCloudCode())
+        .setInstanceType("azu_instance_type")
+        .setDeviceInfo(deviceInfo)
+        .setAccessCode("default-key-azu");
+    newIntent.regionList = ImmutableList.of(newRegion.getUuid());
+    newIntent.numNodes = 3;
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(newZone.getUuid(), placementInfo, 3, 3, true);
+    primaryCluster.placementInfo = placementInfo;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    updateIPs(taskParams);
+    setDumpEntitiesMock(universe, "", false);
+
+    // Create fails, so the edit stops before UpdateUniverseIntent.
+    doAnswer(
+            invocation -> {
+              ShellResponse response = new ShellResponse();
+              response.message = "";
+              if (!NodeManager.NodeCommandType.List.equals(invocation.getArgument(0))) {
+                response.code = 100;
+                response.message = "Nope";
+              }
+              return response;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(any(), any());
+    TaskInfo failedEdit = submitTask(taskParams);
+    assertEquals(Failure, failedEdit.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams.UserIntent storedIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertNull(storedIntent.getProviderSpecification(newProvider.getUuid()));
+    assertTrue(universe.getNodes().stream().anyMatch(n -> newZone.getUuid().equals(n.azUuid)));
+
+    stubNodeManagerOkWithInstancesPresent();
+    clearInvocations(mockNodeManager);
+    TaskInfo rollbackInfo = submitRollbackEditUniverse(failedEdit, universe);
+    assertEquals(
+        LocalProviderUniverseTestBase.getAllErrorsStr(rollbackInfo),
+        Success,
+        rollbackInfo.getTaskState());
+
+    ArgumentCaptor<NodeManager.NodeCommandType> typeCaptor =
+        ArgumentCaptor.forClass(NodeManager.NodeCommandType.class);
+    ArgumentCaptor<NodeTaskParams> paramsCaptor = ArgumentCaptor.forClass(NodeTaskParams.class);
+    verify(mockNodeManager, atLeastOnce())
+        .nodeCommand(typeCaptor.capture(), paramsCaptor.capture());
+    NodeManager nodeManager = mock(NodeManager.class, Mockito.CALLS_REAL_METHODS);
+    int newProviderDestroys = 0;
+    for (int i = 0; i < typeCaptor.getAllValues().size(); i++) {
+      NodeTaskParams params = paramsCaptor.getAllValues().get(i);
+      if (typeCaptor.getAllValues().get(i) != NodeManager.NodeCommandType.Destroy
+          || !newZone.getUuid().equals(params.azUuid)) {
+        continue;
+      }
+      newProviderDestroys++;
+      // NodeManager takes the access key of the node's provider from this intent.
+      assertEquals(
+          "default-key-azu",
+          nodeManager
+              .getUserIntentFromParams(universe, params)
+              .getAccessKeyCodeForProvider(newProvider.getUuid()));
+    }
+    assertEquals(3, newProviderDestroys);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertTrue(universe.getNodes().stream().noneMatch(n -> newZone.getUuid().equals(n.azUuid)));
+    assertNull(universe.getStateTransitionDetails());
+  }
+
+  @Test
+  public void testRollbackDestroyIntentForProviderMissingFromStoredIntent() {
+    Provider newProvider = ModelFactory.newProvider(defaultCustomer, CloudType.azu, "azu");
+    // Stored intent without provider specifications: it knows only its own provider.
+    UniverseDefinitionTaskParams.UserIntent stored =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    stored.provider = defaultProvider.getUuid().toString();
+    stored.providerSpecifications = null;
+    UniverseDefinitionTaskParams.UserIntent target = stored.clone();
+    TestUtils.specificationProviderInitializer(target, defaultProvider.getUuid())
+        .setProviderType(defaultProvider.getCloudCode())
+        .setAccessCode(stored.accessKeyCode);
+    TestUtils.specificationProviderInitializer(target, newProvider.getUuid())
+        .setProviderType(newProvider.getCloudCode())
+        .setAccessCode("default-key-azu");
+
+    assertTrue(
+        target
+            == RollbackEditUniverse.chooseDestroyUserIntent(stored, target, newProvider.getUuid()));
+    assertTrue(
+        stored
+            == RollbackEditUniverse.chooseDestroyUserIntent(
+                stored, target, defaultProvider.getUuid()));
+    // Neither knows the provider: keep the stored intent, as before.
+    assertTrue(
+        stored == RollbackEditUniverse.chooseDestroyUserIntent(stored, target, UUID.randomUUID()));
+    assertTrue(
+        stored
+            == RollbackEditUniverse.chooseDestroyUserIntent(
+                stored, null /* target */, newProvider.getUuid()));
+    assertTrue(
+        target
+            == RollbackEditUniverse.chooseDestroyUserIntent(
+                null /* stored */, target, newProvider.getUuid()));
   }
 
   @Test

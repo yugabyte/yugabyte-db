@@ -996,13 +996,13 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                argThat(n -> n != null && swappedNode.get().equals(n.nodeName)),
-                any(),
+                argThat(
+                    (NodeUniverseContext c) ->
+                        c != null && swappedNode.get().equals(c.getNode().nodeName)),
                 argThat(
                     (List<String> command) ->
                         command != null
-                            && command.stream().anyMatch(s -> s.contains("node-agent-provision"))),
-                any()))
+                            && command.stream().anyMatch(s -> s.contains("node-agent-provision")))))
         .thenAnswer(
             inv ->
                 failProvisioning.get()
@@ -1096,10 +1096,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                argThat(n -> n != null && nodeNames.contains(n.nodeName)),
-                any(),
-                eq(ImmutableList.of("cat", "/etc/fstab")),
-                any()))
+                argThat(
+                    (NodeUniverseContext c) ->
+                        c != null && nodeNames.contains(c.getNode().nodeName)),
+                eq(ImmutableList.of("cat", "/etc/fstab"))))
         .thenReturn(ShellResponse.create(1, "Permission denied (publickey)"));
   }
 

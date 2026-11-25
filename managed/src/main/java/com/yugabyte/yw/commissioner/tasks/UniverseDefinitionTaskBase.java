@@ -1321,8 +1321,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
             Universe.getOrBadRequest(taskParams().getUniverseUUID())
-                .getUniverseDetails()
-                .getPrimaryCluster()
+                .getCluster(node.placementUuid)
                 .userIntent
                 .evaluateDeviceInfoForNode(node)
                 .numVolumes;
@@ -3120,14 +3119,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.nodeDetailsSet = taskParams().nodeDetailsSet;
             params.sourceNode = sourceNode;
             params.targetNodes = targetNodes;
-            params.userIntentMap = new HashMap<>();
-            params.userIntentMap.put(
-                sourceNode.placementUuid, getUpdatedUserIntent(sourceNode.placementUuid));
-            targetNodes.forEach(
-                node -> {
-                  params.userIntentMap.computeIfAbsent(
-                      node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
-                });
+            params.userIntentMap =
+                getUpdatedUserIntentMap(Iterables.concat(List.of(sourceNode), targetNodes));
             CheckDbNodePortConnectivity task = createTask(CheckDbNodePortConnectivity.class);
             task.initialize(params);
             subTaskGroup.addSubTask(task);

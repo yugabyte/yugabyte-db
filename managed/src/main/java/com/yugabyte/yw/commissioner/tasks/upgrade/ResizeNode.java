@@ -33,13 +33,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -143,6 +143,9 @@ public class ResizeNode extends UpgradeTaskBase {
     List<NodeDetails> mastersToUpgradeGFlags = new ArrayList<>();
     List<NodeDetails> tserversToUpgradeGFlags = new ArrayList<>();
     boolean applyGFlagsToAllNodes = false;
+    // Intent for the conf file update of each cluster, by cluster UUID: a copy of the stored
+    // intent, with the new gflags synced into it.
+    Map<UUID, UserIntent> userIntentsForFlags = new HashMap<>();
   }
 
   private NodesToApply nodesToApplyCalculated;
@@ -163,8 +166,11 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     Universe universe = getUniverse();
     boolean flagsProvided = taskParams().flagsProvided(universe);
-    UserIntent userIntentForFlags = getStoredUserIntent();
     nodesToApplyCalculated = new NodesToApply();
+    for (Cluster storedCluster : universe.getUniverseDetails().clusters) {
+      nodesToApplyCalculated.userIntentsForFlags.put(
+          storedCluster.uuid, storedCluster.userIntent.clone());
+    }
     LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
     LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
     Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
@@ -184,11 +190,13 @@ public class ResizeNode extends UpgradeTaskBase {
                 ServerType.TSERVER,
                 newVersionsOfClusters.get(cluster.uuid),
                 newVersionsOfClusters.values());
+        UserIntent userIntentForFlags =
+            nodesToApplyCalculated.userIntentsForFlags.get(cluster.uuid);
         boolean updatedByMasterFlags =
             GFlagsUtil.syncGflagsToIntent(masterGFlags, userIntentForFlags);
         boolean updatedByTserverFlags =
             GFlagsUtil.syncGflagsToIntent(tserverGFlags, userIntentForFlags);
-        nodesToApplyCalculated.applyGFlagsToAllNodes =
+        nodesToApplyCalculated.applyGFlagsToAllNodes |=
             updatedByMasterFlags || updatedByTserverFlags;
       }
       LinkedHashSet<NodeDetails> clusterNodes =
@@ -268,8 +276,6 @@ public class ResizeNode extends UpgradeTaskBase {
 
           Universe universe = getUniverse();
 
-          UserIntent userIntentForFlags = getStoredUserIntent();
-
           boolean flagsProvided = taskParams().flagsProvided(universe);
 
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
@@ -287,7 +293,6 @@ public class ResizeNode extends UpgradeTaskBase {
                     return !node.cloudInfo.instance_type.equals(targetInstanceType);
                   });
 
-          AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
@@ -316,12 +321,12 @@ public class ResizeNode extends UpgradeTaskBase {
                   createResizeNodeTasks(nodes, userIntent, currentIntent);
                   if (flagsProvided) {
                     createGFlagsUpgradeTasks(
-                        userIntentForFlags,
+                        nodesToApply.userIntentsForFlags,
                         processTypes,
                         nodes,
                         universe,
                         newVersionsOfClusters,
-                        applyGFlagsToAllNodes.get());
+                        nodesToApply.applyGFlagsToAllNodes);
                   }
                 },
                 instanceChangingNodes,
@@ -401,12 +406,12 @@ public class ResizeNode extends UpgradeTaskBase {
             createRollingUpgradeTaskFlow(
                 (nodes, processTypes) ->
                     createGFlagsUpgradeTasks(
-                        userIntentForFlags,
+                        nodesToApply.userIntentsForFlags,
                         processTypes,
                         nodes,
                         universe,
                         newVersionsOfClusters,
-                        applyGFlagsToAllNodes.get()),
+                        nodesToApply.applyGFlagsToAllNodes),
                 nodesToApply.mastersToUpgradeGFlags,
                 nodesToApply.tserversToUpgradeGFlags,
                 RUN_BEFORE_STOPPING,
@@ -425,8 +430,12 @@ public class ResizeNode extends UpgradeTaskBase {
         });
   }
 
+  /**
+   * Updates the conf files of the nodes with gflag changes. The nodes are grouped by cluster, so
+   * that each conf file gets the gflags and intent of its own cluster.
+   */
   private void createGFlagsUpgradeTasks(
-      UserIntent userIntentForFlags,
+      Map<UUID, UserIntent> userIntentsForFlags,
       Set<ServerType> processTypes,
       List<NodeDetails> nodes,
       Universe universe,
@@ -436,30 +445,31 @@ public class ResizeNode extends UpgradeTaskBase {
     Map<UUID, UniverseDefinitionTaskParams.Cluster> gflagsBaseline =
         getGFlagsBaselineClusters(universe);
 
-    for (NodeDetails node : nodes) {
-      UUID clusterUUID = node.placementUuid;
-      UniverseDefinitionTaskParams.Cluster oldCluster = gflagsBaseline.get(clusterUUID);
-      UniverseDefinitionTaskParams.Cluster newCluster = newVersionsOfClusters.get(clusterUUID);
-
-      for (ServerType processType : processTypes) {
+    for (ServerType processType : processTypes) {
+      Map<UUID, List<NodeDetails>> nodesByCluster = new LinkedHashMap<>();
+      for (NodeDetails node : nodes) {
+        UUID clusterUUID = node.placementUuid;
         if (applyToAll
             || GFlagsUpgradeParams.nodeHasGflagsChanges(
                 node,
                 processType,
-                oldCluster,
+                gflagsBaseline.get(clusterUUID),
                 gflagsBaseline.values(),
-                newCluster,
+                newVersionsOfClusters.get(clusterUUID),
                 newVersionsOfClusters.values())) {
-          createServerConfFileUpdateTasks(
-              userIntentForFlags,
-              nodes,
-              Collections.singleton(processType),
-              oldCluster,
-              gflagsBaseline.values(),
-              newCluster,
-              newVersionsOfClusters.values());
+          nodesByCluster.computeIfAbsent(clusterUUID, k -> new ArrayList<>()).add(node);
         }
       }
+      nodesByCluster.forEach(
+          (clusterUUID, clusterNodes) ->
+              createServerConfFileUpdateTasks(
+                  userIntentsForFlags.get(clusterUUID),
+                  clusterNodes,
+                  Collections.singleton(processType),
+                  gflagsBaseline.get(clusterUUID),
+                  gflagsBaseline.values(),
+                  newVersionsOfClusters.get(clusterUUID),
+                  newVersionsOfClusters.values()));
     }
   }
 

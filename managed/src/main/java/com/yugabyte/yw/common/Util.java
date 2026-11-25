@@ -2073,7 +2073,8 @@ public class Util {
   /**
    * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
    *
-   * @param universe
+   * @param provider
+   * @param userIntent
    * @param node
    * @param config
    * @return the path to "yb-data/" folder on the node

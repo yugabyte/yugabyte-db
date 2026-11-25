@@ -909,8 +909,7 @@ public class PlacementInfoUtil {
                   });
         }
       }
-      // Non-onprem zones are unlimited (getFreeInDB returns Integer.MAX_VALUE), so skip them:
-      // adding occupied/willBeFreed to that would overflow and report a bogus shortage.
+      // Non-onprem zones are unlimited so skip them.
       cluster
           .getOverallPlacement()
           .azStream()

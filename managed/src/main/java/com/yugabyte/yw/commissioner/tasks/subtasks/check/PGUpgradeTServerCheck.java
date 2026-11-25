@@ -390,7 +390,7 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   private AnsibleConfigureServers.Params getAnsibleConfigureServerParamsToDownloadSoftware(
       Universe universe, NodeDetails node, String ybSoftwareVersion) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
     params.setUniverseUUID(universe.getUniverseUUID());
     params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     params.instanceType = node.cloudInfo.instance_type;
