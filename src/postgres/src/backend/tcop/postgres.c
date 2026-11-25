@@ -5329,12 +5329,21 @@ yb_parse_query_silently(const char *query_string)
  * Returns the first statement's tag. If may_carry_password is not NULL, also
  * sets it from every statement, so callers can redact before anything
  * publishes the query text.
+ *
+ * A syntax error re-throws from the parse, and the ERROR's STATEMENT line can
+ * still print the query text (Parse sets debug_query_string first), so the
+ * flag is set before parsing and only cleared once the parse succeeds.
  */
 static CommandTag
 yb_parse_command_tag(const char *query_string, bool *may_carry_password)
 {
-	List	   *parsetree_list = yb_parse_query_silently(query_string);
+	List	   *parsetree_list;
 	CommandTag	command_tag = CMDTAG_UNKNOWN;
+
+	if (may_carry_password)
+		*may_carry_password = true;
+
+	parsetree_list = yb_parse_query_silently(query_string);
 
 	if (list_length(parsetree_list) > 0)
 	{

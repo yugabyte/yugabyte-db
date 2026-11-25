@@ -624,6 +624,9 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 	char	   *query_string;
 	int			query_len;
 
+	/* YB */
+	const char *yb_source_text;
+
 	/*
 	 * Force any initplan outputs that we're going to pass to workers to be
 	 * evaluated, if they weren't already.
@@ -660,8 +663,15 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 						   sizeof(FixedParallelExecutorState));
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
 
-	/* Estimate space for query text. */
-	query_len = strlen(estate->es_sourceText);
+	/*
+	 * Estimate space for query text.
+	 *
+	 * YB: workers publish this text to pg_stat_activity and error STATEMENT
+	 * lines, but don't have the leader's password-redaction flag, so send them
+	 * the redacted text.
+	 */
+	yb_source_text = YbRedactPasswordInCurrentQueryText(estate->es_sourceText);
+	query_len = strlen(yb_source_text);
 	shm_toc_estimate_chunk(&pcxt->estimator, query_len + 1);
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
 
@@ -756,7 +766,7 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate,
 
 	/* Store query string */
 	query_string = shm_toc_allocate(pcxt->toc, query_len + 1);
-	memcpy(query_string, estate->es_sourceText, query_len + 1);
+	memcpy(query_string, yb_source_text, query_len + 1);
 	shm_toc_insert(pcxt->toc, PARALLEL_KEY_QUERY_TEXT, query_string);
 
 	/* Store serialized PlannedStmt. */

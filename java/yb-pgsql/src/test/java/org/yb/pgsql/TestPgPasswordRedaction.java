@@ -112,6 +112,8 @@ public class TestPgPasswordRedaction extends BasePgSQLTest {
       stmt.execute("CREATE ROLE " + ROLE + " LOGIN");
       stmt.execute("CREATE FOREIGN DATA WRAPPER redact_fdw");
       stmt.execute("CREATE SERVER redact_srv FOREIGN DATA WRAPPER redact_fdw");
+      stmt.execute("CREATE TABLE redact_par (a int)");
+      stmt.execute("INSERT INTO redact_par VALUES (0)");
     }
 
     try (Connection conn = getConnectionBuilder().withPreferQueryMode("simple").connect();
@@ -137,6 +139,14 @@ public class TestPgPasswordRedaction extends BasePgSQLTest {
                         "_do_missing'''; END $$");
       expectError(stmt, "DO $$ BEGIN EXECUTE 'ALTER ROLE " + ROLE + " PASSWORD ''" + MARKER +
                         "_do_syntax'' VALID UNTILL ''infinity'''; END $$");
+
+      // The division by zero fails inside a parallel worker, which logs its own STATEMENT line.
+      stmt.execute("SET force_parallel_mode = on");
+      stmt.execute("SET parallel_setup_cost = 0");
+      stmt.execute("SET parallel_tuple_cost = 0");
+      expectError(stmt, "SELECT 1 / a FROM redact_par; ALTER ROLE " + ROLE + " PASSWORD '" +
+                        MARKER + "_parallel'");
+      stmt.execute("RESET force_parallel_mode");
     }
 
     try (Connection conn = getConnectionBuilder().withPreferQueryMode("extended").connect()) {
@@ -147,6 +157,14 @@ public class TestPgPasswordRedaction extends BasePgSQLTest {
       try (PreparedStatement ps = conn.prepareStatement(
                "ALTER ROLE " + ROLE + " PASSWORD '" + MARKER + "_extended'")) {
         ps.execute();
+      }
+      try (PreparedStatement ps = conn.prepareStatement(
+               "ALTER ROLE " + ROLE + " PASSWORD '" + MARKER + "_extended_syntax'" +
+               " VALID UNTILL 'infinity'")) {
+        ps.execute();
+        fail("Expected a syntax error");
+      } catch (SQLException e) {
+        // Expected.
       }
       try (Statement stmt = connection.createStatement();
            ResultSet rs = stmt.executeQuery(
@@ -172,6 +190,8 @@ public class TestPgPasswordRedaction extends BasePgSQLTest {
     assertLogged("STATEMENT:  SELECT 1; ALTER ROLE redact_missing PASSWORD <REDACTED>");
     assertLogged("CONTEXT:  SQL statement \"ALTER ROLE redact_missing PASSWORD <REDACTED>\"");
     assertLogged("QUERY:  ALTER ROLE " + ROLE + " PASSWORD <REDACTED>");
+    assertLogged("STATEMENT:  ALTER ROLE " + ROLE + " PASSWORD <REDACTED>");
+    assertLogged("parallel worker");
 
     List<String> leaked;
     synchronized (logLines) {
