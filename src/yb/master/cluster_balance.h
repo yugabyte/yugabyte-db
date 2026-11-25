@@ -211,8 +211,8 @@ class ClusterLoadBalancer {
 
   // Tiered storage: sends one AlterTabletTier to a replica of this table whose tablespace asks
   // for another tier than the replica targets. Bounded by the in-flight caps. A replica whose
-  // migration the tserver gave up on (FAILED) is logged and left alone. Returns true if one was
-  // sent.
+  // migration the tserver gave up on (FAILED) is logged and left alone, and a split parent about
+  // to be deleted is skipped. Returns true if one was sent.
   Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
 
   // Tiered storage: drops the awaiting-report entries no table's tier step visited this run.

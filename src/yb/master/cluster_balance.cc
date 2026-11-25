@@ -2231,6 +2231,12 @@ Result<bool> ClusterLoadBalancer::HandleTierMigrations(
       MonoDelta::FromMilliseconds(FLAGS_unresponsive_ts_rpc_timeout_ms);
   const auto& pending_removals = state_->pending_remove_replica_tasks_[state_->table_id_];
   for (const auto& [tablet_id, tablet_meta] : state_->per_tablet_meta_) {
+    // A split parent is about to be deleted: rewriting its SSTs would be wasted work that holds
+    // cap slots, so it is skipped like the move path skips it. Its children inherit the target
+    // at creation. Any awaiting-report entry of its replicas is pruned at the end of the run.
+    if (tablet_meta.is_split_parent) {
+      continue;
+    }
     auto tablet_opt = GetTabletInfo(tablet_id);
     if (!tablet_opt) {
       continue;

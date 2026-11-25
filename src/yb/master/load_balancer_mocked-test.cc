@@ -2053,6 +2053,24 @@ TEST_F(LoadBalancerTierMigrationTest, AwaitingReportEntryFollowsTheReplica) {
   ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
 }
 
+// A split parent is about to be deleted, so its SSTs are not rewritten and it holds no cap slot:
+// the tier step skips it as the move path does. Its children, which inherit the target at
+// creation, and every other tablet are still told.
+TEST_F(LoadBalancerTierMigrationTest, SplitParentIsNotMigrated) {
+  PrepareTieredState();
+  const auto& parent = tablets_[0];
+  const int parent_replicas = narrow_cast<int>(parent->GetReplicaLocations()->size());
+  ASSERT_RESULT(SplitTablet(parent));
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_TRUE(IsSplitParent(parent->id()));
+
+  // The two children carry the parent's replicas, so the sends are the parent's replaced twice.
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ + parent_replicas);
+  for (const auto& sent : cb_.tier_migrations_sent_) {
+    ASSERT_NE(sent.tablet_id, parent->id());
+  }
+}
+
 // A tserver with no disk on the tier cannot migrate there: its replicas are skipped rather than
 // told every run, and the others are still told.
 TEST_F(LoadBalancerTierMigrationTest, TserverWithoutTheTierIsSkipped) {
