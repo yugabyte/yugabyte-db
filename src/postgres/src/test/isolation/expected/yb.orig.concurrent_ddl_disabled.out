@@ -1,0 +1,65 @@
+Parsed test spec with 3 sessions
+
+starting permutation: h_begin h_alter d_alter h_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step d_alter: ALTER TABLE b ADD COLUMN v int; <waiting ...>
+step h_commit: COMMIT;
+step d_alter: <... completed>
+
+starting permutation: h_begin h_savepoint h_alter h_rollback_to d_alter h_commit
+step h_begin: BEGIN;
+step h_savepoint: SAVEPOINT s;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step h_rollback_to: ROLLBACK TO s;
+step d_alter: ALTER TABLE b ADD COLUMN v int; <waiting ...>
+step h_commit: COMMIT;
+step d_alter: <... completed>
+
+starting permutation: h_begin h_alter d_temp d_alter h_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step d_temp: CREATE TEMP TABLE tt (k int);
+step d_alter: ALTER TABLE b ADD COLUMN v int; <waiting ...>
+step h_commit: COMMIT;
+step d_alter: <... completed>
+
+starting permutation: h_begin h_alter aa_analyze aa_analyze_two d_analyze h_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step aa_analyze: ANALYZE b;
+step aa_analyze_two: ANALYZE b, c;
+step d_analyze: ANALYZE b; <waiting ...>
+step h_commit: COMMIT;
+step d_analyze: <... completed>
+
+starting permutation: h_begin h_alter d_call h_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step d_call: CALL add_column('c1'); <waiting ...>
+step h_commit: COMMIT;
+step d_call: <... completed>
+
+starting permutation: h_begin h_alter d_begin d_call h_commit d_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step d_begin: BEGIN;
+step d_call: CALL add_column('c1'); <waiting ...>
+step h_commit: COMMIT;
+step d_call: <... completed>
+step d_commit: COMMIT;
+
+starting permutation: h_begin h_alter d_other_db h_commit
+step h_begin: BEGIN;
+step h_alter: ALTER TABLE a ADD COLUMN v int;
+step d_other_db: 
+  SELECT dblink_exec(
+    format('host=%s port=%s dbname=ddl_other_db', inet_server_addr(), inet_server_port()),
+    'CREATE TABLE y (k int PRIMARY KEY)');
+
+dblink_exec 
+------------
+CREATE TABLE
+(1 row)
+
+step h_commit: COMMIT;
