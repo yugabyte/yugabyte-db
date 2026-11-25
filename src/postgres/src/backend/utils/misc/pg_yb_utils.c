@@ -3006,30 +3006,16 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
-void
-YBAddDdlTxnState(YbDdlMode mode)
-{
-	YBAddDdlTxnStateExtended(mode, true /* serialize_ddl_in_database */ );
-}
-
 /*
- * YBAddDdlTxnStateExtended
+ * YbEnterDdlTxnState
  *
- * serialize_ddl_in_database is false for a DDL transaction that waits for
- * lockers right after it enters DDL state: the second transaction of DETACH
- * PARTITION CONCURRENTLY. The wait is registered under the session's
- * transaction, while the lock belongs to the DDL's transaction, so a writer
- * the wait waits for, running a DDL that queues on a lock the DDL already
- * held, would block with it until a timeout, with no deadlock reported. Such
- * a caller takes the lock with YbLockDatabaseToSerializeDdl after its wait.
+ * Puts the current transaction in DDL state for a DDL of the given mode,
+ * without the database DDL lock.
  */
-void
-YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
+static void
+YbEnterDdlTxnState(YbDdlMode mode)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
-
-	if (serialize_ddl_in_database)
-		YbLockDatabaseToSerializeDdl(mode);
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
@@ -3081,6 +3067,38 @@ YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 	YbMaybeLockMasterCatalogVersion();
 	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
+}
+
+/*
+ * YBAddDdlTxnState
+ *
+ * Puts the current transaction in DDL state for a DDL of the given mode, then
+ * takes the database DDL lock if the mode needs it (see
+ * YbLockDatabaseToSerializeDdl).
+ */
+void
+YBAddDdlTxnState(YbDdlMode mode)
+{
+	YBAddDdlTxnStateExtended(mode, true /* serialize_ddl_in_database */ );
+}
+
+/*
+ * YBAddDdlTxnStateExtended
+ *
+ * serialize_ddl_in_database is false for a DDL transaction that waits for
+ * lockers right after it enters DDL state: the second transaction of DETACH
+ * PARTITION CONCURRENTLY. The wait is registered under the session's
+ * transaction, while the lock belongs to the DDL's transaction, so a writer
+ * the wait waits for, running a DDL that queues on a lock the DDL already
+ * held, would block with it until a timeout, with no deadlock reported. Such
+ * a caller takes the lock with YbLockDatabaseToSerializeDdl after its wait.
+ */
+void
+YBAddDdlTxnStateExtended(YbDdlMode mode, bool serialize_ddl_in_database)
+{
+	YbEnterDdlTxnState(mode);
+	if (serialize_ddl_in_database)
+		YbLockDatabaseToSerializeDdl(mode);
 }
 
 void
