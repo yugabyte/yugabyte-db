@@ -20,7 +20,8 @@ fi
 GEN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANAGED_DIR="$(cd "$GEN_DIR/../.." && pwd)"
 CLIENT_REPO="${1:-${PLATFORM_GO_CLIENT_DIR:-$HOME/code/platform-go-client}}"
-# Every client PR asks this owner for review.
+# The GitHub user that reviews each client PR. GitHub cannot request a review from the PR
+# author, so a PR opened by this user gets no review request.
 CLIENT_REVIEWER="${CLIENT_REVIEWER:-Deepti-yb}"
 
 die() {
@@ -30,8 +31,15 @@ die() {
 
 # The generated trees must exist and come from the current generator config.
 for v in v1 v2; do
-  [[ -f "$GEN_DIR/$v/client.go" ]] || die "$GEN_DIR/$v is not generated. Run sbt swaggerGen."
+  [[ -f "$GEN_DIR/$v/client.go" && -f "$GEN_DIR/$v/.openapi-generator/FILES" ]] \
+    || die "$GEN_DIR/$v is not generated. Run sbt swaggerGen."
 done
+
+# The generator does not delete files that it no longer writes. Only the files in
+# .openapi-generator/FILES come from the last generation.
+generated_files() {
+  tr '\n' '\0' < "$GEN_DIR/$1/.openapi-generator/FILES"
+}
 grep -q '^package ywclient$' "$GEN_DIR/v1/client.go" \
   || die "v1 was generated with an old config (package is not ywclient). Run sbt swaggerGen."
 grep -qx 'module github.com/yugabyte/platform-go-client' "$GEN_DIR/v1/go.mod" \
@@ -47,7 +55,8 @@ stale_client() {
   newer="$(cd "$MANAGED_DIR" && git ls-files -z -- "$@" \
     | xargs -0 -r sh -c 'find "$@" -newer "$0" -print -quit' "$spec")"
   [[ -z "$newer" ]] || { echo "${newer%%$'\n'*} is newer than $spec"; return; }
-  newer="$(find "$GEN_DIR/$v" -name '*.go' ! -newer "$spec" -print -quit)"
+  newer="$(cd "$GEN_DIR/$v" && generated_files "$v" \
+    | xargs -0 -r sh -c 'find "$@" -name "*.go" ! -newer "$0" -print -quit' "$spec")"
   [[ -z "$newer" ]] || echo "$newer is older than $spec"
 }
 STALE="$(stale_client v1 "$MANAGED_DIR/src/main/resources/swagger-all.json" \
@@ -80,11 +89,14 @@ $DRY_RUN && BRANCH="${BRANCH}-dryrun"
 
 # One publish per SHA, on any day. A branch without a PR means an earlier run failed after the
 # push. A dry run warns, so it reports what the real run will do.
-EXISTING="$(git -C "$CLIENT_REPO" ls-remote --heads origin \
-  | awk '{print $2}' | sed 's#^refs/heads/##' | grep -E "^client-.*-${SRC_SHA}$" | head -1)" || true
+HEADS="$(git -C "$CLIENT_REPO" ls-remote --heads origin)" \
+  || die "Cannot list the branches of platform-go-client."
+EXISTING="$(awk -v re="^refs/heads/client-.*-${SRC_SHA}\$" \
+  '$2 ~ re { sub("^refs/heads/", "", $2); print $2; exit }' <<< "$HEADS")"
 if [[ -n "$EXISTING" ]]; then
   PR_URL="$(gh pr list --repo yugabyte/platform-go-client --head "$EXISTING" --state all \
-    --json url --jq '.[0].url // empty' 2>/dev/null)" || true
+    --json url --jq '.[0].url // empty')" \
+    || die "Cannot list platform-go-client PRs with gh, so cannot check branch $EXISTING."
   if [[ -n "$PR_URL" ]]; then
     MSG="$SRC_SHA was already published as $PR_URL."
   else
@@ -117,12 +129,20 @@ git -C "$CLIENT_REPO" fetch -q origin master
 # -B resets a local branch left by an earlier run of the same SHA.
 git -C "$CLIENT_REPO" worktree add -q -B "$BRANCH" "$WORKTREE" origin/master
 
+# Stage only the generated files, so files left from an earlier generation are not published.
+STAGE="$GOWORK_DIR/stage"
+for v in v1 v2; do
+  mkdir -p "$STAGE/$v"
+  (cd "$GEN_DIR/$v" && generated_files "$v" | rsync -a --from0 --files-from=- . "$STAGE/$v/") \
+    || die "Cannot copy the files in $v/.openapi-generator/FILES. Run sbt swaggerGen."
+done
+
 # v1 is the repo root. Keep the repo's own .gitignore and LICENSE, and v2/ (mirrored next).
 # Generator metadata is not published.
 META=(--exclude .openapi-generator --exclude .openapi-generator-ignore)
 rsync -a --delete "${META[@]}" --exclude /.git --exclude /.gitignore --exclude /LICENSE \
-  --exclude /v2 "$GEN_DIR/v1/" "$WORKTREE/"
-rsync -a --delete "${META[@]}" "$GEN_DIR/v2/" "$WORKTREE/v2/"
+  --exclude /v2 "$STAGE/v1/" "$WORKTREE/"
+rsync -a --delete "${META[@]}" "$STAGE/v2/" "$WORKTREE/v2/"
 
 (cd "$WORKTREE" && go build ./...) || die "v1 client does not build."
 (cd "$WORKTREE/v2" && go build ./...) || die "v2 client does not build."
