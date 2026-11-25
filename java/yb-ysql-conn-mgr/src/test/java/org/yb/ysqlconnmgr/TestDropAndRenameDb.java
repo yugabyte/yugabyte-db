@@ -49,6 +49,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
       "test_db_recreate_with_no_phy_conn";
   private static final String DB_PREFIX_CONCURRENCY_TEST = "test_db_concurrency";
   private static final String TEST_DB_RENAME_DB_FAILS = "test_db_name_rename_fails";
+  private static final String TEST_DB_RENAME_AFTER_DISCONNECT = "test_db_rename_after_disconnect";
   private static final String TEST_DB_MOVE_DB_FAILS = "test_db_name_move_db_fails";
 
   private static final int NUM_THREADS_DB_CONCURRENCY_TESTING = 30;
@@ -233,6 +234,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
   // The direct session alone must make it fail.
   @Test
   public void testDropDbWithDirectSessionAndDeadPooledServer() throws Exception {
+    disableWarmupModeAndRestartCluster();
     int pooledBackendPid;
     try (Connection conn = createAndConnectOnDb(TEST_DB_DEAD_POOLED_SERVER, 0);
         Statement stmt = conn.createStatement()) {
@@ -495,5 +497,18 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     testConnectivityToDb(TEST_DB_RENAME_DB_FAILS, false, false);
     testConnectivityToDb(newDb, true, true);
+  }
+
+  // The stats still count the client for up to a stats interval after it disconnects, so the
+  // RENAME must wait for them to catch up instead of failing.
+  @Test
+  public void testRenameDbRightAfterDisconnect() throws Exception {
+    String newDb = TEST_DB_RENAME_AFTER_DISCONNECT + "_new";
+    try (Connection conn = createAndConnectOnDb(TEST_DB_RENAME_AFTER_DISCONNECT, 0);
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SELECT 1");
+    }
+    renameDb(TEST_DB_RENAME_AFTER_DISCONNECT, newDb, true);
+    dropDatabase(newDb, true);
   }
 }

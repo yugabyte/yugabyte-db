@@ -162,7 +162,7 @@ static void CreateDatabaseUsingFileCopy(Oid src_dboid, Oid dboid, Oid src_tsid,
 static void recovery_create_dbdir(char *path, bool only_tblspc);
 
 /* YB declarations */
-static void YbErrorIfDbInUse(Oid db_id, const char *dbname);
+static void YbErrorIfDbInUse(Oid db_id, const char *dbname, bool force);
 
 /*
  * Create a new database using the WAL_LOG strategy.
@@ -1929,7 +1929,7 @@ yb_removing_database_from_system:
 				 sleep);
 			pg_usleep(sleep);
 		}
-		YbErrorIfDbInUse(db_id, dbname);
+		YbErrorIfDbInUse(db_id, dbname, force);
 	}
 	else
 	{
@@ -2125,7 +2125,7 @@ RenameDatabase(const char *oldname, const char *newname)
 	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
 	if (IsYugaByteEnabled())
-		YbErrorIfDbInUse(db_id, oldname);
+		YbErrorIfDbInUse(db_id, oldname, /* force */ false);
 	else
 	{
 		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts,
@@ -3684,25 +3684,48 @@ dbase_redo(XLogReaderState *record)
  * Connection Manager's logical clients have no backend of their own, so they
  * are counted from its stats, and its pooled servers are left out: they are
  * the backends those clients run on. When the stats cannot be read, the pooled
- * servers stand in for the clients that cannot be seen.
+ * servers stand in for the clients that cannot be seen. With force, the pooled
+ * servers have just been signalled to exit, so they are waited for like any
+ * other backend.
+ *
+ * The stats are a periodic sample, so a client that disconnected just now may
+ * still be counted. Re-read them for up to 5 seconds, the same budget
+ * CountOtherDBBackends gives backends.
  */
 static void
-YbErrorIfDbInUse(Oid db_id, const char *dbname)
+YbErrorIfDbInUse(Oid db_id, const char *dbname, bool force)
 {
 	int			ndirect;
-	int			npooled;
+	int			npooled = 0;
 	int			nprepared;
 	uint32_t	nlogical;
 	uint32_t	nphysical;
 	int			nsessions;
+	int			tries;
 
-	CountOtherDBBackends(db_id, &ndirect, &nprepared, &npooled);
+	CountOtherDBBackends(db_id, &ndirect, &nprepared,
+						 force ? NULL : &npooled);
 
 	nsessions = ndirect;
-	if (YbGetNumYsqlConnMgrConnections(db_id, -1, &nlogical, &nphysical))
-		nsessions += nlogical;
-	else
+	if (!YbGetNumYsqlConnMgrConnections(db_id, -1, &nlogical, &nphysical))
 		nsessions += npooled;
+	else
+	{
+		for (tries = 0;
+			 nlogical > 0 && ndirect == 0 && nprepared == 0 && tries < 50;
+			 tries++)
+		{
+			uint32_t	retry_nlogical;
+
+			CHECK_FOR_INTERRUPTS();
+			pg_usleep(100 * 1000L);
+			if (!YbGetNumYsqlConnMgrConnections(db_id, -1, &retry_nlogical,
+												&nphysical))
+				break;
+			nlogical = retry_nlogical;
+		}
+		nsessions += nlogical;
+	}
 
 	if (nsessions > 0 || nprepared > 0)
 		ereport(ERROR,
