@@ -83,13 +83,17 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
 ### Best practices
 
-- When [`yb_enable_cbo`](../../../reference/configuration/yb-tserver/#yb-enable-cbo) is `on`, creating an index on a table that already has rows (for example, `CREATE INDEX i ON t (k)`) updates `pg_class.reltuples` for the table and the new index. YugabyteDB turns on `yb_enable_update_reltuples_after_create_index` with the cost-based optimizer, so those row counts are set when `CREATE INDEX` finishes.
+- When [yb_enable_cbo](../../../reference/configuration/yb-tserver/#yb-enable-cbo) is `on`, creating an index on a table that already has rows (for example, `CREATE INDEX i ON t (k)`) updates `pg_class.reltuples` for the table and the new index. YugabyteDB turns on `yb_enable_update_reltuples_after_create_index` with the cost-based optimizer, so those row counts are set when `CREATE INDEX` finishes.
 
-    With `yb_enable_cbo` set to `off`, `legacy_mode`, or `legacy_stats_mode`, run ANALYZE after `CREATE INDEX` to set the new index's `pg_class.reltuples`.
+    With `yb_enable_cbo` set to `legacy_stats_mode` or `legacy_stats_bnl_mode`, the other tables must already have been analyzed. Run ANALYZE after `CREATE INDEX` to set the new index's `pg_class.reltuples`.
+
+    With `yb_enable_cbo` set to `legacy_mode` or `legacy_bnl_mode`, run ANALYZE after `CREATE INDEX` only if ANALYZE has already been run on the other tables.
+
+    With `yb_enable_cbo` set to `off`, the planner ignores these row counts.
 
     Before v2025.2.8.0, run ANALYZE after creating a `ybhnsw` index. With `yb_enable_cbo` on, that `CREATE INDEX` sets the table's `reltuples` to 0, and the planner treats the table as empty until ANALYZE runs. {{<issue 34650>}}
 
-    To replace an index while the application is running, create the new index first, then drop the old one. With `yb_enable_cbo` set to `off`, `legacy_mode`, or `legacy_stats_mode`, run ANALYZE after creating the new index and before dropping the old one. Before v2025.2.8.0, run ANALYZE after creating a `ybhnsw` index and before dropping the old one.
+    To replace an index while the application is running, create the new index first, then drop the old one. With `yb_enable_cbo` set to `legacy_stats_mode` or `legacy_stats_bnl_mode`, run ANALYZE after creating the new index and before dropping the old one. With `yb_enable_cbo` set to `legacy_mode` or `legacy_bnl_mode`, do that only if ANALYZE has already been run on the other tables. Before v2025.2.8.0, run ANALYZE after creating a `ybhnsw` index and before dropping the old one.
 
 ## Learn more
 
