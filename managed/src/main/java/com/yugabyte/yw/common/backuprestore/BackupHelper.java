@@ -557,7 +557,9 @@ public class BackupHelper {
   public void validateStorageConfigOnBackup(CustomerConfig config, Backup backup) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(config.getName());
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
-    storageUtil.validateStorageConfigOnBackup(config.getDataObject(), backupParams);
+    CustomerConfigData configData = config.getDataObject();
+    federateGcpIamOnAws(configData, new ConfigIdentity());
+    storageUtil.validateStorageConfigOnBackup(configData, backupParams);
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
@@ -594,6 +596,11 @@ public class BackupHelper {
       if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
         stampFederationTarget(gcs, resolveCrossCloudFederationTarget(universe, CloudType.gcp));
       }
+      // After the stamping: a GCP IAM config federated only in memory keeps no audience, so
+      // GCPUtil skips this check rather than call GCS with no identity. YBA federates with an
+      // entry only for its own work on the bucket (applyCrossCloudFederationFromBackup,
+      // applyYbaFederatedIdentity).
+      federateGcpIamOnAws(gcs, new ConfigIdentity());
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
@@ -656,6 +663,7 @@ public class BackupHelper {
       @Nullable UUID customerUUID,
       @Nullable Universe universe,
       ConfigIdentity configIdentity) {
+    federateGcpIamOnAws(configData, configIdentity);
     CloudType bucketCloud = federatedBucketCloud(configData);
     if (bucketCloud == null) {
       return true;
@@ -676,14 +684,8 @@ public class BackupHelper {
       return true;
     }
     if (target == null) {
-      // One deletion works it out while the others sharing it wait, up to the time the check takes,
-      // then reuse it instead of repeating the check.
       synchronized (configIdentity) {
-        if (configIdentity.ownCredentials == null) {
-          // Asked only here, as it can take calls to the bucket's cloud.
-          configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
-        }
-        if (configIdentity.ownCredentials) {
+        if (hasCredentialsOfItsOwn(configData, configIdentity)) {
           return true;
         }
         if (configData instanceof CustomerConfigStorageGCSData
@@ -854,6 +856,57 @@ public class BackupHelper {
   }
 
   /**
+   * {@link #hasCredentialsOfItsOwn(CustomerConfigData)}, asked once per {@code configIdentity}: one
+   * deletion works it out while the others sharing it wait, up to the time the check takes, then
+   * reuse it instead of repeating the check, which can take calls to the bucket's cloud.
+   */
+  private boolean hasCredentialsOfItsOwn(
+      CustomerConfigData configData, ConfigIdentity configIdentity) {
+    synchronized (configIdentity) {
+      if (configIdentity.ownCredentials == null) {
+        configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+      }
+      return configIdentity.ownCredentials;
+    }
+  }
+
+  /**
+   * Has YBA reach the bucket of a GCS config with GCP IAM, but without the federation flag, as it
+   * reaches that of a federated one, when it runs on AWS with no Google credentials of its own:
+   * turns the flag on, in memory only. Such a config is made on a YBA on GCP, which needs no flag
+   * there. Without this, its HA standby on AWS, once promoted, calls GCS with no identity
+   * ("Anonymous caller"). The backup, restore and deletion paths pass every copy they read the
+   * bucket with through here. An edit of the config does not: CustomerConfigStorageGCSValidator
+   * checks the bucket with YBA's own identity, so on such a YBA the edit is refused until Federated
+   * IAM is turned on for the config. The storage checks before a backup, a restore or a deletion
+   * (applyCrossCloudFederationAudience, validateStorageConfigOnBackup, and the restore's success
+   * marker and file checks) leave the audience blank, so GCPUtil makes no call to GCS for them, as
+   * for any unresolved federation config. The YBC success marker then counts as present, so a
+   * restore takes the YBC path. That is the only path such a config has: yb_backup.py reads GCS
+   * only with a service account key (GCS_CREDENTIALS_JSON), which the config does not have, so it
+   * can neither make nor restore a yb_backup.py backup. The deletion itself
+   * (applyCrossCloudFederationFromBackup) and YBA's own backups (applyYbaFederatedIdentity)
+   * federate with an entry. Only YBA reads the flag, never the DB nodes. A config that also has a
+   * service account key is left as it is, as the flag cannot be turned on for it either (see
+   * CustomerConfigStorageGCSValidator).
+   */
+  private void federateGcpIamOnAws(CustomerConfigData configData, ConfigIdentity configIdentity) {
+    if (!(configData instanceof CustomerConfigStorageGCSData)) {
+      return;
+    }
+    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+    if (!gcs.useGcpIam
+        || gcs.useCrossCloudFederation
+        || StringUtils.isNotBlank(gcs.gcsCredentialsJson)
+        || !canPresentFederatedIdentity(CloudType.gcp)
+        || hasCredentialsOfItsOwn(configData, configIdentity)) {
+      return;
+    }
+    log.debug("YBA runs on AWS with no Google credentials: federating for a GCP IAM GCS config");
+    gcs.useCrossCloudFederation = true;
+  }
+
+  /**
    * Whether the config's IAM credential source has something on this host, which is not on AWS, to
    * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
    * by resolving each source once through the SDK. A source that fails on an error the S3 client's
@@ -956,7 +1009,8 @@ public class BackupHelper {
    * before the snapshot existed, then to the customer's providers (see {@link
    * #applyYbaFederatedIdentity}). With YBA on the bucket's cloud the snapshot is ignored and
    * nothing is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS
-   * that means switching it to YBA's IAM role. No-op for a config that is not federated.
+   * that means switching it to YBA's IAM role. No-op for a config that is not federated, except a
+   * GCP IAM GCS config on AWS (see {@link #federateGcpIamOnAws}).
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
@@ -971,6 +1025,7 @@ public class BackupHelper {
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup, ConfigIdentity configIdentity) {
+    federateGcpIamOnAws(configData, configIdentity);
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData
@@ -1253,6 +1308,7 @@ public class BackupHelper {
     precheckStorageConfig(storageConfig, universe, true /* forRestore */, true /* probeNodes */);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     CustomerConfigData configData = storageConfig.getDataObject();
+    federateGcpIamOnAws(configData, new ConfigIdentity());
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
     for (YbcBackupResponse successMarker : successMarkers) {
       Map<String, YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation>
@@ -1928,15 +1984,15 @@ public class BackupHelper {
       UUID universeUUID,
       String fileName,
       boolean checkExistsOnAll) {
+    CustomerConfigData configData = storageConfig.getDataObject();
+    // For a GCP IAM GCS config on AWS this reports the file present without a call to GCS, which
+    // for the YBC success marker is right for it (see federateGcpIamOnAws).
+    federateGcpIamOnAws(configData, new ConfigIdentity());
     try {
       return storageUtilFactory
           .getStorageUtil(storageConfig.getName())
           .checkFileExists(
-              storageConfig.getDataObject(),
-              storagelocationList,
-              fileName,
-              universeUUID,
-              checkExistsOnAll);
+              configData, storagelocationList, fileName, universeUUID, checkExistsOnAll);
     } catch (PlatformServiceException e) {
       // Already a clear error for the user, such as the storage refusing access.
       throw e;

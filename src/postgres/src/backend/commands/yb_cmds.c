@@ -771,7 +771,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			 * as later we might need to associate an existing implicit tablegroup to a tablespace
 			 */
 
-			shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+			tablegroupId = YbLockImplicitTablegroup(tablespaceId);
 
 			/*
 			 * If we do not find a tablegroup corresponding to the given tablespace, we
@@ -821,7 +821,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		else
 		{
 			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			tablegroupId = YbLockImplicitTablegroup(InvalidOid);
 		}
 
 		char	   *tablespace_name = (OidIsValid(tablespaceId) ?
@@ -1357,6 +1357,32 @@ YbATAltersPartitions(List **subcmds, int subcmds_size)
 	return false;
 }
 
+/*
+ * Return whether ALTER TABLE ... ADD COLUMN gives DocDB a missing value, i.e.
+ * the value that existing rows read for the new column, for the given cooked
+ * default expression.
+ *
+ * PG decides separately whether to store the default as a missing value
+ * (attmissingval) instead of rewriting the table; see
+ * AddRelationNewConstraints.  YB rows come from DocDB and never see
+ * attmissingval, so PG's decision is safe only if DocDB got the same value.
+ * YBCPrepareAlterTableCmd uses this function to decide what to send DocDB.
+ * While yb_enable_add_column_missing_default is on, ATExecAddColumn also uses
+ * it to force a rewrite when PG chose a missing value that DocDB doesn't
+ * have; with the flag off, it does not rewrite (see the comment there and
+ * #38681).
+ *
+ * The volatility check must look at the planned expression, as PG does:
+ * planning can inline a VOLATILE SQL function such as
+ * "LANGUAGE sql AS 'SELECT 42'" into a constant.
+ */
+bool
+YbAddColumnUsesDocdbMissingValue(Expr *cooked_default)
+{
+	return (yb_enable_add_column_missing_default &&
+			!contain_volatile_functions_after_planning(cooked_default));
+}
+
 static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
@@ -1453,9 +1479,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 					/*
 					 * Compute the missing default value if the default expression
-					 * is non-volatile.
+					 * is non-volatile after planning.
 					 */
-					if (!contain_volatile_functions((Node *) expr))
+					if (YbAddColumnUsesDocdbMissingValue(expr))
 					{
 						expr = expression_planner(expr);
 						EState	   *estate = CreateExecutorState();
@@ -2031,6 +2057,45 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 	YBCExecAlterTable(handle, relationId);
 }
 
+/*
+ * Create table-level tombstone for a colocated index.
+ */
+void
+YbWriteColocatedIndexTombstone(Relation index)
+{
+	/*
+	 * Copartitioned indexes (currently ybhnsw) store their rows in a
+	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
+	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
+	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
+	 * child of a partitioned vector-index drop still produces sibling
+	 * transactional writes against the same colocated tablet. The first
+	 * such write carries the txn's isolation metadata, and because the
+	 * apply emits no write_pairs, the transaction is never registered with
+	 * the participant. Subsequent sibling writes (which the YBClient
+	 * batcher strips of isolation metadata after the first request) then
+	 * fail conflict resolution with "Transaction not found" - see
+	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
+	 * avoids the empty-batch + isolation race; the actual storage is
+	 * cleaned up when the master drops the index.
+	 */
+	if (index->rd_indam->yb_amiscopartitioned)
+		return;
+
+	YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
+
+	if (handle)
+	{
+		bool		not_found = false;
+
+		HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
+		int			rows_affected_count = 0;
+
+		HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
+									 &not_found);
+	}
+}
+
 void
 YBCDropIndex(Relation index)
 {
@@ -2046,46 +2111,10 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	/*
-	 * Create table-level tombstone for colocated (via DB or tablegroup)
-	 * indexes
-	 */
-	bool not_found = false;
+	if (yb_props->is_colocated)
+		YbWriteColocatedIndexTombstone(index);
 
-	/*
-	 * Copartitioned indexes (currently ybhnsw) store their rows in a
-	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
-	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
-	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
-	 * child of a partitioned vector-index drop still produces sibling
-	 * transactional writes against the same colocated tablet. The first
-	 * such write carries the txn's isolation metadata, and because the
-	 * apply emits no write_pairs, the transaction is never registered with
-	 * the participant. Subsequent sibling writes (which the YBClient
-	 * batcher strips of isolation metadata after the first request) then
-	 * fail conflict resolution with "Transaction not found" — see
-	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
-	 * avoids the empty-batch + isolation race; the actual storage is
-	 * cleaned up by the DROP_INDEX master RPC below.
-	 */
-	if (yb_props->is_colocated && !index->rd_indam->yb_amiscopartitioned)
-	{
-		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
-		if (handle)
-		{
-			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
-			int			rows_affected_count = 0;
-
-			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
-										 &not_found);
-		}
-	}
-
-	/*
-	 * Reset not_found so that a NotFound from the colocated truncate above
-	 * does not cause us to skip the actual drop-index RPC below.
-	 */
-	not_found = false;
+	bool		not_found = false;
 
 	/* Drop the index table */
 	{

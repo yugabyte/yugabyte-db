@@ -26,6 +26,7 @@ import fcntl
 import hashlib
 import inspect
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -1978,10 +1979,51 @@ def pack_names(packs: List[List[test_descriptor.TestDescriptor]]) -> List[List[s
 
 
 def use_packing(monkeypatch: pytest.MonkeyPatch, target_sec: float, expected_sec: Any,
-                free_cores: Any) -> None:
+                other_cores: Any) -> None:
+    """Packing with the given target and run times, on a cluster where other applications hold
+    other_cores cores."""
     monkeypatch.setattr(rts, "g_pack_target_sec", target_sec)
     monkeypatch.setattr(rts, "g_expected_test_time_sec", dict(expected_sec))
-    monkeypatch.setattr(rts, "get_free_cluster_cores", lambda: free_cores)
+    monkeypatch.setattr(rts, "get_cores_of_other_apps", lambda: other_cores)
+
+
+OWN_APP_ID = "app-20260131102030-0007"
+
+
+def use_master_status(monkeypatch: pytest.MonkeyPatch, cores: int,
+                      cores_by_app: Any) -> List[str]:
+    """
+    Makes the Spark master's status page show a cluster of that many cores and the given
+    applications holding theirs, and this application be OWN_APP_ID. Returns the URLs asked.
+    """
+    asked: List[str] = []
+    status_json = json.dumps({
+        "aliveworkers": cores, "cores": cores, "coresused": sum(cores_by_app.values()),
+        "activeapps": [{"id": app_id, "cores": app_cores,
+                        "state": "RUNNING" if app_cores else "WAITING"}
+                       for app_id, app_cores in cores_by_app.items()]}).encode('utf-8')
+
+    class OwnSparkContext:
+        applicationId = OWN_APP_ID  # noqa: N815
+
+    class FakeResponse:
+        def __enter__(self) -> 'FakeResponse':
+            return self
+
+        def __exit__(self, *exc_info: Any) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return status_json
+
+    def fake_urlopen(url: str, timeout: float) -> FakeResponse:
+        asked.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rts, "spark_context", OwnSparkContext())
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
+    return asked
 
 
 def test_load_test_durations_skips_what_it_cannot_parse(tmp_path: Any) -> None:
@@ -2053,47 +2095,121 @@ def test_packing_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_job_that_fits_the_cluster_is_packed(monkeypatch: pytest.MonkeyPatch) -> None:
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=2)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores=2)
 
     packs = rts.plan_spark_tasks(tests, "a-job", False)
 
     assert sorted(len(pack) for pack in packs) == [1, 3]
 
 
-@pytest.mark.parametrize("free_cores", [None, 0, 1])
+@pytest.mark.parametrize("other_cores", [None, 0, 1])
 def test_a_job_the_cluster_cannot_hold_is_not_packed(
-        monkeypatch: pytest.MonkeyPatch, free_cores: Any) -> None:
+        monkeypatch: pytest.MonkeyPatch, other_cores: Any) -> None:
     """
-    Unknown free cores, or fewer of them than the packed job has tasks: one test per task, which
-    is what the cluster scaling daemon knows how to grow a cluster for.
+    Other applications hold an unknown number of cores, none, or fewer than the packed job has
+    tasks: one test per task, which is what the cluster scaling daemon knows how to grow a
+    cluster for.
     """
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores)
 
     assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
 
 
-def test_a_job_beside_another_counts_half_the_free_cores(
-        monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two tasks fit three free cores, but not the half of them a shared context leaves."""
+def test_a_job_the_cluster_would_grow_for_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    120 one-second tests fit two tasks. With one test per task the scaling daemon would give
+    them 120 / 25 = 4 nodes, rounded down as the daemon does. So where other applications hold 3
+    cores the job is not packed, and where they hold 4 it is.
+    """
+    tests = cpp_tests(["Quick%d" % i for i in range(120)])
+    expected_sec = {td.descriptor_str: 1.0 for td in tests}
+    assert rts.SCALING_DAEMON_TASKS_PER_NODE == 25
+
+    use_packing(monkeypatch, 100, expected_sec, other_cores=3)
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+    use_packing(monkeypatch, 100, expected_sec, other_cores=4)
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+
+
+def use_four_tests_of_two_tasks(
+        monkeypatch: pytest.MonkeyPatch) -> List[test_descriptor.TestDescriptor]:
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=3)
+    monkeypatch.setattr(rts, "g_pack_target_sec", 100)
+    monkeypatch.setattr(
+        rts, "g_expected_test_time_sec", {td.descriptor_str: 30.0 for td in tests})
+    return tests
+
+
+def test_a_job_is_packed_on_a_cluster_other_applications_fill(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Other applications hold every core of the cluster, none is idle: the job is packed."""
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 180, {"app-of-another-run": 178, "app-of-a-third-run": 2})
+
+    packs = rts.plan_spark_tasks(tests, "a-job", False)
+
+    assert sorted(len(pack) for pack in packs) == [1, 3]
+
+
+def test_idle_cores_and_this_applications_own_do_not_count(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A cluster of 180 cores where this application holds 30 from its earlier job, another one
+    holds 1 and the rest are idle. The scaling daemon is about to remove the idle ones, and all
+    of them once nothing runs, so the two tasks have one core to count on: not packed.
+    """
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 180, {OWN_APP_ID: 30, "app-of-another-run": 1})
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+@pytest.mark.parametrize("cores_by_app", [{}, {OWN_APP_ID: 0}])
+def test_a_job_on_an_empty_cluster_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, cores_by_app: Any) -> None:
+    """
+    A cluster that has scaled down to no workers, and this application the first to come to it,
+    whether or not the master lists it yet. The job runs one test per task, so that the scaling
+    daemon sizes the cluster from the number of tests, as it does without packing.
+    """
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 0, cores_by_app)
+
+    assert rts.get_cores_of_other_apps() == 0
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_beside_another_counts_half_the_cores(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Two tasks fit the three cores other applications hold, but not the half of them a shared
+    context leaves. The same for the nodes of one test per task: 50 tests in one task would get 2.
+    """
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, other_cores=3)
 
     assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+    assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
+
+    tests = cpp_tests(["Quick%d" % i for i in range(50)])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, other_cores=3)
+
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
     assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
 
 
 def test_a_job_with_little_history_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
     """8 of 10 tests have an expected run time, under PACK_MIN_KNOWN_RATIO: none are packed."""
     tests = cpp_tests([str(i) for i in range(10)])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, free_cores=100)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, other_cores=100)
 
     assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
 
 
 def test_a_job_over_the_size_limit_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, free_cores=100)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, other_cores=100)
 
     monkeypatch.setattr(rts, "PACK_MAX_TESTS", 4)
     assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
@@ -2103,54 +2219,39 @@ def test_a_job_over_the_size_limit_is_not_packed(monkeypatch: pytest.MonkeyPatch
 
 def test_a_long_test_costs_the_job_one_task(monkeypatch: pytest.MonkeyPatch) -> None:
     """
-    300 one-second tests and 50 tests of twice the target make 3 + 50 tasks, which 60 free cores
-    hold: a long test is alone in a task however long it is.
+    300 one-second tests and 50 tests of twice the target make 3 + 50 tasks, which the 60 cores
+    other applications hold cover: a long test is alone in a task however long it is.
     """
     quick = cpp_tests(["Quick%d" % i for i in range(300)])
     slow = cpp_tests(["Slow%d" % i for i in range(50)])
     expected_sec = {td.descriptor_str: 1.0 for td in quick}
     expected_sec.update({td.descriptor_str: 200.0 for td in slow})
-    use_packing(monkeypatch, 100, expected_sec, free_cores=60)
+    use_packing(monkeypatch, 100, expected_sec, other_cores=60)
 
     assert len(rts.plan_spark_tasks(quick + slow, "a-job", False)) == 53
 
 
-def test_free_cores_are_read_from_the_master_status_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    asked: List[str] = []
+def test_cores_of_other_apps_are_read_from_the_master_status_page(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = use_master_status(
+        monkeypatch, 180, {OWN_APP_ID: 30, "app-of-another-run": 100, "app-waiting": 0})
 
-    class FakeResponse:
-        def __enter__(self) -> 'FakeResponse':
-            return self
-
-        def __exit__(self, *exc_info: Any) -> None:
-            pass
-
-        def read(self) -> bytes:
-            return b'{"aliveworkers": 180, "cores": 180, "coresused": 12}'
-
-    def fake_urlopen(url: str, timeout: float) -> FakeResponse:
-        asked.append(url)
-        return FakeResponse()
-
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
-
-    # The cores other applications hold are not this job's to count on.
-    assert rts.get_free_cluster_cores() == 168
+    # Not the 50 idle cores, and not the 30 this application holds.
+    assert rts.get_cores_of_other_apps() == 100
     assert asked == ["http://spark-master.example.com:8080/json/"]
 
 
-def test_an_unreachable_master_leaves_the_free_cores_unknown(
+def test_an_unreachable_master_leaves_the_cores_of_other_apps_unknown(
         monkeypatch: pytest.MonkeyPatch) -> None:
     def failing_urlopen(url: str, timeout: float) -> Any:
         raise OSError("connection refused")
 
     monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
     monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080")
-    assert rts.get_free_cluster_cores() is None
+    assert rts.get_cores_of_other_apps() is None
 
     monkeypatch.setattr(rts, "g_spark_master_ui_url", None)
-    assert rts.get_free_cluster_cores() is None
+    assert rts.get_cores_of_other_apps() is None
 
 
 class RecordingSparkContext(FakeSparkContext):
@@ -2195,7 +2296,7 @@ def test_without_packing_a_job_has_one_task_per_test(
 def test_a_packed_job_has_one_task_per_pack(
         monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
     tests = cpp_tests(["A", "B", "C"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, free_cores=5)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, other_cores=5)
 
     spark_context = run_job_recording_its_tasks(monkeypatch, tests)
 

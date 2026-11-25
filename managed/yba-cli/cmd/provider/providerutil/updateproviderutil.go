@@ -169,6 +169,8 @@ func BuildZoneMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "zone")
 		}
 	}
 	if _, ok := zone["name"]; !ok {
@@ -294,6 +296,12 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		case "longitude":
+			if !util.IsEmptyString(val) {
+				region["longitude"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
 		case "config-file-path":
 			if !util.IsEmptyString(val) {
 				region["config-file-path"] = val
@@ -342,6 +350,8 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "region")
 		}
 	}
 	if _, ok := region["name"]; !ok {
@@ -422,6 +432,8 @@ func BuildImageBundleMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {
@@ -482,6 +494,8 @@ func BuildImageBundleRegionOverrideMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			UnknownKeyError(key, "image bundle region override")
 		}
 	}
 	if strings.Compare(operation, "add") == 0 {
@@ -554,6 +568,27 @@ func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 		imageBundle["arch"] = util.X86_64
 	}
 	return imageBundle
+}
+
+// ValidateUpdateAddZoneRegions rejects an --add-zone whose region-name is neither a
+// region of the provider nor in --add-region. The update commands skip unmatched
+// zones, so a typo would otherwise exit 0 without adding the zone.
+func ValidateUpdateAddZoneRegions(
+	addRegions, addZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	knownRegions := make(map[string]bool, len(addRegions)+len(providerRegions))
+	for _, regionString := range addRegions {
+		knownRegions[BuildRegionMapFromString(regionString, "add")["name"]] = true
+	}
+	for _, region := range providerRegions {
+		knownRegions[region.GetCode()] = true
+	}
+	if unknown := UnknownZoneRegions(addZones, "add", knownRegions); len(unknown) > 0 {
+		return fmt.Errorf("region %s in --add-zone is not in the provider or in --add-region",
+			strings.Join(unknown, ", "))
+	}
+	return nil
 }
 
 // ValidateZoneRemovalLeavesActiveZone rejects a --remove-zone that deactivates

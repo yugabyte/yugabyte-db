@@ -42,6 +42,7 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
+#include "catalog/pg_depend.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_yb_tablegroup.h"
@@ -67,6 +68,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -138,6 +140,9 @@ CreateTableGroup(YbCreateTableGroupStmt *stmt)
 
 	if (stmt->tablespacename)
 		tablespaceoid = get_tablespace_oid(stmt->tablespacename, false);
+	else if (stmt->implicit)
+		/* The relation it is created for is in no tablespace. */
+		tablespaceoid = InvalidOid;
 	else
 		tablespaceoid = GetDefaultTablespace(RELPERSISTENCE_PERMANENT, false);
 
@@ -334,6 +339,190 @@ get_tablegroup_name(Oid grp_oid)
 }
 
 /*
+ * Whether this is the default tablegroup. It is kept when empty, so that the
+ * database keeps its colocation tablet. It can be in a tablespace, if it was
+ * created while colocated tables with tablespaces were off.
+ */
+static bool
+is_kept_default_tablegroup(Oid grp_oid)
+{
+	char	   *grp_name = get_tablegroup_name(grp_oid);
+
+	return grp_name != NULL &&
+		strcmp(grp_name, DEFAULT_TABLEGROUP_NAME) == 0;
+}
+
+/*
+ * Find the implicit tablegroup for the given tablespace (InvalidOid means the
+ * default tablegroup) and lock it, so that dropping its last relation cannot
+ * drop it under us. If there is none, return InvalidOid with a lock held that
+ * lets only one session create it.
+ */
+Oid
+YbLockImplicitTablegroup(Oid tablespaceoid)
+{
+	bool		creation_locked = false;
+
+	for (;;)
+	{
+		Oid			grp_oid;
+
+		if (OidIsValid(tablespaceoid))
+			shdepFindImplicitTablegroup(tablespaceoid, &grp_oid);
+		else
+			grp_oid = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+
+		/* Without object locks there is nothing to wait for. */
+		if (!YBCUsingObjectLocksGloballyForCurrentTxn())
+			return grp_oid;
+
+		if (OidIsValid(grp_oid))
+		{
+			LOCKTAG		tag;
+
+			/*
+			 * Found while we hold its lock, possibly since an earlier step of
+			 * this transaction, so it cannot be dropped under us.
+			 */
+			SET_LOCKTAG_OBJECT(tag, MyDatabaseId, YbTablegroupRelationId,
+							   grp_oid, 0);
+			if (LockHeldByMe(&tag, AccessShareLock))
+				return grp_oid;
+			LockDatabaseObject(YbTablegroupRelationId, grp_oid, 0,
+							   AccessShareLock);
+		}
+		else
+		{
+			if (creation_locked)
+				return InvalidOid;
+
+			/*
+			 * There is no tablegroup to lock yet, so lock the tablespace as
+			 * seen from this database.
+			 */
+			LockDatabaseObject(TableSpaceRelationId,
+							   OidIsValid(tablespaceoid) ?
+							   tablespaceoid : MyDatabaseTableSpace,
+							   0, AccessExclusiveLock);
+			creation_locked = true;
+		}
+
+		/*
+		 * Look again with a new snapshot, in case whoever we waited for
+		 * dropped or created the tablegroup.
+		 */
+		YbInvalidateCatalogSnapshot();
+	}
+}
+
+/*
+ * Return whether an implicit tablegroup should be dropped along with a
+ * relation that is being dropped from it.
+ */
+bool
+YbLockImplicitTablegroupForDrop(Oid grp_oid)
+{
+	ObjectAddress address;
+
+	if (is_kept_default_tablegroup(grp_oid))
+		return false;
+
+	if (!YBCUsingObjectLocksGloballyForCurrentTxn())
+		return !tablegroupHasDependents(grp_oid);
+
+	/* Wait for concurrent drops in this tablegroup. */
+	LockDatabaseObject(YbTablegroupRelationId, grp_oid, 0,
+					   ShareUpdateExclusiveLock);
+	YbInvalidateCatalogSnapshot();
+	if (tablegroupHasDependents(grp_oid))
+		return false;
+
+	/* It looks empty, so wait for concurrent creates too. */
+	ObjectAddressSet(address, YbTablegroupRelationId, grp_oid);
+	AcquireDeletionLock(&address, 0);
+	YbInvalidateCatalogSnapshot();
+	return !tablegroupHasDependents(grp_oid);
+}
+
+/*
+ * Whether the current user owns a relation that is stored in the tablegroup.
+ */
+static bool
+owns_relation_in_tablegroup(Oid grp_oid)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		result = false;
+
+	depRel = table_open(DependRelationId, AccessShareLock);
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(grp_oid));
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (depform->classid == RelationRelationId &&
+			SearchSysCacheExists1(RELOID, ObjectIdGetDatum(depform->objid)) &&
+			pg_class_ownercheck(depform->objid, GetUserId()))
+		{
+			result = true;
+			break;
+		}
+	}
+	systable_endscan(scan);
+	table_close(depRel, AccessShareLock);
+
+	return result;
+}
+
+/*
+ * Lock an implicit tablegroup that is being moved to another tablespace
+ * against creates and drops in it, and lock that tablespace against the
+ * creation of a tablegroup for it. Return whether a lock was taken, in which
+ * case what the caller looked up before may be stale.
+ */
+bool
+YbLockImplicitTablegroupForMove(Oid grp_oid, Oid new_tablespaceoid)
+{
+	LOCKTAG		grp_tag;
+	LOCKTAG		tablespace_tag;
+
+	Assert(OidIsValid(grp_oid) && OidIsValid(new_tablespaceoid));
+
+	if (!YBCUsingObjectLocksGloballyForCurrentTxn())
+		return false;
+
+	SET_LOCKTAG_OBJECT(grp_tag, MyDatabaseId, YbTablegroupRelationId,
+					   grp_oid, 0);
+	SET_LOCKTAG_OBJECT(tablespace_tag, MyDatabaseId, TableSpaceRelationId,
+					   new_tablespaceoid, 0);
+	if (LockHeldByMe(&grp_tag, AccessExclusiveLock) &&
+		LockHeldByMe(&tablespace_tag, AccessExclusiveLock))
+		return false;
+
+	/* Otherwise any user could block creates and drops in the tablegroup. */
+	if (!owns_relation_in_tablegroup(grp_oid))
+		return false;
+
+	LockDatabaseObject(YbTablegroupRelationId, grp_oid, 0,
+					   AccessExclusiveLock);
+	LockDatabaseObject(TableSpaceRelationId, new_tablespaceoid, 0,
+					   AccessExclusiveLock);
+	YbInvalidateCatalogSnapshot();
+	return true;
+}
+
+/*
  * RemoveTablegroupById - remove a tablegroup by its OID.
  * If a tablegroup does not exist with the provided oid, then an error is raised.
  *
@@ -358,7 +547,7 @@ RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 	 * Checking if it is an implicit tablegroup before checking if the
 	 * tablegroup exists to give proper error message if DROP TABLEGROUP ...
 	 * CASCADE is executed. This is because during DROP CASCADE, the implicit
-	 * tablegroup will be implicitly deleted when dependent tables are dropped
+	 * tablegroup may be implicitly deleted when dependent tables are dropped
 	 * (if yb_enable_colocated_tables_with_tablespaces is enabled) and we
 	 * would get a "tablegroup with oid does not exist" error message.
 	 */
@@ -457,6 +646,13 @@ RenameTablegroup(const char *oldname, const char *newname)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("tablegroup system catalog does not exist")));
 	}
+
+	/* An implicit tablegroup is found by its name. */
+	if (MyDatabaseColocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot rename an implicit tablegroup "
+						"in a colocated database")));
 
 	/*
 	 * Look up the target tablegroup's OID, and get exclusive lock on it. We

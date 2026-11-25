@@ -175,6 +175,8 @@ class CDCSDKVirtualWAL {
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
+  void MoveAbortedSubtxnsToResponse(RowMessage* row_message, GetConsistentChangesResponsePB* resp);
+
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
@@ -394,7 +396,7 @@ class CDCSDKVirtualWAL {
   TableId pg_class_table_id_;
 
   // The table ID of pg_attribute catalog table for the database on which virtual WAL is polling.
-  // Only populated when TEST_ysql_yb_enable_replication_slot_transactional_ddl is enabled.
+  // Only populated when ysql_yb_enable_replication_slot_transactional_ddl is enabled.
   TableId pg_attribute_table_id_;
 
   // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is

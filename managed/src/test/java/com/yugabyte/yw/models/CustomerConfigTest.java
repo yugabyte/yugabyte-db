@@ -116,4 +116,27 @@ public class CustomerConfigTest extends FakeDBApplication {
     // Not a field of the v1 config JSON.
     assertFalse(Json.toJson(cc).has("active"));
   }
+
+  @Test
+  public void updateTimeAdvancesOnEverySave() throws InterruptedException {
+    CustomerConfig cc = createData(defaultCustomer);
+    long created = CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime();
+    // Millisecond resolution.
+    Thread.sleep(5);
+    cc.setConfigName("renamed");
+    cc.update();
+    assertTrue(CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime() > created);
+
+    cc.setState(CustomerConfig.ConfigState.Validating);
+    cc.update();
+    long validating = CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime();
+    // Bulk state updates set it too.
+    Thread.sleep(5);
+    assertTrue(
+        CustomerConfig.updateStateIfValidating(
+            cc.getConfigUUID(), CustomerConfig.ConfigState.Active));
+    assertTrue(CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime() > validating);
+    // Not part of the v1 config JSON.
+    assertFalse(Json.toJson(cc).has("updateTime"));
+  }
 }

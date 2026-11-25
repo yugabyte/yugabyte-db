@@ -37,7 +37,11 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   const [differ, setDiffer] = useState<BaseDiff<DiffComponentProps, any> | null>(null);
   // we need to check if this task is a retried tasks
   // if it is, we need to get the previous task details
-  const { data: taskDetails, isSuccess, isLoading: isSubTaskDetailsLoading } = useQuery(
+  const {
+    data: taskDetails,
+    isSuccess,
+    isLoading: isSubTaskDetailsLoading
+  } = useQuery(
     ['subTasks-parent', currentTask!.id!],
     () => fetchRootSubTaskDetails(currentTask!.id!, currentTask!.targetUUID),
     {
@@ -62,7 +66,16 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     }
   );
 
-  const taskDiffDetails = useMemo(() => mapAuditLogToTaskDiffApiResp(auditData), [auditData]);
+  const isSoftwareUpgrade =
+    currentTask?.target === TargetType.UNIVERSE && currentTask?.type === TaskType.SOFTWARE_UPGRADE;
+
+  // SoftwareUpgradeDiff reads task.details, not the diff data, so it renders without an audit row.
+  const taskDiffDetails = useMemo(
+    () =>
+      mapAuditLogToTaskDiffApiResp(auditData) ??
+      (isSoftwareUpgrade ? { beforeData: {}, afterData: {}, uuid: '', parentUuid: '' } : undefined),
+    [auditData, isSoftwareUpgrade]
+  );
 
   useEffect(() => {
     if (!currentTask || !visible || !taskDiffDetails) {
@@ -72,7 +85,8 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     // Set the differ based on the task type.
 
     if (
-      (currentTask.target === TargetType.UNIVERSE && currentTask.type === TaskType.EDIT) ||
+      ([TargetType.UNIVERSE, TargetType.CLUSTER].includes(currentTask.target as any) &&
+        currentTask.type === TaskType.EDIT) ||
       (currentTask.target === TargetType.UNIVERSE && currentTask.type === TaskType.RESIZE_NODE)
     ) {
       setDiffer(new UniverseDiff({ ...taskDiffDetails, task: currentTask }));
@@ -112,9 +126,9 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     );
   }
 
-  if (!taskDiffDetails) {
-    return null;
-  }
+  // No taskDiff: the task ran before the backend recorded it, the audit fetch failed, or it is a
+  // retry whose first attempt failed before the freeze (only a first try captures the delta).
+  const noDiff = !taskDiffDetails;
 
   return (
     <YBModal
@@ -127,7 +141,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
       enableBackdropDismiss
       dialogContentProps={{ dividers: true, style: { padding: '20px' } }}
     >
-      {diffComponents}
+      {noDiff ? t('diffDetailsNotFound') : diffComponents}
     </YBModal>
   );
 };

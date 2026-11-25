@@ -86,7 +86,7 @@ If you are using [Maven](https://maven.apache.org/guides/development/guide-build
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.2.14</version>
+  <version>42.7.3</version>
 </dependency>
 ```
 
@@ -96,7 +96,7 @@ If you are using [Gradle](https://docs.gradle.org/current/samples/sample_buildin
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'org.postgresql:postgresql:42.2.14'
+implementation 'org.postgresql:postgresql:42.7.3'
 ```
 
 Install the added dependency using `mvn install`.

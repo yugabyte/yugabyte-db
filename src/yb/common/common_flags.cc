@@ -142,7 +142,8 @@ DEFINE_RUNTIME_bool(enable_table_rewrite_for_cdcsdk_table, true,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_replication_slot_transactional_ddl, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_slot_transactional_ddl,
+    kLocalPersisted, false, true,
     "When set, logical replication with transactional DDL support is enabled.");
 
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
@@ -236,15 +237,24 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
-    "implement pg table locks.");
+    "implement pg table locks. Before turning this off on a running cluster, turn "
+    "disable_global_object_locks on with a rolling restart: once no node takes global object "
+    "locks, every CREATE INDEX waits for all backends to reach its catalog version instead of "
+    "waiting for lock holders.");
+DEFINE_NON_RUNTIME_bool(disable_global_object_locks, false,
+    "When true, transactions on this node take no global object locks, and each DDL runs in a "
+    "separate transaction. Locks up to ROW EXCLUSIVE, which reads and writes take, still go to "
+    "the local object lock manager, so a DDL on another node that takes global object locks "
+    "waits for them. Stronger locks and session locks take no object lock.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "DEPRECATED: no-op. Use ysql_yb_enable_global_object_locking_infra.");
 // Gates global object locking and what depends on it: DDL-strength and session object locks,
-// transactional DDL, and concurrent DDL. A transaction latches it at start. While it is false, the
-// transaction runs without global object locking: its DDLs run in separate DDL transactions and
-// take no object locks, and its requests keep the tablets' catalog version check. With
-// enable_object_locking_for_table_locks true, it still takes the local object locks a writer takes,
-// so that DDLs with global object locks wait for it (#36572).
+// transactional DDL, and concurrent DDL. A transaction latches it at start. While it is false, or
+// while disable_global_object_locks is true, the transaction runs without global object locking:
+// its DDLs run in separate DDL transactions and take no object locks, and its requests keep the
+// tablets' catalog version check. With enable_object_locking_for_table_locks true, it still takes
+// the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, so that DDLs with global
+// object locks wait for it (#36572, #37355).
 //
 // Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote. As an AutoFlag
 // that starts unpromoted on upgrade, it keeps every transaction without global object locking
@@ -256,10 +266,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_global_object_locking_infra, kLocalPersisted, false,
     true,
     "Auto flag that gates global object locking during upgrade. With this flag and "
-    "enable_object_locking_for_table_locks both true, a transaction runs with global object "
-    "locking: DDL-strength object locks, transactional DDL and concurrent DDL. With this flag "
-    "false and enable_object_locking_for_table_locks true, it takes only the local object locks "
-    "of a writer. With enable_object_locking_for_table_locks false, it takes no object locks.");
+    "enable_object_locking_for_table_locks both true, and disable_global_object_locks false, a "
+    "transaction runs with global object locking: DDL-strength object locks, transactional DDL "
+    "and concurrent DDL. Otherwise, with enable_object_locking_for_table_locks true, it takes "
+    "the object locks of its reads and writes (up to ROW EXCLUSIVE) locally, and with it false it "
+    "takes no object locks.");
 
 DEFINE_NON_RUNTIME_bool(ysql_yb_pg_partman_use_native_txn_ddl_and_locks,
     kEnableObjectLockingForTableLocks,

@@ -43,6 +43,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -62,8 +63,7 @@ public class UniverseResp {
   public static UniverseResp create(
       Universe universe, UUID taskUUID, RuntimeConfGetter confGetter) {
     UniverseResourceDetails.Context context = new Context(confGetter.getStaticConf(), universe);
-    UniverseResourceDetails resourceDetails =
-        UniverseResourceDetails.create(universe.getUniverseDetails(), context);
+
     fillRegions(Collections.singletonList(universe));
     // Universe UUID to AllowedTasks object map.
     Map<UUID, AllowedTasks> allowedTasks =
@@ -75,10 +75,16 @@ public class UniverseResp {
     }
     String ybaSoftwareVersion = currentYbaSoftwareVersion();
     String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
+    UniverseResourceDetails basicDetails =
+        UniverseResourceDetails.create(
+            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true);
     return new UniverseResp(
         universe,
+        Customer.get(universe.getCustomerId()),
         taskUUID,
-        resourceDetails,
+        context.getProvider(Util.getDefaultProviderUUID(universe)),
+        basicDetails,
+        getPerProviderDetails(universe, context, basicDetails),
         allowedTasks.get(universe.getUniverseUUID()),
         rollMaxBatchSize,
         ybaSoftwareVersion,
@@ -107,19 +113,54 @@ public class UniverseResp {
     String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return universeList.stream()
         .map(
-            universe ->
-                new UniverseResp(
-                    universe,
-                    null,
-                    customer,
-                    context.getProvider(getProviderUUID(universe)),
-                    UniverseResourceDetails.create(universe.getUniverseDetails(), context),
-                    allowedTasks.get(universe.getUniverseUUID()),
-                    suggests.get(universe.getUniverseUUID()),
-                    ybaSoftwareVersion,
-                    localInstanceAddress,
-                    confGetter))
+            universe -> {
+              UniverseResourceDetails basicDetails =
+                  UniverseResourceDetails.create(
+                      Optional.empty(),
+                      universe.getNodes(),
+                      universe.getUniverseDetails(),
+                      context,
+                      true);
+              return new UniverseResp(
+                  universe,
+                  customer,
+                  null,
+                  context.getProvider(Util.getDefaultProviderUUID(universe)),
+                  basicDetails,
+                  // Counting overall details separately instead of sum of per-provider to avoid
+                  // errors in aggregation.
+                  getPerProviderDetails(universe, context, basicDetails),
+                  allowedTasks.get(universe.getUniverseUUID()),
+                  suggests.get(universe.getUniverseUUID()),
+                  ybaSoftwareVersion,
+                  localInstanceAddress,
+                  confGetter);
+            })
         .collect(Collectors.toList());
+  }
+
+  private static Map<UUID, UniverseResourceDetails> getPerProviderDetails(
+      Universe universe, UniverseResourceDetails.Context context, UniverseResourceDetails basic) {
+    Map<UUID, UniverseResourceDetails> resourcesPerProvider = new HashMap<>();
+    Set<UUID> allProviders = new HashSet<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      allProviders.addAll(cluster.userIntent.getAllProviderUUIDs());
+    }
+    if (allProviders.size() == 1) {
+      // Avoid extra calculation.
+      return Collections.singletonMap(allProviders.iterator().next(), basic);
+    }
+    for (UUID providerUUID : allProviders) {
+      resourcesPerProvider.put(
+          providerUUID,
+          UniverseResourceDetails.create(
+              Optional.of(providerUUID),
+              universe.getNodes(),
+              universe.getUniverseDetails(),
+              context,
+              false));
+    }
+    return resourcesPerProvider;
   }
 
   /**
@@ -135,18 +176,6 @@ public class UniverseResp {
       log.warn("Could not read YBA software version for UniverseResp: ", e);
       return null;
     }
-  }
-
-  private static UUID getProviderUUID(Universe universe) {
-    return universe
-        .getUniverseDetails()
-        .getPrimaryCluster()
-        .userIntent
-        .getAllProviderUUIDs()
-        .stream()
-        .sorted()
-        .findFirst()
-        .get();
   }
 
   private static void fillRegions(Collection<Universe> universes) {
@@ -275,76 +304,35 @@ public class UniverseResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
   public final boolean nodeExporterSidecarScraped;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + " Universe resource details per provider")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.2.0.0")
+  public final Map<UUID, UniverseResourceDetails> resourcesPerProvider;
+
   public UniverseResp(Universe entity) {
     this(
         entity,
-        null,
-        null,
-        null,
-        null,
-        currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
-        null);
-  }
-
-  public UniverseResp(Universe entity, UUID taskUUID) {
-    this(
-        entity,
-        taskUUID,
-        null,
-        null,
-        null,
-        currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
-        null);
-  }
-
-  public UniverseResp(
-      Universe entity,
-      UUID taskUUID,
-      UniverseResourceDetails resources,
-      AllowedTasks allowedTasks,
-      RollMaxBatchSize rollMaxBatchSize,
-      RuntimeConfGetter confGetter) {
-    this(
-        entity,
-        taskUUID,
-        resources,
-        allowedTasks,
-        rollMaxBatchSize,
-        currentYbaSoftwareVersion(),
-        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
-        confGetter);
-  }
-
-  public UniverseResp(
-      Universe entity,
-      UUID taskUUID,
-      UniverseResourceDetails resources,
-      AllowedTasks allowedTasks,
-      RollMaxBatchSize rollMaxBatchSize,
-      String platformVersion,
-      String localInstanceAddress,
-      RuntimeConfGetter confGetter) {
-    this(
-        entity,
-        taskUUID,
         Customer.get(entity.getCustomerId()),
-        Provider.getOrBadRequest(getProviderUUID(entity)),
-        resources,
-        allowedTasks,
-        rollMaxBatchSize,
-        platformVersion,
-        localInstanceAddress,
-        confGetter);
+        null, /* taskUUID */
+        Provider.getOrBadRequest(Util.getDefaultProviderUUID(entity)),
+        null,
+        new HashMap<>(), /* resourcesPerProvider */
+        null, /* allowedTasks */
+        null, /* rollMaxBatchSize */
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null),
+        null);
   }
 
   public UniverseResp(
       Universe entity,
-      UUID taskUUID,
       Customer customer,
-      Provider provider,
-      UniverseResourceDetails resources,
+      UUID taskUUID,
+      Provider defaultProvider,
+      UniverseResourceDetails totalResources,
+      Map<UUID, UniverseResourceDetails> resourcesPerProvider,
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize,
       String platformVersion,
@@ -354,7 +342,7 @@ public class UniverseResp {
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
-    dnsName = getDnsName(customer, provider);
+    dnsName = getDnsName(customer, defaultProvider); // This is only evaluated per one provider
     UniverseDefinitionTaskParams details = entity.getUniverseDetails();
     if (Util.isMulticloud(entity)) {
       details =
@@ -367,7 +355,7 @@ public class UniverseResp {
     }
     universeDetails = new UniverseDefinitionTaskParamsResp(details, entity, localInstanceAddress);
     this.taskUUID = taskUUID;
-    this.resources = resources;
+    this.resources = totalResources;
     universeConfig = entity.getConfig();
     this.sampleAppCommandTxt = this.getManifest(entity);
     this.drConfigUuidsAsSource =
@@ -384,6 +372,7 @@ public class UniverseResp {
     this.platformVersion = platformVersion;
     this.nodeExporterSidecarScraped =
         confGetter != null && KubernetesUtil.isNodeExporterSidecarEnabled(entity, confGetter);
+    this.resourcesPerProvider = resourcesPerProvider;
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
