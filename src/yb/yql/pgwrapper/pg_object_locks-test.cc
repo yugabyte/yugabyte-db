@@ -2398,6 +2398,36 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlWithoutVersionIncrementDoesNot
   ASSERT_OK(alter_future.get());
 }
 
+// With ysql_enable_concurrent_ddl off, ANALYZE does not take the database DDL lock, so it does not
+// wait for another DDL. A multi-table ANALYZE runs each table in its own transaction, and none of
+// them takes the lock either.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, AnalyzeDoesNotWait) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE c(k INT PRIMARY KEY)"));
+  }
+
+  // Holds the database lock until COMMIT.
+  auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(holder.Execute("BEGIN"));
+  ASSERT_OK(holder.Execute("ALTER TABLE a ADD COLUMN v INT"));
+
+  // A wait would last until the holder commits below, so it would hit the statement timeout.
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(ddl_conn.Execute("ANALYZE b"));
+  ASSERT_OK(ddl_conn.Execute("ANALYZE b, c"));
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  auto alter_future = ASSERT_RESULT(
+      StartDdlWaitingForDatabaseLock(ddl_conn, observer, "ALTER TABLE b ADD COLUMN v INT"));
+  ASSERT_OK(holder.Execute("COMMIT"));
+  ASSERT_OK(alter_future.get());
+}
+
 // With ysql_enable_concurrent_ddl off, a DDL in a procedure waits for the database DDL lock, both
 // when the procedure is called outside a transaction block (non-atomic) and inside one (atomic).
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlInProcedureWaits) {

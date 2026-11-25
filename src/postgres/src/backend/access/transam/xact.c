@@ -3468,8 +3468,12 @@ YbCommitTransactionCommandIntermediateExtended(bool serialize_ddl_in_database)
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		YBAddDdlTxnStateExtended(ddl_mode, serialize_ddl_in_database);
+		/*
+		 * Restore the statement state first: entering DDL state reads it to
+		 * decide whether to take the database DDL lock (ANALYZE does not).
+		 */
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
+		YBAddDdlTxnStateExtended(ddl_mode, serialize_ddl_in_database);
 	}
 }
 

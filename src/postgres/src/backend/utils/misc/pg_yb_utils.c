@@ -2954,13 +2954,16 @@ YbTrackAlteredTableId(Oid relid)
  * lock, and DDLs run as concurrently as object locks allow. A DDL whose
  * mode does not increment the catalog version, such as CREATE TEMP TABLE,
  * takes no lock; a later DDL of its transaction that does takes it then.
+ * ANALYZE takes no lock either, so that it, auto-analyze included, never
+ * holds up the DDLs in its database.
  */
 void
 YbLockDatabaseToSerializeDdl(YbDdlMode mode)
 {
 	if (!*YBCGetGFlags()->ysql_enable_concurrent_ddl &&
 		YBIsDdlTransactionBlockEnabled() &&
-		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+		(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+		!CheckIsAnalyzeDDL())
 		LockDatabaseObject(YbDdlSerializationLockOid, InvalidOid, 0,
 						   ExclusiveLock);
 }
