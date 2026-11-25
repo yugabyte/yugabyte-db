@@ -13,11 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
-#include <fstream>
-#include <functional>
 #include <iostream>
-#include <iterator>
-#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -27,13 +23,11 @@
 #include "yb/master/catalog_manager_mutex.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
-#include "yb/util/thread.h"
 
 DEFINE_test_flag(int32, catalog_mutex_test_waiters, 2000,
     "Number of threads that queue for the lock behind the writer in the convoy test.");
@@ -57,32 +51,17 @@ MonoTime Earliest(const std::vector<MonoTime>& times) {
   return *std::min_element(times.begin(), times.end());
 }
 
-// Runs lock_fn on a new thread and returns once that thread is asleep, i.e. queued on the mutex:
-// absl::Mutex parks waiters on a futex, which moves the thread to state 'S' in
-// /proc/self/task/<tid>/stat. lock_fn must block on the mutex before doing anything else.
-Status AddThreadAndWaitUntilQueued(TestThreadHolder& threads, std::function<void()> lock_fn) {
-  // Shared so that a thread that starts after a WaitFor timeout does not write a dead local.
-  auto tid = std::make_shared<std::atomic<int64_t>>(0);
-  threads.AddThread([tid, lock_fn = std::move(lock_fn)] {
-    *tid = Thread::CurrentThreadId();
-    lock_fn();
-  });
-#if defined(__linux__)
-  return WaitFor([&] {
-    auto id = tid->load();
-    if (id == 0) {
+// Returns once a thread is queued on mutex. The caller must hold it shared, with no other thread
+// waiting, so the queued thread can only be the writer it just started. absl::Mutex::ReaderTryLock
+// fails as soon as any thread is queued, which also makes new readers queue behind the writer.
+Status WaitUntilWriterQueued(CatalogManagerMutex& mutex) {
+  return WaitFor([&mutex] {
+    if (mutex.try_lock_shared()) {
+      mutex.unlock_shared();
       return false;
     }
-    std::ifstream file(Format("/proc/self/task/$0/stat", id));
-    std::string stat{std::istreambuf_iterator<char>(file), {}};
-    // The state follows the parenthesized thread name, which may itself contain spaces.
-    auto pos = stat.rfind(')');
-    return pos != std::string::npos && pos + 2 < stat.size() && stat[pos + 2] == 'S';
-  }, MonoDelta::FromSeconds(30), "thread queued on the mutex");
-#else
-  SleepFor(MonoDelta::FromMilliseconds(100));
-  return Status::OK();
-#endif
+    return true;
+  }, MonoDelta::FromSeconds(30), "writer queued on the mutex");
 }
 
 // CPU-bound work whose duration depends on how much CPU the calling thread gets.
@@ -137,10 +116,11 @@ TEST_F(CatalogManagerMutexTest, Convoy) {
   ASSERT_OK(WaitFor(
       [&] { return holder_has_lock.load(); }, MonoDelta::FromSeconds(30), "holder has the lock"));
 
-  ASSERT_OK(AddThreadAndWaitUntilQueued(threads, [&] {
+  threads.AddThread([&] {
     std::lock_guard lock(mutex);
     writer_in = MonoTime::Now();
-  }));
+  });
+  ASSERT_OK(WaitUntilWriterQueued(mutex));
 
   for (int i = 0; i < num_waiters; ++i) {
     threads.AddThread([&, i] {
@@ -288,10 +268,11 @@ TEST_F(CatalogManagerMutexTest, ReaderHandoffToWriter) {
       MonoTime writer_in;
       std::vector<MonoTime> reader_in(waiters);
       TestThreadHolder threads;
-      auto writer_queued = AddThreadAndWaitUntilQueued(threads, [&] {
+      threads.AddThread([&] {
         std::lock_guard lock(mutex);
         writer_in = MonoTime::Now();
       });
+      auto writer_queued = WaitUntilWriterQueued(mutex);
       if (!writer_queued.ok()) {
         // Let the writer finish so that the TestThreadHolder join does not hang.
         mutex.unlock_shared();

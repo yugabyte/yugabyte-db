@@ -35,6 +35,9 @@ class CAPABILITY("mutex") CatalogManagerMutex {
   void unlock() RELEASE() NO_THREAD_SAFETY_ANALYSIS { mutex_.Unlock(); }
   bool try_lock() TRY_ACQUIRE(true) NO_THREAD_SAFETY_ANALYSIS { return mutex_.TryLock(); }
   void lock_shared() ACQUIRE_SHARED() NO_THREAD_SAFETY_ANALYSIS { mutex_.ReaderLock(); }
+  bool try_lock_shared() TRY_ACQUIRE_SHARED(true) NO_THREAD_SAFETY_ANALYSIS {
+    return mutex_.ReaderTryLock();
+  }
   void unlock_shared() RELEASE_SHARED() NO_THREAD_SAFETY_ANALYSIS { mutex_.ReaderUnlock(); }
 
  private:
