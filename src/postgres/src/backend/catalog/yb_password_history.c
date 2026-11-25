@@ -108,16 +108,24 @@ YbPasswordReusePolicyActive(int reuse_max, int reuse_time_mins,
 }
 
 /*
- * Reject pre-hashed passwords when yb_allow_prehashed_passwords is off, or
- * when a reuse window is on for a role setting its own password: a pre-hashed
- * secret cannot be compared with the history. enforce_reuse is as for
- * YbApplyPasswordHistory(): false for an admin reset or CREATE ROLE, which
- * compare nothing, so this session's windows do not apply. guc.c refuses
- * turning both on at SET time, but saved settings for a role or for all
- * roles can still combine them; a plaintext password is accepted then too.
+ * Check the password given for role roleid (InvalidOid for a role being
+ * created), in this order:
+ * - A plaintext password is accepted.
+ * - A binary upgrade or a restore (yb_binary_restore) is accepted.
+ * - A pre-hashed password is refused when yb_allow_prehashed_passwords is
+ *   off.
+ * - A pre-hashed password for the role that logged in is refused when a
+ *   password reuse window is on: it cannot be compared with the history.
+ *   The windows were loaded for that role at login; SET ROLE and SECURITY
+ *   DEFINER functions do not change them.
+ * - Any other pre-hashed password is accepted: a password set for another
+ *   role, or for a new one, is not compared with the history.
+ *
+ * guc.c refuses turning both settings on at SET time, but saved settings for
+ * a role or for all roles can still combine them.
  */
 void
-YbCheckPreHashedPasswordAllowed(const char *password, bool enforce_reuse)
+YbCheckPreHashedPasswordAllowed(const char *password, Oid roleid)
 {
 	if (!IsYugaByteEnabled() ||
 		get_password_type(password) == PASSWORD_TYPE_PLAINTEXT)
@@ -139,7 +147,7 @@ YbCheckPreHashedPasswordAllowed(const char *password, bool enforce_reuse)
 				 errdetail("yb_allow_prehashed_passwords is off."),
 				 errhint("Supply the password in plaintext; it is encrypted before being stored.")));
 
-	if (enforce_reuse &&
+	if (roleid == GetAuthenticatedUserId() &&
 		YbPasswordReusePolicyActive(yb_password_reuse_history,
 									yb_password_reuse_interval, false))
 		ereport(ERROR,

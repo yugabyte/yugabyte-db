@@ -561,9 +561,11 @@ DROP USER phenc;
 -- see only this session's values. The role can still change its password
 -- in plaintext, under its reuse policy; a pre-hashed one is refused. Its
 -- window does not apply to another role's password, which is not compared.
--- A superuser's own password is checked the same way. A pre-hashed password
--- an admin sets still goes into the role's history. A restore can still load
--- a role's own pre-hashed password.
+-- The role that logged in decides whose password is its own, also inside a
+-- SECURITY DEFINER function. A superuser's own password is checked the same
+-- way. A pre-hashed password an admin sets still goes into the role's
+-- history, and ages out as the role changes its own password. A restore can
+-- still load a role's own pre-hashed password.
 ALTER ROLE ALL SET yb_password_reuse_history = 0;
 \c yugabyte yugabyte
 CREATE ROLE admin SUPERUSER LOGIN;
@@ -572,16 +574,22 @@ CREATE ROLE app_user LOGIN CREATEROLE PASSWORD 'pw_one';
 ALTER ROLE app_user SET yb_password_reuse_history = 3;
 ALTER ROLE admin SET yb_password_reuse_history = 3;
 ALTER ROLE ALL SET yb_allow_prehashed_passwords = on;
+CREATE FUNCTION set_app_user_prehashed() RETURNS void LANGUAGE sql
+  SECURITY DEFINER
+  AS $$ ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899' $$;
 \c yugabyte app_user
 SHOW yb_allow_prehashed_passwords;
 SHOW yb_password_reuse_history;
 ALTER ROLE app_user PASSWORD 'pw_two';
 ALTER ROLE app_user PASSWORD 'pw_two';              -- fail: reused
 ALTER ROLE app_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- fail
+SELECT set_app_user_prehashed();                    -- fail: its own password
 CREATE ROLE other_user LOGIN PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
 ALTER ROLE other_user PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: another role
 \c yugabyte admin
 SHOW yb_password_reuse_history;
+ALTER FUNCTION set_app_user_prehashed() OWNER TO app_user;
+SELECT set_app_user_prehashed();                    -- ok: another role
 ALTER ROLE app_user PASSWORD 'pw_three';            -- ok: admin reset
 ALTER ROLE app_user PASSWORD 'md57062f046990197ecc4363fbbacbf6cd8'; -- ok: admin reset, pw_four pre-hashed
 ALTER ROLE admin PASSWORD 'pw_admin';               -- ok: its own password
@@ -591,7 +599,12 @@ ALTER ROLE admin PASSWORD 'md5aabbccddeeff00112233445566778899'; -- ok: restore
 RESET yb_binary_restore;
 \c yugabyte app_user
 ALTER ROLE app_user PASSWORD 'pw_four';             -- fail: reused, set by admin
+ALTER ROLE app_user PASSWORD 'pw_five';
+ALTER ROLE app_user PASSWORD 'pw_six';
+ALTER ROLE app_user PASSWORD 'pw_seven';
+ALTER ROLE app_user PASSWORD 'pw_four';             -- ok: aged out
 \c yugabyte yugabyte
+DROP FUNCTION set_app_user_prehashed();
 DROP ROLE other_user;
 DROP ROLE app_user;
 DROP ROLE admin;

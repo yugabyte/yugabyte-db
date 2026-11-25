@@ -13,15 +13,7 @@
 #ifndef YB_PASSWORD_HISTORY_H
 #define YB_PASSWORD_HISTORY_H
 
-/*
- * Rejects a pre-hashed password when yb_allow_prehashed_passwords is off, or
- * when enforce_reuse is set and a password reuse window is on (enforce_reuse
- * as for YbApplyPasswordHistory()). Called from CreateRole() and AlterRole()
- * before the password is applied.
- * Read-only: errors or returns, never writes catalog.
- */
-extern void YbCheckPreHashedPasswordAllowed(const char *password,
-											bool enforce_reuse);
+extern void YbCheckPreHashedPasswordAllowed(const char *password, Oid roleid);
 
 /*
  * Rejects the candidate if it matches a still-protected history secret, then
