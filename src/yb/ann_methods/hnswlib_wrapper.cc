@@ -196,7 +196,7 @@ class HnswlibIndex :
       std::shared_ptr<hnswlib::SpaceInterface<DistanceResult>> space,
       vector_index::StoreVectorPayload store_vector_payload,
       vector_index::VectorTenantExtractor tenant_extractor)
-      : Base(store_vector_payload),
+      : Base(store_vector_payload, mem_tracker),
         block_cache_(block_cache),
         options_(options),
         space_(std::move(space)),
