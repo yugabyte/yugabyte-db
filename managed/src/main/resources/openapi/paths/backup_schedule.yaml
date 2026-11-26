@@ -23,9 +23,11 @@
       older than YBA's, and for point_in_time_restore sets the history retention the backups need.
       It then makes the schedule ACTIVE. If the task fails, the schedule is removed, so the name is
       free for a retry; the failed task's error says why. If YBA restarts while the create task
-      runs, the schedule is left in ERROR; delete it before creating one with the same name. Only
-      YSQL and YCQL schedules can be created; each keyspaces entry needs its keyspace. Retry with
-      the same Idempotency-Key to get the task of a request whose response was lost.
+      runs, the schedule is left in ERROR; delete it before creating one with the same name. A
+      point-in-time-restore schedule whose task fails after changing the universe's history
+      retention is left in ERROR; delete it to restore the retention. Only YSQL and YCQL schedules
+      can be created; each keyspaces entry needs its keyspace. Retry with the same Idempotency-Key
+      to get the task of a request whose response was lost.
     tags:
       - Backup Schedule
     requestBody:

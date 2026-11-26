@@ -354,12 +354,18 @@ paths:
         the create task
 
         runs, the schedule is left in ERROR; delete it before creating one with the
-        same name. Only
+        same name. A
 
-        YSQL and YCQL schedules can be created; each keyspaces entry needs its keyspace.
-        Retry with
+        point-in-time-restore schedule whose task fails after changing the universe''s
+        history
 
-        the same Idempotency-Key to get the task of a request whose response was lost.
+        retention is left in ERROR; delete it to restore the retention. Only YSQL
+        and YCQL schedules
+
+        can be created; each keyspaces entry needs its keyspace. Retry with the same
+        Idempotency-Key
+
+        to get the task of a request whose response was lost.
 
         '
       tags:

@@ -7704,6 +7704,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     Universe universe = getUniverse();
     Schedule schedule = null;
     boolean locked = false;
+    // Whether the subtasks that change the universe's history retention may have run.
+    boolean retentionMayHaveChanged = false;
     try {
       // Lock universe. This runs the prechecks, so a failure there reaches the catch below too.
       lockAndFreezeUniverseForUpdate(
@@ -7755,6 +7757,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
       if (scheduleParams.enablePointInTimeRestore) {
+        // Run the checks above first, so that a failure in them is told apart from one after the
+        // history retention may have changed.
+        getRunnableTask().runSubTasks();
+        retentionMayHaveChanged = true;
         backupScheduleSubTasks.run();
       }
 
@@ -7772,9 +7778,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      if (createdScheduleUUID != null) {
+      if (createdScheduleUUID != null && !retentionMayHaveChanged) {
         // The v2 create: remove the schedule the request saved, so that the name is free for a
-        // retry. The task fails with this error.
+        // retry. The task fails with this error. Once the history retention may have changed,
+        // the schedule is kept in Error as in v1, so that deleting it restores the retention.
         BackupScheduleTaskParams.removeCreatingSchedule(customerUUID, createdScheduleUUID);
       } else if (schedule != null) {
         // Update schedule state to Error

@@ -7,6 +7,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.commissioner.Common;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -26,7 +28,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes.TableType;
@@ -229,6 +233,70 @@ public class CreateBackupScheduleTest extends CommissionerBaseTest {
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
             .getUniverseDetails()
             .updateInProgress);
+  }
+
+  /** A point-in-time-restore schedule as the v2 create saves it. */
+  private Schedule savePitSchedule(BackupRequestParams params) {
+    params.customerUUID = defaultCustomer.getUuid();
+    return Schedule.create(
+        defaultCustomer.getUuid(),
+        defaultUniverse.getUniverseUUID(),
+        params,
+        TaskType.CreateBackup,
+        params.schedulingFrequency,
+        null,
+        true /* useLocalTimezone */,
+        params.frequencyTimeUnit,
+        params.scheduleName,
+        Schedule.State.Creating);
+  }
+
+  @Test
+  public void testV2PitCreateWhoseStorageCheckFailsRemovesTheSchedule() {
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, TimeUnit.DAYS, 0L, null, null, true, "v2-pit");
+    Schedule schedule = savePitSchedule(params);
+    doThrow(new PlatformServiceException(BAD_REQUEST, "The bucket can't be reached"))
+        .when(mockBackupHelper)
+        .validateStorageConfig(any());
+
+    TaskInfo taskInfo = submitTask(params, schedule.getScheduleUUID());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    // The history retention wasn't touched, so the schedule is removed.
+    assertFalse(Schedule.maybeGet(schedule.getScheduleUUID()).isPresent());
+  }
+
+  @Test
+  public void testV2PitCreateFailingAfterTheRetentionChangeKeepsTheScheduleInError() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
+    RuntimeConfigEntry.upsertGlobal("yb.task.verify_cluster_state", "false");
+    BackupRequestParams params =
+        createScheduleBackupParams(DAY, TimeUnit.DAYS, 0L, null, null, true, "v2-pit");
+    Schedule schedule = savePitSchedule(params);
+    // The tserver conf file update of the history retention fails.
+    when(mockNodeManager.nodeCommand(any(), any()))
+        .thenThrow(new RuntimeException("Can't update the conf file"));
+
+    TaskInfo taskInfo = submitTask(params, schedule.getScheduleUUID());
+
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        getSubTaskTypes(taskInfo).toString(),
+        getSubTaskTypes(taskInfo).contains(TaskType.AnsibleConfigureServers));
+    // Kept, so that deleting it restores the retention.
+    assertEquals(
+        Schedule.State.Error,
+        Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID())
+            .getStatus());
+    assertFalse(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .updateInProgress);
+  }
+
+  private static List<TaskType> getSubTaskTypes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream().map(TaskInfo::getTaskType).collect(Collectors.toList());
   }
 
   @Test
