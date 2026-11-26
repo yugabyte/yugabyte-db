@@ -205,18 +205,23 @@ static inline void yb_kiwi_vars_fix_inline_values(kiwi_vars_t *vars)
 }
 
 /* Dynamically allocate a new GUC variable. */
-static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
-				    char *value, int value_len)
+static inline int yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
+				   char *value, int value_len)
 {
+	kiwi_var_t *new_vars;
+
 	/* YB: name is a fixed-size buffer; length includes the NUL */
 	if (name_len > KIWI_MAX_NAME_SIZE)
-		return;
+		return -1;
 
 	if (vars->size == 0)
-		vars->vars = malloc(sizeof(kiwi_var_t));
+		new_vars = malloc(sizeof(kiwi_var_t));
 	else
 		/* TODO (rbarigidad): Double list size rather than incrementing by 1 */
-		vars->vars = realloc(vars->vars, (vars->size + 1) * sizeof(kiwi_var_t));
+		new_vars = realloc(vars->vars, (vars->size + 1) * sizeof(kiwi_var_t));
+	if (new_vars == NULL)
+		return -1;
+	vars->vars = new_vars;
 	/* Fix up only the existing vars, the new slot is not initialized yet */
 	yb_kiwi_vars_fix_inline_values(vars);
 	vars->size++;
@@ -228,8 +233,11 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 	var->value = var->value_buf;
 	var->value_len = 0;
 	var->yb_skip_check = 0;
-	if (yb_kiwi_var_set(var, value, value_len) == -1)
+	if (yb_kiwi_var_set(var, value, value_len) == -1) {
 		vars->size--;
+		return -1;
+	}
+	return 0;
 }
 
 static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
@@ -405,10 +413,10 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	/* Act as a "safe" set. (find and update, else push new value) */
 	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
 	if (var != NULL) {
-		yb_kiwi_var_set(var, value, value_len);
 		var->yb_skip_check = 0;
-	} else
-		yb_kiwi_var_push(vars, name, name_len, value, value_len);
+		return yb_kiwi_var_set(var, value, value_len);
+	}
+	return yb_kiwi_var_push(vars, name, name_len, value, value_len);
 #endif
 	return 0;
 }
@@ -418,13 +426,11 @@ static inline void yb_kiwi_vars_update_reported(kiwi_vars_t *vars, char *name,
 						int name_len, char *value,
 						int value_len, int skip_check)
 {
-	kiwi_vars_update(vars, name, name_len, value, value_len);
+	if (kiwi_vars_update(vars, name, name_len, value, value_len) == -1)
+		return;
 	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
-	/* A failed set keeps the old value, which the bit doesn't describe */
 	if (var != NULL)
-		var->yb_skip_check = skip_check != 0 &&
-				     var->value_len == value_len &&
-				     memcmp(var->value, value, value_len) == 0;
+		var->yb_skip_check = skip_check != 0;
 }
 #endif
 
