@@ -194,8 +194,8 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
     }
   }
   wait_futures();
-
-  LOG(INFO) << "Total good: " << good;
+  // A timed-out write may still be queued on the leader, delaying the snapshot.
+  ASSERT_EQ(good, kNumWrites);
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
