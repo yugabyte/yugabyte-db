@@ -531,7 +531,7 @@ TEST_P(PgIndexBackfillTest, WaitForSplitsToComplete) {
       client.get(), kDatabaseName, kTableName));
   // A replica whose apply lands in the regular DB after the admin flush switched its memtable
   // defers the intents flush by intents_flush_max_delay_ms (2s), then forces a regular DB flush.
-  // The rest is headroom for host-wide I/O stalls during that flush, seen at ~3s.
+  // The rest is headroom for that flush, which has stalled for an unexplained ~3s on that replica.
   ASSERT_OK(client->FlushTables({table_id}, 10s * kTimeMultiplier));
 
   // Create a split that will not complete until we set the test flag to true.
