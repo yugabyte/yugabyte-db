@@ -1840,7 +1840,14 @@ Result<CDCSDKStreamInfo> YBClient::GetCDCStream(
   if (replica_identities) {
     replica_identities->reserve(resp.stream().replica_identity_map_size());
     for (const auto& entry : resp.stream().replica_identity_map()) {
-      auto table_info = VERIFY_RESULT(GetYBTableInfoById(entry.first, true /* include_hidden */));
+      // A dropped table stays in replica_identity_map until the background CDCSDK cleanup
+      // removes it; the master returns NotFound for it.
+      auto table_info_result = GetYBTableInfoById(entry.first, true /* include_hidden */);
+      if (!table_info_result.ok() && table_info_result.status().IsNotFound()) {
+        VLOG_WITH_FUNC(1) << "Skipping replica identity of dropped table " << entry.first;
+        continue;
+      }
+      auto table_info = VERIFY_RESULT(std::move(table_info_result));
 
       const auto pg_table_id = table_info.pg_table_id;
       auto table_oid = VERIFY_RESULT(
