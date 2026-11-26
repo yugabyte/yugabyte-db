@@ -1082,6 +1082,9 @@ static inline int od_backend_startup(od_server_t *server,
 					machine_msg_free(msg);
 					return rc;
 				}
+				yb_client_param_status_sent(
+					client->yb_external_client, name,
+					name_len, value, value_len);
 			}
 
 			if (is_authenticating) {
@@ -1637,7 +1640,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
-	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
+	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED &&
+	    !yb_client_param_status_seen(client, name, value, value_len)) {
 		/* Send ParameterStatus to client if GUC_REPORT is enabled */
 		int rc = yb_send_parameter_status_async(
 			&server->relay, name, name_len, value, value_len);
@@ -1646,6 +1650,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 				 "Unable to send ParameterStatus to client");
 			return -1;
 		}
+		yb_client_param_status_sent(client, name, name_len, value,
+					    value_len);
 	}
 
 	/* connection manager does not track role-dependent parameters */

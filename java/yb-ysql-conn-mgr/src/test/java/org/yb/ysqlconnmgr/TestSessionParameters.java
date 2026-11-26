@@ -1501,4 +1501,73 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
           .run();
     }
   }
+
+  // Like Postgres, a ParameterStatus is sent only when a GUC_REPORT value differs from the one the
+  // client last received, including the value it received at startup.
+  @Test
+  public void testNoParameterStatusForUnchangedValue() throws Exception {
+    try (WireConn a = rawConnBuilder().startupParam("application_name", "dedup_a").connect()) {
+      PipelineResult r = a.createPipeline()
+          .query("SET application_name = 'dedup_a'")
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .query("SET application_name = 'dedup_a'")
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+    }
+  }
+
+  // Values reverted by COMMIT of a SET LOCAL, by ROLLBACK and by RESET differ from the last
+  // reported value, so they are still reported.
+  @Test
+  public void testParameterStatusForRevertedValue() throws Exception {
+    try (WireConn a = rawConnBuilder().connect()) {
+      PipelineResult r = a.createPipeline()
+          .query("SET TimeZone = 'America/Sao_Paulo'")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("BEGIN")
+          .query("SET LOCAL TimeZone = 'Asia/Kolkata'")
+          .query("COMMIT")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "Asia/Kolkata"),
+                                 new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("BEGIN")
+          .query("SET TimeZone = 'Asia/Tokyo'")
+          .query("ROLLBACK")
+          .run();
+      assertEquals(Arrays.asList(new Pair<>("TimeZone", "Asia/Tokyo"),
+                                 new Pair<>("TimeZone", "America/Sao_Paulo")),
+          r.parameterStatuses());
+
+      r = a.createPipeline()
+          .query("RESET TimeZone")
+          .run();
+      List<Pair<String, String>> statuses = r.parameterStatuses();
+      assertEquals(1, statuses.size());
+      assertEquals("TimeZone", statuses.get(0).getFirst());
+      assertFalse(statuses.get(0).getSecond().equals("America/Sao_Paulo"));
+
+      r = a.createPipeline()
+          .query("RESET TimeZone")
+          .run();
+      assertEquals(Collections.emptyList(), r.parameterStatuses());
+    }
+  }
 }

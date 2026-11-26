@@ -821,6 +821,9 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 						continue;
 					}
 					guc_batch = appended;
+					yb_client_param_status_sent(
+						client, name, name_len, value,
+						value_len);
 				}
 
 				if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {

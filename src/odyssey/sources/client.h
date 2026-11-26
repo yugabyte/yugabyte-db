@@ -66,6 +66,8 @@ struct od_client {
 	kiwi_vars_t yb_vars_startup;
 	/* YB: vars set through SET statements */
 	kiwi_vars_t yb_vars_session;
+	/* YB: last ParameterStatus value sent to the client, per GUC */
+	kiwi_vars_t yb_vars_reported;
 	kiwi_key_t key;
 
 	od_server_t *server;
@@ -176,6 +178,7 @@ static inline void od_client_init(od_client_t *client)
 	kiwi_vars_init(&client->yb_startup_settings, false);
 	kiwi_vars_init(&client->yb_vars_startup, false);
 	kiwi_vars_init(&client->yb_vars_session, true);
+	kiwi_vars_init(&client->yb_vars_reported, false);
 	kiwi_key_init(&client->key);
 
 	od_io_init(&client->io);
@@ -226,6 +229,7 @@ static inline void od_client_free(od_client_t *client)
 	kiwi_be_startup_free(&client->startup);
 	yb_kiwi_vars_free(&client->yb_vars_startup);
 	yb_kiwi_vars_free(&client->yb_vars_session);
+	yb_kiwi_vars_free(&client->yb_vars_reported);
 	yb_kiwi_vars_free(&client->yb_startup_settings);
 	if (client->deploy_err) {
 		free(client->deploy_err);
@@ -257,6 +261,39 @@ static inline void od_client_free(od_client_t *client)
 	}
 	od_client_free(client);
  }
+
+static inline bool yb_param_status_always_sent(char *name)
+{
+	return strcmp(name, "is_superuser") == 0 ||
+	       strcmp(name, "session_authorization") == 0;
+}
+
+static inline bool yb_client_param_status_seen(od_client_t *client, char *name,
+					       char *value, int value_len)
+{
+	if (yb_param_status_always_sent(name))
+		return false;
+
+	kiwi_var_t *var = yb_kiwi_vars_get(&client->yb_vars_reported, name);
+	return var != NULL && var->value_len == value_len &&
+	       memcmp(var->value, value, value_len) == 0;
+}
+
+static inline void yb_client_param_status_sent(od_client_t *client, char *name,
+					       int name_len, char *value,
+					       int value_len)
+{
+	if (yb_param_status_always_sent(name))
+		return;
+
+	kiwi_var_t *var = yb_kiwi_vars_get(&client->yb_vars_reported, name);
+	if (var == NULL)
+		yb_kiwi_var_push(&client->yb_vars_reported, name, name_len,
+				 value, value_len);
+	else if (yb_kiwi_var_set(var, value, value_len) == -1)
+		yb_kiwi_vars_remove_if_exists(&client->yb_vars_reported, name,
+					      name_len);
+}
 
 static inline od_retcode_t od_client_notify_read(od_client_t *client)
 {
