@@ -153,6 +153,12 @@ Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+// bcpkix depends on bcprov and bcutil by version range, so pin all three together.
+val bouncyCastleVersion    = "1.87"
+
+dependencyOverrides += "org.bouncycastle" % "bcprov-jdk18on" % bouncyCastleVersion
+dependencyOverrides += "org.bouncycastle" % "bcutil-jdk18on" % bouncyCastleVersion
+
 libraryDependencies ++= Seq(
   javaJdbc,
   caffeine,
@@ -175,7 +181,7 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
-  "org.bouncycastle" % "bcpkix-jdk18on" % "1.80",
+  "org.bouncycastle" % "bcpkix-jdk18on" % bouncyCastleVersion,
   "org.springframework.security" % "spring-security-core" % "5.8.16",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
@@ -1080,6 +1086,10 @@ dependencyOverrides ++= jacksonOverrides
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
 excludeDependencies += "commons-collections" % "commons-collections"
+// The jdk15on artifacts are the same org.bouncycastle packages as jdk18on, frozen at 1.70.
+// Dependencies still pull them in; the jdk18on jars supply the classes.
+excludeDependencies += "org.bouncycastle" % "bcpkix-jdk15on"
+excludeDependencies += "org.bouncycastle" % "bcprov-jdk15on"
 excludeDependencies += "org.lz4" % "lz4-java"
 
 Global / concurrentRestrictions := Seq(Tags.limitAll(16))
