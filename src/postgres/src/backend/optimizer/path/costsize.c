@@ -11748,8 +11748,7 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 			checked_relids = bms_add_member(checked_relids, relid);
 		}
 
-		/* A foreign partition that was never analyzed has -1 tuples. */
-		total_tuples += Max(subrel->tuples, 0);
+		total_tuples += subrel->tuples;
 	}
 
 	foreach(lc, apath->subpaths)
@@ -11758,7 +11757,7 @@ yb_cost_append_for_one_partition(PlannerInfo *root, AppendPath *apath)
 		double		weight;
 
 		weight = (total_tuples > 0)
-			? Max(subpath->parent->tuples, 0) / total_tuples
+			? subpath->parent->tuples / total_tuples
 			: 1.0 / list_length(apath->subpaths);
 
 		rows += weight * subpath->rows;
