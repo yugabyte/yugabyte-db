@@ -512,6 +512,7 @@ CheckTransformBody(Oid transformFnOid, Relation srcRel, Relation dstRel)
  * the copy's INSERT ... SELECT would run a nested statement, which
  * ybOscRejectNestedTableAccess rejects, and the parent-side actions of a
  * foreign key would change the target outside the capture trigger.
+ * yb_wait_mirror_table adds the source's once the copy is done.
  */
 static void
 EnsureDstNoForeignKeys(Relation dstRel)
@@ -521,7 +522,9 @@ EnsureDstNoForeignKeys(Relation dstRel)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("target table \"%s\" of an online schema change must not have foreign keys",
 						RelationGetRelationName(dstRel)),
-				 errhint("Add them after the online schema change finishes.")));
+				 errhint("The source table's foreign keys are copied to the target "
+						 "by yb_wait_mirror_table; drop them from the target and let the online "
+						 "schema change install them.")));
 }
 
 /*
@@ -631,19 +634,56 @@ EnsureSrcNoIncomingForeignKeys(Relation srcRel)
 }
 
 /*
- * Reject a source with foreign keys.  A foreign key stays with its table when
- * the cutover renames it, so the table that takes the source's name would not
- * enforce it.  Also checked at the cutover, since nothing blocks DDL on the
- * source while the job runs.
+ * yb_wait_mirror_table recreates each source foreign key on the target under
+ * its own name, so every source column in a foreign key must exist on the
+ * target with the same type, and the name must be free on the target.
+ * Otherwise it would fail only after the copy.  The target has no foreign keys
+ * (EnsureDstNoForeignKeys), so any constraint of that name clashes.
  */
-void
-YbOscEnsureSrcNoForeignKeys(Relation srcRel)
+static void
+EnsureForeignKeyColumnsOnTarget(Relation srcRel, Relation dstRel)
 {
-	if (RelationGetFKeyList(srcRel) != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("source table \"%s\" of an online schema change must not have foreign keys",
-						RelationGetRelationName(srcRel))));
+	Oid			dstOid = RelationGetRelid(dstRel);
+	ListCell   *lc;
+
+	foreach(lc, RelationGetFKeyList(srcRel))
+	{
+		ForeignKeyCacheInfo *fk = (ForeignKeyCacheInfo *) lfirst(lc);
+		char	   *conname = get_constraint_name(fk->conoid);
+
+		if (conname &&
+			ConstraintNameIsUsed(CONSTRAINT_RELATION, dstOid, conname))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("target table \"%s\" already has a constraint named \"%s\"",
+							RelationGetRelationName(dstRel), conname),
+					 errdetail("The source's foreign key \"%s\" is recreated on the target "
+							   "under the same name.", conname),
+					 errhint("Rename or drop the target's constraint first.")));
+
+		for (int i = 0; i < fk->nkeys; i++)
+		{
+			Form_pg_attribute srcAttr =
+				TupleDescAttr(RelationGetDescr(srcRel), fk->conkey[i] - 1);
+			const char *attname = NameStr(srcAttr->attname);
+			AttrNumber	dstAttnum = get_attnum(dstOid, attname);
+
+			if (dstAttnum == InvalidAttrNumber)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("target table \"%s\" is missing foreign-key column \"%s\"",
+								RelationGetRelationName(dstRel), attname),
+						 errdetail("Column \"%s\" of the source is constrained by a foreign key, "
+								   "which the online schema change must recreate on the target.",
+								   attname)));
+
+			if (get_atttype(dstOid, dstAttnum) != srcAttr->atttypid)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("foreign-key column \"%s\" must have the same type on the "
+								"source and target tables", attname)));
+		}
+	}
 }
 
 /*
@@ -735,7 +775,7 @@ YbOscValidate(Relation srcRel, Relation dstRel, Oid transformFnOid)
 	EnsureDstNoGeneratedColumns(dstRel);
 	EnsureDstNoOwnedSequences(dstRel);
 	EnsureSrcNoIncomingForeignKeys(srcRel);
-	YbOscEnsureSrcNoForeignKeys(srcRel);
+	EnsureForeignKeyColumnsOnTarget(srcRel, dstRel);
 	EnsureTransformOwnerCanCopy(transformFnOid, srcRel, dstRel);
 	EnsureTargetEmpty(dstRel);
 }
