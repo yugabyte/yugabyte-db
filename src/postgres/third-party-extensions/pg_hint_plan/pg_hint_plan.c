@@ -859,7 +859,7 @@ _PG_init(void)
 							 &pg_hint_plan_enable_hint_table,
 							 false,
 							 PGC_USERSET,
-							 GUC_YB_CONN_MGR_REPLAY_CHECK_HOOK, /* YB: check enables query IDs */
+							 0,
 							 enable_hint_table_check,
 							 assign_enable_hint_table,
 							 NULL);
