@@ -35,6 +35,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tcmalloc_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -2515,6 +2516,186 @@ TEST_F(VectorLSMHnswlibTest, MergeChunkResults) {
     sum.resize(std::min(i, sum.size()));
     ASSERT_EQ(a, sum);
   }
+}
+
+class VectorLSMDestroyTest : public VectorLSMHnswlibTest {
+ protected:
+  void SetUp() override {
+    VectorLSMHnswlibTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+    sync_point_ = SyncPoint::GetInstance();
+  }
+
+  void TearDown() override {
+    sync_point_->DisableProcessing();
+    sync_point_->ClearAllCallBacks();
+    VectorLSMHnswlibTest::TearDown();
+  }
+
+  // Runs `functor` on another thread, counting `done` down when it returns.
+  void RunInThread(std::function<void()> functor, CountDownLatch& done) {
+    threads_.AddThreadFunctor([functor = std::move(functor), &done] {
+      functor();
+      done.CountDown();
+    });
+  }
+
+  // Unparks the sync point callback and joins the threads before the test locals they use go away.
+  auto MakeCleanup(CountDownLatch& release) {
+    return ScopeExit([this, &release] {
+      release.CountDown();
+      threads_.JoinAll();
+    });
+  }
+
+  void CheckStorageDeleted(FloatVectorLSM& lsm) {
+    ASSERT_FALSE(lsm.TEST_GetEnv()->DirExists(lsm.StorageDir()));
+  }
+
+  SyncPoint* sync_point_ = nullptr;
+  TestThreadHolder threads_;
+};
+
+// A flush waiting for the inserts of its chunk returns once the destroy starts, without waiting for
+// them.
+TEST_F(VectorLSMDestroyTest, ReleasesFlushWaiter) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+
+  CountDownLatch insert_parked(1);
+  CountDownLatch release_insert(1);
+  CountDownLatch flush_queued(1);
+  CountDownLatch flushed(1);
+  Status flush_status;
+  sync_point_->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [&](void*) {
+    insert_parked.CountDown();
+    release_insert.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSM::Flush:AfterDoFlush", [&](void*) {
+    flush_queued.CountDown();
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_insert);
+
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_TRUE(insert_parked.WaitFor(5s));
+  RunInThread([&lsm, &flush_status] { flush_status = lsm.Flush(/* wait = */ true); }, flushed);
+  ASSERT_TRUE(flush_queued.WaitFor(5s));
+  ASSERT_FALSE(flushed.WaitFor(20ms));
+
+  lsm.StartDestroy();
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  ASSERT_TRUE(flush_status.IsShutdownInProgress()) << flush_status;
+
+  release_insert.CountDown();
+  ASSERT_OK(lsm.Destroy());
+  CheckStorageDeleted(lsm);
+}
+
+// A flush that passed the running check before the destroy started queues its chunk after the
+// flush waiters were released. The chunk is not saved.
+TEST_F(VectorLSMDestroyTest, SkipsChunkFlushedAfterStart) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch flush_parked(1);
+  CountDownLatch release_flush(1);
+  CountDownLatch flushed(1);
+  Status flush_status;
+  std::atomic<size_t> num_saves{0};
+  sync_point_->SetCallBack("VectorLSM::Flush:Status", [&](void*) {
+    flush_parked.CountDown();
+    release_flush.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSM::DoSaveChunk:BeforeManifestCheck", [&num_saves](void*) {
+    ++num_saves;
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_flush);
+
+  RunInThread([&lsm, &flush_status] { flush_status = lsm.Flush(/* wait = */ true); }, flushed);
+  ASSERT_TRUE(flush_parked.WaitFor(5s));
+
+  lsm.StartDestroy();
+  release_flush.CountDown();
+  ASSERT_TRUE(flushed.WaitFor(5s));
+  ASSERT_TRUE(flush_status.IsShutdownInProgress()) << flush_status;
+
+  ASSERT_OK(lsm.Destroy());
+  ASSERT_EQ(num_saves, 0);
+  CheckStorageDeleted(lsm);
+}
+
+// A chunk save already in progress runs to the end: Destroy waits for it.
+TEST_F(VectorLSMDestroyTest, WaitsForSaveInProgress) {
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, 1000));
+  ASSERT_OK(InsertRandom(lsm, 4, 8));
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+
+  CountDownLatch save_parked(1);
+  CountDownLatch release_save(1);
+  CountDownLatch destroyed(1);
+  Status destroy_status;
+  sync_point_->SetCallBack("VectorLSM::DoSaveChunk:BeforeManifestCheck", [&](void*) {
+    save_parked.CountDown();
+    release_save.Wait();
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_save);
+
+  ASSERT_OK(lsm.Flush(/* wait = */ false));
+  ASSERT_TRUE(save_parked.WaitFor(5s));
+  RunInThread([&lsm, &destroy_status] { destroy_status = lsm.Destroy(); }, destroyed);
+  ASSERT_FALSE(destroyed.WaitFor(200ms));
+
+  release_save.CountDown();
+  ASSERT_TRUE(destroyed.WaitFor(5s));
+  ASSERT_OK(destroy_status);
+  CheckStorageDeleted(lsm);
+}
+
+// The merge tasks of a running compaction skip their vectors once the destroy starts, and Destroy
+// waits for the compaction.
+TEST_F(VectorLSMDestroyTest, CancelsMerge) {
+  constexpr size_t kNumChunks = 2;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, 4, kDefaultChunkSize));
+  for (size_t i = 0; i != kNumChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, 4, kDefaultChunkSize));
+  }
+
+  CountDownLatch merge_parked(1);
+  CountDownLatch release_merge(1);
+  CountDownLatch destroyed(1);
+  Status destroy_status;
+  std::atomic<size_t> num_merged{0};
+  sync_point_->SetCallBack("VectorLSM::DoMergeWithThreadPool:AfterAllocate", [&](void*) {
+    merge_parked.CountDown();
+    release_merge.Wait();
+  });
+  sync_point_->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [&num_merged](void*) {
+    ++num_merged;
+  });
+  sync_point_->EnableProcessing();
+  auto cleanup = MakeCleanup(release_merge);
+
+  ASSERT_OK(lsm.Compact(/* wait= */ false));
+  ASSERT_TRUE(merge_parked.WaitFor(5s));
+  lsm.StartDestroy();
+  RunInThread([&lsm, &destroy_status] { destroy_status = lsm.Destroy(); }, destroyed);
+  ASSERT_FALSE(destroyed.WaitFor(200ms));
+
+  release_merge.CountDown();
+  ASSERT_TRUE(destroyed.WaitFor(5s));
+  ASSERT_OK(destroy_status);
+  ASSERT_EQ(num_merged, 0);
+  ASSERT_EQ(lsm.NumImmutableChunks(), kNumChunks);
+  CheckStorageDeleted(lsm);
 }
 
 INSTANTIATE_TEST_SUITE_P(
