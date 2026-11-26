@@ -420,8 +420,11 @@ static inline void yb_kiwi_vars_update_reported(kiwi_vars_t *vars, char *name,
 {
 	kiwi_vars_update(vars, name, name_len, value, value_len);
 	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
+	/* A failed set keeps the old value, which the bit doesn't describe */
 	if (var != NULL)
-		var->yb_skip_check = skip_check != 0;
+		var->yb_skip_check = skip_check != 0 &&
+				     var->value_len == value_len &&
+				     memcmp(var->value, value, value_len) == 0;
 }
 #endif
 
