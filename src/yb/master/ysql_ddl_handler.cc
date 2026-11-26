@@ -68,6 +68,7 @@ DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
 
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -151,7 +152,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
                               txn.status_tablet,
                               YsqlDdlVerificationState::kDdlInProgress,
                               {table}, {} /* processed_tables */, {} /* nochange_tables */,
-                              ysql_ddl_txns_release_all_deferred_.erase(txn.transaction_id) > 0});
+                              ysql_ddl_txns_release_all_deferred_.erase(txn.transaction_id) > 0,
+                              {} /* next_retry_time */, {} /* retry_delay */});
   return true;
 }
 
@@ -1131,10 +1133,18 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
 
 void CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns(const LeaderEpoch& epoch) {
   std::vector<TransactionMetadata> txns;
+  const auto now = MonoTime::Now();
+  const MonoDelta max_retry_delay =
+      std::chrono::seconds(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs);
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
-    for (const auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
-      if (verifier_state.state == YsqlDdlVerificationState::kDdlPostProcessingFailed) {
+    for (auto& [txn_id, verifier_state] : ysql_ddl_txn_verfication_state_map_) {
+      if (verifier_state.state == YsqlDdlVerificationState::kDdlPostProcessingFailed &&
+          (!verifier_state.next_retry_time || now >= verifier_state.next_retry_time)) {
+        verifier_state.retry_delay = verifier_state.retry_delay
+            ? std::min(verifier_state.retry_delay * 2, max_retry_delay)
+            : MonoDelta(kMinDdlPostProcessingFailedRetryDelay);
+        verifier_state.next_retry_time = now + verifier_state.retry_delay;
         DCHECK(!verifier_state.txn_status_tablet.empty())
             << Format("Missing status tablet for DDL verification txn $0", txn_id);
         TransactionMetadata txn_meta;
@@ -1146,6 +1156,7 @@ void CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns(const Lea
   }
 
   for (const auto& txn_meta : txns) {
+    TEST_SYNC_POINT("CatalogManager::TriggerDdlVerificationForPostProcessingFailedTxns:Retry");
     WARN_NOT_OK(
         TriggerDdlVerificationIfNeeded(txn_meta, epoch),
         Format(

@@ -52,9 +52,10 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
 DEFINE_RUNTIME_int32(ysql_ddl_post_processing_failed_verification_retry_secs, 300,
-    "Frequency in seconds at which the master leader will re-trigger DDL verification for "
-    "YSQL DDL transactions in kDdlPostProcessingFailed state. A value of -1 disables this "
-    "background task.");
+    "Maximum interval in seconds between re-triggers of DDL verification by the master leader "
+    "for a YSQL DDL transaction in kDdlPostProcessingFailed state. The first re-trigger comes "
+    "within 1 second, and the interval doubles on each further one up to this value. A value "
+    "of -1 disables this background task.");
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_ysql);
@@ -692,14 +693,14 @@ void YsqlManager::StartDdlPostProcessingFailedVerificationRetriggerIfStopped() {
 }
 
 void YsqlManager::ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool schedule_now) {
-  int wait_time = 0;
+  std::chrono::seconds wait_time{0};
 
   if (!schedule_now) {
-    wait_time = FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs;
-    if (wait_time <= 0) {
+    if (FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs <= 0) {
       ddl_post_processing_failed_verification_retrigger_running_ = false;
       return;
     }
+    wait_time = CatalogManager::kMinDdlPostProcessingFailedRetryDelay;
   }
 
   refresh_ysql_ddl_post_processing_failed_verification_task_.Bind(
@@ -714,7 +715,7 @@ void YsqlManager::ScheduleDdlPostProcessingFailedVerificationRetriggerTask(bool 
           ddl_post_processing_failed_verification_retrigger_running_ = false;
         }
       },
-      wait_time * 1s);
+      wait_time);
 }
 
 void YsqlManager::RetriggerDdlPostProcessingFailedVerificationPeriodically() {
