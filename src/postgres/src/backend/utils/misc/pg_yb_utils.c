@@ -1247,6 +1247,11 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 
+			/*
+			 * This calls EnableQueryId(), which Connection Manager relies on:
+			 * it replays pg_hint_plan.enable_hint_table without running its
+			 * check hook, the other place that would call it.
+			 */
 			YbQpmInit();
 		}
 
