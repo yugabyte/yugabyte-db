@@ -30,9 +30,10 @@ namespace yb::tools {
 Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContextIfNeeded(
     rpc::MessengerBuilder& messenger_builder, const std::string& certs_dir) {
   // The certificate flags describe the universe this tool was pointed at, so when certs_dir names
-  // a second universe neither the directory nor the node name beside it applies. Leaving the node
-  // name empty asks only for ca.crt, matching the cross-universe clients in client/xcluster_client
-  // and master/xcluster_rpc_tasks, which is why <certs_for_cdc_dir>/<group> holds nothing else.
+  // a second universe neither the directory nor the node name beside it applies, and only that
+  // directory's ca.crt is read. Unlike rpc::SetupRemoteUniverseSecureContext, this never presents
+  // a node.<name>.crt placed there, so a source that requires client certificates is reachable
+  // only with an empty certs_dir, which needs both universes to share a CA.
   auto certs_dir_name = certs_dir;
   std::string cert_name;
   if (certs_dir_name.empty()) {

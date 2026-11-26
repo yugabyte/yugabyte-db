@@ -498,12 +498,15 @@ const minimalOtherAdvanced = (): OtherAdvancedProps => ({
   instanceTags: [],
   awsArnString: '',
   useSystemd: true,
-  accessKeyCode: ''
+  accessKeyCodeByProvider: {}
 });
 
 describe('effectiveUseDedicatedNodes', () => {
   const base = (): createUniverseFormProps => ({
     activeStep: 1,
+    placementsByProvider: {},
+    nodesByProvider: {},
+    instanceByProvider: {},
     nodesAvailabilitySettings: {
       availabilityZones: {},
       useDedicatedNodes: false
@@ -586,16 +589,21 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
         cloud: CloudType.kubernetes,
         universeName: 'u1',
         databaseVersion: '2.20.0.0-b0',
-        providerConfiguration: {
-          uuid: 'prov-k8s',
-          code: CloudType.kubernetes,
-          name: 'k8s',
-          active: true,
-          customerUUID: 'cust',
-          imageBundles: [],
-          isOnPremManuallyProvisioned: false
-        } as any
+        providerConfigurations: [
+          {
+            uuid: 'prov-k8s',
+            code: CloudType.kubernetes,
+            name: 'k8s',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any
+        ]
       },
+      placementsByProvider: {},
+      nodesByProvider: {},
+      instanceByProvider: {},
       resilienceAndRegionsSettings: {
         ...expertBase([region], 1),
         [RESILIENCE_TYPE]: ResilienceType.SINGLE_NODE,
@@ -712,5 +720,157 @@ describe('getNodeSpec / mapCreateUniversePayload (K8s as dedicated)', () => {
   it('mapCreateUniversePayload sets dedicated_nodes true for K8s when toggle is false', () => {
     const payload = mapCreateUniversePayload(k8sForm() as createUniverseFormProps);
     expect(payload.spec?.clusters?.[0]?.node_spec?.dedicated_nodes).toBe(true);
+  });
+});
+
+describe('mapCreateUniversePayload multi-provider', () => {
+  const device = (volumeSize: number) => ({
+    numVolumes: 1,
+    volumeSize,
+    storageClass: null,
+    storageType: 'GP3' as const,
+    mountPoints: null,
+    diskIops: 3000,
+    throughput: 125
+  });
+
+  const instanceFor = (bundle: string, instanceType: string, volumeSize: number) => ({
+    arch: ArchitectureType.X86_64,
+    imageBundleUUID: bundle,
+    useSpotInstance: false,
+    instanceType,
+    masterInstanceType: null,
+    deviceInfo: device(volumeSize),
+    masterDeviceInfo: null,
+    keepMasterTserverSame: true,
+    enableEbsVolumeEncryption: false,
+    ebsKmsConfigUUID: null
+  });
+
+  function multiForm(): createUniverseFormProps {
+    const awsRegion = { ...makeRegion('us-west-2', 1), providerUuid: 'prov-aws' };
+    const gcpRegion = { ...makeRegion('us-central1', 1), providerUuid: 'prov-gcp' };
+    return {
+      activeStep: 9,
+      generalSettings: {
+        cloud: [CloudType.aws, CloudType.gcp],
+        universeName: 'multi-u1',
+        databaseVersion: '2.20.0.0-b0',
+        providerConfigurations: [
+          {
+            uuid: 'prov-aws',
+            code: CloudType.aws,
+            name: 'aws',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any,
+          {
+            uuid: 'prov-gcp',
+            code: CloudType.gcp,
+            name: 'gcp',
+            active: true,
+            customerUUID: 'cust',
+            imageBundles: [],
+            isOnPremManuallyProvisioned: false
+          } as any
+        ]
+      },
+      placementsByProvider: {
+        'prov-aws': expertBase([awsRegion], 3) as any,
+        'prov-gcp': expertBase([gcpRegion], 3) as any
+      },
+      nodesByProvider: {
+        'prov-aws': {
+          availabilityZones: {
+            'us-west-2': [
+              { name: 'Z0', uuid: 'us-west-2-zu-0', nodeCount: 1, preffered: 1 }
+            ]
+          },
+          useDedicatedNodes: false
+        },
+        'prov-gcp': {
+          availabilityZones: {
+            'us-central1': [
+              { name: 'Z0', uuid: 'us-central1-zu-0', nodeCount: 2, preffered: 2 }
+            ]
+          },
+          useDedicatedNodes: false
+        }
+      },
+      instanceByProvider: {
+        'prov-aws': instanceFor('bundle-aws', 'c5.large', 100),
+        'prov-gcp': instanceFor('bundle-gcp', 'n1-standard-4', 200)
+      },
+      resilienceAndRegionsSettings: {
+        ...expertBase([awsRegion, gcpRegion], 3),
+        [REGIONS_FIELD]: []
+      } as any,
+      nodesAvailabilitySettings: {
+        availabilityZones: {},
+        useDedicatedNodes: false,
+        replicationFactor: 3
+      },
+      instanceSettings: instanceFor('', 'c5.large', 100),
+      databaseSettings: {
+        ysql: { enable: true, enable_auth: false, password: '' },
+        ycql: { enable: true, enable_auth: false, password: '' },
+        gFlags: [],
+        enableConnectionPooling: false,
+        enablePGCompatibitilty: false
+      },
+      securitySettings: {
+        enableIPV6: false,
+        kmsConfig: ''
+      } as any,
+      proxySettings: {
+        enableProxyServer: false,
+        secureWebProxy: false,
+        secureWebProxyServer: '',
+        webProxy: false,
+        webProxyServer: '',
+        byPassProxyList: false,
+        byPassProxyListValues: []
+      } as any,
+      otherAdvancedSettings: {
+        ...minimalOtherAdvanced(),
+        accessKeyCodeByProvider: {
+          'prov-aws': 'aws-key',
+          'prov-gcp': 'gcp-key'
+        },
+        instanceTags: [{ name: 'env', value: 'test' }]
+      }
+    };
+  }
+
+  it('emits provider_specs + one cloud per provider, omits provider_spec/node_spec', () => {
+    const payload = mapCreateUniversePayload(multiForm());
+    const cluster = payload.spec?.clusters?.[0];
+    expect(cluster?.provider_spec).toBeUndefined();
+    expect(cluster?.node_spec).toBeUndefined();
+    expect(cluster?.provider_specs).toHaveLength(2);
+    expect(cluster?.num_nodes).toBe(3);
+    expect(cluster?.placement_spec?.cloud_list).toHaveLength(2);
+    expect(cluster?.placement_spec?.cloud_list?.map((c) => c.uuid)).toEqual([
+      'prov-aws',
+      'prov-gcp'
+    ]);
+    expect(cluster?.placement_spec?.cloud_list?.every((c) => c.default_region == null)).toBe(true);
+    expect(
+      cluster?.partitions_spec?.[0]?.placement?.cloud_list?.every((c) => c.default_region == null)
+    ).toBe(true);
+
+    const awsSpec = cluster?.provider_specs?.find((p) => p.provider === 'prov-aws');
+    const gcpSpec = cluster?.provider_specs?.find((p) => p.provider === 'prov-gcp');
+    expect(awsSpec?.image_bundle_uuid).toBe('bundle-aws');
+    expect(gcpSpec?.image_bundle_uuid).toBe('bundle-gcp');
+    expect(awsSpec?.access_key_code).toBe('aws-key');
+    expect(gcpSpec?.access_key_code).toBe('gcp-key');
+    expect(awsSpec?.nodes_specs?.tserver_specification?.instance_type).toBe('c5.large');
+    expect(gcpSpec?.nodes_specs?.tserver_specification?.instance_type).toBe('n1-standard-4');
+    expect(awsSpec?.instance_tags).toEqual({ env: 'test' });
+    expect(cluster?.instance_tags).toEqual({ env: 'test' });
+    expect(awsSpec?.networking_spec).toEqual(cluster?.networking_spec);
   });
 });

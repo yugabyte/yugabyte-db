@@ -8,7 +8,7 @@
  */
 
 import { cloneElement } from 'react';
-import { find } from 'lodash';
+import { find, isEmpty } from 'lodash';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TaskStatus } from '@app/redesign/helpers/api';
 import {
@@ -18,7 +18,14 @@ import {
   showTaskInDrawer
 } from '../../../actions/tasks';
 import { TargetType, Task, TaskState, TaskType } from './dtos';
-import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
+import { AuditLogProps, DiffApiResp, GFlagsDiffProps } from './components/diffComp/dtos';
+import {
+  getTaskDiffValue,
+  withDefaultClusterType,
+  withUnchangedIntentFromPayload,
+  withoutDeletedClusters,
+  withIdentityFromPayload
+} from './components/diffComp/taskDiffUtils';
 import {
   SoftwareUpgradeState,
   SoftwareUpgradeTaskType
@@ -78,8 +85,16 @@ export const getOriginalTaskTypeColumnLabel = (
  * @returns A boolean indicating whether the task supports before/after data or not.
  */
 export const doesTaskSupportsDiffData = (task: Task): boolean => {
+  // A validation (precheck-only) task never freezes the universe, so it records no taskDiff.
+  if (
+    (task.type === TaskType.EDIT || task.type === TaskType.RESIZE_NODE) &&
+    getIsPreCheckTask(task)
+  ) {
+    return false;
+  }
   if (task.type === TaskType.EDIT) {
-    return task.target === 'Universe';
+    // A read replica edit is a Cluster target task.
+    return task.target === 'Universe' || task.target === 'Cluster';
   }
   return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(
     task.type
@@ -95,13 +110,47 @@ export function useIsTaskNewUIEnabled(): boolean {
   return featureFlags?.test?.newTaskDetailsUI || featureFlags?.release?.newTaskDetailsUI;
 }
 
+const isReadReplicaGFlagsOnly = (auditLog: AuditLogProps): boolean => {
+  const details = auditLog.additionalDetails as any;
+  return !!details?.readonly_cluster_gflags && !details?.gflags;
+};
+
 export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
   if (!auditLog) return undefined;
+  const gflagsAudit = (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags;
+  // Without a taskDiff there is nothing to show, except the gflag entries the upgrade wrote itself.
+  if (isEmpty(auditLog.taskDiff)) {
+    return gflagsAudit
+      ? {
+          afterData: {},
+          beforeData: {},
+          gflagsAudit,
+          parentUuid: auditLog.taskUUID,
+          uuid: auditLog.auditID.toString()
+        }
+      : undefined;
+  }
+  const taskDiff = withUnchangedIntentFromPayload(
+    withDefaultClusterType(
+      withIdentityFromPayload(
+        withoutDeletedClusters(auditLog.taskDiff),
+        auditLog.payload,
+        (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
+      ),
+      // A read-replica-only gflags change is audited as readonly_cluster_gflags, and the v2 body
+      // has no clusters: the one cluster of the delta is the read replica.
+      isReadReplicaGFlagsOnly(auditLog)
+        ? { clusters: [{ clusterType: 'ASYNC' }] }
+        : auditLog.payload
+    ),
+    auditLog.payload
+  );
   return {
-    afterData: auditLog.payload,
-    beforeData: auditLog.additionalDetails,
+    afterData: getTaskDiffValue(taskDiff, 'new'),
+    beforeData: getTaskDiffValue(taskDiff, 'old'),
+    gflagsAudit,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };

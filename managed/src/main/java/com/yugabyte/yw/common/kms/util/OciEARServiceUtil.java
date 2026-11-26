@@ -25,11 +25,14 @@ import com.oracle.bmc.keymanagement.model.*;
 import com.oracle.bmc.keymanagement.requests.*;
 import com.oracle.bmc.keymanagement.responses.*;
 import com.oracle.bmc.model.BmcException;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -38,6 +41,34 @@ import org.slf4j.LoggerFactory;
 
 public class OciEARServiceUtil {
   private static final Logger LOG = LoggerFactory.getLogger(OciEARServiceUtil.class);
+
+  private static final Set<Key.LifecycleState> DELETION_STATES =
+      EnumSet.of(
+          Key.LifecycleState.SchedulingDeletion,
+          Key.LifecycleState.PendingDeletion,
+          Key.LifecycleState.Deleting,
+          Key.LifecycleState.Deleted);
+
+  /**
+   * The OCI KMS config, or the OCI key it names, is invalid and the user has to fix it. Refresh
+   * answers 400 for this exception only, so throw it for input or key-state problems, not for
+   * unexpected failures.
+   */
+  public static class InvalidOciKmsConfigException extends RuntimeException {
+    public InvalidOciKmsConfigException(String message) {
+      super(message);
+    }
+
+    public InvalidOciKmsConfigException(String message, Throwable cause) {
+      super(message, cause);
+    }
+
+    // EncryptionAtRestController reports validation failures with toString().
+    @Override
+    public String toString() {
+      return getMessage();
+    }
+  }
 
   public enum OciKmsAuthConfigField {
     ociTenancyId("ociTenancyId", true, false),
@@ -114,7 +145,7 @@ public class OciEARServiceUtil {
         authConfig.path(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName).asText();
 
     if (StringUtils.isAnyBlank(tenancyOcid, userOcid, fingerprint, privateKey)) {
-      throw new RuntimeException("Missing required OCI credentials");
+      throw new InvalidOciKmsConfigException("Missing required OCI credentials");
     }
 
     return SimpleAuthenticationDetailsProvider.builder()
@@ -183,10 +214,10 @@ public class OciEARServiceUtil {
   }
 
   /**
-   * Resolves the OCI key OCID from the auth config, treating OCI_KEY_NAME as the single source of
-   * truth. If a cached OCI_KEY_OCID is already present it is returned as-is. Otherwise the OCID is
-   * looked up from OCI_KEY_NAME via {@link #getKeyOcidByName}, the key is created if it does not
-   * yet exist, and the resolved OCID is cached back into the supplied auth config.
+   * Returns the key OCID of an existing config. OCI_KEY_OCID, recorded when the config was created,
+   * identifies the key: the key's display name can change in OCI. Configs without one fall back to
+   * a lookup by OCI_KEY_NAME, whose result is cached into the supplied auth config. Never creates a
+   * key.
    */
   public String resolveKeyOcid(UUID configUUID, ObjectNode authConfig) {
     String keyOcid = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyOcid.fieldName);
@@ -201,11 +232,30 @@ public class OciEARServiceUtil {
 
     String foundOcid = getKeyOcidByName(configUUID, authConfig, keyName);
     if (StringUtils.isBlank(foundOcid)) {
-      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
-      foundOcid = resp.getKey().getId();
+      throw new InvalidOciKmsConfigException(
+          String.format("No OCI key with display name '%s' found in the compartment.", keyName));
     }
     authConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, foundOcid);
     return foundOcid;
+  }
+
+  /**
+   * Config-create counterpart of {@link #resolveKeyOcid}: looks the key up by OCI_KEY_NAME, creates
+   * it if no key has that name, and caches the OCID into the supplied auth config.
+   */
+  public String resolveOrCreateKeyOcid(UUID configUUID, ObjectNode authConfig) {
+    String keyName = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyName.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required to resolve the OCI KMS key.");
+    }
+
+    String keyOcid = getKeyOcidByName(configUUID, authConfig, keyName);
+    if (StringUtils.isBlank(keyOcid)) {
+      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
+      keyOcid = resp.getKey().getId();
+    }
+    authConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
+    return keyOcid;
   }
 
   public CreateKeyResponse createKey(UUID configUUID, ObjectNode authConfig, String displayName) {
@@ -295,11 +345,12 @@ public class OciEARServiceUtil {
   }
 
   /**
-   * Returns true if the key exists (HTTP 200), false if it does not (HTTP 404 or blank OCID).
+   * Returns true if the key exists, false if it does not (HTTP 404 or blank OCID) or is deleted or
+   * scheduled for deletion. OCI keeps answering GetKey with HTTP 200 for a key in those states.
    *
    * <p>Throws a descriptive RuntimeException for HTTP 403 (insufficient permissions) or any other
-   * unexpected API error, so callers are not silently misled. Lifecycle state and algorithm
-   * validation are left to {@link #validateKeySettings}.
+   * unexpected API error, so callers are not silently misled. The remaining lifecycle states and
+   * algorithm validation are left to {@link #validateKeySettings}.
    */
   public boolean checkKeyExists(ObjectNode authConfig, String keyOcid) {
     if (StringUtils.isBlank(keyOcid)) {
@@ -310,23 +361,20 @@ public class OciEARServiceUtil {
 
     try {
       GetKeyResponse response = client.getKey(GetKeyRequest.builder().keyId(keyOcid).build());
-      return response.getKey() != null;
+      Key key = response.getKey();
+      return key != null && !DELETION_STATES.contains(key.getLifecycleState());
     } catch (BmcException e) {
       if (e.getStatusCode() == 404) {
         return false;
       }
       if (e.getStatusCode() == 403) {
         throw new RuntimeException(
-            "Insufficient permissions to access OCI key '" + keyOcid + "'.", e);
+            OCIErrorFormatter.logAndShorten(
+                "Insufficient permissions to access OCI key '" + keyOcid + "'.", e),
+            e);
       }
       throw new RuntimeException(
-          "Error accessing OCI key '"
-              + keyOcid
-              + "': HTTP "
-              + e.getStatusCode()
-              + ": "
-              + e.getMessage(),
-          e);
+          OCIErrorFormatter.logAndShorten("Error accessing OCI key '" + keyOcid + "'", e), e);
     }
   }
 
@@ -391,7 +439,7 @@ public class OciEARServiceUtil {
       return null;
     }
     if (matches.size() > 1) {
-      throw new RuntimeException(
+      throw new InvalidOciKmsConfigException(
           String.format(
               "Multiple OCI keys found with displayName '%s' in compartment '%s'. Please make it"
                   + " unique.",
@@ -434,24 +482,30 @@ public class OciEARServiceUtil {
     return null;
   }
 
-  public void validateKMSProviderConfigFormData(ObjectNode formData) {
+  /**
+   * Validates OCI KMS config form data. {@code isCreate} is true for a config being created, the
+   * only case where a key named OCI_KEY_NAME may be missing: create makes it.
+   */
+  public void validateKMSProviderConfigFormData(ObjectNode formData, boolean isCreate) {
     // Step 1: fail fast on blank fields not already covered by getCredentials().
     // Credential fields (TENANCY_OCID, USER_OCID, FINGERPRINT, PRIVATE_KEY) are checked inside
     // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
     String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.ociVaultId.fieldName);
     String regionStr = getSafeText(formData, OciKmsAuthConfigField.ociRegion.fieldName);
     String compartmentId = getSafeText(formData, OciKmsAuthConfigField.ociCompartmentId.fieldName);
-    if (StringUtils.isBlank(vaultOcid)) throw new RuntimeException("OCI_VAULT_OCID is required");
-    if (StringUtils.isBlank(regionStr)) throw new RuntimeException("OCI_REGION is required");
+    if (StringUtils.isBlank(vaultOcid))
+      throw new InvalidOciKmsConfigException("OCI_VAULT_OCID is required");
+    if (StringUtils.isBlank(regionStr))
+      throw new InvalidOciKmsConfigException("OCI_REGION is required");
     if (StringUtils.isBlank(compartmentId))
-      throw new RuntimeException("OCI_COMPARTMENT_OCID is required");
+      throw new InvalidOciKmsConfigException("OCI_COMPARTMENT_OCID is required");
 
     // Step 2: parse region locally no network call, catches completely invalid strings early.
     Region region;
     try {
       region = Region.fromRegionId(regionStr);
     } catch (IllegalArgumentException e) {
-      throw new RuntimeException(
+      throw new InvalidOciKmsConfigException(
           "Invalid OCI_REGION: '" + regionStr + "' is not a recognized OCI region identifier.", e);
     }
 
@@ -470,17 +524,19 @@ public class OciEARServiceUtil {
                 : "Instance principal authentication failed. Ensure this YugabyteDB Anywhere "
                     + "host is an OCI compute instance in a dynamic group with IAM policies "
                     + "granting access to OCI services.";
-        throw new RuntimeException(message, e);
+        throw new RuntimeException(OCIErrorFormatter.logAndShorten(message, e), e);
       }
-      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+      throw new RuntimeException(
+          OCIErrorFormatter.logAndShorten("OCI credential validation failed", e), e);
     } catch (Exception e) {
       if (containsIgnoreCase(e.getMessage(), "private key")
           || containsIgnoreCase(e.getMessage(), "pkcs")
           || containsIgnoreCase(e.getMessage(), "pem")) {
-        throw new RuntimeException(
+        throw new InvalidOciKmsConfigException(
             "Invalid PRIVATE_KEY. Could not parse the OCI private key content.", e);
       }
-      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+      throw new RuntimeException(
+          OCIErrorFormatter.logAndShorten("OCI credential validation failed", e), e);
     }
 
     // Step 4: validate vault credentials are confirmed valid at this point, so a failure here
@@ -491,34 +547,70 @@ public class OciEARServiceUtil {
     } catch (BmcException e) {
       if (e.getStatusCode() == 404) {
         throw new RuntimeException(
-            String.format(
-                "OCI vault is not accessible. Verify that OCI_VAULT_OCID '%s' exists in region"
-                    + " OCI_REGION '%s'.",
-                vaultOcid, regionStr),
+            OCIErrorFormatter.logAndShorten(
+                String.format(
+                    "OCI vault is not accessible. Verify that OCI_VAULT_OCID '%s' exists in region"
+                        + " OCI_REGION '%s'.",
+                    vaultOcid, regionStr),
+                e),
             e);
       }
       if (e.getStatusCode() == 403) {
         throw new RuntimeException(
-            "Insufficient permissions to access OCI vault '" + vaultOcid + "'.", e);
+            OCIErrorFormatter.logAndShorten(
+                "Insufficient permissions to access OCI vault '" + vaultOcid + "'.", e),
+            e);
       }
       throw new RuntimeException(
-          "Failed to access OCI vault '" + vaultOcid + "': " + e.getMessage(), e);
+          OCIErrorFormatter.logAndShorten("Failed to access OCI vault '" + vaultOcid + "'", e), e);
     }
 
-    // Step 5: validate the key by name (the single source of truth).
-    // OCI_KEY_NAME is required. If a key with this display name already exists, validate its
-    // settings (lifecycle state must be Enabled and algorithm must be AES). A non-existent name is
-    // allowed here; the key will be created at config-create time. getKeyOcidByName throws if
-    // multiple keys share the same display name.
+    // Step 5: validate the key. An existing config carries the OCI_KEY_OCID it was created with,
+    // and that key must still exist, be Enabled and use AES; its display name may have changed.
+    // Otherwise (create, or a config that predates the cached OCID) the key is found by
+    // OCI_KEY_NAME. Only create may name a key that does not exist yet, because it creates the
+    // key; edit and refresh never do. getKeyOcidByName throws if multiple keys share the same
+    // display name.
+    String storedKeyOcid = getSafeText(formData, OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    if (StringUtils.isNotBlank(storedKeyOcid)) {
+      validateKey(formData, storedKeyOcid);
+      return;
+    }
     String keyName = getSafeText(formData, OciKmsAuthConfigField.ociKeyName.fieldName);
     if (StringUtils.isBlank(keyName)) {
-      throw new RuntimeException("OCI_KEY_NAME is required");
+      throw new InvalidOciKmsConfigException("OCI_KEY_NAME is required");
     }
     String keyOcid = getKeyOcidByName(null, formData, keyName);
-    if (StringUtils.isNotBlank(keyOcid) && !validateKeySettings(formData, keyOcid)) {
-      throw new RuntimeException(
+    if (StringUtils.isBlank(keyOcid)) {
+      if (isCreate) {
+        return;
+      }
+      throw new InvalidOciKmsConfigException(
+          String.format("No OCI key with display name '%s' found in the compartment.", keyName));
+    }
+    if (!validateKeySettings(formData, keyOcid)) {
+      throw new InvalidOciKmsConfigException(
           "OCI key '"
               + keyName
+              + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
+    }
+  }
+
+  /**
+   * Checks that the key exists, is Enabled and uses AES. Existence is checked first because {@link
+   * #validateKeySettings} answers false for any error or non-Enabled state, which would report a
+   * deleted key, a key scheduled for deletion or an access failure as invalid settings; {@link
+   * #checkKeyExists} rethrows access errors with their cause.
+   */
+  public void validateKey(ObjectNode authConfig, String keyOcid) {
+    if (!checkKeyExists(authConfig, keyOcid)) {
+      throw new InvalidOciKmsConfigException(
+          "OCI key '" + keyOcid + "' does not exist or is scheduled for deletion.");
+    }
+    if (!validateKeySettings(authConfig, keyOcid)) {
+      throw new InvalidOciKmsConfigException(
+          "OCI key '"
+              + keyOcid
               + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
     }
   }

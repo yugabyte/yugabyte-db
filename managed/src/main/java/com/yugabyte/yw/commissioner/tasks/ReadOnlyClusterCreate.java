@@ -10,14 +10,17 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
+@CanRollback
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
   @Inject
@@ -105,6 +109,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
+      createEnsureManagedLoadBalancerTasks(cluster);
       boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               nodesToProvision,
@@ -158,6 +163,12 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set the node state to live.
       createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Never registers with a load balancer that the user named: a managed cluster has no lbName.
+      if (ManagedLoadBalancerUtil.isEnabled(cluster)) {
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
+      }
 
       // Update the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)

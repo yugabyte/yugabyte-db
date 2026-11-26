@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -42,6 +43,46 @@ public class SoftwareUpgradeRetryLocalTest extends SoftwareUpgradeRetryLocalTest
               PG_11_DB_VERSION,
               upgraded.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
           assertTrue(upgraded.getUniverseDetails().isSoftwareRollbackAllowed);
+          assertUpgradeProgressCompleted(upgraded);
+          verifyPayload();
+          verifyYSQL(upgraded);
+        });
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithReadReplicaWithRetries() throws InterruptedException {
+    Universe universe = createRollbackCapableUniverse();
+    final UUID universeUUID = universe.getUniverseUUID();
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.ybSoftwareVersion = OLD_VERSION_WITH_ROLLBACK;
+    rrIntent.numNodes = 3;
+    rrIntent.replicationFactor = 3;
+    doAddReadReplica(universe, rrIntent);
+    UUID rrClusterUuid =
+        Universe.getOrBadRequest(universeUUID)
+            .getUniverseDetails()
+            .getReadOnlyClusters()
+            .get(0)
+            .uuid;
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
+    params.setUniverseUUID(universeUUID);
+    params.ybSoftwareVersion = PG_11_DB_VERSION;
+
+    runFaultInjectedUpgrade(
+        () ->
+            upgradeUniverseHandler.upgradeDBVersion(
+                params, customer, Universe.getOrBadRequest(universeUUID)),
+        () -> {
+          Universe upgraded = Universe.getOrBadRequest(universeUUID);
+          assertUpgradeProgressCompleted(upgraded);
+          assertTrue(
+              "Read replica t-server AZs are tracked",
+              upgraded
+                  .getUniverseDetails()
+                  .prevYBSoftwareConfig
+                  .getTserverAZUpgradeStatesList()
+                  .stream()
+                  .anyMatch(s -> rrClusterUuid.equals(s.getClusterUUID())));
           verifyPayload();
           verifyYSQL(upgraded);
         });

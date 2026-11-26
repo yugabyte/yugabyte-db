@@ -49,6 +49,7 @@ public class TestClientPrepStmtState extends BaseYsqlConnMgr {
   private static final String BAD_SQL = "THIS IS NOT VALID SQL $$$$";
   private static final String SYNTAX_ERROR = "syntax error";
   private static final String PID_QUERY = "SELECT pg_backend_pid()";
+  private static final char[] INTERNAL_PACKET_TYPES = { 'A', 's', 'p', 'G', 'g', 'x' };
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -670,19 +671,19 @@ public class TestClientPrepStmtState extends BaseYsqlConnMgr {
     }
   }
 
-  // YbThrowError may only arrive from the connection manager, and only with a
-  // 5-character sqlstate.
   @Test
-  public void testThrowErrorPacketRejected() throws Exception {
+  public void testInternalPacketsRejected() throws Exception {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
     markClusterNeedsRecreation();
 
-    try (WireConn c = rawConnBuilder()
-            .endpoint(ConnectionEndpoint.POSTGRES)
-            .socketTimeoutMs(SOCKET_TIMEOUT_MS)
-            .connect()) {
-      c.sendRaw(PgWireProtocol.buildRaw('x', throwErrorBody("26000", "injected")));
-      assertFatal(c.readMessage(), "08P01", "invalid frontend message type 120");
+    for (char type : INTERNAL_PACKET_TYPES) {
+      try (WireConn c = rawConnBuilder()
+              .endpoint(ConnectionEndpoint.POSTGRES)
+              .socketTimeoutMs(SOCKET_TIMEOUT_MS)
+              .connect()) {
+        c.sendRaw(PgWireProtocol.buildRaw(type, throwErrorBody("26000", "injected")));
+        assertFatal(c.readMessage(), "08P01", "invalid frontend message type " + (int) type);
+      }
     }
 
     int pid;
@@ -693,27 +694,27 @@ public class TestClientPrepStmtState extends BaseYsqlConnMgr {
           .intValue("pid");
     }
 
-    for (String sqlState : new String[] { "26000", "2600" }) {
+    for (char type : INTERNAL_PACKET_TYPES) {
       try (WireConn c = connect()) {
-        c.sendRaw(PgWireProtocol.buildRaw('x', throwErrorBody(sqlState, "injected")));
+        c.sendRaw(PgWireProtocol.buildRaw(type, throwErrorBody("26000", "injected")));
         try {
           PgMessage msg = c.readMessage();
-          fail("Expected the connection manager to drop the connection, got " + msg);
+          fail("Expected the connection manager to drop the connection on '" + type
+              + "', got " + msg);
         } catch (EOFException expected) {
-          // Connection manager closed the connection without forwarding 'x'.
         }
+      }
+
+      try (WireConn c = connect()) {
+        assertEquals("The pooled backend was lost to a rejected '" + type + "' packet",
+            pid, c.createPipeline()
+                  .query(PID_QUERY).label("pid")
+                  .run()
+                  .intValue("pid"));
       }
     }
 
     try (WireConn c = connect()) {
-      // Had 'x' reached the backend it would have died on the ereport(FATAL), and
-      // the one-backend pool would have had to start a new one.
-      assertEquals("The pooled backend was lost to the rejected YbThrowError packet",
-          pid, c.createPipeline()
-                .query(PID_QUERY).label("pid")
-                .run()
-                .intValue("pid"));
-
       c.createPipeline()
        .parse("s1", "SELECT 1").bind("s1").execute().row("1")
        .sync()

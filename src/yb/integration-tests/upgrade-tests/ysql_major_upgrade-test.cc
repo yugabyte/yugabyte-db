@@ -172,6 +172,27 @@ TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
 #endif
 }
 
+// The catalog upgrade connects as yugabyte and replays each role's stored, pre-hashed password:
+// yugabyte's is its own change, app_user's is not. Binary upgrade must load both even when the
+// masters give that session a password reuse window, and both are recorded in the history.
+TEST_F(YsqlMajorUpgradeTest, PrehashedPasswordWithReuseWindow) {
+  ASSERT_OK(ExecuteStatements(
+      {"ALTER ROLE yugabyte PASSWORD 'yb_pw_one'",
+       "CREATE ROLE app_user LOGIN PASSWORD 'app_pw_one'"}));
+  for (auto* master : cluster_->master_daemons()) {
+    master->AddExtraFlag("ysql_pg_conf_csv", "yb_password_reuse_history=3");
+  }
+
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(
+                "SELECT pwdhstrole::regrole::text FROM pg_yb_password_history "
+                "WHERE pwdhstrole IN ('yugabyte'::regrole, 'app_user'::regrole) ORDER BY 1")),
+            (std::vector<std::string>{"app_user", "yugabyte"}));
+}
+
 TEST_F(YsqlMajorUpgradeTest, BackslashD) {
   ASSERT_OK(ExecuteStatement("CREATE TABLE t (a INT)"));
   static const auto kBackslashD = "\\d";
@@ -2447,6 +2468,11 @@ TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterMasterKilledDuringUpgrade) {
   // Kill the leader right before the pg_upgrade binary runs, with the new version postgres up.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_kill_master_before_ysql_pg_upgrade", "true"));
   ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+  // The upgrade RPC can fail once the killed master's sockets close, before the process has
+  // exited; Restart() requires it to be gone.
+  ASSERT_OK(WaitFor(
+      [leader]() -> Result<bool> { return !leader->IsProcessAlive(); }, 30s,
+      "yb-master to be killed before pg_upgrade"));
   ASSERT_TRUE(Env::Default()->DirExists(socket_dir))
       << "Killed master did not leave its socket directory behind: " << socket_dir;
 

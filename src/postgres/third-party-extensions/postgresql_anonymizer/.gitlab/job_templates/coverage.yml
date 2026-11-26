@@ -1,0 +1,31 @@
+---
+spec:
+  inputs:
+    pgver:     # Mandatory
+      type: string
+      description: |
+        The PostgreSQL major version with the "pg" prefix
+        (e.g. `pg13`, pg16`, etc.).
+
+---
+
+"coverage-$[[ inputs.pgver ]]":
+  stage: test
+  image: registry.gitlab.com/dalibo/postgresql_anonymizer:pgrx
+  variables:
+    PGVER: $[[ inputs.pgver ]]
+  script:
+    - make coverage_test
+    - make coverage_report
+  coverage: '/Coverage: \d+(?:\.\d+)?/'
+  when: manual
+  artifacts:
+    paths:
+      - target/release/anon-$[[ inputs.pgver ]]
+      - target/release/coverage/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: target/release/coverage/cobertura.xml
+    expire_in: 1 day
+

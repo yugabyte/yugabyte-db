@@ -74,7 +74,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -115,10 +114,10 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
-    log.info("Starting v2 edit GFlags with {}", editGFlags);
+    log.info("Starting v2 edit GFlags with {}", prettyPrint(editGFlags));
 
     // get universe from db
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     GFlagsUpgradeParams v1Params;
     if (Util.isKubernetesBasedUniverse(universe)) {
@@ -144,7 +143,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask startSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart upgradeStart)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     SoftwareUpgradeParams v1Params =
@@ -170,7 +169,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask finalizeSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize upgradeStart)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeParams v1Params =
@@ -188,7 +187,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
   public UniverseSoftwareUpgradeFinalizeInfo getSoftwareUpgradeFinalizeInfo(
       UUID cUUID, UUID uniUUID) {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeInfoResponse v1Resp = v1Handler.finalizeUpgradeInfo(cUUID, uniUUID);
@@ -202,7 +201,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       UUID uniUUID,
       UniverseThirdPartySoftwareUpgradeStart upgradeStart)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     ThirdpartySoftwareUpgradeParams v1Params =
@@ -222,7 +221,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
   public YBATask rollbackSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     RollbackUpgradeParams v1Params =
@@ -239,7 +238,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
   public YBATask resumeCanarySoftwareUpgrade(
       UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
     return new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
@@ -260,7 +259,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask restartUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniRestart)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UUID taskUuid;
     if (uniRestart == null) {
@@ -295,7 +294,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask systemdEnable(
       Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
@@ -317,7 +316,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
       throws JsonProcessingException {
 
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     TlsToggleParams v1Params =
@@ -334,7 +333,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask certRotate(Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec)
       throws JsonProcessingException {
 
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     CertsRotateParams v1Params =
@@ -351,7 +350,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask editKubernetesOverrides(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     KubernetesOverridesUpgradeParams v1Params =
@@ -369,7 +368,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
   public YBATask configureQueryLogging(
       Request request, UUID cUUID, UUID uniUUID, UniverseQueryLogsExport req) throws Exception {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     log.info("Configure query log for universe with v2 spec: {}", prettyPrint(req));
 
@@ -388,7 +387,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   public YBATask configureMetricsExport(
       Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
     telemetryProviderService.throwExceptionIfMetricsExportRuntimeFlagDisabled();
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     log.info("Configure metrics export for universe with v2 spec: {}", prettyPrint(req));
@@ -494,7 +493,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
         "Configure export telemetry configs for universe with v2 spec: {}", prettyPrint(reqBody));
 
     // Verify if the request body is valid.
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     if (reqBody == null || reqBody.getTelemetryConfig() == null) {
       throw new PlatformServiceException(
@@ -549,12 +548,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
    * universe.
    */
   public api.v2.models.TelemetryConfig getExportTelemetryConfig(UUID cUUID, UUID uniUUID) {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe.getOrBadRequest(uniUUID, customer);
-    TelemetryConfig stored =
-        ExportTelemetryConfig.getForUniverse(uniUUID)
-            .map(ExportTelemetryConfig::getTelemetryConfig)
-            .orElse(null);
+    TelemetryConfig stored = OtelCollectorUtil.getPersistedTelemetryConfig(uniUUID);
     if (stored == null) {
       return new api.v2.models.TelemetryConfig();
     }
@@ -590,7 +586,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
   public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
       throws JsonProcessingException {
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     ResizeNodeParams v1Params =
@@ -628,9 +624,11 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     log.info("Starting v2 upgrade VM Image with {}", vmImageUpgradeSpec);
 
     // get universe from db
-    Customer customer = Customer.getOrBadRequest(cUUID);
+    Customer customer = Customer.getOrNotFound(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
-    VMImageUpgradeParams v1Params = new VMImageUpgradeParams();
+    VMImageUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toVMImageUpgradeParams(
+            universe.getUniverseDetails(), request);
     UniverseVMImageUpgradeMapper.INSTANCE.copyToV1VMImageUpgradeParams(
         vmImageUpgradeSpec, v1Params);
 

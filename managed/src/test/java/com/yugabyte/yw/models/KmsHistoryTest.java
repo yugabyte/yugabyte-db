@@ -11,12 +11,14 @@
 package com.yugabyte.yw.models;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
+import io.ebean.DB;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -105,5 +107,44 @@ public class KmsHistoryTest extends FakeDBApplication {
     assertNotNull(keyRef);
     Set<Universe> universes = KmsHistory.getUniverses(configUUID, TargetType.UNIVERSE_KEY);
     assertEquals(universes.size(), 1);
+  }
+
+  @Test
+  public void testLatestReEncryptionCountAndActiveMasterKeyCount() {
+    UUID configUUID = testKMSConfig.getConfigUUID();
+    UUID universeUUID = UUID.randomUUID();
+    assertEquals(0, KmsHistory.getLatestReEncryptionCount(universeUUID));
+    assertEquals(0, KmsHistory.countUniverseKeysWithActiveMasterKey(universeUUID));
+
+    KmsHistory.createKmsHistory(
+        configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a", 0, "a", null, true);
+    KmsHistory.createKmsHistory(
+        configUUID, universeUUID, TargetType.UNIVERSE_KEY, "b", 2, "b", null, true);
+    KmsHistory.createKmsHistory(
+        configUUID, universeUUID, TargetType.UNIVERSE_KEY, "c", 2, "c", null, true);
+    // Another universe's keys don't count.
+    KmsHistory.createKmsHistory(
+        configUUID, UUID.randomUUID(), TargetType.UNIVERSE_KEY, "d", 5, "d", null, true);
+
+    assertEquals(2, KmsHistory.getLatestReEncryptionCount(universeUUID));
+    assertEquals(
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID).size(),
+        KmsHistory.countUniverseKeysWithActiveMasterKey(universeUUID));
+    assertEquals(2, KmsHistory.countUniverseKeysWithActiveMasterKey(universeUUID));
+  }
+
+  @Test
+  public void testGetAllActiveHistoryWithoutEncryptionContext() {
+    UUID configUUID = testKMSConfig.getConfigUUID();
+    UUID universeUUID = UUID.randomUUID();
+    KmsHistory.createKmsHistory(configUUID, universeUUID, TargetType.UNIVERSE_KEY, "a", "a");
+    KmsHistory.updateKeyRefStatus(universeUUID, configUUID, TargetType.UNIVERSE_KEY, "a", true);
+
+    List<KmsHistory> active =
+        KmsHistory.getAllActiveHistoryWithoutEncryptionContext(TargetType.UNIVERSE_KEY);
+    assertEquals(1, active.size());
+    assertEquals(universeUUID, active.get(0).getUuid().targetUuid);
+    assertEquals(configUUID, active.get(0).getConfigUuid());
+    assertFalse(DB.beanState(active.get(0)).loadedProps().contains("encryptionContext"));
   }
 }

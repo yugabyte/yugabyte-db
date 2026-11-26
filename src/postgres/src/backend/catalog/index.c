@@ -3097,7 +3097,9 @@ index_update_stats(Relation rel,
 	  * avoid updating statistics if we don't really need to. If auto analyze is enabled, it will keep reltuples
 	  * on the (indexed) main table reasonably accurate, so we can skip updating statistics here.
 	  */
-	update_stats = update_stats && (YBCIsLegacyModeForCatalogOps() || !YBCIsAutoAnalyzeEnabled());
+	update_stats = update_stats &&
+		(!YBCUsingObjectLocksGloballyForCurrentTxn() ||
+		 !YBCIsAutoAnalyzeEnabled());
 	if (update_stats)
 	{
 		if (rd_rel->relpages != (int32) relpages)
@@ -4394,18 +4396,34 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 
 		if (IsYBRelation(iRel))
 		{
-			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
-				/*
-				* Drop the old DocDB table associated with this index.
-				* This is only required for secondary indexes, because a
-				* primary index in YB doesn't have a DocDB table separate
-				* from the base relation's table.
-				* If this is a table rewrite, the indexes on the table
-				* will automatically be dropped when the table is dropped.
-				* Note: The drop isn't finalized until after the txn
-				* commits/aborts.
-				*/
-				YBCDropIndex(iRel);
+			if (!iRel->rd_index->indisprimary)
+			{
+				if (is_yb_table_rewrite)
+				{
+					YbcTableProperties yb_props = YbTryGetTableProperties(iRel);
+
+					/*
+					 * Dropping the old table drops this index's DocDB table
+					 * but only tombstones the table's own colocation id.
+					 * Write a tombstone for the index so its rows don't
+					 * reappear if its colocation id is reused.
+					 */
+					if (yb_props && yb_props->is_colocated)
+						YbWriteColocatedIndexTombstone(iRel);
+				}
+				else
+					/*
+					 * Drop the old DocDB table associated with this index.
+					 * This is only required for secondary indexes, because a
+					 * primary index in YB doesn't have a DocDB table separate
+					 * from the base relation's table.
+					 * If this is a table rewrite, the indexes on the table
+					 * will automatically be dropped when the table is dropped.
+					 * Note: The drop isn't finalized until after the txn
+					 * commits/aborts.
+					 */
+					YBCDropIndex(iRel);
+			}
 		}
 		index_close(iRel, AccessExclusiveLock);
 

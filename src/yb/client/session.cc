@@ -91,6 +91,10 @@ void YBSession::SetReadPoint(const ReadHybridTime& read_time, const TabletId& ta
   read_point()->SetReadTime(read_time, std::move(local_limits));
 }
 
+void YBSession::ResetReadPoint() {
+  SetReadPoint({});
+}
+
 bool YBSession::IsRestartRequired() {
   auto rp = read_point();
   return rp && rp->IsRestartRequired();
@@ -210,6 +214,9 @@ void BatcherFlushDone(
       status = STATUS(
           IllegalState, "Session is closed, cannot retry operations", done_batcher->LogPrefix());
     }
+    // The batcher could outlive the callback, delaying reuse of the buffers. Timed out local calls
+    // whose handlers still run keep their own references.
+    done_batcher->SetBuffersHolder(nullptr);
     MoveErrorsAndRunCallback(
         done_batcher, std::move(errors), std::move(callback), std::move(status));
     return;

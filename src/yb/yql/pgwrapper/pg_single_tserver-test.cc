@@ -18,7 +18,11 @@
 
 #include "yb/consensus/log.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/gutil/strings/split.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -55,8 +59,9 @@ DECLARE_bool(never_fsync);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
-DECLARE_bool(TEST_store_apply_state_without_apply_op_id);
+DECLARE_bool(TEST_store_apply_state_without_apply_op_id_and_log_ht);
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_enable_packed_row);
@@ -64,6 +69,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(master_max_concurrent_ysql_catalog_prefetches);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -2332,8 +2338,8 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutFlush) {
   ASSERT_EQ(sum, -kNumRows * (kNumRows + 1) / 2);
 }
 
-// Older releases stored the apply state of a large transaction without its apply op id. A tserver
-// that finds such a state on restart must resume and complete the apply.
+// Older releases stored the apply state of a large transaction without its apply op id and log
+// hybrid time. A tserver that finds such a state on restart must resume and complete the apply.
 TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyOpId) {
   constexpr int kApplyBatchRecords = 10;
   constexpr int kNumRows = 50;
@@ -2346,7 +2352,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   auto tablet = ASSERT_RESULT(peers.front()->shared_tablet());
 
   // Apply only the first batch, and store the apply state for the rest the way older releases did.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 10;
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat(
@@ -2357,7 +2363,7 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
     return VERIFY_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular)) >
            static_cast<size_t>(kApplyBatchRecords);
   }, 10s * kTimeMultiplier, "First apply batch"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_store_apply_state_without_apply_op_id_and_log_ht) = false;
   const auto tablet_id = tablet->tablet_id();
   peers.clear();
   tablet.reset();
@@ -2376,6 +2382,17 @@ TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutStoredApplyO
   // Make the finished apply durable, then restart without flushing: the later row must come back
   // from the WAL, and the loader must find no pending apply.
   ASSERT_OK(cluster_->FlushTablets());
+  // Without log hybrid time, the resumed apply must still give the regular DB files a valid largest
+  // hybrid time.
+  peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  tablet = ASSERT_RESULT(peers.front()->shared_tablet());
+  for (const auto& file : tablet->regular_db()->GetLiveFilesMetaData()) {
+    ASSERT_TRUE(file.largest.user_frontier) << file.ToString();
+    auto ht = down_cast<docdb::ConsensusFrontier&>(*file.largest.user_frontier).hybrid_time();
+    ASSERT_TRUE(ht.is_valid()) << file.ToString();
+  }
+  peers.clear();
+  tablet.reset();
   conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, $1)", kNumRows + 2, -(kNumRows + 2)));
   StringWaiterLogSink pending_applies_sink("pending applies");
@@ -2404,9 +2421,24 @@ class PgSmallRpcWorkersTest : public PgSingleTServerTest {
 
     PgSingleTServerTest::SetUp();
   }
+
+  void TestManyYsqlConnections();
 };
 
-TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+// Reproduces the pile-up behind issue #36104: preloading gives each connection a large catalog
+// read and a prefetch limit of one serializes those reads, so the connections are released
+// together and reach the rest of startup at the same instant with few RPC workers to serve them.
+class PgThrottledCatalogPrefetchTest : public PgSmallRpcWorkersTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
+
+    PgSmallRpcWorkersTest::SetUp();
+  }
+};
+
+void PgSmallRpcWorkersTest::TestManyYsqlConnections() {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
   // The version increment is used to make sure that all the new connections which will be created
@@ -2441,6 +2473,15 @@ TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
     ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
     std::this_thread::sleep_for(1s);
   }
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+  TestManyYsqlConnections();
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnectionsWithThrottledCatalogPrefetch,
+          PgThrottledCatalogPrefetchTest) {
+  TestManyYsqlConnections();
 }
 
 TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {

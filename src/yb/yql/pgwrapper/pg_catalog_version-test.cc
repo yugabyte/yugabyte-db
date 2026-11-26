@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <future>
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/common/entity_ids.h"
@@ -24,6 +26,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -45,6 +48,8 @@ METRIC_DECLARE_counter(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb {
 namespace pgwrapper {
+
+YB_STRONGLY_TYPED_BOOL(SingleAttempt);
 
 class PgCatalogVersionTest : public LibPqTestBase {
 
@@ -917,6 +922,91 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   // should fail with error indicating that the database has been dropped.
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   ASSERT_NO_FATALS(CheckDroppedDatabaseError(status, new_db_oid));
+}
+
+// A connection that starts while DROP DATABASE removes its database must fail on its own, without
+// crashing its backend (which makes the postmaster restart every backend on that node).
+// The pg_database recheck in InitPostgres reads the startup catalog prefetch, which predates the
+// drop, so it passes. The connection then finds its relcache init file stale and cannot revalidate
+// it, so it rebuilds the file, and that rebuild makes the first live pg_database read.
+//
+// The test runs in the legacy DDL mode (no object locking, no invalidation messages) because there
+// the window is deterministic: the database lock is local to the node, so the DROP on another node
+// commits while the connection is paused after its recheck, and without invalidation messages a
+// stale init file is always rebuilt. With object locking, the DROP has to commit before the
+// connection takes the database lock, and the connection crashes only if its node learns of the
+// drop between the connection resolving its shared memory slot and fetching invalidation messages.
+TEST_F(PgCatalogVersionTest, ConnectDuringDropDatabase) {
+  constexpr auto kDelayMs = 10000 * kTimeMultiplier;
+  RestartClusterWithInvalMessageDisabled();
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  // Every backend that starts on node 1 from now on pauses after its database recheck and before
+  // RelationCacheInitializePhase3.
+  auto* ts1 = cluster_->tablet_server(1);
+  ts1->Shutdown();
+  ASSERT_OK(ts1->Restart(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_ysql_delay_before_relcache_init_phase3_ms", std::to_string(kDelayMs)}}));
+
+  // Setup connections retry while node 1 comes back up. The racing connection makes a single
+  // attempt, so that a retry cannot hide a backend crash.
+  const auto connect_to_ts1 = [ts1](const std::string& dbname, SingleAttempt single_attempt) {
+    PGConnSettings settings{
+        .host = ts1->bind_host(),
+        .port = ts1->ysql_port(),
+        .dbname = dbname,
+        .connect_timeout = static_cast<size_t>(4 * kDelayMs / 1000),
+    };
+    if (single_attempt) {
+      settings.should_stop = [] { return true; };
+    }
+    return PGConnBuilder(settings).Connect();
+  };
+
+  // Write the test database's relcache init file on node 1, then leave it behind by one catalog
+  // version.
+  ASSERT_RESULT(connect_to_ts1(kTestDatabase, SingleAttempt::kFalse));
+  {
+    auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+    ASSERT_OK(conn_test.Execute("CREATE TABLE t (k INT)"));
+  }
+  WaitForCatalogVersionToPropagate();
+
+  // A bystander session on node 1, which must survive.
+  auto conn_bystander =
+      ASSERT_RESULT(connect_to_ts1(kYugabyteDatabase, SingleAttempt::kFalse));
+
+  const auto db_oid = ASSERT_RESULT(conn_yugabyte.FetchRow<PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kTestDatabase)));
+  LogWaiter delay_started(
+      ts1, Format("delaying $0 ms before RelationCacheInitializePhase3 for database $1",
+                  kDelayMs, db_oid));
+  auto connect_future = std::async(std::launch::async, [&connect_to_ts1] {
+    return ResultToStatus(connect_to_ts1(kTestDatabase, SingleAttempt::kTrue));
+  });
+  // Drop the database once the connection has passed its database recheck and is paused. The
+  // DROP must commit before the pause ends. The pause started a little before the log line
+  // arrived here, so require the DROP to finish within half the pause; if it is slower, fail
+  // with that reason rather than on the connection unexpectedly succeeding.
+  ASSERT_OK(delay_started.WaitFor(MonoDelta::FromMilliseconds(kDelayMs)));
+  const auto log_seen = MonoTime::Now();
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+  const auto drop_time = MonoTime::Now() - log_seen;
+  ASSERT_LT(drop_time, MonoDelta::FromMilliseconds(kDelayMs / 2))
+      << "DROP DATABASE took too long to be sure it committed within the connection's pause";
+  WaitForCatalogVersionToPropagate();
+
+  const auto status = connect_future.get();
+  LOG(INFO) << "Connection status: " << status;
+  ASSERT_NOK(status);
+  // Only the relcache.c check reports this OID form and detail. The InitPostgres recheck would
+  // name the database and say "dropped or renamed".
+  ASSERT_STR_CONTAINS(status.ToString(), Format("database $0 does not exist", db_oid));
+  ASSERT_STR_CONTAINS(status.ToString(), "It seems to have just been dropped.");
+  ASSERT_OK(conn_bystander.Fetch("SELECT 1"));
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
@@ -3185,6 +3275,38 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row6, "off");
 }
 
+// Make sure GRANT/REVOKE SET ON PARAMETER has global impact.
+TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto set_denied = [&]() -> Result<bool> {
+    auto s = conn_db1_user1.Execute("SET log_planner_stats = on");
+    if (s.ok()) {
+      return false;
+    }
+    if (s.ToString().find("permission denied to set parameter") == std::string::npos) {
+      return s;
+    }
+    return true;
+  };
+  ASSERT_TRUE(ASSERT_RESULT(set_denied()));
+  auto v1_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+
+  ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  auto v2_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v2_db1, v1_db1 + 1);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
+                    60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
+
+  ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  auto v3_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v3_db1, v2_db1 + 1);
+  ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.
@@ -4434,7 +4556,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

@@ -15,10 +15,12 @@
 
 #pragma once
 
+#include <span>
+
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/kv_util.h"
-#include "yb/util/polymorphic_iterator.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tostring.h"
@@ -26,6 +28,7 @@
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_lsm_deletions.h"
 
 namespace yb {
 
@@ -68,10 +71,56 @@ struct VectorIndexIteratorEntry {
   }
 };
 
+// Iterates over the vectors of an index. A failure ends the iteration and is returned by status(),
+// so status() must be checked once Valid() returns false.
+template <IndexableVectorType Vector>
+class VectorIndexIterator {
+ public:
+  using EntryType = VectorIndexIteratorEntry<Vector>;
+
+  virtual ~VectorIndexIterator() {
+    DCHECK(!status_check_required_) << "Iterator reached the end, but its status was not checked";
+  }
+
+  bool Valid() const {
+    if (DoValid()) {
+      return true;
+    }
+    status_check_required_ = true;
+    return false;
+  }
+
+  // Next and Entry require Valid().
+  virtual void Next() = 0;
+  virtual EntryType Entry() const = 0;
+
+  Status status() const {
+    status_check_required_ = false;
+    return DoStatus();
+  }
+
+ protected:
+  virtual bool DoValid() const = 0;
+
+  virtual Status DoStatus() const {
+    return Status::OK();
+  }
+
+ private:
+  mutable bool status_check_required_ = false;
+};
+
+// Returns the tenant of a vector from its payload. An index with a tenant extractor never links
+// vectors of different tenants, see SearchOptions::tenant.
+using VectorTenantExtractor = std::function<Result<Slice>(Slice payload)>;
+
 struct SearchOptions {
   size_t max_num_results;
   size_t ef;
   VectorFilter filter = [](const auto&, const auto&) { return true; };
+  // Restricts the search to vectors of the tenant, see VectorTenantExtractor. Required by indexes
+  // whose vectors belong to tenants, rejected by others.
+  Slice tenant = Slice();
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(max_num_results, ef);
@@ -82,11 +131,11 @@ template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorIndexReaderIf;
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorIndexReaderIf {
+class VectorIndexReaderIf : public VectorDeletionsReaderIf {
  public:
   using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = VectorIndexIteratorEntry<Vector>;
-  using Iterator      = PolymorphicIterator<IteratorValue>;
+  using Iterator      = VectorIndexIterator<Vector>;
 
   virtual ~VectorIndexReaderIf() = default;
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
@@ -96,12 +145,8 @@ class VectorIndexReaderIf {
   // Returns the vector with the given id or NotFound error when vector is not found.
   virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
 
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
+  virtual std::unique_ptr<Iterator> CreateIterator() const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
-
-  Iterator begin() const { return Iterator(BeginImpl()); }
-  Iterator end()   const { return Iterator(EndImpl()); }
 };
 
 template<IndexableVectorType Vector>
@@ -130,6 +175,12 @@ class VectorIndexWriterIf {
   // Inserts the vector with the specified id and attached payload (could be empty).
   // The payload is stored in the index and returned by search together with the vector id.
   virtual Status Insert(VectorId vector_id, const Vector& vector, Slice payload) = 0;
+
+  // Inserts deletions of vectors in this or other indexes, which the index then finds, see
+  // VectorDeletionsReaderIf. Only the indexes of mutable chunks take deletions.
+  virtual void InsertDeletions(std::span<const VectorLSMDeletion> deletions) {
+    LOG(DFATAL) << "Vector deletions are not supported";
+  }
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -204,6 +255,12 @@ class VectorIndexTraitsIf {
   // to the index file, because its own format cannot store them. See VectorPayloadMap.
   virtual bool StoresPayloadInSeparateFile() const {
     return false;
+  }
+
+  // Returns the tenant extractor of the created indexes, null when vectors have no tenants.
+  virtual const VectorTenantExtractor& tenant_extractor() const {
+    static const VectorTenantExtractor kNoTenants;
+    return kNoTenants;
   }
 };
 

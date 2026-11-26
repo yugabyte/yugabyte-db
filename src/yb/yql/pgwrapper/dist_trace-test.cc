@@ -2004,7 +2004,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolComment) {
       MakeExpectedTrace(query, tp.trace_id,
           {{SpanType::kRoot, 1},
            {SpanType::kExtParse, 1},
-           {SpanType::kParse, 2},
+           {SpanType::kParse, 1},
            {SpanType::kRewrite, 1},
            {SpanType::kExtBind, 1},
            {SpanType::kPlan, 1},
@@ -2030,7 +2030,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
       MakeExpectedTrace(query, tp.trace_id,
           {{SpanType::kRoot, 1},
            {SpanType::kExtParse, 1},
-           {SpanType::kParse, 2},
+           {SpanType::kParse, 1},
            {SpanType::kRewrite, 1},
            {SpanType::kExtBind, 1},
            {SpanType::kPlan, 1},
@@ -2057,6 +2057,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolPreparedStatementReuse) {
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.bind", 3));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", 3));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 4));
   ASSERT_EQ(collector_.NumTraces(), 1);
   ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 4);
 
@@ -2820,6 +2821,14 @@ TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
 
   ASSERT_EQ(backend_span.trace_id, tp.trace_id);
   ASSERT_EQ(backend_span.op_name, "query");
+
+  // BackfillIndex is a plain-protobuf RPC; its stub drains req.tablet_id without lightweight types.
+  const auto tablet_ids = ASSERT_RESULT(FetchTabletIds("backfill_trace_test"));
+  ASSERT_OK(WaitForSpanWithAttr(
+      tp.trace_id, "rpc yb.tserver.TabletServerAdminService.BackfillIndex", "req.tablet_id",
+      [&tablet_ids](const std::string& tablet_id) {
+        return std::find(tablet_ids.begin(), tablet_ids.end(), tablet_id) != tablet_ids.end();
+      }));
 }
 
 // The tracer provider uses a parent-based sampler: a span under an unsampled (-00) remote

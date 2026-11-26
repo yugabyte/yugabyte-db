@@ -295,7 +295,17 @@ var updateGCPProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		providerImageBundles = removeGCPImageBundles(removeImageBundles, providerImageBundles)
+		if err := providerutil.ValidateImageBundleEdits(
+			removeImageBundles, editImageBundles, nil, providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		providerImageBundles, err = providerutil.RemoveImageBundles(
+			removeImageBundles, providerImageBundles)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		providerImageBundles = editGCPImageBundles(
 			editImageBundles,
@@ -370,6 +380,7 @@ func init() {
 			formatter.Colorize("Region name is a required key-value pair.",
 				formatter.GreenColor)+
 			" Shared subnet and Instance Template are optional. "+
+			"Pass an empty value (instance-template=) to clear the instance template. "+
 			"Each region needs to be modified using a separate --edit-region flag.")
 	updateGCPProviderCmd.Flags().StringArray("remove-region", []string{},
 		"[Optional] Region name to be removed from the provider. "+
@@ -441,7 +452,8 @@ func editGCPRegions(
 		regionName := r.GetCode()
 		if len(editRegions) != 0 {
 			for _, regionString := range editRegions {
-				region := providerutil.BuildRegionMapFromString(regionString, "edit")
+				region := providerutil.BuildRegionMapFromStringAllowingClearInstanceTemplate(
+					regionString, "edit")
 
 				if strings.Compare(region["name"], regionName) == 0 {
 					details := r.GetDetails()
@@ -455,8 +467,8 @@ func editGCPRegions(
 						}
 						r.SetZones(zones)
 					}
-					if len(region["instance-template"]) != 0 {
-						gcp.SetInstanceTemplate(region["instance-template"])
+					if template, ok := region["instance-template"]; ok {
+						gcp.SetInstanceTemplate(template)
 					}
 					cloudInfo.SetGcp(gcp)
 					details.SetCloudInfo(cloudInfo)
@@ -516,26 +528,6 @@ func addGCPZones(
 	return zones
 }
 
-func removeGCPImageBundles(
-	removeImageBundles []string,
-	providerImageBundles []ybaclient.ImageBundle) []ybaclient.ImageBundle {
-	if len(removeImageBundles) == 0 {
-		return providerImageBundles
-	}
-
-	for _, ib := range removeImageBundles {
-		for i, pIb := range providerImageBundles {
-			if strings.Compare(pIb.GetUuid(), ib) == 0 {
-				providerImageBundles = util.RemoveComponentFromSlice(
-					providerImageBundles, i,
-				).([]ybaclient.ImageBundle)
-			}
-		}
-	}
-
-	return providerImageBundles
-}
-
 func editGCPImageBundles(
 	editImageBundles []string,
 	providerImageBundles []ybaclient.ImageBundle,
@@ -556,16 +548,11 @@ func editGCPImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 
 					ib.SetDetails(details)
@@ -616,14 +603,9 @@ func addGCPImageBundles(
 					formatter.RedColor))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

@@ -94,7 +94,11 @@ extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 
 extern void YBCDropIndex(Relation index);
 
+extern void YbWriteColocatedIndexTombstone(Relation index);
+
 extern bool YbATAltersPartitions(List **subcmds, int subcmds_size);
+
+extern bool YbAddColumnUsesDocdbMissingValue(Expr *cooked_default);
 
 extern List *YBCPrepareAlterTable(List **subcmds,
 								  int subcmds_size,
@@ -130,7 +134,8 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 uint64_t *consistent_snapshot_time,
 									 YbCRSLsnType lsn_type,
 									 YbCRSOrderingMode yb_ordering_mode,
-									 Oid database_oid);
+									 Oid database_oid,
+									 const char *yb_publication_name);
 
 extern void YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
 							   size_t *num_slot_entries);
@@ -158,8 +163,7 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YbcPgChangeRecordBatch **record_batch,
-									   YbcTypeEntityProvider type_entity_provider);
+									   YbcPgChangeRecordBatch **record_batch);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,

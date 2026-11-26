@@ -560,7 +560,9 @@ class PgSession::RunHelper {
         read_only, pg_session_.pg_txn_manager_->GetTxnPriorityRequirement(row_mark_type));
   }
 
-  Result<PerformFuture> Flush(std::optional<CacheOptions>&& cache_options) {
+  Result<PerformFuture> Flush(
+      std::optional<CacheOptions>&& cache_options,
+      PgConnectionPrefetchOptions connection_prefetch) {
     if (ops_info_.ops.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
@@ -575,6 +577,7 @@ class PgSession::RunHelper {
         std::move(ops_info_.ops), {.use_legacy_catalog_session = IsLegacyCatalog(),
                                    .has_catalog_ops = has_catalog_ops_,
                                    .cache_options = std::move(cache_options),
+                                   .connection_prefetch = connection_prefetch,
                                    .in_txn_limit = in_txn_limit_});
   }
 
@@ -999,6 +1002,11 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       auto txn_id = VERIFY_RESULT(
           TransactionId::FromString(historical_read_context_->transaction_id));
       options.set_historical_read_transaction_id(txn_id.data(), txn_id.size());
+      const auto& aborted_subtxn_set = historical_read_context_->aborted_subtxn_set;
+      if (!aborted_subtxn_set.empty()) {
+        options.mutable_historical_read_aborted_subtxns()->mutable_set()->Add(
+            aborted_subtxn_set.begin(), aborted_subtxn_set.end());
+      }
     }
   }
 
@@ -1056,6 +1064,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
+  options.set_part_of_connection_prefetch(
+      ops_options.connection_prefetch.part_of_connection_prefetch);
+  options.set_completes_connection_prefetch(
+      ops_options.connection_prefetch.completes_connection_prefetch);
 
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
@@ -1064,7 +1076,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     caching_info.set_key_value(std::move(cache_options.key_value));
     caching_info.set_catalog_version(cache_options.catalog_version);
     caching_info.set_lookup_only(cache_options.lookup_only);
-    caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
+    caching_info.set_send_away_if_fill_in_flight(cache_options.send_away_if_fill_in_flight);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -1076,6 +1088,15 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
+
+    // The origin is sent either way, because it is not only used for stamping - CDCSDK reports it
+    // on change records. CDR metadata is not stamped on the rows when xrepl_source_write_ht is
+    // absent.
+    if (auto origin_ts = pg_callbacks_.GetSessionReplicationOriginTimestamp();
+        origin_ts > 0 && static_cast<MicrosTime>(origin_ts) <= kMaxHybridTimePhysicalMicros) {
+      options.set_xrepl_source_write_ht(
+          HybridTime::FromMicros(static_cast<MicrosTime>(origin_ts)).ToUint64());
+    }
   }
 
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
@@ -1150,9 +1171,12 @@ void PgSession::TrySetCatalogReadPoint(const ReadHybridTime& read_ht) {
 }
 
 void PgSession::SetHistoricalReadContext(
-    const ReadHybridTime& read_time, std::string transaction_id) {
+    const ReadHybridTime& read_time, std::string transaction_id,
+    std::vector<uint32_t> aborted_subtxn_set) {
   historical_read_context_ = HistoricalReadContext{
-      .read_time = read_time, .transaction_id = std::move(transaction_id)};
+      .read_time = read_time,
+      .transaction_id = std::move(transaction_id),
+      .aborted_subtxn_set = std::move(aborted_subtxn_set)};
 }
 
 void PgSession::ResetHistoricalReadContext() {
@@ -1268,7 +1292,8 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, const RunOptions& options,
-    std::optional<CacheOptions>&& cache_options) {
+    std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
@@ -1341,7 +1366,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         IllegalState, "All operations in a batch must have the same skip_intents state");
     RETURN_NOT_OK(processor(table_op));
   }
-  auto result = runner.Flush(std::move(cache_options));
+  auto result = runner.Flush(std::move(cache_options), connection_prefetch);
   if (read_point_before_catalog_ops) {
     LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
         << "Restoring original read time serial no to "
@@ -1360,22 +1385,23 @@ Result<PerformFuture> PgSession::RunAsync(
       using TO = TableOperation<PgsqlOpPtr>;
       return i != end ? TO{.operation = &*i++, .table = t} : TO();
   };
-  return DoRunAsync(make_lw_function(generator), options);
+  return DoRunAsync(make_lw_function(generator), options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
     const OperationGenerator& generator, const RunOptions& options) {
-  return DoRunAsync(generator, options);
+  return DoRunAsync(generator, options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options) {
+    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
+    PgConnectionPrefetchOptions connection_prefetch) {
   if (cache_options) {
     RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
     // Ensure no buffered requests will be added to cached request.
     RETURN_NOT_OK(buffer_.Flush(PgFlushDebugContext::CatalogTablePrefetch()));
   }
-  return DoRunAsync(generator, {}, std::move(cache_options));
+  return DoRunAsync(generator, {}, std::move(cache_options), connection_prefetch);
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event, uint32_t aux) {
@@ -1430,13 +1456,27 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksLocally()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
     // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
+    return Status::OK();
+  }
+  // A CREATE INDEX with global object locks waits for writers only through object locks. A
+  // transaction without global object locks runs alongside it while
+  // yb_enable_global_object_locking_infra is being promoted (it latched the flag as off), and on a
+  // node with disable_global_object_locks on. If such a transaction sent no locks, the CREATE INDEX
+  // would backfill under its uncommitted UPDATE, and the index would miss the update once it
+  // commits (#36572, #37355). So a transaction without global object locks sends the locks its
+  // reads and writes take, up to ROW EXCLUSIVE; a reader's lock is what makes a table rewrite wait
+  // for it. It sends nothing stronger, so its LOCK TABLE and DDLs behave as without global object
+  // locks: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every lock
+  // in its own lock table either way.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn() &&
+      (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();
   }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
@@ -1452,7 +1492,9 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  // A transaction without global object locks sends no session locks, so PG sends no releases for
+  // them.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
@@ -1470,7 +1512,7 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
 
 Status PgSession::WaitForLockersMultiple(
     const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgWaitForLockersMultipleRequestPB req;

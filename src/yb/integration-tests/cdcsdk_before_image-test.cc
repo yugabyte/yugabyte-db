@@ -772,7 +772,7 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBefore
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
                                        {2, 3}, {1, 999}, {2, 99}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 88}, {}, {1, 888}, {2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
@@ -832,8 +832,8 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestSingleMultiShardUpdate
 
   ExpectedRecord expected_records[] = {{0, 0},  {1, 2},   {1, 3}, {1, 4},   {2, 3},
                                        {2, 88}, {2, 888}, {3, 4}, {2, 999}, {3, 99}};
-  ExpectedRecord expected_before_image_records[] = {{},     {0, 0}, {1, 2}, {1, 3},   {0, 0},
-                                                    {2, 3}, {2, 3}, {0, 0}, {2, 888}, {3, 4}};
+  ExpectedRecord expected_before_image_records[] = {{},     {0, 0},  {1, 2}, {1, 3},   {0, 0},
+                                                    {2, 3}, {2, 88}, {0, 0}, {2, 888}, {3, 4}};
 
   // A multi-shard transaction is streamed only once its APPLY record has been replicated, which
   // happens asynchronously after COMMIT returns to the client. Retry until all records show up.
@@ -900,8 +900,8 @@ TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestMultiSingleShardUpdate
 
   ExpectedRecord expected_records[] = {{0, 0},   {1, 2},  {1, 88}, {1, 888}, {2, 3},
                                        {1, 999}, {2, 99}, {3, 4},  {3, 5},   {3, 6}};
-  ExpectedRecord expected_before_image_records[] = {{},       {},     {1, 2}, {1, 2}, {},
-                                                    {1, 888}, {2, 3}, {},     {3, 4}, {3, 5}};
+  ExpectedRecord expected_before_image_records[] = {{},       {},     {1, 2}, {1, 88}, {},
+                                                    {1, 888}, {2, 3}, {},     {3, 4},  {3, 5}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
@@ -1681,7 +1681,7 @@ TEST_F(
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
                                        {2, 3}, {1, 999}, {2, 99}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 88}, {}, {1, 888}, {2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
@@ -2026,7 +2026,7 @@ TEST_F(CDCSDKBeforeImageTest, TestBeforeImageOfRecordInsertedInSameTxn) {
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records[] = {{1, 1}, {1, 2}, {2, 2}, {2, INT_MAX}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {}, {2, INT_MAX}};
+  ExpectedRecord expected_before_image_records[] = {{}, {1, 1}, {}, {2, 2}};
 
   auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 

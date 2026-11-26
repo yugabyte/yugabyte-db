@@ -147,6 +147,14 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 
 			if (omit_detached && ActiveSnapshotSet())
 			{
+				/*
+				 * YB does not maintain per-row xmin, so the XidInMVCCSnapshot
+				 * check is meaningless.  Always treat a pending-detach
+				 * partition as already detached and omit it.
+				 */
+				if (IsYugaByteEnabled())
+					continue;
+
 				TransactionId xmin;
 				Snapshot	snap;
 

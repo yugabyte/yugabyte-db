@@ -57,7 +57,7 @@ class PgSessionGuard;
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
     (AlterTable) \
-    (BackfillIndex) \
+    (StartTableBackfill) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateTable) \
@@ -68,6 +68,7 @@ class PgSessionGuard;
     (DropTablegroup) \
     (FetchData) \
     (RollbackToSubTransaction) \
+    (RestartTransactionForRetry) \
     (TruncateTable) \
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
@@ -90,6 +91,7 @@ class PgSessionGuard;
 // If such method responds with error Status, it will be handled by the upper layer that will fill
 // response with error status and call context.RespondSuccess.
 #define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (BackfillIndex) \
     (FinishTransaction) \
     /**/
 
@@ -146,6 +148,7 @@ class PgClientSession final {
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
+  class Impl;
   using TransactionBuilder = std::function<client::YBTransactionPtr(
       IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
@@ -236,7 +239,6 @@ BOOST_PP_SEQ_FOR_EACH(
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL
 
  private:
-  class Impl;
   std::unique_ptr<Impl> impl_;
 };
 

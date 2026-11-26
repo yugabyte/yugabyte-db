@@ -346,6 +346,14 @@ impl<'conn: 'stmt, 'stmt> Query<'conn> for &'stmt PreparedStatement<'conn> {
 
         let (mut datums, mut nulls) = self.args_to_datums(args)?;
 
+        // YB: upstream does not mark here.  It relies on the statement's own write assigning
+        // a Postgres xid, which is_xact_still_immutable() then sees.  On YB, writes to YB tables
+        // assign no xid, so mark the transaction mutable before running a mutating plan.  See
+        // the comment at the top of spi.rs.
+        if self.mutating {
+            Spi::mark_mutable();
+        }
+
         // SAFETY: all arguments are prepared above
         let status_code = unsafe {
             pg_sys::SPI_execute_plan(
@@ -366,6 +374,11 @@ impl<'conn: 'stmt, 'stmt> Query<'conn> for &'stmt PreparedStatement<'conn> {
         args: &[DatumWithOid<'mcx>],
     ) -> SpiResult<SpiCursor<'conn>> {
         let (mut datums, nulls) = self.args_to_datums(args)?;
+
+        // YB: see the mark_mutable() call in execute() above.
+        if self.mutating {
+            Spi::mark_mutable();
+        }
 
         // SAFETY: arguments are prepared above and SPI_cursor_open will never return the null
         // pointer.  It'll raise an ERROR if something is invalid for it to create the cursor

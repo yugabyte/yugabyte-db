@@ -78,6 +78,8 @@
 #include "postmaster/bgwriter.h"
 #include "storage/fd.h"
 #include "storage/lmgr.h"
+#include "storage/lwlock.h"
+#include "storage/procsignal.h"
 #include "storage/standby.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -512,6 +514,10 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	if (IsPinnedObject(TableSpaceRelationId, tablespaceoid))
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE,
 					   tablespacename);
+
+	/* Prevent new shared dependencies while we drop the tablespace. */
+	LockSharedObject(TableSpaceRelationId, tablespaceoid, 0,
+					 AccessExclusiveLock);
 
 	/* Check for pg_shdepend entries depending on this tablespace */
 	if (checkSharedDependencies(TableSpaceRelationId, tablespaceoid,
@@ -1069,6 +1075,9 @@ RenameTableSpace(const char *oldname, const char *newname)
 
 	table_endscan(scan);
 
+	/* Lock the tablespace before updating its catalog tuple. */
+	shdepLockAndCheckObject(TableSpaceRelationId, tspId);
+
 	/* Must be owner */
 	if (!pg_tablespace_ownercheck(tspId, GetUserId()))
 		aclcheck_error(ACLCHECK_NO_PRIV, OBJECT_TABLESPACE, oldname);
@@ -1175,7 +1184,12 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 				 errmsg("tablespace \"%s\" does not exist",
 						stmt->tablespacename)));
 
+	tup = heap_copytuple(tup);
 	tablespaceoid = ((Form_pg_tablespace) GETSTRUCT(tup))->oid;
+	table_endscan(scandesc);
+
+	/* Lock the tablespace before updating its catalog tuple. */
+	shdepLockAndCheckObject(TableSpaceRelationId, tablespaceoid);
 
 	/* Must be owner of the existing object */
 	if (!pg_tablespace_ownercheck(tablespaceoid, GetUserId()))
@@ -1230,9 +1244,8 @@ AlterTableSpaceOptions(AlterTableSpaceOptionsStmt *stmt)
 						   "in http://<YB-Master-host>:7000/tables.")));
 
 	heap_freetuple(newtuple);
+	heap_freetuple(tup);
 
-	/* Conclude heap scan. */
-	table_endscan(scandesc);
 	table_close(rel, NoLock);
 
 	return tablespaceoid;
@@ -1274,15 +1287,6 @@ check_default_tablespace(char **newval, void **extra, GucSource source)
 				return false;
 			}
 		}
-	}
-
-	/*
-	 * YB: If Connection Manager is enabled, make the connection sticky.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Setting sticky connection for default_tablespace");
-		yb_ysql_conn_mgr_sticky_guc = true;
 	}
 
 	return true;
@@ -1462,15 +1466,6 @@ check_temp_tablespaces(char **newval, void **extra, GucSource source)
 
 	pfree(rawname);
 	list_free(namelist);
-
-	/*
-	 * YB: If Connection Manager is enabled, make the connection sticky.
-	 */
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Setting sticky connection for temp_tablespaces");
-		yb_ysql_conn_mgr_sticky_guc = true;
-	}
 
 	return true;
 }

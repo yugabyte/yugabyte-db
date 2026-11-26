@@ -69,6 +69,19 @@ class ConsistentReadPoint {
   // Restart read.
   void Restart() EXCLUDES(mutex_);
 
+  // Lower the global limit to cap, but not below the read time. Local limits are kept at or below
+  // the global limit.
+  void CapGlobalLimit(HybridTime cap) EXCLUDES(mutex_);
+
+  // Lower the tablet's local limit to cap, but not below the read time.
+  void CapLocalLimit(TabletIdView tablet, HybridTime cap) EXCLUDES(mutex_);
+
+  // Per-tablet local limits a restarted read keeps: those of the pending restart, if any.
+  [[nodiscard]] HybridTimeMap RestartLocalLimits() const EXCLUDES(mutex_);
+
+  // Read time a restart would move the read to. Meaningful only if IsRestartRequired().
+  [[nodiscard]] HybridTime GetRestartReadHt() const EXCLUDES(mutex_);
+
   // Defer read hybrid time to global limit.
   void Defer() EXCLUDES(mutex_);
 

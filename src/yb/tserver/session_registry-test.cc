@@ -24,9 +24,12 @@
 #include "yb/tserver/session_registry.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
+
+DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
 
 namespace yb::tserver {
 namespace {
@@ -56,7 +59,7 @@ class MockClientSession : public ClientSession {
     ++metrics_.start_shutdown_count;
   }
 
-  bool ReadyToShutdown() const override { return false; }
+  bool ReadyToShutdown() const override { return metrics_.complete_shutdown_count > 0; }
 
   void CompleteShutdown() override {
     ++metrics_.complete_shutdown_count;
@@ -109,8 +112,11 @@ class SessionRegistryTest : public YBTest {
 
 } // namespace
 
-// The test checks CompleteShutdown is called on expired session during registry shutdown.
+// The test checks CompleteShutdown is called on expired session during registry shutdown, started
+// while the expiration task has not yet parked the session.
 TEST_F(SessionRegistryTest, ExpiredSessionCompleteShutdownOnRegistryShutdown) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms) =
+      1000;
   auto& reg = registry();
   const auto session_id = reg.NewSessionId();
   SessionMetrics metrics;

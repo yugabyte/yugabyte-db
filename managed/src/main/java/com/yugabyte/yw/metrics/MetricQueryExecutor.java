@@ -229,19 +229,16 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   public static Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
     switch (metricSettings.getSplitType()) {
       case NODE:
-        // For container volume metrics, use pvc instead of exported_instance
-        if (metricSettings
-            .getMetric()
-            .startsWith(MetricQueryHelper.CONTAINER_VOLUME_METRIC_PREFIX)) {
-          return ImmutableSet.of(
-              MetricQueryHelper.PVC, MetricQueryHelper.NAMESPACE, MetricQueryHelper.AZ_NAME);
+        switch (MetricQueryHelper.getKubernetesKind(metricSettings.getMetric())) {
+          case VOLUME:
+            return ImmutableSet.of(
+                MetricQueryHelper.PVC, MetricQueryHelper.NAMESPACE, MetricQueryHelper.AZ_NAME);
+          case POD:
+            return ImmutableSet.of(
+                MetricQueryHelper.POD_NAME, MetricQueryHelper.NAMESPACE, MetricQueryHelper.AZ_NAME);
+          default:
+            return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);
         }
-        // For container metrics, use pod_name instead of exported_instance
-        if (metricSettings.getMetric().startsWith(MetricQueryHelper.CONTAINER_METRIC_PREFIX)) {
-          return ImmutableSet.of(
-              MetricQueryHelper.POD_NAME, MetricQueryHelper.NAMESPACE, MetricQueryHelper.AZ_NAME);
-        }
-        return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);
       case TABLE:
         return ImmutableSet.of(
             MetricQueryHelper.NAMESPACE_NAME,

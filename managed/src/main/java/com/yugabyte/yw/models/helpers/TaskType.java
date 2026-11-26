@@ -488,6 +488,23 @@ public enum TaskType {
       CustomerTask.TaskType.Delete,
       CustomerTask.TargetType.CustomerConfiguration),
 
+  DeleteStorageConfig(
+      com.yugabyte.yw.commissioner.tasks.DeleteStorageConfig.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.CustomerConfiguration),
+
+  EditStorageConfig(
+      com.yugabyte.yw.commissioner.tasks.EditStorageConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.CustomerConfiguration),
+
+  ValidateStorageConfig(
+      com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig.class,
+      ImmutableSet.of(
+          new Pair<>(CustomerTask.TaskType.Create, CustomerTask.TargetType.CustomerConfiguration),
+          new Pair<>(
+              CustomerTask.TaskType.Validate, CustomerTask.TargetType.CustomerConfiguration))),
+
   ResizeNode(
       com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class,
       CustomerTask.TaskType.ResizeNode,
@@ -1412,7 +1429,9 @@ public enum TaskType {
   RunUpgradeNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RunUpgradeNodeAgent.class),
 
   CreateYbStorageDatabase(
-      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.CreateYbStorageDatabase.class),
+
+  WaitForRpcClientCert(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForRpcClientCert.class);
 
   private final Class<? extends ITask> taskClass;
 

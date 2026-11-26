@@ -31,6 +31,15 @@ DEFINE_test_flag(bool, drop_commit_response, false,
     "When set, after a COMMITTED UpdateTransaction is successfully Raft-replicated, "
     "return an error to the RPC caller to simulate a lost commit response.");
 
+DEFINE_RUNTIME_bool(raft_defer_applying_replication, false,
+    "Let raft_deferred_update_delay_ms defer a participant batch holding only APPLYING records, "
+    "so it rides with the client's next write instead of sending alone just before it.");
+
+DEFINE_RUNTIME_bool(raft_defer_applied_in_all_involved_tablets, false,
+    "Let raft_deferred_update_delay_ms defer a status-tablet batch holding only "
+    "APPLIED_IN_ALL_INVOLVED_TABLETS records, so it rides with the next transaction's commit "
+    "instead of sending alone just before it.");
+
 using namespace std::literals;
 
 namespace yb {
@@ -46,6 +55,13 @@ template <>
 LWTransactionStatePB* RequestTraits<LWTransactionStatePB>::MutableRequest(
     consensus::LWReplicateMsg* replicate) {
   return replicate->mutable_transaction_state();
+}
+
+bool UpdateTxnOperation::replication_deferrable() const {
+  auto status = request()->status();
+  return (FLAGS_raft_defer_applying_replication && status == TransactionStatus::APPLYING) ||
+         (FLAGS_raft_defer_applied_in_all_involved_tablets &&
+          status == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
 }
 
 Status UpdateTxnOperation::Prepare(IsLeaderSide is_leader_side) {

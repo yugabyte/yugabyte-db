@@ -38,7 +38,8 @@ extern "C" {
 #include "utils/fmgrprotos.h" // pg_sequence_last_value
 #include "utils/lsyscache.h"  // get_relname_relid
 /* YB includes */
-#include "fmgr.h"
+#include "storage/ipc.h"  // on_proc_exit
+#include "storage/lmgr.h" // LockRelationOid
 }
 
 namespace pgduckdb {
@@ -90,6 +91,62 @@ ToString(char *value) {
 	config.options.ddb_option_name = duckdb_##ddb_option_name;                                                         \
 	elog(DEBUG2, "[PGDuckDB] Set DuckDB option: '" #ddb_option_name "'=%s", ToString(duckdb_##ddb_option_name).c_str());
 
+/*
+ * YB: returns this backend's DuckDB spill folder, <duckdb.temporary_directory>/<pid>. DuckDB 1.4
+ * names spill files without a process id (duckdb_temp_storage_<size>-<n>.tmp, n counting from 0 in
+ * every instance) and opens them without locking, so backends sharing one folder overwrite each
+ * other's spill data (corrupt results, crashes); an exiting instance also deletes every
+ * duckdb_temp_* file in its folder. DuckDB 2.0 fixes this (duckdb/duckdb#24811); drop this then.
+ *
+ * duckdb.temporary_directory is pinned to <DataDir>/pg_duckdb/temp (see InitGUC), so everything
+ * under it is ours. DuckDB creates the folder on first spill but never removes it, because the
+ * backend exits without destroying its DuckDB instance; so the folder is removed at backend exit.
+ * A backend killed with SIGKILL leaves its folder behind: it is removed by the next backend with
+ * the same pid, or by YbRemoveStaleSpillFolders at postmaster start.
+ */
+static std::string yb_spill_dir;
+
+static void
+YbRemoveSpillFolder(const std::string &dir, int elevel) {
+	std::error_code ec;
+	std::filesystem::remove_all(dir, ec);
+	if (ec) {
+		elog(elevel, "[PGDuckDB] could not remove DuckDB spill folder \"%s\": %s", dir.c_str(), ec.message().c_str());
+	}
+}
+
+static void
+YbRemoveSpillFolderAtExit(int /*code*/, Datum /*arg*/) {
+	YbRemoveSpillFolder(yb_spill_dir, LOG);
+}
+
+static std::string
+YbBackendTemporaryDirectory() {
+	if (yb_spill_dir.empty()) {
+		yb_spill_dir = (std::filesystem::path(duckdb_temporary_directory) / std::to_string(MyProcPid)).string();
+		YbRemoveSpillFolder(yb_spill_dir, WARNING); /* left by a dead backend that had this pid */
+		on_proc_exit(YbRemoveSpillFolderAtExit, 0);
+	}
+	return yb_spill_dir;
+}
+
+/* YB: called at postmaster start, when no backend can be using a spill folder. */
+void
+YbRemoveStaleSpillFolders() {
+	std::error_code ec;
+	auto it = std::filesystem::directory_iterator(duckdb_temporary_directory, ec);
+	if (ec) {
+		return; /* not created yet */
+	}
+	for (; !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+		YbRemoveSpillFolder(it->path().string(), WARNING);
+	}
+	if (ec) {
+		elog(WARNING, "[PGDuckDB] could not list DuckDB spill folders in \"%s\": %s", duckdb_temporary_directory,
+		     ec.message().c_str());
+	}
+}
+
 void
 DuckDBManager::Initialize() {
 	elog(DEBUG2, "(PGDuckDB/DuckDBManager) Creating DuckDB instance");
@@ -122,6 +179,9 @@ DuckDBManager::Initialize() {
 	SET_DUCKDB_OPTION(autoload_known_extensions);
 	SET_DUCKDB_OPTION(temporary_directory);
 	SET_DUCKDB_OPTION(extension_directory);
+
+	/* YB: a spill folder per backend, see YbBackendTemporaryDirectory */
+	config.options.temporary_directory = YbBackendTemporaryDirectory();
 
 	if (duckdb_maximum_memory > 0) {
 		// Convert the memory limit from MB (as set by Postgres GUC_UNIT_MB, which is actually MiB; see
@@ -239,16 +299,6 @@ DuckDBManager::Reset() {
  * Upstream reads it via DirectFunctionCall1Coll(), which raises an error when the callee returns
  * SQL NULL.  To read the value without erroring on that NULL, we invoke pg_sequence_last_value()
  * directly through a manually-initialized FunctionCallInfo and then check fcinfo->isnull ourselves.
- *
- * Effect on YB: since pg_sequence_last_value() always returns NULL, this returns 0, so the
- * extensions-table sequence gate (IsExtensionsSeqLessThan) in RefreshConnectionState never trips.
- * That disables the mid-session refresh -- an already-running backend won't pick up extensions-table
- * changes made by another session. It does NOT gate extension loading in general.
- * Initialize() runs LoadExtensions() unconditionally (and InstallExtensions() when
- * autoinstall_known_extensions is on -- the default), and query-time autoloading is independent of
- * this sequence.
- *
- * TODO(#31823): Enforce supporting only the bundled duckdb extensions (json/icu/httpfs) in YB.
  */
 static int64
 YbGetSeqLastValueImpl(Oid table_seq_oid) {
@@ -265,9 +315,27 @@ YbGetSeqLastValueImpl(Oid table_seq_oid) {
 
 int64
 GetSeqLastValue(const char *seq_name) {
+	/* YB: lake_io mode never reads the extensions sequence, see RefreshConnectionState. */
+	Assert(!YbIsLakeIoMode());
 	Oid duckdb_namespace = get_namespace_oid("duckdb", false);
 	Oid table_seq_oid = get_relname_relid(seq_name, duckdb_namespace);
 	return PostgresFunctionGuard(YbGetSeqLastValueImpl, table_seq_oid);
+}
+
+/*
+ * YB: lock duckdb.extensions_table_seq without reading it, as reading it used to. Locking processes
+ * pending catalog invalidations, and a concurrent DROP EXTENSION pg_duckdb waits for this
+ * transaction, so the extension stays in place while secrets are loaded. The sequence is missing
+ * during an --include-yb-metadata restore, which creates the secret SERVERs first; then there is
+ * nothing to lock.
+ */
+static void
+YbLockExtensionsTableSeqImpl() {
+	Oid duckdb_namespace = get_namespace_oid("duckdb", false);
+	Oid table_seq_oid = get_relname_relid("extensions_table_seq", duckdb_namespace);
+	if (OidIsValid(table_seq_oid)) {
+		LockRelationOid(table_seq_oid, AccessShareLock);
+	}
 }
 
 void
@@ -371,11 +439,21 @@ DuckDBManager::RefreshConnectionState(duckdb::ClientContext &context) {
 		                                 duckdb::KeywordHelper::WriteQuoted(duckdb_azure_transport_option_type));
 	}
 
-	const auto extensions_table_last_seq = GetSeqLastValue("extensions_table_seq");
-	if (IsExtensionsSeqLessThan(extensions_table_last_seq)) {
-		LoadExtensions(context);
-		UpdateExtensionsSeq(extensions_table_last_seq);
-	}
+	/*
+	 * YB: lake_io mode loads no extensions from the extensions table, so the sequence is not read.
+	 * This also keeps restores working: an --include-yb-metadata restore creates the secret
+	 * SERVERs, whose validator connects to DuckDB and gets here, before duckdb.extensions_table_seq
+	 * is restored.
+	 */
+	if (YbIsLakeIoMode()) {
+		PostgresFunctionGuard(YbLockExtensionsTableSeqImpl);
+	} else {
+		const auto extensions_table_last_seq = GetSeqLastValue("extensions_table_seq");
+		if (IsExtensionsSeqLessThan(extensions_table_last_seq)) {
+			LoadExtensions(context);
+			UpdateExtensionsSeq(extensions_table_last_seq);
+		}
+	} /* YB: end of the lake_io else */
 
 	if (!secrets_valid) {
 		DropSecrets(context);
@@ -411,7 +489,12 @@ DuckDBManager::GetConnection(bool force_transaction) {
 	auto &context = *instance.connection->context;
 
 	if (!context.transaction.HasActiveTransaction()) {
-		if (IsSubTransaction()) {
+		/*
+		 * YB: READ COMMITTED runs each statement of a transaction block in an internal subtransaction so
+		 * it can be retried; only a user SAVEPOINT or a PL/pgSQL EXCEPTION block counts here.
+		 */
+		if (IsSubTransaction() &&
+		    (!IsYBReadCommitted() || YBTransactionContainsNonReadCommittedSavepoint(true /* skip_backward_compat_escape_hatch */))) {
 			throw duckdb::NotImplementedException("SAVEPOINT and subtransactions are not supported in DuckDB");
 		}
 

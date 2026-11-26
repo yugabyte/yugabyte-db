@@ -15,6 +15,7 @@ import com.yugabyte.yw.models.NodeAgent.DeployContext;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
@@ -266,6 +267,9 @@ public class InstallNodeAgent extends NodeTaskBase {
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));
     if (taskParams().airgap) {
       sb.append(" --airgap");
+    }
+    if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      sb.append(" --fips_enabled");
     }
     command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running node agent installation command: {}", command);

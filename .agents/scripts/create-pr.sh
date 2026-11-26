@@ -5,14 +5,14 @@
 # A "feature-stack/<feature>/<change>" branch is the exception: it lives in
 # the main repo (GitHub can only stack PRs whose head branches it owns), so
 # the push goes upstream and the PR is same-repo. Its base is the layer below
-# it in the local gh stack, and once opened the PR is linked into the native
-# GitHub stack with `gh stack link`.
+# it in the local gh stack.  Once a PR exists below it, the new PR is linked
+# with those below into the native GitHub stack with `gh stack link`.
 #
 # Designed to be invoked from the /create-pr Claude Code skill once metadata
 # (issue, title, body, reviewers) has been gathered. Usable standalone too.
 #
 # usage: new-pr -i <issue> -t <title> -d <description-file> -T <test-plan-file>
-#               [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-D]
+#               [-U <upgrade-file>] [-r <reviewers>] [-b <base>] [-s <tier>] [-D]
 #
 # Required inputs:
 #   -i issue       GitHub issue number ("31151" or "#31151") or JIRA key
@@ -43,6 +43,11 @@
 #   -b base        Base branch on the upstream repo (default: master).
 #                  Not needed for a stacked PR, whose base comes from
 #                  `gh stack`; if given, it must match.
+#   -s tier        Disclosure tier of a security fix or customer-driven
+#                  change: public-cve, embargoed or customer (see
+#                  src/AGENTS.md). Runs check-public-text.sh over the title,
+#                  the body files, the commit messages and the branch name
+#                  before anything is pushed.
 #   -D             Open the PR as a GitHub draft. Useful when you want to
 #                  read the rendered PR before notifications fire and before
 #                  reviewers are auto-pinged. Convert with
@@ -60,6 +65,8 @@
 #   3  lint failed -- fix as a NEW commit (do not amend), then re-run
 #   5  stack branch: `gh stack push` failed -- read its message
 #   6  stack branch: the PR was opened as a draft but `gh stack link` failed
+#   7  -s: the title, body, commit messages or branch name contain wording
+#      the tier does not allow -- move it to the JIRA ticket, then re-run
 
 set -euo pipefail
 
@@ -72,6 +79,7 @@ reviewers=""
 base_branch="master"
 base_given=0
 draft=0
+sensitivity=""
 GH_REPO="${GH_REPO:-yugabyte/yugabyte-db}"
 
 usage() {
@@ -94,6 +102,8 @@ Optional:
   -r reviewers   Comma-separated handles and/or team slugs (org/slug)
   -b base        Base branch (default: master). A stacked PR takes the
                  layer below it from \`gh stack\`; -b, if given, must match.
+  -s tier        Disclosure tier: public-cve, embargoed or customer. Checks
+                 the public text against it before pushing.
   -D             Open the PR as a GitHub draft (\`gh pr create --draft\`).
                  Convert with \`gh pr ready <num>\` when ready for review.
 
@@ -105,7 +115,7 @@ EOF
   exit 1
 }
 
-while getopts ":i:t:d:T:U:r:b:Dh" opt; do
+while getopts ":i:t:d:T:U:r:b:s:Dh" opt; do
   case "$opt" in
     i) issue="$OPTARG" ;;
     t) title="$OPTARG" ;;
@@ -114,6 +124,7 @@ while getopts ":i:t:d:T:U:r:b:Dh" opt; do
     U) upgrade_file="$OPTARG" ;;
     r) reviewers="$OPTARG" ;;
     b) base_branch="$OPTARG"; base_given=1 ;;
+    s) sensitivity="$OPTARG" ;;
     D) draft=1 ;;
     h) usage ;;
     \?) echo "error: unknown option -$OPTARG" >&2; usage ;;
@@ -272,12 +283,12 @@ is_stack_branch=false
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stacked PRs need the gh-stack extension, which is not" >&2
-    echo "       installed. See the gh-stack skill." >&2
+    echo "       installed. See the stack-prs skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then
     echo "error: ${current_branch} is not in a local gh stack; see the" >&2
-    echo "       gh-stack skill to create or adopt one." >&2
+    echo "       stack-prs skill to create or adopt one." >&2
     exit 1
   fi
   mapfile -t _stack < <(python3 -c 'import json, sys
@@ -320,7 +331,7 @@ print(" ".join(b["name"] for b in above if has_pr(b)))' "$current_branch" \
   if [[ -n "$stack_above_with_pr" ]]; then
     echo "error: layers above ${current_branch} already have PRs" >&2
     echo "       (${stack_above_with_pr}). Open PRs bottom-up; see the" >&2
-    echo "       gh-stack skill to restructure the stack." >&2
+    echo "       stack-prs skill to restructure the stack." >&2
     exit 1
   fi
 fi
@@ -378,6 +389,16 @@ fi
 # use, and to skip the second auto-detect. FORK_REMOTE is empty for a stack
 # branch, which pushes to upstream and never resolves a fork.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# A security fix or customer-driven change: nothing may reach a public remote
+# with wording its disclosure tier does not allow, so check before the push.
+if [[ -n "$sensitivity" ]]; then
+  public_text_files=("$description_file" "$test_plan_file")
+  [[ -n "$upgrade_file" ]] && public_text_files+=("$upgrade_file")
+  "${script_dir}/check-public-text.sh" -s "$sensitivity" \
+    -b "${UPSTREAM_REMOTE}/${base_branch}" -t "$title" "${public_text_files[@]}"
+fi
+
 UPSTREAM_REMOTE="$UPSTREAM_REMOTE" FORK_REMOTE="$FORK_REMOTE" GH_REPO="$GH_REPO" \
   "${script_dir}/git-push.sh" -b "$base_branch"
 
@@ -454,9 +475,10 @@ trap 'rm -f "$combined_body"' EXIT
 } > "$combined_body"
 gh_pr_create_args=(-R "$GH_REPO" -B "$base_branch" -H "$pr_head"
                    -t "$full_title" -F "$combined_body")
-# A stack layer always opens as a draft and is marked ready only after it is
-# linked, so the CI that readiness triggers already sees a stack member.
-if (( draft )) || $is_stack_branch; then
+# A stack layer with PRs below it opens as a draft and is marked ready only
+# after it is linked, so the CI that readiness triggers already sees a stack
+# member.
+if (( draft )) || { $is_stack_branch && [[ -n "$stack_below_prs" ]]; }; then
   gh_pr_create_args+=(--draft)
 fi
 pr_url=$(gh pr create "${gh_pr_create_args[@]}")
@@ -489,19 +511,25 @@ if [[ -n "$reviewers" && "$pr_num" =~ ^[0-9]+$ ]]; then
 fi
 
 if $is_stack_branch; then
-  echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
-  if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
-         $stack_below_prs "$pr_num"; then
-    echo "" >&2
-    echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
-    echo "       stack failed. Fix the cause above, then link it with" >&2
-    echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
-         "${stack_below_prs} ${pr_num}" >&2
-    (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
-    exit 6
-  fi
-  if (( ! draft )); then
-    gh pr ready "$pr_num" -R "$GH_REPO"
+  # `gh stack link` needs at least two PRs, so the bottom layer's PR is linked
+  # when the next layer's PR opens.
+  if [[ -z "$stack_below_prs" ]]; then
+    echo ">>> no PR below ${current_branch} yet; it is linked when the next layer's PR opens"
+  else
+    echo ">>> gh stack link --base ${stack_trunk} ${stack_below_prs} ${pr_num}"
+    if ! gh stack link --remote "$UPSTREAM_REMOTE" --base "$stack_trunk" \
+           $stack_below_prs "$pr_num"; then
+      echo "" >&2
+      echo "error: PR #${pr_num} was opened as a draft, but linking it into the" >&2
+      echo "       stack failed. Fix the cause above, then link it with" >&2
+      echo "         gh stack link --remote ${UPSTREAM_REMOTE} --base ${stack_trunk}" \
+           "${stack_below_prs} ${pr_num}" >&2
+      (( draft )) || echo "       and mark it ready with: gh pr ready ${pr_num} -R ${GH_REPO}" >&2
+      exit 6
+    fi
+    if (( ! draft )); then
+      gh pr ready "$pr_num" -R "$GH_REPO"
+    fi
   fi
 fi
 

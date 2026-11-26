@@ -116,8 +116,22 @@ public class CrossCloudFederationTarget {
     return StringUtils.isNotBlank(roleArn) && ROLE_ARN_PATTERN.matcher(roleArn).matches();
   }
 
+  /**
+   * A gcp entry's audience: the workload identity pool provider, the only resource Google STS takes
+   * as the audience of the token exchange. A principalSet path, which the bucket's grant names,
+   * passes the charset check but is refused, and only when a backup first runs.
+   */
+  private static final Pattern GCP_AUDIENCE_PATTERN =
+      Pattern.compile(
+          "^//iam\\.googleapis\\.com/projects/[0-9]+/locations/global/workloadIdentityPools/"
+              + "[a-z0-9-]+/providers/[a-z0-9-]+$");
+
   public static boolean isValidAudience(String audience) {
     return StringUtils.isNotBlank(audience) && AUDIENCE_PATTERN.matcher(audience).matches();
+  }
+
+  public static boolean isValidGcpAudience(String audience) {
+    return StringUtils.isNotBlank(audience) && GCP_AUDIENCE_PATTERN.matcher(audience).matches();
   }
 
   /**

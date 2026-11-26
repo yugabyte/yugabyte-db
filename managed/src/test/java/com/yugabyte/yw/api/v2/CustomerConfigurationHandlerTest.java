@@ -4,7 +4,9 @@ package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import api.v2.handlers.CustomerConfigurationHandler;
 import api.v2.models.CustomerConfigPagedQuerySpec;
@@ -52,6 +54,23 @@ public class CustomerConfigurationHandlerTest extends FakeDBApplication {
 
     assertThat(resp.getTotalCount(), greaterThanOrEqualTo(2));
     assertThat(resp.getEntities().size(), greaterThanOrEqualTo(2));
+  }
+
+  @Test
+  public void pageListCustomerConfigs_leavesOutConfigsBeingValidated() {
+    CustomerConfig validating = ModelFactory.createS3StorageConfig(customer, "validating");
+    validating.setState(CustomerConfig.ConfigState.Validating);
+    validating.update();
+    CustomerConfigPagedQuerySpec spec = new CustomerConfigPagedQuerySpec();
+    spec.offset(0).limit(10);
+
+    // Validating isn't one of this API's states, so mapping it would fail the whole page.
+    CustomerConfigPagedResp resp = handler.pageListCustomerConfigs(customer.getUuid(), spec);
+
+    assertEquals(2, resp.getTotalCount());
+    assertTrue(
+        resp.getEntities().stream()
+            .noneMatch(c -> c.getInfo().getUuid().equals(validating.getConfigUUID())));
   }
 
   @Test

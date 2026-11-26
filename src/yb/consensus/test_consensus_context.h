@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <unordered_set>
 
 #include "yb/consensus/consensus_context.h"
@@ -30,6 +31,11 @@ class TestConsensusContext : public ConsensusContext {
 
   bool AreWritesStopped() override { return false; }
 
+  PostponedApplyPtr PostponeApply(
+      const LWReplicateMsg& replicate_msg, PostponedApplyPtr postponed) override {
+    return nullptr;
+  }
+
   Result<HybridTime> PreparePeerRequest() override { return HybridTime(); }
 
   Status MajorityReplicated(const OpId& committed_op_id) override { return Status::OK(); }
@@ -42,6 +48,8 @@ class TestConsensusContext : public ConsensusContext {
 
   void ListenNumSSTFilesChanged(std::function<void()> listener) override {}
 
+  bool PendingPostSplitCompaction() override { return pending_post_split_compaction_; }
+
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override {
     return Status::OK();
@@ -50,6 +58,13 @@ class TestConsensusContext : public ConsensusContext {
   Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) override {
     return Status::OK();
   }
+
+  bool ShouldRelinquishLeadership() override { return false; }
+
+  void SetPendingPostSplitCompaction(bool value) { pending_post_split_compaction_ = value; }
+
+ private:
+  std::atomic<bool> pending_post_split_compaction_{false};
 };
 
 } // namespace consensus

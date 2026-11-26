@@ -170,7 +170,7 @@ Indexes:
 
 ### pg_indexes view
 
-You can also fetch more information about indexes using the [pg_indexes](../../../architecture/system-catalog#schema) view.
+You can also fetch more information about indexes using the [pg_indexes](../../../architecture/system-catalog/#schema) view.
 
 ```sql
 SELECT * FROM pg_indexes WHERE tablename = 'census' ;

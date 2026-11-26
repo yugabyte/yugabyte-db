@@ -17,18 +17,22 @@
 namespace yb {
 namespace tserver {
 
+class SnapshotPreflush;
 class TSTabletManager;
 
 class TabletServiceBackupImpl : public TabletServerBackupServiceIf {
  public:
   TabletServiceBackupImpl(TSTabletManager* tablet_manager,
                           const scoped_refptr<MetricEntity>& metric_entity);
+  ~TabletServiceBackupImpl() override;
+  void Shutdown() override;
 
   virtual void TabletSnapshotOp(const TabletSnapshotOpRequestPB* req,
                                 TabletSnapshotOpResponsePB* resp,
                                 rpc::RpcContext context) override;
  private:
   TSTabletManager* tablet_manager_;
+  std::unique_ptr<SnapshotPreflush> preflush_;
 };
 
 }  // namespace tserver

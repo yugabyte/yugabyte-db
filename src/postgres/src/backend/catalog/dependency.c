@@ -94,7 +94,7 @@
 #include "commands/yb_profile.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "pg_yb_utils.h"
 
 
 /*
@@ -1320,7 +1320,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags,
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
 	bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		yb_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,
@@ -1389,8 +1389,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags,
 		CatalogTupleDelete(*depRel, tup);
 
 		if (MyDatabaseColocated &&
-			depform->refclassid == YbTablegroupRelationId &&
-			!tablegroupHasDependents(depform->refobjid))
+			depform->refclassid == YbTablegroupRelationId)
 		{
 			implicit_tablegroup.classId = depform->refclassid;
 			implicit_tablegroup.objectId = depform->refobjid;
@@ -1401,11 +1400,12 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags,
 	systable_endscan(scan);
 
 	/*
-	 * YB: Check if implicit tablegroup has any more tables in it.
-	 * If not delete it.
+	 * YB: Delete the implicit tablegroup if YbLockImplicitTablegroupForDrop
+	 * says that it is not needed any more.
 	 */
 	if (is_colocated_tables_with_tablespace_enabled &&
-		OidIsValid(implicit_tablegroup.objectId))
+		OidIsValid(implicit_tablegroup.objectId) &&
+		YbLockImplicitTablegroupForDrop(implicit_tablegroup.objectId))
 	{
 		deleteSharedDependencyRecordsFor(implicit_tablegroup.classId, implicit_tablegroup.objectId,
 										 implicit_tablegroup.objectSubId);

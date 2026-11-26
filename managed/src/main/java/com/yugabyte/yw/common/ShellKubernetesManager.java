@@ -48,6 +48,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -351,9 +352,29 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void deleteStorage(Map<String, String> config, String helmReleaseName, String namespace) {
+  public void deleteStorage(
+      UUID universeUUID,
+      Map<String, String> config,
+      Collection<String> helmReleaseNames,
+      String namespace) {
+    String releaseSelector = String.format("release in (%s)", String.join(",", helmReleaseNames));
+    // StatefulSets go first: a StatefulSet that is not in the helm release keeps its pods
+    // running, and a PVC in use by a pod is not deleted until the pod is gone.
+    List<String> stsCommandList =
+        ImmutableList.of(
+            "kubectl",
+            "delete",
+            "statefulset",
+            "--namespace",
+            namespace,
+            "-l",
+            releaseSelector,
+            "--ignore-not-found",
+            "--timeout",
+            getTimeout(universeUUID));
+    execCommand(config, stsCommandList).processErrors("Unable to delete StatefulSets");
     // Delete Master and TServer Volumes
-    List<String> commandList =
+    List<String> pvcCommandList =
         ImmutableList.of(
             "kubectl",
             "delete",
@@ -361,9 +382,10 @@ public class ShellKubernetesManager extends KubernetesManager {
             "--namespace",
             namespace,
             "-l",
-            "release=" + helmReleaseName);
-    execCommand(config, commandList);
-    // TODO: check the execCommand outputs.
+            releaseSelector,
+            "--timeout",
+            getTimeout(universeUUID));
+    execCommand(config, pvcCommandList).processErrors("Unable to delete PVCs");
   }
 
   @Override
@@ -1593,13 +1615,13 @@ public class ShellKubernetesManager extends KubernetesManager {
     Set<String> helmReleaseNames = new HashSet<>();
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
-      AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+      String azCode = isMultiAZ ? AvailabilityZone.getOrBadRequest(node.azUuid).getCode() : null;
       String helmRelease =
           KubernetesUtil.getHelmReleaseName(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
               universe.getName(),
-              az.getName(),
+              azCode,
               cluster.clusterType == ClusterType.ASYNC,
               universe.getUniverseDetails().useNewHelmNamingStyle);
       helmReleaseNames.add(helmRelease);

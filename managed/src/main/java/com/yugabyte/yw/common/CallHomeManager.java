@@ -551,7 +551,7 @@ public class CallHomeManager {
           universeResp.universeDetails.delegate.clusters) {
         UniverseDefinitionTaskParams.UserIntent intent = cluster.userIntent;
         // For now picking only first provider by UUID.
-        UUID providerUUID = intent.getAllProviderUUIDs().stream().sorted().findFirst().get();
+        UUID providerUUID = Util.getDefaultProviderUUID(cluster);
 
         InstanceType it = InstanceType.get(providerUUID, intent.getBaseInstanceType(providerUUID));
         if (it != null) {

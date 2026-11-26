@@ -134,7 +134,9 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
-  void SetHistoricalReadContext(const ReadHybridTime& read_time, const char* transaction_id);
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, const char* transaction_id,
+      std::span<const uint32_t> aborted_subtxn_set);
   void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
@@ -446,6 +448,9 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
+  Status StartTableBackfill(
+      const PgObjectId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
@@ -701,7 +706,8 @@ class PgApiImpl {
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
-  bool IsRestartReadPointRequested();
+  void ResetRetryReadLimitCaps();
+  bool IsReadRestartRetryInProgress() const;
   Status CommitPlainTransaction(
         const std::optional<PgDdlCommitInfo>& ddl_commit_info = std::nullopt);
   Status AbortPlainTransaction();
@@ -726,7 +732,8 @@ class PgApiImpl {
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
   bool IsDdlModeWithRegularTransactionBlock() const;
-  bool IsTableLockingEnabledForCurrentTxn() const;
+  bool UsingObjectLocksLocally() const;
+  bool UsingObjectLocksGloballyForCurrentTxn() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
@@ -861,6 +868,10 @@ class PgApiImpl {
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
                                   YbcOrderingMode ordering_mode,
+                                  const char *yb_publication_name,
+                                  const PgOid *yb_publication_relfilenodes,
+                                  size_t yb_num_publication_tables,
+                                  bool yb_publication_all_tables,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -1045,7 +1056,6 @@ class PgApiImpl {
 
   scoped_refptr<server::HybridClock> clock_;
 
-  const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;
   std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;

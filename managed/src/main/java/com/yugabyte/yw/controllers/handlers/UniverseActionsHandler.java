@@ -200,6 +200,12 @@ public class UniverseActionsHandler {
         universe.getName(),
         universe.getUniverseUUID());
 
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.");
+    }
+
     // Determine if the universe is Kubernetes-based
     boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
 
@@ -273,6 +279,12 @@ public class UniverseActionsHandler {
         customer.getUuid(),
         universe.getName(),
         universe.getUniverseUUID());
+
+    if (!universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unable to resume universe \"" + universe.getName() + "\" as it is not paused.");
+    }
 
     // Determine if the universe is Kubernetes-based
     boolean isKubernetes = Util.isKubernetesBasedUniverse(universe);
@@ -357,8 +369,7 @@ public class UniverseActionsHandler {
         universe.getName(),
         universe.getUniverseUUID());
     for (UniverseDefinitionTaskParams.Cluster cluster : taskParams.clusters) {
-      ManagedLoadBalancerUtil.validateNoLbNames(
-          universe.getUniverseDetails().getPrimaryCluster(), cluster);
+      ManagedLoadBalancerUtil.validateNoLbNames(universe.getUniverseDetails().clusters, cluster);
     }
     // Set existing LB config
     taskParams.setExistingLBs(universe.getUniverseDetails().clusters);

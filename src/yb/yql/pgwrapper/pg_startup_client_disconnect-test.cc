@@ -12,6 +12,7 @@
 //
 
 #include <signal.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -52,7 +53,11 @@ constexpr auto kClientConnectionCheckInterval = 500ms;
 // libpq closes its socket and returns once this elapses.
 constexpr auto kClientConnectTimeoutSec = 3;
 
-constexpr auto kVictimUser = "preload_victim";
+// Backends are found by scanning /proc, so the name must be unique among concurrent tests.
+const std::string& VictimUser() {
+  static const auto result = Format("preload_victim_$0", getpid());
+  return result;
+}
 
 constexpr auto kClientLostMessage = "FATAL:  connection to client lost";
 constexpr auto kTerminatedMessage = "FATAL:  terminating connection due to administrator command";
@@ -184,7 +189,7 @@ class PgStartupClientDisconnectTest : public LibPqTestBase,
     ASSERT_OK(SetStall(kStall));
 
     const auto conn_str =
-        Format("$0 connect_timeout=$1", ConnStr(kVictimUser), kClientConnectTimeoutSec);
+        Format("$0 connect_timeout=$1", ConnStr(VictimUser()), kClientConnectTimeoutSec);
     TestThreadHolder threads;
     auto client_status = CONNECTION_OK;
     threads.AddThreadFunctor([&conn_str, &client_status] {
@@ -193,7 +198,7 @@ class PgStartupClientDisconnectTest : public LibPqTestBase,
     });
 
     ASSERT_OK(WaitFor(
-        [] { return CountBackendsOf(kVictimUser) > 0; }, kWaitTimeout, "victim backend to start"));
+        [] { return CountBackendsOf(VictimUser()) > 0; }, kWaitTimeout, "victim backend to start"));
     threads.JoinAll();
     ASSERT_EQ(client_status, CONNECTION_BAD);
   }
@@ -218,7 +223,7 @@ TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDurin
   auto reset_stall = ScopeExit([this] { WARN_NOT_OK(SetStall(0ms), "Failed to reset stall"); });
   {
     auto conn = ASSERT_RESULT(ConnectAs(PGConnSettings::kDefaultUser));
-    ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0 LOGIN", kVictimUser));
+    ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0 LOGIN", VictimUser()));
   }
 
   // With client_connection_check_interval set, the backend notices the departed client while its
@@ -227,7 +232,7 @@ TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDurin
     LogLines log(pg_ts);
     ASSERT_NO_FATALS(StartStalledConnectionAndLeave());
     ASSERT_OK(WaitFor(
-        [] { return CountBackendsOf(kVictimUser) == 0; }, kWaitTimeout,
+        [] { return CountBackendsOf(VictimUser()) == 0; }, kWaitTimeout,
         "orphaned backend to exit"));
     ASSERT_OK(log.WaitFor(kClientLostMessage));
     SleepFor(1s);
@@ -238,8 +243,8 @@ TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDurin
   // per-query check takes over the timer.
   ASSERT_OK(SetStall(0ms));
   {
-    auto conn = ASSERT_RESULT(ConnectAs(kVictimUser));
-    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_user::text")), kVictimUser);
+    auto conn = ASSERT_RESULT(ConnectAs(VictimUser()));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_user::text")), VictimUser());
     ASSERT_GT(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM pg_class")), 0);
     const auto ssl = ASSERT_RESULT(
         conn.FetchRow<bool>("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()"));
@@ -254,7 +259,7 @@ TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDurin
   ASSERT_NO_FATALS(SetCheckInterval(0ms));
   ASSERT_NO_FATALS(StartStalledConnectionAndLeave());
   SleepFor(kClientConnectionCheckInterval * 4);
-  const auto pids = BackendPidsOf(kVictimUser);
+  const auto pids = BackendPidsOf(VictimUser());
   ASSERT_EQ(pids.size(), 1);
 
   // SIGTERM, as sent by pg_terminate_backend() or a postmaster shutdown, still ends it: die()
@@ -262,7 +267,7 @@ TEST_P(PgStartupClientDisconnectTest, YB_DISABLE_TEST_ON_MACOS(ClientLeavesDurin
   LogLines log(pg_ts);
   ASSERT_EQ(kill(pids.front(), SIGTERM), 0);
   ASSERT_OK(WaitFor(
-      [] { return CountBackendsOf(kVictimUser) == 0; }, kWaitTimeout,
+      [] { return CountBackendsOf(VictimUser()) == 0; }, kWaitTimeout,
       "terminated backend to exit"));
   ASSERT_OK(log.WaitFor(kTerminatedMessage));
 }

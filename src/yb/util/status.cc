@@ -677,5 +677,15 @@ void StatusHolder::Reset() {
   is_ok_.store(true, std::memory_order_release);
 }
 
+void StatusHolder::UpdateError(const Status& status) {
+  if (status.ok()) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  if (status_.ok()) {
+    status_ = status;
+    is_ok_.store(false, std::memory_order_release);
+  }
+}
 
 }  // namespace yb

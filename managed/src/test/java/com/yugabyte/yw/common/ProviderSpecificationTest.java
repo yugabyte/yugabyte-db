@@ -207,9 +207,62 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .build());
-    providerSpecification.validate(false);
+    // This is correct for non-dedicated.
+    providerSpecification.validate(false, false);
+    // But incorrect for dedicated.
+    expectValidationError(
+        true,
+        providerSpecification,
+        false,
+        "nodesSpecs.masterSpecification must be set for dedicated masters mode");
+
+    HierarchicalNodesSpec.NodeSpec tserverSpecification =
+        providerSpecification.getNodesSpecs().getTserverSpecification();
+    tserverSpecification.setDeviceInfo(null);
+    expectValidationError(
+        false, providerSpecification, false, "Specify base device info for tserver");
+    tserverSpecification.setDeviceInfo(new DeviceInfo());
+
+    tserverSpecification.setInstanceType(null);
+    expectValidationError(
+        false, providerSpecification, false, "Specify base instance type for tserver");
+    tserverSpecification.setInstanceType("tserverType");
+
+    HierarchicalNodesSpec.NodeSpec masterSpecification =
+        providerSpecification.getNodesSpecs().getOrCreateMasterSpec();
+    masterSpecification.setInstanceType("masterType");
+    masterSpecification.setDeviceInfo(new DeviceInfo());
+
+    // This is correct for dedicated.
+    providerSpecification.validate(true, false);
+
+    // But incorrect for non-dedicated.
+    expectValidationError(
+        false,
+        providerSpecification,
+        false,
+        "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
+    // for partial update as well.
+    expectValidationError(
+        false,
+        providerSpecification,
+        true,
+        "nodesSpecs.masterSpecification cannot be set for non-dedicated masters mode");
+
+    masterSpecification.setInstanceType(null);
+    expectValidationError(
+        true, providerSpecification, false, "Specify base instance type for master");
+    masterSpecification.setInstanceType("masterType");
+
+    masterSpecification.setDeviceInfo(null);
+    expectValidationError(
+        true, providerSpecification, false, "Specify base device info for master");
+    masterSpecification.setDeviceInfo(new DeviceInfo());
 
     providerSpecification.setProviderUUID(null);
     expectValidationError(providerSpecification, false, "providerUUID must be set");
@@ -251,7 +304,7 @@ public class ProviderSpecificationTest extends FakeDBApplication {
             .build());
 
     // Partial updates (e.g. proxy config) may omit root tserverSpecification.
-    providerSpecification.validate(true);
+    providerSpecification.validate(false, true);
 
     providerSpecification.setProviderUUID(null);
     expectValidationError(providerSpecification, true, "providerUUID must be set");
@@ -274,7 +327,10 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .regionNodesSpecs(
                 Arrays.asList(
                     RegionNodesSpec.builder().regionCode("r1").build(),
@@ -292,7 +348,10 @@ public class ProviderSpecificationTest extends FakeDBApplication {
     providerSpecification.setNodesSpecs(
         HierarchicalNodesSpec.RootNodesSpec.builder()
             .tserverSpecification(
-                HierarchicalNodesSpec.NodeSpec.builder().instanceType("tserverType").build())
+                HierarchicalNodesSpec.NodeSpec.builder()
+                    .instanceType("tserverType")
+                    .deviceInfo(new DeviceInfo())
+                    .build())
             .regionNodesSpecs(
                 Arrays.asList(
                     RegionNodesSpec.builder()
@@ -459,8 +518,16 @@ public class ProviderSpecificationTest extends FakeDBApplication {
       UniverseDefinitionTaskParams.ProviderSpecification providerSpecification,
       boolean isPartialUpdate,
       String expectedMessage) {
+    expectValidationError(false, providerSpecification, isPartialUpdate, expectedMessage);
+  }
+
+  private void expectValidationError(
+      boolean isDedicatedNodes,
+      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification,
+      boolean isPartialUpdate,
+      String expectedMessage) {
     try {
-      providerSpecification.validate(isPartialUpdate);
+      providerSpecification.validate(isDedicatedNodes, isPartialUpdate);
       fail("Expected PlatformServiceException");
     } catch (PlatformServiceException e) {
       assertEquals(BAD_REQUEST, e.getHttpStatus());

@@ -2,10 +2,12 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -13,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -21,6 +24,7 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
@@ -31,7 +35,10 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
+import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -43,6 +50,7 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -271,6 +279,25 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             n ->
                 assertEquals(
                     NodeDetails.NodeExporterSystemdLevel.USER, n.nodeExporterSystemdLevel));
+  }
+
+  // Configure writes the master target on a new universe, so the master start must not plan a
+  // collector refresh. The install runs during provisioning, not as ManageOtelCollector.
+  @Test
+  public void testCreateUniverseWithMetricsExportSkipsOtelCollectorRewrite() {
+    Universe universe = enableMetricsExport(defaultUniverse.getUniverseUUID());
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.metricsExportConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
+    taskParams.otelCollectorEnabled = true;
+    taskParams.arch = Architecture.x86_64;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> otelTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.ManageOtelCollector)
+            .collect(Collectors.toList());
+    assertEquals(List.of(), otelTasks);
   }
 
   private UniverseDefinitionTaskParams getManagedLbTaskParams() {
@@ -962,6 +989,82 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     subTasks = taskInfo.getSubTasks();
     subTasksByPosition = subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_CREATE_TASK_RETRY_SEQUENCE, subTasksByPosition);
+  }
+
+  @Test
+  public void testCreateUniverseStoredParamsKeepSensitiveGFlags() {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey(), "true");
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    Map<String, String> tserverGFlags =
+        Map.of("ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // CreateUniverse re-saves its params mid-task, and retries and reruns read them back.
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    UniverseDefinitionTaskParams stored =
+        Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    Cluster primary = stored.getPrimaryCluster();
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ysqlPassword);
+    assertEquals(SECRET_REPLACEMENT, primary.userIntent.ycqlPassword);
+    Map<String, String> storedGFlags =
+        GFlagsUtil.getGFlagsForNode(
+            null, UniverseTaskBase.ServerType.TSERVER, primary, stored.clusters);
+    tserverGFlags.forEach((name, value) -> assertEquals(value, storedGFlags.get(name)));
+  }
+
+  @Test
+  public void testCreateUniverseCheckpointHasNoAdminPasswords() {
+    // Fail the first run after the freeze, so the checkpoint stays for the retry.
+    when(mockClient.waitForServer(any(), anyLong()))
+        .thenThrow(new RuntimeException())
+        .thenReturn(true);
+    String hba =
+        "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapbindpasswd=hba-secret";
+    Map<String, String> tserverGFlags =
+        Map.of("ycql_ldap_bind_passwd", "ycql-ldap-secret", GFlagsUtil.YSQL_HBA_CONF_CSV, hba);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    StateTransitionDetails details =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getStateTransitionDetails();
+    assertNotNull(details);
+    String checkpoint = details.getDelta().toString();
+    assertFalse(checkpoint, checkpoint.contains("Admin@123"));
+    // A rollback restores the gflags from the checkpoint, so they stay real there.
+    tserverGFlags.values().forEach(v -> assertTrue(checkpoint, checkpoint.contains(v)));
+
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
+    taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertNull(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getStateTransitionDetails());
+    // The retry sets the real passwords on the DB, not the REDACTED ones it stores.
+    ArgumentCaptor<DatabaseSecurityFormData> ysql =
+        ArgumentCaptor.forClass(DatabaseSecurityFormData.class);
+    verify(mockYsqlQueryExecutor, atLeastOnce()).validateAdminPassword(any(), ysql.capture());
+    ArgumentCaptor<DatabaseSecurityFormData> ycql =
+        ArgumentCaptor.forClass(DatabaseSecurityFormData.class);
+    verify(mockYcqlQueryExecutor, atLeastOnce()).validateAdminPassword(any(), ycql.capture());
+    assertTrue(ysql.getAllValues().stream().anyMatch(d -> "Admin@123".equals(d.ysqlAdminPassword)));
+    assertTrue(ycql.getAllValues().stream().anyMatch(d -> "Admin@123".equals(d.ycqlAdminPassword)));
+    assertTrue(
+        ysql.getAllValues().stream()
+            .noneMatch(d -> SECRET_REPLACEMENT.equals(d.ysqlAdminPassword)));
+    assertTrue(
+        ycql.getAllValues().stream()
+            .noneMatch(d -> SECRET_REPLACEMENT.equals(d.ycqlAdminPassword)));
   }
 
   @Test

@@ -26,7 +26,7 @@ var getTelemetryConfigCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(universeName) == 0 {
 			cmd.Help()
@@ -37,7 +37,7 @@ var getTelemetryConfigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI, universe, err := Validations(cmd)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		universeUUID := universe.GetUniverseUUID()

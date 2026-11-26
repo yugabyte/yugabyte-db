@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -179,6 +180,20 @@ Status ValidateSnapshotVectorIndexBackends(const SnapshotInfoPB& snapshot_pb) {
     }
   }
   return Status::OK();
+}
+
+// Returns whether the snapshot has a table that is stored in the given colocation parent table.
+Result<bool> SnapshotHasTableStoredIn(
+    const SnapshotInfoPB& snapshot_pb, const TableId& parent_table_id) {
+  for (const auto& backup_entry : snapshot_pb.backup_entries()) {
+    const auto& entry = backup_entry.entry();
+    if (entry.type() == SysRowEntryType::TABLE &&
+        VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data())).parent_table_id() ==
+            parent_table_id) {
+      return true;
+    }
+  }
+  return false;
 }
 }  // namespace
 
@@ -378,7 +393,6 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
 Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
   return CollectEntriesInternal(flags, tables, &namespaces);
@@ -387,7 +401,6 @@ Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
 Result<SysRowEntries> CatalogManager::CollectEntriesAsOfTime(
     const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
     CoarseTimePoint deadline) {
-  RETURN_NOT_OK(CheckIsLeaderAndReady());
   std::unordered_set<NamespaceId> namespaces;
 
   // CollectTables (used in CollectEntriesFromActiveSysCatalog) gets the set of tables from the
@@ -471,7 +484,6 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   auto sys_catalog_table_ids = GetSysCatalogTableIds();
 
   std::vector<TableDescription> all_tables;
-  std::unordered_set<TableId> parent_colocated_table_ids;
   std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
 
   // It is ok to get the NamespaceInfo from in-memory maps as the namespace will be retained by
@@ -479,9 +491,7 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
   // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
   auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
   const bool ns_colocated = namespace_info->colocated();
-  // todo(zdrudi): there's potentially a bug here. colocation + tablespaces, w/ backup/restore might
-  // expose this.
-  std::optional<TableId> colocation_parent_table_id;
+  std::vector<TableId> colocation_parent_table_ids;
 
   auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
     auto table_id = table_id_slice.ToString();
@@ -512,7 +522,7 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     VLOG_WITH_FUNC(2) << Format(
         "Selected table for collection: $0 (name: $1)", table_id, table_pb.name());
     if (ns_colocated && IsColocationParentTableId(table_id)) {
-      colocation_parent_table_id = table_id;
+      colocation_parent_table_ids.push_back(table_id);
     }
     // Tables and tablets will be added to all_tables at the end.
     tables_to_tablets.insert(
@@ -554,12 +564,12 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     table_with_tablets.OrderTabletsByPartitions();
   }
 
-  // Emit the parent colocation table first if we saw it during enumeration.
-  if (colocation_parent_table_id) {
-    auto it = tables_to_tablets.find(*colocation_parent_table_id);
+  // Emit the colocation parent tables first, import expects a parent before its tables.
+  for (const auto& parent_table_id : colocation_parent_table_ids) {
+    auto it = tables_to_tablets.find(parent_table_id);
     if (it != tables_to_tablets.end()) {
       all_tables.push_back(
-          VERIFY_RESULT(it->second.DescribeTable(*colocation_parent_table_id, namespace_info)));
+          VERIFY_RESULT(it->second.DescribeTable(parent_table_id, namespace_info)));
       tables_to_tablets.erase(it);
     }
   }
@@ -652,8 +662,8 @@ Status CatalogManager::ListSnapshotsInternal(
 
 Status CatalogManager::RepackSnapshotsForBackup(
     ListSnapshotsResponsePB* resp, bool include_ddl_in_progress_tables, bool skip_missing_tables) {
-  SharedLock lock(mutex_);
-  TRACE("Acquired catalog manager lock");
+  // Do not hold mutex_ across the loop: it reads the YSQL catalog from the sys catalog tablet for
+  // every YSQL table, which can be slow. mutex_ is only needed for the table lookup.
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
     auto format_version = FLAGS_enable_export_snapshot_using_relfilenode &&
@@ -682,7 +692,7 @@ Status CatalogManager::RepackSnapshotsForBackup(
           continue;
         }
         TRACE("Looking up table");
-        scoped_refptr<TableInfo> table_info = tables_->FindTableOrNull(entry.id());
+        scoped_refptr<TableInfo> table_info = GetTableInfo(entry.id());
         if (table_info == nullptr) {
           if (skip_missing_tables) {
             LOG(INFO) << Format(
@@ -1161,6 +1171,23 @@ Status CatalogManager::ImportSnapshotPreprocess(
                   tables_data->erase(entry.id());
                   continue;
                 }
+              }
+            }
+            if (data.table_entry_pb.colocated() &&
+                IsColocatedDbTablegroupParentTableId(data.old_table_id)) {
+              // ysql_dump recreates an implicit tablegroup only through the tables in it, so the
+              // parent table of an empty one has no counterpart here. Skip it like the legacy
+              // parent table above.
+              auto ns_it = namespace_map->find(data.table_entry_pb.namespace_id());
+              if (ns_it != namespace_map->end() &&
+                  !FindTableById(VERIFY_RESULT(GetRestoreTargetTablegroupId(
+                      ns_it->second.new_namespace_id, data.old_table_id))).ok() &&
+                  !VERIFY_RESULT(SnapshotHasTableStoredIn(snapshot_pb, data.old_table_id))) {
+                LOG_WITH_FUNC(INFO) << "Skipping colocation parent table " << data.old_table_id
+                                    << ": no table of the snapshot is stored in it and the "
+                                    << "restoring database has no such tablegroup";
+                tables_data->erase(entry.id());
+                continue;
               }
             }
             data.table_meta = ImportSnapshotMetaResponsePB::TableMetaPB();
@@ -2230,6 +2257,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
+    old_tablet->StopCountingReplicaLoad();
     DeleteTabletReplicas(
         old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse,
         TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
@@ -2523,8 +2551,10 @@ Status CatalogManager::ImportTableEntry(
     //   sequentially. If a column was dropped from the indexed table before the snapshot was
     //   taken, the snapshotted and restored tables can have different column ids. Phase 3 fixes
     //   the indexed table's column ids when it imports that table.
-    // - hnsw.backend and store_payload come from --vector_index_backend and
-    //   --vector_index_store_payload, which can differ between the two clusters.
+    // - hnsw.backend, store_payload and tenant_hash_group_and_range_components come from
+    //   --vector_index_backend, --vector_index_store_payload and
+    //   --vector_index_tenant_hash_group_and_range_components, which can differ between the two
+    //   clusters.
     // - id names the tablet's vector index directory. The tablet takes it from the snapshot
     //   superblock, so the restored files are found under the snapshot's id.
     // Here in phase 4, while importing the vector index, we copy the snapshot's options, if
@@ -3000,9 +3030,11 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
-  // Colocation Migration special case. See ImportSnapshotPreprocess for more details.
-  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
-      && table_map->find(meta.table_id()) == table_map->end()) {
+  // The parent table of this tablet was skipped. See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() &&
+      (IsColocatedDbParentTableId(meta.table_id()) ||
+       IsColocatedDbTablegroupParentTableId(meta.table_id())) &&
+      table_map->find(meta.table_id()) == table_map->end()) {
     return Status::OK();
   }
 
@@ -3025,10 +3057,11 @@ Status CatalogManager::ImportTabletEntry(
 
   SysTabletsEntryPB meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
 
-  // This is the special case of colocation migration.
-  // See ImportSnapshotPreprocess for more details.
-  if (meta.colocated() && IsColocatedDbParentTableId(meta.table_id())
-      && table_map->find(meta.table_id()) == table_map->end()) {
+  // The parent table of this tablet was skipped. See ImportSnapshotPreprocess for more details.
+  if (meta.colocated() &&
+      (IsColocatedDbParentTableId(meta.table_id()) ||
+       IsColocatedDbTablegroupParentTableId(meta.table_id())) &&
+      table_map->find(meta.table_id()) == table_map->end()) {
     return Status::OK();
   }
 
@@ -3196,8 +3229,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(
-      doc_read_context, schema_packing_provider, write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(doc_read_context, schema_packing_provider, write_batch));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
@@ -3314,7 +3346,7 @@ Status CatalogManager::RestoreSysCatalog(
   if (!s.ok() && leader_mode) {
     LOG_WITH_PREFIX_AND_FUNC(INFO)
         << "PITR: Accepting RPCs to the master leader because of restoration failure: " << s;
-    restoring_sys_catalog_ = false;
+    ClearRestoringSysCatalogIfNotFenced();
   }
   // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
   // status in case of validation failures so that it gets propagated back to the client before
@@ -3863,14 +3895,18 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
   return ts_descs.size();
 }
 
-// This function is used to fence other work in the catalog manager which modifies tables or tablets
-// with PITR restores. It is called during the apply of the RESTORE_SYS_CATALOG raft op.
+// These functions fence other work in the catalog manager which modifies tables or tablets with
+// PITR restores. The leader that submits a RESTORE_SYS_CATALOG op fences in
+// FenceSysCatalogForRestore before submitting it. PrepareRestore, called during the apply of the
+// op, only fences if this node did not fence for that op (e.g. it was submitted in an earlier
+// term). Fencing during apply can deadlock: IncrementPitrCount waits for in-flight sys catalog
+// writes, whose raft ops may be queued behind the restore op.
 //
-// Ideally this function would use the leader lock to wait for all async tasks and rpc handlers
+// Ideally the fence would use the leader lock to wait for all async tasks and rpc handlers
 // accessing catalog entities to return, but this is not possible:
-//  *  exclusively acquiring the CatalogManager::leader_mutex_ here introduces a lock inversion with
-//     ReplicaState::update_lock_.
-//  *  waiting to acquire the leader mutex here can add unbounded delay to a raft op apply,
+//  *  exclusively acquiring the CatalogManager::leader_mutex_ during apply introduces a lock
+//     inversion with ReplicaState::update_lock_.
+//  *  waiting to acquire the leader mutex during apply can add unbounded delay to a raft op apply,
 //     preventing raft heartbeats.
 //
 // Much existing code in the catalog manager acquires the locks in this order:
@@ -3880,15 +3916,59 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 // work (1) and preventing any new work until the sys catalog is reloaded (2).
 //   (1) Any logical unit of work in the catalog manager should grab a LeaderEpoch when it begins.
 //     The sys catalog mutation API for tables and tablets checks LeaderEpoch::pitr_count. If the
-//     catalog work began before PrepareRestore was called and tried to write after PrepareRestore
-//     was called, then the work's cached pitr_count will not match the sys catalog's pitr_count and
-//     the write will fail.
+//     catalog work began before the fence and tried to write after it, then the work's cached
+//     pitr_count will not match the sys catalog's pitr_count and the write will fail.
 //   (2) ScopedLeaderSharedLock checks restoring_sys_catalog_ and fails if it is set, so any new
 //     tasks will fail.
-void CatalogManager::PrepareRestore() {
-  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
+void CatalogManager::PrepareRestore(const TxnSnapshotRestorationId& restoration_id) {
   restoring_sys_catalog_ = true;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it != fenced_restorations_.end()) {
+      fenced_restorations_.erase(it);
+      return;
+    }
+  }
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::FenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs before submitting sys catalog restore "
+                        << restoration_id;
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    fenced_restorations_.push_back(restoration_id);
+  }
+  restoring_sys_catalog_ = true;
+  // Called without restore_fence_mutex_: this waits for writes whose ops may be queued behind
+  // another restore op, whose apply takes the mutex in PrepareRestore.
+  // The bump is not undone if the op is never applied. In-flight work then fails with Aborted as
+  // if a restore had happened, and new work picks up the new count.
+  sys_catalog_->IncrementPitrCount();
+}
+
+void CatalogManager::UnfenceSysCatalogForRestore(const TxnSnapshotRestorationId& restoration_id) {
+  {
+    std::lock_guard lock(restore_fence_mutex_);
+    auto it = std::find(fenced_restorations_.begin(), fenced_restorations_.end(), restoration_id);
+    if (it == fenced_restorations_.end()) {
+      // Consumed by PrepareRestore: the op was applied and the reload clears the flag.
+      return;
+    }
+    fenced_restorations_.erase(it);
+  }
+  LOG_WITH_PREFIX(INFO) << "Sys catalog restore " << restoration_id
+                        << " was not applied on this node, dropping its fence";
+  ClearRestoringSysCatalogIfNotFenced();
+}
+
+void CatalogManager::ClearRestoringSysCatalogIfNotFenced() {
+  std::lock_guard lock(restore_fence_mutex_);
+  if (fenced_restorations_.empty()) {
+    restoring_sys_catalog_ = false;
+  }
 }
 
 Status CatalogManager::GetYsqlYbSystemTableInfo(

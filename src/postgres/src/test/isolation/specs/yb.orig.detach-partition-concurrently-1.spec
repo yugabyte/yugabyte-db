@@ -40,42 +40,35 @@ step s3ins2		{ INSERT INTO d_listp VALUES (2); }
 
 # The transaction that detaches hangs until it sees any older transaction
 # terminate, as does anybody else.
-# TODO(GH#31532): Read committed transactions shouldn't see the partition being
-# detached after the phase 1 of ALTER DETACH CONCURRENTLY commits. Fix the output
-# once the GH is addressed.
 permutation s1b s1s s2detach s1s s1c s1s
 
 # relpartbound remains set until s1 commits
 # XXX this could be timing dependent :-(
-# TODO(GH#31532): Read committed transactions shouldn't see the partition being
-# detached after the phase 1 of ALTER DETACH CONCURRENTLY commits.
 permutation s1b s1s s2detach s1s s3s s3i s1c s3i s2drop s1s
 
 # In read-committed mode, the partition disappears from view of concurrent
 # transactions immediately.  But if a write lock is held, then the detach
 # has to wait.
-# TODO(GH#31532): Read committed transactions shouldn't see the partition being
-# detached after the phase 1 of ALTER DETACH CONCURRENTLY commits.
 permutation s1b   s1s          s2detach s1ins s1s s1c
 permutation s1b   s1s s1ins2 s2detach s1ins s1s s1c
 permutation s1b   s1s s1ins2 s2detach s1ins s1s s1rollback
 
 # In repeatable-read mode, the partition remains visible until commit even
 # if the to-be-detached partition is not locked for write.
+# YB Note: This isn't true with YB as we make a choice to not show the partition
+# marked with pending_detach. This is necessary to honor RI checks as YB doesn't
+# have a central mechanism to track xids' and determine if the other txn was
+# concurrent or not.
 permutation s1brr s1s          s2detach s1ins s1s s1c
 permutation s1brr s1s          s2detach         s1s s1c
 
 # Another process trying to acquire a write lock will be blocked behind the
 # detacher
-# TODO(GH#31532): New connections starting after the phase 1 of ALTER DETACH
-# CONCURRENTLY commits shouldn't see the partition being removed.
 permutation s1b s1ins2 s2detach s3ins2 s1c
 permutation s1b s1ins2 s2detach s3ins2 s1rollback
 
 # a prepared query is not blocked
-# TODO(GH#31532): New connections starting after the phase 1 of ALTER DETACH
-# CONCURRENTLY commits shouldn't see the partition being removed.
-permutation s1brr s1prep s1s s2detach s1s s1exec1 s3s s1c s1dealloc
+permutation s1brr s1prep s1s s2detach s1s s1exec1 s3s s1dealloc s1c
 permutation s1brr s1prep s1exec2 s2detach s1s s1exec2 s3s s1c s1dealloc
 permutation s1brr s1prep s1s s2detach s1s s1exec2 s1c s1dealloc
 permutation s1brr s1prep s2detach s1s s1exec2 s1c s1dealloc

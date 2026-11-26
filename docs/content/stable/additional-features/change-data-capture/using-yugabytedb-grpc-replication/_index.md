@@ -68,7 +68,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 * Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * CDC currently doesn't support [Transactional DDL](../../../architecture/transactions/transactional-ddl/). Do not enable the `ysql_yb_ddl_transaction_block_enabled` flag if you are using CDC.
 * YCQL tables aren't currently supported. Issue {{<issue 11320>}}.
-* [Composite types](../../../explore/ysql-language-features/data-types#composite-types) are currently not supported. Issue {{<issue 25221>}}.
+* [Composite types](../../../explore/ysql-language-features/data-types/#composite-types) are currently not supported. Issue {{<issue 25221>}}.
 
 * If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2025.2.4.0+). If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
 

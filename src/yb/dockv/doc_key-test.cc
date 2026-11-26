@@ -402,6 +402,67 @@ TEST_F(DocKeyTest, YB_DISABLE_TEST(TryGetEncodedSizePerf)) {
       measure("TryGetEncodedSize, doc keys", doc_keys, try_get_encoded_size), num_doc_key_probes);
 }
 
+TEST_F(DocKeyTest, EncodedHashGroupAndRangeComponentsSize) {
+  const auto tenant = KeyEntryValue::Create("tenant");
+  auto components_size = [](const KeyBytes& key, size_t num_components) {
+    return CHECK_RESULT(DocKey::EncodedHashGroupAndRangeComponentsSize(
+        key.AsSlice(), num_components));
+  };
+  // Drops the group end that closes the range group, as pggate does for a ybctid prefix.
+  auto query_prefix = [](const DocKey& doc_key) {
+    auto result = doc_key.Encode();
+    result.RemoveLastByte();
+    return result;
+  };
+
+  // PRIMARY KEY ((tenant) HASH, r1, r2).
+  auto ybctid = DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1), KeyEntryValue::Int32(2)})
+      .Encode();
+  auto hash_part_size = ASSERT_RESULT(
+      DocKey::EncodedSize(ybctid.AsSlice(), DocKeyPart::kUpToHash));
+  auto r1_end = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)})).size();
+  ASSERT_EQ(components_size(ybctid, 0), 0U);
+  ASSERT_EQ(components_size(ybctid, 1), hash_part_size);
+  ASSERT_EQ(components_size(ybctid, 2), r1_end);
+  // The closing range group end is not covered.
+  ASSERT_EQ(components_size(ybctid, 3), ybctid.size() - 1);
+  ASSERT_EQ(components_size(ybctid, 4), std::nullopt);
+  ASSERT_EQ(
+      ASSERT_RESULT(DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(ybctid.AsSlice(), 2)),
+      r1_end);
+  auto strict_size = DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(ybctid.AsSlice(), 4);
+  ASSERT_NOK(strict_size);
+  ASSERT_TRUE(strict_size.status().IsCorruption()) << strict_size.status();
+
+  // A query prefix with the hash group gives the tenant of its rows.
+  auto prefix = query_prefix(DocKey(0x1234, {tenant}, {}));
+  ASSERT_EQ(prefix.AsSlice(), ybctid.AsSlice().Prefix(hash_part_size));
+  ASSERT_EQ(components_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(components_size(prefix, 2), std::nullopt);
+  prefix = query_prefix(DocKey(0x1234, {tenant}, {KeyEntryValue::Int32(1)}));
+  ASSERT_EQ(components_size(prefix, 1), hash_part_size);
+  ASSERT_EQ(components_size(prefix, 2), r1_end);
+
+  // PRIMARY KEY ((tenant) HASH): the tenant is the whole key without the range group end.
+  auto hash_ybctid = DocKey(0x1234, {tenant}, {}).Encode();
+  ASSERT_EQ(components_size(hash_ybctid, 1), hash_part_size);
+
+  // PRIMARY KEY (r1 ASC, r2 ASC).
+  auto range_ybctid = DocKey({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)}).Encode();
+  auto range_prefix = query_prefix(DocKey({KeyEntryValue::Int32(7)}));
+  ASSERT_EQ(components_size(range_ybctid, 1), range_prefix.size());
+  ASSERT_EQ(components_size(range_prefix, 1), range_prefix.size());
+  ASSERT_EQ(components_size(range_prefix, 2), std::nullopt);
+
+  // The colocation id of a range key is not a hash group.
+  constexpr ColocationId kColocationId = 0x4000;
+  DocKey colocated_key({KeyEntryValue::Int32(7), KeyEntryValue::Int32(8)});
+  colocated_key.set_colocation_id(kColocationId);
+  DocKey colocated_prefix({KeyEntryValue::Int32(7)});
+  colocated_prefix.set_colocation_id(kColocationId);
+  ASSERT_EQ(components_size(colocated_key.Encode(), 1), query_prefix(colocated_prefix).size());
+}
+
 TEST_F(DocKeyTest, IsDecodable) {
   const auto encoded = DocKey(0x1234, MakeKeyEntryValues("h"), MakeKeyEntryValues(10)).Encode();
   ASSERT_TRUE(DocKey::IsDecodable(encoded.AsSlice()));

@@ -7,8 +7,16 @@ import { StyledPanel } from '../../components/DefaultComponents';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { REPLICATION_FACTOR } from '../../fields/FieldNames';
-import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
+import { REPLICATION_FACTOR, AVAILABILITY_ZONES_BY_PROVIDER } from '../../fields/FieldNames';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  includesKubernetesCloud,
+  isMultiProvider
+} from '../../helpers/providerConfigurations';
+import {
+  getNodeCountFromByProvider,
+  type AvailabilityZonesByProvider
+} from '../../helpers/nodesByProvider';
 
 //icons
 import Return from '../../../../../assets/tree.svg';
@@ -52,11 +60,18 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
   const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
     CreateUniverseContext
   ) as unknown as CreateUniverseContextMethods;
-  const isK8sUniverse = generalSettings?.cloud === CloudType.kubernetes;
+  const isK8sUniverse = includesKubernetesCloud(generalSettings?.cloud);
 
   const availabilityZones = watch('availabilityZones');
+  const byProvider = watch(AVAILABILITY_ZONES_BY_PROVIDER) as
+    | AvailabilityZonesByProvider
+    | undefined;
   const useDedicatedNodes = watch('useDedicatedNodes');
-  const nodeCount = getNodeCount(availabilityZones);
+  const multiPlacement =
+    ENABLE_MULTI_PROVIDER_CREATE && isMultiProvider(generalSettings);
+  const nodeCount = multiPlacement
+    ? getNodeCountFromByProvider(byProvider)
+    : getNodeCount(availabilityZones);
   const replicationFactor = watch(REPLICATION_FACTOR) ?? 1;
 
   if (isK8sUniverse) {

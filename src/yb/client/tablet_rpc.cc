@@ -20,6 +20,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/network_error.h"
@@ -62,6 +63,11 @@ DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDe
     "possible for the request. This is turned on in debug mode to test that our metacache "
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
+DEFINE_RUNTIME_bool(abort_txn_on_unknown_pipelined_write_outcome, true,
+    "Abort the transaction when a pipelined request (a write, or a read that takes row locks or "
+    "runs in serializable isolation) may have reached the leader but got no reply. The old leader "
+    "may still apply it, so resending it or failing only the statement is not safe.");
+
 DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
     "the tablet invoker.");
@@ -71,6 +77,21 @@ using namespace std::placeholders;
 namespace yb {
 namespace client {
 namespace internal {
+
+namespace {
+
+// Whether the server may have received the request although the call got no reply.
+bool ServerMayHaveRequest(const rpc::RpcController& controller) {
+  const auto& call_status = controller.status();
+  if (call_status.ok() || call_status.IsRemoteError()) {
+    // If the server replied, its reply says what happened.
+    return false;
+  }
+  // Otherwise it may still be handling the request.
+  return call_status.IsTimedOut() || controller.WasSent();
+}
+
+} // namespace
 
 TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              const bool consistent_prefix,
@@ -246,6 +267,8 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
 
 
     if (refresh_cache) {
+      // Otherwise a failure of this lookup would be blamed on the previous attempt's TServer.
+      current_ts_ = nullptr;
       client_->LookupTabletById(tablet_id_,
                                 table_,
                                 include_hidden_,
@@ -347,7 +370,7 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
           FollowerData{
               .status = STATUS(IllegalState, "Not the leader"), .time = CoarseMonoClock::now()});
     }
-  } else {
+  } else if (current_ts_) {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
 
@@ -366,6 +389,10 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
                    << current_ts_->ToString()
                    << " as failed. Replicas: " << tablet_->ReplicasAsString();
     }
+  } else {
+    // A failed tablet lookup reaches here via Done() before any TServer was selected, so there is
+    // no replica to blame; just retry.
+    VLOG(1) << "Retrying " << command_->ToString() << " with no replica selected: " << reason;
   }
   auto status = retrier_->DelayedRetry(command_, reason);
   if (!status.ok()) {
@@ -407,6 +434,19 @@ bool TabletInvoker::Done(Status* status) {
     consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
     TEST_SYNC_POINT_CALLBACK(
         "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
+  }
+
+  if (FLAGS_abort_txn_on_unknown_pipelined_write_outcome && rpc_->AppliedBeforeReplication() &&
+      ServerMayHaveRequest(retrier_->controller())) {
+    // The server may still early-apply this request, leaving intents that no log entry backs once
+    // it loses leadership. The transaction must not commit with these, so abort the transaction.
+    if (tablet_ && current_ts_) {
+      tablet_->MarkReplicaFailed(current_ts_, *status);
+    }
+    *status = status->CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
+        .CloneAndAddErrorCode(ClientError(ClientErrorCode::kPipelinedWriteOutcomeUnknown));
+    FailRpc(status);
+    return true;
   }
 
   // Failover to a replica in the event of any network failure.
@@ -522,24 +562,7 @@ bool TabletInvoker::Done(Status* status) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
     }
-    std::string current_ts_string;
-    if (current_ts_) {
-      current_ts_string = Format("on tablet server $0", *current_ts_);
-    } else {
-      current_ts_string = "(no tablet server available)";
-    }
-    Status log_status = status->CloneAndPrepend(
-        Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
-               command_->ToString(),
-               tablet_id_,
-               current_ts_string,
-               retrier_->attempt_num()));
-    if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
-    } else {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
-    }
-    rpc_->Failed(*status);
+    FailRpc(status);
   } else if (assign_new_leader && current_ts_) {
     bool assigned = tablet_->MarkTServerAsLeader(current_ts_);
     LOG_IF(INFO, !assigned)
@@ -550,6 +573,36 @@ bool TabletInvoker::Done(Status* status) {
   TEST_SYNC_POINT_CALLBACK("TabletInvoker::Done", &attempt_num);
 
   return true;
+}
+
+void TabletInvoker::FailRpc(Status* status) {
+  if (status->IsTimedOut()) {
+    // Keep the root cause from earlier attempts, e.g. "Connection refused", unless
+    // RpcRetrier::DoRetry already appended it to the deadline message.
+    const auto& last_error = retrier_->last_error();
+    if (!last_error.ok() && !last_error.IsTimedOut() &&
+        status->message().ToBuffer().find(last_error.ToString()) == std::string::npos) {
+      *status = status->CloneAndAppend(last_error.ToString());
+    }
+  }
+  std::string current_ts_string;
+  if (current_ts_) {
+    current_ts_string = Format("on tablet server $0", *current_ts_);
+  } else {
+    current_ts_string = "(no tablet server available)";
+  }
+  Status log_status = status->CloneAndPrepend(
+      Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
+             command_->ToString(),
+             tablet_id_,
+             current_ts_string,
+             retrier_->attempt_num()));
+  if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
+  } else {
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
+  }
+  rpc_->Failed(*status);
 }
 
 void TabletInvoker::InitialLookupTabletDone(

@@ -37,6 +37,7 @@ namespace yb::docdb {
 
 extern const std::string kIntentsDirName;
 extern const std::string kSnapshotsDirName;
+extern const std::string kVectorIndexDirPrefix;
 
 Status SetValueFromQLBinaryWrapper(
     const QLValuePB& ql_value, int pg_data_type,
@@ -347,6 +348,18 @@ std::string GetStorageDir(const std::string& data_dir, const std::string& storag
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
 std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options);
 std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options);
+
+// Marks the storage of a removed vector index with a sibling directory, which is deleted only after
+// the storage, so that a crash during the deletion leaves the rest of the storage marked.
+Status MarkRemovedVectorIndexStorage(Env& env, const std::string& storage_dir);
+
+bool IsVectorIndexStorageMarkedRemoved(Env& env, const std::string& storage_dir);
+
+// Returns the storage that dir marks as removed, when dir is such a mark.
+std::optional<std::string> StorageOfRemovedVectorIndexMark(const std::string& dir);
+
+// Deletes the vector index storage, then its removal mark.
+Status DeleteVectorIndexStorage(Env& env, const std::string& storage_dir);
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);

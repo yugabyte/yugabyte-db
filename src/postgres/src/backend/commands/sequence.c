@@ -1045,8 +1045,8 @@ nextval_internal(Oid relid, bool check_permissions)
 		if (YbIsClientYsqlConnMgr() &&
 			(strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode), "session") == 0))
 		{
-			increment_sticky_object_count();
-			elog(LOG_SERVER_ONLY, "Incremented sticky object count for sequence %s",
+			yb_ysql_conn_mgr_sticky_nontxn_object = true;
+			elog(LOG_SERVER_ONLY, "Making connection sticky for sequence %s",
 				 RelationGetRelationName(seqrel));
 		}
 		return first_val;
@@ -1232,6 +1232,7 @@ nextval_internal(Oid relid, bool check_permissions)
 Datum
 currval_oid(PG_FUNCTION_ARGS)
 {
+	/* YB: a pooled backend serves many clients, so its currval is not theirs */
 	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
 										   "pooled_without_curval_lastval") == 0))
 	{
@@ -1254,35 +1255,11 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("permission denied for sequence %s",
 						RelationGetRelationName(seqrel))));
 
-	/* YB: check connection manager sequence mode before reporting error */
 	if (!elm->last_valid)
-	{
-		if (!(YbIsClientYsqlConnMgr() &&
-			  strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
-					 "pooled_with_currval_lastval") == 0))
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("currval of sequence \"%s\" is not yet defined in this session",
-							RelationGetRelationName(seqrel))));
-		else
-		{
-			HeapTuple	pgstuple = SearchSysCache1(SEQRELID, relid);
-
-			if (!HeapTupleIsValid(pgstuple))
-				elog(ERROR, "cache lookup failed for sequence %u", relid);
-			Form_pg_sequence pgsform = (Form_pg_sequence) GETSTRUCT(pgstuple);
-
-			/*
-			 * YB: When connection manager is enabled, return start of sequence if
-			 * not already defined when providing support for currval without
-			 * stickiness.
-			 */
-			result = pgsform->seqstart;
-			ReleaseSysCache(pgstuple);
-			relation_close(seqrel, NoLock);
-			PG_RETURN_INT64(result);
-		}
-	}
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
+						RelationGetRelationName(seqrel))));
 
 	result = elm->last;
 
@@ -1294,6 +1271,7 @@ currval_oid(PG_FUNCTION_ARGS)
 Datum
 lastval(PG_FUNCTION_ARGS)
 {
+	/* YB: a pooled backend serves many clients, so its lastval is not theirs */
 	if (YbIsClientYsqlConnMgr() && (strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
 										   "pooled_without_curval_lastval") == 0))
 	{
@@ -1304,26 +1282,10 @@ lastval(PG_FUNCTION_ARGS)
 	Relation	seqrel;
 	int64		result;
 
-	/* YB: check connection manager sequence mode before reporting error */
 	if (last_used_seq == NULL)
-	{
-		if (!(YbIsClientYsqlConnMgr() &&
-			  strcmp((YBCGetGFlags()->ysql_conn_mgr_sequence_support_mode),
-					 "pooled_with_currval_lastval") == 0))
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					 errmsg("lastval is not yet defined in this session")));
-		else
-		{
-			/*
-			 * YB: When connection manager is enabled, return a fixed value if
-			 * not already defined when providing support for lastval without
-			 * stickiness.
-			 */
-			result = 0;
-			PG_RETURN_INT64(result);
-		}
-	}
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("lastval is not yet defined in this session")));
 
 	/* Someone may have dropped the sequence since the last nextval() */
 	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))

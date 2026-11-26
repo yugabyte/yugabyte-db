@@ -109,10 +109,14 @@
 #include "utils/relfilenodemap.h"
 
 /* YB includes */
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_publication.h"
+#include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
-#include "yb/yql/pggate/ybc_gflags.h"
-
+#include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 /* entry for a hash table we use to map from xid to our transaction state */
 typedef struct ReorderBufferTXNByIdEnt
@@ -549,6 +553,7 @@ ReorderBufferReturnChange(ReorderBuffer *rb, ReorderBufferChange *change,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			break;
 	}
 
@@ -2239,10 +2244,20 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 					if (IsYugaByteEnabled())
 					{
-						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						if (yb_enable_replication_slot_transactional_ddl)
+						{
+							const uint32_t *aborted_subtxn_set;
+							int			aborted_subtxn_set_size;
+
+							aborted_subtxn_set =
+								YBCGetAbortedSubtxnSet(change->data.tp.yb_txn_id,
+													   &aborted_subtxn_set_size);
 							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
 														change->data.tp.yb_in_txn_limit,
-														change->data.tp.yb_txn_id);
+														change->data.tp.yb_txn_id,
+														aborted_subtxn_set,
+														aborted_subtxn_set_size);
+						}
 
 						/*
 						 * In YB, the replica identity used for streaming is the
@@ -2503,11 +2518,32 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 				case YB_REORDER_BUFFER_CHANGE_DDL:
 					YBCInvalidateCachesForHistoricalReadContext();
 					/*
+					 * A DDL record without a table comes from a pg_namespace
+					 * change such as ALTER SCHEMA ... RENAME TO. In such
+					 * cases, we need to invalidate the catalog cache,
+					 * otherwise the old cached schema name will be sent in
+					 * the RELATION message.
+					 */
+					if (!OidIsValid(change->data.yb_ddl.table_oid))
+						CatalogCacheFlushCatalog(NamespaceRelationId);
+					/*
 					 * Inform the output plugin about the schema change so that
 					 * it can send the RELATION message to the client.
 					 */
 					YBReorderBufferSchemaChange(rb,
 												change->data.yb_ddl.table_oid);
+					break;
+
+				case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
+					/*
+					 * An explicit ALTER PUBLICATION took effect at this point
+					 * of the transaction. Flushing these catalog caches fires
+					 * their syscache callbacks, so the output plugin rebuilds
+					 * its publication info on the next change, under that
+					 * change's historical read context.
+					 */
+					CatalogCacheFlushCatalog(PublicationRelationId);
+					CatalogCacheFlushCatalog(PublicationRelRelationId);
 					break;
 			}
 		}
@@ -3996,6 +4032,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4261,6 +4298,7 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4618,6 +4656,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			break;
 	}
 

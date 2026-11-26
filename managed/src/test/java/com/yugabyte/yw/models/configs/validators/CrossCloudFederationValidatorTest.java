@@ -33,7 +33,8 @@ import org.junit.Test;
 public class CrossCloudFederationValidatorTest extends FakeDBApplication {
 
   private static final String AUDIENCE =
-      "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/prov";
+      "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/p/"
+          + "providers/prov";
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/yb-s3-fed-role";
 
   private Customer customer;

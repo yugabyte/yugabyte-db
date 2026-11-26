@@ -76,6 +76,7 @@ Supported flags:
 %p = process ID
 %i = client ID
 %s = server ID
+%b = backend process ID
 %u = user name
 %d = database name
 %c = context
@@ -702,6 +703,13 @@ Execute 'ROLLBACK' if server left in active transaction.
 Close connection otherwise.
 
 `pool_rollback yes`
+
+#### pool\_attach\_check *yes|no*
+
+Check server connection before attaching to client.
+Default: yes
+
+`pool_attach_check no`
 
 #### client\_fwd\_error *yes|no*
 

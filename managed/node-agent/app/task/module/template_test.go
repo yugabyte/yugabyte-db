@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTestTemplate(t *testing.T, content string) string {
@@ -125,6 +127,71 @@ func TestCleanCoresTemplate(t *testing.T) {
 	}
 }
 
+func TestCleanCoresScript(t *testing.T) {
+	if err := exec.Command("find", "/", "-maxdepth", "0", "-printf", "").Run(); err != nil {
+		t.Skip("Script requires GNU find with -printf")
+	}
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clean_cores.sh.j2")
+	coresDir := t.TempDir()
+	output, err := ResolveTemplateStrict(
+		context.TODO(),
+		map[string]any{
+			"num_cores_to_keep": 2,
+			"yb_home_dir":       "/home/yugabyte",
+			"yb_cores_dir":      coresDir,
+		},
+		templatePath,
+		true, /*strictUndefined*/
+	)
+	if err != nil {
+		t.Fatalf("ResolveTemplateStrict failed: %v", err)
+	}
+	script := filepath.Join(t.TempDir(), "clean_cores.sh")
+	if err := os.WriteFile(script, []byte(output), 0755); err != nil {
+		t.Fatalf("Failed to write script: %v", err)
+	}
+	// Oldest first. The kernel appends " (deleted)" to the executable path when the
+	// crashed binary was replaced on disk.
+	cores := []string{
+		"core_1351_1771476246_!usr!sbin!auditd (deleted)",
+		"core_99_*",
+		"core_1",
+		"core_2",
+		"core_3",
+	}
+	now := time.Now()
+	for i, name := range cores {
+		path := filepath.Join(coresDir, name)
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", name, err)
+		}
+		mtime := now.Add(time.Duration(i-len(cores)) * time.Hour)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("Failed to set mtime on %s: %v", name, err)
+		}
+	}
+	cmd := exec.Command("bash", script)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "USER=yugabyte"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Script failed: %v\n%s", err, out)
+	}
+	entries, err := os.ReadDir(coresDir)
+	if err != nil {
+		t.Fatalf("Failed to read cores dir: %v", err)
+	}
+	var remaining []string
+	for _, e := range entries {
+		remaining = append(remaining, e.Name())
+	}
+	if want := []string{"core_2", "core_3"}; !slices.Equal(remaining, want) {
+		t.Fatalf("Expected remaining cores %v, got %v", want, remaining)
+	}
+}
+
 func TestClockSyncTemplate(t *testing.T) {
 	projectDir := os.Getenv("PROJECT_DIR")
 	if projectDir == "" {
@@ -176,6 +243,52 @@ func TestClockSyncTemplate(t *testing.T) {
 				if !strings.Contains(output, `max_tries="60"`) {
 					t.Fatalf("Expected max_tries=60 in output:\n%s", output)
 				}
+			}
+		})
+	}
+}
+
+func TestChronyTemplate(t *testing.T) {
+	templatePath := filepath.Join(
+		os.Getenv("PROJECT_DIR"), "resources/ynp/modules/provision/chrony/templates/run.j2")
+	const ntsRm = "rm -f /etc/chrony/sources.d/ubuntu-ntp-pools.sources"
+	tests := []struct {
+		name      string
+		values    map[string]any
+		wantRm    bool
+		wantWrite string
+	}{
+		{"custom servers", map[string]any{"chrony_servers": "10.0.0.1", "is_cloud": "False"},
+			true, "server 10.0.0.1 prefer iburst minpoll 4 maxpoll 4' \"${CHRONY_CONF}\""},
+		{"aws", map[string]any{"chrony_servers": "", "is_cloud": "True", "cloud_type": "aws"},
+			true, "server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4' \"${CHRONY_CONF}\""},
+		{"onprem no servers", map[string]any{"chrony_servers": "", "is_cloud": "False"},
+			false, "systemctl restart chronyd"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ResolveTemplate(context.TODO(), tc.values, templatePath)
+			if err != nil {
+				t.Fatalf("ResolveTemplate failed: %v", err)
+			}
+			if !strings.Contains(output, tc.wantWrite) {
+				t.Fatalf("Expected %q in output:\n%s", tc.wantWrite, output)
+			}
+			// sed/grep take the file after a quoted arg, echo after >>.
+			for _, old := range []string{"' /etc/chrony.conf", ">> /etc/chrony.conf"} {
+				if strings.Contains(output, old) {
+					t.Fatalf(
+						"Expected writes to go through CHRONY_CONF, found %q:\n%s",
+						old,
+						output,
+					)
+				}
+			}
+			if strings.Contains(output, ntsRm) != tc.wantRm {
+				t.Fatalf("Expected NTS pool removal=%v in output:\n%s", tc.wantRm, output)
+			}
+			if strings.Contains(output, "exit 1") != tc.wantRm {
+				t.Fatalf("Expected chrony.conf check only when it is edited:\n%s", output)
 			}
 		})
 	}

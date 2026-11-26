@@ -44,6 +44,8 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -53,6 +55,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.RpcClientCert;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -76,6 +79,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.ImportUniverseTaskParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
@@ -128,6 +132,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import javax.validation.constraints.NotNull;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -248,7 +253,8 @@ public class UniverseCRUDHandler {
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService;
+                != currentCluster.userIntent.enableExposingService
+            || ManagedLoadBalancerUtil.isChanged(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -400,30 +406,23 @@ public class UniverseCRUDHandler {
     if (provider.getCloudCode() != Common.CloudType.aws) {
       return false;
     }
-    String curArnString = currentCluster.userIntent.awsArnString;
-    String newArnString = cluster.userIntent.awsArnString;
-    if (cluster.userIntent.isMulticloudSupport()) {
-      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
-          cluster.userIntent.getProviderSpecification(provider.getUuid());
-      if (providerSpecification == null) {
-        /* Basically that should never happen, but since this method should be
-          used to determine whether we should do a full move or not,
-          it is better just to return false.
-        */
-        return false;
-      }
-      curArnString = null;
-      newArnString = providerSpecification.getAwsInstanceProfile();
-      UniverseDefinitionTaskParams.ProviderSpecification oldProviderSpec =
-          currentCluster.userIntent.getProviderSpecification(provider.getUuid());
-      if (oldProviderSpec != null) {
-        curArnString = oldProviderSpec.getAwsInstanceProfile();
-      } else {
-        return false;
-      }
+    if (!currentCluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())
+        || !cluster.userIntent.getAllProviderUUIDs().contains(provider.getUuid())) {
+      return false;
     }
-    return (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
-        && !Objects.equals(curArnString, newArnString);
+
+    String curArnString =
+        currentCluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
+    String newArnString = cluster.userIntent.getAwsInstanceProfileForProvider(provider.getUuid());
+
+    boolean result =
+        (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
+            && !Objects.equals(curArnString, newArnString);
+
+    if (result) {
+      LOG.debug("awsArnString info has changed from {} to {}", curArnString, newArnString);
+    }
+    return result;
   }
 
   public static boolean areCommunicationPortsChanged(
@@ -467,6 +466,11 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
+    // A universe UUID that doesn't exist yet configures a new universe.
+    if (taskParams.getUniverseUUID() != null
+        && Universe.maybeGet(taskParams.getUniverseUUID()).isPresent()) {
+      Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    }
     Cluster cluster = getClusterFromTaskParams(taskParams);
     if (taskParams.clusterOperation == ClusterOperationType.CREATE
         && taskParams.currentClusterType == ClusterType.PRIMARY
@@ -484,16 +488,7 @@ public class UniverseCRUDHandler {
               + "master and tserver are selected.");
     }
     if (userIntent.dedicatedNodes) {
-      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
-        if (Util.isKubernetesBasedUniverse(taskParams)) {
-          userIntent.masterDeviceInfo = OperatorUtils.defaultMasterDeviceInfo();
-        } else {
-          userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
-        }
-      }
-      if (userIntent.masterInstanceType == null) {
-        userIntent.masterInstanceType = userIntent.instanceType;
-      }
+      checkAndInitMasterSettingsForDedicated(taskParams, userIntent);
     }
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
@@ -577,6 +572,47 @@ public class UniverseCRUDHandler {
       LOG.error("Failed to update universe definition", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+  }
+
+  private void checkAndInitMasterSettingsForDedicated(
+      UniverseDefinitionTaskParams taskParams, UserIntent userIntent) {
+    if (userIntent.isMulticloudSupport()) {
+      for (UniverseDefinitionTaskParams.ProviderSpecification providerSpecification :
+          userIntent.providerSpecifications) {
+        if (providerSpecification == null
+            || providerSpecification.getNodesSpecs() == null
+            || providerSpecification.getNodesSpecs().getTserverSpecification() == null) {
+          // Validation will fail later.
+          continue;
+        }
+        HierarchicalNodesSpec.NodeSpec tserverSpec =
+            providerSpecification.getNodesSpecs().getNodesSpec().getTserverSpecification();
+        HierarchicalNodesSpec.NodeSpec masterSpec =
+            providerSpecification.getNodesSpecs().getNodesSpec().getOrCreateMasterSpec();
+        if (masterSpec.getDeviceInfo() == null) {
+          masterSpec.setDeviceInfo(
+              getDefaultMasterDeviceInfoForDedicated(taskParams, tserverSpec.getDeviceInfo()));
+        }
+        if (masterSpec.getInstanceType() == null) {
+          masterSpec.setInstanceType(tserverSpec.getInstanceType());
+        }
+      }
+    } else {
+      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
+        userIntent.masterDeviceInfo =
+            getDefaultMasterDeviceInfoForDedicated(taskParams, userIntent.deviceInfo);
+      }
+      if (userIntent.masterInstanceType == null) {
+        userIntent.masterInstanceType = userIntent.instanceType;
+      }
+    }
+  }
+
+  private DeviceInfo getDefaultMasterDeviceInfoForDedicated(
+      UniverseDefinitionTaskParams taskParams, @NotNull DeviceInfo tserverDeviceInfo) {
+    return Util.isKubernetesBasedUniverse(taskParams)
+        ? OperatorUtils.defaultMasterDeviceInfo()
+        : (tserverDeviceInfo == null ? null : tserverDeviceInfo.clone());
   }
 
   public void checkGeoPartitioningParameters(
@@ -842,6 +878,7 @@ public class UniverseCRUDHandler {
 
   public UniverseResp createUniverse(Customer customer, UniverseDefinitionTaskParams taskParams) {
     LOG.info("Create for {}.", customer.getUuid());
+
     if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
       // Not every caller runs configure() first, which is where this is otherwise enforced.
       taskParams.fipsEnabled = true;
@@ -866,6 +903,15 @@ public class UniverseCRUDHandler {
                 + nodeDetails.placementUuid
                 + " for node with idx "
                 + nodeDetails.nodeIdx);
+      }
+    }
+    for (Cluster c : taskParams.clusters) {
+      String version = c.userIntent.ybSoftwareVersion;
+      if (StringUtils.isNotBlank(version)) {
+        ReleaseContainer release = releaseManager.getReleaseByVersion(version);
+        if (release != null) {
+          release.raiseIfDisabledOrDeleted();
+        }
       }
     }
     List<GroupName> gflagGroups = new ArrayList<>();
@@ -905,11 +951,23 @@ public class UniverseCRUDHandler {
             BAD_REQUEST, CrossCloudFederationTarget.MULTICLOUD_UNSUPPORTED_ERROR);
       }
       c.userIntent.setFederationConfigured(federationConfigured);
+      if (c.userIntent.dedicatedNodes) {
+        checkAndInitMasterSettingsForDedicated(taskParams, c.userIntent);
+      }
 
       isK8s = c.userIntent.getAllCloudTypes().contains(Common.CloudType.kubernetes);
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+      c.validate(
+          !cloudEnabled,
+          isAuthEnforced,
+          taskParams.fipsEnabled,
+          taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
+          taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
-          c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
+          c, taskParams.clusters, confGetter, cloudAPIFactory);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
 
@@ -1142,6 +1200,7 @@ public class UniverseCRUDHandler {
     }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CREATE);
+    RpcClientCert.validate(taskParams);
     validateTmpDirGflagConsistency(taskParams);
     validateOciInstanceTags(taskParams);
 
@@ -1476,10 +1535,12 @@ public class UniverseCRUDHandler {
    */
   public UUID update(Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     checkCanEdit(customer, u);
+    validateFipsGFlagsForUpdate(u, taskParams);
     checkTaskParamsForUpdate(u, taskParams);
     // enforce user tags for cloud instances.
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
+      GFlagsUtil.validateGFlagValues(cluster.userIntent);
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
@@ -1498,6 +1559,19 @@ public class UniverseCRUDHandler {
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
+
+    // Only the cross-cloud federation API changes it on an existing cluster, and clients such as
+    // the CLI omit it. The edit would then clear it, and with it federation on the nodes later
+    // edits add, so keep each existing cluster's stored value.
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster stored = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      if (stored != null) {
+        cluster.userIntent.setFederationConfigured(stored.userIntent.isFederationConfigured());
+      }
+    }
+
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
@@ -1506,6 +1580,25 @@ public class UniverseCRUDHandler {
       return updateCluster(customer, u, taskParams);
     } else {
       return updatePrimaryCluster(customer, u, taskParams);
+    }
+  }
+
+  private static void validateFipsGFlagsForUpdate(
+      Universe u, UniverseDefinitionTaskParams taskParams) {
+    if (!u.getUniverseDetails().fipsEnabled) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster current = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      // Only gflags this edit changes, so a universe already storing a non-true value stays
+      // editable; configure sets the flag to true on its nodes regardless.
+      if (current != null
+          && Objects.equals(cluster.userIntent.specificGFlags, current.userIntent.specificGFlags)
+          && Objects.equals(cluster.userIntent.masterGFlags, current.userIntent.masterGFlags)
+          && Objects.equals(cluster.userIntent.tserverGFlags, current.userIntent.tserverGFlags)) {
+        continue;
+      }
+      GFlagsUtil.validateFipsCompliancy(cluster.userIntent, true);
     }
   }
 
@@ -1827,6 +1920,9 @@ public class UniverseCRUDHandler {
               + universe.getUniverseUUID());
     }
 
+    // The new cluster follows the universe, whatever the request says.
+    taskParams.fipsEnabled = universe.getUniverseDetails().fipsEnabled;
+
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
     }
@@ -1847,6 +1943,8 @@ public class UniverseCRUDHandler {
 
     // Set helm naming style into params
     taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
+    // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
+    taskParams.otelCollectorEnabled = universe.getUniverseDetails().otelCollectorEnabled;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();
@@ -1909,7 +2007,11 @@ public class UniverseCRUDHandler {
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     addOnCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1979,8 +2081,10 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<Cluster> clustersAfterCreate = new ArrayList<>(universe.getUniverseDetails().clusters);
+    clustersAfterCreate.add(readOnlyCluster);
     ManagedLoadBalancerUtil.validateNewCluster(
-        readOnlyCluster, primaryCluster, confGetter, cloudAPIFactory);
+        readOnlyCluster, clustersAfterCreate, confGetter, cloudAPIFactory);
     List<GroupName> primaryGflagGroups = new ArrayList<>();
     if (primaryCluster.userIntent.specificGFlags != null) {
       primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
@@ -2001,7 +2105,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.validate(
-        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
+        !cloudEnabled,
+        isAuthEnforced,
+        taskParams.fipsEnabled,
+        primaryCluster.userIntent.useNodeToNodeClientCerts,
+        taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -2012,13 +2120,13 @@ public class UniverseCRUDHandler {
         }
         readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
       }
-      List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
-      clusters.add(readOnlyCluster);
       readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
       readOnlyCluster.userIntent.masterGFlags =
-          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clustersAfterCreate);
       readOnlyCluster.userIntent.tserverGFlags =
-          GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clusters);
+          GFlagsUtil.getBaseGFlags(
+              UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clustersAfterCreate);
     } else {
       // nothing needed here since we don't have specific gflags
       readOnlyCluster.userIntent.specificGFlags = SpecificGFlags.constructInherited();
@@ -2537,7 +2645,10 @@ public class UniverseCRUDHandler {
   public UUID tlsConfigUpdate(
       Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
 
-    LOG.info("tlsConfigUpdate: {}", Json.toJson(CommonUtils.maskObject(taskParams)));
+    LOG.info(
+        "tlsConfigUpdate: {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(taskParams)), RedactionTarget.LOGS));
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -2670,7 +2781,10 @@ public class UniverseCRUDHandler {
     } catch (JsonProcessingException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+    LOG.info(
+        "CertsRotateParams : {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(certsRotateParams)), RedactionTarget.LOGS));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
@@ -2878,6 +2992,13 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
+    for (Cluster cluster : taskParams.clusters) {
+      cluster.userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
+              cluster.userIntent.getManagedLoadBalancer()));
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
@@ -2924,8 +3045,9 @@ public class UniverseCRUDHandler {
           && curCluster.clusterType == ClusterType.PRIMARY) {
         throw new PlatformServiceException(BAD_REQUEST, "RF change is not available");
       }
-      ManagedLoadBalancerUtil.validateEditedCluster(
-          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
+      // Fixed at creation. Clients that predate the field send false, so keep the current value.
+      newCluster.userIntent.useNodeToNodeClientCerts =
+          curCluster.userIntent.useNodeToNodeClientCerts;
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {
@@ -2936,14 +3058,7 @@ public class UniverseCRUDHandler {
           ImageBundle newBundle =
               ImageBundle.getOrBadRequest(
                   provider.getUuid(), newIntent.getImageBundleUUIDForProvider(providerUUID));
-          if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Cannot change arch from "
-                    + universe.getUniverseDetails().arch
-                    + " to "
-                    + newBundle.getDetails().getArch());
-          }
+          ImageBundleUtil.checkArchMatchesUniverse(universe, newBundle);
         }
       }
 
@@ -3050,7 +3165,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change master gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curMasterGFlags, curIntent),
+                    redactGFlags(newMasterGFlags, curIntent)));
           }
           if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
             throw new PlatformServiceException(
@@ -3058,7 +3175,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change tserver gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curTserverGFlags, curIntent),
+                    redactGFlags(newTserverGFlags, curIntent)));
           }
 
           if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
@@ -3106,6 +3225,10 @@ public class UniverseCRUDHandler {
         newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
+  }
+
+  private Map<String, String> redactGFlags(Map<String, String> gflags, UserIntent userIntent) {
+    return RedactingService.redactGFlags(gflags, userIntent.ybSoftwareVersion, gFlagsValidation);
   }
 
   private void verifyDeviceUnchanged(

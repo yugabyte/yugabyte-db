@@ -46,8 +46,8 @@ The leader is responsible for replicating log entries to the followers. When a c
 All write operations are handled by the tablet leader. These are the sequence of operations that happen during the replication of a write.
 
 1. The leader first takes the necessary locks on the key using a local in-memory lock manager and reads data if necessary (for read-modify-write or conditional update operations). Note that this locking mechanism does not exist on followers.
-1. The batch of changes to be written to [DocDB](../../docdb/) is prepared. The batch can include writes from many concurrent write requests. The write batch is very close to the final set of RocksDB key-value pairs to be written, only lacking the final [hybrid timestamp](../../transactions/transactions-overview#hybrid-logical-clocks) at the end of each key.
-1. The leader appends the batch to its Raft log and chooses a [hybrid timestamp](../../transactions/transactions-overview#hybrid-logical-clocks) as the timestamp for the batch.
+1. The batch of changes to be written to [DocDB](../../docdb/) is prepared. The batch can include writes from many concurrent write requests. The write batch is very close to the final set of RocksDB key-value pairs to be written, only lacking the final [hybrid timestamp](../../transactions/transactions-overview/#hybrid-logical-clocks) at the end of each key.
+1. The leader appends the batch to its Raft log and chooses a [hybrid timestamp](../../transactions/transactions-overview/#hybrid-logical-clocks) as the timestamp for the batch.
 1. The data is replicated via Raft to its peers.
 1. After receiving a `replication successful` callback from the Raft subsystem, the leader applies the write batch to its local DocDB.
 1. At this point, as the log entry has been replicated on a majority of participants, the data is durable. A success acknowledgment is sent to the user.

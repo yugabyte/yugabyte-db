@@ -30,9 +30,12 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::pggate {
+
+YB_STRONGLY_TYPED_BOOL(PartOfConnectionPrefetch);
 
 class PgSession;
 
@@ -59,6 +62,10 @@ struct PrefetcherOptions {
     VersionInfo version_info;
     PgOid db_oid;
     PrefetchingCacheMode mode;
+    // Whether a fill already under way in this prefetch's database should send the caller away
+    // rather than queue it behind that fill. Set only on an attempt that has an older version
+    // to fall back to, and never on the attempt that follows one.
+    bool send_away_if_fill_in_flight;
 
     std::string ToString() const;
   };
@@ -67,6 +74,10 @@ struct PrefetcherOptions {
   uint64_t fetch_row_limit;
   YbcPgSysTablePrefetchKind kind;
   uint64_t fetch_size_limit;
+  // Whether this prefetch is a connection start's. Outside caching_info because a connection
+  // start reading without the cache sets it too.
+  // See PgPerformOptionsPB.part_of_connection_prefetch.
+  PartOfConnectionPrefetch part_of_connection_prefetch;
 
   std::string ToString() const;
 };

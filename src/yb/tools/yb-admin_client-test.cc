@@ -13,6 +13,7 @@
 #include <gmock/gmock.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/catalog_manager_util.h"
@@ -31,6 +32,19 @@ DECLARE_bool(yb_admin_force_use_private_ip);
 
 namespace yb {
 namespace tools {
+
+namespace {
+
+// Sum the server-level block_cache_usage gauge (bytes) across all tablet servers.
+Result<int64_t> GetClusterBlockCacheUsageBytes(ExternalMiniCluster* cluster) {
+  int64_t total = 0;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    total += VERIFY_RESULT(cluster->tablet_server(i)->GetMetric<int64_t>(
+        "server", "yb.tabletserver", "block_cache_usage", "value"));
+  }
+  return total;
+}
+}  // namespace
 
 // Tests for the client. Used to verify behaviour that cannot be verified by using yb-admin as an
 // external process.
@@ -475,6 +489,41 @@ TEST(CatalogManagerUtilTest, MaxNumReplicasValidation) {
     placement_info.mutable_placement_blocks(0)->mutable_cloud_info()->clear_placement_zone();
     ASSERT_OK(master::CatalogManagerUtil::ValidateMaxNumReplicasFields(placement_info));
   }
+}
+
+// Test that ClearRocksDBCache gives a drop in block cache usage.
+TEST_F(ClusterAdminClientTest, ClearRocksDBCacheAfterTableScan) {
+  const std::string table_name = "clear_rocksdb_cache_test";
+  const std::string db_name = "yugabyte";
+  CreateTable(Format(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+
+  auto conn = ASSERT_RESULT(PgConnect(db_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 SELECT i, repeat('x', 4096) FROM generate_series(1, 500) AS i",
+      table_name));
+
+  // Flush all tablets so the inserted rows live in SST files on disk.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(i, {}));
+  }
+
+  const int64_t usage_before_scan = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+
+  // Full table scan reads the SST data blocks into the block cache on the serving tservers.
+  ASSERT_RESULT(conn.FetchFormat("SELECT k, v FROM $0", table_name));
+
+  const int64_t usage_after_scan = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+  ASSERT_GT(usage_after_scan, usage_before_scan);
+
+  ASSERT_OK(cluster_admin_client_->ClearRocksDBCache());
+
+  // At least three quarters of what the scan loaded must be gone. Not exactly zero: background
+  // reads on system tablets can repopulate the shared cache before the metric is read.
+  const int64_t usage_after_clear = ASSERT_RESULT(GetClusterBlockCacheUsageBytes(cluster_.get()));
+  const int64_t loaded_by_scan = usage_after_scan - usage_before_scan;
+  ASSERT_LT(usage_after_clear, usage_before_scan + loaded_by_scan / 4)
+      << "before scan: " << usage_before_scan << ", after scan: " << usage_after_scan;
 }
 
 }  // namespace tools

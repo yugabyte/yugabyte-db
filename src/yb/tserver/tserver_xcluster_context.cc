@@ -108,12 +108,21 @@ bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
   return HasXClusterGuardedInfoUnlocked();
 }
 
+bool TserverXClusterContext::HasUnexpiredXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasUnexpiredLeaseUnlocked();
+}
+
 bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
   if (FLAGS_enforce_xcluster_guarded_lease) {
-    return xcluster_guarded_lease_expiration_ &&
-           MonoTime::Now() < xcluster_guarded_lease_expiration_;
+    return HasUnexpiredLeaseUnlocked();
   }
   return have_received_a_heartbeat_;
+}
+
+bool TserverXClusterContext::HasUnexpiredLeaseUnlocked() const {
+  return xcluster_guarded_lease_expiration_ &&
+         MonoTime::Now() < xcluster_guarded_lease_expiration_;
 }
 
 bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {
@@ -139,9 +148,27 @@ void TserverXClusterContext::UpdateXClusterGuardedLease(MonoTime lease_expiratio
 
 void TserverXClusterContext::UpdateXClusterInfoPerNamespace(
     const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
-        xcluster_info_per_namespace) {
+        xcluster_info_per_namespace,
+    const std::function<void(NamespaceIdView)>& bump_sequence_cache_epoch_fn) {
   std::lock_guard lock(mutex_);
   have_received_a_heartbeat_ = true;
+
+  // Bump epochs of namespaces that leave AUTOMATIC_TARGET (e.g., switchover or failover back to
+  // primary) before storing the new role; mutex_ is held for both. FetchSequenceTuple() calls
+  // GetXClusterRole(), which takes this mutex, and reads the sequence cache only after that call
+  // returns. A nextval() allowed by the new role therefore sees the bumped epoch.
+  for (const auto& [namespace_id, old_info] : xcluster_info_per_namespace_) {
+    if (old_info.role() == XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET) {
+      auto it = xcluster_info_per_namespace.find(namespace_id);
+      const auto new_role = it == xcluster_info_per_namespace.end()
+                                ? XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE
+                                : it->second.role();
+      if (new_role != XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET) {
+        bump_sequence_cache_epoch_fn(namespace_id);
+      }
+    }
+  }
+
   xcluster_info_per_namespace_.clear();
   for (const auto& [namespace_id, info] : xcluster_info_per_namespace) {
     xcluster_info_per_namespace_[namespace_id] = info;

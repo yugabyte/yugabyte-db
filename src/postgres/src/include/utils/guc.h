@@ -246,8 +246,11 @@ typedef enum
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
-#define GUC_YB_CUSTOM_STICKY	0x40000000	/* YB: stickiness for custom
-											 * string variables */
+#define GUC_YB_CONN_MGR_STICKY	0x40000000	/* YB: SET or a startup-packet
+												 * value makes the Connection
+												 * Manager connection sticky */
+#define GUC_YB_NO_CONN_MGR_REPORT	0x20000000	/* YB: never report to
+												 * Connection Manager */
 
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
@@ -323,6 +326,9 @@ extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
 extern PGDLLIMPORT bool yb_enable_listen_notify;
 extern PGDLLIMPORT bool yb_test_fatal_after_notifs_queue_write;
+extern PGDLLIMPORT bool yb_test_notifs_poller_error_holding_queue_lock;
+extern PGDLLIMPORT bool yb_test_notifs_poller_error_before_init;
+extern PGDLLIMPORT int yb_test_notifs_poller_init_delay_ms;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
@@ -524,5 +530,6 @@ extern void YbResetYsqlConnMgrGucDefaults(void);
 extern void YbSetParallelWorker();
 extern char *YbResolveGucValue(const char *name, const char *value);
 extern bool YbIsValidConfigFileName(const char *name);
+extern bool YbDbAdminCanSetRoleSetting(const char *name);
 
 #endif							/* GUC_H */

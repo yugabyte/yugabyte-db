@@ -98,11 +98,14 @@ DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing p
 
 DEFINE_RUNTIME_AUTO_bool(enable_write_pipelining_infra, kLocalVolatile, false, true,
     "Enable the infrastructure required for write pipelining. Pipelined writes are sent with "
-    "use_async_write set and awaited with the WaitForAsyncWrite RPC.");
+    "use_async_write set and awaited with the WaitForAsyncWrite RPC. Picked once per "
+    "transaction, so a change does not affect transactions already in progress.");
 
 DEFINE_RUNTIME_bool(ysql_enable_write_pipelining, true,
     "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
-    "write statements in a transaction are executed concurrently, reducing overall latency.");
+    "write statements in a transaction are executed concurrently, reducing overall latency. "
+    "Picked once per transaction, so a change does not affect transactions already in "
+    "progress.");
 
 using std::pair;
 using std::shared_ptr;
@@ -124,10 +127,10 @@ namespace {
 
 const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
 
-bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
+bool UseAsyncWrites(YBTableType table_type, const YBTransaction* transaction) {
   // Use async writes for transactional writes in YSQL.
-  return FLAGS_enable_write_pipelining_infra && FLAGS_ysql_enable_write_pipelining &&
-         table_type == YBTableType::PGSQL_TABLE_TYPE && !txn_id.IsNil();
+  return table_type == YBTableType::PGSQL_TABLE_TYPE && transaction &&
+         transaction->UseAsyncWrites();
 }
 
 bool OpSkipIntents(const YBOperation& op) {
@@ -164,16 +167,21 @@ bool OpReadAtInTxnLimit(const YBOperation& op) {
   return false;
 }
 
-// Unlike skip_intents, which decides Batcher::transaction() and so must agree across every op in
-// the batcher, this only shifts the read time of one RPC, and each RPC builds its own request. A
-// group is one (tablet, op group) pair, so its ops share a table except on a colocated tablet --
-// and colocated relations never carry this flag. Checked below rather than assumed.
-Result<bool> GroupReadAtInTxnLimit(const InFlightOpsGroup& group) {
-  const auto result = OpReadAtInTxnLimit(*group.begin->yb_op);
+bool OpForceSnapshotRead(const YBOperation& op) {
+  return op.type() == YBOperation::Type::PGSQL_READ &&
+         down_cast<const YBPgsqlReadOp&>(op).force_snapshot_read();
+}
+
+// For per-RPC flags. Unlike skip_intents, which decides Batcher::transaction() and so must agree
+// across every op in the batcher, these shape the request of one RPC, which all ops of a group
+// share, so the ops must agree. Checked below rather than assumed.
+Result<bool> GroupAgreesOn(
+    const InFlightOpsGroup& group, bool (*pred)(const YBOperation&), const char* name) {
+  const auto result = pred(*group.begin->yb_op);
   for (auto it = group.begin; it != group.end; ++it) {
     RSTATUS_DCHECK_EQ(
-        OpReadAtInTxnLimit(*it->yb_op), result, IllegalState,
-        Format("Ops of one group disagree on read_at_in_txn_limit: $0", group.ToString()));
+        pred(*it->yb_op), result, IllegalState,
+        Format("Ops of one group disagree on $0: $1", name, group.ToString()));
   }
   return result;
 }
@@ -759,7 +767,13 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
     .skip_intents = SkipIntents(),
-    .read_at_in_txn_limit = VERIFY_RESULT(GroupReadAtInTxnLimit(group)),
+    // Set per relation and never on colocated ones, so the ops of a group agree.
+    .read_at_in_txn_limit =
+        VERIFY_RESULT(GroupAgreesOn(group, OpReadAtInTxnLimit, "read_at_in_txn_limit")),
+    // On the sys catalog tablet, a SERIALIZABLE transaction's forced snapshot reads and row-marked
+    // reads must come in separate flushes.
+    .force_snapshot_read =
+        VERIFY_RESULT(GroupAgreesOn(group, OpForceSnapshotRead, "force_snapshot_read")),
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata
@@ -780,13 +794,11 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     case OpGroup::kWrite: [[fallthrough]];
     case OpGroup::kLock: [[fallthrough]];
     case OpGroup::kUnlock: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
-      data.use_async_write = UseAsyncWrites(
-          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
+      data.use_async_write = UseAsyncWrites(first_op->table()->table_type(), transaction.get());
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:
@@ -958,7 +970,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
                                     const CollectedErrors& errors) {
   SetDeadline(failed_batcher->deadline());
   SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
-  SetBuffersHolder(failed_batcher->buffers_holder_);
+  SetBuffersHolder(std::move(failed_batcher->buffers_holder_));
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();

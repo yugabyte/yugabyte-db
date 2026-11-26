@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -213,6 +214,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .tablet_options = tablet_options_,
       .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = "",
+      .tablet_context = &tablet::StandaloneTabletContext::Instance(),
       .transaction_participant_context = tablet_peer_.get(),
       .local_tablet_filter = nullptr,
       .transaction_coordinator_context = nullptr,

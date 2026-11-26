@@ -7,11 +7,13 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -21,7 +23,11 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static play.inject.Bindings.bind;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -75,6 +81,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -283,6 +290,46 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testParamsValidationFailureLogsNoSecrets() {
+    ITask task = mockTaskCommon(false);
+    ObjectNode params = Json.newObject();
+    params.put("ysqlPassword", "dummy-ysql-secret");
+    params
+        .putObject("tserverGFlags")
+        .put("ycql_ldap_bind_passwd", "dummy-ycql-secret")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-secret");
+    doReturn(params).when(task).getTaskParams();
+    doThrow(new PlatformServiceException(BAD_REQUEST, "Invalid params"))
+        .when(task)
+        .validateParams(anyBoolean());
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+
+    Logger executorLogger = (Logger) LoggerFactory.getLogger(TaskExecutor.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    executorLogger.addAppender(appender);
+    try {
+      assertThrows(
+          PlatformServiceException.class,
+          () -> taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1)));
+    } finally {
+      executorLogger.detachAppender(appender);
+    }
+
+    List<String> failureLogs =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(m -> m.contains("Params validation failed"))
+            .collect(Collectors.toList());
+    assertEquals(1, failureLogs.size());
+    String logged = failureLogs.get(0);
+    assertFalse(logged, logged.contains("dummy-ysql-secret"));
+    assertFalse(logged, logged.contains("dummy-ycql-secret"));
+    assertFalse(logged, logged.contains("dummy-hba-secret"));
+    assertTrue(logged, logged.contains("ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT));
   }
 
   @Test

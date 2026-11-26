@@ -76,6 +76,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
+#include "yb/util/rw_mutex.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -117,6 +118,8 @@ namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
+struct PgClientServiceHolder;
+class TabletServiceBackupImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
@@ -245,7 +248,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return object_lock_shared_state_manager_.get();
   }
 
-  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
+  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp)
+      EXCLUDES(live_tservers_mutex_);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
 
   // Conditionally restart PG: while the persistence gate is enforced and this TServer holds no
@@ -258,18 +262,24 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // applies.
   void MaybeStartPg() const EXCLUDES(pg_start_mutex_);
 
+  // Whether this TServer satisfies the xCluster-guarded information lease requirement: it holds the
+  // lease or the persistence gate that requires it is not enforced.  Decides both whether PG may
+  // start and whether this TServer's tablets must give up leadership.
+  bool IsXClusterLeaseRequirementMet() const;
+
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
-      EXCLUDES(lock_) override;
+      EXCLUDES(live_tservers_mutex_) override;
 
   // Returns connection info of all live tservers available at this tserver. The information about
   // live tservers is refreshed by the master heartbeat.
   virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
-      GetRemoteTabletServers() const EXCLUDES(lock_) override;
+      GetRemoteTabletServers() const EXCLUDES(live_tservers_mutex_) override;
 
   // Returns connection info for the passed in 'ts_uuids', if available. If unavailable,
   // returns a bad status. The information about live tservers is refreshed by the master heartbeat.
   virtual Result<std::vector<client::internal::RemoteTabletServerPtr>> GetRemoteTabletServers(
-      const std::unordered_set<std::string>& ts_uuids) const EXCLUDES(lock_) override;
+      const std::unordered_set<std::string>& ts_uuids) const
+      EXCLUDES(live_tservers_mutex_) override;
 
   Status GetTabletStatus(const GetTabletStatusRequestPB* req,
                          GetTabletStatusResponsePB* resp) const override;
@@ -437,6 +447,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TserverXClusterContextIf& GetXClusterContext() const;
 
+  bool IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const override;
+
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
@@ -451,6 +463,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status XClusterHandleMasterHeartbeatResponse(
       const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time);
+
+  // Whether a master heartbeat response has told this tserver if it is an xCluster producer.
+  // Until then xCluster reports no WAL retention for its tablets.
+  bool XClusterProducerStateKnown() const {
+    return xcluster_producer_state_known_.load(std::memory_order_acquire);
+  }
 
   void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
       EXCLUDES(xcluster_guarded_info_version_mutex_);
@@ -570,6 +588,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::atomic<bool> initted_{false};
 
+  std::atomic<bool> xcluster_producer_state_known_{false};
+
   // If true, all heartbeats will be seen as failed.
   Atomic32 fail_heartbeats_for_tests_;
 
@@ -607,22 +627,27 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Map of tserver connection info, keyed by the tserver uuid, that are alive from the master's
   // perspective. It is refreshed on every successfull heartbeat exchange between the current
   // tserver and the master leader.
-  std::unordered_map<std::string, master::TSInformationPB> live_tservers_ GUARDED_BY(lock_);
+  std::unordered_map<std::string, master::TSInformationPB> live_tservers_
+      GUARDED_BY(live_tservers_mutex_);
 
   // Map of 'RemoteTablerServer' shared ptrs keyed by the corresponding tsever uuid. This is used
   // to obtain a proxy handle to the local/remote tserver. It is updated synchronously with
   // 'live_tservers_'.
   std::unordered_map<std::string, client::internal::RemoteTabletServerPtr>
-      remote_tservers_ GUARDED_BY(lock_);
+      remote_tservers_ GUARDED_BY(live_tservers_mutex_);
 
-  // Lock to protect live_tservers_, cluster_uuid_.
-  mutable rw_spinlock lock_;
+  // Protects live_tservers_ and remote_tservers_.
+  mutable RWMutex live_tservers_mutex_{RWMutex::Priority::PREFER_WRITING};
+
+  // Protects the members marked GUARDED_BY(lock_).
+  // RPCs take it in shared mode to check catalog versions, so waiters block rather than spin.
+  mutable RWMutex lock_{RWMutex::Priority::PREFER_WRITING};
 
   // Proxy to call this tablet server locally.
   std::shared_ptr<TabletServerServiceProxy> proxy_;
 
   // Cluster uuid. This is sent by the master leader during the first heartbeat.
-  std::string cluster_uuid_;
+  std::string cluster_uuid_ GUARDED_BY(lock_);
 
   // Serializes ApplyXClusterGuardedInfoIfNewer, whose copies arrive via heartbeat responses and
   // ApplyXClusterGuardedInfoIfNewer RPCs, and guards the version below.
@@ -696,8 +721,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // An instance to remote bootstrap service. This pointer is no longer valid after
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
-
-  struct PgClientServiceHolder;
+  std::weak_ptr<TabletServiceBackupImpl> backup_service_;
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
@@ -707,7 +731,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
-  bool IsPgStartAllowedByXClusterLeaseStatus() const;
   Status RestartPgUnlocked() const REQUIRES(pg_start_mutex_);
   Status KillPgUnlocked() const REQUIRES(pg_start_mutex_);
 
@@ -766,6 +789,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AbortInFlightRelcacheInitConnections() EXCLUDES(lock_);
   void DoUpdateMasterAddresses();
 
+  int64_t GetXClusterGuardedInfoLeaseHeldForMetrics() const;
+
   std::map<std::string, std::string> ValidateConfCsvViaPg(
       const std::map<std::string, std::string>& conf_flags, CoarseTimePoint deadline);
 
@@ -775,6 +800,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   HostPort pgsql_proxy_bind_address_;
 
   std::unique_ptr<TserverXClusterContext> xcluster_context_;
+
+  // Declared after xcluster_context_ so it detaches the lease gauge, which reads
+  // xcluster_context_, before xcluster_context_ is destroyed.
+  std::shared_ptr<void> xcluster_guarded_info_lease_metric_detacher_;
 
   PgMutationCounter pg_node_level_mutation_counter_;
 

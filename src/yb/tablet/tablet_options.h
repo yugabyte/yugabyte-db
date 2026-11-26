@@ -94,6 +94,7 @@ struct TabletInitData {
   TabletOptions tablet_options;
   MutableTabletOptions mutable_tablet_options;
   std::string log_prefix_suffix;
+  TabletContext* tablet_context = nullptr;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context = nullptr;
@@ -102,6 +103,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   AllowedHistoryCutoffProvider allowed_history_cutoff_provider;
+  IsTransactionalXClusterTargetProvider is_transactional_xcluster_target_provider = nullptr;
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;

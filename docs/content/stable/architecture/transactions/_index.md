@@ -14,7 +14,7 @@ menu:
 type: indexpage
 ---
 
-Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts#acid) transactions across rows, multiple tablets, and multiple nodes at any scale, and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf). Transactions can span across tables in DocDB.
+Transactions and strong consistency are a fundamental requirement for any RDBMS. YugabyteDB's distributed transaction architecture supports fully distributed [ACID](../key-concepts/#acid) transactions across rows, multiple tablets, and multiple nodes at any scale, and is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf). Transactions can span across tables in DocDB.
 
 ## Fundamentals
 
@@ -84,8 +84,8 @@ To learn how YugabyteDB handles conflicts between concurrent transactions, see [
 
 As with PostgreSQL, YugabyteDB provides various row-level lock modes to control concurrent access to data in tables. These modes can be used for application-controlled locking in cases where MVCC does not provide the desired behavior.
 
-{{<lead link="../../explore/transactions/explicit-locking">}}
-To learn about the different locking mechanism, see [Explicit locking](../../explore/transactions/explicit-locking).
+{{<lead link="concurrency-control/">}}
+To learn about the different locking mechanisms, see [Concurrency control](concurrency-control/).
 {{</lead>}}
 
 ## Transaction priorities

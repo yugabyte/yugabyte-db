@@ -248,6 +248,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                 .collect(Collectors.toSet());
       }
 
+      // WaitForServer builds its client once, so the cert must exist before it starts.
+      createWaitForRpcClientCertTask(getUniverse());
+
       // Wait for new tablet servers to be responsive.
       Set<NodeDetails> allTserversAdded = new HashSet<>();
       allTserversAdded.addAll(tserversAdded);
@@ -304,6 +307,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
                     taskParams().isEnableYbc(),
                     stableYbcVersion);
       }
+
+      createRecordNodeExporterTlsTask(primaryCluster.userIntent.ybSoftwareVersion);
 
       createConfigureUniverseTasks(
           primaryCluster,

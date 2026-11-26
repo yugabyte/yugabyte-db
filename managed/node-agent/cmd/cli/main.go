@@ -95,7 +95,6 @@ func isFederationCommand(args []string) bool {
 
 // Entry for all commands.
 func main() {
-	util.VerifyFipsMode()
 	defer func() {
 		if r := recover(); r != nil {
 			util.ConsoleLogger().

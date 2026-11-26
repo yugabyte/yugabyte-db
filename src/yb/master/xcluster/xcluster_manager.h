@@ -101,7 +101,7 @@ class XClusterManager : public XClusterManagerIf,
   // currently in flight) to the databases in namespace_ids from committing, until the next
   // StopPersisting or StartPersisting for them.  Use StartPersisting (below) to begin allowing
   // future such writes and commits.  Stamps are applied to writes and commits from Postgres
-  // backends.
+  // backends.  Pending transactions whose commits are thus blocked are also aborted early.
   //
   // Fails if any of the databases in namespace_ids are not running YSQL user databases (e.g., ones
   // being created or dropped).
@@ -119,6 +119,7 @@ class XClusterManager : public XClusterManagerIf,
   //     are (no longer) blocked from committing
   //   * for other origination times, each is either always blocked or always allowed, but which
   //     is unspecified
+  // Pending transactions whose commits are thus blocked are also aborted early.
   //
   // Fails if any of the databases in namespace_ids are not running YSQL user databases (e.g., ones
   // being created or dropped).
@@ -303,6 +304,10 @@ class XClusterManager : public XClusterManagerIf,
   Status DeleteXClusterWalAnchorStreams(
       const DeleteXClusterWalAnchorStreamsRequestPB* req,
       DeleteXClusterWalAnchorStreamsResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RecordXClusterStreamBootstrapInfo(
+      const RecordXClusterStreamBootstrapInfoRequestPB* req,
+      RecordXClusterStreamBootstrapInfoResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
   Status GetXClusterOutboundReplicationGroups(
       const GetXClusterOutboundReplicationGroupsRequestPB* req,

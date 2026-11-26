@@ -326,7 +326,12 @@ class TSLocalLockManager::Impl {
             ReleaseObjectLocksForLostMessages, std::reference_wrapper<client::YBClient>(client),
             lock_manager_weak, release_req, std::placeholders::_1),
         ToSteady(*apply_after_ht));
-    CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    // A release naming specific objects leaves the subtxn's other locks held. Keep the subtxn's
+    // deadlines so that the later release of those locks schedules its own lost-message retry.
+    // Each named release in the subtxn hence schedules a retry at the same deadline.
+    if (release_req->object_locks().empty()) {
+      CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    }
   }
 
   Status CheckRequestForDeadline(const tserver::AcquireObjectLockRequestPB& req) {
@@ -442,8 +447,9 @@ class TSLocalLockManager::Impl {
     }
     TRACE("Through wait for bootstrap.");
     WaitIfNecessaryForSimulatingOutOfOrderRequestsInTests(req, deadline);
-    ScopedAddToInProgressTxns add_to_in_progress{this, ToString(txn), deadline};
-    RETURN_NOT_OK(add_to_in_progress.status());
+    auto add_to_in_progress =
+        std::make_shared<ScopedAddToInProgressTxns>(this, ToString(txn), deadline);
+    RETURN_NOT_OK(add_to_in_progress->status());
     ApplyLeaseEpochFloors(req.lease_epoch_floors());
     RETURN_NOT_OK(CheckRequestForDeadline(req));
     UpdateLeaseEpochIfNecessary(req.session_host_uuid(), req.lease_epoch());
@@ -474,8 +480,8 @@ class TSLocalLockManager::Impl {
           .status_tablet = req.status_tablet(),
           .start_time = MonoTime::FromUint64(req.propagated_hybrid_time()),
           .background_transaction_id = background_transaction_id,
-          .callback = [this, lock_contexts = std::move(lock_contexts),
-                       cb = std::move(callback)](Status status) -> void {
+          .callback = [this, lock_contexts = std::move(lock_contexts), cb = std::move(callback),
+                       weak_in_progress = std::weak_ptr(add_to_in_progress)](Status status) {
             if (status.ok()) {
               DVLOG_WITH_FUNC(3) << "Dumping after locks were acquired : " << DumpLocksToHtml();
               lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::GRANTED);
@@ -485,7 +491,12 @@ class TSLocalLockManager::Impl {
                                 << DumpLocksToHtml();
               lock_tracker_->UntrackLocks(lock_contexts);
             }
-            // Call the original callback with the final status
+            // Still alive if PrepareAndExecuteAcquire hasn't returned, e.g. Lock calling back
+            // inline. Leave the in-progress scope before running the caller's callback: it may
+            // take locks held by a thread waiting in Shutdown for that scope to end.
+            if (auto in_progress = weak_in_progress.lock()) {
+              in_progress->ReleaseIfHeld();
+            }
             cb(status);
           }
       });
@@ -511,7 +522,12 @@ class TSLocalLockManager::Impl {
     }
 
     ~ScopedAddToInProgressTxns() {
-      if (status_.ok()) {
+      ReleaseIfHeld();
+    }
+
+    // Can race between an acquire's callback, run by a resumed waiter, and the destructor.
+    void ReleaseIfHeld() {
+      if (status_.ok() && !released_.exchange(true)) {
         impl_->RemoveFromInProgressTxns(txn_id_);
       }
     }
@@ -524,6 +540,7 @@ class TSLocalLockManager::Impl {
     Impl* impl_;
     std::string txn_id_;
     Status status_;
+    std::atomic<bool> released_{false};
   };
 
   Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
@@ -917,6 +934,11 @@ std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
 
 TabletId TSLocalLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
   return impl_->TEST_GetStatusTabletForTxn(txn);
+}
+
+std::optional<CoarseTimePoint> TSLocalLockManager::TEST_MaxDeadlineForTxn(
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id) {
+  return impl_->MaxDeadlineForTxn(txn_id, subtxn_id);
 }
 
 void TSLocalLockManager::TrackDeadlineForGlobalAcquire(
