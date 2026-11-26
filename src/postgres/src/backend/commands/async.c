@@ -3758,6 +3758,10 @@ ybNotifsPollerLoop()
 		yb_walsender_poll_sleep_duration_empty_ms =
 			yb_notifications_poll_sleep_duration_empty_ms;
 
+		/*
+		 * A poller that has run for the retry timeout is healthy: forget the
+		 * earlier errors, so that the next one gets the full timeout again.
+		 */
 		if (ybNotifsPollerUpSince != 0 &&
 			TimestampDifferenceExceeds(ybNotifsPollerUpSince,
 									   GetCurrentTimestamp(),
