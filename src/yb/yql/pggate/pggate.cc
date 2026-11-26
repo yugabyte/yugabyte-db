@@ -2311,6 +2311,11 @@ Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
 }
 
 Status PgApiImpl::SetDdlStateInPlainTransaction() {
+  // Collect the outcome of the writes still buffered or in flight first. A trigger that registers
+  // a catalog change, such as the hint table's, runs before its statement's write is flushed. A
+  // conflict of that write must surface before the transaction has DDL state, while the query layer
+  // can still retry the statement (#39047).
+  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->SetDdlStateInPlainTransaction();
 }
