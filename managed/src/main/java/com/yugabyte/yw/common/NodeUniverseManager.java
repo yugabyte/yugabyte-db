@@ -234,12 +234,12 @@ public class NodeUniverseManager extends DevopsBase {
         node.getNodeName());
 
     // Collect all files in a compressed archive in the tmp dir.
-    // --warning=no-file-changed: live logs (e.g. /var/log/messages) can change during read; GNU tar
-    // otherwise exits 1 and the support bundle skips system logs.
-    cmds = new ArrayList<>(Arrays.asList("sudo", "tar", "--warning=no-file-changed", "-czhf"));
     String pathToTar = nodeTmpDir + "/root_files.tar.gz";
-    cmds.add(pathToTar);
-    cmds.addAll(paths);
+    List<String> tarArgs = new ArrayList<>(Arrays.asList("-czhf", pathToTar));
+    tarArgs.addAll(paths);
+    // sudo stays outside the script, so its own exit 1 is not taken for tar's.
+    cmds = new ArrayList<>(List.of("sudo"));
+    cmds.addAll(tarToleratingFileChanged(tarArgs));
     runCommand(node, universe, cmds, context).processErrors();
 
     downloadNodeFile(node, universe, "/", List.of(pathToTar), targetLocalPath);
@@ -248,6 +248,21 @@ public class NodeUniverseManager extends DevopsBase {
     cmds = new ArrayList<>(Arrays.asList("sudo", "rm"));
     cmds.add(pathToTar);
     runCommand(node, universe, cmds, context).processErrors();
+  }
+
+  /**
+   * GNU tar exits 1 when a file changes while read, even with --warning=no-file-changed; this maps
+   * that to 0. No single quotes: the ssh.py and node agent bash joins can't carry them.
+   */
+  static final String TAR_TOLERATING_FILE_CHANGED_SCRIPT =
+      "tar --warning=no-file-changed \"$@\" || { rc=$?; [ $rc -eq 1 ] || exit $rc; }";
+
+  /** Node-side argv running tar with {@code tarArgs}; a live file changing is not an error. */
+  public static List<String> tarToleratingFileChanged(List<String> tarArgs) {
+    List<String> command =
+        new ArrayList<>(List.of("bash", "-c", TAR_TOLERATING_FILE_CHANGED_SCRIPT, "tar"));
+    command.addAll(tarArgs);
+    return command;
   }
 
   public void copyFileFromNode(

@@ -15,6 +15,10 @@ from ybops.common.exceptions import YBOpsExitCodeException
 
 warnings.filterwarnings("ignore")
 
+# Same as NodeUniverseManager.TAR_TOLERATING_FILE_CHANGED_SCRIPT: maps tar's exit 1 to 0.
+TAR_TOLERATING_FILE_CHANGED = \
+    'tar --warning=no-file-changed "$@" || { rc=$?; [ $rc -eq 1 ] || exit $rc; }'
+
 NodeTypeParser = namedtuple('NodeTypeParser', ['parser'])
 ActionHandler = namedtuple('ActionHandler', ['handler', 'parser'])
 
@@ -125,7 +129,7 @@ def download_logs_ssh(args, client):
     # name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-support_package.tar.gz"
 
-    cmd = ['tar', '--warning=no-file-changed', '-czvf', tar_file_name, '-h', '-C',
+    cmd = ['bash', '-c', TAR_TOLERATING_FILE_CHANGED, 'tar', '-czvf', tar_file_name, '-h', '-C',
            args.yb_home_dir, 'tserver/logs/yb-tserver.INFO']
     if args.is_master:
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
