@@ -1863,6 +1863,15 @@ bool TabletPeer::ShouldApplyWrite() {
 
 consensus::PostponedApplyPtr TabletPeer::PostponeApply(
     const consensus::LWReplicateMsg& replicate_msg, consensus::PostponedApplyPtr postponed) {
+  if (replicate_msg.op_type() == consensus::UPDATE_TRANSACTION_OP) {
+    // Applying a transaction inserts its vectors, and waits under ReplicaState's lock if there are
+    // no free vector insert tasks. Tablet::ShouldApplyWrite does the same for writes.
+    if (replicate_msg.transaction_state().status() != TransactionStatus::APPLYING ||
+        !tablet_->vector_indexes().InsertTasksSoftLimitReached()) {
+      return nullptr;
+    }
+    return postponed ? std::move(postponed) : std::make_unique<consensus::PostponedApply>();
+  }
   if (!FLAGS_snapshot_wait_for_pending_applies) {
     return nullptr;
   }

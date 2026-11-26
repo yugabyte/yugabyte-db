@@ -1345,6 +1345,19 @@ bool TabletVectorIndexes::HasActiveBackfill() const {
   return false;
 }
 
+bool TabletVectorIndexes::InsertTasksSoftLimitReached() const {
+  if (!has_vector_indexes_.load(std::memory_order_acquire)) {
+    return false;
+  }
+  auto list = List();
+  if (!list) {
+    return false;
+  }
+  return std::ranges::any_of(*list, [](const auto& index) {
+    return index->InsertTasksSoftLimitReached();
+  });
+}
+
 HybridTime TabletVectorIndexes::AllowedHistoryCutoff() const {
   auto result = HybridTime::kMax;
   auto list = List();

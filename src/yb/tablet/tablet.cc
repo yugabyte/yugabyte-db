@@ -6437,6 +6437,11 @@ bool Tablet::ShouldApplyWrite() {
     return false;
   }
 
+  // A write that finds no free vector insert tasks waits for them under ReplicaState's lock.
+  if (vector_indexes_->InsertTasksSoftLimitReached()) {
+    return false;
+  }
+
   if (PREDICT_FALSE(FLAGS_TEST_skip_write_stop_check_in_should_apply_write)) {
     return !regular_db_->NeedsDelay();
   }

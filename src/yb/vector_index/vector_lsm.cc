@@ -61,6 +61,13 @@ DEFINE_RUNTIME_uint64(vector_index_max_insert_tasks, 1000,
     "When this limit is reached, new inserts are blocked until necessary amount "
     "of tasks is released.");
 
+DEFINE_RUNTIME_uint32(vector_index_insert_tasks_soft_limit_percentage, 50,
+    "Percentage of vector_index_max_insert_tasks at which a vector index starts holding back new "
+    "inserts without blocking: the tablet leader rejects new writes with a retryable error, and "
+    "followers postpone applying writes until the allocated insert tasks drop below it. Applying "
+    "a write that finds no free insert tasks waits for them while holding the Raft lock of the "
+    "tablet. 0 disables the soft limit.");
+
 DEFINE_RUNTIME_uint64(vector_index_max_merge_tasks, 100,
     "Limit for number of merge subtasks for vector index compaction. "
     "The same thread pool as for inserts is used to run merge tasks. "
@@ -637,6 +644,11 @@ class VectorLSMInsertRegistryBase
     return !active_tasks_.empty();
   }
 
+  // Reads without the lock, so the result can be stale.
+  size_t NumAllocatedTasks() const {
+    return allocated_tasks_.load(std::memory_order_relaxed);
+  }
+
   // Stops allocations as Shutdown does, and makes running and queued tasks skip the vectors they
   // have not inserted yet. Shutdown still waits for the pool to dequeue the queued ones.
   void Cancel() EXCLUDES(mutex_) {
@@ -701,7 +713,8 @@ class VectorLSMInsertRegistryBase
   // Changed under mutex_, so no allocation passes the check after Shutdown found no tasks
   // allocated. Tasks read it without the lock.
   std::atomic<InsertRegistryState> state_{InsertRegistryState::kRunning};
-  size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
+  // Changed under mutex_. NumAllocatedTasks reads it without the lock.
+  std::atomic<size_t> allocated_tasks_{0};
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
 };
@@ -725,7 +738,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
       // TODO(vector_index) Pass timeout here.
       if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
               std::cv_status::timeout) {
-        auto allocated_tasks = allocated_tasks_;
+        auto allocated_tasks = allocated_tasks_.load();
         lock.unlock();
         LOG_WITH_FUNC(WARNING)
             << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
@@ -756,7 +769,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
         LOG_WITH_PREFIX(WARNING)
             << "Long wait for existing vector insert tasks: " << tasks_in_older_epochs_
             << " older-epoch, " << tasks_in_current_epoch_ << " current-epoch, "
-            << allocated_tasks_ << " allocated";
+            << allocated_tasks_.load() << " allocated";
       }
     }
   }
@@ -2726,6 +2739,16 @@ std::optional<uint64_t> VectorLSM<Vector, DistanceResult>::MinSerialNo() const {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Env* VectorLSM<Vector, DistanceResult>::TEST_GetEnv() const {
   return env_;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::InsertTasksSoftLimitReached() const {
+  const auto percentage = FLAGS_vector_index_insert_tasks_soft_limit_percentage;
+  if (percentage == 0 || !insert_registry_) {
+    return false;
+  }
+  return insert_registry_->NumAllocatedTasks() * 100 >=
+         FLAGS_vector_index_max_insert_tasks * percentage;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>

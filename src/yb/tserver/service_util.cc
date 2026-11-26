@@ -25,6 +25,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_types.messages.h"
@@ -438,6 +439,13 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
           : 2.0;
       return RejectWrite(tablet_peer, message, overlimit);
     }
+  }
+
+  // Leaders apply without the option to postpone, so a write applied without free vector insert
+  // tasks would wait for them under the Raft lock, stalling the tablet and the tserver heartbeats.
+  if (tablet->vector_indexes().InsertTasksSoftLimitReached()) {
+    return RejectWrite(
+        tablet_peer, "Vector index insert tasks reached the soft limit", 1.0 + score);
   }
 
   if (FLAGS_TEST_write_rejection_percentage != 0 &&

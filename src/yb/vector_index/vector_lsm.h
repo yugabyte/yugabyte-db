@@ -225,6 +225,10 @@ class VectorLSM {
   void CompleteShutdown();
   bool IsShuttingDown() const;
 
+  // Whether the allocated insert tasks reached vector_index_insert_tasks_soft_limit_percentage of
+  // vector_index_max_insert_tasks. Does not block, so it can be called under the Raft lock.
+  bool InsertTasksSoftLimitReached() const;
+
   size_t NumImmutableChunks() const EXCLUDES(mutex_);
   size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
 

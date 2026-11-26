@@ -736,6 +736,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     lsm_.CompleteShutdown();
   }
 
+  bool InsertTasksSoftLimitReached() const override {
+    return lsm_.InsertTasksSoftLimitReached();
+  }
+
   bool TEST_HasBackgroundInserts() const override {
     return lsm_.TEST_HasBackgroundInserts();
   }

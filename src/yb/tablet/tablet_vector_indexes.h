@@ -137,6 +137,11 @@ class TabletVectorIndexes :
   // postpone tablet splitting until the backfill completes (see GH#32321).
   bool HasActiveBackfill() const EXCLUDES(vector_indexes_mutex_);
 
+  // Returns true if a vector index on this tablet reached the soft limit of its insert tasks, see
+  // VectorLSM::InsertTasksSoftLimitReached. Applying a write then risks waiting for insert tasks
+  // under the Raft lock, so leaders reject new writes and followers postpone applying them.
+  bool InsertTasksSoftLimitReached() const EXCLUDES(vector_indexes_mutex_);
+
   // Earliest backfill time of the active vector indexes not done backfilling, or kMax: each
   // backfill reads at that time until done, so its history must not be garbage collected.
   HybridTime AllowedHistoryCutoff() const EXCLUDES(vector_indexes_mutex_);

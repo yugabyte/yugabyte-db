@@ -277,6 +277,9 @@ class DocVectorIndex {
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;
 
+  // See VectorLSM::InsertTasksSoftLimitReached.
+  virtual bool InsertTasksSoftLimitReached() const = 0;
+
   virtual bool TEST_HasBackgroundInserts() const = 0;
   virtual size_t TEST_NextManifestFileNo() const = 0;
 
