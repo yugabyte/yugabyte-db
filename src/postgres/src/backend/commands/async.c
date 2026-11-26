@@ -3771,9 +3771,11 @@ ybNotifsPollerLoop()
 		{
 			record = YBCReadRecord(publications);
 			/*
-			 * An empty read counts as progress only between transactions: one
-			 * in the middle of a transaction the poller keeps failing on would
-			 * keep it from terminating.
+			 * An empty read means the poller has caught up, so it counts as
+			 * progress, but only between transactions. In the middle of one,
+			 * an empty read can happen on every replay of a transaction that
+			 * keeps failing, and counting it would stop the no-progress
+			 * timeout from ever running out.
 			 */
 			if (record)
 				ybNotifsPollerProcessRecord(record);
