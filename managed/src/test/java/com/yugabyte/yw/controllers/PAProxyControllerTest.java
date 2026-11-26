@@ -14,10 +14,21 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.pa.PerfAdvisorServiceTest;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
@@ -195,11 +206,77 @@ public class PAProxyControllerTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void testTelemetryAuthorizedForTheRouteUniverse() throws Exception {
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useNewRbacAuthz.getKey(), "true");
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe readable = ModelFactory.createUniverse("readable", customer.getId());
+      Universe other = ModelFactory.createUniverse("other", customer.getId());
+      String readerToken = universeReaderToken(readable);
+
+      paServer.enqueue(new MockResponse().setResponseCode(204));
+      Result result =
+          route(
+              proxyRequest(
+                  collector,
+                  "POST",
+                  "universe/" + readable.getUniverseUUID() + "/ui_events",
+                  readerToken));
+      assertThat(result.status(), equalTo(204));
+
+      result =
+          route(
+              proxyRequest(
+                  collector,
+                  "POST",
+                  "universe/" + other.getUniverseUUID() + "/ui_events",
+                  readerToken));
+      assertThat(result.status(), equalTo(401));
+      assertThat(paServer.getRequestCount(), equalTo(2));
+    }
+  }
+
+  // A user with universe READ on the given universe only.
+  private String universeReaderToken(Universe universe) {
+    Role universeReader =
+        Role.create(
+            customer.getUuid(),
+            "UniverseReader",
+            "Reads universes",
+            RoleType.Custom,
+            new HashSet<>(
+                Set.of(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.READ))));
+    Users reader = ModelFactory.testUser(customer, "reader@customer.com", Users.Role.ConnectOnly);
+    ResourceDefinition universeOnly =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Set.of(universe.getUniverseUUID())))
+            .build();
+    RoleBinding.create(
+        reader,
+        RoleBindingType.Custom,
+        universeReader,
+        new ResourceGroup(new HashSet<>(Set.of(universeOnly))));
+    return reader.createAuthToken();
+  }
+
   private Http.RequestBuilder proxyRequest(PACollector collector, String path) {
     return proxyRequest(collector, "GET", path);
   }
 
   private Http.RequestBuilder proxyRequest(PACollector collector, String method, String path) {
+    return proxyRequest(collector, method, path, authToken);
+  }
+
+  private Http.RequestBuilder proxyRequest(
+      PACollector collector, String method, String path, String token) {
     return Helpers.fakeRequest(
             method,
             "/api/v1/customers/"
@@ -208,7 +285,7 @@ public class PAProxyControllerTest extends FakeDBApplication {
                 + collector.getUuid()
                 + "/api/"
                 + path)
-        .header("X-AUTH-TOKEN", authToken);
+        .header("X-AUTH-TOKEN", token);
   }
 
   private PACollector registerCollector(MockWebServer server) throws Exception {

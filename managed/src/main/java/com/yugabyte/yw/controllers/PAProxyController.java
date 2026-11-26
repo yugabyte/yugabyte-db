@@ -130,7 +130,8 @@ public class PAProxyController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+        // The v1 route's segment is singular: ".../api/universe/:uUUID/ui_events".
+        resourceLocation = @Resource(path = "universe", sourceType = SourceType.ENDPOINT))
   })
   /** The embedded UI's telemetry events, the only v1 universe call it still makes. */
   public CompletionStage<Result> proxyUiEvents(
