@@ -142,7 +142,15 @@ MakeTransitionTable(const char *name, bool isNew)
  * whose arguments name OIDs of the original database.  PostgreSQL appends
  * each one's OID to its name.  Each also depends internally on its own
  * table, as a foreign key's triggers depend on their constraint, so DROP
- * TRIGGER is refused while dropping the table still drops the trigger.
+ * TRIGGER is refused while dropping the table still drops the trigger.  An
+ * internal trigger needs no privilege on the table or on
+ * yb_online_schema_change_trigger; the lifecycle checks the caller.
+ *
+ * The triggers fire ALWAYS, also under session_replication_role = replica,
+ * which yb_db_admin may set: a write they skip would be missing from the
+ * target after the cutover.  As for any internal trigger, ALTER TABLE ...
+ * ENABLE or DISABLE TRIGGER can still change that, but only for a superuser
+ * or a yb_db_admin member.
  */
 void
 YbOscCreateTrigger(Relation srcRel, const char *triggerName,
@@ -177,13 +185,14 @@ YbOscCreateTrigger(Relation srcRel, const char *triggerName,
 			stmt->transitionRels = lappend(stmt->transitionRels,
 										   MakeTransitionTable("yb_osc_new_rows", true));
 
-		ObjectAddress trig = CreateTrigger(stmt, NULL /* queryString */ ,
-										   RelationGetRelid(srcRel),
-										   InvalidOid, InvalidOid, InvalidOid,
-										   F_YB_ONLINE_SCHEMA_CHANGE_TRIGGER,
-										   InvalidOid, NULL /* whenClause */ ,
-										   true /* isInternal */ ,
-										   false /* in_partition */ );
+		ObjectAddress trig = CreateTriggerFiringOn(stmt, NULL /* queryString */ ,
+												   RelationGetRelid(srcRel),
+												   InvalidOid, InvalidOid, InvalidOid,
+												   F_YB_ONLINE_SCHEMA_CHANGE_TRIGGER,
+												   InvalidOid, NULL /* whenClause */ ,
+												   true /* isInternal */ ,
+												   false /* in_partition */ ,
+												   TRIGGER_FIRES_ALWAYS);
 
 		recordDependencyOn(&trig, &owner, DEPENDENCY_INTERNAL);
 	}

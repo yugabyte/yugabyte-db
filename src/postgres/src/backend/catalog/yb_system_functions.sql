@@ -239,6 +239,8 @@ REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,b
 GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) FROM public;
 GRANT EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) TO yb_db_admin;
+-- Online schema change: the lifecycle functions check that the caller may
+-- ALTER the tables; the copy's chunk function is for the tserver only.
 REVOKE EXECUTE ON FUNCTION yb_backfill_online_schema_change_chunk(oid,oid,oid,int8,bytea,bytea) FROM public;
 -- EXECUTE on a trigger function is checked only by CREATE TRIGGER, and a
 -- firing writes to whatever table the trigger arguments name.

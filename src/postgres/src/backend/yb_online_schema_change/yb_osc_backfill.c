@@ -133,11 +133,14 @@ BuildChunkResult(FunctionCallInfo fcinfo, int64 rowsProcessed,
  * is why it uses SPI_prepare rather than PL/pgSQL, which plans lazily during
  * execution and fails with "record type has not been registered".
  *
- * The transform is compiled, planned and run as the source table's owner, as
- * an index backfill runs index expressions as the table's owner, so that
- * whatever the transform calls does not run as the superuser the tserver
- * connects as.  The INSERT is therefore checked against the owner's
- * privileges on the target.
+ * The transform is compiled, planned and run as its owner, so that whatever
+ * it calls does not run as the superuser the tserver connects as.  The
+ * INSERT is therefore checked against the owner's privileges on the target.
+ * yb_begin_mirror_table checks that its caller has the owner's privileges,
+ * and the owner cannot change while the job runs, so every chunk of a job
+ * runs as a role whose privileges the caller has.  The source table's owner
+ * would not do: anyone who may ALTER the table can begin a job, including a
+ * member of yb_db_admin who has no other privileges of that owner.
  */
 PG_FUNCTION_INFO_V1(yb_backfill_online_schema_change_chunk);
 
@@ -153,7 +156,7 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 
 	/*
 	 * The caller picks the tables, the transform and the write time, and the
-	 * transform then runs as the source's owner, so only the tserver's copy
+	 * transform then runs as its owner, so only the tserver's copy
 	 * connection may call this.  That connection kind requires yb-tserver-key
 	 * authentication.  yb_is_tserver_auth_method alone would not do, since
 	 * connection manager backends, which run client SQL, also have it.
@@ -196,7 +199,7 @@ yb_backfill_online_schema_change_chunk(PG_FUNCTION_ARGS)
 	int			saveSecContext;
 
 	GetUserIdAndSecContext(&saveUserId, &saveSecContext);
-	SetUserIdAndSecContext(srcRel->rd_rel->relowner,
+	SetUserIdAndSecContext(YbOscTransformOwner(transformOid),
 						   saveSecContext | SECURITY_RESTRICTED_OPERATION);
 
 	int			saveNestLevel = NewGUCNestLevel();

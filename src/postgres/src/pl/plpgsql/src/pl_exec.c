@@ -9131,3 +9131,21 @@ YbIsFlushRequiredForCommandTag(CommandTag commandTag)
 
 	return true;
 }
+
+/*
+ * YB: Point func->cur_estate at a minimal estate, with local copies of the
+ * datums, so that the parser hooks of plpgsql_parser_setup can analyze func's
+ * expressions without running it.  Nothing in it can evaluate an expression.
+ * The caller restores func->cur_estate.
+ */
+void
+yb_plpgsql_estate_setup_for_analysis(PLpgSQL_execstate *estate,
+									 PLpgSQL_function *func)
+{
+	MemSet(estate, 0, sizeof(PLpgSQL_execstate));
+	func->cur_estate = estate;
+	estate->func = func;
+	estate->ndatums = func->ndatums;
+	estate->datum_context = CurrentMemoryContext;
+	copy_plpgsql_datums(estate, func);
+}

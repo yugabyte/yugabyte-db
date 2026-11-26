@@ -12384,8 +12384,41 @@
   proargnames => '{source_table,target_table,transform_fn,read_time_ht,partition_key,bfinstr,rows_processed,next_bfinstr}',
   prosrc => 'yb_backfill_online_schema_change_chunk' },
 
+{ oid => '8126', descr => 'start an online schema change',
+  proname => 'yb_begin_mirror_table', provolatile => 'v', proisstrict => 't',
+  proparallel => 'u', prorettype => 'int8',
+  proargtypes => 'regclass regclass regproc',
+  proargnames => '{source_table,target_table,transform_fn}',
+  prosrc => 'yb_begin_mirror_table' },
+
+{ oid => '8142',
+  descr => 'wait until an online schema change is ready to finish',
+  proname => 'yb_wait_mirror_table', provolatile => 'v', proisstrict => 't',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'int8',
+  proargnames => '{job_id}', prosrc => 'yb_wait_mirror_table' },
+
+{ oid => '8127', descr => 'finish an online schema change by swapping the tables',
+  proname => 'yb_finish_mirror_table', provolatile => 'v', proisstrict => 't',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'int8',
+  proargnames => '{job_id}', prosrc => 'yb_finish_mirror_table' },
+
+{ oid => '8136', descr => 'abort an online schema change',
+  proname => 'yb_abort_mirror_table', provolatile => 'v', proisstrict => 't',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'int8',
+  proargnames => '{job_id}', prosrc => 'yb_abort_mirror_table' },
+
 { oid => '8128',
   descr => 'trigger function for online online schema change',
   proname => 'yb_online_schema_change_trigger', provolatile => 'v', prorettype => 'trigger',
   proargtypes => '', prosrc => 'yb_online_schema_change_trigger' },
+
+{ oid => '8134',
+  descr => 'state and progress of an online schema change job\'s copy, from the master',
+  proname => 'yb_online_schema_change_progress', provolatile => 'v', proisstrict => 't',
+  proparallel => 'u', prorettype => 'record', proargtypes => 'int8',
+  proallargtypes => '{int8,text,int8,int4,int4,text}',
+  proargmodes => '{i,o,o,o,o,o}',
+  proargnames => '{job_id,status,rows_done,tablets_done,tablets_total,error_message}',
+  prosrc => 'yb_online_schema_change_progress' },
+
 ]
