@@ -296,9 +296,8 @@ class Consensus {
   // Returns a copy of the current committed Raft configuration.
   virtual RaftConfigPB CommittedConfig() const = 0;
 
-  // The larger of the pending Raft config change operation id, if a config change is currently
-  // pending, and the last known pending config change operation id received from
-  // StartRemoteBootstrapRequestPB request unless we know it is no longer pending.
+  // The larger of the pending config change op id in the log and the one received with
+  // StartRemoteBootstrapRequestPB, until that one is known to be no longer pending.
   virtual OpId GetPendingConfigOpId() const = 0;
 
   virtual void DumpStatusHtml(std::ostream& out) const = 0;

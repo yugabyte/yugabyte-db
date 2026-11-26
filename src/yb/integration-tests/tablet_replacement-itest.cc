@@ -609,10 +609,8 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaInPendingConfigAfterRbsFromFo
       "TEST_follower_pause_update_consensus_requests", "false"));
 }
 
-// A replica is remote bootstrapped from a follower whose Raft log has a config change op that the
-// follower doesn't know is committed, while the leader has a newer pending ADD_SERVER for the
-// replica. The replica reports the follower's op as its pending config op, which hides the pending
-// ADD_SERVER the leader sent with the RBS request. Master must not delete the replica.
+// RBS from a follower whose log has a config op it doesn't know is committed, while the leader's
+// ADD_SERVER for the replica is pending. Master must not delete the replica.
 TEST_F(TabletReplacementITest, DontDeleteNewReplicaAfterRbsFromFollowerWithUncommittedConfigOp) {
   constexpr auto kInitialNumTservers = 5;
   std::vector<std::string> ts_flags = {
@@ -659,17 +657,22 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaAfterRbsFromFollowerWithUncom
   auto* rbs_source_ts_details = ts_map_[rbs_source_ts->uuid()].get();
 
   // The RBS source follower holds the request with REMOVE_SERVER after appending the op and before
-  // marking ops committed. The request was sent before the op was committed, and later requests are
-  // paused, so the follower doesn't learn that REMOVE_SERVER is committed.
+  // marking ops committed. Later requests are paused, so it doesn't learn the op is committed.
   ASSERT_OK(cluster_->SetFlag(
       rbs_source_ts, "TEST_delay_update_consensus_before_mark_committed_tablet_id", tablet_id));
   ASSERT_OK(cluster_->SetFlag(
       rbs_source_ts, "TEST_delay_update_consensus_before_mark_committed_ms",
       ToString(10000 * kTimeMultiplier)));
+  // Logged when the follower appends REMOVE_SERVER as its pending config. Pausing earlier would
+  // keep REMOVE_SERVER from reaching it.
+  LogWaiter remove_server_appended_waiter(
+      rbs_source_ts,
+      Format("T $0 P $1: Updating active role from", tablet_id, rbs_source_ts->uuid()));
 
   LOG(INFO) << "Remove tablet " << tablet_id << " from tserver " << added_ts->uuid();
   ASSERT_OK(itest::RemoveServer(
       leader_ts_details, tablet_id, added_ts_details, std::nullopt, kTimeout));
+  ASSERT_OK(remove_server_appended_waiter.WaitFor(kTimeout));
   ASSERT_OK(cluster_->SetFlag(
       rbs_source_ts, "TEST_follower_pause_update_consensus_requests", "true"));
   ASSERT_OK(cluster_->SetFlag(
@@ -732,9 +735,8 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaAfterRbsFromFollowerWithUncom
       rbs_source_ts, "TEST_follower_pause_update_consensus_requests", "false"));
 }
 
-// ADD_SERVER for a new replica is pending when the leader changes, and the new leader commits it
-// with its NO_OP. Master learns the new term before that commit, so the replica reports a pending
-// config op from an older term. Master must not delete the replica.
+// The new leader commits the pending ADD_SERVER with its NO_OP, after master learned the new term,
+// so the replica reports an older-term pending op. Master must not delete the replica.
 TEST_F(TabletReplacementITest, DontDeleteNewReplicaWhenNewLeaderCommitsPendingAddServer) {
   // RBS waits for the promotion until it happens, so the replica is reported with every heartbeat.
   std::vector<std::string> ts_flags = {
@@ -767,9 +769,8 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaWhenNewLeaderCommitsPendingAd
   auto* added_ts = cluster_->tablet_server(kAddedTsIndex);
   auto* added_ts_details = ts_map_[added_ts->uuid()].get();
 
-  // A pre-voter doesn't count for the majority, so ADD_SERVER stays pending with only A and B
-  // having it: 2 of 5 voters. The new replica doesn't accept updates either, so it keeps the
-  // pending config op id from RBS.
+  // A pre-voter doesn't count for the majority, so ADD_SERVER on A and B (2 of 5 voters) stays
+  // pending. Without updates the new replica keeps the pending op id from RBS.
   for (auto* ts : paused_followers) {
     ASSERT_OK(cluster_->SetFlag(ts, "TEST_follower_pause_update_consensus_requests", "true"));
   }
@@ -784,8 +785,7 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaWhenNewLeaderCommitsPendingAd
   ASSERT_OK(itest::WaitUntilTabletRunning(added_ts_details, tablet_id, kTimeout));
   LOG(INFO) << "RBS has been completed on added node";
 
-  // B wins the election with the votes of the paused followers and has ADD_SERVER in its log. Its
-  // NO_OP can't be committed yet: A is down, and the other voters don't accept updates.
+  // B wins with the paused followers' votes, but can't commit its NO_OP while they reject updates.
   ts_a->Shutdown();
   ASSERT_OK(itest::StartElection(ts_b_details, tablet_id, kTimeout));
   ASSERT_OK(itest::WaitUntilLeader(

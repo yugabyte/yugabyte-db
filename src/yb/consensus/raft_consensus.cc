@@ -3618,9 +3618,8 @@ const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
 
 OpId RaftConsensus::GetPendingConfigOpId() const {
   auto lock = state_->LockForRead();
-  // The pending config op in the log can be older than the one received with the RBS request, when
-  // the RBS source is a follower that doesn't know its op is committed. If the larger op id is no
-  // longer pending, neither is the smaller one.
+  // The log's pending config op can be older than the RBS one, when the RBS source is a follower
+  // that doesn't know its op is committed. The larger one is pending if either is.
   return std::max(
       state_->GetPendingConfigOpIdUnlocked(), state_->GetPendingConfigOpIdFromRbsUnlocked());
 }
