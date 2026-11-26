@@ -1341,6 +1341,120 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  // The client sets custom settings whose names SQL would need to quote: a reserved word as the
+  // second part, or an upper-case letter. A second client takes the only backend, then the
+  // client's next query replays them on it. The client must stay connected and get them back.
+  @Test
+  public void testCustomSettingNamesNeedingQuotesReplay() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    String[][] settings = {
+        {"app.user", "alice"},
+        {"app.select", "s"},
+        {"app.table", "t"},
+        {"app.from", "f"},
+        {"g3.Tenant", "b"},
+    };
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET \"g3.Tenant\" = 'a'");
+      for (String[] setting : settings) {
+        stmt.execute("SET \"" + setting[0] + "\" = '" + setting[1] + "'");
+      }
+      assertCustomSettingValues(stmt, settings);
+
+      startQueuedClient().assertServed();
+      assertCustomSettingValues(stmt, settings);
+    }
+  }
+
+  // The client changes a custom setting with an upper-case letter in its name on each of two
+  // backends in turn, and must always read its latest value, including on a backend that has
+  // never seen the setting.
+  @Test
+  public void testMixedCaseCustomSettingAcrossBackends() throws Exception {
+    checkCustomSettingAcrossBackends("SELECT 1");
+  }
+
+  // As above, but another client first sets the custom setting on the second backend with a
+  // lower-case name, so the two backends spell the name differently.
+  @Test
+  public void testMixedCaseCustomSettingAcrossDifferentlySpelledBackends() throws Exception {
+    checkCustomSettingAcrossBackends("SET g3.tenant = 'x'");
+  }
+
+  // Holder transactions keep one backend of a pool of two busy, so that each of the client's
+  // queries lands on the other one. otherQuery runs first on the second backend.
+  private void checkCustomSettingAcrossBackends(String otherQuery) throws Exception {
+    Map<String, String> flags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+    flags.put("ysql_conn_mgr_max_conns_per_db", "2");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement();
+         Connection otherConn = builder.connect();
+         Statement otherStmt = otherConn.createStatement();
+         Connection holderConn1 = builder.connect();
+         Statement holderStmt1 = holderConn1.createStatement();
+         Connection holderConn2 = builder.connect();
+         Statement holderStmt2 = holderConn2.createStatement()) {
+      Statement[] holders = {holderStmt1, holderStmt2};
+      int[] pids = new int[2];
+
+      holderStmt1.execute("BEGIN");
+      pids[0] = backendPid(holderStmt1);
+      otherStmt.execute(otherQuery);
+      pids[1] = backendPid(otherStmt);
+      assertTrue("expected two backends", pids[0] != pids[1]);
+      holderStmt2.execute("BEGIN");
+      assertEquals(pids[1], backendPid(holderStmt2));
+      holderStmt1.execute("COMMIT");
+
+      int current = 0;
+      stmt.execute("SET \"g3.Tenant\" = 'a'");
+      for (int i = 0; i < 6; i++) {
+        String value = "v" + i;
+        stmt.execute("SET \"g3.Tenant\" = '" + value + "'");
+        assertCustomSettingOnBackend(stmt, pids[current], "g3.Tenant", value);
+
+        holders[current].execute("BEGIN");
+        assertEquals(pids[current], backendPid(holders[current]));
+        current = 1 - current;
+        holders[current].execute("COMMIT");
+
+        assertCustomSettingOnBackend(stmt, pids[current], "g3.Tenant", value);
+        assertCustomSettingOnBackend(stmt, pids[current], "g3.tenant", value);
+      }
+      holders[1 - current].execute("COMMIT");
+    }
+  }
+
+  private static int backendPid(Statement stmt) throws Exception {
+    ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+    assertTrue(rs.next());
+    return rs.getInt(1);
+  }
+
+  private static void assertCustomSettingOnBackend(Statement stmt, int pid, String name,
+                                                   String value) throws Exception {
+    ResultSet rs = stmt.executeQuery(
+        "SELECT pg_backend_pid(), current_setting('" + name + "')");
+    assertTrue(rs.next());
+    assertEquals(pid, rs.getInt(1));
+    assertEquals(name, value, rs.getString(2));
+  }
+
+  private static void assertCustomSettingValues(Statement stmt, String[]... settings)
+      throws Exception {
+    for (String[] setting : settings) {
+      ResultSet rs = stmt.executeQuery("SELECT current_setting('" + setting[0] + "')");
+      assertTrue(rs.next());
+      assertEquals(setting[0], setting[1], rs.getString(1));
+    }
+  }
+
   // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
   // from the config file (ysql_pg_conf_csv), at startup or on SIGHUP, is applied by every backend
   // of the pool, so it must not.
