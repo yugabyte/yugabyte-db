@@ -4837,9 +4837,9 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"yb_notifications_poller_failure_window_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
-			gettext_noop("Time in milliseconds for which the notifications poller"
-						 " keeps restarting while its restarts fail before it"
-						 " terminates the node's listening sessions."),
+			gettext_noop("Time in milliseconds without progress after which a"
+						 " notifications poller error terminates the node's"
+						 " listening sessions instead of restarting the poller."),
 			gettext_noop("0 terminates them on the first error."),
 			GUC_UNIT_MS
 		},

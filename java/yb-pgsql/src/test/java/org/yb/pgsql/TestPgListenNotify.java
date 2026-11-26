@@ -2212,12 +2212,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A poller that stays up for the failure window ends the run of failed restarts, even if it then
-   * exits by SIGTERM.
+   * The failure window counts from the poller's last progress, not from its first error: an idle
+   * poller that keeps reading still restarts on an error long after an earlier one.
    */
   @Test
-  public void testHealthyPollerEndsFailedRestartRun() throws Exception {
-    final String channel = "healthy_ends_run";
+  public void testLaterErrorAfterProgressRestartsPoller() throws Exception {
+    final String channel = "later_error";
     final long windowMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
     Map<HostAndPort, String> windowConf = setPollerFailureWindowMs(String.valueOf(windowMs));
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
@@ -2228,12 +2228,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       notifyWhilePollerFails(stmt, channel, "a");
       waitForNotification(listener, channel, "a");
 
-      // Stay up past the timeout, then fail init once after a SIGTERM.
       Thread.sleep(windowMs + Timeouts.adjustTimeoutSecForBuildType(2000));
-      failPollerInitAfterTerm(getPollerPid(stmt), () -> {});
+      int pollerPid = getPollerPid(stmt);
+      notifyWhilePollerFails(stmt, channel, "b");
 
-      stmt.execute("NOTIFY " + channel + ", 'b'");
-      waitForNotification(listener, channel, "b");
+      List<PGNotification> received = waitForNotification(listener, channel, "b");
+      assertEquals("Expected the notification exactly once", 1, received.size());
+      assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
     } finally {
       restorePgConfOnAllTServers(windowConf);
     }
@@ -2266,61 +2267,18 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * An ack ends a run of failed restarts: a second error, after the first is older than the failure
-   * window, still restarts the poller.
-   */
-  @Test
-  public void testAckEndsFailedRestartRun() throws Exception {
-    final String channel = "ack_ends_run";
-    final long windowMs = Timeouts.adjustTimeoutSecForBuildType(10_000);
-    Map<HostAndPort, String> windowConf = setPollerFailureWindowMs(String.valueOf(windowMs));
-    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
-         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
-         Statement stmt = nonListener.createStatement()) {
-      listener.createStatement().execute("LISTEN " + channel);
-      int pollerPid = getPollerPid(stmt);
-
-      // First error; the replay delivers and acks 'a'.
-      long firstErrorMs = notifyWhilePollerFails(stmt, channel, "a");
-      waitForNotification(listener, channel, "a");
-      int restartedPid = getPollerPid(stmt);
-      assertNotEquals("Expected the poller to have restarted", pollerPid, restartedPid);
-      pollerPid = restartedPid;
-
-      // Age the first error past the timeout, then have a fresh poller ack 'b'.
-      long agedMs = firstErrorMs + windowMs + Timeouts.adjustTimeoutSecForBuildType(2000);
-      Thread.sleep(Math.max(0, agedMs - System.currentTimeMillis()));
-      ProcessUtil.signalProcess(pollerPid, "TERM");
-      pollerPid = waitForPollerRestart(stmt, pollerPid);
-      stmt.execute("NOTIFY " + channel + ", 'b'");
-      waitForNotification(listener, channel, "b");
-
-      // Second error, before this poller has been up for the timeout.
-      notifyWhilePollerFails(stmt, channel, "c");
-
-      List<PGNotification> received = waitForNotification(listener, channel, "c");
-      assertEquals("Expected the notification exactly once", 1, received.size());
-      assertNotEquals("Expected the poller to have restarted", pollerPid, getPollerPid(stmt));
-    } finally {
-      restorePgConfOnAllTServers(windowConf);
-    }
-  }
-
-  /**
    * Sends a NOTIFY while every poller queue write errors, and clears the error once the poller has
-   * restarted after it. Returns the time just before the NOTIFY.
+   * restarted after it.
    */
-  private long notifyWhilePollerFails(Statement stmt, String channel, String payload)
+  private void notifyWhilePollerFails(Statement stmt, String channel, String payload)
       throws Exception {
     Map<HostAndPort, String> originalPgConf = new HashMap<>();
     try {
       appendToPgConfAndWait(
           "yb_test_notifs_poller_error_holding_queue_lock", "true", "on", originalPgConf);
       LogLineCounter restarts = countLogLines(POLLER_RESTART_LOG);
-      long notifyMs = System.currentTimeMillis();
       stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
       TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
-      return notifyMs;
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
     }

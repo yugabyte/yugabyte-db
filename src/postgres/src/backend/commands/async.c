@@ -622,9 +622,6 @@ typedef struct YbNotifsPollerPendingEntry
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
 static TimestampTz ybNotifsPollerId = 0;
 
-/* When this poller initialized, or 0 once ybNotifsPollerMarkHealthy ran. */
-static TimestampTz ybNotifsPollerUpSince = 0;
-
 /* Set by ybNotifsPollerInit when a restart cannot help. */
 static bool ybNotifsPollerCannotRun = false;
 
@@ -694,9 +691,6 @@ typedef struct
 	char		error_message[1024];
 	volatile bool has_runtime_error;
 
-	/* When the current run of failed restarts began, or 0. */
-	TimestampTz retry_start_time;
-
 	/*
 	 * Identifies the poller started for the node's current listeners; zero
 	 * when there are none, or once the LISTEN that started it has
@@ -723,6 +717,13 @@ typedef struct
 	 * reset to NOT_STARTED only together with this field.
 	 */
 	BackendId	starter;
+
+	/*
+	 * When the poller last acked a transaction or found nothing to read. The
+	 * poller writes it without NotifyQueueLock, as it does so on every empty
+	 * read; a stale poller's write can only delay a termination.
+	 */
+	TimestampTz last_progress_time;
 } YbNotifsPollerShmemData;
 
 /* local function prototypes */
@@ -774,7 +775,7 @@ static bool ybIsStaleNotifsPoller(void);
 static void ybExitStaleNotifsPoller(const char *detail) pg_attribute_noreturn();
 static void ybNotifsPollerExitOnError(const ErrorData *edata) pg_attribute_noreturn();
 static void ybCheckNotifsStreamNotExpired(void);
-static void ybNotifsPollerMarkHealthy(void);
+static void ybNotifsPollerRecordProgress(void);
 static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
@@ -1507,8 +1508,8 @@ Exec_ListenPreCommit(void)
 		poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 		poller_data->error_message[0] = '\0';
 		poller_data->has_runtime_error = false;
-		poller_data->retry_start_time = 0;
 		poller_data->poller_id = GetCurrentTimestamp();
+		poller_data->last_progress_time = poller_data->poller_id;
 		poller_data->starter = MyBackendId;
 	}
 
@@ -3562,26 +3563,23 @@ ybCheckNotifsStreamNotExpired(void)
 	}
 }
 
-/*
- * End the run of failed restarts. Done here rather than on the next error, as
- * SIGTERM and FATAL exits skip ybNotifsPollerExitOnError.
- */
 static void
-ybNotifsPollerMarkHealthy(void)
+ybNotifsPollerRecordProgress(void)
 {
-	bool		found;
-	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	static YbNotifsPollerShmemData *poller_data = NULL;
 
-	ybNotifsPollerUpSince = 0;
-	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
-	if (!ybIsStaleNotifsPoller())
-		poller_data->retry_start_time = 0;
-	LWLockRelease(NotifyQueueLock);
+	if (poller_data == NULL)
+	{
+		bool		found;
+
+		poller_data = ybShmemNotifsPollerData(&found);
+	}
+	poller_data->last_progress_time = GetCurrentTimestamp();
 }
 
 /*
  * Exit to be restarted from the slot's restart LSN. Terminate the listeners
- * instead on a permanent error, or once restarts have kept failing for
+ * instead on a permanent error, or if the poller has made no progress for
  * yb_notifications_poller_failure_window_ms.
  *
  * Caller holds NotifyQueueLock exclusively and has checked that the poller
@@ -3603,11 +3601,8 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	else
 		len = strlcpy(message, edata->message, sizeof(message));
 
-	if (poller_data->retry_start_time == 0)
-		poller_data->retry_start_time = now;
-
 	terminate = ybNotifsPollerCannotRun ||
-		TimestampDifferenceExceeds(poller_data->retry_start_time, now,
+		TimestampDifferenceExceeds(poller_data->last_progress_time, now,
 								   yb_notifications_poller_failure_window_ms);
 	if (!terminate)
 	{
@@ -3620,7 +3615,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 
 	if (!ybNotifsPollerCannotRun && len < sizeof(message))
 		snprintf(message + len, sizeof(message) - len,
-				 " (restarts kept failing for "
+				 " (no progress for "
 				 "yb_notifications_poller_failure_window_ms = %d ms)",
 				 yb_notifications_poller_failure_window_ms);
 	strlcpy(poller_data->error_message, message,
@@ -3675,9 +3670,7 @@ ybNotifsPollerInit(void)
 		 * that by setting nowait arg as false.
 		 */
 		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ false);
-		/* Expiry surfaces as an error first. */
-		if (poller_data->retry_start_time != 0)
-			ybCheckNotifsStreamNotExpired();
+		ybCheckNotifsStreamNotExpired();
 		publications = ybNotifsPublications();
 
 		YBCInitVirtualWal(publications);
@@ -3724,7 +3717,6 @@ ybNotifsPollerInit(void)
 		ybExitStaleNotifsPoller(NULL);
 	poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
 	LWLockRelease(NotifyQueueLock);
-	ybNotifsPollerUpSince = GetCurrentTimestamp();
 }
 
 /*
@@ -3760,21 +3752,13 @@ ybNotifsPollerLoop()
 		yb_walsender_poll_sleep_duration_empty_ms =
 			yb_notifications_poll_sleep_duration_empty_ms;
 
-		/*
-		 * A poller that has run for the failure window is healthy: forget the
-		 * earlier errors, so that the next one gets a full window again.
-		 */
-		if (ybNotifsPollerUpSince != 0 &&
-			TimestampDifferenceExceeds(ybNotifsPollerUpSince,
-									   GetCurrentTimestamp(),
-									   yb_notifications_poller_failure_window_ms))
-			ybNotifsPollerMarkHealthy();
-
 		PG_TRY();
 		{
 			record = YBCReadRecord(publications);
 			if (record)
 				ybNotifsPollerProcessRecord(record);
+			else
+				ybNotifsPollerRecordProgress();
 		}
 		PG_CATCH();
 		{
@@ -3851,8 +3835,7 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 						 errmsg("test-only: notifications poller simulated crash "
 								"before CDC ack")));
 			YBCCalculatePersistAndGetRestartLSN(record->lsn);
-			if (ybNotifsPollerUpSince != 0)
-				ybNotifsPollerMarkHealthy();
+			ybNotifsPollerRecordProgress();
 			ybNotifsPollerPendingEntries = NIL;
 			ybNotifsPollerProcessingXid = InvalidTransactionId;
 			AbortCurrentTransaction();
