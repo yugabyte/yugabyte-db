@@ -82,4 +82,10 @@ extern Bitmapset *prune_append_rel_partitions(struct RelOptInfo *rel,
 extern Bitmapset *get_matching_partitions(PartitionPruneContext *context,
 										  List *pruning_steps);
 
+/* YB declarations */
+extern bool yb_exec_pruning_leaves_one_subpath(struct PlannerInfo *root,
+											   struct RelOptInfo *parentrel,
+											   List *subpaths,
+											   List *prunequal);
+
 #endif							/* PARTPRUNE_H */

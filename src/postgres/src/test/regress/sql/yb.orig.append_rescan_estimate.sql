@@ -98,6 +98,14 @@ create table ar.s_skew (id int, g int, primary key (id asc));
 insert into ar.s_skew values (1, 0), (2, 0), (3, 0), (4, 5);
 analyze ar.s_skew;
 
+-- Only the first partition has an index on the join key.
+create table ar.r_noidx (k int, v int) partition by range (k);
+create table ar.r_noidx_1 partition of ar.r_noidx for values from (1) to (2001);
+create table ar.r_noidx_2 partition of ar.r_noidx for values from (2001) to (4001);
+create index on ar.r_noidx_1 (k asc);
+insert into ar.r_noidx select * from ar.r_range;
+analyze ar.r_noidx;
+
 create table ar.queries (qid int primary key, descr text, settings text,
                          query text);
 
@@ -167,7 +175,8 @@ from (
 --   1x: the join key is the partition key, one row for each key
 --   2x: several rows for each key
 --   3x: a partition is partitioned again
---   4x: the join clauses or the settings leave every partition for a rescan
+--   4x: the join clauses or the settings leave several partitions for a
+--       rescan
 --   5x: no partition holds the outer rows' keys
 insert into ar.queries values
     (11, 'range', '',
@@ -188,6 +197,8 @@ insert into ar.queries values
      'select * from ar.s s join ar.r_hash2 r on r.a = s.a'),
     (42, 'range, enable_partition_pruning off', 'Set(enable_partition_pruning off)',
      'select * from ar.s s join ar.r_range r on r.k = s.id'),
+    (43, 'range, inequality on the partition key', '',
+     'select * from ar.s s join ar.r_range r on r.k > s.id'),
     (51, 'range, keys above every partition', '',
      'select * from ar.s s left join ar.r_range r on r.k = s.id + 4000');
 
@@ -205,6 +216,10 @@ order by qid;
 -- and the Append is costed so.  Its row estimate is the sum of the
 -- partitions' estimates, each of which takes the key to be one of the
 -- partition's own keys, and three of the four partitions return no row.
+-- 43: a rescan runs the partitions that hold keys above the outer row's, 2.5
+-- of the four here.  The Append is costed as all four partitions.  Its row
+-- estimate is the sum of the partitions' estimates, none of which takes the
+-- outer row's value into account.
 -- 51: no partition holds a key of the outer rows, so no partition runs.  The
 -- Append is costed as one partition and one row for each rescan, because the
 -- estimate does not compare the outer rows' values with the partition bounds
@@ -213,5 +228,11 @@ select qid, descr, rescans, act_partitions, cost_ratio, est_rows, act_rows,
        "Cost Estimates", "Row Estimates"
 from ar.check_append_rescan_estimates
 order by qid;
+
+-- With enable_seqscan off, the scan of the partition that has no index on the
+-- join key is disabled, and so is the Append over it.  should return true.
+select (n->>'Total Cost')::float8 >= 1e10 append_is_disabled
+from ar.inner_node('Set(enable_seqscan off)',
+                   'select * from ar.s s join ar.r_noidx r on r.k = s.id') n;
 
 drop schema ar cascade;

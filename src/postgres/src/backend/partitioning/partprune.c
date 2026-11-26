@@ -59,6 +59,7 @@
 /* YB includes */
 #include "access/relation.h"
 #include "catalog/pg_class.h"
+#include "optimizer/placeholder.h"
 #include "partitioning/partprune.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -222,6 +223,10 @@ static bool perform_func_expr_pruning(PartitionPruneContext *context,
 									  int partIndex,
 									  List *funcExprs);
 static bool canUseFunctionForPartitionPruning(Oid funcoid);
+static bool yb_supports_run_time_pruning(PlannerInfo *root,
+										 RelOptInfo *parentrel);
+static bool yb_step_selects_one_partition(GeneratePruningStepsContext *context,
+										  int step_id);
 
 /*
  * make_partition_pruneinfo
@@ -247,26 +252,9 @@ make_partition_pruneinfo(PlannerInfo *root, RelOptInfo *parentrel,
 	ListCell   *lc;
 	int			i;
 
-	/*
-	 * YB: A federated foreign table is modeled as LIST-partitioned by
-	 * server_uuid (see yb_set_global_view_partition_key) but is not a real
-	 * partitioned table: it has no catalog PartitionDesc/PartitionKey. Runtime
-	 * pruning (ExecInitPartitionPruning) fetches both from the relcache and
-	 * would crash on a foreign table, so never build a runtime
-	 * PartitionPruneInfo for it.
-	 *
-	 * TODO(#34190): support runtime pruning so a server_uuid supplied by a
-	 * join, subquery, or bound parameter skips non-matching tservers.
-	 */
-	if (IsYugaByteEnabled() && parentrel->relid > 0)
-	{
-		RangeTblEntry *parentrte = planner_rt_fetch(parentrel->relid, root);
-
-		if (parentrte->rtekind == RTE_RELATION &&
-			parentrte->relkind == RELKIND_FOREIGN_TABLE &&
-			yb_is_federated_yb_foreign_table(parentrte->relid))
-			return NULL;
-	}
+	/* YB: never build a runtime PartitionPruneInfo the executor cannot use. */
+	if (!yb_supports_run_time_pruning(root, parentrel))
+		return NULL;
 
 	/*
 	 * Scan the subpaths to see which ones are scans of partition child
@@ -3995,4 +3983,205 @@ canUseFunctionForPartitionPruning(Oid funcoid)
 	 * This is the yb_is_local_table function.
 	 */
 	return funcoid == F_YB_IS_LOCAL_TABLE;
+}
+
+/*
+ * yb_supports_run_time_pruning
+ *	  Whether the executor can prune the partitions of 'parentrel'.
+ *
+ * A federated foreign table is modeled as LIST-partitioned by server_uuid
+ * (see yb_set_global_view_partition_key) but is not a real partitioned table:
+ * it has no catalog PartitionDesc/PartitionKey. Runtime pruning
+ * (ExecInitPartitionPruning) fetches both from the relcache and would crash
+ * on a foreign table.
+ *
+ * TODO(#34190): support runtime pruning so a server_uuid supplied by a
+ * join, subquery, or bound parameter skips non-matching tservers.
+ */
+static bool
+yb_supports_run_time_pruning(PlannerInfo *root, RelOptInfo *parentrel)
+{
+	if (IsYugaByteEnabled() && parentrel->relid > 0)
+	{
+		RangeTblEntry *parentrte = planner_rt_fetch(parentrel->relid, root);
+
+		if (parentrte->rtekind == RTE_RELATION &&
+			parentrte->relkind == RELKIND_FOREIGN_TABLE &&
+			yb_is_federated_yb_foreign_table(parentrte->relid))
+			return false;
+	}
+
+	return true;
+}
+
+typedef struct YbOtherRelVarsContext
+{
+	PlannerInfo *root;
+	Relids		relids;			/* the rels whose Vars stay */
+} YbOtherRelVarsContext;
+
+/*
+ * yb_other_rel_vars_to_params_mutator
+ *	  Replace each Var and PlaceHolderVar of a rel outside context->relids
+ *	  with a PARAM_EXEC Param, as replace_nestloop_params() replaces the ones
+ *	  an outer rel supplies.  The Params only stand for values known at each
+ *	  scan: they have no slot and must not reach a plan.
+ */
+static Node *
+yb_other_rel_vars_to_params_mutator(Node *node, YbOtherRelVarsContext *context)
+{
+	bool		replace = false;
+
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, Var))
+		replace = !bms_is_member(((Var *) node)->varno, context->relids);
+	else if (IsA(node, PlaceHolderVar))
+	{
+		PlaceHolderInfo *phinfo = find_placeholder_info(context->root,
+														(PlaceHolderVar *) node,
+														false);
+
+		replace = !bms_overlap(phinfo->ph_eval_at, context->relids);
+	}
+
+	if (replace)
+	{
+		Param	   *param = makeNode(Param);
+
+		param->paramkind = PARAM_EXEC;
+		param->paramid = 0;
+		param->paramtype = exprType(node);
+		param->paramtypmod = exprTypmod(node);
+		param->paramcollid = exprCollation(node);
+		param->location = -1;
+		return (Node *) param;
+	}
+
+	return expression_tree_mutator(node, yb_other_rel_vars_to_params_mutator,
+								   (void *) context);
+}
+
+/*
+ * yb_step_selects_one_partition
+ *	  Whether pruning step 'step_id' of 'context' leaves at most one partition
+ *	  of context->rel.
+ *
+ * A base step does when it looks up one value of the whole partition key: the
+ * bound search then finds the one partition that accepts the value, or none.
+ * A step that intersects the results of other steps does when one of them
+ * does.
+ */
+static bool
+yb_step_selects_one_partition(GeneratePruningStepsContext *context,
+							  int step_id)
+{
+	PartitionPruneStep *step = list_nth(context->steps, step_id);
+
+	if (IsA(step, PartitionPruneStepOp))
+	{
+		PartitionPruneStepOp *opstep = (PartitionPruneStepOp *) step;
+		PartitionScheme part_scheme = context->rel->part_scheme;
+
+		/*
+		 * gen_prune_steps_from_opexps() makes a hash step only with a value
+		 * or IS NULL for every key column.
+		 */
+		if (part_scheme->strategy == PARTITION_STRATEGY_HASH)
+			return opstep->opstrategy == HTEqualStrategyNumber;
+
+		return opstep->opstrategy == BTEqualStrategyNumber &&
+			list_length(opstep->exprs) == part_scheme->partnatts;
+	}
+
+	if (IsA(step, PartitionPruneStepCombine))
+	{
+		PartitionPruneStepCombine *cstep = (PartitionPruneStepCombine *) step;
+		ListCell   *lc;
+
+		if (cstep->combineOp != PARTPRUNE_COMBINE_INTERSECT)
+			return false;
+
+		foreach(lc, cstep->source_stepids)
+		{
+			if (yb_step_selects_one_partition(context, lfirst_int(lc)))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * yb_exec_pruning_leaves_one_subpath
+ *	  Whether pruning in the executor leaves at most one of 'subpaths' to
+ *	  each scan of an Append of them.
+ *
+ * The arguments are those of make_partition_pruneinfo(), except that
+ * 'prunequal' has not been through replace_nestloop_params(): the planner
+ * asks this while it costs the path, before a nested loop has assigned its
+ * params.  The Vars of other rels in 'prunequal' are therefore replaced here
+ * by Params that stand for them.
+ *
+ * As in make_partition_pruneinfo(), the partitioned tables between a subpath
+ * and 'parentrel' each prune their own partitions, by the steps that
+ * make_partitionedrel_pruneinfo() generates for per-scan pruning.  One
+ * subpath is left when the steps of every one of those tables, 'parentrel'
+ * included, leave one partition.
+ */
+bool
+yb_exec_pruning_leaves_one_subpath(PlannerInfo *root, RelOptInfo *parentrel,
+								   List *subpaths, List *prunequal)
+{
+	YbOtherRelVarsContext mcontext;
+	Bitmapset  *checked_relids = NULL;
+	ListCell   *lc;
+
+	if (!yb_supports_run_time_pruning(root, parentrel))
+		return false;
+
+	mcontext.root = root;
+	mcontext.relids = parentrel->relids;
+	prunequal = (List *)
+		yb_other_rel_vars_to_params_mutator((Node *) prunequal, &mcontext);
+
+	foreach(lc, subpaths)
+	{
+		RelOptInfo *prel = ((Path *) lfirst(lc))->parent;
+
+		do
+		{
+			GeneratePruningStepsContext context;
+			List	   *partprunequal = prunequal;
+
+			if (prel->reloptkind != RELOPT_OTHER_MEMBER_REL)
+				return false;
+			prel = find_base_rel(root,
+								 root->append_rel_array[prel->relid]->parent_relid);
+			if (!IS_PARTITIONED_REL(prel))
+				return false;
+			if (bms_is_member(prel->relid, checked_relids))
+				continue;
+
+			if (prel != parentrel)
+				partprunequal = (List *)
+					adjust_appendrel_attrs_multilevel(root,
+													  (Node *) prunequal,
+													  prel->relids,
+													  parentrel->relids);
+
+			/* The last step yields the result of all of them. */
+			gen_partprune_steps(prel, partprunequal, PARTTARGET_EXEC,
+								&context);
+			if (context.contradictory || context.steps == NIL ||
+				!yb_step_selects_one_partition(&context,
+											   list_length(context.steps) - 1))
+				return false;
+
+			checked_relids = bms_add_member(checked_relids, prel->relid);
+		} while (prel != parentrel);
+	}
+
+	return true;
 }

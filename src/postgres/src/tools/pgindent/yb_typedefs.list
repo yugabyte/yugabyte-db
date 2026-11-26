@@ -160,6 +160,7 @@ YbOscReplayState
 YbOscTargetOrder
 YbOscTransform
 YbOscTriggerSpec
+YbOtherRelVarsContext
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState
