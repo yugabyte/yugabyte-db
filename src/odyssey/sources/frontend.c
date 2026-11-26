@@ -1468,7 +1468,18 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			rc = kiwi_be_read_describe(data, size, &operator_name,
 						   &operator_name_len, &type);
 			if (rc == -1) {
-				return OD_ECLIENT_READ;
+				retstatus = yb_frontend_throw_error(
+					relay, client, server, "08P01",
+					"invalid string in message");
+				break;
+			}
+			if (type != KIWI_FE_DESCRIBE_PORTAL &&
+			    type != KIWI_FE_DESCRIBE_PREPARED_STATEMENT) {
+				retstatus = yb_frontend_throw_error(
+					relay, client, server, "08P01",
+					"invalid DESCRIBE message subtype %d",
+					(int)type);
+				break;
 			}
 			if (type == KIWI_FE_DESCRIBE_PORTAL) {
 				break; // skip this, we obly need to rewrite statement
@@ -1673,7 +1684,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			int rc;
 			rc = kiwi_be_read_parse_dest(data, size, &desc);
 			if (rc) {
-				return OD_ECLIENT_READ;
+				retstatus = yb_frontend_throw_error(
+					relay, client, server, "08P01",
+					"invalid string in message");
+				break;
 			}
 
 			/* YB: unnamed prepared statement, separately track */
@@ -1894,7 +1908,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				data, size, &operator_name, &operator_name_len);
 
 			if (rc == -1) {
-				return OD_ECLIENT_READ;
+				retstatus = yb_frontend_throw_error(
+					relay, client, server, "08P01",
+					"invalid string in message");
+				break;
 			}
 
 			/* YB: unnamed prepared statement, check if re-parse needed */
@@ -2102,7 +2119,10 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			if (od_frontend_parse_close(data, size, &name,
 						    &name_len,
 						    &type) != OK_RESPONSE) {
-				return OD_ESERVER_WRITE;
+				retstatus = yb_frontend_throw_error(
+					relay, client, server, "08P01",
+					"invalid string in message");
+				break;
 			}
 
 			if (type == KIWI_FE_CLOSE_PREPARED_STATEMENT &&

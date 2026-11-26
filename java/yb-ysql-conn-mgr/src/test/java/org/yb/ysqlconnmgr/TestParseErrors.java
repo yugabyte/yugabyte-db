@@ -14,7 +14,10 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -22,6 +25,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.junit.Test;
@@ -31,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.RequiresLinux;
+import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
 
 /*
  * Tests for correct Odyssey behaviour when handling parse errors.
@@ -399,6 +404,71 @@ public class TestParseErrors extends BaseYsqlConnMgr {
            .run()
            .intValue("pid"));
     }
+  }
+
+  // Malformed Parse/Bind/Describe/Close messages get the same 08P01 error
+  // PostgreSQL raises and the session survives, inside a transaction too.
+  @Test
+  public void testMalformedExtendedQueryMessages() throws Exception {
+    Map<String, byte[]> cases = new LinkedHashMap<>();
+    cases.put("Parse, name without NUL", PgWireProtocol.buildRaw('P', ascii("s1")));
+    cases.put("Parse, empty body", PgWireProtocol.buildRaw('P', new byte[0]));
+    cases.put("Bind, no NUL", PgWireProtocol.buildRaw('B', ascii("portal")));
+    cases.put("Describe, no NUL", PgWireProtocol.buildRaw('D', ascii("Sname")));
+    cases.put("Close, no NUL", PgWireProtocol.buildRaw('C', ascii("Sname")));
+
+    try (WireConn c = connect()) {
+      for (Map.Entry<String, byte[]> e : cases.entrySet()) {
+        LOG.info("Sending malformed message: " + e.getKey());
+        expectMalformedError(c, e.getValue(), "invalid string in message", 'I');
+        c.createPipeline().query("SELECT 1").row("1").run();
+      }
+
+      expectMalformedError(c, PgWireProtocol.buildRaw('D', ascii("Xname\0")),
+          "invalid DESCRIBE message subtype 88", 'I');
+      c.createPipeline().query("SELECT 1").row("1").run();
+
+      c.createPipeline().query("BEGIN").run();
+      expectMalformedError(c, PgWireProtocol.buildRaw('P', ascii("s1")),
+          "invalid string in message", 'E');
+      c.createPipeline()
+       .query("SELECT 1").expectError("25P02", "current transaction is aborted")
+       .query("ROLLBACK")
+       .query("SELECT 1").row("1")
+       .run();
+    }
+  }
+
+  private static byte[] ascii(String s) {
+    return s.getBytes(StandardCharsets.US_ASCII);
+  }
+
+  private static void expectMalformedError(WireConn c, byte[] msg, String messageSubstring,
+      char txnStatus) throws Exception {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    buf.write(msg);
+    buf.write(PgWireProtocol.buildSync());
+    c.sendRaw(buf.toByteArray());
+
+    PgMessage err = nextNonAsync(c);
+    assertEquals("Expected ErrorResponse, got " + err, PgWireProtocol.BE_ERROR_RESPONSE, err.type);
+    Map<Character, String> fields = PgWireProtocol.parseErrorResponse(err.body);
+    assertEquals("Unexpected error " + fields, "08P01", fields.get('C'));
+    assertTrue("Unexpected error " + fields, fields.get('M').contains(messageSubstring));
+
+    PgMessage rfq = nextNonAsync(c);
+    assertEquals("Expected ReadyForQuery, got " + rfq, PgWireProtocol.BE_READY_FOR_QUERY,
+        rfq.type);
+    assertEquals(txnStatus, (char) rfq.body[0]);
+  }
+
+  private static PgMessage nextNonAsync(WireConn c) throws Exception {
+    PgMessage m;
+    do {
+      m = c.readMessage();
+    } while (m.type == PgWireProtocol.BE_NOTICE_RESPONSE
+        || m.type == PgWireProtocol.BE_PARAMETER_STATUS);
+    return m;
   }
 
   private void createTable(String tableName) throws Exception {
