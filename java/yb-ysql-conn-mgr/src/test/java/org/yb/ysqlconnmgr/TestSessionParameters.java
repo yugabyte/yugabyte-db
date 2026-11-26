@@ -753,70 +753,85 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
-  private static String[] queryRow(Statement stmt, String query) throws Exception {
-    try (ResultSet rs = stmt.executeQuery(query)) {
-      assertTrue("expected a row for " + query, rs.next());
-      String[] row = new String[rs.getMetaData().getColumnCount()];
-      for (int i = 0; i < row.length; i++)
-        row[i] = rs.getString(i + 1);
-      return row;
-    }
-  }
-
   // A placeholder GUC keeps, on each backend, the spelling that created it there. Conn mgr replays
   // names unquoted, so "g3.Tenant" is created as g3.tenant on a second backend, which then reports
   // the client's SET under that spelling. Conn mgr must match the two spellings as one variable,
   // as PG does, or it replays the old value kept under the first spelling over the new one.
   @Test
   public void testMixedCaseCustomGucName() throws Exception {
-    final int poolSize = isTestRunningInWarmupRandomMode() ? 3 : 2;
-    List<Connection> holders = new ArrayList<>();
+    SessionParameter sp = new SessionParameter("g3.Tenant", "", "b", new ExceptionType[] {});
+    String actualValue;
+    ResultSet rs;
+
     try (Connection conn = getConnectionBuilder()
-                               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                               .connect();
-         Statement stmt = conn.createStatement()) {
-      final int firstPid = Integer.parseInt(queryRow(stmt,
-          "SELECT pg_backend_pid(), set_config('g3.Tenant', 'a', false)")[0]);
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn1 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn2 = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Connection newConn3 = isTestRunningInWarmupRandomMode() ?
+            getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect() :
+            null;
+        Statement stmt = conn.createStatement();
+        Statement newStmt1 = newConn1.createStatement();
+        Statement newStmt2 = newConn2.createStatement();
+        Statement newStmt3 = isTestRunningInWarmupRandomMode() ?
+            newConn3.createStatement() :
+            null;) {
 
-      // Hold every backend in a transaction, then free one other than the first, so that this
-      // client's next statements run there.
-      Statement firstHolder = null;
-      Statement freedHolder = null;
-      int secondPid = -1;
-      for (int i = 0; i < poolSize; i++) {
-        Connection holder = getConnectionBuilder()
-                                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-                                .connect();
-        holders.add(holder);
-        Statement holderStmt = holder.createStatement();
-        holderStmt.execute("BEGIN");
-        int pid = Integer.parseInt(queryRow(holderStmt, "SELECT pg_backend_pid()")[0]);
-        if (pid == firstPid) {
-          firstHolder = holderStmt;
-        } else if (freedHolder == null) {
-          freedHolder = holderStmt;
-          secondPid = pid;
-        }
+      // Latch onto every physical connection in the pool.
+      newStmt1.execute("BEGIN");
+      newStmt1.execute("SELECT 1");
+      newStmt2.execute("BEGIN");
+      newStmt2.execute("SELECT 1");
+      if (isTestRunningInWarmupRandomMode()) {
+        newStmt3.execute("BEGIN");
+        newStmt3.execute("SELECT 1");
       }
-      assertTrue("a holder should be on the first backend", firstHolder != null);
-      assertTrue("a holder should be on another backend", freedHolder != null);
-      freedHolder.execute("COMMIT");
 
+      // Detach newStmt1, so that the test's connection creates the placeholder as g3.Tenant on
+      // the first physical connection.
+      newStmt1.execute("COMMIT");
+      stmt.execute("SET \"g3.Tenant\" = 'a'");
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue("backend pid should be non-null", rs.next());
+      int backendPID = rs.getInt(1);
+
+      // Lock the first physical connection, and unlock the second one. Replaying 'a' there creates
+      // the placeholder as g3.tenant, so the SET of 'b' is reported under that spelling.
+      newStmt1.execute("BEGIN");
+      newStmt1.execute("SELECT 1");
+      newStmt2.execute("COMMIT");
       stmt.execute("SET \"g3.Tenant\" = 'b'");
-      String[] row = queryRow(stmt, "SELECT pg_backend_pid(), current_setting('g3.Tenant')");
-      assertEquals("backend after the SET", secondPid, Integer.parseInt(row[0]));
-      assertEquals("value on the second backend", "b", row[1]);
 
-      // Move this client back to the first backend.
-      freedHolder.execute("BEGIN");
-      freedHolder.execute("SELECT 1");
-      firstHolder.execute("COMMIT");
-      row = queryRow(stmt, "SELECT pg_backend_pid(), current_setting('g3.Tenant')");
-      assertEquals("backend after moving back", firstPid, Integer.parseInt(row[0]));
-      assertEquals("value on the first backend", "b", row[1]);
-    } finally {
-      for (Connection holder : holders)
-        holder.close();
+      // Read the value first: only this reattach replays the stale 'a' alone. Once it has, the
+      // backend no longer matches g3.tenant = 'b', so later deploys replay both values.
+      actualValue = fetchParameterValue(stmt, sp);
+      assertEquals("value on the second physical connection", sp.expectedValue, actualValue);
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue("backend pid should be non-null", rs.next());
+      assertFalse("primary connection should have attached onto the second physical connection",
+          backendPID == rs.getInt(1));
+
+      // Lock the second physical connection, and unlock the first one.
+      newStmt2.execute("BEGIN");
+      newStmt2.execute("SELECT 1");
+      newStmt1.execute("COMMIT");
+      actualValue = fetchParameterValue(stmt, sp);
+      assertEquals("value on the first physical connection", sp.expectedValue, actualValue);
+      rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      assertTrue("backend pid should be non-null", rs.next());
+      assertEquals("primary connection should have attached onto the first physical connection",
+          backendPID, rs.getInt(1));
+
+      newStmt2.execute("COMMIT");
+      if (isTestRunningInWarmupRandomMode())
+        newStmt3.execute("COMMIT");
     }
   }
 
