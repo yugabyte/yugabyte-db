@@ -3598,7 +3598,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	TimestampTz now = GetCurrentTimestamp();
 	char		message[sizeof(poller_data->error_message)];
 	int			len;
-	bool		terminate;
+	bool		permanently_terminate;
 
 	if (edata->detail)
 		len = snprintf(message, sizeof(message), "%s: %s", edata->message,
@@ -3606,10 +3606,10 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	else
 		len = strlcpy(message, edata->message, sizeof(message));
 
-	terminate = ybNotifsPollerCannotRun ||
+	permanently_terminate = ybNotifsPollerCannotRun ||
 		TimestampDifferenceExceeds(poller_data->last_progress_time, now,
 								   yb_notifications_poller_no_progress_timeout_ms);
-	if (!terminate)
+	if (!permanently_terminate)
 	{
 		LWLockRelease(NotifyQueueLock);
 		ereport(WARNING,
