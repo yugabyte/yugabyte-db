@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Run the given command in the given directory and with the given PATH. This is invoked on a remote
-# host using ssh during the distributed C++ build.
+# host using ssh during the distributed C++ build. The command's remaining arguments come on stdin,
+# each followed by NUL.
 
 #
 # The following only applies to changes made to this file as part of YugabyteDB development.
@@ -33,37 +34,7 @@ fi
 export PATH=$2
 shift 2
 
-readonly ARG_SEPARATOR=$'=:\t:='
-
-args=()
-if [[ -z ${YB_ENCODED_REMOTE_CMD_LINE:-} ]]; then
-  echo "YB_ENCODED_REMOTE_CMD_LINE is not set" >&2
-  exit 1
-fi
-
-if [[ $YB_ENCODED_REMOTE_CMD_LINE != *"$ARG_SEPARATOR" ]]; then
-  echo "Got extra args in YB_ENCODED_REMOTE_CMD_LINE, could not unpack:" \
-       "'${YB_ENCODED_REMOTE_CMD_LINE##*"$ARG_SEPARATOR"}'" >&2
-  exit 1
-fi
-
-# Split the arguments in one awk pass.  awk ends each argument with NUL for readarray to split on.
-# No argument can contain NUL, because each one is a C string, both in YB_ENCODED_REMOTE_CMD_LINE
-# and in the exec below.
-readarray -d '' args < <(
-  awk -v sep="$ARG_SEPARATOR" 'BEGIN {
-    n = split(ENVIRON["YB_ENCODED_REMOTE_CMD_LINE"], parts, sep)
-    for (i = 1; i < n; i++) {
-      printf "%s%c", parts[i], 0
-    }
-  }'
-)
-if [[ ${#args[@]} -eq 0 ]]; then
-  echo "Could not split YB_ENCODED_REMOTE_CMD_LINE into arguments" >&2
-  exit 1
-fi
-
-# The command gets its arguments from the exec, so it does not need this copy in its environment.
-unset YB_ENCODED_REMOTE_CMD_LINE
+# No argument can contain NUL, because each one becomes a C string in the exec below.
+readarray -d '' args
 
 exec "$@" "${args[@]}"

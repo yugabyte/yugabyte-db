@@ -456,14 +456,7 @@ if [[ $local_build_only == "false" &&
     #
     # "file not recognized: file truncated" could happen when re-running an interrupted build
     # while the old compiler process is still running.
-    #
-    # Exit code 126 with "Argument list too long" means that a program, ssh here or a command on the
-    # worker, could not start because its arguments and environment exceed the kernel's limits.
-    # Every host would fail the same way, so do not retry.
-    if [[ $exit_code -eq 126 ]] && grep -q 'Argument list too long' "$stderr_path"; then
-      log "Not retrying on another host: a program could not start because its arguments or" \
-          "environment exceed the kernel's limits, as the error below shows."
-    elif [[ $exit_code -eq 126 ||
+    if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 141 ||
           $exit_code -eq 254 ||

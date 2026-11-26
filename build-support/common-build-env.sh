@@ -1733,21 +1733,10 @@ debugging_remote_compilation() {
   [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]]
 }
 
-cmd_line_to_env_vars_for_remote_cmd() {
-  YB_ENCODED_REMOTE_CMD_LINE=""
-  # This must match the separator in remote_cmd.sh.
-  declare -r ARG_SEPARATOR=$'=:\t:='
-  for arg in "$@"; do
-    # The separator used here must match the separator used in remote_cmd.sh.
-    YB_ENCODED_REMOTE_CMD_LINE+=$arg$ARG_SEPARATOR
-  done
-}
-
 run_remote_cmd() {
   local build_host=$1
   local executable=$2
   shift 2
-  cmd_line_to_env_vars_for_remote_cmd "$@"
   local ssh_args=(
     "$build_host"
     "$YB_BUILD_SUPPORT_DIR/remote_cmd.sh"
@@ -1755,16 +1744,15 @@ run_remote_cmd() {
     "$PATH"
     "$executable"
   )
-  # remote_cmd.sh reads YB_ENCODED_REMOTE_CMD_LINE on the worker, so ssh needs it in its
-  # environment.  Export it to ssh alone, because a value longer than the kernel allows for one
-  # environment variable keeps any program that inherits it from starting.
   (
-    export YB_ENCODED_REMOTE_CMD_LINE
     if debugging_remote_compilation; then
       exec 2>&1
       set -x
     fi
-    ssh "${ssh_args[@]}"
+    # remote_cmd.sh reads the remaining arguments from stdin, each followed by NUL.
+    if [[ $# -gt 0 ]]; then
+      printf '%s\0' "$@"
+    fi | ssh "${ssh_args[@]}"
   )
 }
 
