@@ -35,8 +35,9 @@ export PATH=$2
 shift 2
 
 # The count comes first, so that a stream that ends early fails here instead of running the command
-# with only some of its arguments.  No argument can contain NUL, because each one becomes a C string
-# in the exec below.
+# with only some of its arguments.  A last argument cut off before its NUL stays in arg after the
+# loop, so the check below catches that case too.  No argument can contain NUL, because each one
+# becomes a C string in the exec below.
 args=()
 arg=
 if IFS= read -r -d '' expected_count; then
