@@ -43,7 +43,6 @@ export const SUPPORT_BUNDLE_CATEGORIES: SupportBundleCategoryDef[] = [
     recommended: true,
     components: [
       { component: SupportBundleComponentType.ApplicationLogs, i18nKey: 'applicationLogs' },
-      { component: SupportBundleComponentType.SystemLogs, i18nKey: 'systemLogs', vmOnly: true },
       { component: SupportBundleComponentType.YbaMetadata, i18nKey: 'ybaMetadata' }
     ]
   },
@@ -64,6 +63,7 @@ export const SUPPORT_BUNDLE_CATEGORIES: SupportBundleCategoryDef[] = [
     id: SupportBundleCategoryId.NODE_DIAGNOSTICS,
     recommended: true,
     components: [
+      { component: SupportBundleComponentType.SystemLogs, i18nKey: 'systemLogs', vmOnly: true },
       { component: SupportBundleComponentType.NodeAgent, i18nKey: 'nodeAgent', vmOnly: true },
       { component: SupportBundleComponentType.OutputFiles, i18nKey: 'outputFiles' },
       { component: SupportBundleComponentType.ErrorFiles, i18nKey: 'errorFiles' },
