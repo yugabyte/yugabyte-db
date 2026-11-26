@@ -3,6 +3,7 @@ package com.yugabyte.yw.models.helpers.telemetry;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.yugabyte.yw.common.ApiHelper;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -21,7 +22,7 @@ public class TelemetryProviderConfig {
   @ApiModelProperty(value = "Telemetry Provider Type", accessMode = AccessMode.READ_WRITE)
   private ProviderType type;
 
-  public void validate() {
+  public void validate(ApiHelper apiHelper) {
     // To be overridden in child classes if validation is required.
   }
 }
