@@ -73,7 +73,7 @@ Starting in v2026.1.2.0, you can click **Actions > More > Reprovision Universe N
 
 ## Transparent hugepages
 
-Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by [reprovisioning nodes](../reprovision-nodes/) (v2026.1.2.0 and later), or by following the [node patching](../upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
+Transparent hugepages (THP) should be enabled on nodes for optimal performance. If an on-premises universe does not have the required THP settings, update them by [reprovisioning nodes](../reprovision-nodes/) when the provider has privileged access (v2026.1.2.0 and later). When YugabyteDB Anywhere does not have privileged access, re-run [node-agent-provision.sh](../../prepare/server-nodes-software/software-on-prem/#re-provision-nodes-of-an-existing-universe-non-sudo-on-premises).
 
 ## Kubernetes universes
 
@@ -124,7 +124,7 @@ YBC is used to manage backup and restore, providing faster full backups, and int
 
 - On-premises provider - if you use on-premises providers with manually-provisioned nodes, update your current procedures for manually provisioning instances to accommodate YBC. This includes the following:
 
-  - Set systemd-specific database service unit files (if used). Refer to [Manually provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem-manual/).
+  - Set systemd-specific database service unit files (if used). Refer to [Prepare nodes yourself](../../prepare/server-nodes-software/software-on-prem-manual/).
 
   - After upgrading nodes, manually install YBC on the nodes. Refer to [Upgrade manually-provisioned on-premises universe](../upgrade-software-install/#upgrade-manually-provisioned-on-premises-universe).
 

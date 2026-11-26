@@ -1,57 +1,54 @@
 ---
-title: YugabyteDB Anywhere legacy on-premises node provisioning
-headerTitle: Legacy provisioning
-linkTitle: Legacy provisioning
-description: Software requirements for on-premises provider legacy provisioning.
-headContent: Prepare a VM for deploying universes on-premises
+title: On-premises provisioning
+headerTitle: On-premises provisioning
+linkTitle: On-premises provisioning
+description: Choose privileged or non-privileged access before preparing on-premises database nodes.
+headContent: Choose how YugabyteDB Anywhere accesses on-premises nodes
 aliases:
   - /stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-assist/
 menu:
   stable_yugabyte-platform:
-    identifier: software-on-prem-1-intro
-    parent: software-on-prem
-    weight: 10
+    identifier: on-prem-provisioning
+    parent: server-nodes-software
+    weight: 20
 type: docs
 ---
-
-{{< warning title="Legacy provisioning deprecated" >}}
-Legacy automatic and fully manual provisioning are deprecated. For new nodes, use the [node agent script](../software-on-prem/#run-the-provisioning-script). Existing universes provisioned with these methods continue to work, and you can upgrade YugabyteDB Anywhere to v2025.2 and later without moving them. Assisted manual provisioning has been removed. For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
-{{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../software-on-prem-legacy/" class="nav-link active">
-      How to Choose
+      Choose access
+    </a>
+  </li>
+
+  <li>
+    <a href="../software-on-prem/" class="nav-link">
+      Non-privileged
     </a>
   </li>
 
   <li>
     <a href="../software-on-prem-auto/" class="nav-link">
-      <i class="fa-regular fa-wand-magic-sparkles"></i>
-      Automatic
-    </a>
-  </li>
-
-  <li>
-    <a href="../software-on-prem-manual/" class="nav-link">
-      <i class="icon-shell" aria-hidden="true"></i>
-      Fully manual
+      Privileged
     </a>
   </li>
 </ul>
 
-How you provision nodes for use with an on-premises provider depends on the SSH access that you can grant YugabyteDB Anywhere to provision nodes.
+YugabyteDB Anywhere does not create the VMs for an on-premises provider. You create them, then prepare them for YugabyteDB. What you do next depends on whether you give YugabyteDB Anywhere SSH access to those VMs.
 
-| SSH mode | Description | Notes | For more details |
-| :--- | :--- | :--- | :--- |
-| Permissive | You can allow SSH to a root-privileged user, AND<br>You can provide YugabyteDB Anywhere with SSH login credentials for that user. | For example, the ec2-user for AWS EC2 instances meets this requirement. In this mode, YugabyteDB Anywhere will sign in to the VM and automatically provision the nodes. | See [Automatic Provisioning](../software-on-prem-auto/). |
-| Restrictive | All other cases (you disallow SSH login to a root-privileged user at setup time). | In this mode, you'll manually install each prerequisite software component. | See [Fully Manual Provisioning](../software-on-prem-manual/). |
-<!-- | Medium | You can allow SSH to a root-privileged user, AND<br>You can't provide YugabyteDB Anywhere with SSH login credentials for that user; however you can enter the password interactively. | In this mode, you run a script on the VM, and are prompted for a password for each sudo action to install the required software. | See [Assisted Manual Provisioning](../software-on-prem-assist/). |-->
+| Access | [Provider settings](../../../configure-yugabyte-platform/on-premises/) | Who prepares the node |
+| :--- | :--- | :--- |
+| [Privileged](../software-on-prem-auto/) | SSH user and private key set. **Manually Provision Nodes** off. | YugabyteDB Anywhere signs in and provisions the VM when you add it. |
+| [Non-privileged](../software-on-prem/) | **SSH Key Pairs** empty. **Manually Provision Nodes** on. | You run `node-agent-provision.sh` on the VM. The script can create the provider and add the node. |
 
-Note that, for Permissive mode, the root-privileged SSH user can have any username except `yugabyte`. When YugabyteDB Anywhere later uses the provided SSH user to sign in and prepare the node, it will automatically create and configure a second user named `yugabyte`, which will be largely de-privileged, and will have very limited sudo commands available to it. YugabyteDB Anywhere uses the `yugabyte` user to run the various YugabyteDB software processes.
+Give YugabyteDB Anywhere SSH access when it should provision the nodes. When it must not sign in to the VMs, leave the SSH fields empty and run the provisioning script.
 
-SSH access is required for initial setup of a new database cluster (and when adding new nodes to the cluster). After setup is completed, SSH can be disabled, at your option. Leaving SSH enabled, however, is still recommended to provide access to nodes for troubleshooting.
+A provider the script creates has **Manually Provision Nodes** on in the provider configuration. The script leaves a privileged provider unchanged: if **Manually Provision Nodes** is off, the script stops.
+
+To prepare a node yourself, without the script and without giving YugabyteDB Anywhere SSH access, follow [Prepare nodes yourself](../software-on-prem-manual/). Use that path when you have your own automation for managing your nodes. Otherwise, for a provider with no SSH access, use the provisioning script.
+
+Universes already using privileged access, the provisioning script, or hand preparation keep working. You can upgrade YugabyteDB Anywhere without changing your provisioning method. Refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
 
 ## Best practices
 
-When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
+When you create the VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.

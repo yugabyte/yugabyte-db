@@ -87,8 +87,8 @@ YBA supports three major types of provider configurations:
 | :--- | :--- | :--- | :--- |
 | Advantages | Maximum flexibility | Maximum automation | It's&nbsp;Kubernetes |
 | Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP, OCI | AWS, Azure, GCP, OCI | Kubernetes |
-| Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
-| Node&nbsp;provisioning | Manually created, with automatic provisioning using a script | Automatically created and provisioned | Via Helm |
+| Permissions for YBA | SSH during provisioning only if you grant [privileged access](./prepare/server-nodes-software/software-on-prem-auto/). Otherwise none. | Cloud and OS permissions | As required for Kubernetes |
+| Node&nbsp;provisioning | You create the VMs. YBA provisions them over SSH, or you run the [provisioning script](./prepare/server-nodes-software/software-on-prem/). | Automatically created and provisioned | Via Helm |
 
 ### On-premises
 
@@ -102,6 +102,8 @@ Use this option for any of the following situations:
 - Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
 
 With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
+
+Whether YugabyteDB Anywhere provisions the VM depends on the access you grant. Refer to [On-premises provisioning](./prepare/server-nodes-software/software-on-prem-legacy/).
 
 ### Public cloud
 

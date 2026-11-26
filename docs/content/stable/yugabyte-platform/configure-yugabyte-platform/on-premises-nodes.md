@@ -4,6 +4,8 @@ headerTitle: Manage on-premises provider nodes
 linkTitle: Manage nodes
 description: Manage the nodes in your on-premises provider free pool.
 headContent: Manage node instances in the free pool of nodes for your provider
+aliases:
+  - /stable/yugabyte-platform/configure-yugabyte-platform/on-premises-script/
 menu:
   stable_yugabyte-platform:
     identifier: on-premises-nodes
@@ -23,10 +25,8 @@ This displays the configured instance types and instances for the selected provi
 
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
-{{< note title="Legacy assisted manual script" >}}
-For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). Use of this script is deprecated and strictly for legacy assisted manual provisioning.
-
-Instead, provision your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh).
+{{< note title="Assisted manual script removed" >}}
+On some providers the **Instances** page still shows `provision_instance.py`. That assisted manual script has been removed. Prepare the node with [non-privileged access](../../prepare/server-nodes-software/software-on-prem/) or [privileged access](../../prepare/server-nodes-software/software-on-prem-auto/).
 {{< /note >}}
 
 To add nodes to a provider manually, do the following:
@@ -35,9 +35,9 @@ To add nodes to a provider manually, do the following:
 1. [Add the compute instances](#add-instances).
 1. [Run preflight checks](#run-preflight-checks).
 
-{{< tip title="Automatic provisioning" >}}
+{{< tip title="Who adds the node" >}}
 
-If you are using automatic provisioning, nodes that you provision are automatically added to the provider free pool when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+With [non-privileged access](../../prepare/server-nodes-software/software-on-prem/), `node-agent-provision.sh` adds the node to the free pool. With [privileged access](../../prepare/server-nodes-software/software-on-prem-auto/), you add the instance here and YugabyteDB Anywhere provisions it.
 
 {{< /tip >}}
 
