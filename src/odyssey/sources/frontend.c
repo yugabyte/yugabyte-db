@@ -249,6 +249,19 @@ error:
 	return -1;
 }
 
+static inline bool yb_server_connect_failed(od_server_t *server)
+{
+	return server->error_connect == NULL &&
+	       (server->io.io == NULL || !machine_connected(server->io.io));
+}
+
+static inline int yb_frontend_fatal_server_unavailable(od_client_t *client)
+{
+	return od_frontend_fatal(
+		client, KIWI_CANNOT_CONNECT_NOW,
+		"could not connect to the database server; it may be starting up");
+}
+
 static inline od_frontend_status_t
 od_frontend_attach(od_client_t *client, char *context,
 		   kiwi_params_t *route_params)
@@ -2667,6 +2680,8 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		if (server->error_connect && route->rule->client_fwd_error) {
 			/* forward server error to client */
 			od_frontend_error_fwd(client);
+		} else if (yb_server_connect_failed(server)) {
+			yb_frontend_fatal_server_unavailable(client);
 		} else {
 			od_frontend_fatal(
 				client, KIWI_CONNECTION_FAILURE,
@@ -3173,6 +3188,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 	kiwi_var_t *user = &client->startup.user;
 	od_instance_t *instance = global->instance;
 	od_router_t *router = global->router;
+	bool server_unavailable = false;
 
 	/* internal client */
 	od_client_t *control_conn_client;
@@ -3266,6 +3282,7 @@ int yb_execute_on_control_connection(od_client_t *client,
 				 control_conn_client, server,
 				 "failed to acquire backend connection: %s",
 				 od_io_error(&server->io));
+			server_unavailable = yb_server_connect_failed(server);
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
 			od_client_free_extended(control_conn_client);
@@ -3293,8 +3310,11 @@ cleanup:
 	return OK_RESPONSE;
 
 failed_to_acquire_control_connection:
-	od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
-			  "failed to connect to remote server");
+	if (server_unavailable)
+		yb_frontend_fatal_server_unavailable(client);
+	else
+		od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
+				  "failed to connect to remote server");
 	return NOT_OK_RESPONSE;
 }
 
@@ -3407,6 +3427,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		 (int)sizeof(server->id.id), server->id.id);
 	
 	int rc;
+	bool server_unavailable = false;
 
 	/*
 	 * YB: check for open socket here. Exit if closed.
@@ -3461,6 +3482,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 				 control_conn_client, server,
 				 "failed to acquire auth-backend connection: %s",
 				 od_io_error(&server->io));
+		server_unavailable = yb_server_connect_failed(server);
 		goto cleanup;
 	}
 
@@ -3487,8 +3509,11 @@ cleanup:
 	od_client_free_extended(control_conn_client);
 
 	if (rc == NOT_OK_RESPONSE) {
-		od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
-				"failed to connect to remote server");
+		if (server_unavailable)
+			yb_frontend_fatal_server_unavailable(client);
+		else
+			od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
+					"failed to connect to remote server");
 		return NOT_OK_RESPONSE;
 	}
 

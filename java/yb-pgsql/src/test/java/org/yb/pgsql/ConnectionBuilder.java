@@ -47,6 +47,7 @@ public class ConnectionBuilder implements Cloneable {
   private static final String EX_DB_RECOVERY_MODE = "the database system is in recovery mode";
   private static final String EX_UNABLE_TO_CONNECT_TO_SERVER =
       "failed to connect to remote server";
+  private static final String SQLSTATE_CANNOT_CONNECT_NOW = "57P03";
 
   private final List<InetSocketAddress> postgresContactPoints;
   private final List<InetSocketAddress> ysqlConnMgrContactPoints;
@@ -285,7 +286,8 @@ public class ConnectionBuilder implements Cloneable {
             LOG.info("Postgres is in recovery mode, waiting for " + delayMs + " ms. "
                 + "Got message: " + sqlEx.getMessage());
           } else if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR &&
-              sqlEx.getMessage().contains(EX_UNABLE_TO_CONNECT_TO_SERVER)) {
+              (sqlEx.getMessage().contains(EX_UNABLE_TO_CONNECT_TO_SERVER) ||
+               SQLSTATE_CANNOT_CONNECT_NOW.equals(sqlEx.getSQLState()))) {
             retry = true;
             LOG.info("Ysql Connection Manager is unable to connect to the database, waiting for "
                 + delayMs + " ms. ");
