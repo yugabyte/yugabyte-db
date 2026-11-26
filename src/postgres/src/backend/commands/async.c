@@ -3771,8 +3771,9 @@ ybNotifsPollerLoop()
 		{
 			record = YBCReadRecord(publications);
 			/*
-			 * An empty read is progress only between transactions; mid-
-			 * transaction, it recurs on every replay of a failing one.
+			 * Count an empty read as progress only between transactions. If a
+			 * transaction fails on every replay, empty reads in its middle
+			 * would keep resetting the no-progress timeout.
 			 */
 			if (record)
 				ybNotifsPollerProcessRecord(record);
