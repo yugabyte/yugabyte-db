@@ -11,6 +11,7 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from azure.core.exceptions import HttpResponseError
 from azure.mgmt.compute.models import DiskCreateOption
 import azure.mgmt.compute.models as compute_models
 from msrest.serialization import Serializer
@@ -24,6 +25,14 @@ def to_arm(parameters, model="VirtualMachine"):
     """Serialize a request body the way the SDK does, to check what actually reaches ARM."""
     classes = {k: v for k, v in compute_models.__dict__.items() if isinstance(v, type)}
     return Serializer(classes).body(parameters, model)
+
+
+def azure_error(code):
+    """An Azure SDK error carrying the given error code, as _get_azure_error_code reads it."""
+    error = HttpResponseError(message="({}) Disk is being attached to VM".format(code))
+    error.error = MagicMock()
+    error.error.code = code
+    return error
 
 
 def as_vm(data_disks):
@@ -176,27 +185,76 @@ class TestAzureCreateVm(TestCase):
         deleted = [call.args[1] for call in self.compute.disks.begin_delete.call_args_list]
         self.assertEqual(self.DISK_NAMES, deleted)
 
-    @patch.object(azure_utils.time, "sleep")
-    def test_failed_vm_creation_retries_disks_still_held_by_azure(self, sleep):
-        # After ZonalAllocationFailed Azure keeps the disks reserved for the failed VM for a
-        # few minutes and rejects their deletion; they must not be leaked (PLAT-24171).
+    def fail_vm_creation_and_delete_disks(self, errors_per_disk, on_wait=False,
+                                          vm_state="Failed"):
+        """Fails the VM creation, leaving a VM in vm_state behind like Azure does. Each disk
+        delete raises the given errors in order, then succeeds. With on_wait the errors come
+        from the delete poller's wait()."""
         self.compute.virtual_machines.begin_create_or_update.side_effect = \
             YBOpsRuntimeError("ZonalAllocationFailed")
+        left_vm = MagicMock()
+        left_vm.provisioning_state = vm_state
+        self.compute.virtual_machines.get.side_effect = lambda *args: left_vm
         attempts = {}
 
         def delete_disk(resource_group, disk_name):
-            attempts[disk_name] = attempts.get(disk_name, 0) + 1
-            if attempts[disk_name] < 3:
-                raise YBOpsRuntimeError("disk is reserved for the VM")
-            return MagicMock()
+            attempt = attempts.get(disk_name, 0)
+            attempts[disk_name] = attempt + 1
+            error = errors_per_disk[attempt] if attempt < len(errors_per_disk) else None
+            poller = MagicMock()
+            if error is not None and not on_wait:
+                raise error
+            if error is not None:
+                poller.wait.side_effect = error
+            return poller
 
         self.compute.disks.begin_delete.side_effect = delete_disk
-
         with self.assertRaises(YBOpsRuntimeError):
             self.create_or_update_vm()
+        return attempts
+
+    @patch.object(azure_utils.time, "sleep")
+    def test_failed_vm_creation_retries_disks_still_held_by_azure(self, sleep):
+        # After ZonalAllocationFailed Azure keeps the disks locked for the failed VM for a few
+        # minutes and rejects their deletion; they must not be leaked (PLAT-24171).
+        held = azure_error("OperationNotAllowed")
+        attempts = self.fail_vm_creation_and_delete_disks([held, held])
 
         self.assertEqual({name: 3 for name in self.DISK_NAMES}, attempts)
         self.assertEqual(2, sleep.call_count)
+
+    @patch.object(azure_utils.time, "sleep")
+    def test_disk_delete_failing_in_wait_is_retried(self, sleep):
+        held = azure_error("OperationNotAllowed")
+        attempts = self.fail_vm_creation_and_delete_disks([held, held], on_wait=True)
+
+        self.assertEqual({name: 3 for name in self.DISK_NAMES}, attempts)
+        self.assertEqual(2, sleep.call_count)
+
+    @patch.object(azure_utils.time, "sleep")
+    def test_disk_not_found_counts_as_deleted(self, sleep):
+        attempts = self.fail_vm_creation_and_delete_disks([azure_error("NotFound")])
+
+        self.assertEqual({name: 1 for name in self.DISK_NAMES}, attempts)
+        self.assertEqual(0, sleep.call_count)
+
+    @patch.object(azure_utils.time, "sleep")
+    def test_other_disk_delete_errors_are_not_retried(self, sleep):
+        # A permanent error must not hold the failed create for minutes.
+        attempts = self.fail_vm_creation_and_delete_disks([azure_error("AuthorizationFailed")])
+
+        self.assertEqual({name: 1 for name in self.DISK_NAMES}, attempts)
+        self.assertEqual(0, sleep.call_count)
+
+    @patch.object(azure_utils.time, "sleep")
+    def test_disks_are_not_retried_while_a_vm_still_holds_them(self, sleep):
+        # If the VM was allocated (Succeeded), its disks stay attached, so waiting cannot help.
+        attempts = self.fail_vm_creation_and_delete_disks([azure_error("OperationNotAllowed")],
+                                                          vm_state="Succeeded")
+
+        self.assertEqual(0, self.compute.virtual_machines.begin_delete.call_count)
+        self.assertEqual({name: 1 for name in self.DISK_NAMES}, attempts)
+        self.assertEqual(0, sleep.call_count)
 
     @patch.object(azure_utils.time, "sleep")
     def test_failed_vm_is_deleted_before_its_disks(self, sleep):

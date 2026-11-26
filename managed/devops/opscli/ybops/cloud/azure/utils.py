@@ -493,9 +493,21 @@ class AzureCloudAdmin():
     def delete_data_disks(self, disk_names, max_attempts=1, retry_interval_sec=30):
         """Best effort data disk removal, to avoid leaking disks when creation fails.
 
-        After a failed VM creation Azure keeps the disks reserved for that VM for a few minutes
-        and rejects their deletion, so that caller passes max_attempts > 1 to keep retrying.
+        After a failed VM creation Azure keeps the disks locked for that VM until a few minutes
+        after the VM is deleted, and rejects their deletion with OperationNotAllowed ("is being
+        attached to VM"). Only that error is retried, up to max_attempts times. NotFound counts
+        as deleted, and any other error gives up on that disk at once.
         """
+        def on_error(disk_name, e, failed):
+            code = self._get_azure_error_code(e)
+            if code in ['ResourceNotFound', 'NotFound']:
+                logging.info("[app] Disk {} is already deleted".format(disk_name))
+                return
+            logging.warning("[app] Could not delete disk {}. Failed with error {}."
+                            .format(disk_name, e))
+            if code == 'OperationNotAllowed' and 'attached' in str(e):
+                failed.append(disk_name)
+
         pending = list(disk_names)
         for attempt in range(1, max_attempts + 1):
             failed = []
@@ -504,17 +516,13 @@ class AzureCloudAdmin():
                 try:
                     deletions[disk_name] = self.delete_disk(disk_name)
                 except Exception as e:
-                    failed.append(disk_name)
-                    logging.warning("[app] Could not delete disk {}. Failed with error {}."
-                                    .format(disk_name, e))
+                    on_error(disk_name, e, failed)
             for disk_name, deletion in deletions.items():
                 try:
                     deletion.wait()
                     logging.info("[app] Deleted disk {}".format(disk_name))
                 except Exception as e:
-                    failed.append(disk_name)
-                    logging.warning("[app] Could not delete disk {}. Failed with error {}."
-                                    .format(disk_name, e))
+                    on_error(disk_name, e, failed)
             if not failed:
                 return
             pending = failed
@@ -524,22 +532,30 @@ class AzureCloudAdmin():
                 time.sleep(retry_interval_sec)
 
     def delete_failed_vm(self, vm_name):
-        """Best effort removal of the VM resource a failed creation left behind."""
+        """Best effort removal of the VM resource a failed creation left behind.
+
+        Returns True when no VM is left, i.e. it never existed or was deleted here.
+        """
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         except Exception as e:
-            logging.info("[app] No VM {} to clean up: {}".format(vm_name, e))
-            return
+            if self._get_azure_error_code(e) in ['ResourceNotFound', 'NotFound']:
+                return True
+            logging.warning("[app] Could not look up vm {}. Failed with error {}."
+                            .format(vm_name, e))
+            return False
         if vm.provisioning_state == "Succeeded":
-            return
+            return False
         try:
             logging.info("[app] Deleting failed vm {} in state {}"
                          .format(vm_name, vm.provisioning_state))
             self.compute_client.virtual_machines.begin_delete(RESOURCE_GROUP, vm_name).wait()
             logging.info("[app] Deleted failed vm {}".format(vm_name))
+            return True
         except Exception as e:
             logging.warning("[app] Could not delete failed vm {}. Failed with error {}."
                             .format(vm_name, e))
+            return False
 
     def update_disk(self, vm_name, disk_size):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
@@ -1143,8 +1159,10 @@ class AzureCloudAdmin():
             # A failed creation (e.g. ZonalAllocationFailed) can leave a failed VM behind that keeps
             # the data disks locked ("is being attached to VM") until a few minutes after the VM
             # is deleted. Delete that VM first, then keep retrying the disks so they don't leak.
-            self.delete_failed_vm(vm_name)
-            self.delete_data_disks(created_disk_names, max_attempts=10)
+            # If a VM is still there (e.g. allocated and Succeeded), its disks stay attached and
+            # retrying cannot help, so try once and leave the rest to the destroy that follows.
+            vm_gone = self.delete_failed_vm(vm_name)
+            self.delete_data_disks(created_disk_names, max_attempts=10 if vm_gone else 1)
             raise
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 
