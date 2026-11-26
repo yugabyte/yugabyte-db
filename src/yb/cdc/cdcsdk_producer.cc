@@ -165,16 +165,16 @@ class IntentSchemaState {
   }
 
   // Marks the table's cached schema as loaded in the transaction when the table had no cached
-  // schema before the batch, or when the version differs from the one decoded before it. A marked
-  // table is marked again on every call, since a schema erased and reloaded at the same version
-  // comes back unmarked.
-  void Add(const TableId& table_id, SchemaVersion version) {
+  // schema before the batch, or when the version differs from the one decoded before it. A table
+  // whose cached schema predates the batch and keeps its version stays unmarked, so a transaction
+  // that doesn't change the schema needs no lookup at its commit. A marked table is marked again on
+  // every call, since a schema erased and reloaded at the same version comes back unmarked.
+  void MarkIfLoadedInTxn(const TableId& table_id, SchemaVersion version) {
     auto [it, inserted] = tables_.try_emplace(
         table_id, TableState{.version = version, .loaded_in_txn = true});
     auto& state = it->second;
     if (state.version != version) {
-      state.version = version;
-      state.loaded_in_txn = true;
+      state = TableState{.version = version, .loaded_in_txn = true};
     }
     if (!enabled_ || !state.loaded_in_txn) {
       return;
@@ -217,10 +217,9 @@ void EraseSchemasLoadedInTxn(
       commit_version = commit_schema->second;
     } else {
       commit_version = tablet_metadata.schema_version(table_id);
-      YB_LOG_EVERY_N_SECS(WARNING, 60)
-          << "Failed to get the schema of table " << table_id << " at commit time " << commit_time
-          << ", using the tablet's schema version " << commit_version << ": "
-          << commit_schema.status();
+      LOG(WARNING) << "Failed to get the schema of table " << table_id << " at commit time "
+                   << commit_time << ", using the tablet's schema version " << commit_version
+                   << ": " << commit_schema.status();
     }
     if (commit_version != details.schema_version) {
       VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
@@ -1246,7 +1245,7 @@ Status PopulateCDCSDKIntentRecord(
           tablet_peer, tablet->metadata()->table_id(), intent.intent_ht.hybrid_time().ToUint64(),
           cached_schema_details, schema_packing_storage, IsPackedRow(value_type), value_slice,
           client, resp, throughput_metrics));
-      intent_schema_state.Add(table_id, schema_version);
+      intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
       record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
       table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(table_id));
@@ -1331,7 +1330,7 @@ Status PopulateCDCSDKIntentRecord(
             tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(), cached_schema_details,
             schema_packing_storage, IsPackedRow(value_type), value_slice, client, resp,
             throughput_metrics));
-        intent_schema_state.Add(table_id, schema_version);
+        intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
 
         table_name = table_info->table_name;
         record_type = VERIFY_RESULT(GetRecordTypeForPopulatingBeforeImage(metadata, table_id));
@@ -1431,7 +1430,7 @@ Status PopulateCDCSDKIntentRecord(
             std::tie(schema_version, schema) = VERIFY_RESULT(ReloadSchemaAtIntentTime(
                 tablet_peer, table_id, intent.intent_ht.hybrid_time().ToUint64(),
                 cached_schema_details, client, resp, throughput_metrics));
-            intent_schema_state.Add(table_id, schema_version);
+            intent_schema_state.MarkIfLoadedInTxn(table_id, schema_version);
             column = schema.column_by_id(column_id_opt->GetColumnId());
           }
           const ColumnSchema& col = VERIFY_RESULT(std::move(column));
