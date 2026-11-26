@@ -5368,13 +5368,15 @@ DeCloneArchive(ArchiveHandle *AH)
  * YB: whether to wrap a STATISTICS DATA entry in its own transaction block.
  *
  * Only for --include-yb-metadata scripts, the restore scripts of backup
- * restore and clone, so that other dumps keep upstream's output.  On a
- * server that defers the catalog version increments (see
- * ybEmitStatsRestoreCatalogVersionIncrement), those scripts restore
- * statistics as plain catalog writes, and the block makes the writes of one
- * relation, one per column, commit once.  As a consequence, when the
- * script runs without ON_ERROR_STOP, a failing statistics call discards the
- * statistics of its whole relation, not only its own.
+ * restore and clone, so that other dumps keep upstream's output.  With
+ * transactional DDL, the writes of one relation, one per column, then join
+ * the block's transaction and commit once, which, on a server that defers
+ * the catalog version increments (see
+ * ybEmitStatsRestoreCatalogVersionIncrement), is one commit without an
+ * increment.  Without transactional DDL, each call still commits its own DDL
+ * transaction.  When the script runs without ON_ERROR_STOP, a failing
+ * statistics call discards the statistics of its whole relation, not only
+ * its own.
  *
  * Only plain-text output needs this.  When restoring directly to a database,
  * the entry is sent as a single request, which already runs as one implicit
@@ -5403,9 +5405,11 @@ ybStatsNeedOwnTransaction(ArchiveHandle *AH, TocEntry *te)
  * The increment only runs when the parameter is on: a server that does not
  * have the parameter already incremented the catalog version for each call.
  *
- * It is emitted before auto analyze is re-enabled on the database, so that
- * an auto ANALYZE, which also increments the catalog version, cannot run
- * concurrently with it.
+ * It is emitted before a script that disabled auto analyze on the database
+ * (one that does not create the database) re-enables it, so that an auto
+ * ANALYZE, which also increments the catalog version, cannot run
+ * concurrently with it.  A script that creates the database does not disable
+ * auto analyze.
  *
  * The last argument, expiration_sec, only makes the call delete the
  * database's invalidation messages older than that many seconds.  INT_MAX

@@ -1206,8 +1206,8 @@ extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 
 extern bool yb_stats_restore_defer_catalog_version_increment;
-extern bool YbStatsCatalogWriteBegin(void);
-extern void YbStatsCatalogWriteEnd(bool in_ddl);
+extern void YbStatsCatalogWriteBegin(void);
+extern void YbStatsCatalogWriteEnd(void);
 
 typedef struct YbDdlModeOptional
 {

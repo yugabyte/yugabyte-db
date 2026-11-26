@@ -5945,10 +5945,7 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * a statement that runs one (such as a DO block or a function call), or
 	 * one that registers a catalog change through YBAddDdlTxnState without a
 	 * DDL statement (such as the statistics restore functions, or a write to
-	 * the hint table, whose trigger bumps the catalog version). The statistics
-	 * functions skip YBAddDdlTxnState when a restore script defers their
-	 * catalog version increments, so this does not cover them then; see
-	 * YbStatsCatalogWriteBegin for why their retry is safe.
+	 * the hint table, whose trigger bumps the catalog version).
 	 *
 	 * Outside a transaction block in any isolation level, and in a REPEATABLE
 	 * READ or SERIALIZABLE block, the retry (yb_restart_transaction) starts a

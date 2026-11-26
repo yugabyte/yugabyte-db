@@ -241,9 +241,7 @@ static uint64_t function_cache_generation = 0;
  * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
  * transaction state (use_regular_txn_block). A DDL statement sets that state,
  * and so does YBAddDdlTxnState for a catalog change made without one, such as
- * by the statistics restore functions (unless their catalog version
- * increments are deferred, see YbStatsCatalogWriteBegin) or the pg_hint_plan
- * hint table trigger.
+ * by the statistics restore functions or the pg_hint_plan hint table trigger.
  * The DDL transaction state is cleared before the commit RPC, so this is what
  * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
@@ -11590,62 +11588,51 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
 
 /*
  * Restoring statistics from a ysql_dump script writes pg_class and
- * pg_statistic once per relation and once per column.  As a DDL, each write
- * increments the catalog version, which makes restoring statistics cost one
- * catalog version increment per column.
+ * pg_statistic once per relation and once per column.  Each write is a
+ * breaking catalog change, which makes restoring statistics cost one catalog
+ * version increment per column.
  *
- * When yb_stats_restore_defer_catalog_version_increment is set, the writes
- * are plain catalog writes in the caller's transaction instead, and the
- * caller increments the catalog version once at the end of the restore.  The
- * same applies to pg_clear_relation_stats() and pg_clear_attribute_stats(),
- * which share these writes, although restore scripts do not call them.
- * ysql_dump --include-yb-metadata scripts increment the catalog version with
- * no invalidation messages, which makes the backends of the database refresh
- * their whole catalog cache.  Until then, other backends of the database keep
- * the statistics they cached before the restore.  Usually there are none:
- * clone keeps its target database closed to other connections, and backup
- * restore normally creates the database it restores into.  A backup restore
- * that applies the schema to an existing database (YBC with
- * ignore_restore_errors) leaves that window open until the final increment.
+ * When yb_stats_restore_defer_catalog_version_increment is set, each write is
+ * a silent DDL instead: it still runs as a DDL, but its commit does not
+ * increment the catalog version, and the caller increments it once at the end
+ * of the restore.  The same applies to pg_clear_relation_stats() and
+ * pg_clear_attribute_stats(), which share these writes, although restore
+ * scripts do not call them.  ysql_dump --include-yb-metadata scripts increment
+ * the catalog version with no invalidation messages, which makes the backends
+ * of the database refresh their whole catalog cache.  Until then, other
+ * backends of the database keep the statistics they cached before the
+ * restore.  Usually there are none: clone keeps its target database closed to
+ * other connections, and backup restore normally creates the database it
+ * restores into.  A backup restore that applies the schema to an existing
+ * database (YBC with ignore_restore_errors) leaves that window open until the
+ * final increment.
  *
  * Only per-database catalog version mode defers: the restore script
- * increments the version of its own database.  Deferring also needs
- * yb_non_ddl_txn_for_sys_tables_allowed, without which a catalog write outside
- * a DDL fails; the restore scripts set both.  Otherwise the writes stay DDLs,
- * as without the parameter.
- *
- * Deferred writes have no DDL transaction state, so the retry guard in
- * yb_is_retry_possible does not cover them, and a statement can be retried
- * without a PG-side rollback.  That is safe: the update of pg_class puts the
- * new tuple into the syscache (YbSetSysCacheTuple), but the
- * CommandCounterIncrement() after each write removes it again through local
- * invalidation, and the writes are buffered, so a retryable error only comes
- * from their flush after that.  The retry then reads the old values from
- * DocDB.  pg_statistic tuples are not put into the syscache by the update.
+ * increments the version of its own database.
  */
 bool		yb_stats_restore_defer_catalog_version_increment = false;
 
-bool
+void
 YbStatsCatalogWriteBegin(void)
 {
+	YbDdlMode	mode = YB_DDL_MODE_BREAKING_CHANGE;
+
 	if (!IsYugaByteEnabled())
-		return false;
+		return;
 	if (yb_stats_restore_defer_catalog_version_increment &&
-		yb_non_ddl_txn_for_sys_tables_allowed &&
 		YBIsDBCatalogVersionMode())
-		return false;
+		mode = YB_DDL_MODE_SILENT_ALTERING;
 
 	if (YBIsDdlTransactionBlockEnabled())
-		YBAddDdlTxnState(YB_DDL_MODE_BREAKING_CHANGE);
+		YBAddDdlTxnState(mode);
 	else
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_BREAKING_CHANGE);
-	return true;
+		YBIncrementDdlNestingLevel(mode);
 }
 
 void
-YbStatsCatalogWriteEnd(bool in_ddl)
+YbStatsCatalogWriteEnd(void)
 {
-	if (!in_ddl)
+	if (!IsYugaByteEnabled())
 		return;
 	if (YBIsDdlTransactionBlockEnabled())
 		YBMergeDdlTxnState();
