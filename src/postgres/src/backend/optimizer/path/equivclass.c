@@ -3290,9 +3290,9 @@ get_common_eclass_indexes(PlannerInfo *root, Relids relids1, Relids relids2)
  * indistinguishable from every stored value it equals, or the generation
  * expression can observe what the equality ignores: numeric display scale,
  * float -0, a nondeterministic collation.  The btree equalimage support
- * function certifies that for a type and collation.  bpchar is the exception:
- * its equalimage holds because trailing spaces are insignificant to
- * comparison, yet octet_length and similar expressions still see them.
+ * function certifies that for a type and collation.  bpchar is excluded even
+ * though its equalimage returns true: for example, 'a' and 'a  ' compare
+ * equal, but octet_length() returns 1 for one and 3 for the other.
  */
 bool
 yb_safe_to_substitute_for_var(Expr *expr, Var *var, Oid collation)
