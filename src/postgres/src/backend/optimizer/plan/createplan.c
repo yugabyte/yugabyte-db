@@ -52,6 +52,8 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "executor/ybExpr.h"
+#include "executor/ybOptimizeModifyTable.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -3647,8 +3649,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	if (path->operation == CMD_UPDATE)
 	{
-		Bitmapset  *primary_key_attrs = bms_copy(YBGetTablePrimaryKeyBms(relation));
-
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
 		 * columns. If true user write expression is not a supported single row write expression
@@ -3716,13 +3716,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 */
 			int			resno = tle->resno = list_nth_int(update_colnos,
 														  update_col_index++);
-
-			/* Updates involving primary key columns are not single-row. */
-			if (bms_is_member(resno - attr_offset, primary_key_attrs))
-			{
-				RelationClose(relation);
-				return false;
-			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, resno - attr_offset);
@@ -3820,6 +3813,20 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	update_attrs = bms_add_members(update_attrs, affected_generated_attrs);
 	bms_free(generated_cols_source_attrs);
 	bms_free(affected_generated_attrs);
+
+	/*
+	 * Updates involving primary key columns are not single-row. This must run
+	 * after the generated columns are added: a SET on a source column of a
+	 * generated primary key column moves the DocKey too. Every secondary index
+	 * must then refresh its ybctid, so reject before has_applicable_indices to
+	 * keep the skip list empty.
+	 */
+	if (path->operation == CMD_UPDATE &&
+		YbIsPrimaryKeyUpdated(relation, update_attrs))
+	{
+		RelationClose(relation);
+		return false;
+	}
 
 	/*
 	 * In most cases, the primary key of a leaf partition is a superset of the
