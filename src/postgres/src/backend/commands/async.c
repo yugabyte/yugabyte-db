@@ -695,10 +695,7 @@ typedef struct
 	char		error_message[1024];
 	volatile bool has_runtime_error;
 
-	/*
-	 * Start of the current run of failed restarts, or zero. In shared memory
-	 * to survive restarts.
-	 */
+	/* When the current run of failed restarts began, or 0. */
 	TimestampTz retry_start_time;
 
 	/*
@@ -3544,10 +3541,8 @@ ybExitStaleNotifsPoller(const char *detail)
 }
 
 /*
- * Fail if the slot's stream has expired: it went unread for
- * cdc_intent_retention_ms, so notifications are lost. The read that hits the
- * expiry fails with only an ERRCODE_INTERNAL_ERROR message, so it is retried,
- * and this check at the next start makes it permanent.
+ * The read that hits stream expiry fails with only a message, so it is
+ * retried; this check on the restart makes it permanent.
  */
 static void
 ybCheckNotifsStreamNotExpired(void)
@@ -3568,10 +3563,8 @@ ybCheckNotifsStreamNotExpired(void)
 }
 
 /*
- * End the current run of failed restarts, once per poller: it has acked a
- * transaction or stayed up for yb_notifications_poller_retry_timeout_ms.
- * Done here rather than on the next error, as the poller may instead exit by
- * SIGTERM or FATAL, which skip ybNotifsPollerExitOnError.
+ * End the run of failed restarts. Done here rather than on the next error, as
+ * SIGTERM and FATAL exits skip ybNotifsPollerExitOnError.
  */
 static void
 ybNotifsPollerMarkHealthy(void)
@@ -3587,14 +3580,9 @@ ybNotifsPollerMarkHealthy(void)
 }
 
 /*
- * Exit to be restarted; the poller resumes from the slot's restart LSN, so
- * listeners see only a delay. On a permanent error, or once restarts have kept
- * failing for yb_notifications_poller_retry_timeout_ms, terminate the
- * listeners instead.
- *
- * A run of failures ends when a poller acks or stays up for the timeout. An
- * error-free read doesn't count, as a stuck poller can read nothing before it
- * fails. An idle poller never acks, so errors on an idle node can add up.
+ * Exit to be restarted from the slot's restart LSN. Terminate the listeners
+ * instead on a permanent error, or once restarts have kept failing for
+ * yb_notifications_poller_retry_timeout_ms.
  *
  * Caller holds NotifyQueueLock exclusively and has checked that the poller
  * isn't stale; this releases the lock.
@@ -3604,7 +3592,6 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 {
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
-	bool		permanent = ybNotifsPollerCannotRun;
 	TimestampTz now = GetCurrentTimestamp();
 	char		error[sizeof(poller_data->error_message)];
 	char		message[sizeof(poller_data->error_message)];
@@ -3617,7 +3604,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	if (poller_data->retry_start_time == 0)
 		poller_data->retry_start_time = now;
 
-	if (!permanent &&
+	if (!ybNotifsPollerCannotRun &&
 		!TimestampDifferenceExceeds(poller_data->retry_start_time, now,
 									yb_notifications_poller_retry_timeout_ms))
 	{
@@ -3628,7 +3615,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	if (permanent)
+	if (ybNotifsPollerCannotRun)
 		strlcpy(message, error, sizeof(message));
 	else
 		snprintf(message, sizeof(message),
@@ -3646,8 +3633,6 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 			 errdetail("%s", message)));
 
 	ybSignalAllListeners();
-
-	/* Exit code 0 unregisters the worker, so it is not restarted. */
 	proc_exit(0);
 }
 
@@ -3689,7 +3674,7 @@ ybNotifsPollerInit(void)
 		 * that by setting nowait arg as false.
 		 */
 		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ false);
-		/* Expiry surfaces as an error first, so check only within a failed run. */
+		/* Expiry surfaces as an error first. */
 		if (poller_data->retry_start_time != 0)
 			ybCheckNotifsStreamNotExpired();
 		publications = ybNotifsPublications();
@@ -3710,13 +3695,9 @@ ybNotifsPollerInit(void)
 			ybExitStaleNotifsPoller(edata->message);
 		}
 
-		/* Only a poller that started once sets SUCCESS, and restarts keep it. */
 		is_restart = poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS;
 
-		/*
-		 * Setting FAILED on a restart would refuse new LISTENs while existing
-		 * listeners get nothing. Handle it like an error in the loop.
-		 */
+		/* FAILED would refuse new LISTENs while existing ones get nothing. */
 		if (is_restart)
 		{
 			FlushErrorState();

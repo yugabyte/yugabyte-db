@@ -2187,8 +2187,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * A restarted poller that fails to initialize keeps retrying without failing new LISTENs, and
-   * once it initializes, old and new listeners both receive notifications. (SIGTERM itself exits
-   * through FATAL; only the failed inits go through ybNotifsPollerExitOnError.)
+   * once it initializes, old and new listeners both receive notifications.
    */
   @Test
   public void testRestartedPollerRecoversFromInitFailure() throws Exception {
@@ -2221,9 +2220,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * A poller that stays up for the retry timeout ends the run of failed restarts even if it then
-   * exits by SIGTERM, so a later transient init failure restarts it instead of terminating the
-   * listeners on an old retry timer.
+   * A poller that stays up for the retry timeout ends the run of failed restarts, even if it then
+   * exits by SIGTERM.
    */
   @Test
   public void testHealthyPollerEndsFailedRestartRun() throws Exception {
@@ -2284,8 +2282,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * An ack ends a run of failed restarts: a second error, after the first is older than the retry
-   * timeout, still restarts the poller. That poller has been up for less than the timeout, so only
-   * its ack can have ended the run.
+   * timeout, still restarts the poller.
    */
   @Test
   public void testAckEndsFailedRestartRun() throws Exception {
