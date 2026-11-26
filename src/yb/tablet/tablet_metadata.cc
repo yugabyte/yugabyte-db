@@ -76,6 +76,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -1342,6 +1343,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
     last_applied_change_metadata_op_id = last_applied_change_metadata_op_id_;
     ResetMinUnflushedChangeMetadataOpIdUnlocked();
   }
+  TEST_SYNC_POINT_CALLBACK("RaftGroupMetadata::Flush", this);
   RETURN_NOT_OK(SaveToDiskUnlocked(pb));
   {
     // Update last_flushed_change_metadata_op_id_ only after disk write is complete. This removes
