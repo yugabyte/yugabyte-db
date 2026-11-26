@@ -8995,6 +8995,9 @@ static const char *YbFormatConfigValue(struct config_generic *record,
 									   char *buffer, size_t bufsize);
 static bool yb_conn_mgr_skip_check_hook(struct config_generic *gconf);
 static bool YbDbAdminCanSetVariable(const char *name);
+static bool yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
+									   const char **name, const char **value,
+									   bool *skip_check);
 
 
 /*
@@ -10425,32 +10428,12 @@ YbSetYsqlConnMgrGucDefaults(const char *data, int len)
 {
 	const char *ptr = data;
 	const char *end = data + len;
+	const char *name;
+	const char *value;
+	bool		skip_check;
 
-	while (ptr < end)
+	while (yb_conn_mgr_next_guc_entry(&ptr, end, &name, &value, &skip_check))
 	{
-		const char *name;
-		const char *value;
-
-		/* Get the key (GUC name) */
-		name = ptr;
-		while (ptr < end && *ptr != '\0')
-			ptr++;
-		if (ptr >= end)
-			break;
-		ptr++;					/* skip null terminator */
-
-		/* Get the value */
-		value = ptr;
-		while (ptr < end && *ptr != '\0')
-			ptr++;
-		if (ptr >= end)
-			break;
-		ptr++;					/* skip null terminator */
-
-		if (ptr >= end)
-			break;
-		bool		skip_check = *ptr++ != 0;
-
 		GucContext	gucctx = superuser() ? PGC_SU_BACKEND : PGC_BACKEND;
 
 		/*
@@ -10504,22 +10487,15 @@ YbSetYsqlConnMgrSessionState(const char *data, int len)
 
 	PG_TRY();
 	{
+		const char *name;
+		const char *value;
+		bool		skip_check;
+
 		yb_conn_mgr_replaying = true;
-		while (ptr < end)
+		while (yb_conn_mgr_next_guc_entry(&ptr, end, &name, &value,
+										  &skip_check))
 		{
-			const char *name = ptr;
-			const char *value;
-
-			ptr = memchr(ptr, '\0', end - ptr);
-			if (ptr == NULL)
-				break;
-			value = ++ptr;
-			ptr = memchr(ptr, '\0', end - ptr);
-			if (ptr == NULL || ptr + 1 >= end)
-				break;
-			ptr++;
-
-			yb_conn_mgr_skip_check_name = *ptr++ != 0 ? name : NULL;
+			yb_conn_mgr_skip_check_name = skip_check ? name : NULL;
 			(void) set_config_option(name, value,
 									 (superuser() ||
 									  YbDbAdminCanSetVariable(name) ?
@@ -19117,6 +19093,36 @@ yb_conn_mgr_skip_check_hook(struct config_generic *gconf)
 {
 	return yb_conn_mgr_skip_check_name != NULL &&
 		guc_name_compare(gconf->name, yb_conn_mgr_skip_check_name) == 0;
+}
+
+/*
+ * Read the next name\0value\0<skip> entry of a ConnMgr 'G' packet. Returns
+ * false at the end of the data, or on a truncated entry.
+ */
+static bool
+yb_conn_mgr_next_guc_entry(const char **ptr, const char *end,
+						   const char **name, const char **value,
+						   bool *skip_check)
+{
+	const char *p = *ptr;
+	const char *nul;
+
+	if (p >= end)
+		return false;
+	nul = memchr(p, '\0', end - p);
+	if (nul == NULL)
+		return false;
+	*name = p;
+
+	p = nul + 1;
+	nul = memchr(p, '\0', end - p);
+	if (nul == NULL || nul + 1 >= end)
+		return false;
+	*value = p;
+
+	*skip_check = nul[1] != 0;
+	*ptr = nul + 2;
+	return true;
 }
 
 static bool
