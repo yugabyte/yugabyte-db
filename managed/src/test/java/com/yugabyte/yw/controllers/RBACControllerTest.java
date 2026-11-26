@@ -694,7 +694,12 @@ public class RBACControllerTest extends FakeDBApplication {
               break;
             case UNIVERSE:
               if (resource.sourceType().equals(SourceType.ENDPOINT)) {
-                assertEquals(Util.UNIVERSES, resource.path());
+                // Perf Advisor's universe routes are ".../api/universe/:uUUID/*path".
+                String expected =
+                    methodName.equals(PAProxyController.class.getName() + ".proxyUniverse")
+                        ? "universe"
+                        : Util.UNIVERSES;
+                assertEquals(methodName, expected, resource.path());
               }
               break;
             case USER:
