@@ -323,6 +323,11 @@ message IndexInfoPB {
   // are not included in this count. Moreover, after backfill is completed, this field is no longer
   // updated.
   optional double num_rows_backfilled_in_index = 36;
+
+  // Index birth hybrid time: reads with an earlier read time are rejected.
+  // Set only for vector indexes: the hybrid time the index was added to the tablet, which its
+  // backfill reads at.
+  optional fixed64 birth_time = 37;
 }
 
 // The possible order modes for clients.

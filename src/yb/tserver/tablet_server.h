@@ -410,6 +410,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TserverXClusterContextIf& GetXClusterContext() const;
 
+  bool IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const override;
+
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
