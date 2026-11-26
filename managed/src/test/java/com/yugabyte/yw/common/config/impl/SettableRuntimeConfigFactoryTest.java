@@ -10,8 +10,14 @@
 
 package com.yugabyte.yw.common.config.impl;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -23,10 +29,19 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
 import io.ebean.Model;
+import io.ebean.Transaction;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,6 +62,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   // Key not defined in any scope
   public static final String YB_NOT_PRESENT_KEY = "yb.not.present";
   public static final String TASK_GC_FREQUENCY = "taskGC.frequency";
+  private static final String YB_TXN_KEY = "yb.runtime.txn_test";
 
   enum Scope {
     STATIC,
@@ -221,6 +237,132 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   }
 
   @Test
+  public void testInvalidateScopeRemovesCachedConfig() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+
+    cacheEnabledFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    cacheEnabledFactory.forUniverse(defaultUniverse);
+    assertTrue(cacheEnabledFactory.getCachedConfigs().containsKey(universeUuid));
+
+    cacheEnabledFactory.invalidateScope(universeUuid);
+
+    assertFalse(cacheEnabledFactory.getCachedConfigs().containsKey(universeUuid));
+    assertFalse(cacheEnabledFactory.getOverriddenScopes().contains(universeUuid));
+  }
+
+  @Test
+  public void testInvalidateAllScopesClearsCache() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+
+    cacheEnabledFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    cacheEnabledFactory.forUniverse(defaultUniverse);
+    assertFalse(cacheEnabledFactory.getCachedConfigs().isEmpty());
+
+    cacheEnabledFactory.invalidateAllScopes();
+
+    assertTrue(cacheEnabledFactory.getCachedConfigs().isEmpty());
+    assertTrue(cacheEnabledFactory.getOverriddenScopes().isEmpty());
+  }
+
+  @Test
+  public void testGlobalChangeVisibleAfterReadBeforeCommit() throws Exception {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+    ExecutorService otherRequest = Executors.newSingleThreadExecutor();
+    try {
+      try (Transaction transaction = DB.beginTransaction()) {
+        cacheEnabledFactory.globalRuntimeConf().setValue(YB_TXN_KEY, "389");
+        // Another request loads the global scope after the change listener cleared the cache but
+        // before this transaction commits, so it caches the old rows.
+        Config seenBeforeCommit =
+            otherRequest.submit(() -> cacheEnabledFactory.globalRuntimeConf()).get();
+        assertFalse(seenBeforeCommit.hasPath(YB_TXN_KEY));
+        transaction.commit();
+      }
+
+      assertEquals("389", cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY));
+      assertEquals(
+          "389",
+          otherRequest
+              .submit(() -> cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY))
+              .get());
+    } finally {
+      otherRequest.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testGlobalChangeVisibleAfterLoadSpanningCommit() throws Exception {
+    SettableRuntimeConfigFactory cacheEnabledFactory = spy(createCacheEnabledFactory());
+    CountDownLatch oldRowsRead = new CountDownLatch(1);
+    CountDownLatch committed = new CountDownLatch(1);
+    String loaderThreadName = "runtime-config-loader";
+    doAnswer(
+            invocation -> {
+              Object rows = invocation.callRealMethod();
+              if (Thread.currentThread().getName().equals(loaderThreadName)) {
+                oldRowsRead.countDown();
+                assertTrue(committed.await(30, TimeUnit.SECONDS));
+              }
+              return rows;
+            })
+        .when(cacheEnabledFactory)
+        .getConfigForScope(eq(GLOBAL_SCOPE_UUID), anyString());
+    ExecutorService otherRequest =
+        Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, loaderThreadName));
+    try {
+      Future<?> load;
+      try (Transaction transaction = DB.beginTransaction()) {
+        cacheEnabledFactory.globalRuntimeConf().setValue(YB_TXN_KEY, "389");
+        // Another request reads the old rows before the commit and stores them in the cache only
+        // after the post-commit invalidation has run.
+        load = otherRequest.submit(() -> cacheEnabledFactory.globalRuntimeConf());
+        assertTrue(oldRowsRead.await(30, TimeUnit.SECONDS));
+        transaction.commit();
+      }
+      committed.countDown();
+      load.get(30, TimeUnit.SECONDS);
+
+      assertEquals("389", cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY));
+    } finally {
+      committed.countDown();
+      otherRequest.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testGlobalChangeRolledBackAfterReadInsideTransaction() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+
+    try (Transaction transaction = DB.beginTransaction()) {
+      cacheEnabledFactory.globalRuntimeConf().setValue(YB_TXN_KEY, "389");
+      // A read on the same connection sees the uncommitted row and caches it.
+      assertEquals("389", cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY));
+      transaction.rollback();
+    }
+
+    assertFalse(cacheEnabledFactory.globalRuntimeConf().hasPath(YB_TXN_KEY));
+  }
+
+  @Test
+  public void testUniverseDeleteInvalidatesScope() {
+    mutableConfigFactory.clearCache();
+    UUID universeUuid = defaultUniverse.getUniverseUUID();
+
+    mutableConfigFactory.forUniverse(defaultUniverse).setValue(TASK_GC_FREQUENCY, "1 day");
+    // setValue notifies the change listener, which evicts this scope from the cache.
+    mutableConfigFactory.forUniverse(defaultUniverse);
+    assertTrue(mutableConfigFactory.getCachedConfigs().containsKey(universeUuid));
+
+    defaultUniverse.delete();
+
+    assertFalse(mutableConfigFactory.getCachedConfigs().containsKey(universeUuid));
+    assertFalse(mutableConfigFactory.getOverriddenScopes().contains(universeUuid));
+  }
+
+  @Test
   public void testToRedactedString() {
     Map<String, Object> inputMap =
         ImmutableMap.<String, Object>builder()
@@ -372,5 +514,14 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
     assertFalse(runtimeConfig.hasPath(YB_PROVIDER_RUNTIME_ONLY_KEY));
     assertFalse(runtimeConfig.hasPath(YB_NOT_PRESENT_KEY));
+  }
+
+  private SettableRuntimeConfigFactory createCacheEnabledFactory() {
+    Map<String, Object> cacheEnabledConfigMap = new HashMap<>(staticConfigMap);
+    cacheEnabledConfigMap.put("runtime_config.cache_enabled", Boolean.TRUE);
+    cacheEnabledConfigMap.put("runtime_config.cache_expiry_duration", "3600s");
+    cacheEnabledConfigMap.put("runtime_config.cache_capacity", 100);
+    return new SettableRuntimeConfigFactory(
+        ConfigFactory.parseMap(cacheEnabledConfigMap), null, null);
   }
 }

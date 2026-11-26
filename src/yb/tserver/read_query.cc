@@ -15,11 +15,15 @@
 
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/rpc/sidecars.h"
 
@@ -69,12 +73,22 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
+DEFINE_test_flag(bool, disable_index_birth_time_check, false,
+    "If set, don't reject reads at ysql index when read time < index birth time.");
+
 DECLARE_bool(backfill_index_check_snapshot_too_old);
 
 namespace yb {
 namespace tserver {
 
 namespace {
+
+// Whether the database of YSQL table table_id is the target of automatic mode xCluster replication.
+// The namespace id comes from the table id, since tablet metadata may not have it.
+Result<bool> IsXClusterAutomaticModeTarget(TabletServerIf& server, const TableId& table_id) {
+  return server.IsXClusterAutomaticModeTarget(
+      VERIFY_RESULT(GetNamespaceIdFromYsqlTableId(table_id)));
+}
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
@@ -804,7 +818,32 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
   if (!req_->pgsql_batch().empty()) {
     size_t total_num_rows_read = 0;
+    auto* metadata = tablet()->metadata();
     for (const auto& pgsql_read_req : req_->pgsql_batch()) {
+      // For colocated secondary index scans, the inner nested index_request targets the index.
+      auto table_info = VERIFY_RESULT(metadata->GetTableInfo(pgsql_read_req.has_index_request()
+          ? pgsql_read_req.index_request().table_id()
+          : pgsql_read_req.table_id()));
+      if (table_info->index_info && read_time_ &&
+          PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
+        // Reject reads arriving at index with a read time earlier than the index birth time.
+        // Only vector indexes have a birth time on this branch.
+        // TODO(#38694): An xCluster automatic-mode target builds a vector index itself, but reads
+        // it at the xCluster safe time, which stays below the index birth time until the DDL is
+        // processed. So the check is skipped there.
+        const auto birth_time = table_info->index_info->birth_time();
+        VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
+                << " birth_time=" << birth_time << " read_time=" << read_time_.read;
+        if (birth_time && read_time_.read < birth_time &&
+            !(table_info->index_info->is_vector_index() &&
+              VERIFY_RESULT(IsXClusterAutomaticModeTarget(server_, table_info->table_id)))) {
+          return STATUS(
+              SnapshotTooOld,
+              Format("Query read time < index birth time: $0 < [$1] $2",
+                     read_time_.read, table_info->table_id, birth_time),
+              TransactionError(TransactionErrorCode::kSnapshotTooOld));
+        }
+      }
       tablet::PgsqlReadRequestResult result(resp_->arena(), &context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
