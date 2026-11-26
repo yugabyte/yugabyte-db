@@ -20,12 +20,16 @@
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/table.h"
+#include "access/tupconvert.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/partition.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_trigger.h"
 #include "commands/trigger.h"
+#include "executor/execPartition.h"
 #include "executor/executor.h"
 #include "executor/ybModifyTable.h"
 #include "fmgr.h"
@@ -70,7 +74,8 @@
  * yb_online_schema_change_trigger detects the orders it cannot replay and
  * raises an error, which rolls the statement back.  All events of a statement
  * fire with the statement's EState, and a statement run within it starts with
- * a CommandCounterIncrement, so it has a larger es_output_cid.  Per target,
+ * a CommandCounterIncrement, so it has a larger es_output_cid.  Per target
+ * root, which the firings on every node of a partitioned source write through,
  * the trigger remembers the largest es_output_cid it has replayed in the
  * current transaction and the EState of the latest statement that inserted.  A
  * firing is rejected if a statement with a larger es_output_cid has already
@@ -132,9 +137,13 @@ MakeTransitionTable(const char *name, bool isNew)
 }
 
 /*
- * Attach the capture triggers to srcRel.  The target and transform OIDs are
- * passed as trigger arguments so that a firing does not have to look up the
- * online schema change job.
+ * Attach the capture triggers to every relation of the source hierarchy.  A
+ * statement fires only the statement triggers of the relation it names, and
+ * statement triggers are not cloned to partitions, so each node needs its own
+ * copy; a statement then fires exactly one, and nothing is replayed
+ * twice.  The target, transform and source root OIDs are passed as trigger
+ * arguments so that a firing does not have to look up the online schema
+ * change job.
  *
  * The triggers are internal, as a foreign key's are: ALTER TABLE ... DISABLE
  * TRIGGER USER skips them, DISABLE TRIGGER ALL needs a superuser, and pg_dump
@@ -156,45 +165,56 @@ void
 YbOscCreateTrigger(Relation srcRel, const char *triggerName,
 				   Oid targetOid, Oid transformOid)
 {
-	ObjectAddress owner;
+	Oid			srcRootOid = RelationGetRelid(srcRel);
+
+	/* The lock CREATE TRIGGER takes, so creating the triggers never upgrades. */
+	List	   *rels = find_all_inheritors(srcRootOid, ShareRowExclusiveLock,
+										   NULL);
+	ListCell   *rlc;
 
 	YbOscTriggerDdlBegin();
 
-	ObjectAddressSet(owner, RelationRelationId, RelationGetRelid(srcRel));
-
-	for (size_t i = 0; i < NUM_OSC_TRIGGERS; i++)
+	foreach(rlc, rels)
 	{
-		const YbOscTriggerSpec *spec = &kOscTriggers[i];
-		CreateTrigStmt *stmt = makeNode(CreateTrigStmt);
+		Oid			relOid = lfirst_oid(rlc);
+		ObjectAddress owner;
 
-		stmt->trigname = psprintf("%s%s", triggerName, spec->suffix);
-		stmt->relation = makeRangeVar(get_namespace_name(RelationGetNamespace(srcRel)),
-									  pstrdup(RelationGetRelationName(srcRel)),
-									  -1);
-		stmt->funcname = list_make2(makeString("pg_catalog"),
-									makeString("yb_online_schema_change_trigger"));
-		stmt->args = list_make2(makeString(psprintf("%u", targetOid)),
-								makeString(psprintf("%u", transformOid)));
-		stmt->row = false;
-		stmt->timing = TRIGGER_TYPE_AFTER;
-		stmt->events = spec->event;
-		if (spec->hasOld)
-			stmt->transitionRels = lappend(stmt->transitionRels,
-										   MakeTransitionTable("yb_osc_old_rows", false));
-		if (spec->hasNew)
-			stmt->transitionRels = lappend(stmt->transitionRels,
-										   MakeTransitionTable("yb_osc_new_rows", true));
+		ObjectAddressSet(owner, RelationRelationId, relOid);
 
-		ObjectAddress trig = CreateTriggerFiringOn(stmt, NULL /* queryString */ ,
-												   RelationGetRelid(srcRel),
-												   InvalidOid, InvalidOid, InvalidOid,
-												   F_YB_ONLINE_SCHEMA_CHANGE_TRIGGER,
-												   InvalidOid, NULL /* whenClause */ ,
-												   true /* isInternal */ ,
-												   false /* in_partition */ ,
-												   TRIGGER_FIRES_ALWAYS);
+		for (size_t i = 0; i < NUM_OSC_TRIGGERS; i++)
+		{
+			const YbOscTriggerSpec *spec = &kOscTriggers[i];
+			CreateTrigStmt *stmt = makeNode(CreateTrigStmt);
 
-		recordDependencyOn(&trig, &owner, DEPENDENCY_INTERNAL);
+			stmt->trigname = psprintf("%s%s", triggerName, spec->suffix);
+			stmt->relation = makeRangeVar(get_namespace_name(get_rel_namespace(relOid)),
+										  get_rel_name(relOid), -1);
+			stmt->funcname = list_make2(makeString("pg_catalog"),
+										makeString("yb_online_schema_change_trigger"));
+			stmt->args = list_make3(makeString(psprintf("%u", targetOid)),
+									makeString(psprintf("%u", transformOid)),
+									makeString(psprintf("%u", srcRootOid)));
+			stmt->row = false;
+			stmt->timing = TRIGGER_TYPE_AFTER;
+			stmt->events = spec->event;
+			if (spec->hasOld)
+				stmt->transitionRels = lappend(stmt->transitionRels,
+											   MakeTransitionTable("yb_osc_old_rows", false));
+			if (spec->hasNew)
+				stmt->transitionRels = lappend(stmt->transitionRels,
+											   MakeTransitionTable("yb_osc_new_rows", true));
+
+			ObjectAddress trig = CreateTriggerFiringOn(stmt, NULL /* queryString */ ,
+													   relOid, InvalidOid, InvalidOid,
+													   InvalidOid,
+													   F_YB_ONLINE_SCHEMA_CHANGE_TRIGGER,
+													   InvalidOid, NULL /* whenClause */ ,
+													   true /* isInternal */ ,
+													   false /* in_partition */ ,
+													   TRIGGER_FIRES_ALWAYS);
+
+			recordDependencyOn(&trig, &owner, DEPENDENCY_INTERNAL);
+		}
 	}
 
 	YbOscTriggerDdlEnd();
@@ -236,17 +256,22 @@ YbOscCollectTriggersToDrop(Oid relOid, ObjectAddresses *objs)
 }
 
 /*
- * Detach the capture triggers from srcRel.  A retry after a partial failure
- * finds nothing left to drop.
+ * Detach the capture triggers from every relation of the source hierarchy.  A
+ * retry after a partial failure finds nothing left to drop.
  */
 void
 YbOscDropTrigger(Relation srcRel)
 {
+	/* The lock DROP TRIGGER takes, so dropping the triggers never upgrades. */
+	List	   *rels = find_all_inheritors(RelationGetRelid(srcRel),
+										   AccessExclusiveLock, NULL);
 	ObjectAddresses *objs = new_object_addresses();
+	ListCell   *rlc;
 
 	YbOscTriggerDdlBegin();
 
-	YbOscCollectTriggersToDrop(RelationGetRelid(srcRel), objs);
+	foreach(rlc, rels)
+		YbOscCollectTriggersToDrop(lfirst_oid(rlc), objs);
 	performMultipleDeletions(objs, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
 	free_object_addresses(objs);
 
@@ -267,6 +292,23 @@ typedef struct YbOscReplayState
 	TupleTableSlot *dst_slot;	/* holds one transformed target row */
 
 	/*
+	 * The transform is compiled against the source root, but a firing on a
+	 * partition reads transition rows in the partition's rowtype, which can
+	 * differ (dropped columns, attach order).  Each row is then remapped into
+	 * root_slot; src_to_root is NULL when the descriptors match, and then
+	 * root_slot is src_slot.
+	 */
+	TupleConversionMap *src_to_root;
+	TupleTableSlot *root_slot;
+
+	/*
+	 * Partition routing for a partitioned target, set up as COPY FROM does;
+	 * NULL for an ordinary target, which is written through rri directly.
+	 */
+	ModifyTableState *mtstate;
+	PartitionTupleRouting *proute;
+
+	/*
 	 * The transform's call on the source row, which returns the whole target
 	 * row.  A stored generated column of the target is not computed.
 	 */
@@ -283,9 +325,10 @@ typedef struct YbOscReplayState
  */
 static void
 YbOscReplayBegin(YbOscReplayState *replay, Relation srcRel,
-				 Relation targetRel, Oid transformOid)
+				 Relation srcRootRel, Relation targetRel,
+				 Oid transformOid)
 {
-	YbOscTransform *xf = YbOscCompileTransform(transformOid, srcRel,
+	YbOscTransform *xf = YbOscCompileTransform(transformOid, srcRootRel,
 											   targetRel);
 
 	replay->target_rel = targetRel;
@@ -311,8 +354,39 @@ YbOscReplayBegin(YbOscReplayState *replay, Relation srcRel,
 										  RelationGetDescr(targetRel),
 										  &TTSOpsVirtual);
 
+	replay->src_to_root = NULL;
+	replay->root_slot = replay->src_slot;
+	if (srcRel != srcRootRel)
+	{
+		replay->src_to_root =
+			convert_tuples_by_name(RelationGetDescr(srcRel),
+								   RelationGetDescr(srcRootRel));
+		if (replay->src_to_root != NULL)
+			replay->root_slot =
+				ExecInitExtraTupleSlot(replay->estate,
+									   RelationGetDescr(srcRootRel),
+									   &TTSOpsVirtual);
+	}
+
+	replay->mtstate = NULL;
+	replay->proute = NULL;
+	if (targetRel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		ModifyTableState *mtstate = makeNode(ModifyTableState);
+
+		mtstate->ps.plan = NULL;
+		mtstate->ps.state = replay->estate;
+		mtstate->operation = CMD_INSERT;
+		mtstate->mt_nrels = 1;
+		mtstate->resultRelInfo = replay->rri;
+		mtstate->rootResultRelInfo = replay->rri;
+		replay->mtstate = mtstate;
+		replay->proute = ExecSetupPartitionTupleRouting(replay->estate,
+														targetRel);
+	}
+
 	replay->econtext = GetPerTupleExprContext(replay->estate);
-	replay->econtext->ecxt_scantuple = replay->src_slot;
+	replay->econtext->ecxt_scantuple = replay->root_slot;
 
 	replay->callstate = ExecInitExpr(xf->call, NULL);
 
@@ -334,11 +408,16 @@ YbOscReplayEnd(YbOscReplayState *replay)
 {
 	YbOscReplayRestoreGucs(replay);
 	ExecDropSingleTupleTableSlot(replay->src_slot);
+	if (replay->src_to_root != NULL)
+		free_conversion_map(replay->src_to_root);
+	/* Closes the leaf ResultRelInfos ExecFindPartition built. */
+	if (replay->proute != NULL)
+		ExecCleanupTupleRouting(replay->mtstate, replay->proute);
 	ExecCloseResultRelations(replay->estate);
 	ExecCloseRangeTableRelations(replay->estate);
 	/*
-	 * dst_slot holds a reference on the target's TupleDesc, and
-	 * FreeExecutorState does not release es_tupleTable.
+	 * dst_slot and the per-leaf routing slots hold references on relcache
+	 * TupleDescs, and FreeExecutorState does not release es_tupleTable.
 	 */
 	ExecResetTupleTable(replay->estate->es_tupleTable, false /* shouldFree */ );
 	FreeExecutorState(replay->estate);
@@ -367,12 +446,19 @@ YbOscReplayTransitionTable(YbOscReplayState *replay,
 		 */
 		ResetPerTupleExprContext(replay->estate);
 
+		TupleTableSlot *rootSlot = replay->src_slot;
+
+		if (replay->src_to_root != NULL)
+			rootSlot = execute_attr_map_slot(replay->src_to_root->attrMap,
+											  replay->src_slot,
+											  replay->root_slot);
+
 		/*
 		 * ExecInsertIndexTuples and ExecDeleteIndexTuples point the shared
 		 * per-tuple ecxt_scantuple at the target slot to evaluate index
 		 * expressions and predicates.
 		 */
-		replay->econtext->ecxt_scantuple = replay->src_slot;
+		replay->econtext->ecxt_scantuple = rootSlot;
 
 		TupleTableSlot *dstSlot = replay->dst_slot;
 
@@ -403,10 +489,28 @@ YbOscReplayTransitionTable(YbOscReplayState *replay,
 		ExecStoreVirtualTuple(dstSlot);
 		dstSlot->tts_tableOid = RelationGetRelid(replay->target_rel);
 
+		/*
+		 * The tombstone pass is routed like the insert pass: the transform's
+		 * partition key columns are immutable, so transform(OLD) lands in the
+		 * leaf the copy or the earlier insert wrote it to.
+		 */
+		ResultRelInfo *rri = replay->rri;
+
+		if (replay->proute != NULL)
+		{
+			rri = ExecFindPartition(replay->mtstate, replay->rri,
+									replay->proute, dstSlot, replay->estate);
+			if (rri->ri_RootToPartitionMap != NULL)
+				dstSlot = execute_attr_map_slot(rri->ri_RootToPartitionMap->attrMap,
+												 dstSlot,
+												 rri->ri_PartitionTupleSlot);
+			dstSlot->tts_tableOid = RelationGetRelid(rri->ri_RelationDesc);
+		}
+
 		if (blindDelete)
-			YbExecBlindDeleteRow(replay->rri, dstSlot, replay->estate);
+			YbExecBlindDeleteRow(rri, dstSlot, replay->estate);
 		else
-			YbExecInsertRow(replay->rri, dstSlot, replay->estate);
+			YbExecInsertRow(rri, dstSlot, replay->estate);
 		nrows++;
 	}
 
@@ -558,9 +662,9 @@ YbOscRecordReplay(YbOscTargetOrder *order, EState *estate, bool hasNew)
  * yb_online_schema_change_trigger
  *
  * AFTER STATEMENT trigger function for the capture triggers.  Arguments are
- * the target table OID and the transform function OID.  Replays the old
- * transition table as tombstones and then the new transition table as
- * inserts.
+ * the target table OID, the transform function OID and the source root OID.
+ * Replays the old transition table as tombstones and then the new transition
+ * table as inserts.
  */
 PG_FUNCTION_INFO_V1(yb_online_schema_change_trigger);
 
@@ -575,20 +679,32 @@ yb_online_schema_change_trigger(PG_FUNCTION_ARGS)
 	if (!TRIGGER_FIRED_FOR_STATEMENT(trigdata->tg_event))
 		ereport(ERROR, (errmsg("yb_online_schema_change_trigger must be fired for each statement")));
 
-	if (trigdata->tg_trigger->tgnargs < 2)
-		ereport(ERROR, (errmsg("yb_online_schema_change_trigger requires target table and transform function")));
+	if (trigdata->tg_trigger->tgnargs < 3)
+		ereport(ERROR, (errmsg("yb_online_schema_change_trigger requires target table, transform function and source root table")));
 
 	Oid			targetOid = (Oid) strtoul(trigdata->tg_trigger->tgargs[0], NULL, 10);
 	Oid			transformOid = (Oid) strtoul(trigdata->tg_trigger->tgargs[1], NULL, 10);
+	Oid			srcRootOid = (Oid) strtoul(trigdata->tg_trigger->tgargs[2], NULL, 10);
 
 	Relation	targetRel = table_open(targetOid, RowExclusiveLock);
+	Relation	srcRootRel = trigdata->tg_relation;
+
+	/*
+	 * NoLock: the statement's lock on the partition already blocks any ALTER
+	 * of the root (which locks every partition before changing anything), and
+	 * a root lock taken here would be partition-then-root, the reverse of the
+	 * order finish/abort lock the hierarchy in.
+	 */
+	if (RelationGetRelid(srcRootRel) != srcRootOid)
+		srcRootRel = table_open(srcRootOid, NoLock);
 
 	if (IsSystemRelation(targetRel))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
 						RelationGetRelationName(targetRel))));
-	if (targetRel->rd_rel->relkind != RELKIND_RELATION)
+	if (targetRel->rd_rel->relkind != RELKIND_RELATION &&
+		targetRel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("target \"%s\" is not a table",
@@ -604,7 +720,8 @@ yb_online_schema_change_trigger(PG_FUNCTION_ARGS)
 	YbOscReplayState replay;
 	uint64_t	nrows = 0;
 
-	YbOscReplayBegin(&replay, trigdata->tg_relation, targetRel, transformOid);
+	YbOscReplayBegin(&replay, trigdata->tg_relation, srcRootRel, targetRel,
+					 transformOid);
 
 	/*
 	 * Tombstones must come before inserts.  For UPDATE t SET id = id + 1 over
@@ -652,6 +769,8 @@ yb_online_schema_change_trigger(PG_FUNCTION_ARGS)
 	if (order != NULL)
 		YbOscRecordReplay(order, trigdata->estate, hasNew);
 
+	if (srcRootRel != trigdata->tg_relation)
+		table_close(srcRootRel, NoLock);
 	table_close(targetRel, RowExclusiveLock);
 	return PointerGetDatum(NULL);
 }

@@ -27,12 +27,14 @@
 #include "access/table.h"
 #include "access/xact.h"
 #include "catalog/indexing.h"
+#include "catalog/partition.h"
 #include "catalog/pg_yb_online_schema_change.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/queryjumble.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
@@ -220,33 +222,85 @@ YbOscFetchJob(int64 jobId, YbOscJob *job)
 }
 
 /*
- * Return true if an active job involves either table, in either role.  A full
- * scan: the catalog holds one row per job.
+ * Returns the id of an active job whose source or target is one of relOids,
+ * or 0.  A full scan: the catalog holds one row per job.
  */
-bool
-YbOscHasActiveJob(Oid srcOid, Oid dstOid)
+int64
+YbOscFindActiveJob(List *relOids)
 {
 	Relation	catalog = table_open(YbOnlineSchemaChangeRelationId, AccessShareLock);
 	SysScanDesc scan = systable_beginscan(catalog, InvalidOid, false /* indexOK */ ,
 										  NULL /* snapshot */ , 0 /* nkeys */ , NULL);
 	HeapTuple	tuple;
-	bool		active = false;
+	int64		jobId = 0;
 
-	while (!active && HeapTupleIsValid(tuple = systable_getnext(scan)))
+	while (jobId == 0 && HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
 		Form_pg_yb_online_schema_change job =
 			(Form_pg_yb_online_schema_change) GETSTRUCT(tuple);
 
-		if (job->source_table_oid != srcOid && job->target_table_oid != srcOid &&
-			job->source_table_oid != dstOid && job->target_table_oid != dstOid)
+		if (!list_member_oid(relOids, job->source_table_oid) &&
+			!list_member_oid(relOids, job->target_table_oid))
 			continue;
-		active = strcmp(JobStatus(tuple, RelationGetDescr(catalog)),
-						YB_OSC_STATUS_ACTIVE) == 0;
+		if (strcmp(JobStatus(tuple, RelationGetDescr(catalog)),
+				   YB_OSC_STATUS_ACTIVE) == 0)
+			jobId = job->job_id;
 	}
 
 	systable_endscan(scan);
 	table_close(catalog, AccessShareLock);
-	return active;
+	return jobId;
+}
+
+/*
+ * Return true if an active online schema change job is anchored on any
+ * relation of either hierarchy or on an ancestor of either root.  Two
+ * hierarchies overlap exactly when one root is an ancestor-or-self of the
+ * other, which this covers.
+ */
+bool
+YbOscHasActiveJob(Oid srcOid, Oid dstOid)
+{
+	List	   *oids = list_concat_copy(YbOscHierarchyNodes(srcOid, NoLock),
+										YbOscHierarchyNodes(dstOid, NoLock));
+
+	oids = list_concat(oids, get_partition_ancestors(srcOid));
+	oids = list_concat(oids, get_partition_ancestors(dstOid));
+
+	return YbOscFindActiveJob(oids) != 0;
+}
+
+/*
+ * Refuse a partition-topology change under a relation that is the source or
+ * target of an active online schema change job, or a descendant of one.
+ *
+ * A leaf created mid-job would have no capture trigger and no copy -- silent
+ * data loss at cutover -- and ATTACH and DETACH change the hierarchy the job
+ * spans the same way.
+ */
+void
+YbOscCheckTopologyChange(Oid parentOid, const char *ddl)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	/*
+	 * Every partition DDL in the database passes through here, including on a
+	 * cluster whose YSQL upgrade has not yet created
+	 * pg_yb_online_schema_change.
+	 */
+	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(YbOnlineSchemaChangeRelationId)))
+		return;
+
+	List	   *oids = lappend_oid(get_partition_ancestors(parentOid), parentOid);
+	int64		jobId = YbOscFindActiveJob(oids);
+
+	if (jobId != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("cannot %s \"%s\" while online schema change job %lld is active",
+						ddl, get_rel_name(parentOid), (long long) jobId),
+				 errhint("Finish or abort the job, then retry.")));
 }
 
 /*

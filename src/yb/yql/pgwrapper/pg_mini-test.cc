@@ -7908,31 +7908,53 @@ namespace {
 
 Status CreateOnlineSchemaChangeTriggers(
     PGConn* conn, const std::string& src, const std::string& target,
-    const std::string& transform) {
+    const std::string& transform, const std::string& src_root = "") {
   const auto target_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
       Format("SELECT '$0'::regclass::oid::text", target)));
   const auto transform_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
       Format("SELECT '$0'::regproc::oid::text", transform)));
+  const auto src_root_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
+      Format("SELECT '$0'::regclass::oid::text", src_root.empty() ? src : src_root)));
 
   RETURN_NOT_OK(conn->ExecuteFormat(
       "CREATE TRIGGER yb_osc_ins AFTER INSERT ON $0 "
       "REFERENCING NEW TABLE AS yb_osc_new_rows "
       "FOR EACH STATEMENT EXECUTE FUNCTION "
-      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
-      src, target_oid, transform_oid));
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2', '$3')",
+      src, target_oid, transform_oid, src_root_oid));
   RETURN_NOT_OK(conn->ExecuteFormat(
       "CREATE TRIGGER yb_osc_upd AFTER UPDATE ON $0 "
       "REFERENCING OLD TABLE AS yb_osc_old_rows NEW TABLE AS yb_osc_new_rows "
       "FOR EACH STATEMENT EXECUTE FUNCTION "
-      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
-      src, target_oid, transform_oid));
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2', '$3')",
+      src, target_oid, transform_oid, src_root_oid));
   RETURN_NOT_OK(conn->ExecuteFormat(
       "CREATE TRIGGER yb_osc_del AFTER DELETE ON $0 "
       "REFERENCING OLD TABLE AS yb_osc_old_rows "
       "FOR EACH STATEMENT EXECUTE FUNCTION "
-      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
-      src, target_oid, transform_oid));
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2', '$3')",
+      src, target_oid, transform_oid, src_root_oid));
   return Status::OK();
+}
+
+// Attach the capture triggers to every relation of a partitioned source
+// hierarchy, as YbOscCreateTrigger does.
+Status AttachOnlineSchemaChangeTriggersOnTree(
+    PGConn* conn, const std::string& src_root, const std::string& target,
+    const std::string& transform) {
+  const auto nodes = VERIFY_RESULT(conn->FetchRows<std::string>(
+      Format("SELECT relid::regclass::text FROM pg_partition_tree('$0') ORDER BY level",
+             src_root)));
+  for (const auto& node : nodes) {
+    RETURN_NOT_OK(CreateOnlineSchemaChangeTriggers(conn, node, target, transform, src_root));
+  }
+  return Status::OK();
+}
+
+using PartRows = std::vector<std::tuple<int32_t, std::string, int32_t, std::string>>;
+Result<PartRows> FetchPartRows(PGConn* conn, const std::string& table) {
+  return conn->FetchRows<int32_t, std::string, int32_t, std::string>(
+      Format("SELECT id, region, yr, v FROM $0 ORDER BY id, region, yr", table));
 }
 
 Result<double> ExplainStorageStat(PGConn* conn, const std::string& dml, const char* key) {
@@ -8702,6 +8724,862 @@ TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters);
   ASSERT_LE(osc_spec, base_spec + 5)
       << "trigger flush defeats yb_speculatively_execute_pl_statements";
+}
+
+// ---- Part C: partitioned source / target ----
+
+namespace {
+
+constexpr auto kPartSrcDdl =
+    "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr)) "
+    "PARTITION BY LIST (region); "
+    "CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu') PARTITION BY RANGE (yr); "
+    "CREATE TABLE s_eu_2025 PARTITION OF s_eu FOR VALUES FROM (2025) TO (2026); "
+    "CREATE TABLE s_eu_2026 PARTITION OF s_eu FOR VALUES FROM (2026) TO (2027); "
+    "CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')";
+
+constexpr auto kPartDstDdl =
+    "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+    "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region); "
+    "CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu') PARTITION BY RANGE (yr); "
+    "CREATE TABLE d_eu_2025 PARTITION OF d_eu FOR VALUES FROM (2025) TO (2026); "
+    "CREATE TABLE d_eu_2026 PARTITION OF d_eu FOR VALUES FROM (2026) TO (2027); "
+    "CREATE TABLE d_us PARTITION OF d FOR VALUES IN ('us'); "
+    "CREATE INDEX d_v_idx ON d (v)";
+
+constexpr auto kPartTransformDdl =
+    "CREATE FUNCTION s_to_d(src s) RETURNS d LANGUAGE plpgsql IMMUTABLE SET search_path FROM "
+    "CURRENT AS $$ BEGIN RETURN ROW(src.id, src.region, src.yr, src.v, src.v || '_x')::d; "
+    "END $$";
+
+}  // namespace
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTriggerPartitionedHierarchyDml) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggersOnTree(&conn, "s", "d", "s_to_d"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'eu', 2026, 'b'), (3, 'us', 2025, 'c')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_eu VALUES (4, 'eu', 2025, 'd'), (5, 'eu', 2026, 'e')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_us VALUES (6, 'us', 2026, 'f')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_eu_2026 VALUES (7, 'eu', 2026, 'g')"));
+
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2025")), 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2026")), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 2);
+
+  ASSERT_OK(conn.Execute("UPDATE s SET v = 'A' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("UPDATE s_eu SET v = 'D' WHERE id = 4"));
+  ASSERT_OK(conn.Execute("UPDATE s_us SET v = 'F' WHERE id = 6"));
+  ASSERT_OK(conn.Execute("DELETE FROM s WHERE id = 2"));
+  ASSERT_OK(conn.Execute("DELETE FROM s_eu WHERE id = 5"));
+  ASSERT_OK(conn.Execute("DELETE FROM s_eu_2026 WHERE id = 7"));
+
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM d WHERE v2 IS DISTINCT FROM (v || '_x')")), 0);
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  const auto survivors = ASSERT_RESULT(FetchPartRows(&conn, "s"));
+  for (const auto& [id, region, yr, v] : survivors) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+        Format("SELECT id FROM d WHERE v = '$0'", v))), id);
+  }
+  for (const auto* gone : {"a", "b", "d", "e", "f", "g"}) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        Format("SELECT count(*) FROM d WHERE v = '$0'", gone))), 0) << gone;
+  }
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTriggerPartitionedCrossPartitionUpdate) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggersOnTree(&conn, "s", "d", "s_to_d"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'eu', 2026, 'b'), (3, 'us', 2025, 'c')"));
+
+  ASSERT_OK(conn.Execute("UPDATE s SET region = 'us' WHERE region = 'eu'"));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 3);
+
+  ASSERT_OK(conn.Execute("UPDATE s SET region = 'eu' WHERE id IN (1, 2)"));
+  ASSERT_OK(conn.Execute("UPDATE s_eu SET yr = 2026 WHERE yr = 2025"));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2025")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2026")), 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 1);
+
+  // PG refuses a cross-partition update addressed to a leaf.
+  ASSERT_NOK(conn.Execute("UPDATE s_us SET region = 'eu' WHERE id = 3"));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTriggerPartitionedSourcePlainTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr))"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggersOnTree(&conn, "s", "d", "s_to_d"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'us', 2025, 'b')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_eu VALUES (3, 'eu', 2026, 'c')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_us VALUES (4, 'us', 2026, 'd')"));
+  ASSERT_OK(conn.Execute("UPDATE s SET region = 'us' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("UPDATE s_eu_2026 SET v = 'C' WHERE id = 3"));
+  ASSERT_OK(conn.Execute("DELETE FROM s_us WHERE id = 2"));
+
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM d WHERE v2 IS DISTINCT FROM (v || '_x')")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTriggerPlainSourcePartitionedTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr))"));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(CreateOnlineSchemaChangeTriggers(&conn, "s", "d", "s_to_d"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'eu', 2026, 'b'), (3, 'us', 2025, 'c')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2025")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2026")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 1);
+
+  ASSERT_OK(conn.Execute("UPDATE s SET region = 'us' WHERE id = 1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2025")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 2);
+  ASSERT_OK(conn.Execute("DELETE FROM s WHERE id = 2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu")), 0);
+
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM d WHERE v = 'a'")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d WHERE v = 'b'")), 0);
+
+  ASSERT_NOK(conn.Execute("INSERT INTO s VALUES (9, 'apac', 2025, 'z')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE id = 9")), 0);
+}
+
+// A column dropped on the root before a leaf is created gives the leaf
+// different attnums.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeTriggerPartitionedDivergentAttnums) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, junk INT, region TEXT, yr INT, v TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE s DROP COLUMN junk"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, junk INT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE d DROP COLUMN junk"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d_us PARTITION OF d FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute("CREATE INDEX d_v_idx ON d (v)"));
+
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggersOnTree(&conn, "s", "d", "s_to_d"));
+
+  // s_eu still carries the dropped column, s_us never had it.
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'us', 2025, 'b')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_eu VALUES (3, 'eu', 2026, 'c')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_us VALUES (4, 'us', 2026, 'd')"));
+  ASSERT_OK(conn.Execute("UPDATE s_eu SET v = 'C' WHERE id = 3"));
+  ASSERT_OK(conn.Execute("UPDATE s_us SET v = 'D' WHERE id = 4"));
+  ASSERT_OK(conn.Execute("UPDATE s SET region = 'us' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("DELETE FROM s_us WHERE id = 2"));
+
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")),
+            ASSERT_RESULT(FetchPartRows(&conn, "d")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM d WHERE v2 IS DISTINCT FROM (v || '_x')")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), 2);
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM d WHERE v = 'C'")), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM d WHERE v = 'D'")), 4);
+  for (const auto* gone : {"b", "c", "d"}) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        Format("SELECT count(*) FROM d WHERE v = '$0'", gone))), 0) << gone;
+  }
+}
+
+// ---- Partitioned sources and targets: the full lifecycle ----
+
+namespace {
+
+Result<int64_t> CountOnlineSchemaChangeTriggers(PGConn* conn) {
+  return conn->FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'yb_osc_%'");
+}
+
+Result<int64_t> CountUncomputed(PGConn* conn, const std::string& table) {
+  return conn->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM $0 WHERE v2 IS DISTINCT FROM (v || '_x')", table));
+}
+
+Status SeedPartRows(PGConn* conn, const std::string& table, int n, int first = 1) {
+  return conn->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, CASE WHEN i % 2 = 0 THEN 'eu' ELSE 'us' END, "
+      "2025 + (i / 2) % 2, 'v_' || i FROM generate_series($1, $2) AS i",
+      table, first, first + n - 1);
+}
+
+// Begin src -> dst, run `dml` while the copy is in flight, wait for the copy, cut over, and return
+// the rows src held just before the swap. The copy is throttled and chunked small so that the DML
+// races it.
+Result<PartRows> RunPartitionedOnlineSchemaChange(
+    PGConn* conn, const std::string& src, const std::string& dst, const std::string& xf,
+    const std::vector<std::string>& dml) {
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 100;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+  });
+
+  RETURN_NOT_OK(ResultToStatus(BeginOnlineSchemaChange(conn, src, dst, xf)));
+  RETURN_NOT_OK(WaitFor([conn]() -> Result<bool> {
+    return VERIFY_RESULT(conn->FetchRow<int64_t>(
+        "SELECT rows_done FROM pg_catalog.yb_online_schema_change "
+        "ORDER BY job_id DESC LIMIT 1")) > 0;
+  }, 60s, "Wait for the copy to report progress"));
+  for (const auto& stmt : dml) {
+    RETURN_NOT_OK(conn->Execute(stmt));
+  }
+  RETURN_NOT_OK(WaitForOnlineSchemaChange(conn, src, dst));
+  auto expected = VERIFY_RESULT(FetchPartRows(conn, src));
+  RETURN_NOT_OK(FinishOnlineSchemaChange(conn, src, dst));
+  return expected;
+}
+
+void ExpectTopologyFenceBlocks(PGConn* conn, const std::string& ddl) {
+  auto status = conn->Execute(ddl);
+  ASSERT_NOK(status) << "expected the topology fence to reject: " << ddl;
+  ASSERT_STR_CONTAINS(status.ToString(), "while online schema change job");
+}
+
+const std::vector<std::string> kPartDml = {
+    "INSERT INTO s VALUES (1001, 'eu', 2025, 'r1'), (1002, 'us', 2026, 'r2')",
+    "INSERT INTO s_eu VALUES (1003, 'eu', 2026, 'i1')",
+    "INSERT INTO s_eu_2026 VALUES (1004, 'eu', 2026, 'l1')",
+    "UPDATE s SET v = 'root_upd' WHERE id = 2",
+    "UPDATE s_eu SET v = 'mid_upd' WHERE id = 4",
+    "UPDATE s_us SET v = 'leaf_upd' WHERE id = 5",
+    "DELETE FROM s WHERE id = 6",
+    "DELETE FROM s_eu_2025 WHERE id = 8",
+    "DELETE FROM s_us WHERE id = 7",
+};
+
+}  // namespace
+
+// One source leaf is in its own tablespace.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedSameShape) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE osc_ts LOCATION '/data'"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr)) "
+      "PARTITION BY LIST (region); "
+      "CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu') PARTITION BY RANGE (yr); "
+      "CREATE TABLE s_eu_2025 PARTITION OF s_eu FOR VALUES FROM (2025) TO (2026); "
+      "CREATE TABLE s_eu_2026 PARTITION OF s_eu FOR VALUES FROM (2026) TO (2027) "
+      "  TABLESPACE osc_ts; "
+      "CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 300));
+
+  const auto expected =
+      ASSERT_RESULT(RunPartitionedOnlineSchemaChange(&conn, "s", "d", "s_to_d", kPartDml));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE v2 IS NULL")), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+
+  // Partitions follow their roots through the rename.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<std::string>(
+      "SELECT relid::regclass::text FROM pg_partition_tree('s') WHERE isleaf ORDER BY 1")),
+      (std::vector<std::string>{"d_eu_2025", "d_eu_2026", "d_us"}));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu_2025")),
+            ASSERT_RESULT(conn.FetchRow<int64_t>(
+                "SELECT count(*) FROM s WHERE region = 'eu' AND yr = 2025")));
+
+  const auto leaf_counts = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>(
+      "SELECT source_leaf_count, target_leaf_count FROM yb_online_schema_change "
+      "ORDER BY job_id DESC LIMIT 1")));
+  ASSERT_EQ(leaf_counts, (decltype(leaf_counts){3, 3}));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest,
+       OnlineSchemaChangePartitionedCrossPartitionUpdateDuringBackfill) {
+  constexpr int kNumRows = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 500;
+  auto se = ScopeExit(
+      [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0; });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", kNumRows));
+
+  const auto expected = ASSERT_RESULT(RunPartitionedOnlineSchemaChange(
+      &conn, "s", "d", "s_to_d", {"UPDATE s SET region = 'us' WHERE region = 'eu'"}));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_eu")), 0);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedRepartitionByDifferentKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY RANGE (yr); "
+      "CREATE TABLE d_2025 PARTITION OF d FOR VALUES FROM (2025) TO (2026); "
+      "CREATE TABLE d_2026 PARTITION OF d FOR VALUES FROM (2026) TO (2027); "
+      "CREATE INDEX d_v_idx ON d (v)"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 200));
+
+  const auto expected =
+      ASSERT_RESULT(RunPartitionedOnlineSchemaChange(&conn, "s", "d", "s_to_d", kPartDml));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_2025")),
+            ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE yr = 2025")));
+}
+
+// The target is keyed and partitioned on (id, yr) and leaves out the source's partition key region.
+// A unique index on the partitioned source must include region, so only a target index can be the
+// key witness. Moving rows between regions changes their source key but not their target key.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedTargetKeyWitness) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, PRIMARY KEY (id, yr)) "
+      "PARTITION BY RANGE (yr); "
+      "CREATE TABLE d_2025 PARTITION OF d FOR VALUES FROM (2025) TO (2026); "
+      "CREATE TABLE d_2026 PARTITION OF d FOR VALUES FROM (2026) TO (2027)"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 300));
+
+  const auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      "Add a witness on the target with: "
+                      "CREATE UNIQUE INDEX ON public.d (id, yr) INCLUDE (region)");
+
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX d_witness ON d (id, yr) INCLUDE (region)"));
+  auto dml = kPartDml;
+  dml.push_back("UPDATE s SET region = 'us' WHERE region = 'eu' AND id <= 100");
+  const auto expected =
+      ASSERT_RESULT(RunPartitionedOnlineSchemaChange(&conn, "s", "d", "s_to_d", dml));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_2025")),
+            ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE yr = 2025")));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedPlainSourcePartitionedTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr))"));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 200));
+
+  const auto expected = ASSERT_RESULT(RunPartitionedOnlineSchemaChange(
+      &conn, "s", "d", "s_to_d",
+      {"INSERT INTO s VALUES (1001, 'eu', 2026, 'r1')",
+       "UPDATE s SET region = 'us' WHERE id = 2",
+       "DELETE FROM s WHERE id = 3"}));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_us")),
+            ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE region = 'us'")));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedSourcePlainTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)); "
+      "CREATE INDEX d_v_idx ON d (v)"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 200));
+
+  const auto expected =
+      ASSERT_RESULT(RunPartitionedOnlineSchemaChange(&conn, "s", "d", "s_to_d", kPartDml));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT relkind::text FROM pg_class WHERE oid = 's'::regclass")), "r");
+}
+
+// s_us is created after the root dropped a column and s_apac is attached with another column
+// order, so both have attnums that differ from the root's.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedDivergentAttnums) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, junk INT, region TEXT, yr INT, v TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE s DROP COLUMN junk"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s_apac (v TEXT, yr INT, region TEXT, id INT, PRIMARY KEY (id, region, yr))"));
+  ASSERT_OK(conn.Execute("ALTER TABLE s ATTACH PARTITION s_apac FOR VALUES IN ('apac')"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, junk INT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute("ALTER TABLE d DROP COLUMN junk"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d_us PARTITION OF d FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d_apac PARTITION OF d FOR VALUES IN ('apac')"));
+  ASSERT_OK(conn.Execute("CREATE INDEX d_v_idx ON d (v)"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'us', 2025, 'b'), (3, 'apac', 2025, 'c')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_apac (id, region, yr, v) VALUES (4, 'apac', 2026, 'd')"));
+
+  const auto expected = ASSERT_RESULT(RunPartitionedOnlineSchemaChange(
+      &conn, "s", "d", "s_to_d",
+      {"INSERT INTO s_eu VALUES (5, 'eu', 2026, 'e')",
+       "INSERT INTO s_apac (id, region, yr, v) VALUES (6, 'apac', 2026, 'f')",
+       "UPDATE s_apac SET v = 'C' WHERE id = 3",
+       "UPDATE s SET region = 'apac' WHERE id = 1",
+       "DELETE FROM s_us WHERE id = 2"}));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d_apac")), 4);
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM s WHERE v = 'C'")), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s WHERE v = 'b'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedResumeAcrossChunks) {
+  constexpr int kNumRows = 1200;
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = 50;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, "
+      "PRIMARY KEY (id ASC, region ASC, yr ASC)) PARTITION BY LIST (region); "
+      "CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu') PARTITION BY RANGE (yr); "
+      "CREATE TABLE s_eu_2025 PARTITION OF s_eu FOR VALUES FROM (2025) TO (2026); "
+      "CREATE TABLE s_eu_2026 PARTITION OF s_eu FOR VALUES FROM (2026) TO (2027); "
+      "CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id ASC, region ASC, yr ASC)) PARTITION BY LIST (region); "
+      "CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu'); "
+      "CREATE TABLE d_us PARTITION OF d FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", kNumRows));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+  // Accumulated per chunk, so a chunk counted twice or skipped shows up here.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT rows_done FROM pg_catalog.yb_online_schema_change ORDER BY job_id DESC LIMIT 1")),
+      kNumRows);
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn, "s")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedUnroutableRow) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region); "
+      "CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 20));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  auto status = WaitForOnlineSchemaChange(&conn, "s", "d");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "failed");
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "failed");
+  const auto failure = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT error_message FROM pg_catalog.yb_online_schema_change "
+      "ORDER BY job_id DESC LIMIT 1"));
+  ASSERT_STR_CONTAINS(failure, "no partition of relation \"d\"");
+  // The failed job's trigger keeps firing until abort.
+  ASSERT_NOK(conn.Execute("INSERT INTO s VALUES (21, 'us', 2025, 'x')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (22, 'eu', 2025, 'y')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d WHERE id = 22")), 1);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedTopologyFence) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 20));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE loose (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr))"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+  // 5 source nodes, 3 triggers each.
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 15);
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ExpectTopologyFenceBlocks(&conn2, "CREATE TABLE s_apac PARTITION OF s FOR VALUES IN ('apac')");
+  ExpectTopologyFenceBlocks(
+      &conn2, "CREATE TABLE s_eu_2027 PARTITION OF s_eu FOR VALUES FROM (2027) TO (2028)");
+  ExpectTopologyFenceBlocks(&conn2, "CREATE TABLE d_apac PARTITION OF d FOR VALUES IN ('apac')");
+  ExpectTopologyFenceBlocks(&conn2, "ALTER TABLE s ATTACH PARTITION loose FOR VALUES IN ('apac')");
+  ExpectTopologyFenceBlocks(&conn2, "ALTER TABLE s DETACH PARTITION s_us");
+  ExpectTopologyFenceBlocks(&conn2, "ALTER TABLE s_eu DETACH PARTITION s_eu_2026 CONCURRENTLY");
+  ExpectTopologyFenceBlocks(&conn2, "ALTER TABLE d_eu DETACH PARTITION d_eu_2025");
+
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+  ASSERT_OK(conn2.Execute("CREATE TABLE s_apac PARTITION OF s FOR VALUES IN ('apac')"));
+  ASSERT_OK(conn2.Execute("ALTER TABLE s DETACH PARTITION s_apac"));
+  ASSERT_OK(conn2.Execute("DROP TABLE s_apac"));
+
+  ASSERT_OK(conn.Execute("TRUNCATE d"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+  ExpectTopologyFenceBlocks(&conn2, "CREATE TABLE s_apac PARTITION OF s FOR VALUES IN ('apac')");
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+  ASSERT_OK(conn2.Execute("CREATE TABLE s_apac PARTITION OF s FOR VALUES IN ('apac')"));
+}
+
+// A volatile transform is refused whether its volatile part computes a partition key column, which
+// would misroute tombstones, or a column the online schema change never recomputes.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedVolatilePartitionKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s_to_d_bad(src s) RETURNS d LANGUAGE plpgsql VOLATILE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, CASE WHEN random() < 2 THEN src.region ELSE "
+      "'us' END, src.yr, src.v, src.v || '_x')::d; END $$"));
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d_bad"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must be IMMUTABLE");
+
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s_to_d_v2(src s) RETURNS d LANGUAGE plpgsql VOLATILE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.region, src.yr, src.v, "
+      "gen_random_uuid()::text)::d; END $$"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d_v2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must be IMMUTABLE");
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedOverlappingJobs) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s_eu_to_d_eu(src s_eu) RETURNS d_eu LANGUAGE plpgsql IMMUTABLE SET "
+      "search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.region, src.yr, src.v, "
+      "src.v || '_x')::d_eu; END $$"));
+
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s_eu", "d_eu", "s_eu_to_d_eu"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "source table \"s_eu\" is a partition");
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d_eu", "s_to_d"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "target table \"d_eu\" is a partition");
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "active online schema change job already exists");
+  ASSERT_OK(AbortOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedTargetMustBeEmpty) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", 10));
+  ASSERT_OK(conn.Execute("INSERT INTO d_eu_2026 VALUES (999, 'eu', 2026, 'stale', 'stale')"));
+
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "target table \"d\" is not empty");
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+}
+
+// The whole row must reach the transform in the root's column order on both paths, including for
+// s_us, whose column order differs.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedWholeRowTransform) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr)) "
+      "PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s_us (v TEXT, yr INT, region TEXT, id INT, PRIMARY KEY (id, region, yr))"));
+  ASSERT_OK(conn.Execute("ALTER TABLE s ATTACH PARTITION s_us FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s_to_d(src s) RETURNS d LANGUAGE plpgsql IMMUTABLE SET search_path FROM "
+      "CURRENT AS $$ BEGIN RETURN ROW(src.id, src.region, src.yr, src.v, "
+      "hash_record(src)::text)::d; END $$"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s VALUES (1, 'eu', 2025, 'a'), (2, 'us', 2025, 'b'), (3, 'us', 2026, 'c')"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_OK(conn.Execute("INSERT INTO s_us (id, region, yr, v) VALUES (4, 'us', 2026, 'd')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (5, 'us', 2025, 'e')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM d WHERE v2 IS DISTINCT FROM "
+      "hash_record(ROW(id, region, yr, v)::s)::text")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d")), 5);
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "s", "d"));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedFailover) {
+  constexpr int kNumRows = 6000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 500;
+  auto se = ScopeExit(
+      [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 0; });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", kNumRows));
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for CREATE INDEX to release delete-marker retention"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+
+  // Three target leaves and the three leaf indexes of d_v_idx.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).size() == 6; }, 30s,
+      "Wait for the online schema change backfill to pin every target leaf and its indexes"));
+
+  ASSERT_OK(cluster_->mini_master(0)->Restart());
+  ASSERT_OK(cluster_->mini_master(0)->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_EQ(TablesRetainingDeleteMarkers(cluster_.get()).size(), 6);
+
+  ASSERT_OK(conn2.Execute("INSERT INTO s_eu VALUES (10001, 'eu', 2026, 'late')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn2, "s", "d"));
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for the online schema change backfill to release its delete-marker retention pins"));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn2, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(conn2.FetchRow<int64_t>("SELECT count(*) FROM s")), kNumRows + 1);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&conn2, "s")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedForeignKeyPromotion) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO parent SELECT i FROM generate_series(1, 50) i"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, pid INT REFERENCES parent(id), "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region); "
+      "CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu'); "
+      "CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, pid INT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region); "
+      "CREATE TABLE d_eu PARTITION OF d FOR VALUES IN ('eu'); "
+      "CREATE TABLE d_us PARTITION OF d FOR VALUES IN ('us')"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s_to_d(src s) RETURNS d LANGUAGE plpgsql IMMUTABLE SET search_path FROM "
+      "CURRENT AS $$ BEGIN RETURN ROW(src.id, src.region, src.yr, src.v, src.pid, src.v || "
+      "'_x')::d; END $$"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO s SELECT i, CASE WHEN i % 2 = 0 THEN 'eu' ELSE 'us' END, 2025, 'v_' || i, i "
+      "FROM generate_series(1, 20) i"));
+  const auto conname = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT conname FROM pg_constraint WHERE conrelid = 's'::regclass AND contype = 'f'"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_NOK(conn.Execute("INSERT INTO s VALUES (99, 'us', 2025, 'bad', 999)"));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (21, 'us', 2025, 'ok', 21)"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+
+  const auto promoted = ASSERT_RESULT((conn.FetchRow<std::string, bool>(Format(
+      "SELECT conname, convalidated FROM pg_constraint "
+      "WHERE conrelid = 'd'::regclass AND contype = 'f' AND conname = '$0'", conname))));
+  ASSERT_EQ(promoted, (decltype(promoted){conname, true}));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM s")), 21);
+  ASSERT_NOK(conn.Execute("INSERT INTO s VALUES (100, 'eu', 2025, 'bad', 999, 'bad_x')"));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (100, 'eu', 2025, 'ok', 1, 'ok_x')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid "
+      "WHERE r.relname LIKE 'yb_osc_old_%' AND c.contype = 'f'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedIncomingForeignKeyOnLeaf) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE child (id INT PRIMARY KEY, sid INT, region TEXT, yr INT, "
+      "FOREIGN KEY (sid, region, yr) REFERENCES s_us (id, region, yr))"));
+
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not be referenced by foreign keys");
+  ASSERT_EQ(ASSERT_RESULT(CountOnlineSchemaChangeTriggers(&conn)), 0);
+}
+
+// Every chunk runs as the owner of the transform, which must be able to read each leaf.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedBackfillRunsAsTransformOwner) {
+  constexpr int kNumRows = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(kPartSrcDdl));
+  ASSERT_OK(conn.Execute(kPartDstDdl));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+  ASSERT_OK(SeedPartRows(&conn, "s", kNumRows));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_owner"));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_leaf_owner"));
+  for (const auto* node : {"s", "s_eu", "s_eu_2025", "s_eu_2026"}) {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 OWNER TO osc_owner", node));
+  }
+  ASSERT_OK(conn.Execute("ALTER TABLE s_us OWNER TO osc_leaf_owner"));
+  ASSERT_OK(conn.Execute("ALTER FUNCTION s_to_d OWNER TO osc_owner"));
+  ASSERT_OK(conn.Execute("GRANT INSERT ON d TO osc_owner"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"),
+      "owner of transform function s_to_d cannot read table \"s_us\"");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
+
+  ASSERT_OK(conn.Execute("GRANT SELECT ON s_us TO osc_owner"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM d")), kNumRows);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedClonePartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLESPACE osc_ts LOCATION '/data'"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE s (id INT, region TEXT, yr INT, v TEXT, PRIMARY KEY (id, region, yr)) "
+      "PARTITION BY LIST (region); "
+      "CREATE TABLE s_eu PARTITION OF s FOR VALUES IN ('eu') PARTITION BY RANGE (yr); "
+      "CREATE TABLE s_eu_2025 PARTITION OF s_eu FOR VALUES FROM (2025) TO (2026); "
+      "CREATE TABLE s_eu_2026 PARTITION OF s_eu FOR VALUES FROM (2026) TO (2027) "
+      "  TABLESPACE osc_ts; "
+      "CREATE TABLE s_us PARTITION OF s FOR VALUES IN ('us') SPLIT INTO 3 TABLETS; "
+      "CREATE TABLE s_other PARTITION OF s DEFAULT; "
+      "CREATE INDEX s_us_v_idx ON s_us (v)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE d (id INT, region TEXT, yr INT, v TEXT, v2 TEXT, "
+      "PRIMARY KEY (id, region, yr)) PARTITION BY LIST (region)"));
+  ASSERT_OK(conn.Execute(kPartTransformDdl));
+
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN PERFORM yb_online_schema_change_clone_partitions('s', 'd', '_new', true); END "
+      "$$"));
+
+  const auto pairs = ASSERT_RESULT((conn.FetchRows<std::string, bool, bool, bool, bool>(
+      "SELECT sc.relname, "
+      "       pg_get_expr(sc.relpartbound, sc.oid) = pg_get_expr(dc.relpartbound, dc.oid), "
+      "       pg_get_partkeydef(sc.oid) IS NOT DISTINCT FROM pg_get_partkeydef(dc.oid), "
+      "       sc.reltablespace = dc.reltablespace, "
+      "       (SELECT num_tablets FROM yb_table_properties(sc.oid)) = "
+      "         (SELECT num_tablets FROM yb_table_properties(dc.oid)) "
+      "FROM pg_partition_tree('s') st "
+      "JOIN pg_class sc ON sc.oid = st.relid "
+      "JOIN pg_class dc ON dc.relname = sc.relname || '_new' "
+      "WHERE st.level > 0 ORDER BY sc.relname")));
+  ASSERT_EQ(pairs.size(), 5);
+  for (const auto& [name, bound, partkey, tablespace, tablets] : pairs) {
+    EXPECT_TRUE(bound && partkey && tablespace && tablets) << name;
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT parentrelid::regclass::text FROM pg_partition_tree('d') "
+      "WHERE relid = 's_eu_2026_new'::regclass")), "s_eu_new");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT tablename FROM pg_indexes WHERE indexname = 's_us_v_idx_new'")), "s_us_new");
+
+  auto status = conn.Execute(
+      "DO $$ BEGIN PERFORM yb_online_schema_change_clone_partitions('s', 'd'); END $$");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "already has partitions");
+
+  ASSERT_OK(SeedPartRows(&conn, "s", 100));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (101, 'apac', 2025, 'dflt')"));
+  // The master releases the cloned index's own retain_delete_markers asynchronously. Each such
+  // schema bump, like the job's pins below, is one more version the trigger's first write can trip
+  // over (PG refreshes one table per retry), so let both settle before the DML.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).empty(); }, 30s,
+      "Wait for CREATE INDEX to release delete-marker retention"));
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "s", "d", "s_to_d"));
+  // Four tablet-bearing target leaves and the cloned leaf-local index.
+  ASSERT_OK(WaitFor(
+      [this] { return TablesRetainingDeleteMarkers(cluster_.get()).size() == 5; }, 30s,
+      "Wait for the online schema change backfill to pin every target leaf and the local index"));
+  // The backend that created the clones caches their pre-pin schema versions, and the trigger's
+  // write is not retried on a mismatch, so the DML runs on a fresh backend.
+  auto dml_conn = ASSERT_RESULT(Connect());
+  for (const auto& stmt : kPartDml) {
+    ASSERT_OK(dml_conn.Execute(stmt));
+  }
+  ASSERT_OK(WaitForOnlineSchemaChange(&dml_conn, "s", "d"));
+  const auto expected = ASSERT_RESULT(FetchPartRows(&dml_conn, "s"));
+  ASSERT_OK(FinishOnlineSchemaChange(&dml_conn, "s", "d"));
+  ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&dml_conn, "s")), expected);
+  ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&dml_conn, "s")), 0);
+  ASSERT_EQ(ASSERT_RESULT(dml_conn.FetchRow<int64_t>("SELECT count(*) FROM s_other_new")), 1);
 }
 
 }  // namespace yb::pgwrapper

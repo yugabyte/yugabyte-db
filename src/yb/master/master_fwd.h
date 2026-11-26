@@ -146,6 +146,7 @@ YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeHidden);
 
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
+YB_STRONGLY_TYPED_BOOL(SkipMissingOnlineSchemaChangeTables);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
 

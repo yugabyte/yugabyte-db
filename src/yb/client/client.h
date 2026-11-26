@@ -209,6 +209,12 @@ struct TabletReplicaFullCompactionStatus {
   HybridTime last_full_compaction_time;
 };
 
+// The data-bearing tables an online schema change backfill job spans.
+struct OnlineSchemaChangeTableIdLists {
+  TableIds source_leaves;
+  TableIds target_leaves;
+};
+
 struct TableCompactionStatus {
   tablet::FullCompactionState full_compaction_state;
 
@@ -369,9 +375,12 @@ class YBClient {
       TableIdView table_id, TableIdView index_id, CoarseTimePoint deadline,
       IsBackfillIndexInProgressCallback&& callback);
 
+  // Starts the master-side backfill of an online schema change job on source_table_id (the source
+  // root).
   Status StartTableBackfill(
       const TableId& source_table_id, const TableId& target_table_id,
       uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+      const OnlineSchemaChangeTableIdLists& lists,
       CoarseTimePoint deadline = CoarseTimePoint());
 
   Status AbortTableBackfill(

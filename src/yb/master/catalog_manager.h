@@ -487,6 +487,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const scoped_refptr<TableInfo>& source_table, int64_t pg_job_id,
       TableBackfillStatusPB* status);
 
+  // Resolves the tables an online schema change job lists. A dropped table is an error unless
+  // skip_missing, which the release paths pass: a dropped table took its pin with it.
+  Result<std::vector<scoped_refptr<TableInfo>>> GetOnlineSchemaChangeTables(
+      const std::vector<TableId>& table_ids, SkipMissingOnlineSchemaChangeTables skip_missing =
+                                                 SkipMissingOnlineSchemaChangeTables::kFalse);
+
   // Sets retain_delete_markers and table_backfill_pin_job_id on an online schema change backfill's
   // target and on each of its indexes, for the life of the backfill.
   //
@@ -513,6 +519,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UnpinOnlineSchemaChangeTargetDeleteMarkers(
       const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch,
       HybridTime birth_time = HybridTime::kInvalid);
+  // The same over every listed target that still exists. The first failure is returned once the
+  // others have been tried, so one table cannot keep the rest pinned.
+  Status UnpinOnlineSchemaChangeTargetDeleteMarkers(
+      const std::vector<TableId>& target_ids, int64_t pg_job_id, const LeaderEpoch& epoch);
+
+  // Records `source_root_id` as the table_backfill_source_root_id of a source leaf below the root
+  // of an online schema change job (see CopyingOnlineSchemaChangeJobReading). Idempotent.
+  Status SetOnlineSchemaChangeSourceRoot(
+      const scoped_refptr<TableInfo>& table, const TableId& source_root_id,
+      const LeaderEpoch& epoch);
 
   void AcquireObjectLocksGlobal(
       const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,

@@ -516,7 +516,8 @@ YbcStatus YBCPgStartTableBackfill(
     const YbcPgOid target_relfilenode_oid,
     const YbcPgOid transform_fn_oid,
     uint64_t backfill_timestamp,
-    int64_t pg_job_id);
+    int64_t pg_job_id,
+    const YbcPgOnlineSchemaChangeTableLists *lists);
 
 YbcStatus YBCPgAbortTableBackfill(
     const YbcPgOid database_oid,

@@ -1073,6 +1073,16 @@ typedef struct {
   uint32_t end_range;
 } YbcReplicationSlotHashRange;
 
+// The data-bearing relations an online schema change job spans, as relfilenode oids in the source
+// table's database. A plain source or target is its own leaf; a partitioned one contributes its
+// leaves.
+typedef struct {
+  const YbcPgOid *source_leaf_oids;
+  size_t num_source_leaf_oids;
+  const YbcPgOid *target_leaf_oids;
+  size_t num_target_leaf_oids;
+} YbcPgOnlineSchemaChangeTableLists;
+
 // The master's state of an online schema change backfill (OnlineSchemaChangeJobPB::State).
 typedef enum {
   YB_TABLE_BACKFILL_RUNNING,

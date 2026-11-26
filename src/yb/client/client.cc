@@ -698,10 +698,22 @@ void YBClient::IsBackfillIndexInProgressAsync(
   }
 }
 
+namespace {
+
+void SetTableIdentifiers(
+    const TableIds& table_ids,
+    google::protobuf::RepeatedPtrField<master::TableIdentifierPB>* dest) {
+  for (const auto& table_id : table_ids) {
+    dest->Add()->set_table_id(table_id);
+  }
+}
+
+} // namespace
+
 Status YBClient::StartTableBackfill(
     const TableId& source_table_id, const TableId& target_table_id,
     uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
-    CoarseTimePoint deadline) {
+    const OnlineSchemaChangeTableIdLists& lists, CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
     deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   }
@@ -711,6 +723,8 @@ Status YBClient::StartTableBackfill(
   req.set_transform_fn_oid(transform_fn_oid);
   req.set_backfill_timestamp(backfill_timestamp);
   req.set_pg_job_id(pg_job_id);
+  SetTableIdentifiers(lists.source_leaves, req.mutable_source_leaf_tables());
+  SetTableIdentifiers(lists.target_leaves, req.mutable_target_leaf_tables());
   master::StartTableBackfillResponsePB resp;
   RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
       deadline, req, &resp, "StartTableBackfill",

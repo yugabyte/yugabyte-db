@@ -1457,15 +1457,29 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
 
+namespace {
+
+template <class Repeated>
+void AssignOids(const YbcPgOid* oids, size_t count, Repeated* dest) {
+  dest->Assign(oids, oids + count);
+}
+
+} // namespace
+
 Status PgApiImpl::StartTableBackfill(
     const PgObjectId& source_table_id, const PgObjectId& target_table_id,
-    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id) {
+    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+    const YbcPgOnlineSchemaChangeTableLists& lists) {
   tserver::PgStartTableBackfillRequestPB req;
   source_table_id.ToPB(req.mutable_source_table_id());
   target_table_id.ToPB(req.mutable_target_table_id());
   req.set_transform_fn_oid(transform_fn_oid);
   req.set_backfill_timestamp(backfill_timestamp);
   req.set_pg_job_id(pg_job_id);
+  AssignOids(
+      lists.source_leaf_oids, lists.num_source_leaf_oids, req.mutable_source_leaf_table_oids());
+  AssignOids(
+      lists.target_leaf_oids, lists.num_target_leaf_oids, req.mutable_target_leaf_table_oids());
   // Unlike BackfillIndex, this RPC only starts the job and does not wait for the copy, so a DDL
   // deadline is enough.
   return pg_client_.StartTableBackfill(&req, DdlDeadline());

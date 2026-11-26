@@ -16,6 +16,7 @@
 #include <atomic>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -1483,11 +1484,12 @@ YbcStatus YBCPgStartTableBackfill(
     const YbcPgOid target_relfilenode_oid,
     const YbcPgOid transform_fn_oid,
     uint64_t backfill_timestamp,
-    int64_t pg_job_id) {
+    int64_t pg_job_id,
+    const YbcPgOnlineSchemaChangeTableLists *lists) {
   const PgObjectId source_id(database_oid, source_relfilenode_oid);
   const PgObjectId target_id(database_oid, target_relfilenode_oid);
   return ToYBCStatus(pgapi->StartTableBackfill(
-      source_id, target_id, transform_fn_oid, backfill_timestamp, pg_job_id));
+      source_id, target_id, transform_fn_oid, backfill_timestamp, pg_job_id, *lists));
 }
 
 YbcStatus YBCPgAbortTableBackfill(

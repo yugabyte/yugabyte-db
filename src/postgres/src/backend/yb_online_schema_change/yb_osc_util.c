@@ -19,10 +19,13 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "catalog/index.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_index.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "executor/spi.h"
 #include "fmgr.h"
+#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
@@ -657,4 +660,46 @@ YbOscTransformOwner(Oid transformOid)
 
 	ReleaseSysCache(tuple);
 	return owner;
+}
+
+/*
+ * Every relation of rootOid's partition hierarchy, parents before children,
+ * each locked in lockmode.  A plain table is a one-node hierarchy.
+ */
+List *
+YbOscHierarchyNodes(Oid rootOid, LOCKMODE lockmode)
+{
+	return find_all_inheritors(rootOid, lockmode, NULL);
+}
+
+List *
+YbOscHierarchyLeaves(List *nodes)
+{
+	List	   *leaves = NIL;
+	ListCell   *lc;
+
+	foreach(lc, nodes)
+	{
+		Oid			relOid = lfirst_oid(lc);
+
+		if (get_rel_relkind(relOid) != RELKIND_PARTITIONED_TABLE)
+			leaves = lappend_oid(leaves, relOid);
+	}
+	return leaves;
+}
+
+/*
+ * The relfilenodes of oids, which is what the master's table ids are built
+ * from.
+ */
+YbcPgOid *
+YbOscRelfileNodeArray(List *oids)
+{
+	YbcPgOid   *result = palloc(Max(list_length(oids), 1) * sizeof(YbcPgOid));
+	int			i = 0;
+	ListCell   *lc;
+
+	foreach(lc, oids)
+		result[i++] = YbGetRelfileNodeIdFromRelId(lfirst_oid(lc));
+	return result;
 }

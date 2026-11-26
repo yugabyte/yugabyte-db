@@ -3971,7 +3971,11 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   const IgnoreVectorIndexesValidation ignore_vector_indexes_validation { is_manual_split.get() };
   RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
-      tablet->table(), ignore_disabled_list, ignore_vector_indexes_validation));
+      tablet->table(), ignore_disabled_list, ignore_vector_indexes_validation,
+      // mutex_ is already held.
+      [this](const TableId& table_id) NO_THREAD_SAFETY_ANALYSIS {
+        return GetTableInfoUnlocked(table_id);
+      }));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
@@ -7485,6 +7489,40 @@ Status CatalogManager::StartTableBackfill(
   auto ns_info = FindNamespaceById(source_table->namespace_id());
   RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for online schema change backfill");
 
+  OnlineSchemaChangeTableIds table_ids;
+  const std::pair<const google::protobuf::RepeatedPtrField<TableIdentifierPB>&,
+                  std::vector<TableId>&> lists[] = {
+      {req->source_leaf_tables(), table_ids.source_leaves},
+      {req->target_leaf_tables(), table_ids.target_leaves},
+  };
+  for (const auto& [identifiers, ids] : lists) {
+    for (const auto& identifier : identifiers) {
+      auto table = FindTable(identifier, /* include_deleted */ false);
+      if (!table.ok()) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, table.status());
+      }
+      if ((*table)->GetTableType() != PGSQL_TABLE_TYPE ||
+          (*table)->namespace_id() != source_table->namespace_id()) {
+        return SetupError(
+            resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+            STATUS_FORMAT(
+                InvalidArgument, "Table $0 is not a YSQL table of the source's database",
+                (*table)->ToString()));
+      }
+      // Colocated leaves share one tablet, and the resume key and drain accounting are per tablet:
+      // several leaves on it would overwrite each other's checkpoint.
+      if (&ids == &table_ids.source_leaves && (*table)->colocated()) {
+        return SetupError(
+            resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+            STATUS_FORMAT(
+                NotSupported,
+                "Online schema change backfill of colocated source table $0 is not supported",
+                (*table)->ToString()));
+      }
+      ids.push_back((*table)->id());
+    }
+  }
+
   OnlineSchemaChangeJobPB job;
   job.set_pg_job_id(req->pg_job_id());
   job.set_state(OnlineSchemaChangeJobPB::COMPUTING_READ_TIME);
@@ -7494,6 +7532,7 @@ Status CatalogManager::StartTableBackfill(
   job.set_target_table_id(target_table->id());
   job.set_transform_fn_oid(req->transform_fn_oid());
   job.set_database_name((*ns_info)->name());
+  table_ids.ToJob(&job);
 
   Status s = online_schema_change_->Start(source_table, job, epoch);
   if (!s.ok()) {
@@ -7590,13 +7629,33 @@ Status CatalogManager::FillTableBackfillStatus(
     return Status::OK();
   }
 
+  const auto table_ids = OnlineSchemaChangeTableIdsFromJob(job, source_table->id());
   const auto progress = VERIFY_RESULT(ReadOnlineSchemaChangeProgress(
-      {source_table},
+      VERIFY_RESULT(GetOnlineSchemaChangeTables(
+          table_ids.source_leaves, SkipMissingOnlineSchemaChangeTables::kTrue)),
       pg_job_id));
   status->set_rows_done(progress.rows_done);
   status->set_tablets_done(progress.tablets_done);
   status->set_tablets_total(progress.tablets_total);
   return Status::OK();
+}
+
+Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetOnlineSchemaChangeTables(
+    const std::vector<TableId>& table_ids, SkipMissingOnlineSchemaChangeTables skip_missing) {
+  std::vector<scoped_refptr<TableInfo>> tables;
+  tables.reserve(table_ids.size());
+  SharedLock lock(mutex_);
+  for (const auto& table_id : table_ids) {
+    auto table = FindTableByIdUnlocked(table_id, /* include_deleted */ false);
+    if (table.ok()) {
+      tables.push_back(std::move(*table));
+    } else if (skip_missing) {
+      LOG(INFO) << "Skipping dropped table " << table_id << ": " << table.status();
+    } else {
+      return table.status().CloneAndPrepend("Online schema change table is missing");
+    }
+  }
+  return tables;
 }
 
 std::vector<scoped_refptr<TableInfo>> CatalogManager::GetOnlineSchemaChangePinnedTables(
@@ -7698,6 +7757,40 @@ Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
     LOG(INFO) << "Released delete-marker retention pin of online schema change job " << pg_job_id
               << " on " << table->ToString();
   }
+  return Status::OK();
+}
+
+Status CatalogManager::UnpinOnlineSchemaChangeTargetDeleteMarkers(
+    const std::vector<TableId>& target_ids, int64_t pg_job_id, const LeaderEpoch& epoch) {
+  Status result;
+  for (const auto& target : VERIFY_RESULT(
+           GetOnlineSchemaChangeTables(target_ids, SkipMissingOnlineSchemaChangeTables::kTrue))) {
+    auto s = UnpinOnlineSchemaChangeTargetDeleteMarkers(target, pg_job_id, epoch);
+    if (!s.ok()) {
+      LOG(WARNING)
+          << "Failed to release the delete-marker retention pin of online schema change job "
+          << pg_job_id << " on " << target->ToString() << ": " << s;
+      if (result.ok()) {
+        result = s;
+      }
+    }
+  }
+  return result;
+}
+
+Status CatalogManager::SetOnlineSchemaChangeSourceRoot(
+    const scoped_refptr<TableInfo>& table, const TableId& source_root_id,
+    const LeaderEpoch& epoch) {
+  auto l = table->LockForWrite();
+  auto& pb = l.mutable_data()->pb;
+  if (pb.table_backfill_source_root_id() == source_root_id) {
+    return Status::OK();
+  }
+  pb.set_table_backfill_source_root_id(source_root_id);
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(epoch, table),
+      "Failed to persist the online schema change source root.");
+  l.Commit();
   return Status::OK();
 }
 
