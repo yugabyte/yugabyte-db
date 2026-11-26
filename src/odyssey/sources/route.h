@@ -42,6 +42,7 @@ struct od_route {
 
 	od_route_status_t status;
 	bool yb_role_dropped;
+	bool yb_db_dropped;
 
 	od_list_t link;
 };
@@ -60,6 +61,7 @@ static inline void od_route_init(od_route_t *route, bool extra_route_logging)
 	/* stat init */
 	route->stats_mark_db = false;
 	route->yb_role_dropped = false;
+	route->yb_db_dropped = false;
 	route->extra_logging_enabled = extra_route_logging;
 	if (extra_route_logging) {
 		/* error logging */

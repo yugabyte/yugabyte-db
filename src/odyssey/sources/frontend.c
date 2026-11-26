@@ -646,11 +646,21 @@ static inline bool od_should_drop_connection(od_client_t *client,
 	}
 }
 
-static inline void yb_frontend_fatal_role_dropped(od_client_t *client)
+static inline bool yb_frontend_fatal_dropped(od_client_t *client)
 {
-	od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
-			  "role \"%s\" does not exist",
-			  client->startup.user.value);
+	od_route_t *route = client->route;
+
+	if (route->yb_role_dropped)
+		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
+				  "role \"%s\" does not exist",
+				  client->startup.user.value);
+	else if (route->yb_db_dropped)
+		od_frontend_fatal(client, KIWI_INVALID_CATALOG_NAME,
+				  "database \"%s\" does not exist",
+				  client->startup.database.value);
+	else
+		return false;
+	return true;
 }
 
 static od_frontend_status_t od_frontend_ctl(od_client_t *client)
@@ -658,9 +668,8 @@ static od_frontend_status_t od_frontend_ctl(od_client_t *client)
 	uint32_t op = od_client_ctl_of(client);
 	if (op & OD_CLIENT_OP_KILL) {
 		od_client_ctl_unset(client, OD_CLIENT_OP_KILL);
-		if (client->route &&
-		    ((od_route_t *)client->route)->yb_role_dropped)
-			yb_frontend_fatal_role_dropped(client);
+		if (client->route)
+			yb_frontend_fatal_dropped(client);
 		od_client_notify_read(client);
 		return OD_STOP;
 	}
@@ -2599,9 +2608,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	case OD_EATTACH:
 		assert(server == NULL);
 		assert(client->route != NULL);
-		if (route->yb_role_dropped)
-			yb_frontend_fatal_role_dropped(client);
-		else
+		if (!yb_frontend_fatal_dropped(client))
 			od_frontend_fatal(client, KIWI_CONNECTION_FAILURE,
 					  "failed to get remote server connection");
 		break;
@@ -2709,9 +2716,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		       "server disconnected (read/write error): %s, status %s",
 		       od_io_error(&server->io),
 		       od_frontend_status_to_str(status));
-		if (route->yb_role_dropped)
-			yb_frontend_fatal_role_dropped(client);
-		else
+		if (!yb_frontend_fatal_dropped(client))
 			od_frontend_error(client, KIWI_CONNECTION_FAILURE,
 					  "remote server read/write error %s%.*s: %s",
 					  server->id.id_prefix,

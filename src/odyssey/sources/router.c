@@ -449,6 +449,7 @@ static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
 
 	if (*db_oid != -1 && *db_oid == route->id.yb_db_oid) {
 		route->status = YB_ROUTE_INACTIVE;
+		route->yb_db_dropped = true;
 		od_route_unlock(route);
 		return 0;
 	}

@@ -20,6 +20,8 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -46,8 +48,12 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
   };
 
   private Connection directConn() throws Exception {
+    return directConn(DROP_TSERVER_IDX);
+  }
+
+  private Connection directConn(int tserverIdx) throws Exception {
     return getConnectionBuilder()
-        .withTServer(DROP_TSERVER_IDX)
+        .withTServer(tserverIdx)
         .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
         .connect();
   }
@@ -96,6 +102,19 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       fail("Expected the session to be disconnected");
     } catch (SQLException e) {
       assertHasRoleDroppedFatal(e, role);
+    }
+    assertTrue("Expected the session to be closed", conn.isClosed());
+  }
+
+  private static void assertClosedWithDbDroppedFatal(Connection conn, String db)
+      throws SQLException {
+    String expected = "database \"" + db + "\" does not exist";
+    try {
+      execute(conn, "SELECT 1");
+      fail("Expected the session to be disconnected");
+    } catch (SQLException e) {
+      assertEquals("Unexpected error: " + e.getMessage(), "3D000", e.getSQLState());
+      assertTrue("Unexpected error: " + e.getMessage(), e.getMessage().contains(expected));
     }
     assertTrue("Expected the session to be closed", conn.isClosed());
   }
@@ -192,6 +211,53 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       }
       assertTrue("Expected the session to be closed", conn1.isClosed());
       assertClosedWithRoleDroppedFatal(conn2, "ycm_dropped_role_caught");
+    }
+  }
+
+  // Sessions of a database, then their pooled backends are terminated and the
+  // database is dropped on another node. Queries on the trigger sessions make
+  // ConnMgr spawn a backend, which fails with 3D000 and invalidates the
+  // database's routes; a trigger may first hit a terminated backend instead.
+  // The remaining session then gets ConnMgr's own FATAL 3D000.
+  @Test
+  public void testDroppedDbClosesItsSessions() throws Exception {
+    final int numTriggers = 4;
+    runDirect("CREATE DATABASE ycm_dropped_db");
+    waitForCatalogChange();
+
+    List<Connection> triggers = new ArrayList<>();
+    try (Connection target = connMgrConn("ycm_dropped_db", "yugabyte")) {
+      for (int i = 0; i < numTriggers; i++)
+        triggers.add(connMgrConn("ycm_dropped_db", "yugabyte"));
+      execute(target, "SELECT 1");
+      for (Connection conn : triggers)
+        execute(conn, "SELECT 1");
+
+      try (Connection conn = directConn(SESSION_TSERVER_IDX)) {
+        execute(conn, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            + "WHERE datname = 'ycm_dropped_db'");
+      }
+      runDirect("DROP DATABASE ycm_dropped_db");
+      waitForCatalogChange();
+
+      boolean invalidated = false;
+      for (Connection conn : triggers) {
+        try {
+          execute(conn, "SELECT 1");
+          fail("Expected the session to fail after DROP DATABASE");
+        } catch (SQLException e) {
+          LOG.info("Trigger session got error", e);
+          if ("3D000".equals(e.getSQLState())) {
+            invalidated = true;
+            break;
+          }
+        }
+      }
+      assertTrue("No trigger session got 3D000", invalidated);
+      assertClosedWithDbDroppedFatal(target, "ycm_dropped_db");
+    } finally {
+      for (Connection conn : triggers)
+        conn.close();
     }
   }
 }
