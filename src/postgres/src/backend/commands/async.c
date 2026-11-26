@@ -3618,12 +3618,15 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
+	/*
+	 * Not a permanent error, so the timeout ran out: say so. If both don't
+	 * fit, cut the error rather than this reason.
+	 */
 	if (!ybNotifsPollerCannotRun)
 	{
 		char		suffix[128];
 		int			suffix_len;
 
-		/* Cut the error, not the reason, if they don't both fit. */
 		suffix_len = snprintf(suffix, sizeof(suffix),
 							  " (no progress for "
 							  "yb_notifications_poller_no_progress_timeout_ms"
