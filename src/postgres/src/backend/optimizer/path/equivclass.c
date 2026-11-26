@@ -3308,10 +3308,10 @@ yb_safe_to_substitute_for_var(Expr *expr, Var *var, Oid collation)
 		return false;
 
 	/*
-	 * Resolve through the default btree opclass, not the EC's opfamilies or
-	 * the typcache (both yield lsm families under YB, which never carry
-	 * equalimage).  Support functions are keyed by the opclass input type, so
-	 * varchar must reach text_ops.
+	 * Same check as upstream eager aggregation (create_grouping_expr_infos),
+	 * but resolved through the default btree opclass instead of the typcache:
+	 * under YB the typcache (and the EC's opfamilies) give lsm families, which
+	 * have no equalimage.
 	 */
 	opclass = GetDefaultOpClass(var->vartype, BTREE_AM_OID);
 	if (!OidIsValid(opclass))
