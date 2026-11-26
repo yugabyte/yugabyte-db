@@ -1976,8 +1976,8 @@ TEST_F(PgVectorIndexLimitTest, FilteredTopKUsesLimit) {
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = true;
 }
 
-// Applying a write without free vector insert tasks waits for them under the Raft lock of the
-// tablet, which the tserver heartbeat also takes for every tablet (#38387).
+// Inserts of applied writes run under the Raft lock of the tablet, which the tserver heartbeat also
+// takes for every tablet, so they must not wait for vector insert tasks (#38387).
 class PgVectorIndexInsertTasksTest : public PgVectorIndexTestBase {
  public:
   PgVectorIndexInsertTasksTest() {
@@ -1986,7 +1986,7 @@ class PgVectorIndexInsertTasksTest : public PgVectorIndexTestBase {
 
  protected:
   static constexpr size_t kMaxInsertTasks = 10;
-  // Each row is a task of its own, so these rows would use up all the insert tasks of a replica.
+  // Each row is a task of its own, so these rows take more than all the insert tasks of a replica.
   static constexpr size_t kNumRows = kMaxInsertTasks + 2;
 
   bool IsColocated() const override {
@@ -2018,11 +2018,21 @@ class PgVectorIndexInsertTasksTest : public PgVectorIndexTestBase {
   Result<tserver::MiniTabletServer*> TServerWithReplica(bool leader) {
     const auto table_id = VERIFY_RESULT(GetTableIDFromTableName("test"));
     tserver::MiniTabletServer* result = nullptr;
+    // Waits for a ready leader first: a peer that is not one could be a leader still starting up.
     RETURN_NOT_OK(WaitFor([this, &table_id, leader, &result]() -> Result<bool> {
-      for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-        const auto is_leader = VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
-                               consensus::LeaderStatus::LEADER_AND_READY;
-        if (is_leader == leader) {
+      const auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+      std::string leader_uuid;
+      for (const auto& peer : peers) {
+        if (VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+                consensus::LeaderStatus::LEADER_AND_READY) {
+          leader_uuid = peer->permanent_uuid();
+        }
+      }
+      if (leader_uuid.empty()) {
+        return false;
+      }
+      for (const auto& peer : peers) {
+        if ((peer->permanent_uuid() == leader_uuid) == leader) {
           result = cluster_->find_tablet_server(peer->permanent_uuid());
           return true;
         }
@@ -2055,12 +2065,28 @@ class PgVectorIndexInsertTasksTest : public PgVectorIndexTestBase {
     return Status::OK();
   }
 
-  Status CheckAllRowsIndexed() {
+  // Commits a single row transaction per row only after all of them wrote their intents, which
+  // take no insert tasks, so the tablet applies them one after another.
+  Status InsertInConcurrentTransactions(size_t num_rows) {
+    std::vector<PGConn> conns;
+    for (size_t i = 1; i <= num_rows; ++i) {
+      conns.push_back(VERIFY_RESULT(Connect()));
+      RETURN_NOT_OK(conns.back().StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      RETURN_NOT_OK(conns.back().ExecuteFormat(
+          "INSERT INTO test VALUES ($0, '$1')", i, AsString(Vector(i))));
+    }
+    for (auto& conn : conns) {
+      RETURN_NOT_OK(conn.CommitTransaction());
+    }
+    return Status::OK();
+  }
+
+  Status CheckAllRowsIndexed(size_t num_rows) {
     RETURN_NOT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
     const auto indexes = ListVectorIndexes(cluster_.get());
     SCHECK_EQ(indexes.size(), NumTabletServers(), IllegalState, "Wrong number of vector indexes");
     for (const auto& index : indexes) {
-      SCHECK_EQ(VERIFY_RESULT(index->TotalEntries()), kNumRows, IllegalState, index->ToString());
+      SCHECK_EQ(VERIFY_RESULT(index->TotalEntries()), num_rows, IllegalState, index->ToString());
     }
     return Status::OK();
   }
@@ -2077,7 +2103,7 @@ TEST_F(PgVectorIndexInsertTasksTest, FollowerWrites) {
   ASSERT_OK(CheckHeartbeats(*follower));
 
   unblock->CountDown();
-  ASSERT_OK(CheckAllRowsIndexed());
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
 }
 
 TEST_F(PgVectorIndexInsertTasksTest, FollowerTransactionApplies) {
@@ -2086,21 +2112,11 @@ TEST_F(PgVectorIndexInsertTasksTest, FollowerTransactionApplies) {
   auto unblock = BlockInsertPool(*follower);
   auto unblock_scope = ScopeExit([unblock] { unblock->CountDown(); });
 
-  // Committed one after another, so the follower reaches the limit on transaction applies.
-  std::vector<PGConn> conns;
-  for (size_t i = 1; i <= kNumRows; ++i) {
-    conns.push_back(ASSERT_RESULT(Connect()));
-    ASSERT_OK(conns.back().StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_OK(conns.back().ExecuteFormat(
-        "INSERT INTO test VALUES ($0, '$1')", i, AsString(Vector(i))));
-  }
-  for (auto& conn : conns) {
-    ASSERT_OK(conn.CommitTransaction());
-  }
+  ASSERT_OK(InsertInConcurrentTransactions(kNumRows));
   ASSERT_OK(CheckHeartbeats(*follower));
 
   unblock->CountDown();
-  ASSERT_OK(CheckAllRowsIndexed());
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
 }
 
 TEST_F(PgVectorIndexInsertTasksTest, LeaderWrites) {
@@ -2122,7 +2138,79 @@ TEST_F(PgVectorIndexInsertTasksTest, LeaderWrites) {
 
   unblock->CountDown();
   threads.JoinAll();
-  ASSERT_OK(CheckAllRowsIndexed());
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
+}
+
+// The leader admits the transactions while their intents take no insert tasks, then applies all of
+// them.
+TEST_F(PgVectorIndexInsertTasksTest, LeaderTransactionApplies) {
+  ASSERT_RESULT(MakeIndexAndWaitBackfill());
+  auto* leader = ASSERT_RESULT(TServerWithReplica(/* leader= */ true));
+  auto unblock = BlockInsertPool(*leader);
+  auto unblock_scope = ScopeExit([unblock] { unblock->CountDown(); });
+
+  ASSERT_OK(InsertInConcurrentTransactions(kNumRows));
+  ASSERT_OK(CheckHeartbeats(*leader));
+
+  unblock->CountDown();
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
+}
+
+// A write below the soft limit can still need more insert tasks than are left.
+TEST_F(PgVectorIndexInsertTasksTest, LeaderLargeBatch) {
+  auto conn = ASSERT_RESULT(MakeIndexAndWaitBackfill());
+  auto* leader = ASSERT_RESULT(TServerWithReplica(/* leader= */ true));
+  auto unblock = BlockInsertPool(*leader);
+  auto unblock_scope = ScopeExit([unblock] { unblock->CountDown(); });
+
+  ASSERT_OK(InsertRows(conn, 1, 1, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+  const size_t batch_size = kMaxInsertTasks * FLAGS_vector_index_task_size;
+  ASSERT_OK(InsertBatch(conn, 2, static_cast<int64_t>(batch_size)));
+  ASSERT_OK(CheckHeartbeats(*leader));
+
+  unblock->CountDown();
+  ASSERT_OK(CheckAllRowsIndexed(1 + batch_size));
+}
+
+class PgVectorIndexInsertTasksColocatedTest : public PgVectorIndexInsertTasksTest {
+ protected:
+  bool IsColocated() const override {
+    return true;
+  }
+};
+
+// The leader rejects writes only to the table whose vector index reached the soft limit, not to
+// the other tables of the tablet.
+TEST_F(PgVectorIndexInsertTasksColocatedTest, WriteToTableWithoutVectorIndex) {
+  auto conn = ASSERT_RESULT(MakeIndexAndWaitBackfill());
+  ASSERT_OK(conn.Execute("CREATE TABLE plain (k INT PRIMARY KEY)"));
+  auto* leader = ASSERT_RESULT(TServerWithReplica(/* leader= */ true));
+  // Destroyed after unblock_scope, so a failed check does not join the blocked insert.
+  TestThreadHolder threads;
+  auto unblock = BlockInsertPool(*leader);
+  auto unblock_scope = ScopeExit([unblock] { unblock->CountDown(); });
+
+  threads.AddThreadFunctor([this] {
+    auto vector_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(InsertRows(
+        vector_conn, 1, kNumRows, /* keep_vectors= */ false, NonTransactionalWrites::kTrue));
+  });
+  ASSERT_OK(WaitFor([this] {
+    for (const auto& index : ListVectorIndexes(cluster_.get(), ListPeersFilter::kLeaders)) {
+      if (index->InsertTasksSoftLimitReached()) {
+        return true;
+      }
+    }
+    return false;
+  }, 30s * kTimeMultiplier, "Vector index insert tasks reached the soft limit"));
+
+  // A rejected write would be retried until the statement times out.
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", 10 * kTimeMultiplier));
+  ASSERT_OK(conn.Execute("INSERT INTO plain VALUES (1)"));
+
+  unblock->CountDown();
+  threads.JoinAll();
+  ASSERT_OK(CheckAllRowsIndexed(kNumRows));
 }
 
 class PgVectorIndexBackendFlagTest : public YBTest {};

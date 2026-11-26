@@ -176,6 +176,8 @@ struct InsertOptions {
       rocksdb::Cache::ReservationMode::kAlways;
   // See vector_index::VectorLSMInsertContext::chunk_holds.
   vector_index::VectorLSMChunkHolds* chunk_holds = nullptr;
+  // See vector_index::VectorLSMInsertContext::wait_for_free_tasks.
+  bool wait_for_free_tasks = false;
 };
 
 class DocVectorIndex {
@@ -183,6 +185,7 @@ class DocVectorIndex {
   virtual ~DocVectorIndex() = default;
 
   virtual const TableId& table_id() const = 0;
+  virtual const TableId& indexed_table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
   virtual const PgVectorIdxOptionsPB& options() const = 0;

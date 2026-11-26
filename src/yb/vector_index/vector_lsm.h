@@ -81,6 +81,9 @@ struct VectorLSMInsertContext {
   // Deletions of vectors in any chunk. They take capacity of the chunk the insert goes to, which
   // keeps them until it is saved.
   std::span<const VectorLSMDeletion> deletions = {};
+  // Whether to wait while vector_index_max_insert_tasks are taken by other inserts that wait. An
+  // applied write must not wait: it runs under the Raft lock of the tablet.
+  bool wait_for_free_tasks = false;
 };
 
 template<IndexableVectorType Vector,
@@ -225,8 +228,8 @@ class VectorLSM {
   void CompleteShutdown();
   bool IsShuttingDown() const;
 
-  // Whether the allocated insert tasks reached vector_index_insert_tasks_soft_limit_percentage of
-  // vector_index_max_insert_tasks. Does not block, so it can be called under the Raft lock.
+  // Whether the insert tasks of inserts that do not wait for free tasks, i.e. of applied writes,
+  // reached vector_index_insert_tasks_soft_limit_percentage of vector_index_max_insert_tasks.
   bool InsertTasksSoftLimitReached() const;
 
   size_t NumImmutableChunks() const EXCLUDES(mutex_);

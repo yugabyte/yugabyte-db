@@ -30,6 +30,7 @@
 #include "yb/storage/frontier.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
@@ -57,16 +58,17 @@ DEFINE_RUNTIME_uint64(vector_index_task_size, 16,
     "size multiple tasks will be used to insert batch.");
 
 DEFINE_RUNTIME_uint64(vector_index_max_insert_tasks, 1000,
-    "Limit for number of insert subtask for vector index. "
-    "When this limit is reached, new inserts are blocked until necessary amount "
-    "of tasks is released.");
+    "Limit for number of insert subtask for vector index backfill. "
+    "When this limit is reached, new backfill inserts are blocked until necessary amount "
+    "of tasks is released. Inserts of applied writes do not wait, see "
+    "vector_index_insert_tasks_soft_limit_percentage.");
 
 DEFINE_RUNTIME_uint32(vector_index_insert_tasks_soft_limit_percentage, 50,
-    "Percentage of vector_index_max_insert_tasks at which a vector index starts holding back new "
-    "inserts without blocking: the tablet leader rejects new writes with a retryable error, and "
-    "followers postpone applying writes until the allocated insert tasks drop below it. Applying "
-    "a write that finds no free insert tasks waits for them while holding the Raft lock of the "
-    "tablet. 0 disables the soft limit.");
+    "Percentage of vector_index_max_insert_tasks at which the tablet leader rejects new writes to "
+    "a table with a vector index, with a retryable error, until the insert tasks of writes to the "
+    "index drop below it. Inserts of applied writes run under the Raft lock of the tablet, so "
+    "they never wait for insert tasks, and this is what bounds them. 0 disables the rejection.");
+DEFINE_validator(vector_index_insert_tasks_soft_limit_percentage, FLAG_RANGE_VALIDATOR(0, 100));
 
 DEFINE_RUNTIME_uint64(vector_index_max_merge_tasks, 100,
     "Limit for number of merge subtasks for vector index compaction. "
@@ -482,6 +484,10 @@ class VectorLSMInsertTask :
 
   uint64_t epoch() const { return epoch_; }
 
+  void set_waited_for_free_tasks(bool value) { waited_for_free_tasks_ = value; }
+
+  bool waited_for_free_tasks() const { return waited_for_free_tasks_; }
+
   void Add(VectorIndexEntry<Vector>&& entry) {
     entries_.push_back(std::move(entry));
   }
@@ -550,6 +556,7 @@ class VectorLSMInsertTask :
   InsertCallback insert_callback_;
   std::vector<VectorIndexEntry<Vector>> entries_;
   uint64_t epoch_ = 0;
+  bool waited_for_free_tasks_ = false;
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -644,11 +651,6 @@ class VectorLSMInsertRegistryBase
     return !active_tasks_.empty();
   }
 
-  // Reads without the lock, so the result can be stale.
-  size_t NumAllocatedTasks() const {
-    return allocated_tasks_.load(std::memory_order_relaxed);
-  }
-
   // Stops allocations as Shutdown does, and makes running and queued tasks skip the vectors they
   // have not inserted yet. Shutdown still waits for the pool to dequeue the queued ones.
   void Cancel() EXCLUDES(mutex_) {
@@ -713,8 +715,7 @@ class VectorLSMInsertRegistryBase
   // Changed under mutex_, so no allocation passes the check after Shutdown found no tasks
   // allocated. Tasks read it without the lock.
   std::atomic<InsertRegistryState> state_{InsertRegistryState::kRunning};
-  // Changed under mutex_. NumAllocatedTasks reads it without the lock.
-  std::atomic<size_t> allocated_tasks_{0};
+  size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
 };
@@ -730,30 +731,46 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
   VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
       : Base(Format("$0[I] ", log_prefix), thread_pool) {}
 
-  template <typename... Args>
-  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+  // An insert that waits for free tasks waits while the tasks of other such inserts would reach
+  // vector_index_max_insert_tasks. Inserts of applied writes run under the Raft lock of the
+  // tablet, so they do not wait, and are not counted against that limit. The tablet leader
+  // bounds them instead, see VectorLSM::InsertTasksSoftLimitReached.
+  Result<InsertTaskList> AllocateTasks(size_t num_tasks, bool wait_for_free_tasks)
+      EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
-    while (allocated_tasks_ &&
-            allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
+    while (wait_for_free_tasks && waiting_inserts_tasks_ &&
+           waiting_inserts_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
       // TODO(vector_index) Pass timeout here.
       if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
               std::cv_status::timeout) {
-        auto allocated_tasks = allocated_tasks_.load();
+        auto waiting_inserts_tasks = waiting_inserts_tasks_;
         lock.unlock();
         LOG_WITH_FUNC(WARNING)
-            << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
-            << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
+            << "Long wait to allocate " << num_tasks << " tasks, allocated: "
+            << waiting_inserts_tasks << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
         lock.lock();
       }
     }
 
-    auto tasks = VERIFY_RESULT(DoAllocateTasks(num_tasks, std::forward<Args>(args)...));
+    auto tasks = VERIFY_RESULT(DoAllocateTasks(num_tasks));
     for (auto& task : tasks) {
       // Stamp at allocate time so AdvanceEpochAndWait sees these tasks even if BindTasks is later.
       task.set_epoch(allocate_epoch_);
+      task.set_waited_for_free_tasks(wait_for_free_tasks);
     }
     tasks_in_current_epoch_ += num_tasks;
+    if (wait_for_free_tasks) {
+      waiting_inserts_tasks_ += num_tasks;
+    } else {
+      write_tasks_.fetch_add(num_tasks, std::memory_order_relaxed);
+    }
     return tasks;
+  }
+
+  // Tasks allocated by inserts that do not wait for free tasks. Reads without the lock, so the
+  // result can be stale.
+  size_t NumWriteTasks() const {
+    return write_tasks_.load(std::memory_order_relaxed);
   }
 
   // Waits for tasks that were already allocated when this was called. Inserts that allocate after
@@ -769,7 +786,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
         LOG_WITH_PREFIX(WARNING)
             << "Long wait for existing vector insert tasks: " << tasks_in_older_epochs_
             << " older-epoch, " << tasks_in_current_epoch_ << " current-epoch, "
-            << allocated_tasks_.load() << " allocated";
+            << allocated_tasks_ << " allocated";
       }
     }
   }
@@ -781,6 +798,13 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
     } else {
       DCHECK_GT(tasks_in_current_epoch_, 0);
       --tasks_in_current_epoch_;
+    }
+    if (task->waited_for_free_tasks()) {
+      DCHECK_GT(waiting_inserts_tasks_, 0);
+      --waiting_inserts_tasks_;
+    } else {
+      DCHECK_GT(write_tasks_.load(std::memory_order_relaxed), 0);
+      write_tasks_.fetch_sub(1, std::memory_order_relaxed);
     }
     allocated_tasks_cond_.notify_all();
   }
@@ -809,6 +833,9 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
   uint64_t allocate_epoch_ GUARDED_BY(mutex_) = 0;
   size_t tasks_in_current_epoch_ GUARDED_BY(mutex_) = 0;
   size_t tasks_in_older_epochs_ GUARDED_BY(mutex_) = 0;
+  size_t waiting_inserts_tasks_ GUARDED_BY(mutex_) = 0;
+  // Changed under mutex_. NumWriteTasks reads it without the lock.
+  std::atomic<size_t> write_tasks_{0};
 };
 
 // Registry for all active Vector LSM insert subtasks.
@@ -1706,7 +1733,8 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
   // save and hang CompleteShutdown, and its frontiers would claim vectors that were never inserted.
   typename InsertRegistry::InsertTaskList tasks;
   if (num_tasks) {
-    tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(num_tasks));
+    tasks = VERIFY_RESULT(
+        insert_registry_->AllocateTasks(num_tasks, context.wait_for_free_tasks));
     DCHECK_EQ(num_tasks, tasks.size());
   }
   auto release_tasks = CancelableScopeExit([this, &tasks] {
@@ -2747,7 +2775,7 @@ bool VectorLSM<Vector, DistanceResult>::InsertTasksSoftLimitReached() const {
   if (percentage == 0 || !insert_registry_) {
     return false;
   }
-  return insert_registry_->NumAllocatedTasks() * 100 >=
+  return insert_registry_->NumWriteTasks() * 100 >=
          FLAGS_vector_index_max_insert_tasks * percentage;
 }
 

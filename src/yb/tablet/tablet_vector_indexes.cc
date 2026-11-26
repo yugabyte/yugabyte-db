@@ -721,6 +721,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
       .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
+      .wait_for_free_tasks = true,
     };
     auto num_entries = entries().size();
     TEST_SYNC_POINT_CALLBACK("VectorIndexBackfillHelper::Flush:NumEntries", &num_entries);
@@ -1343,19 +1344,6 @@ bool TabletVectorIndexes::HasActiveBackfill() const {
     }
   }
   return false;
-}
-
-bool TabletVectorIndexes::InsertTasksSoftLimitReached() const {
-  if (!has_vector_indexes_.load(std::memory_order_acquire)) {
-    return false;
-  }
-  auto list = List();
-  if (!list) {
-    return false;
-  }
-  return std::ranges::any_of(*list, [](const auto& index) {
-    return index->InsertTasksSoftLimitReached();
-  });
 }
 
 HybridTime TabletVectorIndexes::AllowedHistoryCutoff() const {

@@ -333,6 +333,12 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
 
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
+// Inserts of applied writes do not wait for vector index insert tasks, as they run under the Raft
+// lock. So the leader rejects new writes to a table whose vector index has
+// vector_index_insert_tasks_soft_limit_percentage of vector_index_max_insert_tasks queued.
+Status CheckVectorIndexWriteThrottling(
+    const WriteRequestMsg& req, tablet::TabletPeer* tablet_peer);
+
 class CatalogVersionChecker {
  public:
   explicit CatalogVersionChecker(

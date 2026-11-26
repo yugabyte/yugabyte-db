@@ -398,12 +398,14 @@ template<vector_index::IndexableVectorType Vector,
 class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
-      const TableId& table_id, const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
+      const TableId& table_id, const TableId& indexed_table_id,
+      const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
       Slice indexed_table_key_prefix, TableWritesReverseMapping table_writes_reverse_mapping,
       DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
       : table_id_(table_id),
+        indexed_table_id_(indexed_table_id),
         indexed_table_key_prefix_(indexed_table_key_prefix),
         options_(options),
         stores_payload_(options.store_payload() || !table_writes_reverse_mapping),
@@ -419,6 +421,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   const TableId& table_id() const override {
     return table_id_;
+  }
+
+  const TableId& indexed_table_id() const override {
+    return indexed_table_id_;
   }
 
   bool StoresPayload() const override {
@@ -531,6 +537,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .chunk_size = insert_options.chunk_size,
       .reservation_mode = insert_options.reservation_mode,
       .chunk_holds = insert_options.chunk_holds,
+      .wait_for_free_tasks = insert_options.wait_for_free_tasks,
     };
     RETURN_NOT_OK(lsm_.Insert(lsm_entries, context));
     if (FLAGS_TEST_vector_index_duplicate_inserted_vectors && !lsm_entries.empty()) {
@@ -878,6 +885,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   const TableId table_id_;
+  const TableId indexed_table_id_;
   const KeyBuffer indexed_table_key_prefix_;
   const PgVectorIdxOptionsPB options_;
   const bool stores_payload_;
@@ -1018,7 +1026,8 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity) {
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
-      index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
+      index_info.table_id(), index_info.indexed_table_id(), index_info.vector_idx_options(),
+      hybrid_time, indexed_table_key_prefix,
       table_writes_reverse_mapping, std::move(vector_index_context), block_cache, mem_tracker,
       metric_entity);
   RETURN_NOT_OK(result->Open(log_prefix, storage_dir, split_generation, thread_pool_provider));

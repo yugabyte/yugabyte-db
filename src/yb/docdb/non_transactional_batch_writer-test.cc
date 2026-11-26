@@ -64,6 +64,7 @@ class CountingVectorIndex : public DocVectorIndex {
 
   // Unused on the external-apply vector-feed path.
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
+  const TableId& indexed_table_id() const override { LOG(FATAL) << "Unexpected call"; }
   const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }
   const std::string& path() const override { LOG(FATAL) << "Unexpected call"; }
   const DocVectorIndexContext& context() const override { LOG(FATAL) << "Unexpected call"; }
