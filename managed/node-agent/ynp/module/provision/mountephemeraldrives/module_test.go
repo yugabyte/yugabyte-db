@@ -948,6 +948,17 @@ func TestResolveOCIDrivesRefusesRequestedDisk(t *testing.T) {
 			fstab:     ociFstab("", "uuid-1"),
 			wantError: "Requested disk sdb holds the filesystem",
 		},
+		{
+			name: "multiple disks hold the same fstab UUID",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				{name: "sdb", tree: "sdb \n", uuid: "uuid-0"},
+				{name: "sdc", tree: "sdc \n", uuid: "uuid-0"},
+			},
+			requested: "sdb sdc",
+			fstab:     ociFstab("uuid-0", ""),
+			wantError: "Multiple devices hold filesystem UUID uuid-0 for /mnt/d0",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
