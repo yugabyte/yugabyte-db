@@ -385,6 +385,12 @@ YbcStatus YBCPgAlterTableIncrementSchemaVersion(YbcPgStatement handle);
 YbcStatus YBCPgAlterTableSetTableId(
     YbcPgStatement handle, const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid);
 
+// See AlterTableRequestPB.yb_online_schema_change_internal_ddl.
+YbcStatus YBCPgAlterTableSetOnlineSchemaChangeInternalDdl(YbcPgStatement handle);
+
+YbcStatus YBCPgAlterTableSetPgTableId(
+    YbcPgStatement handle, const YbcPgOid database_oid, const YbcPgOid pg_table_oid);
+
 YbcStatus YBCPgAlterTableSetSchema(YbcPgStatement handle, const char *schema_name);
 
 YbcStatus YBCPgExecAlterTable(YbcPgStatement handle);

@@ -3578,6 +3578,7 @@ _copyAlterTableStmt(const AlterTableStmt *from)
 	COPY_NODE_FIELD(cmds);
 	COPY_SCALAR_FIELD(objtype);
 	COPY_SCALAR_FIELD(missing_ok);
+	COPY_SCALAR_FIELD(yb_concurrent);
 
 	return newnode;
 }

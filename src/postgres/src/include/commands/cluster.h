@@ -52,4 +52,8 @@ extern void finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 							 List *changedIndexNames,
 							 List *changedIndexSplitOpts);
 
+extern void YbSwapRelationFiles(Oid r1, Oid r2, bool is_internal,
+								TransactionId frozenXid,
+								MultiXactId cutoffMulti);
+
 #endif							/* CLUSTER_H */

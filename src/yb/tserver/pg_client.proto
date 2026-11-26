@@ -383,6 +383,10 @@ message PgAlterTableRequestPB {
   // Used to setup the session in case the table is being altered in a
   // transaction block with transactional ddl enabled i.e. use_regular_transaction_block is true.
   PgPerformOptionsPB options = 12;
+  // See AlterTableRequestPB.yb_online_schema_change_internal_ddl.
+  bool yb_online_schema_change_internal_ddl = 13;
+  // See AlterTableRequestPB.pg_table_id.
+  bytes pg_table_id = 14;
 }
 
 message PgAlterTableResponsePB {

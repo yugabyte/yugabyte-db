@@ -131,6 +131,7 @@ DECLARE_int32(backfill_index_rate_rows_per_sec);
 DECLARE_int32(index_backfill_rpc_max_retries);
 DECLARE_uint64(online_schema_change_backfill_rows_per_chunk);
 DECLARE_uint32(TEST_online_schema_change_backfill_replay_chunks_per_tablet);
+DECLARE_bool(TEST_online_schema_change_backfill_pause_controller);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -1768,6 +1769,8 @@ TEST_F(PgMiniOnlineSchemaChangeLegacyDdlTest, OnlineSchemaChangeRequiresTransact
   ASSERT_NOK_STR_CONTAINS(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"), kError);
   ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT yb_finish_mirror_table(1)"), kError);
   ASSERT_NOK_STR_CONTAINS(conn.Fetch("SELECT yb_abort_mirror_table(1)"), kError);
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t1 CONCURRENTLY ADD COLUMN w INT DEFAULT 1"), kError);
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
 }
@@ -9580,6 +9583,382 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangePartitionedClonePartition
   ASSERT_EQ(ASSERT_RESULT(FetchPartRows(&dml_conn, "s")), expected);
   ASSERT_EQ(ASSERT_RESULT(CountUncomputed(&dml_conn, "s")), 0);
   ASSERT_EQ(ASSERT_RESULT(dml_conn.FetchRow<int64_t>("SELECT count(*) FROM s_other_new")), 1);
+}
+
+// A volatile default for a column no index covers. DML replayed before the copy reaches its rows
+// and chunks copied twice each compute their own value, and whichever write is newest wins.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyVolatileDefault) {
+  constexpr int kNumRows = 3000;
+  constexpr int kRowsPerChunk = 700;
+  constexpr uint32_t kReplaysPerTablet = 2;
+
+  const auto old_rows_per_chunk = FLAGS_online_schema_change_backfill_rows_per_chunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) = kRowsPerChunk;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_replay_chunks_per_tablet) =
+      kReplaysPerTablet;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = true;
+  auto se = ScopeExit([old_rows_per_chunk] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_rows_per_chunk) =
+        old_rows_per_chunk;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_replay_chunks_per_tablet) =
+        0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT, v TEXT, PRIMARY KEY (id ASC))"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 'v' || i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_v_idx ON t (v)"));
+
+  StringWaiterLogSink dropped_chunks("TEST: dropping the response of a chunk");
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    auto alter_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(alter_conn.Execute(
+        "ALTER TABLE t CONCURRENTLY ADD COLUMN u UUID NOT NULL DEFAULT gen_random_uuid()"));
+  });
+
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(conn.FetchRows<std::string>(
+        "SELECT status FROM pg_catalog.yb_online_schema_change"));
+    return !rows.empty() && rows[0] == "backfilling";
+  }, 30s, "Wait for the job to begin"));
+
+  // The controller is paused, so no chunk has run: every row below is replayed before it is
+  // copied.
+  auto dml_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(dml_conn.Execute("UPDATE t SET v = v || '!' WHERE id <= 100"));
+  ASSERT_OK(dml_conn.Execute("DELETE FROM t WHERE id BETWEEN 101 AND 200"));
+  ASSERT_OK(dml_conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 'v' || i FROM generate_series($0, $1) AS i",
+      kNumRows + 1, kNumRows + 100));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  thread_holder.JoinAll();
+  ASSERT_GE(dropped_chunks.GetEventCount(), kReplaysPerTablet);
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(DISTINCT u) FROM t")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t WHERE id BETWEEN 101 AND 200")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE v IS DISTINCT FROM "
+      "'v' || id || CASE WHEN id <= 100 THEN '!' ELSE '' END) FROM t")), 0);
+  ASSERT_RESULT(conn.Fetch("SELECT yb_index_check('t_v_idx'::regclass)"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t (id, v) VALUES (0, 'new')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t WHERE id = 0 AND u IS NOT NULL")), 1);
+}
+
+// Expressions the change-capture trigger cannot replay are refused when the job begins, before
+// anything is copied, and nothing is left behind.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyUnreplayableExpressionRefused) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 'a')"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_lower_v_idx ON t (lower(v))"));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE t_seq"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t CONCURRENTLY ADD COLUMN u UUID DEFAULT gen_random_uuid() UNIQUE"),
+      "does not support a volatile expression for indexed column \"u\"");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "ALTER TABLE t CONCURRENTLY ALTER COLUMN v TYPE TEXT USING (v || random()::text)"),
+      "does not support a volatile expression for indexed column \"v\"");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t CONCURRENTLY ADD COLUMN c BIGINT DEFAULT nextval('t_seq')"),
+      "does not support a sequence function in the expression for column \"c\"");
+  // A stable default would not rewrite the table, but a stable USING expression does.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "ALTER TABLE t CONCURRENTLY ALTER COLUMN v TYPE TEXT USING (v || now()::text)"),
+      "does not support a stable expression for column \"v\"");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute(
+          "ALTER TABLE t CONCURRENTLY ADD COLUMN w TEXT DEFAULT gen_random_uuid()::text || now()"),
+      "does not support a stable expression for column \"w\"");
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT last_value FROM t_seq")), 1);
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT is_called FROM t_seq")));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_proc WHERE proname LIKE 'yb_osc%'")), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN u UUID NOT NULL DEFAULT gen_random_uuid()"));
+}
+
+// The rewritten key would make distinct rows collide in the target. Begin refuses it from the
+// transform's body, so the statement fails at the start even with no row to copy.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyKeyChangeRefused) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id BIGINT PRIMARY KEY, v TEXT)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t CONCURRENTLY ALTER COLUMN id TYPE BIGINT USING id + 1"),
+      "cannot change the values of key column \"id\"");
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_proc WHERE proname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't'::regclass")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlySwapCutover) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (id INT PRIMARY KEY, v TEXT, n INT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, 'v' || i, i * 2 FROM generate_series(1, 500) AS i"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_v_idx ON t (v)"));
+
+  const auto oid_before = ASSERT_RESULT(conn.FetchRow<PGOid>("SELECT 't'::regclass::oid"));
+
+  const std::string alter_stmt =
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)";
+  ASSERT_OK(conn.Execute(alter_stmt));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<PGOid>("SELECT 't'::regclass::oid")), oid_before);
+  const auto how = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT command, cutover_mode FROM pg_catalog.yb_online_schema_change "
+      "ORDER BY job_id DESC LIMIT 1")));
+  ASSERT_EQ(how, (decltype(how){"ALTER TABLE CONCURRENTLY", "swap"}));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT query FROM pg_catalog.pg_yb_online_schema_change ORDER BY job_id DESC LIMIT 1")),
+      alter_stmt);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n IS DISTINCT FROM id * 20) FROM t")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM t WHERE v = 'v42'")), 42);
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_proc WHERE proname LIKE 'yb_osc%'")), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
+
+  // DDL-atomicity verification maps the swapped-in DocDB table back to pg_class through its
+  // pg_table_id, which must name t, not the dropped shadow.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t ADD COLUMN u2 UUID NOT NULL DEFAULT gen_random_uuid()"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE u2 IS NULL) FROM t")), 0);
+  // A failing ALTER is rolled back by the verifier.
+  ASSERT_NOK(conn.Execute("ALTER TABLE t ADD COLUMN nn INT NOT NULL"));
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_attribute WHERE attrelid = 't'::regclass AND attname = 'nn'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyConcurrentDml) {
+  constexpr int kNumRows = 2000;
+  constexpr int kNumThreads = 4;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (id INT PRIMARY KEY, v TEXT, n INT) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute(Format(
+      "INSERT INTO t SELECT i, 'v' || i, i * 2 FROM generate_series(1, $0) AS i", kNumRows)));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      auto dml_conn = ASSERT_RESULT(Connect());
+      while (!stop.load(std::memory_order_acquire)) {
+        const auto key = RandomUniformInt(1, kNumRows);
+        const auto value = RandomHumanReadableString(12);
+        const auto op = RandomUniformInt(0, 2);
+        if (op == 0) {
+          WARN_NOT_OK(dml_conn.Execute(Format(
+              "INSERT INTO t(id, v, n) VALUES ($0, '$1', $0 * 2) "
+              "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v", key + kNumRows, value)), "insert");
+        } else if (op == 1) {
+          WARN_NOT_OK(dml_conn.Execute(Format(
+              "UPDATE t SET v = '$1' WHERE id = $0", key, value)), "update");
+        } else {
+          WARN_NOT_OK(dml_conn.Execute(Format("DELETE FROM t WHERE id = $0", key)), "delete");
+        }
+      }
+    });
+  }
+
+  SleepFor(MonoDelta::FromMilliseconds(500 * kTimeMultiplier));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+  thread_holder.Stop();
+
+  // Every row written before the cutover, whether copied or replayed, went through the USING
+  // expression exactly once. The threads keep inserting until they are stopped, so a new row
+  // written after the cutover has n = id * 2.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FILTER (WHERE n IS DISTINCT FROM id * 20 AND "
+      "(id <= $0 OR n IS DISTINCT FROM id * 2)) FROM t", kNumRows))), 0);
+  const auto rows = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(DISTINCT id) FROM t")), rows);
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyNoRewriteFallback) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 'a')"));
+  // A constant default does not rewrite the table.
+  ASSERT_OK(conn.Execute("ALTER TABLE t CONCURRENTLY ADD COLUMN c INT DEFAULT 7"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT c FROM t WHERE id = 1")), 7);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyAlterColumnType) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, n INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, i * 2 FROM generate_series(1, 300) AS i"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+      "WHERE attrelid = 't'::regclass AND attname = 'n'")), "bigint");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT n FROM t WHERE id = 5")), 100);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n <> id * 20) FROM t")), 0);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyRejections) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 'a')"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  auto status = conn.Execute("ALTER TABLE t CONCURRENTLY ALTER COLUMN v TYPE VARCHAR(10)");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "cannot run inside a transaction block");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // Without a primary key the shadow would be keyed by ybrowid, which replay cannot recompute.
+  status = conn.Execute("ALTER TABLE t CONCURRENTLY DROP CONSTRAINT t_pkey");
+  ASSERT_NOK(status);
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyAlterIndexedColumnType) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, n INT) SPLIT INTO 2 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, i * 2 FROM generate_series(1, 300) AS i"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_n_idx ON t (n)"));
+
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+      "WHERE attrelid = 't_n_idx'::regclass AND attnum = 1")), "bigint");
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM t WHERE n = 100")), 5);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t WHERE n BETWEEN 0 AND 6000")), 300);
+  ASSERT_OK(conn.Execute("RESET enable_seqscan"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n <> id * 20) FROM t")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN w INT"));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyFailedCutoverIsRetried) {
+  constexpr auto kAlter =
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, v TEXT, n INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, 'v' || i, i * 2 FROM generate_series(1, 100) AS i"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_v_idx ON t (v)"));
+
+  ASSERT_OK(conn.Execute("SET yb_test_fail_osc_cutover = true"));
+  auto status = conn.Execute(kAlter);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "yb_test_fail_osc_cutover is set");
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "re-issue the same ALTER TABLE ... CONCURRENTLY statement");
+  ASSERT_OK(conn.Execute("RESET yb_test_fail_osc_cutover"));
+
+  // The cutover rolled back with its transaction, status change included.
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "ready");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+      "WHERE attrelid = 't'::regclass AND attname = 'n'")), "integer");
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("INSERT INTO t VALUES (101, 'v101', 202)"));
+
+  ASSERT_OK(conn.Execute(kAlter));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n IS DISTINCT FROM id * 20) FROM t")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM t WHERE v = 'v101'")), 101);
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyAsTableOwner) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_owner"));
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_other"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO osc_owner"));
+
+  ASSERT_OK(conn.Execute("SET ROLE osc_owner"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, n INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 200) AS i"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE NUMERIC USING (n::numeric)"));
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change WHERE status = 'finished'")), 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+      "WHERE attrelid = 't'::regclass AND attname = 'n'")), "numeric");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n <> id * 10) FROM t")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+
+  ASSERT_OK(conn.Execute("SET ROLE osc_other"));
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE TEXT"),
+      "must be owner of table t");
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change")), 2);
+
+  // yb_db_admin may ALTER any table, so it may also ALTER it concurrently.
+  ASSERT_OK(conn.Execute("CREATE ROLE osc_admin"));
+  ASSERT_OK(conn.Execute("GRANT yb_db_admin TO osc_admin"));
+  ASSERT_OK(conn.Execute("SET ROLE osc_admin"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE TEXT"));
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_yb_online_schema_change WHERE status = 'finished'")), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = 't'::regclass")), "osc_owner");
 }
 
 }  // namespace yb::pgwrapper

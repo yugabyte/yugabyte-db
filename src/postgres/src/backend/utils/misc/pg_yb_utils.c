@@ -496,6 +496,13 @@ char	   *yb_osc_backfill_partition_key = NULL;
 char	   *yb_osc_backfill_bfinstr = NULL;
 struct YbPgExecOutParam *yb_osc_backfill_out_param = NULL;
 bool		yb_osc_backfill_outer_started = false;
+int			yb_osc_internal_ddl_depth = 0;
+
+bool
+YbOscIsInternalDdl(void)
+{
+	return yb_osc_internal_ddl_depth > 0;
+}
 
 bool
 IsYugaByteEnabled()

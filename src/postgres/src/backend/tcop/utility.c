@@ -75,6 +75,7 @@
 
 /* YB includes */
 #include "commands/trigger.h"
+#include "commands/yb_alter_concurrently.h"
 #include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 #include "commands/yb_tablegroup.h"
@@ -1433,12 +1434,37 @@ ProcessUtilitySlow(ParseState *pstate,
 					}
 
 					/*
+					 * YB: ALTER TABLE ... CONCURRENTLY spans several
+					 * transactions, so it cannot run in a transaction block.
+					 * It takes only ShareUpdateExclusiveLock here; the driver
+					 * takes stronger locks for the brief begin and cutover
+					 * steps itself.
+					 */
+					if (atstmt->yb_concurrent)
+					{
+						if (atstmt->objtype != OBJECT_TABLE)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("CONCURRENTLY is only supported for ALTER TABLE")));
+						if (!yb_enable_alter_table_concurrently)
+							ereport(ERROR,
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("ALTER TABLE ... CONCURRENTLY is disabled"),
+									 errhint("Set yb_enable_alter_table_concurrently to true.")));
+						PreventInTransactionBlock(isTopLevel,
+												  "ALTER TABLE ... CONCURRENTLY");
+					}
+
+					/*
 					 * Figure out lock mode, and acquire lock.  This also does
 					 * basic permissions checks, so that we won't wait for a
 					 * lock on (for example) a relation on which we have no
 					 * permissions.
 					 */
-					lockmode = AlterTableGetLockLevel(atstmt->cmds);
+					if (atstmt->yb_concurrent)
+						lockmode = ShareUpdateExclusiveLock;
+					else
+						lockmode = AlterTableGetLockLevel(atstmt->cmds);
 					relid = AlterTableLookupRelation(atstmt, lockmode);
 
 					if (OidIsValid(relid))
@@ -1460,7 +1486,11 @@ ProcessUtilitySlow(ParseState *pstate,
 						EventTriggerAlterTableRelid(relid);
 
 						/* ... and do it */
-						AlterTable(atstmt, lockmode, &atcontext);
+						if (atstmt->yb_concurrent)
+							YbAlterTableConcurrently(atstmt, relid, lockmode,
+													 &atcontext);
+						else
+							AlterTable(atstmt, lockmode, &atcontext);
 
 						/* done */
 						EventTriggerAlterTableEnd();

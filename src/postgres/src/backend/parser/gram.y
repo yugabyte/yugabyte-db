@@ -2184,6 +2184,29 @@ AlterTableStmt:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
+		/* YB: ALTER TABLE <name> CONCURRENTLY <cmds> (online rewrite) */
+		|	ALTER TABLE relation_expr CONCURRENTLY alter_table_cmds
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+
+					n->relation = $3;
+					n->cmds = $5;
+					n->objtype = OBJECT_TABLE;
+					n->missing_ok = false;
+					n->yb_concurrent = true;
+					$$ = (Node *) n;
+				}
+		|	ALTER TABLE IF_P EXISTS relation_expr CONCURRENTLY alter_table_cmds
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+
+					n->relation = $5;
+					n->cmds = $7;
+					n->objtype = OBJECT_TABLE;
+					n->missing_ok = true;
+					n->yb_concurrent = true;
+					$$ = (Node *) n;
+				}
 		|	ALTER TABLE relation_expr partition_cmd
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);

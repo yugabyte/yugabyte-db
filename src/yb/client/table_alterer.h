@@ -91,6 +91,12 @@ class YBTableAlterer {
   // Set increment_schema_version to true.
   YBTableAlterer* set_increment_schema_version();
 
+  // See AlterTableRequestPB.yb_online_schema_change_internal_ddl.
+  YBTableAlterer* set_online_schema_change_internal_ddl();
+
+  // Set the table's pg_table_id. See AlterTableRequestPB.pg_table_id.
+  YBTableAlterer* set_pg_table_id(const std::string& pg_table_id);
+
   // Alters the table.
   //
   // The return value may indicate an error in the alter operation, or a
@@ -131,6 +137,10 @@ class YBTableAlterer {
   uint32_t sub_txn_id_ = kMinSubTransactionId;
 
   bool increment_schema_version_ = false;
+
+  bool online_schema_change_internal_ddl_ = false;
+
+  std::string pg_table_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
 };

@@ -1254,6 +1254,16 @@ YbcStatus YBCPgAlterTableSetTableId(
   return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
 }
 
+YbcStatus YBCPgAlterTableSetOnlineSchemaChangeInternalDdl(YbcPgStatement handle) {
+  return ToYBCStatus(pgapi->AlterTableSetOnlineSchemaChangeInternalDdl(handle));
+}
+
+YbcStatus YBCPgAlterTableSetPgTableId(
+    YbcPgStatement handle, const YbcPgOid database_oid, const YbcPgOid pg_table_oid) {
+  const PgObjectId pg_table_id(database_oid, pg_table_oid);
+  return ToYBCStatus(pgapi->AlterTableSetPgTableId(handle, pg_table_id));
+}
+
 YbcStatus YBCPgAlterTableSetSchema(YbcPgStatement handle, const char *schema_name) {
   return ToYBCStatus(pgapi->AlterTableSetSchema(handle, schema_name));
 }

@@ -1995,6 +1995,13 @@ YBCExecAlterTable(YbcPgStatement handle, Oid relationId)
 	{
 		if (IsYBRelationById(relationId))
 		{
+			/*
+			 * Every alter path goes through here, so this is the one place to
+			 * mark an online schema change lifecycle DDL, which the master
+			 * leaves out of DDL transaction verification.
+			 */
+			if (YbOscIsInternalDdl())
+				HandleYBStatus(YBCPgAlterTableSetOnlineSchemaChangeInternalDdl(handle));
 			HandleYBStatus(YBCPgExecAlterTable(handle));
 		}
 	}

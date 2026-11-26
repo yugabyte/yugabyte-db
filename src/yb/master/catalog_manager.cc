@@ -9268,6 +9268,12 @@ Status CatalogManager::AlterTableWithBatchTracker(
     has_changes = true;
   }
 
+  // Metadata-only, like the rename above. See AlterTableRequestPB.pg_table_id.
+  if (req->has_pg_table_id()) {
+    table_pb.set_pg_table_id(req->pg_table_id());
+    has_changes = true;
+  }
+
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
@@ -9353,7 +9359,13 @@ Status CatalogManager::AlterTableWithBatchTracker(
         table_pb.clear_ysql_ddl_txn_verifier_state();
         need_remove_ddl_state = true;
       }
-    } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE) {
+    } else if (req->has_transaction() && table->GetTableType() == PGSQL_TABLE_TYPE &&
+               !req->yb_online_schema_change_internal_ddl()) {
+      // The job's own alters do not enroll in DDL-txn verification. At a swap cutover they reach
+      // DocDB tables that may still carry the shadow's pg_table_id, and the verifier would look up
+      // the shadow's dropped OID in pg_class (PgSchemaChecker -> TableInfo::GetPgTableOid) and
+      // hit a LOG(FATAL) on the master leader. These alters are metadata-only, and the cutover's
+      // atomicity comes from the transactional relfilenode swap in the PG catalog.
       uint32_t active_sub_txn_id = req->sub_transaction_id();
       // Add a new ysql_ddl_txn_verifier_state if:
       // 1. None exists

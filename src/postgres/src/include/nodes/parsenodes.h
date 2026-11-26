@@ -1948,6 +1948,7 @@ typedef struct AlterTableStmt
 	List	   *cmds;			/* list of subcommands */
 	ObjectType	objtype;		/* type of object */
 	bool		missing_ok;		/* skip error if table missing */
+	bool		yb_concurrent;	/* YB: ALTER TABLE ... CONCURRENTLY */
 } AlterTableStmt;
 
 typedef enum AlterTableType

@@ -1481,6 +1481,25 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 }
 
 /*
+ * YB: swap_relation_files for two ordinary (non-mapped, non-catalog)
+ * relations, for the ALTER TABLE ... CONCURRENTLY cutover.
+ */
+void
+YbSwapRelationFiles(Oid r1, Oid r2, bool is_internal,
+					TransactionId frozenXid, MultiXactId cutoffMulti)
+{
+	Oid			mapped_tables[4];
+
+	memset(mapped_tables, 0, sizeof(mapped_tables));
+	swap_relation_files(r1, r2, false /* target_is_pg_class */ ,
+						false /* swap_toast_by_content */ , is_internal,
+						frozenXid, cutoffMulti, mapped_tables);
+	if (OidIsValid(mapped_tables[0]))
+		elog(ERROR, "cannot swap relation files of mapped relation %u",
+			 mapped_tables[0]);
+}
+
+/*
  * Remove the transient table that was built by make_new_heap, and finish
  * cleaning up (including rebuilding all indexes on the old heap).
  *

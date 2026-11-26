@@ -13,6 +13,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_alter_concurrently.o \
 	yb_builtin.o \
 	yb_cmds.o \
 	yb_profile.o \

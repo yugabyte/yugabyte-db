@@ -32,6 +32,7 @@ YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
+YbAlterTableCapture
 YbAnalyzeRelEnd_hook_type
 YbArgRefContext
 YbAsh
@@ -149,6 +150,7 @@ YbMergeScanStreamColInfo
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
+YbNewColumnValue
 YbNewRelMapEntry
 YbNextRangeResult
 YbNotifsPollerInitStatus
@@ -160,6 +162,8 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscBeginOptions
+YbOscCutoverMode
 YbOscForeignKey
 YbOscJob
 YbOscReplayState
@@ -169,6 +173,8 @@ YbOscTargetOrder
 YbOscTransform
 YbOscTransformCheck
 YbOscTriggerSpec
+YbOscTxnState
+YbOscVarRemapContext
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState

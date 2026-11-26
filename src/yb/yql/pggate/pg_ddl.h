@@ -268,6 +268,11 @@ class PgAlterTable final : public PgStatementLeafBase<PgDdl, StmtOp::kAlterTable
 
   Status SetTableId(const PgObjectId& table_id);
 
+  // See AlterTableRequestPB.yb_online_schema_change_internal_ddl.
+  Status SetOnlineSchemaChangeInternalDdl();
+
+  Status SetPgTableId(const PgObjectId& pg_table_id);
+
   Status SetReplicaIdentity(const char identity_type);
 
   Status SetSchema(const char *schema_name);
