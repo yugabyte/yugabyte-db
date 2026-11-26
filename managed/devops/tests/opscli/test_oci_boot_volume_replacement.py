@@ -368,6 +368,85 @@ class TestDeleteVolumes(TestCase):
         self.admin.delete_volume.assert_called_once_with("detached")
 
 
+class TestUpdateDisk(TestCase):
+    def setUp(self):
+        self.admin = new_admin()
+        self.blockstorage = self.admin._blockstorage_client
+        self.admin._compute_client.list_volume_attachments.return_value = [
+            SimpleNamespace(lifecycle_state="ATTACHED", volume_id="d0"),
+            SimpleNamespace(lifecycle_state="DETACHED", volume_id="old"),
+            SimpleNamespace(lifecycle_state="ATTACHED", volume_id="d1"),
+        ]
+        self.cloud = object.__new__(OciCloud)
+        self.cloud.admin = self.admin
+        self.cloud.get_host_info = MagicMock(return_value={"id": INSTANCE_ID})
+        self.args = SimpleNamespace(
+            search_pattern="yb-n1", volume_size=150, mount_points="/mnt/d0", num_volumes=1)
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    def test_waits_for_each_attached_volume_to_have_the_new_size(self, sleep):
+        # The volume can still read AVAILABLE at the old size right after the update.
+        self.blockstorage.get_volume.side_effect = [
+            MagicMock(data=SimpleNamespace(lifecycle_state=state, size_in_gbs=size))
+            for state, size in [("AVAILABLE", 100), ("AVAILABLE", 100), ("PROVISIONING", 100),
+                                ("AVAILABLE", 150)] * 2]
+
+        self.cloud.update_disk(self.args)
+
+        self.assertEqual(
+            [("d0", 150), ("d1", 150)],
+            [(volume_id, details.size_in_gbs)
+             for (volume_id, details), _ in self.blockstorage.update_volume.call_args_list])
+        self.assertEqual(8, self.blockstorage.get_volume.call_count)
+        self.assertEqual(4, sleep.call_count)
+
+    def test_leaves_a_volume_that_already_has_the_new_size(self):
+        self.blockstorage.get_volume.return_value.data = SimpleNamespace(
+            lifecycle_state="AVAILABLE", size_in_gbs=150)
+
+        self.cloud.update_disk(self.args)
+
+        self.blockstorage.update_volume.assert_not_called()
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 0, 300])
+    def test_resize_that_never_finishes_times_out(self, _, sleep):
+        self.blockstorage.get_volume.return_value.data = SimpleNamespace(
+            lifecycle_state="PROVISIONING", size_in_gbs=100)
+
+        with self.assertRaises(YBOpsRuntimeError) as ctx:
+            self.cloud.update_disk(self.args)
+        self.assertIn("Timeout waiting for volume d0", str(ctx.exception))
+        self.blockstorage.update_volume.assert_called_once()
+
+    @patch("ybops.utils.remote_shell.RemoteShell")
+    def test_expand_file_system_rescans_device_before_growing(self, remote_shell_class):
+        remote_shell = remote_shell_class.return_value
+        remote_shell.check_exec_command.side_effect = [
+            "/dev/disk/by-uuid/data-disk\n", "/dev/sdb\n", "", ""]
+
+        self.cloud.expand_file_system(self.args, {"ssh_host": "10.0.0.1"})
+
+        commands = [c.args[0] for c in remote_shell.check_exec_command.call_args_list]
+        self.assertEqual("findmnt -rn -M /mnt/d0 -o SOURCE", commands[0])
+        self.assertEqual("readlink -f -- /dev/disk/by-uuid/data-disk", commands[1])
+        self.assertIn("dd iflag=direct if=/dev/sdb of=/dev/null count=1", commands[2])
+        self.assertIn("echo 1 > /sys/class/block/sdb/device/rescan;", commands[2])
+        # 150 GiB in 512-byte sectors.
+        self.assertIn("want=314572800;", commands[2])
+        self.assertIn("$(cat /sys/class/block/sdb/size)", commands[2])
+        self.assertEqual("sudo xfs_growfs /mnt/d0", commands[3])
+
+    @patch("ybops.utils.remote_shell.RemoteShell")
+    def test_expand_file_system_rejects_unexpected_device(self, remote_shell_class):
+        remote_shell = remote_shell_class.return_value
+        remote_shell.check_exec_command.side_effect = ["/dev/mapper/vg-lv\n", "/dev/dm-0\n"]
+
+        with self.assertRaises(YBOpsRuntimeError):
+            self.cloud.expand_file_system(self.args, {"ssh_host": "10.0.0.1"})
+        self.assertEqual(2, remote_shell.check_exec_command.call_count)
+
+
 class TestOciReplaceRootVolumeMethod(TestCase):
     def test_replaces_boot_volume_between_stop_and_start(self):
         method = object.__new__(OciReplaceRootVolumeMethod)

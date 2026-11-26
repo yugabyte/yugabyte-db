@@ -1261,8 +1261,14 @@ class OciCloudAdmin:
 
     def update_volume_size(self, volume_id, new_size_in_gbs):
         from oci.core.models import UpdateVolumeDetails
-        update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
-        self.blockstorage_client.update_volume(volume_id, update_details)
+        # A retry finds the volume already resized, and OCI only accepts a larger size.
+        if self.blockstorage_client.get_volume(volume_id).data.size_in_gbs < new_size_in_gbs:
+            update_details = UpdateVolumeDetails(size_in_gbs=new_size_in_gbs)
+            self.blockstorage_client.update_volume(volume_id, update_details)
+        # The resize is asynchronous.
+        self._wait_for_volume_state(
+            volume_id, "AVAILABLE",
+            ready_check=lambda volume: volume.size_in_gbs >= new_size_in_gbs)
 
     def list_volumes_by_tags(self, tags, compartment_id=None):
         comp_id = compartment_id or self.compartment_id
@@ -1369,12 +1375,13 @@ class OciCloudAdmin:
         raise YBOpsRuntimeError(
             "Timeout waiting for work request {} to finish".format(work_request_id))
 
-    def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
+    def _wait_for_volume_state(self, volume_id, target_state, timeout=300, ready_check=None):
         start_time = time.time()
         while time.time() - start_time < timeout:
             volume = self.blockstorage_client.get_volume(volume_id).data
             if volume.lifecycle_state == target_state:
-                return volume
+                if ready_check is None or ready_check(volume):
+                    return volume
             time.sleep(5)
         raise YBOpsRuntimeError(
             "Timeout waiting for volume {} to reach state {}".format(volume_id, target_state))
