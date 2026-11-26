@@ -516,7 +516,7 @@ void CatalogManager::ReseedCDCSDKUnprocessedMapForHiddenTables() {
           continue;
         }
       }
-      if (WillCDCSDKStreamAcceptTable(stream_info, table_info)) {
+      if (WillCDCSDKStreamAcceptTable(stream_info, table_info, nullptr)) {
         LOG(INFO) << "Re-adding hidden table " << table.id() << " to the unprocessed CDCSDK map";
         LockGuard lock(cdcsdk_unprocessed_table_mutex_);
         namespace_to_cdcsdk_unprocessed_table_map_[ns_id].insert(table.id());
@@ -2172,7 +2172,7 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
                table, table->LockForRead(), /*check_schema=*/true,
                stream_info->IsTablesWithoutPrimaryKeyAllowed(),
                stream_info->DetectPublicationChangesImplicitly()) &&
-           CDCSDKStreamTakesNewTable(*stream_info, *table))) {
+           CDCSDKStreamTakesNewTable(*stream_info, *table, nullptr))) {
         streams.emplace_back(stream_info);
       }
     }
@@ -6434,11 +6434,13 @@ bool CatalogManager::IsTablePartOfCDCSDK(
 
   // A table created (or rewritten) after the stream is not in cdcsdk_tables_to_stream_map_ until
   // the CDC bg thread registers it, but it is already logically part of the stream.
-  return !GetCDCSDKStreamsWaitingForTable(table_id, require_logical_replication).empty();
+  return !GetCDCSDKUnprocessedStreamsForTable(
+              table_id, RequireLogicalReplication(require_logical_replication))
+              .empty();
 }
 
-std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsWaitingForTable(
-    const TableId& table_id, bool require_logical_replication) const {
+std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKUnprocessedStreamsForTable(
+    const TableId& table_id, RequireLogicalReplication require_logical_replication) const {
   std::unordered_set<xrepl::StreamId> result;
   auto table_info = GetTableInfoUnlocked(table_id);
   if (!table_info) {
@@ -6460,8 +6462,8 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsWaitingForTa
     if (require_logical_replication && !IsCdcLogicalReplicationStream(*stream_info)) {
       continue;
     }
-    if (WillCDCSDKStreamAcceptTable(stream_info, table_info)) {
-      VLOG(1) << "Table " << table_id << " is waiting to be added to CDCSDK stream " << stream_id;
+    if (WillCDCSDKStreamAcceptTable(stream_info, table_info, nullptr)) {
+      VLOG(1) << "Table " << table_id << " is unprocessed for CDCSDK stream " << stream_id;
       result.insert(stream_id);
     }
   }
@@ -7073,16 +7075,16 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     // For each hidden tablet, get all the streams on it and related info about the streams.
     std::unordered_set<xrepl::StreamId> stream_ids;
     bool are_cdc_logical_replication_streams;
-    bool has_waiting_streams = false;
+    bool has_unprocessed_streams = false;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
       // Streams the CDC bg thread has not registered the table with yet still need its data.
-      has_waiting_streams =
+      has_unprocessed_streams =
           hidden_tablet.hide_reason_ == HiddenReplicationTabletInfo::HideReason::kTableDeleted &&
-          !GetCDCSDKStreamsWaitingForTable(
-               hidden_tablet.table_id_, true /* require_logical_replication */)
+          !GetCDCSDKUnprocessedStreamsForTable(
+               hidden_tablet.table_id_, RequireLogicalReplication::kTrue)
                .empty();
       are_cdc_logical_replication_streams =
           VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
@@ -7194,8 +7196,8 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     }
 
     if (count_tablet_streams_to_delete + count_streams_already_deleted == stream_ids.size()) {
-      if (has_waiting_streams) {
-        TEST_SYNC_POINT("DoProcessCDCSDKTabletDeletion::RetainedForWaitingStreams");
+      if (has_unprocessed_streams) {
+        TEST_SYNC_POINT("DoProcessCDCSDKTabletDeletion::RetainedForUnprocessedStreams");
         continue;
       }
       tablets_to_delete.insert(tablet_id);
@@ -7227,14 +7229,14 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
     const auto& [tablet_id, hide_time] = tablet_hide_pair;
     std::unordered_set<xrepl::StreamId> stream_ids;
     bool are_cdc_logical_replication_streams;
-    bool has_waiting_streams = false;
+    bool has_unprocessed_streams = false;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
       // Streams the CDC bg thread has not registered the table with yet still need its data.
-      has_waiting_streams =
-          !GetCDCSDKStreamsWaitingForTable(table_id, true /* require_logical_replication */)
+      has_unprocessed_streams =
+          !GetCDCSDKUnprocessedStreamsForTable(table_id, RequireLogicalReplication::kTrue)
                .empty();
       are_cdc_logical_replication_streams =
           VERIFY_RESULT(AreCdcLogicalReplicationStreams(stream_ids));
@@ -7248,7 +7250,7 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
       min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
     }
 
-    if (has_waiting_streams) {
+    if (has_unprocessed_streams) {
       continue;
     }
 

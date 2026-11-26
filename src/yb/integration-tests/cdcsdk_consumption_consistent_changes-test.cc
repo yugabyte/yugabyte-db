@@ -6566,10 +6566,13 @@ void CDCSDKConsumptionConsistentChangesTest::RunDroppedTableAwaitsRegistrationTe
   ASSERT_OK(InitVirtualWAL(stream_id, {}, kVWALSessionId1));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
+  auto skip_flag_cleanup = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = false;
+  });
 
   std::atomic<int> retained_hits{0};
   SyncPoint::GetInstance()->SetCallBack(
-      "DoProcessCDCSDKTabletDeletion::RetainedForWaitingStreams",
+      "DoProcessCDCSDKTabletDeletion::RetainedForUnprocessedStreams",
       [&retained_hits](void*) { ++retained_hits; });
   SyncPoint::GetInstance()->EnableProcessing();
   auto sync_point_cleanup = ScopeExit([] {
