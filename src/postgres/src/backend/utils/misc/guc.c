@@ -7418,11 +7418,6 @@ static struct config_string ConfigureNamesString[] =
 		{"default_tablespace", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default tablespace to create tables and indexes in."),
 			gettext_noop("An empty string selects the database's default tablespace."),
-			/*
-			 * YB: TODO: unstick. ConnMgr replay skips this check hook, so a
-			 * dropped tablespace no longer fails the replay.
-			 */
-			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_tablespace,
