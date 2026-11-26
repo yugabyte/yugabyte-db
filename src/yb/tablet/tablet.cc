@@ -576,8 +576,8 @@ std::string MakeTabletLogPrefix(
 // log_ht - apply raft operation hybrid time.
 // commit_ht - transaction commit hybrid time.
 // So frontiers should cover range of those times.
-// log_ht is not known for applies resumed after a restart, and HybridTime::kInvalid would be the
-// largest one, so their frontiers cover commit_ht only.
+// log_ht is invalid for an apply resumed from a state written by a version that did not store it,
+// and HybridTime::kInvalid would be the largest one, so their frontiers cover commit_ht only.
 void InitFrontiers(
     OpId op_id, HybridTime log_ht, HybridTime commit_ht, docdb::ConsensusFrontiers& frontiers) {
   set_op_id(op_id, &frontiers);
@@ -3195,14 +3195,17 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 
   OpId min_op_id = OpId::Max();
   OpId max_op_id = OpId::Min();
-  HybridTime min_ht = HybridTime::kMax;
-  HybridTime max_ht = HybridTime::kMin;
+  HybridTime min_ht;
+  HybridTime max_ht;
 
   for (const auto& metadata : metadatas) {
     min_op_id = std::min(min_op_id, metadata.apply_op_id);
     max_op_id = std::max(max_op_id, metadata.apply_op_id);
-    min_ht = std::min({min_ht, metadata.commit_ht, metadata.log_ht});
-    max_ht = std::max({max_ht, metadata.commit_ht, metadata.log_ht});
+    DCHECK(metadata.commit_ht) << metadata.ToString();
+    for (auto ht : {metadata.commit_ht, metadata.log_ht}) {
+      min_ht.MakeAtMost(ht);
+      max_ht.MakeAtLeast(ht);
+    }
   }
 
   docdb::ConsensusFrontiers frontiers;
