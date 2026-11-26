@@ -296,22 +296,25 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .getSpec()
             .getClusters()
             .get(0);
+    List<PlacementCloud> clouds =
+        List.of(
+            placementFromProvider(providerUuid, 0, 3, 2),
+            placementFromProvider(duplicate.getUuid(), 0, 3, 1));
+    // replication_factor is required for every AZ, including those holding no replica.
+    clouds.stream()
+        .flatMap(c -> c.getRegionList().stream())
+        .flatMap(r -> r.getAzList().stream())
+        .filter(az -> az.getReplicationFactor() == null)
+        .forEach(az -> az.setReplicationFactor(0));
     ClusterAddSpec clusterAddSpec =
-        new ClusterAddSpec()
-            .clusterType(ClusterAddSpec.ClusterTypeEnum.READ_REPLICA)
-            .numNodes(6)
+        getReadReplicaClusterAddSpec()
             .providerSpecs(primaryClusterSpec.getProviderSpecs())
             .addPartitionsSpecItem(
                 new ClusterPartitionSpec()
                     .name("default")
                     .defaultPartition(true)
                     .replicationFactor(3)
-                    .placement(
-                        new ClusterPlacementSpec()
-                            .cloudList(
-                                List.of(
-                                    placementFromProvider(providerUuid, 0, 3, 2),
-                                    placementFromProvider(duplicate.getUuid(), 0, 3, 1)))));
+                    .placement(new ClusterPlacementSpec().cloudList(clouds)));
 
     ApiException ex =
         assertThrows(

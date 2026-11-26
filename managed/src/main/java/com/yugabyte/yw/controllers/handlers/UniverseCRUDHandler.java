@@ -1535,7 +1535,6 @@ public class UniverseCRUDHandler {
     for (Cluster cluster : taskParams.clusters) {
       validateUserTags(customer, cluster.userIntent);
       GFlagsUtil.validateGFlagValues(cluster.userIntent);
-      PlacementInfoUtil.validateNoZoneDuplicates(cluster.getOverallPlacement());
     }
     validateOciInstanceTags(taskParams);
     if (u.isYbcEnabled()) {
