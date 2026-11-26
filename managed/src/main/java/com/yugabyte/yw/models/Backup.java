@@ -1141,6 +1141,45 @@ public class Backup extends Model {
   }
 
   /**
+   * Sets the expiry of every completed backup of a schedule after its retention is edited, with the
+   * same anchors as onCompletion() and onIncrementCompletion().
+   */
+  public static void recomputeExpiryForSchedule(
+      UUID customerUUID, UUID scheduleUUID, long timeBeforeDelete) {
+    if (timeBeforeDelete <= 0L) {
+      return;
+    }
+    TransactionUtil.doInTxn(
+        () -> {
+          List<Backup> backups = fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID);
+          Map<UUID, Long> lastIncrementTimeMs = new HashMap<>();
+          for (Backup backup : backups) {
+            if (backup.isIncrementalBackup()) {
+              lastIncrementTimeMs.merge(
+                  backup.getBaseBackupUUID(), backup.getCreateTime().getTime(), Math::max);
+            }
+          }
+          for (Backup backup : backups) {
+            Date anchor =
+                backup.getCompletionTime() != null
+                    ? backup.getCompletionTime()
+                    : backup.getCreateTime();
+            long expiryMs = anchor.getTime() + timeBeforeDelete;
+            // A base is kept until its latest increment expires.
+            Long lastIncrementMs = lastIncrementTimeMs.get(backup.getBackupUUID());
+            if (lastIncrementMs != null) {
+              expiryMs = Math.max(expiryMs, lastIncrementMs + timeBeforeDelete);
+            }
+            backup.setExpiry(new Date(expiryMs));
+            // onIncrementCompletion() reads this when the chain grows.
+            backup.getBackupInfo().timeBeforeDelete = timeBeforeDelete;
+            backup.save();
+          }
+        },
+        TransactionUtil.DEFAULT_RETRY_CONFIG);
+  }
+
+  /**
    * Get restorable backup with closest create time after the restore timestamp.
    *
    * @param customerUUID The customer UUID

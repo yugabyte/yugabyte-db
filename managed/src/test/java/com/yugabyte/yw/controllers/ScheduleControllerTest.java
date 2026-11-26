@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -408,6 +410,40 @@ public class ScheduleControllerTest extends FakeDBApplication {
         Json.fromJson(resultJson.get("taskParams"), BackupRequestParams.class);
     assertEquals(259200000L, requestParams.timeBeforeDelete);
     assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditScheduleRetentionSetsBackupExpiry() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackupRequestParams(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            TaskType.CreateBackup);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    Backup backup =
+        ModelFactory.createCompletedScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID(),
+            scheduleUUID);
+    assertNull(backup.getExpiry());
+    EditBackupScheduleParams params = new EditBackupScheduleParams();
+    params.frequency = 2 * 86400L * 1000L;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
+
+    // Without timeBeforeDelete the backups keep their expiry.
+    assertOk(editSchedule(scheduleUUID, defaultCustomer.getUuid(), Json.toJson(params)));
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertNull(backup.getExpiry());
+
+    // 30 days overflows an int.
+    params.timeBeforeDelete = 30 * 86400L * 1000L;
+    assertOk(editSchedule(scheduleUUID, defaultCustomer.getUuid(), Json.toJson(params)));
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(
+        backup.getCompletionTime().getTime() + params.timeBeforeDelete,
+        backup.getExpiry().getTime());
   }
 
   @Test
