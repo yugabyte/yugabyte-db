@@ -58,10 +58,10 @@ import play.libs.Json;
  *
  * <p>Create runs on the request only the checks that need no storage or universe RPC, saves the
  * schedule in state Creating and returns the v1 CreateBackupSchedule task, which checks the storage
- * and makes the schedule Active (or Error when it fails). Status codes, unlike v1: 400 for an
- * invalid spec, 404 for a missing universe or storage config, and 409 with a code for a name
- * conflict (also when the DB unique constraint catches a concurrent create) or a storage config
- * that isn't Active.
+ * and makes the schedule Active. When the create fails, the task removes the schedule so the name
+ * is free for a retry. Status codes, unlike v1: 400 for an invalid spec, 404 for a missing universe
+ * or storage config, and 409 with a code for a name conflict (also when the DB unique constraint
+ * catches a concurrent create) or a storage config that isn't Active.
  */
 @Singleton
 public class BackupScheduleHandler {

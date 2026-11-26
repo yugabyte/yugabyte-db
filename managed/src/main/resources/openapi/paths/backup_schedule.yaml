@@ -22,9 +22,10 @@
       universe for YB-Controller backups. It upgrades YB-Controller on the universe when it is
       older than YBA's, and for point_in_time_restore sets the history retention the backups need.
       It then makes the schedule ACTIVE. If the task fails, the schedule is removed, so the name is
-      free for a retry; the failed task's error says why. Only YSQL and YCQL schedules can be
-      created; each keyspaces entry needs its keyspace. Retry with the same Idempotency-Key to get the task of a request whose response
-      was lost.
+      free for a retry; the failed task's error says why. If YBA restarts while the create task
+      runs, the schedule is left in ERROR; delete it before creating one with the same name. Only
+      YSQL and YCQL schedules can be created; each keyspaces entry needs its keyspace. Retry with
+      the same Idempotency-Key to get the task of a request whose response was lost.
     tags:
       - Backup Schedule
     requestBody:

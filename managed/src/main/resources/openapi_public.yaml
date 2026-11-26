@@ -350,13 +350,16 @@ paths:
         It then makes the schedule ACTIVE. If the task fails, the schedule is removed,
         so the name is
 
-        free for a retry; the failed task''s error says why. Only YSQL and YCQL schedules
-        can be
+        free for a retry; the failed task''s error says why. If YBA restarts while
+        the create task
 
-        created; each keyspaces entry needs its keyspace. Retry with the same Idempotency-Key
-        to get the task of a request whose response
+        runs, the schedule is left in ERROR; delete it before creating one with the
+        same name. Only
 
-        was lost.
+        YSQL and YCQL schedules can be created; each keyspaces entry needs its keyspace.
+        Retry with
+
+        the same Idempotency-Key to get the task of a request whose response was lost.
 
         '
       tags:
