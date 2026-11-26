@@ -446,17 +446,6 @@ if [[ $local_build_only == "false" &&
     exit_code=$?
     set -e
 
-    # Exit code 126 with "Argument list too long" means that ssh did not start, because
-    # YB_ENCODED_REMOTE_CMD_LINE is longer than the kernel allows for one environment variable
-    # (MAX_ARG_STRLEN).  Every host would fail the same way, so do not retry.
-    if [[ $exit_code -eq 126 ]] && grep -q 'Argument list too long' "$stderr_path"; then
-      remote_build_flush_stderr_file
-      log "Not retrying on another host: the command line, with ${#compiler_args[@]}" \
-          "arguments, is longer than the kernel allows for the environment variable that" \
-          "carries it to a build worker (YB_ENCODED_REMOTE_CMD_LINE)."
-      break
-    fi
-
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
     # Exit code 127: "remote_cmd.sh: No such file or directory"
     # Exit code 141: SIGPIPE
@@ -467,7 +456,14 @@ if [[ $local_build_only == "false" &&
     #
     # "file not recognized: file truncated" could happen when re-running an interrupted build
     # while the old compiler process is still running.
-    if [[ $exit_code -eq 126 ||
+    #
+    # Exit code 126 with "Argument list too long" means that a program, ssh here or a command on the
+    # worker, could not start because its arguments and environment exceed the kernel's limits.
+    # Every host would fail the same way, so do not retry.
+    if [[ $exit_code -eq 126 ]] && grep -q 'Argument list too long' "$stderr_path"; then
+      log "Not retrying on another host: a program could not start because its arguments or" \
+          "environment exceed the kernel's limits, as the error below shows."
+    elif [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
           $exit_code -eq 141 ||
           $exit_code -eq 254 ||
