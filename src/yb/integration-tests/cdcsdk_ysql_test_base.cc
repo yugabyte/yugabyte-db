@@ -1794,8 +1794,8 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
         RpcController get_changes_rpc;
         auto status = cdc_proxy_->GetChanges(change_req, &resp, &get_changes_rpc);
 
-        if (status.ok() && change_resp.has_error()) {
-          status = StatusFromPB(change_resp.error().status());
+        if (status.ok() && resp.has_error()) {
+          status = StatusFromPB(resp.error().status());
         }
 
         // Retry only on LeaderNotReadyToServe or NotFound errors
@@ -1804,6 +1804,7 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
           return false;
         }
 
+        RETURN_NOT_OK(status);
         change_resp = resp;
         return true;
       },

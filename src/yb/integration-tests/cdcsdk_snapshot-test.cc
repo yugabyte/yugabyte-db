@@ -69,8 +69,6 @@ TEST_F(CDCSDKYsqlTest, InsertBeforeAfterSnapshot) {
 // Begin transaction, insert one row, commit transaction, enable snapshot
 // Expected records: (DDL, READ).
 TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
-  // Leader moves by the load balancer make GetChanges fail with "Not leader".
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -91,9 +89,19 @@ TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}};
 
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
-  GetChangesResponsePB change_resp_updated =
-      ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+  // The load balancer may move the tablet leader during the snapshot: retry on "Not leader" and
+  // let cdc_proxy_'s tserver forward to the new leader.
+  GetChangesRequestPB change_req;
+  PrepareChangeRequest(&change_req, stream_id, tablets, 0, 0, 0, "", -1);
+  change_req.set_serve_as_proxy(true);
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req));
+  const auto& cp = change_resp.cdc_sdk_checkpoint();
+  change_req.Clear();
+  PrepareChangeRequest(
+      &change_req, stream_id, tablets, 0, cp.index(), cp.term(), cp.key(), cp.write_id(),
+      cp.snapshot_time());
+  change_req.set_serve_as_proxy(true);
+  GetChangesResponsePB change_resp_updated = ASSERT_RESULT(GetChangesFromCDC(change_req));
 
   uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
   for (uint32_t i = 0; i < record_size; ++i) {
