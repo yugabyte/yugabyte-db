@@ -13,7 +13,6 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -61,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -471,7 +471,8 @@ public class SupportBundleUtil {
 
     String fileErrorMessage =
         errorMessage + System.lineSeparator() + ExceptionUtils.getStackTrace(e);
-    writeStringToFile(fileErrorMessage, localFilePath);
+    // The exception message can quote the failed command's output.
+    writeKubectlOutputToFile(fileErrorMessage, localFilePath);
   }
 
   public enum KubernetesResourceType {
@@ -554,15 +555,19 @@ public class SupportBundleUtil {
     }
   }
 
+  /**
+   * For the metadata JSON, which the tree redaction has already handled; it can still carry the
+   * telemetry exporter credentials (PLAT-22613). Raw kubectl/helm output goes through
+   * writeKubectlOutputToFile instead, which also redacts the gflags.
+   */
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
+    return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
+  }
+
+  private boolean write(String content, String localFilePath, boolean append) {
     try {
-      // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
-      // inline the telemetry exporter credentials (PLAT-22613).
       FileUtils.writeStringToFile(
-          new File(localFilePath),
-          RedactingService.redactTelemetryCredentials(message),
-          Charset.forName("UTF-8"),
-          append);
+          new File(localFilePath), content, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
@@ -572,6 +577,31 @@ public class SupportBundleUtil {
 
   public boolean writeStringToFile(String message, String localFilePath) {
     return writeStringToFile(message, localFilePath, false);
+  }
+
+  /**
+   * Writes raw kubectl/helm output, which carries the universe gflags ("helm get values" always,
+   * and the pod specs as container args with charts before PLAT-13974) and the telemetry
+   * credentials. The gflags are redacted as KubernetesManager redacts kubectl output for the log,
+   * with the passes that can run past an unclosed value one line at a time. That redaction cuts an
+   * HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
+   * redaction has already handled.
+   */
+  public boolean writeKubectlOutputToFile(String output, String localFilePath) {
+    String redacted;
+    try {
+      // NativeKubernetesManager returns null for these commands; the file is left empty.
+      redacted =
+          RedactingService.redactTelemetryCredentials(
+              RedactingService.redactShellOutput(
+                  Objects.toString(output, ""), RedactionTarget.LOGS));
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed to redact the output for {}; leaving it out of the bundle.", localFilePath, e);
+      write("Output withheld: redaction failed, see the YBA log.\n", localFilePath, false);
+      return false;
+    }
+    return write(redacted, localFilePath, false);
   }
 
   /**
@@ -638,7 +668,7 @@ public class SupportBundleUtil {
 
         String resourceOutput =
             kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
-        writeStringToFile(resourceOutput, localFilePath);
+        writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         logK8sError(
             String.format(
@@ -951,7 +981,8 @@ public class SupportBundleUtil {
       JsonNode jsonData =
           RedactingService.filterSecretFields(
               Json.toJson(pagedList.getList()), RedactionTarget.LOGS);
-      jsonData = redactAuditAdditionalDetails(jsonData, universe);
+      jsonData =
+          RedactingService.redactAuditAdditionalDetails(jsonData, universe, gFlagsValidation);
       writeStringToFile(
           jsonData.toPrettyString(), Paths.get(destDir, "audit.json").toString(), true);
     } while (pagedList.hasNext());
@@ -1059,7 +1090,7 @@ public class SupportBundleUtil {
             .forEach(path -> redactSensitiveFile(path, universe));
       }
     } catch (Exception e) {
-      log.warn("Error while redacting sensitive files in bundle: {}", e);
+      log.warn("Error while redacting sensitive files in bundle: ", e);
     }
   }
 
@@ -1085,90 +1116,7 @@ public class SupportBundleUtil {
               ? "PostgreSQL log"
               : "server.conf");
     } catch (Exception e) {
-      log.warn("Error while redacting file {}: {}", filePath, e);
-    }
-  }
-
-  /**
-   * Redacts sensitive information from a single server.conf file. Uses
-   * RedactingService.redactLdapPasswordsInString() for redaction.
-   *
-   * @param filePath The path to the server.conf file
-   * @param universe The universe object for which support bundle is created
-   */
-  private void redactServerConfFile(Path filePath, Universe universe) {
-    try {
-      String content = new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8);
-      String ybVersion = getYbSoftwareVersion(universe);
-      String redactedContent =
-          RedactingService.redactSensitiveInfoInString(content, ybVersion, gFlagsValidation);
-      Files.write(filePath, redactedContent.getBytes(StandardCharsets.UTF_8));
-      log.debug("Redacted sensitive information from server.conf file: {}", filePath);
-    } catch (Exception e) {
-      log.warn("Error while redacting server.conf file {}: {}", filePath, e);
-    }
-  }
-
-  /**
-   * Redacts sensitive gflags in the additionalDetails section of audit logs. Redacts the "old",
-   * "new", and "default" fields for any gflag that has the sensitive_info tag.
-   *
-   * @param jsonData The audit log JSON data
-   * @param universe Universe object for the universe whose support bundle is being created
-   * @return The JSON data with additional redaction applied
-   */
-  private JsonNode redactAuditAdditionalDetails(JsonNode jsonData, Universe universe) {
-    try {
-      if (jsonData.isArray()) {
-        for (JsonNode auditEntry : jsonData) {
-          if (auditEntry.has("additionalDetails")) {
-            JsonNode additionalDetails = auditEntry.get("additionalDetails");
-            if (additionalDetails.has("gflags")) {
-              JsonNode gflags = additionalDetails.get("gflags");
-              redactGflagsSection(gflags, universe);
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.warn("Error while redacting audit additionalDetails: {}", e);
-    }
-    return jsonData;
-  }
-
-  /**
-   * Redacts sensitive gflags in the gflags section. Handles both master and tserver gflags arrays.
-   * Redacts any gflag that has the sensitive_info tag.
-   *
-   * @param gflags The gflags JSON node
-   * @param universe The universe object for which support bundle is created
-   */
-  private void redactGflagsSection(JsonNode gflags, Universe universe) {
-    try {
-      String ybSoftwareVersion = getYbSoftwareVersion(universe);
-      // Get sensitive gflags dynamically from RedactingService
-      Set<String> sensitiveGflags =
-          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
-
-      for (String gflagType : new String[] {"tserver", "master"}) {
-        if (gflags.has(gflagType) && gflags.get(gflagType).isArray()) {
-          for (JsonNode flag : gflags.get(gflagType)) {
-            if (flag.has("name")) {
-              String flagName = flag.get("name").asText();
-              if (sensitiveGflags.contains(flagName)) {
-                ObjectNode flagNode = (ObjectNode) flag;
-                for (String field : new String[] {"old", "new", "default"}) {
-                  if (flag.has(field)) {
-                    flagNode.put(field, RedactingService.SECRET_REPLACEMENT);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.warn("Error while redacting gflags section: {}", e);
+      log.warn("Error while redacting file {}: ", filePath, e);
     }
   }
 }

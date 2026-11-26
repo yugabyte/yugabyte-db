@@ -38,6 +38,7 @@ import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
 import api.v2.models.UniverseSoftwareUpgradePrecheckReq;
 import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
+import api.v2.models.UniverseSpec;
 import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.UniverseUpdateProxyConfig;
@@ -45,6 +46,8 @@ import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
 import api.v2.models.YBAValidationResponse;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.models.Audit;
 import java.io.InputStream;
 import java.util.UUID;
@@ -57,8 +60,37 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   @Inject private UniverseUpgradesManagementHandler universeUpgradeHandler;
 
   @Override
+  public Result getUniverseHttp(Http.Request request, UUID cUUID, UUID uniUUID) throws Exception {
+    Universe universe = getUniverse(request, cUUID, uniUUID);
+    omitAdminPasswords(universe);
+    return redactedOk(universe);
+  }
+
+  @Override
   public Universe getUniverse(Request request, UUID cUUID, UUID uniUUID) throws Exception {
     return universeHandler.getUniverse(cUUID, uniUUID);
+  }
+
+  // The generated getUniverseHttp serializes the universe unredacted, gflags included. Redact it
+  // the way PlatformResults.withData redacts v1 universe responses.
+  private Result redactedOk(Object response) {
+    return ok(
+        RedactingService.filterSecretFields(mapper.valueToTree(response), RedactionTarget.APIS));
+  }
+
+  // The admin passwords are writeOnly in the v2 schema, and the v1 rules in redactedOk match them
+  // only by their v1 names, ysqlPassword and ycqlPassword.
+  private static void omitAdminPasswords(Universe universe) {
+    UniverseSpec spec = universe.getSpec();
+    if (spec == null) {
+      return;
+    }
+    if (spec.getYsql() != null) {
+      spec.getYsql().setPassword(null);
+    }
+    if (spec.getYcql() != null) {
+      spec.getYcql().setPassword(null);
+    }
   }
 
   @Override

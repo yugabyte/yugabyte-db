@@ -71,13 +71,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -1798,11 +1798,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               String newAZOverridesStr = newAZsOverrides.get(az);
               Map<String, Object> newAZOverrides = HelmUtils.convertYamlToMap(newAZOverridesStr);
               if (!curAZOverrides.equals(newAZOverrides)) {
+                // The overrides can hold secrets, and this goes to the client and the log.
                 throw new IllegalArgumentException(
                     String.format(
                         "Kubernetes overrides can't be modified during the edit operation. "
                             + "For AZ %s, previous overrides: %s, new overrides: %s",
-                        az, curAZOverridesStr, newAZOverridesStr));
+                        az,
+                        KubernetesOverridesRedactor.redact(curAZOverridesStr),
+                        KubernetesOverridesRedactor.redact(newAZOverridesStr)));
               }
             }
           }
@@ -2137,8 +2140,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**

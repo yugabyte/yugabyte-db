@@ -43,6 +43,8 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -441,6 +443,11 @@ public class UniverseCRUDHandler {
     }
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
+    }
+    // A universe UUID that doesn't exist yet configures a new universe.
+    if (taskParams.getUniverseUUID() != null
+        && Universe.maybeGet(taskParams.getUniverseUUID()).isPresent()) {
+      Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
     }
     Cluster cluster = getClusterFromTaskParams(taskParams);
     if (taskParams.clusterOperation == ClusterOperationType.CREATE
@@ -853,6 +860,10 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
 
@@ -2489,7 +2500,10 @@ public class UniverseCRUDHandler {
   public UUID tlsConfigUpdate(
       Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
 
-    LOG.info("tlsConfigUpdate: {}", Json.toJson(CommonUtils.maskObject(taskParams)));
+    LOG.info(
+        "tlsConfigUpdate: {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(taskParams)), RedactionTarget.LOGS));
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -2622,7 +2636,10 @@ public class UniverseCRUDHandler {
     } catch (JsonProcessingException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+    LOG.info(
+        "CertsRotateParams : {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(certsRotateParams)), RedactionTarget.LOGS));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
@@ -2945,7 +2962,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change master gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curMasterGFlags, curIntent),
+                    redactGFlags(newMasterGFlags, curIntent)));
           }
           if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
             throw new PlatformServiceException(
@@ -2953,7 +2972,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change tserver gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curTserverGFlags, curIntent),
+                    redactGFlags(newTserverGFlags, curIntent)));
           }
 
           if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
@@ -3001,6 +3022,10 @@ public class UniverseCRUDHandler {
         newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
+  }
+
+  private Map<String, String> redactGFlags(Map<String, String> gflags, UserIntent userIntent) {
+    return RedactingService.redactGFlags(gflags, userIntent.ybSoftwareVersion, gFlagsValidation);
   }
 
   private void verifyDeviceUnchanged(

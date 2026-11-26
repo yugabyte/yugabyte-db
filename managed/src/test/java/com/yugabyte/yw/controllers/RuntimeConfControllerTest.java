@@ -38,6 +38,7 @@ import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -457,7 +458,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         (SettableRuntimeConfigFactory) runtimeConfigFactory;
     assertFalse(settableFactory.getCachedConfigs().isEmpty());
     setCloudEnabled();
-    assertTrue(settableFactory.getCachedConfigs().isEmpty());
+    // Setting runtime config using API also fetches a runtime config value needed by redaction.
+    // Thus, that value invokes caching at global level. So we should assert that the narrow scope
+    // runtime config caches (non-global) are cleared after the setKey is called.
+    boolean hasNonGlobalKeys =
+        settableFactory.getCachedConfigs().keySet().stream()
+            .anyMatch(uuid -> !uuid.equals(GLOBAL_SCOPE_UUID));
+    assertFalse("Stale scopes should be evicted after update", hasNonGlobalKeys);
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
@@ -502,6 +509,27 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
     return route(request);
+  }
+
+  @Test
+  public void gflagsApiRedactionFollowsItsKey() {
+    // Off by default on this release branch.
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    assertFalse(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    assertEquals(OK, setKey(key, "true", GLOBAL_SCOPE_UUID).status());
+    assertTrue(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    assertEquals(OK, setKey(key, "false", GLOBAL_SCOPE_UUID).status());
+    assertFalse(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+  }
+
+  @Test
+  public void gflagsApiRedactionFollowsItsKeyReset() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    assertEquals(OK, setKey(key, "true", GLOBAL_SCOPE_UUID).status());
+    assertTrue(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
+    // Deleting the key returns it to its default.
+    assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, key).status());
+    assertFalse(RedactingService.isGFlagsSensitiveDataApiRedactionEnabled());
   }
 
   @Test
