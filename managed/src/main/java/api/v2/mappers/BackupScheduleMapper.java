@@ -123,7 +123,7 @@ public interface BackupScheduleMapper {
             .state(toBackupScheduleState(schedule.getStatus()))
             .backupRunning(backupRunning)
             .lastBackupTime(dates.toOffsetDateTime(lastBackupTime))
-            .isKubernetesOperatorControlled(schedule.isKubernetesOperatorControlled());
+            .isKubernetesOperatorControlled(schedule.isOperatorManaged());
     // As the v1 schedule list shows them: due times only for an active schedule, and a backup
     // that is overdue (backlog) runs at the next scheduler run.
     if (schedule.getStatus() == Schedule.State.Active) {

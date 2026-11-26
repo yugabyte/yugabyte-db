@@ -246,6 +246,17 @@ public class Schedule extends Model {
     this.save();
   }
 
+  /**
+   * Whether the Kubernetes operator manages the schedule. The column is set only when a schedule is
+   * imported into the operator; a schedule the operator creates from a BackupSchedule custom
+   * resource is known by the resource recorded in its task params.
+   */
+  @JsonIgnore
+  public boolean isOperatorManaged() {
+    return isKubernetesOperatorControlled
+        || (taskParams != null && taskParams.hasNonNull("kubernetesResourceDetails"));
+  }
+
   public void updateNextScheduleTaskTime(Date nextScheduleTime) {
     this.nextScheduleTaskTime = nextScheduleTime;
     save();

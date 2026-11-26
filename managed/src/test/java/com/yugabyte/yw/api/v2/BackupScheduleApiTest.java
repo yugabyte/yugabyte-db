@@ -30,6 +30,7 @@ import com.yugabyte.yba.v2.client.models.TimeUnitType;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -279,6 +280,34 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertEquals(BackupScheduleState.BackupSchedulePaused, got.getInfo().getState());
     assertNull(got.getInfo().getNextBackupTime());
     assertNull(got.getInfo().getLastBackupTime());
+  }
+
+  @Test
+  public void reportsOperatorManagedSchedules() throws ApiException {
+    // Created by the operator from a BackupSchedule custom resource: only the params say so.
+    BackupRequestParams params = new BackupRequestParams();
+    params.storageConfigUUID = UUID.randomUUID();
+    params.setUniverseUUID(UUID.randomUUID());
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
+    params.setKubernetesResourceDetails(new KubernetesResourceDetails("nightly", "yb"));
+    Schedule fromResource =
+        Schedule.create(customer.getUuid(), params, TaskType.CreateBackup, DAY, null);
+    // Imported into the operator: the column is set.
+    Schedule imported =
+        createBackupSchedule(customer, "imported", UUID.randomUUID(), UUID.randomUUID());
+    imported.setIsKubernetesOperatorControlled(true);
+    Schedule plain = createBackupSchedule(customer, "plain", UUID.randomUUID(), UUID.randomUUID());
+
+    assertTrue(operatorManaged(fromResource));
+    assertTrue(operatorManaged(imported));
+    assertFalse(operatorManaged(plain));
+  }
+
+  private boolean operatorManaged(Schedule schedule) throws ApiException {
+    return backupScheduleApi
+        .getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID())
+        .getInfo()
+        .getIsKubernetesOperatorControlled();
   }
 
   @Test
