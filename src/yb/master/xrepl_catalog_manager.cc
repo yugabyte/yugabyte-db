@@ -5735,10 +5735,10 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
     SetReplicationSlotCatalogBarrierResponsePB* resp, rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing SetReplicationSlotCatalogBarrier request from " << RequestorString(rpc)
             << ": " << req->ShortDebugString();
+  // Not gated on cdc_enable_dynamic_schema_changes: the barrier is set before finalize, when that
+  // AutoFlag is still off on a universe that started before 2026.1.
   SCHECK(
-      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-          FLAGS_cdc_enable_dynamic_schema_changes,
-      IllegalState,
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication, IllegalState,
       "Replication slots can't detect publication changes implicitly on this universe");
   SCHECK(
       !FLAGS_ysql_yb_enable_replication_slot_transactional_ddl, IllegalState,

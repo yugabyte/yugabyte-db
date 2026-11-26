@@ -219,8 +219,10 @@ class CdcUpgradeTest : public UpgradeTestBase {
     ExternalMiniClusterOptions opts;
     opts.num_masters = 3;
     opts.num_tablet_servers = 3;
+    // Makes 2026.1 create pub-refresh slots. Older versions don't have the flag and create only
+    // pub-refresh slots.
     for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
-      flags->push_back(Format("--$0=false", kImplicitFlag));
+      AddUnDefOkAndSetFlag(*flags, kImplicitFlag, "false");
     }
     ASSERT_OK(StartClusterInOldVersion(opts));
     ASSERT_OK(PrepareTableWithData());
@@ -243,14 +245,17 @@ class CdcUpgradeTest : public UpgradeTestBase {
   void TestImplicitSlotDecodesTxnDdlAfterUpgrade();
   void TestPausedPubRefreshSlotConvertedToImplicit();
 
-  // 2026.1 allows USE_SNAPSHOT only inside a transaction.
+  // NOEXPORT_SNAPSHOT works on every version: 2026.1 allows USE_SNAPSHOT only inside a transaction,
+  // and 2024.2 allows EXPORT_SNAPSHOT only with a preview flag.
   Status CreatePublicationAndSlots(const std::vector<std::string>& slot_names) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
     // pgoutput doesn't support YB's default replica identity, CHANGE.
     RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY DEFAULT", kTableName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE PUBLICATION $0 FOR ALL TABLES", kPubName));
+    auto repl_conn = VERIFY_RESULT(ConnectToDBWithReplication(kDbName));
     for (const auto& slot : slot_names) {
-      RETURN_NOT_OK(CreateReplicationSlotWithExportSnapshot(slot));
+      RETURN_NOT_OK(repl_conn.FetchFormat(
+          "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput NOEXPORT_SNAPSHOT", slot));
     }
     return Status::OK();
   }
@@ -487,12 +492,15 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   thread_holder.JoinAll();
   const auto [barrier_ht, restart_ht] = ASSERT_RESULT(GetBarrierAndRestartTime(kSlot));
   ASSERT_EQ(restart_ht, barrier_ht);
+  // The sys catalog retention barriers have to survive master restarts until the prepare.
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
 
+  // A major YSQL upgrade, as from 2024.2, allows DDL only after finalize.
+  ASSERT_OK(FinalizeUpgrade());
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
 
-  ASSERT_OK(FinalizeUpgrade());
   ASSERT_OK(RunYbAdmin("prepare_replication_slots_for_transactional_ddl", ""));
   ASSERT_NOK_STR_CONTAINS(
       StreamAndAcknowledge(kUnpausedSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
@@ -515,6 +523,11 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   expected_rows.push_back("28,value_28");
   ASSERT_OK(CheckNoRowsLost(
       ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
+}
+
+// cdc_enable_dynamic_schema_changes is promoted only at finalize when upgrading from 2024.2.
+TEST_F(CdcUpgradeTest, PausedPubRefreshSlotConvertedToImplicit) {
+  TestPausedPubRefreshSlotConvertedToImplicit();
 }
 
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
