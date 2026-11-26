@@ -1745,7 +1745,7 @@ run_remote_cmd() {
     "$executable"
   )
   # remote_cmd.sh reads the argument count and the arguments from stdin, each followed by NUL.
-  printf '%s\0' "$#" "$@" | (
+  printf '%s\0' "$#" "$@" 2>/dev/null | (
     if debugging_remote_compilation; then
       exec 2>&1
       set -x

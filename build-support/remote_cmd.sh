@@ -43,7 +43,7 @@ fi
 # with only some of its arguments.  read returns an argument only once its NUL arrives, so a stream
 # cut inside the last argument also comes up short.  No argument can contain NUL, because each one
 # becomes a C string in the exec below.
-IFS= read -r -d '' expected_count
+IFS= read -r -d '' expected_count || expected_count=
 args=()
 while IFS= read -r -d '' arg; do
   args+=( "$arg" )
