@@ -283,8 +283,8 @@ yb_user_manager_memlock() {
 
 # Best effort: make the yugabyte user manager apply the memlock default.
 # earlyoom works without the higher memlock (it only cannot lock its memory), so
-# nothing here fails provisioning: if the limit cannot be applied, a warning is
-# logged and the run goes on.
+# if the limit cannot be applied, a warning is logged and the run goes on. The one
+# failure is a manager that was stopped and cannot be started again.
 # The manager cannot give its units more than the hard memlock pam gave it at
 # start, so it is restarted when that is too low. Restarting stops every
 # user-level unit (yb-node-agent, node_exporter, earlyoom), so it is done only
@@ -320,10 +320,26 @@ restart_yb_user_manager_for_memlock() {
     return 0
   fi
   echo "${unit} memlock ${hard} is below ${memlock_bytes}; restarting it."
-  if ! systemctl restart "$unit"; then
-    echo "WARNING: failed to restart ${unit} to apply memlock; user-level services" \
-      "keep memlock ${hard}."
-    return 0
+  # Not systemctl restart: stop returns once the unit is inactive, which can be before its
+  # cgroup is removed, and a start then fails with "Failed to attach to cgroup ...: Device or
+  # resource busy". Same sequence as ConfigureRootCgroups.
+  systemctl stop "$unit" || true
+  for _ in $(seq 1 30); do
+    [[ -d "/sys/fs/cgroup/user.slice/user-${yb_uid}.slice/${unit}" ||
+      -d "/sys/fs/cgroup/systemd/user.slice/user-${yb_uid}.slice/${unit}" ]] || break
+    sleep 1
+  done
+  for attempt in $(seq 1 10); do
+    systemctl reset-failed "$unit" 2>/dev/null || true
+    systemctl start "$unit" || true
+    systemctl is-active --quiet "$unit" && break
+    echo "Waiting for ${unit} to start (attempt ${attempt})"
+    sleep 2
+  done
+  # Not best effort: every user-level service, including the node agent, is down without it.
+  if ! systemctl is-active --quiet "$unit"; then
+    echo "Failed to start ${unit} after stopping it to apply memlock"
+    exit 1
   fi
   hard=$(yb_user_manager_memlock "$yb_uid") || hard=0
   if [[ "$hard" != -1 && "$hard" -lt "$memlock_bytes" ]]; then

@@ -125,7 +125,7 @@ const ybUID = "4242"
 //   - active: present when user@<uid>.service is active.
 //   - memlock, memlock_after: the manager's hard memlock before and after a restart, in bytes or
 //     -1; a missing memlock file means it cannot be read.
-//   - restart_fails: present to make the restart fail.
+//   - start_fails: present to make every start fail.
 //   - reexec_fails: present to make the daemon-reexec fail.
 //   - cgroup: stands in for /proc/self/cgroup.
 //   - calls: the systemctl and su commands run, one per line.
@@ -147,8 +147,10 @@ func userManagerEnv(t *testing.T) (stateDir string, env []string) {
 echo "systemctl $*" >> "$STATE_DIR/calls"
 case "$1" in
   is-active) [[ -f "$STATE_DIR/active" ]] ;;
-  restart)
-    [[ -f "$STATE_DIR/restart_fails" ]] && exit 1
+  stop) rm -f "$STATE_DIR/active" ;;
+  start)
+    [[ -f "$STATE_DIR/start_fails" ]] && exit 1
+    touch "$STATE_DIR/active"
     cp "$STATE_DIR/memlock_after" "$STATE_DIR/memlock"
     ;;
   show) cat "$STATE_DIR/main_pid" 2>/dev/null || echo 0 ;;
@@ -160,7 +162,8 @@ esac
 	return stateDir, env
 }
 
-// Applying the memlock is best effort: no case fails provisioning.
+// Applying the memlock is best effort; only a manager that was stopped and cannot be started
+// again fails provisioning.
 func TestRestartYbUserManagerForMemlock(t *testing.T) {
 	const nodeAgentCgroup = "0::/user.slice/user-" + ybUID + ".slice/user@" + ybUID +
 		".service/app.slice/yb-node-agent.service\n"
@@ -170,10 +173,11 @@ func TestRestartYbUserManagerForMemlock(t *testing.T) {
 		active       bool
 		memlock      string // Empty: the limit cannot be read.
 		memlockAfter string
-		restartFails bool
+		startFails   bool
 		reexecFails  bool
 		cgroup       string
 		wantRestart  bool
+		wantFail     bool
 		wantReexec   bool
 		wantOutput   string
 	}{
@@ -238,13 +242,14 @@ func TestRestartYbUserManagerForMemlock(t *testing.T) {
 			wantOutput:   "WARNING: user@" + ybUID + ".service memlock is still 65536 after restart",
 		},
 		{
-			name:         "restart fails",
-			active:       true,
-			memlock:      "65536",
-			restartFails: true,
-			cgroup:       sshSessionCgroup,
-			wantRestart:  true,
-			wantOutput:   "WARNING: failed to restart",
+			name:        "manager does not start again",
+			active:      true,
+			memlock:     "65536",
+			startFails:  true,
+			cgroup:      sshSessionCgroup,
+			wantRestart: true,
+			wantFail:    true,
+			wantOutput:  "Failed to start user@" + ybUID + ".service after stopping it",
 		},
 	}
 	run, _ := render(t, false /*systemLevel*/, false /*isPreflightCheck*/)
@@ -265,6 +270,7 @@ grep() {
   done
   command grep "${args[@]}"
 }
+sleep() { :; }
 restart_yb_user_manager_for_memlock
 `
 	for _, tc := range tests {
@@ -280,8 +286,8 @@ restart_yb_user_manager_for_memlock
 			if tc.memlockAfter != "" {
 				writeFile(t, filepath.Join(stateDir, "memlock_after"), tc.memlockAfter+"\n", 0o644)
 			}
-			if tc.restartFails {
-				writeFile(t, filepath.Join(stateDir, "restart_fails"), "", 0o644)
+			if tc.startFails {
+				writeFile(t, filepath.Join(stateDir, "start_fails"), "", 0o644)
 			}
 			if tc.reexecFails {
 				writeFile(t, filepath.Join(stateDir, "reexec_fails"), "", 0o644)
@@ -289,14 +295,16 @@ restart_yb_user_manager_for_memlock
 			cmd := exec.Command("bash", "-c", harness)
 			cmd.Env = env
 			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("harness failed: %v\n%s", err, out)
+			if failed := err != nil; failed != tc.wantFail {
+				t.Fatalf("failed = %t (%v), want %t:\n%s", failed, err, tc.wantFail, out)
 			}
 			if !strings.Contains(string(out), tc.wantOutput) {
 				t.Errorf("output does not contain %q:\n%s", tc.wantOutput, out)
 			}
 			calls := readFile(t, filepath.Join(stateDir, "calls"))
-			restart := "systemctl restart user@" + ybUID + ".service"
+			restart := "systemctl stop user@" + ybUID + ".service\n" +
+				"systemctl reset-failed user@" + ybUID + ".service\n" +
+				"systemctl start user@" + ybUID + ".service\n"
 			if got := strings.Contains(calls, restart); got != tc.wantRestart {
 				t.Errorf("restarted = %t, want %t; calls:\n%s", got, tc.wantRestart, calls)
 			}
@@ -335,7 +343,7 @@ yb_user_manager_memlock ` + ybUID + ` || echo "no limit"
 
 // On el8+ user-level provisioning stops and starts the user manager, which then gets the new
 // limits, so restart_yb_user_manager_for_memlock is needed only in the other branch. System level
-// never stops the user manager.
+// does not exit the manager on every run, but can still restart it to raise memlock.
 func TestRunAppliesMemlockToUserManager(t *testing.T) {
 	for _, systemLevel := range []bool{false, true} {
 		run, _ := render(t, systemLevel, false /*isPreflightCheck*/)
