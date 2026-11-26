@@ -732,6 +732,105 @@ TEST_F(TabletReplacementITest, DontDeleteNewReplicaAfterRbsFromFollowerWithUncom
       rbs_source_ts, "TEST_follower_pause_update_consensus_requests", "false"));
 }
 
+// ADD_SERVER for a new replica is pending when the leader changes, and the new leader commits it
+// with its NO_OP. Master learns the new term before that commit, so the replica reports a pending
+// config op from an older term. Master must not delete the replica.
+TEST_F(TabletReplacementITest, DontDeleteNewReplicaWhenNewLeaderCommitsPendingAddServer) {
+  // RBS waits for the promotion until it happens, so the replica is reported with every heartbeat.
+  std::vector<std::string> ts_flags = {
+      "--enable_leader_failure_detection=false",
+      "--committed_config_change_role_timeout_sec=3600"};
+  std::vector<std::string> master_flags = {
+      "--replication_factor=5",
+      "--enable_load_balancing=false",
+      "--catalog_manager_wait_for_new_tablets_to_elect_leader=false",
+      "--use_create_table_leader_hint=false",
+  };
+  constexpr auto kInitialNumTservers = 5;
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kInitialNumTservers));
+  ASSERT_OK(CreateTestTablet());
+
+  auto* ts_a = cluster_->tablet_server(0);
+  // These followers don't get ADD_SERVER. They still vote in the election below.
+  const std::vector<ExternalTabletServer*> paused_followers = {
+      cluster_->tablet_server(2), cluster_->tablet_server(3), cluster_->tablet_server(4)};
+  const auto tablet_id = ASSERT_RESULT(
+      ElectAsLeaderAndGetSingleTabletId(ts_map_[ts_a->uuid()].get()));
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  ASSERT_OK(cluster_->WaitForTabletServerCount(kInitialNumTservers + 1, kTimeout));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  auto* ts_a_details = ts_map_[ts_a->uuid()].get();
+  auto* ts_b_details = ts_map_[cluster_->tablet_server(1)->uuid()].get();
+
+  const auto kAddedTsIndex = kInitialNumTservers;
+  auto* added_ts = cluster_->tablet_server(kAddedTsIndex);
+  auto* added_ts_details = ts_map_[added_ts->uuid()].get();
+
+  // A pre-voter doesn't count for the majority, so ADD_SERVER stays pending with only A and B
+  // having it: 2 of 5 voters. The new replica doesn't accept updates either, so it keeps the
+  // pending config op id from RBS.
+  for (auto* ts : paused_followers) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_follower_pause_update_consensus_requests", "true"));
+  }
+  ASSERT_OK(cluster_->SetFlag(added_ts, "TEST_follower_pause_update_consensus_requests", "true"));
+
+  LOG(INFO) << "Adding tablet " << tablet_id << " to tserver " << added_ts->uuid();
+  // Timeout is expected because ADD_SERVER can't be committed without a majority.
+  ASSERT_NOK(itest::AddServer(
+      ts_a_details, tablet_id, added_ts_details, PeerMemberType::PRE_VOTER, std::nullopt, 500ms));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kAddedTsIndex, tablet_id, tablet::TABLET_DATA_READY, kTimeout));
+  ASSERT_OK(itest::WaitUntilTabletRunning(added_ts_details, tablet_id, kTimeout));
+  LOG(INFO) << "RBS has been completed on added node";
+
+  // B wins the election with the votes of the paused followers and has ADD_SERVER in its log. Its
+  // NO_OP can't be committed yet: A is down, and the other voters don't accept updates.
+  ts_a->Shutdown();
+  ASSERT_OK(itest::StartElection(ts_b_details, tablet_id, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(
+      ts_b_details, tablet_id, kTimeout, consensus::LeaderLeaseCheckMode::DONT_NEED_LEASE));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        master::TabletLocationsPB locations;
+        RETURN_NOT_OK(itest::GetTabletLocations(cluster_.get(), tablet_id, kTimeout, &locations));
+        for (const auto& replica : locations.replicas()) {
+          if (replica.role() == PeerRole::LEADER) {
+            return replica.ts_info().permanent_uuid() == ts_b_details->uuid();
+          }
+        }
+        return false;
+      },
+      kTimeout, "Waiting for master to know the new leader"));
+  // Give master the time to process reports of the new replica while ADD_SERVER is pending.
+  AllowTimeForSpuriousDelete();
+
+  // Let the new leader commit its NO_OP and ADD_SERVER with it.
+  for (auto* ts : paused_followers) {
+    ASSERT_OK(cluster_->SetFlag(ts, "TEST_follower_pause_update_consensus_requests", "false"));
+  }
+  ASSERT_OK(cluster_->SetFlag(
+      added_ts, "TEST_follower_pause_update_consensus_requests", "false"));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        consensus::ConsensusStatePB consensus_state;
+        RETURN_NOT_OK(itest::GetConsensusState(
+            ts_b_details, tablet_id, consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout,
+            &consensus_state));
+        for (const auto& peer : consensus_state.config().peers()) {
+          if (peer.permanent_uuid() == added_ts->uuid()) {
+            return peer.member_type() == PeerMemberType::VOTER;
+          }
+        }
+        return false;
+      },
+      kTimeout, "Waiting for the new replica to be a voter in the committed config"));
+
+  AllowTimeForSpuriousDelete();
+  LOG(INFO) << "Make sure new replica doesn't get deleted";
+  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kAddedTsIndex, tablet_id, TABLET_DATA_READY));
+}
+
 // Ensure that the Master will tombstone a replica if it reports in with an old
 // config. This tests a slightly different code path in the catalog manager
 // than TestMasterTombstoneEvictedReplica does.
