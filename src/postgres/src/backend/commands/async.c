@@ -622,8 +622,8 @@ typedef struct YbNotifsPollerPendingEntry
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
 static TimestampTz ybNotifsPollerId = 0;
 
-/* Set by ybNotifsPollerInit when a restart cannot help. */
-static bool ybNotifsPollerCannotRun = false;
+/* Set by ybNotifsPollerInit on an error that a restart cannot fix. */
+static bool ybNotifsPollerPermanentError = false;
 
 /*
  * The 'notifications poller' process batches the notifications of a transaction
@@ -3554,7 +3554,7 @@ ybCheckNotifsStreamNotExpired(void)
 						  /* if_exists */ false);
 	if (slot->expired)
 	{
-		ybNotifsPollerCannotRun = true;
+		ybNotifsPollerPermanentError = true;
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("replication slot \"%s\" for notifications has expired",
@@ -3606,7 +3606,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	else
 		len = strlcpy(message, edata->message, sizeof(message));
 
-	permanently_terminate = ybNotifsPollerCannotRun ||
+	permanently_terminate = ybNotifsPollerPermanentError ||
 		TimestampDifferenceExceeds(poller_data->last_progress_time, now,
 								   yb_notifications_poller_no_progress_timeout_ms);
 	if (!permanently_terminate)
@@ -3618,11 +3618,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	/*
-	 * Not a permanent error, so the timeout ran out: say so. If both don't
-	 * fit, cut the error rather than this reason.
-	 */
-	if (!ybNotifsPollerCannotRun)
+	if (!ybNotifsPollerPermanentError)
 	{
 		char		suffix[128];
 		int			suffix_len;
@@ -3632,6 +3628,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 							  "yb_notifications_poller_no_progress_timeout_ms"
 							  " = %d ms)",
 							  yb_notifications_poller_no_progress_timeout_ms);
+		/* If both don't fit, cut the error rather than the reason. */
 		len = Min(len, (int) sizeof(message) - 1 - suffix_len);
 		strlcpy(message + len, suffix, sizeof(message) - len);
 	}
@@ -3669,7 +3666,7 @@ ybNotifsPollerInit(void)
 		if (!yb_enable_replication_commands ||
 			!yb_enable_replication_slot_consumption)
 		{
-			ybNotifsPollerCannotRun = true;
+			ybNotifsPollerPermanentError = true;
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("unable to poll notifications"),
