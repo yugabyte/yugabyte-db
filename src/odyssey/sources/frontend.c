@@ -145,7 +145,7 @@ yb_frontend_error_is_db_does_not_exist(od_client_t *client)
 }
 
 static inline bool
-yb_frontend_error_is_role_does_not_exist(od_client_t *client, bool *missing)
+yb_frontend_error_is_role_does_not_exist(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
 	od_server_t *server = client->server;
@@ -163,7 +163,6 @@ yb_frontend_error_is_role_does_not_exist(od_client_t *client, bool *missing)
 	if (rc == -1)
 		return false;
 
-	*missing = error.message && strstr(error.message, "does not exist");
 	return strcmp(error.code, KIWI_INVALID_AUTHORIZATION_SPECIFICATION) == 0;
 }
 
@@ -334,12 +333,11 @@ od_frontend_attach(od_client_t *client, char *context,
 			}
 
 			/* YB: check auth failure status codes to update OID status */
-			bool role_missing = false;
 			if (yb_frontend_error_is_db_does_not_exist(client))
 				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1, true);
-			else if (yb_frontend_error_is_role_does_not_exist(client, &role_missing))
+			else if (yb_frontend_error_is_role_does_not_exist(client))
 				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid,
-							role_missing);
+							false);
 
 			return OD_ESERVER_CONNECT;
 		}
