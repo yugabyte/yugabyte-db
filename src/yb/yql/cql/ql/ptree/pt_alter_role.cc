@@ -18,6 +18,8 @@
 #include "yb/util/format.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 
+#include <string.h>
+
 #include "yb/util/crypt.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -89,7 +91,8 @@ Status PTAlterRole::Analyze(SemContext* sem_context) {
           if (ret != 0) {
             return STATUS(IllegalState, Format("Could not hash password, reason: $0", ret));
           }
-          salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash , kBcryptHashSize);
+          // bcrypt output is NUL-terminated and the rest of the buffer is uninitialized.
+          salted_hash_ = MCMakeShared<MCString>(sem_context->PSemMem(), hash, strlen(hash));
           seen_password = true;
           break;
         }

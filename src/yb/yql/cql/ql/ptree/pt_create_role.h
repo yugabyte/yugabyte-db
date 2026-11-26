@@ -214,7 +214,7 @@ class PTCreateRole : public TreeNode {
 
   std::string salted_hash() const {
     // Empty salted hash denotes no password. salted_hash can contain null characters.
-    return (salted_hash_ != nullptr) ?  std::string(salted_hash_->c_str(), kBcryptHashSize) : "";
+    return (salted_hash_ != nullptr) ?  std::string(salted_hash_->c_str(), salted_hash_->size()) : "";
   }
 
   bool superuser() const {

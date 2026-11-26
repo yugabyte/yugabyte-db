@@ -67,7 +67,7 @@ class PTAlterRole : public TreeNode {
     std::optional<std::string> ret_salted_hash;
     // Empty salted hash denotes no password, salted_hash can contain null characters.
     if (salted_hash_ != nullptr) {
-      ret_salted_hash = std::string(salted_hash_->c_str(), kBcryptHashSize);
+      ret_salted_hash = std::string(salted_hash_->c_str(), salted_hash_->size());
     }
     return ret_salted_hash;
   }
