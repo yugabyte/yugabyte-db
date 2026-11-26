@@ -395,7 +395,9 @@ mount_drives() {
 
   if [[ $num_devices -lt ${#mounts[@]} ]]; then
     echo >&2 "Only $num_devices volumes discovered, but ${#mounts[@]} mount points provided: $MOUNT_PATHS."
-    echo >&2 "Will mount available volumes and return an error after that."
+    if [[ $CLOUD_TYPE != "azu" && $CLOUD_TYPE != "oci" ]]; then
+      echo >&2 "Will mount available volumes and return an error after that."
+    fi
     exit_code=1
   fi
 
@@ -510,8 +512,9 @@ mount_drives() {
     echo >&2 "Only ${#device_paths[@]} devices resolved for ${#mounts[@]} mount points: $MOUNT_PATHS."
     exit_code=1
     if [[ $CLOUD_TYPE == "azu" || $CLOUD_TYPE == "oci" ]]; then
-      # Every Azure LUN, and every OCI volume, maps to exactly one mount path; mounting a
-      # partial set would shift disks onto the wrong mount points.
+      # On Azure, mounting a partial set would shift LUNs onto the wrong mount
+      # points. On OCI, refuse to mount or update fstab when not all expected
+      # data volumes resolved.
       echo >&2 "Refusing to mount a partial set of data disks."
       exit 1
     fi

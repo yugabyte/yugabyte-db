@@ -644,8 +644,15 @@ func runOCIDiskResolver(
 		filepath.Join(binDir, "blkid"),
 		"#!/bin/bash\n"+
 			"if [[ $1 == -c && $3 == -t ]]; then\n"+
-			"  grep -lx \"${4#UUID=}\" \"$LSBLK_FIXTURES\"/uuid/* 2>/dev/null | sed 's|.*/|/dev/|'\n"+
-			"  exit\n"+
+			"  if compgen -G \"$LSBLK_FIXTURES/blkid-error/*\" >/dev/null; then\n"+
+			"    echo >&2 \"error: blkid failed\"; exit 2\n"+
+			"  fi\n"+
+			"  matches=$(grep -lx \"${4#UUID=}\" \"$LSBLK_FIXTURES\"/uuid/* 2>/dev/null || true)\n"+
+			"  if [[ -z \"$matches\" ]]; then\n"+
+			"    exit 2\n"+
+			"  fi\n"+
+			"  printf '%s\\n' \"$matches\" | sed 's|.*/|/dev/|'\n"+
+			"  exit 0\n"+
 			"fi\n"+
 			"[[ $1 == -p ]] || exit 4\n"+
 			"name=${2##*/}\n"+
@@ -958,6 +965,27 @@ func TestResolveOCIDrivesRefusesRequestedDisk(t *testing.T) {
 			requested: "sdb sdc",
 			fstab:     ociFstab("uuid-0", ""),
 			wantError: "Multiple devices hold filesystem UUID uuid-0 for /mnt/d0",
+		},
+		{
+			name: "blkid fails looking up an fstab UUID",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				{name: "sdb", tree: "sdb \n", blkidError: true},
+			},
+			requested: "sdb",
+			fstab:     ociFstab("uuid-0"),
+			wantError: "blkid failed looking up filesystem UUID uuid-0 for /mnt/d0",
+		},
+		{
+			name: "fstab UUID is on a non-sd device",
+			disks: []ociDisk{
+				ociBootDisk("sda"),
+				ociDataDisk("sdb"),
+				{name: "sdb1", tree: "sdb1 \n", uuid: "uuid-0"},
+			},
+			requested: "sdb",
+			fstab:     ociFstab("uuid-0"),
+			wantError: "Filesystem UUID uuid-0 for /mnt/d0 is on unexpected device /dev/sdb1",
 		},
 	}
 	for _, test := range tests {

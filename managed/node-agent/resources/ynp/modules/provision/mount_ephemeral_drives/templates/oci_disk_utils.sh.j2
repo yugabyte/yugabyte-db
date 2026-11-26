@@ -109,10 +109,14 @@ oci_list_spares() {
 
 # Sets oci_fstab_disk_rv to the whole sd disk holding the filesystem that the
 # YBA fstab entry for the given mount path names by UUID, or an empty string.
-# Returns 1 when more than one device holds that UUID.
+# Returns 1 when blkid fails, when more than one device holds that UUID, or
+# when that UUID is on a device other than a whole sd disk.
 oci_fstab_disk() {
   local uuid=""
   local devices=""
+  local errors=""
+  local err_file=""
+  local rc=0
 
   oci_fstab_disk_rv=""
   if [[ ! -r "$FSTAB_PATH" ]] || ! grep -Fqx -- "#$1" "$FSTAB_PATH"; then
@@ -128,15 +132,30 @@ oci_fstab_disk() {
     return 0
   fi
   # An empty cache makes blkid read the disks, rather than trust its cache or
-  # wait on udev's by-uuid links.
-  devices=$(blkid -c /dev/null -t "UUID=$uuid" -o device 2>/dev/null || true)
+  # wait on udev's by-uuid links. Exit 2 with empty stderr means no device holds
+  # the UUID (e.g., a detached volume).
+  err_file=$(mktemp)
+  devices=$(blkid -c /dev/null -t "UUID=$uuid" -o device 2>"$err_file") || rc=$?
+  errors=$(<"$err_file")
+  rm -f "$err_file"
+  if [[ $rc -eq 2 && -z "$errors" ]]; then
+    return 0
+  elif [[ $rc -ne 0 ]]; then
+    if [[ -n "$errors" ]]; then
+      echo >&2 "$errors"
+    fi
+    echo >&2 "blkid failed looking up filesystem UUID $uuid for $1 with exit code $rc."
+    return 1
+  fi
   if [[ "$devices" == *$'\n'* ]]; then
     echo >&2 "Multiple devices hold filesystem UUID $uuid for $1: ${devices//$'\n'/, }."
     return 1
   fi
-  if [[ "${devices##*/}" =~ ^sd[a-z]+$ ]]; then
-    oci_fstab_disk_rv=${devices##*/}
+  if [[ ! "${devices##*/}" =~ ^sd[a-z]+$ ]]; then
+    echo >&2 "Filesystem UUID $uuid for $1 is on unexpected device $devices."
+    return 1
   fi
+  oci_fstab_disk_rv=${devices##*/}
 }
 
 # Sets get_oci_drives_rv to a device name for each requested name: the disk
@@ -145,8 +164,8 @@ oci_fstab_disk() {
 # nofail, so they may be unmounted. Otherwise the requested name, with the boot
 # volume's name replaced by a spare: the one already mounted at that name's
 # mount path, or else the first blank one. Other requested names, and local NVMe
-# names, are kept; the probe loop skips a missing one. Returns 1 when more than
-# one device holds an fstab UUID, when a requested name holds another mount
+# names, are kept; the probe loop skips a missing one. Returns 1 when an fstab 
+# UUID lookup fails, when a requested name holds another mount
 # path's filesystem, when lsblk fails on a requested disk, or when a requested
 # disk other than the boot volume has partitions or holders, which mount_drives
 # would format away.
