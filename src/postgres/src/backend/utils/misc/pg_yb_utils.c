@@ -11609,7 +11609,10 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  * ignore_restore_errors) leaves that window open until the final increment.
  *
  * Only per-database catalog version mode defers: the restore script
- * increments the version of its own database.
+ * increments the version of its own database.  Deferring also needs
+ * yb_non_ddl_txn_for_sys_tables_allowed, without which a catalog write outside
+ * a DDL fails; the restore scripts set both.  Otherwise the writes stay DDLs,
+ * as without the parameter.
  *
  * Deferred writes have no DDL transaction state, so the retry guard in
  * yb_is_retry_possible does not cover them, and a statement can be retried
@@ -11627,7 +11630,9 @@ YbStatsCatalogWriteBegin(void)
 {
 	if (!IsYugaByteEnabled())
 		return false;
-	if (yb_stats_restore_defer_catalog_version_increment && YBIsDBCatalogVersionMode())
+	if (yb_stats_restore_defer_catalog_version_increment &&
+		yb_non_ddl_txn_for_sys_tables_allowed &&
+		YBIsDBCatalogVersionMode())
 		return false;
 
 	if (YBIsDdlTransactionBlockEnabled())

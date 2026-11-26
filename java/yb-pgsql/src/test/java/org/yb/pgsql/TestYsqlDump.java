@@ -802,6 +802,35 @@ public class TestYsqlDump extends BasePgSQLTest {
         /* useLegacyDdlMode */ false, /* includeYbMetadata */ false);
   }
 
+  /**
+   * yb_stats_restore_defer_catalog_version_increment defers the increments only together with
+   * yb_non_ddl_txn_for_sys_tables_allowed, which a catalog write outside a DDL needs.  With the
+   * parameter alone, statistics writes stay DDLs that increment the catalog version, instead of
+   * failing.
+   */
+  @Test
+  public void ysqlDumpStatisticsDeferRequiresNonDdlTxnForSysTables() throws Exception {
+    final String versionQuery = "SELECT current_version FROM pg_yb_catalog_version " +
+        "WHERE db_oid = (SELECT oid FROM pg_database WHERE datname = current_database())";
+    final String restoreQuery = "SELECT pg_catalog.pg_restore_relation_stats(" +
+        "'schemaname', 'public', 'relname', 'defer_t', 'relpages', '%d'::integer)";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE defer_t (k int PRIMARY KEY, v int)");
+      stmt.execute("SET yb_stats_restore_defer_catalog_version_increment = true");
+
+      long before = getSingleRow(stmt, versionQuery).getLong(0);
+      stmt.execute(String.format(restoreQuery, 1));
+      long afterGucOnly = getSingleRow(stmt, versionQuery).getLong(0);
+      assertEquals(before + 1, afterGucOnly);
+
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true");
+      stmt.execute(String.format(restoreQuery, 2));
+      assertEquals(afterGucOnly, getSingleRow(stmt, versionQuery).getLong(0).longValue());
+      assertEquals(2L, getSingleRow(stmt,
+          "SELECT relpages::bigint FROM pg_class WHERE relname = 'defer_t'").getLong(0).longValue());
+    }
+  }
+
   private void assertStatisticsRestoreCatalogVersions(
       boolean useLegacyDdlMode, boolean includeYbMetadata) throws Exception {
     Map<String, String> masterFlags = getMasterFlags();
