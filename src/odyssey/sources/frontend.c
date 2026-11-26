@@ -336,6 +336,7 @@ od_frontend_attach(od_client_t *client, char *context,
 			if (yb_frontend_error_is_db_does_not_exist(client))
 				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1, true);
 			else if (yb_frontend_error_is_role_does_not_exist(client))
+				/* YB: 28000 also covers a NOLOGIN role, so don't flag the role as dropped */
 				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid,
 							false);
 
