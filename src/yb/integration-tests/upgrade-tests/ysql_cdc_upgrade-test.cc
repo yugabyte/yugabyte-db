@@ -11,13 +11,20 @@
 // under the License.
 //
 
+#include <array>
 #include <regex>
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/opid.h"
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/tablet/metadata.pb.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/env.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/subprocess.h"
@@ -174,14 +181,18 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return true;
   }
 
-  // Returns yb-admin's output, or its error output as the error.
   Result<std::string> RunYbAdmin(const std::string& yb_admin_command, const std::string& arg) {
+    return RunYbAdmin(
+        yb_admin_command, arg.empty() ? std::vector<std::string>{} : std::vector{arg});
+  }
+
+  // Returns yb-admin's output, or its error output as the error.
+  Result<std::string> RunYbAdmin(
+      const std::string& yb_admin_command, const std::vector<std::string>& args) {
     auto command = ToStringVector(
         GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
         "--timeout_ms", 60000, yb_admin_command);
-    if (!arg.empty()) {
-      command.push_back(arg);
-    }
+    command.insert(command.end(), args.begin(), args.end());
     std::string output, error;
     auto status = Subprocess::Call(command, &output, &error);
     LOG(INFO) << "yb-admin output: " << output << ", error output: " << error;
@@ -201,12 +212,14 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return Status::OK();
   }
 
+  static constexpr std::array kTxnDdlFlags = {
+      "ysql_yb_ddl_transaction_block_enabled", "enable_object_locking_for_table_locks",
+      "ysql_enable_concurrent_ddl"};
+
   // Takes effect when the daemons restart in the current version.
   void EnableTxnDdlInCurrentVersion() {
     for (auto* daemon : cluster_->daemons()) {
-      for (const auto& flag :
-           {"ysql_yb_ddl_transaction_block_enabled", "enable_object_locking_for_table_locks",
-            "ysql_enable_concurrent_ddl"}) {
+      for (const auto& flag : kTxnDdlFlags) {
         daemon->AddExtraFlag(flag, "true");
       }
     }
@@ -219,8 +232,9 @@ class CdcUpgradeTest : public UpgradeTestBase {
     ExternalMiniClusterOptions opts;
     opts.num_masters = 3;
     opts.num_tablet_servers = 3;
+    // Makes 2026.1 create pub-refresh slots. Older versions create only pub-refresh slots.
     for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
-      flags->push_back(Format("--$0=false", kImplicitFlag));
+      AddUnDefOkAndSetFlag(*flags, kImplicitFlag, "false");
     }
     ASSERT_OK(StartClusterInOldVersion(opts));
     ASSERT_OK(PrepareTableWithData());
@@ -243,14 +257,126 @@ class CdcUpgradeTest : public UpgradeTestBase {
   void TestImplicitSlotDecodesTxnDdlAfterUpgrade();
   void TestPausedPubRefreshSlotConvertedToImplicit();
 
-  // 2026.1 allows USE_SNAPSHOT only inside a transaction.
+  struct SysCatalogBarriers {
+    int64_t wal_index;
+    OpId intents_op_id;
+    HybridTime history_cutoff;
+
+    bool operator==(const SysCatalogBarriers&) const = default;
+
+    bool IsHeldAt(HybridTime barrier_ht) const {
+      return wal_index != std::numeric_limits<int64_t>::max() && intents_op_id.valid() &&
+             intents_op_id != OpId::Max() && history_cutoff.is_valid() &&
+             history_cutoff <= barrier_ht;
+    }
+
+    bool IsReleased() const {
+      return wal_index == std::numeric_limits<int64_t>::max() &&
+             (!intents_op_id.valid() || intents_op_id == OpId::Max()) &&
+             !history_cutoff.is_valid();
+    }
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(wal_index, intents_op_id, history_cutoff);
+    }
+  };
+
+  void PauseAtCatalogBarrier(const std::string& slot_name, HybridTime* barrier_ht);
+  void CheckBarriersOutliveStaleness(const std::vector<SysCatalogBarriers>& paused_barriers);
+
+  // Each master flushes its sys catalog superblock whenever a retention barrier moves, so the file
+  // shows what that master's log GC and compactions honor.
+  Result<std::vector<SysCatalogBarriers>> GetSysCatalogBarriers() {
+    std::vector<SysCatalogBarriers> result;
+    for (auto* master : cluster_->master_daemons()) {
+      tablet::RaftGroupReplicaSuperBlockPB superblock;
+      RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(
+          Env::Default(),
+          JoinPathSegments(
+              master->GetRootDir(), "yb-data", "master", "tablet-meta",
+              master::kSysCatalogTabletId),
+          &superblock));
+      result.push_back(SysCatalogBarriers{
+          .wal_index = superblock.cdc_min_replicated_index(),
+          .intents_op_id = superblock.has_cdc_sdk_min_checkpoint_op_id()
+              ? OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id())
+              : OpId::Max(),
+          .history_cutoff = superblock.has_cdc_sdk_safe_time()
+              ? HybridTime(superblock.cdc_sdk_safe_time())
+              : HybridTime::kInvalid});
+    }
+    return result;
+  }
+
+  Status WaitForSysCatalogBarriers(
+      std::function<bool(const SysCatalogBarriers&)> predicate, const std::string& description) {
+    std::vector<SysCatalogBarriers> barriers;
+    auto status = WaitFor(
+        [&]() -> Result<bool> {
+          barriers = VERIFY_RESULT(GetSysCatalogBarriers());
+          return std::ranges::all_of(barriers, predicate);
+        },
+        30s, description);
+    return status.ok() ? status
+                       : status.CloneAndAppend(Format("Sys catalog barriers: $0", barriers));
+  }
+
+  Status WaitForDynamicSchemaChangesOnMasters(const std::string& value) {
+    return WaitFor(
+        [this, &value]() -> Result<bool> {
+          for (auto* master : cluster_->master_daemons()) {
+            if (VERIFY_RESULT(master->GetFlag(kDynamicSchemaChangesFlag)) != value) {
+              return false;
+            }
+          }
+          return true;
+        },
+        60s, Format("$0=$1 on the masters", kDynamicSchemaChangesFlag, value));
+  }
+
+  // A universe that started before 2026.1 gets this AutoFlag only at finalize, but the catalog
+  // barrier needs it before finalize.
+  Status PromoteDynamicSchemaChangesOnMasters() {
+    if (VERIFY_RESULT(cluster_->master(0)->GetFlag(kDynamicSchemaChangesFlag)) == "true") {
+      return Status::OK();
+    }
+    RETURN_NOT_OK(RunYbAdmin(
+        "promote_single_auto_flag", std::vector<std::string>{"yb-master",
+                                                              kDynamicSchemaChangesFlag}));
+    return WaitForDynamicSchemaChangesOnMasters("true");
+  }
+
+  // A sys catalog barrier that nothing refreshes is released kStaleSecs after a master starts, so
+  // the test outlives that only if the barrier is refreshed.
+  Status ShortenSysCatalogBarrierStaleness() {
+    for (const auto& [flag, value] : kMasterBarrierFlags) {
+      for (auto* master : cluster_->master_daemons()) {
+        master->AddExtraFlag(flag, value);
+      }
+      RETURN_NOT_OK(cluster_->SetFlagOnMasters(flag, value));
+    }
+    return Status::OK();
+  }
+
+  static constexpr auto kDynamicSchemaChangesFlag = "cdc_enable_dynamic_schema_changes";
+  static constexpr auto kStaleSecs = 10;
+  static inline const std::vector<std::pair<std::string, std::string>> kMasterBarrierFlags = {
+      {"cdc_min_replicated_index_considered_stale_secs_master", std::to_string(kStaleSecs)},
+      {"update_min_cdc_indices_master_interval_secs", "1"},
+      // A master that replays the barrier's op at startup keeps the barriers still this long.
+      {"cdcsdk_retention_barrier_no_revision_interval_secs", "10"}};
+
+  // NOEXPORT_SNAPSHOT works on every version: 2026.1 allows USE_SNAPSHOT only inside a transaction,
+  // and 2024.2 allows EXPORT_SNAPSHOT only with a preview flag.
   Status CreatePublicationAndSlots(const std::vector<std::string>& slot_names) {
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
     // pgoutput doesn't support YB's default replica identity, CHANGE.
     RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY DEFAULT", kTableName));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE PUBLICATION $0 FOR ALL TABLES", kPubName));
+    auto repl_conn = VERIFY_RESULT(ConnectToDBWithReplication(kDbName));
     for (const auto& slot : slot_names) {
-      RETURN_NOT_OK(CreateReplicationSlotWithExportSnapshot(slot));
+      RETURN_NOT_OK(repl_conn.FetchFormat(
+          "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput NOEXPORT_SNAPSHOT", slot));
     }
     return Status::OK();
   }
@@ -464,6 +590,47 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
       ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
 }
 
+// Sets the catalog barrier of a pub-refresh slot and pauses the slot at it, as users do before
+// finalize, and checks that every master holds the sys catalog retention barriers.
+void CdcUpgradeTest::PauseAtCatalogBarrier(const std::string& slot_name, HybridTime* barrier_ht) {
+  ASSERT_OK(PromoteDynamicSchemaChangesOnMasters());
+  ASSERT_OK(ShortenSysCatalogBarrierStaleness());
+
+  ASSERT_OK(InsertRows(21, 25));
+  ASSERT_OK(RunYbAdmin("set_replication_slot_catalog_barrier", slot_name));
+  ASSERT_OK(cluster_->SetFlagOnTServers("cdcsdk_update_restart_time_interval_secs", "1"));
+  ASSERT_OK(CheckNoRowsLost(
+      ASSERT_RESULT(StreamRows(slot_name, 25, IgnoreReadTime::kTrue)),
+      ExpectedRows(21, 25, WithNewCol::kFalse)));
+  // The slot's restart time reaches the barrier time only while a consumer streams it. Nothing
+  // committed after the barrier is streamed, so this consumer times out.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &slot_name] {
+    ASSERT_NOK(StreamAndAcknowledge(slot_name, "value_26", 60s, IgnoreReadTime::kTrue, nullptr));
+  });
+  ASSERT_OK(RunYbAdmin("pause_replication_slot", slot_name));
+  thread_holder.JoinAll();
+  const auto [barrier, restart_ht] = ASSERT_RESULT(GetBarrierAndRestartTime(slot_name));
+  ASSERT_EQ(restart_ht, barrier);
+  *barrier_ht = barrier;
+  ASSERT_OK(WaitForSysCatalogBarriers(
+      [barrier](const auto& barriers) { return barriers.IsHeldAt(barrier); },
+      "Sys catalog barriers held at the barrier time"));
+}
+
+// Nothing may release or move the sys catalog barriers while the slot is paused: the converted
+// slot reads the catalog changes from the barrier time on.
+void CdcUpgradeTest::CheckBarriersOutliveStaleness(
+    const std::vector<SysCatalogBarriers>& paused_barriers) {
+  const auto kPastStaleness = MonoDelta::FromSeconds(2 * kStaleSecs + 10);
+  SleepFor(kPastStaleness);
+  ASSERT_EQ(ASSERT_RESULT(GetSysCatalogBarriers()), paused_barriers);
+  // A master restart starts the staleness clock again.
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+  SleepFor(kPastStaleness);
+  ASSERT_EQ(ASSERT_RESULT(GetSysCatalogBarriers()), paused_barriers);
+}
+
 // A pub-refresh slot paused before finalize is converted to an implicit slot, which then decodes
 // DDL committed while it was paused. A pub-refresh slot that wasn't paused becomes unusable.
 void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
@@ -471,28 +638,26 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   constexpr auto kUnpausedSlot = "unpaused_pub_refresh_slot";
   ASSERT_NO_FATALS(CreatePubRefreshSlotsAndUpgrade({kSlot, kUnpausedSlot}));
 
-  ASSERT_OK(InsertRows(21, 25));
-  ASSERT_OK(RunYbAdmin("set_replication_slot_catalog_barrier", kSlot));
-  ASSERT_OK(cluster_->SetFlagOnTServers("cdcsdk_update_restart_time_interval_secs", "1"));
-  ASSERT_OK(CheckNoRowsLost(
-      ASSERT_RESULT(StreamRows(kSlot, 25, IgnoreReadTime::kTrue)),
-      ExpectedRows(21, 25, WithNewCol::kFalse)));
-  // The slot's restart time reaches the barrier time only while a consumer streams it. Nothing
-  // committed after the barrier is streamed, so this consumer times out.
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this] {
-    ASSERT_NOK(StreamAndAcknowledge(kSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr));
-  });
-  ASSERT_OK(RunYbAdmin("pause_replication_slot", kSlot));
-  thread_holder.JoinAll();
-  const auto [barrier_ht, restart_ht] = ASSERT_RESULT(GetBarrierAndRestartTime(kSlot));
-  ASSERT_EQ(restart_ht, barrier_ht);
+  HybridTime barrier_ht;
+  ASSERT_NO_FATALS(PauseAtCatalogBarrier(kSlot, &barrier_ht));
+  const auto paused_barriers = ASSERT_RESULT(GetSysCatalogBarriers());
+  ASSERT_NO_FATALS(CheckBarriersOutliveStaleness(paused_barriers));
 
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
-
+  auto add_column = [this] {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (26, 'value_26', 26)", kTableName));
+  };
+  // A major YSQL upgrade, as from 2024.2, allows DDL only after finalize.
+  if (!IsYsqlMajorVersionUpgrade()) {
+    ASSERT_NO_FATALS(add_column());
+  }
   ASSERT_OK(FinalizeUpgrade());
+  if (IsYsqlMajorVersionUpgrade()) {
+    ASSERT_NO_FATALS(add_column());
+  }
+  ASSERT_EQ(ASSERT_RESULT(GetSysCatalogBarriers()), paused_barriers);
+
   ASSERT_OK(RunYbAdmin("prepare_replication_slots_for_transactional_ddl", ""));
   ASSERT_NOK_STR_CONTAINS(
       StreamAndAcknowledge(kUnpausedSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr),
@@ -500,7 +665,7 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   ASSERT_TRUE(ASSERT_RESULT(GetSlotStream(kSlot)).second);
   ASSERT_TRUE(ASSERT_RESULT(HasTxnDdlCatalogTables(kSlot)));
 
-  conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN new_col", kTableName));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (27, 'value_27')", kTableName));
@@ -515,6 +680,69 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   expected_rows.push_back("28,value_28");
   ASSERT_OK(CheckNoRowsLost(
       ASSERT_RESULT(StreamRows(kSlot, 28, IgnoreReadTime::kTrue)), expected_rows));
+
+  // Every logical replication slot holds the sys catalog history barrier at its restart time, so
+  // the unusable slot has to be dropped. The converted slot then moves the barriers past the
+  // barrier, but only through the GetChanges calls that follow its acknowledgements, so a consumer
+  // keeps streaming it.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_drop_replication_slot('$0')", kUnpausedSlot));
+  TestThreadHolder consumer;
+  consumer.AddThreadFunctor([this] {
+    ASSERT_NOK(StreamAndAcknowledge(kSlot, "not_inserted", 60s, IgnoreReadTime::kTrue, nullptr));
+  });
+  const auto paused_wal_index = paused_barriers.front().wal_index;
+  ASSERT_OK(WaitForSysCatalogBarriers(
+      [barrier_ht, paused_wal_index](const auto& barriers) {
+        return barriers.history_cutoff.is_valid() && barriers.history_cutoff > barrier_ht &&
+               barriers.wal_index > paused_wal_index;
+      },
+      "Sys catalog barriers moved past the barrier"));
+  consumer.JoinAll();
+}
+
+// The promoted AutoFlag lets the catalog barrier be set on a universe that started before 2026.1.
+TEST_F(CdcUpgradeTest, PausedPubRefreshSlotConvertedToImplicit) {
+  TestPausedPubRefreshSlotConvertedToImplicit();
+}
+
+// Users demote the AutoFlag and then release the slot before rolling back. While the AutoFlag is
+// promoted, the masters hold the sys catalog history barrier at the restart time of every logical
+// replication slot, so a release before the demotion leaves it held. The old version then holds no
+// sys catalog barrier and streams the slot.
+TEST_F(CdcUpgradeTest, RollbackAfterPausingPubRefreshSlot) {
+  constexpr auto kSlot = "pub_refresh_slot";
+  ASSERT_NO_FATALS(CreatePubRefreshSlotsAndUpgrade({kSlot}));
+  HybridTime barrier_ht;
+  ASSERT_NO_FATALS(PauseAtCatalogBarrier(kSlot, &barrier_ht));
+
+  ASSERT_OK(RunYbAdmin(
+      "demote_single_auto_flag",
+      std::vector<std::string>{"yb-master", kDynamicSchemaChangesFlag, "force"}));
+  ASSERT_OK(WaitForDynamicSchemaChangesOnMasters("false"));
+  ASSERT_OK(RunYbAdmin("release_replication_slot", kSlot));
+  ASSERT_OK(WaitForSysCatalogBarriers(
+      [](const auto& barriers) { return barriers.IsReleased(); },
+      "Sys catalog barriers released"));
+  // The old version doesn't have these flags.
+  for (auto* master : cluster_->master_daemons()) {
+    for (const auto& [flag, _] : kMasterBarrierFlags) {
+      master->RemoveExtraFlag(flag);
+    }
+  }
+  for (auto* daemon : cluster_->daemons()) {
+    for (const auto& flag : kTxnDdlFlags) {
+      daemon->RemoveExtraFlag(flag);
+    }
+  }
+  ASSERT_OK(RollbackClusterToOldVersion());
+
+  for (const auto& barriers : ASSERT_RESULT(GetSysCatalogBarriers())) {
+    ASSERT_TRUE(barriers.IsReleased()) << barriers.ToString();
+  }
+  ASSERT_OK(InsertRows(26, 30));
+  ASSERT_OK(CheckNoRowsLost(
+      ASSERT_RESULT(StreamRows(kSlot, 30, IgnoreReadTime::kFalse)),
+      ExpectedRows(26, 30, WithNewCol::kFalse)));
 }
 
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
