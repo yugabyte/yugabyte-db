@@ -40,17 +40,15 @@ if [[ -t 0 ]]; then
 fi
 
 # The count comes first, so that a stream that ends early fails here instead of running the command
-# with only some of its arguments.  A last argument cut off before its NUL stays in arg after the
-# loop, so the check below catches that case too.  No argument can contain NUL, because each one
+# with only some of its arguments.  read returns an argument only once its NUL arrives, so a stream
+# cut inside the last argument also comes up short.  No argument can contain NUL, because each one
 # becomes a C string in the exec below.
+IFS= read -r -d '' expected_count
 args=()
-arg=
-if IFS= read -r -d '' expected_count; then
-  while IFS= read -r -d '' arg; do
-    args+=( "$arg" )
-  done
-fi
-if [[ -n ${arg:-} || ${#args[@]} != "${expected_count:-}" ]]; then
+while IFS= read -r -d '' arg; do
+  args+=( "$arg" )
+done
+if [[ ${#args[@]} != "$expected_count" ]]; then
   echo "Expected ${expected_count:-an argument count and that many} arguments on stdin, got" \
        "${#args[@]} complete ones" >&2
   exit 1
