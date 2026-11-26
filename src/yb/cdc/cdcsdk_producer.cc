@@ -127,7 +127,8 @@ DEFINE_RUNTIME_bool(cdc_reload_schema_after_txn_schema_change, true,
                     "When this flag is set to true, GetChanges will reload the schema of a table "
                     "after streaming a transaction whose records were decoded with a schema other "
                     "than the one at its commit, so that the records streamed after the "
-                    "transaction use the current schema.");
+                    "transaction use the current schema. Only takes effect when "
+                    "ysql_yb_enable_replication_slot_transactional_ddl is true.");
 
 DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
                  "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
@@ -149,8 +150,8 @@ namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
 
 // Tracks the schema version of the last decoded intent for every table while decoding a batch of
-// transaction's intents. Also tracks whether its schema version changed during the batch so that
-// cached schema details is reverted back post this transaction.
+// transaction's intents. Also tracks whether its schema was loaded during the transaction so that
+// cached schema details are checked against the schema at commit post this transaction.
 class IntentSchemaState {
  public:
   explicit IntentSchemaState(SchemaDetailsMap* cached_schema_details)
@@ -159,28 +160,40 @@ class IntentSchemaState {
             FLAGS_cdc_reload_schema_after_txn_schema_change &&
             FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
     for (const auto& [table_id, details] : *cached_schema_details_) {
-      versions_.emplace(table_id, details.schema_version);
+      tables_.emplace(table_id, TableState{details.schema_version, details.loaded_in_txn});
     }
   }
 
   // Marks the table's cached schema as loaded in the transaction when the table had no cached
-  // schema before the batch, or when the version differs from the one decoded before it.
+  // schema before the batch, or when the version differs from the one decoded before it. A marked
+  // table is marked again on every call, since a schema erased and reloaded at the same version
+  // comes back unmarked.
   void Add(const TableId& table_id, SchemaVersion version) {
-    auto [it, inserted] = versions_.try_emplace(table_id, version);
-    if (!inserted && it->second == version) {
+    auto [it, inserted] = tables_.try_emplace(
+        table_id, TableState{.version = version, .loaded_in_txn = true});
+    auto& state = it->second;
+    if (state.version != version) {
+      state.version = version;
+      state.loaded_in_txn = true;
+    }
+    if (!enabled_ || !state.loaded_in_txn) {
       return;
     }
-    it->second = version;
     auto cached = cached_schema_details_->find(table_id);
-    if (enabled_ && cached != cached_schema_details_->end()) {
+    if (cached != cached_schema_details_->end()) {
       cached->second.loaded_in_txn = true;
     }
   }
 
  private:
+  struct TableState {
+    SchemaVersion version;
+    bool loaded_in_txn;
+  };
+
   SchemaDetailsMap* const cached_schema_details_;
   const bool enabled_;
-  std::unordered_map<TableId, SchemaVersion> versions_;
+  std::unordered_map<TableId, TableState> tables_;
 };
 
 // Erases each cached schema loaded while decoding a transaction's intents whose version differs
