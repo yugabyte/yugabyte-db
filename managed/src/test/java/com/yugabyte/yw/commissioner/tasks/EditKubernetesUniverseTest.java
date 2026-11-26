@@ -102,6 +102,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -3609,6 +3610,53 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         ImmutableList.of("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]"),
         leaderBlacklistSteps(ImmutableList.of(cleanup)));
+  }
+
+  @Test
+  public void testFailedLeaderBlacklistClearKeepsTheEditError() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    when(mockClient.getLeaderBlacklistCompletion())
+        .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.nodes_safe_to_take_down.enabled", "false");
+    // Every blacklist change after the failed restart, which is only the cleanup, fails.
+    AtomicBoolean restartFailed = new AtomicBoolean();
+    doAnswer(
+            inv -> {
+              restartFailed.set(true);
+              throw new RuntimeException("stop after planning");
+            })
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    when(mockClient.changeMasterClusterConfig(any()))
+        .thenAnswer(
+            inv -> {
+              if (restartFailed.get()) {
+                throw new RuntimeException("cannot reach the master leader");
+              }
+              return new ChangeMasterClusterConfigResponse(1111, "", null);
+            });
+    TaskInfo edit =
+        submitEdit(
+            tserverCpuChange(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo,
+            null);
+
+    List<TaskInfo> leaderBlacklistChanges =
+        subtasks(
+            plan(edit), TaskType.ModifyBlackList, p -> p.path("isLeaderBlacklist").asBoolean());
+    TaskInfo cleanup = leaderBlacklistChanges.get(leaderBlacklistChanges.size() - 1);
+    assertEquals(
+        ImmutableList.of("remove [yb-tserver-0_az-1, yb-tserver-0_az-2, yb-tserver-0_az-3]"),
+        leaderBlacklistSteps(ImmutableList.of(cleanup)));
+    assertEquals(Failure, cleanup.getTaskState());
+    assertThat(edit.getErrorMessage(), containsString("SubTaskGroup HelmUpgrade"));
+    assertFalse(edit.getErrorMessage(), edit.getErrorMessage().contains("ModifyBlackList"));
+    assertFalse(
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .updateInProgress);
   }
 
   @Test
