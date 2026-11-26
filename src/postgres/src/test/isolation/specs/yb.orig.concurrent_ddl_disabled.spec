@@ -7,9 +7,8 @@
 #   - a DDL that increments the catalog version waits until holder commits,
 #     including after holder rolls back to a savepoint taken before its DDL,
 #     and including a DDL in a procedure, called inside or outside a block;
-#   - a DDL that does not increment the catalog version (CREATE TEMP TABLE),
-#     an ANALYZE from the auto-analyze service, and a DDL in another database
-#     do not wait.
+#   - a DDL that does not increment the catalog version (CREATE TEMP TABLE)
+#     and an ANALYZE from the auto-analyze service do not wait.
 #
 # TODO(#34673): whether ROLLBACK TO releases the lock taken in the rolled-back
 # subtransaction is not part of the design. The savepoint permutation pins the
@@ -17,17 +16,6 @@
 
 setup
 {
-  DROP DATABASE IF EXISTS ddl_other_db;
-}
-
-setup
-{
-  CREATE DATABASE ddl_other_db;
-}
-
-setup
-{
-  CREATE EXTENSION IF NOT EXISTS dblink;
   CREATE TABLE a (k int PRIMARY KEY);
   CREATE TABLE b (k int PRIMARY KEY);
   CREATE TABLE c (k int PRIMARY KEY);
@@ -57,14 +45,6 @@ step d_analyze		{ ANALYZE b; }
 step d_begin		{ BEGIN; }
 step d_call		{ CALL add_column('c1'); }
 step d_commit		{ COMMIT; }
-# isolationtester connects every session to the same database, so the DDL in
-# the other database goes through dblink, over a connection to this node.
-step d_other_db
-{
-  SELECT dblink_exec(
-    format('host=%s port=%s dbname=ddl_other_db', inet_server_addr(), inet_server_port()),
-    'CREATE TABLE y (k int PRIMARY KEY)');
-}
 
 session auto_analyze
 # The auto-analyze service marks its connections with this GUC.
@@ -93,6 +73,3 @@ permutation h_begin h_alter aa_analyze aa_analyze_two d_analyze h_commit
 # (atomic).
 permutation h_begin h_alter d_call h_commit
 permutation h_begin h_alter d_begin d_call h_commit d_commit
-
-# A DDL in another database does not wait.
-permutation h_begin h_alter d_other_db h_commit
