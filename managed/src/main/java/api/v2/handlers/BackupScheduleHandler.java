@@ -79,6 +79,7 @@ public class BackupScheduleHandler {
   public static final String STORAGE_CONFIG_NOT_ACTIVE = StorageConfigHandler.NOT_ACTIVE;
   public static final String BUSY = "BACKUP_SCHEDULE_BUSY";
   public static final String NOT_EDITABLE = "BACKUP_SCHEDULE_NOT_EDITABLE";
+  public static final String OPERATOR_CONTROLLED = "BACKUP_SCHEDULE_OPERATOR_CONTROLLED";
   public static final String UNIVERSE_LOCKED = "UNIVERSE_LOCKED";
 
   /**
@@ -180,6 +181,7 @@ public class BackupScheduleHandler {
   public YBATask editBackupSchedule(UUID cUUID, UUID bsUUID, BackupScheduleSpec spec) {
     Customer customer = Customer.getOrNotFound(cUUID);
     Schedule schedule = getSchedule(cUUID, bsUUID);
+    checkNotOperatorControlled(schedule);
     if (schedule.getTaskType() != TaskType.CreateBackup) {
       throw badRequest(
           "Schedules of the older backup tasks (BackupUniverse, MultiTableBackup) can't be"
@@ -244,6 +246,25 @@ public class BackupScheduleHandler {
     UUID taskUUID =
         scheduleTaskHelper.createEditScheduledBackupTask(taskParams, customer, universe, schedule);
     return new YBATask().taskUuid(taskUUID).resourceUuid(bsUUID);
+  }
+
+  /**
+   * A schedule the YBA Kubernetes operator manages is changed only through its custom resource, so
+   * that the two don't drift apart: 409. Stricter than v1, which lets the API change it.
+   */
+  private static void checkNotOperatorControlled(Schedule schedule) {
+    if (schedule.isKubernetesOperatorControlled()) {
+      ObjectNode error = Json.newObject();
+      error.put("code", OPERATOR_CONTROLLED);
+      error.put(
+          "message",
+          String.format(
+              "Backup schedule %s is managed by the YBA Kubernetes operator; change it through its"
+                  + " custom resource",
+              schedule.getScheduleName()));
+      error.put("backup_schedule_uuid", schedule.getScheduleUUID().toString());
+      throw new PlatformServiceException(CONFLICT, error);
+    }
   }
 
   /**

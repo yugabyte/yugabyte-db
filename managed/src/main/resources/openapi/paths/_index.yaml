@@ -389,7 +389,8 @@
       off, and a retention can't be removed. A changed retention also changes the expiry of the
       schedule's completed backups. Only schedules of the CreateBackup task can be edited, not
       those of the older BackupUniverse and MultiTableBackup tasks. Only an ACTIVE or PAUSED
-      schedule can be edited; one in ERROR can only be deleted. The schedule keeps its state; it
+      schedule can be edited; one in ERROR can only be deleted. A schedule the YBA Kubernetes
+      operator manages is edited through its custom resource, not here. The schedule keeps its state; it
       is EDITING while the task runs. For point_in_time_restore the task also sets the history
       retention the new frequency needs. If the task fails, the schedule is left in ERROR. Retry
       with the same Idempotency-Key to get the task of a request whose response was lost.
@@ -407,7 +408,7 @@
       '404':
         description: The customer has no backup schedule with this UUID
       '409':
-        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED when the YBA Kubernetes operator manages it (error.backup_schedule_uuid; edit its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
       '500':
         description: Server error
     security:

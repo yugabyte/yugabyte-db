@@ -824,6 +824,16 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertEquals(BackupScheduleHandler.NOT_EDITABLE, error(e).get("code").asText());
     assertEquals("ERROR", error(e).get("backup_schedule_state").asText());
 
+    // The Kubernetes operator manages it: edit its custom resource.
+    Schedule operated = editableSchedule("operated", false);
+    BackupScheduleSpec operatedSpec = specOf(operated);
+    operated.setIsKubernetesOperatorControlled(true);
+    operated.save();
+    e = assertEditError(operated, operatedSpec, 409);
+    assertEquals(BackupScheduleHandler.OPERATOR_CONTROLLED, error(e).get("code").asText());
+    assertEquals(
+        operated.getScheduleUUID().toString(), error(e).get("backup_schedule_uuid").asText());
+
     // Another task holds it.
     Schedule held = editableSchedule("held", false);
     BackupScheduleSpec heldSpec = specOf(held);

@@ -555,8 +555,11 @@ paths:
         those of the older BackupUniverse and MultiTableBackup tasks. Only an ACTIVE
         or PAUSED
 
-        schedule can be edited; one in ERROR can only be deleted. The schedule keeps
-        its state; it
+        schedule can be edited; one in ERROR can only be deleted. A schedule the YBA
+        Kubernetes
+
+        operator manages is edited through its custom resource, not here. The schedule
+        keeps its state; it
 
         is EDITING while the task runs. For point_in_time_restore the task also sets
         the history
@@ -589,10 +592,11 @@ paths:
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING,
             EDITING or DELETING, or a task holds it (error.backup_schedule_state),
-            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and UNIVERSE_LOCKED
-            when the schedule has point_in_time_restore and a task holds its universe
-            (error.universe_uuid). Also returned while a request with the same Idempotency-Key
-            is still in progress.
+            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, BACKUP_SCHEDULE_OPERATOR_CONTROLLED
+            when the YBA Kubernetes operator manages it (error.backup_schedule_uuid;
+            edit its custom resource), and UNIVERSE_LOCKED when the schedule has point_in_time_restore
+            and a task holds its universe (error.universe_uuid). Also returned while
+            a request with the same Idempotency-Key is still in progress.
         '500':
           description: Server error
         '422':
