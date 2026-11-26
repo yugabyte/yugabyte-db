@@ -60,6 +60,9 @@
 #include "utils/rel.h"
 #include "utils/varlena.h"
 
+/* YB includes */
+#include "yb_ysql_conn_mgr_helper.h"
+
 PG_MODULE_MAGIC;
 
 typedef struct remoteConn
@@ -373,6 +376,9 @@ dblink_connect(PG_FUNCTION_ARGS)
 		}
 		pconn->conn = conn;
 	}
+
+	if (YbIsClientYsqlConnMgr())
+		yb_ysql_conn_mgr_sticky_nontxn_object = true;
 
 	PG_RETURN_TEXT_P(cstring_to_text("OK"));
 }
