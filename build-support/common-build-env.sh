@@ -1744,14 +1744,14 @@ run_remote_cmd() {
     "$PATH"
     "$executable"
   )
-  (
+  # remote_cmd.sh reads the argument count and the arguments from stdin, each followed by NUL.
+  printf '%s\0' "$#" "$@" | {
     if debugging_remote_compilation; then
       exec 2>&1
       set -x
     fi
-    # remote_cmd.sh reads the argument count and the arguments from stdin, each followed by NUL.
-    printf '%s\0' "$#" "$@" | ssh -T "${ssh_args[@]}"
-  )
+    ssh -T "${ssh_args[@]}"
+  }
 }
 
 # Switches YB_SRC_ROOT and the build parent directories to the /net/<host>/... name of the source

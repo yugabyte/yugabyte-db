@@ -34,6 +34,11 @@ fi
 export PATH=$2
 shift 2
 
+if [[ -t 0 ]]; then
+  echo "stdin is a terminal, but remote_cmd.sh reads its arguments from stdin" >&2
+  exit 1
+fi
+
 # The count comes first, so that a stream that ends early fails here instead of running the command
 # with only some of its arguments.  A last argument cut off before its NUL stays in arg after the
 # loop, so the check below catches that case too.  No argument can contain NUL, because each one
