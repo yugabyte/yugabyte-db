@@ -1,0 +1,2 @@
+test: yb.orig.alter_partitioned_table_locks
+test: yb.orig.detach-partition-concurrently-1

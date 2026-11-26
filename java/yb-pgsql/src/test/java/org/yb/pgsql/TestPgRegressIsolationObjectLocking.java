@@ -46,23 +46,35 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
     return 900;
   }
 
-  private void runSchedule(boolean useAllHosts) throws Exception {
+  // The specs are split across two schedules so each fits the per-method timeout; heavy specs
+  // (alter_partitioned_table_locks, detach-partition-concurrently-1) are in the second one.
+  private void runSchedule(String schedule, boolean useAllHosts) throws Exception {
     runPgRegressTest(
       PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */,
-      "yb_isolation_object_locking_schedule",
+      schedule,
       0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE,
       useAllHosts);
   }
 
   @Test
   public void testPgRegress() throws Exception {
-    runSchedule(false /* useAllHosts */);
+    runSchedule("yb_isolation_object_locking_schedule", false /* useAllHosts */);
   }
 
   // Sessions are spread round-robin across tservers, so conflicting sessions acquire object locks
   // and receive invalidation messages on different nodes.
   @Test
   public void testPgRegressAcrossTServers() throws Exception {
-    runSchedule(true /* useAllHosts */);
+    runSchedule("yb_isolation_object_locking_schedule", true /* useAllHosts */);
+  }
+
+  @Test
+  public void testPgRegress2() throws Exception {
+    runSchedule("yb_isolation_object_locking2_schedule", false /* useAllHosts */);
+  }
+
+  @Test
+  public void testPgRegress2AcrossTServers() throws Exception {
+    runSchedule("yb_isolation_object_locking2_schedule", true /* useAllHosts */);
   }
 }
