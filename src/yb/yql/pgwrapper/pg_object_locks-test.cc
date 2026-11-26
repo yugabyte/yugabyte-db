@@ -3785,6 +3785,97 @@ INSTANTIATE_TEST_SUITE_P(
           (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"));
     });
 
+class PgObjectLocksTestLostMessageRelease : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_master_flags.emplace_back(
+        Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
+  }
+
+  static constexpr auto kPgClientExtraTimeoutMs = 2000;
+};
+
+// As in TestOutOfOrderMessageHandling, an acquire reaches ts2 after the release of its exclusive
+// lock. That test relies on the requesting tserver's lost-message release, sent at the acquire's
+// deadline, to release it. Here the requesting tserver goes away first, taking that scheduled
+// release with it. Master deleted its record of the lock when the release finished, so the
+// cleanup of the requestor's expired lease epoch has nothing to release either.
+TEST_F(PgObjectLocksTestLostMessageRelease, OutOfOrderAcquireReleasedAfterRequestorShutdown) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id INT PRIMARY KEY, value TEXT)"));
+
+  // Leaves time to shut ts1 down before the blocked acquire's deadline.
+  const auto kStatementTimeoutSec = 30;
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", kStatementTimeoutSec));
+
+  // Master's first acquire RPC to ts2 stays blocked there; master times it out and retries.
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "true"));
+  LogWaiter blocked_waiter(ts2, "Blocking acquire request to simulate out-of-order requests");
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "refresh_waiter_timeout_ms", Format("$0", kStatementTimeoutSec * 1000 / 10)));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "master_ts_rpc_timeout_ms", Format("$0", kStatementTimeoutSec * 1000 / 10)));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto lock_request_start = CoarseMonoClock::Now();
+  auto lock_future = std::async(std::launch::async, [&conn]() -> Status {
+    RETURN_NOT_OK(conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE"));
+    return conn.Execute("COMMIT");
+  });
+  const auto kTimeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  ASSERT_OK(blocked_waiter.WaitFor(kTimeout));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "false"));
+  ASSERT_OK(lock_future.get());
+
+  // The release was applied on ts2, ahead of the still blocked acquire.
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test_table IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+
+  ts1->Shutdown();
+
+  const auto acquire_deadline =
+      lock_request_start + kStatementTimeoutSec * 1s + kPgClientExtraTimeoutMs * 1ms;
+  const auto kGracePeriod = MonoDelta::FromMilliseconds(500);
+  ASSERT_LE(CoarseMonoClock::Now() + kGracePeriod, acquire_deadline);
+  LogWaiter unblocked_waiter(ts2, "Unblocking acquire request.");
+  ASSERT_OK(
+      cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
+  ASSERT_OK(unblocked_waiter.WaitFor(kTimeout));
+
+  auto get_locks_count_on_ts2 = [&ts2, this]() -> Result<int64_t> {
+    return VERIFY_RESULT(cluster_->GetObjectLockStatus(*ts2)).object_lock_infos_size();
+  };
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(get_locks_count_on_ts2()) > 0; },
+      kGracePeriod, "Wait for the out-of-order acquire to take the lock on ts2"));
+
+  // By then the acquire's deadline has passed and master has marked ts1's lease lost and cleaned
+  // up its expired lease epoch.
+  const auto cleanup_deadline =
+      std::max(acquire_deadline, CoarseMonoClock::Now()) +
+      MonoDelta::FromMilliseconds(3 * kDefaultMasterYSQLLeaseTTLMilli * kTimeMultiplier);
+  ASSERT_OK(LoggedWait(
+      [&]() -> Result<bool> {
+        auto locks_count = VERIFY_RESULT(get_locks_count_on_ts2());
+        LOG(INFO) << "Number of locks on ts2: " << locks_count;
+        return locks_count == 0;
+      },
+      cleanup_deadline, "Wait for the out-of-order acquire on ts2 to be released"));
+
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test_table IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+  ASSERT_OK(ts1->Restart());
+}
+
 // This test relies on the OLM poller to run frequently and timedout waiters, in order to
 // check for deadlocks/transaction aborts and retry from pg_client_session if necessary.
 TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
