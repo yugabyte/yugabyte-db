@@ -12730,6 +12730,16 @@ Result<std::shared_ptr<AsyncAddServerTask>> CatalogManager::ScheduleAddServerTas
   return task;
 }
 
+Result<std::shared_ptr<RetryingRpcTask>> CatalogManager::ScheduleAlterTabletTierTask(
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& target_tier,
+    const LeaderEpoch& epoch, const std::string& reason) {
+  auto task = std::make_shared<AsyncAlterTabletTier>(
+      master_, AsyncTaskPool(), tablet, ts_uuid, target_tier, epoch, reason);
+  tablet->table()->AddTask(task);
+  RETURN_NOT_OK(ScheduleTask(task));
+  return task;
+}
+
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TableToTabletInfos *tablets_to_process) {
@@ -13814,6 +13824,13 @@ Status CatalogManager::BuildLocationsForTablet(
       replica_pb->set_role(tablet_replica.role);
       replica_pb->set_member_type(tablet_replica.member_type);
       replica_pb->set_state(tablet_replica.state);
+      if (!tablet_replica.current_storage_tier.empty()) {
+        replica_pb->set_current_storage_tier(tablet_replica.current_storage_tier);
+      }
+      if (!tablet_replica.target_storage_tier.empty()) {
+        replica_pb->set_target_storage_tier(tablet_replica.target_storage_tier);
+        replica_pb->set_tier_migration_state(tablet_replica.tier_migration_state);
+      }
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
       out_ts_info->set_permanent_uuid(ts_uuid);
       auto strong_ts_desc_ptr = tablet_replica.ts_desc.lock();
@@ -14266,8 +14283,9 @@ Status CatalogManager::ValidateReplicationInfo(
 
   // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
   // but a tablet created on fewer tservers than its replication factor starts under-replicated,
-  // and the load balancer, which does not consider tiers, would add the missing replicas on
-  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // and the load balancer may complete it on a tserver without the tier: CanAddTabletToTabletServer
+  // accepts one whose tiers are unknown, and any one while no eligible tserver in its placement
+  // block has the tier. So every replica needs a live tserver that registered a data
   // directory on the tier, within the placement blocks and under their maximums as
   // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
   // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
