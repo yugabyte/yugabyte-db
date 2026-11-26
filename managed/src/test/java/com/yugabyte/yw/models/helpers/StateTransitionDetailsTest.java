@@ -17,8 +17,19 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Test;
+import play.libs.Json;
 
 public class StateTransitionDetailsTest {
+
+  @Test
+  public void toStringLeavesOutTheDelta() {
+    JsonNode delta =
+        DeltaEvaluator.buildDeltaJsonTree(
+            Json.newObject(), Json.newObject().put("ycql_ldap_bind_passwd", "ycql-ldap-secret"));
+    String text = new StateTransitionDetails(true, delta).toString();
+    assertFalse(text, text.contains("ycql-ldap-secret"));
+    assertTrue(text, text.contains("rollbackSafe=true"));
+  }
 
   @Test
   public void applyBeforeToPreservesCurrentYbcFields() {
