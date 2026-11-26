@@ -16,7 +16,6 @@
 
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -129,13 +128,13 @@ class ProcessSupervisor {
   // Current state of the process.
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;
 
-  // The time at which the process was last started successfully
-  Timestamp last_process_start_time_ GUARDED_BY(mtx_);
+  // Number of restart requests made for this process.
+  uint64_t restart_request_count_ GUARDED_BY(mtx_) = 0;
 
-  // The time at which the last restart request was made for this process.
-  // This is used to ensure if the last restart request was successful by comparing
-  // it with last_process_start_time_
-  Timestamp last_restart_request_time_ GUARDED_BY(mtx_);
+  // Value of restart_request_count_ when the process was last started successfully, or nullopt if
+  // it has never been started. Counters rather than wall-clock times, so that a clock step cannot
+  // reorder a start and a restart request.
+  std::optional<uint64_t> started_for_restart_request_ GUARDED_BY(mtx_);
 
   scoped_refptr<Thread> supervisor_thread_;
 
