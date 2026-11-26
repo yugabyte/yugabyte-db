@@ -1,5 +1,6 @@
 #!/bin/python3
 
+import argparse
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -55,6 +56,42 @@ class TestAzureCloudAdmin(TestCase):
 
         admin.compute_client.virtual_machines.begin_update.assert_called_once_with(
             "rg", "vm1", {"hardware_profile": {"vm_size": "Standard_D4as_v5"}})
+
+    @patch("ybops.cloud.azure.utils.RESOURCE_GROUP", "rg")
+    def test_update_disk_expands_every_data_disk_on_the_running_vm(self):
+        # Smart resize relies on this for all disk types, Premium SSD v2 and Ultra included: the
+        # size is patched on the attached disks and the VM is never stopped or deallocated.
+        admin = object.__new__(AzureCloudAdmin)
+        admin.compute_client = MagicMock()
+        admin.compute_client.virtual_machines.get.return_value = SimpleNamespace(
+            storage_profile=SimpleNamespace(data_disks=[
+                SimpleNamespace(name="vm1-Disk-1"), SimpleNamespace(name="vm1-Disk-2")]))
+
+        admin.update_disk("vm1", 500)
+
+        updates = [call.args for call in admin.compute_client.disks.begin_update.call_args_list]
+        self.assertEqual(updates, [
+            ("rg", "vm1-Disk-1", {"disk_size_gb": 500}),
+            ("rg", "vm1-Disk-2", {"disk_size_gb": 500}),
+        ])
+        self.assertEqual(admin.compute_client.disks.begin_update.return_value.wait.call_count, 2)
+        admin.compute_client.virtual_machines.begin_deallocate.assert_not_called()
+        admin.compute_client.virtual_machines.begin_power_off.assert_not_called()
+
+    def test_disk_update_accepts_provisioned_iops_and_throughput(self):
+        # YBA passes --disk_iops and --disk_throughput on disk_update for Premium SSD v2 and Ultra
+        # disks. The command line must parse; only the size is applied.
+        parser = argparse.ArgumentParser()
+        AzureCloud().register(parser.add_subparsers().add_parser("azu"))
+
+        args = parser.parse_args([
+            "azu", "instance", "disk_update", "--num_volumes", "1", "--volume_size", "150",
+            "--disk_iops", "5000", "--disk_throughput", "200", "yb-universe-n1"])
+
+        self.assertEqual(args.search_pattern, "yb-universe-n1")
+        self.assertEqual(args.volume_size, 150)
+        self.assertEqual(args.disk_iops, 5000)
+        self.assertEqual(args.disk_throughput, 200)
 
     @patch("ybops.cloud.azure.cloud.RemoteShell")
     def test_expand_file_system_supports_nvme(self, remote_shell_class):
