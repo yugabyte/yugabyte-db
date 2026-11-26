@@ -3618,11 +3618,11 @@ const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
 
 OpId RaftConsensus::GetPendingConfigOpId() const {
   auto lock = state_->LockForRead();
-  auto result = state_->GetPendingConfigOpIdUnlocked();
-  if (result.is_valid_not_empty()) {
-    return result;
-  }
-  return state_->GetPendingConfigOpIdFromRbsUnlocked();
+  // The pending config op in the log can be older than the one received with the RBS request, when
+  // the RBS source is a follower that doesn't know its op is committed. If the larger op id is no
+  // longer pending, neither is the smaller one.
+  return std::max(
+      state_->GetPendingConfigOpIdUnlocked(), state_->GetPendingConfigOpIdFromRbsUnlocked());
 }
 
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
