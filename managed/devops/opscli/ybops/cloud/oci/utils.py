@@ -1380,14 +1380,17 @@ class OciCloudAdmin:
 
     def _wait_for_volume_state(self, volume_id, target_state, timeout=300, ready_check=None):
         start_time = time.time()
+        last_seen = None
         while time.time() - start_time < timeout:
             volume = self.blockstorage_client.get_volume(volume_id).data
             if volume.lifecycle_state == target_state:
                 if ready_check is None or ready_check(volume):
                     return volume
+            last_seen = "{} at {} GB".format(volume.lifecycle_state, volume.size_in_gbs)
             time.sleep(5)
         raise YBOpsRuntimeError(
-            "Timeout waiting for volume {} to reach state {}".format(volume_id, target_state))
+            "Timeout waiting for volume {} to reach state {}, last seen {}".format(
+                volume_id, target_state, last_seen))
 
     def _wait_for_attachment_state(self, attachment_id, target_state, timeout=300):
         start_time = time.time()

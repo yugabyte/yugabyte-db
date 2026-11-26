@@ -429,7 +429,18 @@ class TestUpdateDisk(TestCase):
         with self.assertRaises(YBOpsRuntimeError) as ctx:
             self.cloud.update_disk(self.args)
         self.assertIn("Timeout waiting for volume d0", str(ctx.exception))
+        self.assertIn("last seen PROVISIONING at 100 GB", str(ctx.exception))
         self.blockstorage.update_volume.assert_called_once()
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 0, 0, 0, 300])
+    def test_resize_that_never_applies_reports_the_size_seen(self, _, sleep):
+        self.blockstorage.get_volume.return_value.data = SimpleNamespace(
+            lifecycle_state="AVAILABLE", size_in_gbs=100)
+
+        with self.assertRaises(YBOpsRuntimeError) as ctx:
+            self.cloud.update_disk(self.args)
+        self.assertIn("last seen AVAILABLE at 100 GB", str(ctx.exception))
 
     @patch("ybops.cloud.common.cloud.RemoteShell")
     def test_expand_file_system_rescans_device_before_growing(self, remote_shell_class):
