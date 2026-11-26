@@ -11,7 +11,9 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <set>
+#include <vector>
 
 #include <gflags/gflags_declare.h>
 #include <gtest/gtest.h>
@@ -63,6 +65,51 @@ TEST_F(LoadBalancerMockedTest, TestStartingTablet) {
   ASSERT_EQ(GetTotalOverreplication(), 0);
   ASSERT_EQ(GetTotalStartingTablets(), 1);
   ASSERT_EQ(GetTotalRunningTablets(), total_num_tablets_ - 1);
+}
+
+TEST_F(LoadBalancerMockedTest, TestRemoveRunningTabletFromAllDrives) {
+  GlobalLoadState global_state;
+  Options options;
+  options.type = ReplicaType::kLive;
+  PerTableLoadState state(&global_state);
+  state.options_ = &options;
+  state.check_ts_liveness_ = false;
+  const TabletServerId uuid = "0000";
+  state.UpdateTabletServer(SetupTS(uuid, "a"));
+  size_t index = 0;
+  for (const auto& path : {"/data0", "/data1", ""}) {
+    ASSERT_OK(state.AddRunningTablet(Format("tablet-$0", index++), uuid, path));
+  }
+  const auto& meta = state.per_ts_meta_.at(uuid);
+  auto expected_paths = meta.path_to_tablets;
+  std::vector<TabletId> removals;
+  for (const auto& [path, tablets] : meta.path_to_tablets) {
+    removals.push_back(*tablets.begin());
+  }
+  // Remove from a non-first path before the first path, regardless of hash-map iteration order.
+  std::reverse(removals.begin(), removals.end());
+  ASSERT_FALSE(meta.path_to_tablets.begin()->second.contains(removals.front()));
+  state.SetInitialized();
+  size_t expected_load = removals.size();
+
+  for (const auto& tablet_id : removals) {
+    ASSERT_OK(state.RemoveRunningTablet(tablet_id, uuid));
+    --expected_load;
+    for (auto& [path, tablets] : expected_paths) {
+      tablets.erase(tablet_id);
+    }
+    ASSERT_FALSE(meta.running_tablets.contains(tablet_id));
+    ASSERT_EQ(state.GetLoad(uuid), expected_load);
+    ASSERT_EQ(global_state.GetGlobalLoad(uuid), expected_load);
+    ASSERT_EQ(state.total_running_, expected_load);
+    ASSERT_EQ(state.per_tablet_meta_.at(tablet_id).running, 0);
+    ASSERT_EQ(meta.path_to_tablets, expected_paths);
+  }
+  ASSERT_NOK_STR_CONTAINS(
+      state.RemoveRunningTablet(removals.front(), uuid), "Could not find running tablet to remove");
+  ASSERT_EQ(state.GetLoad(uuid), 0);
+  ASSERT_EQ(global_state.GetGlobalLoad(uuid), 0);
+  ASSERT_EQ(meta.path_to_tablets, expected_paths);
 }
 
 TEST_F(LoadBalancerMockedTest, TestPendingStepdown) {
