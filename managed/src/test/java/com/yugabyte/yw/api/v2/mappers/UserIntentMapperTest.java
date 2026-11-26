@@ -277,7 +277,7 @@ public class UserIntentMapperTest {
   }
 
   @Test
-  public void testEditOmittingK8sResourceSpecsClearsThemForReinitialization() {
+  public void testEditOmittingK8sResourceSpecsKeepsExisting() {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "large";
     userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
@@ -287,11 +287,12 @@ public class UserIntentMapperTest {
     UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
         new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
 
-    // Left null so the handler derives them from the new instance type; keeping the old ones
-    // would hide the instance type change from EditKubernetesUniverse.
+    // The handler decides whether kept specs are still valid for the new instance type.
     assertEquals("xlarge", userIntent.instanceType);
-    assertNull(userIntent.masterK8SNodeResourceSpec);
-    assertNull(userIntent.tserverK8SNodeResourceSpec);
+    assertEquals(2.5, userIntent.masterK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, userIntent.masterK8SNodeResourceSpec.memoryGib, 0.001);
+    assertEquals(8.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(32.0, userIntent.tserverK8SNodeResourceSpec.memoryGib, 0.001);
   }
 
   @Test
@@ -317,7 +318,7 @@ public class UserIntentMapperTest {
   }
 
   @Test
-  public void testAddReadReplicaOmittingK8sResourceSpecsClearsPrimaryOnes() {
+  public void testAddReadReplicaOmittingK8sResourceSpecsKeepsExisting() {
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "large";
     userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
@@ -327,11 +328,10 @@ public class UserIntentMapperTest {
         new ClusterAddSpec().nodeSpec(new ClusterNodeSpec().instanceType("xlarge"));
     UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
 
-    // The read replica must not inherit the primary's specs; the handler derives the tserver one
-    // from the replica's instance type.
+    // The mapper keeps omitted specs; the handler clears the cloned primary specs beforehand.
     assertEquals("xlarge", userIntent.instanceType);
-    assertNull(userIntent.masterK8SNodeResourceSpec);
-    assertNull(userIntent.tserverK8SNodeResourceSpec);
+    assertEquals(2.5, userIntent.masterK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(8.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
   }
 
   @Test
@@ -346,7 +346,7 @@ public class UserIntentMapperTest {
             .nodeSpec(new ClusterNodeSpec().instanceType("xlarge").k8sTserverResourceSpec(tserver));
     UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
 
-    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertEquals(2.5, userIntent.masterK8SNodeResourceSpec.cpuCoreCount, 0.001);
     assertEquals(1.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
     assertEquals(2.0, userIntent.tserverK8SNodeResourceSpec.memoryGib, 0.001);
   }

@@ -615,10 +615,16 @@ public interface UserIntentMapper {
     userIntent.instanceType = clusterNodeSpec.getInstanceType();
     userIntent.deviceInfo = storageSpecToDeviceInfo(clusterNodeSpec.getStorageSpec());
     userIntent.setCgroupSize(clusterNodeSpec.getCgroupSize());
-    userIntent.masterK8SNodeResourceSpec =
-        toV1K8SNodeResourceSpec(clusterNodeSpec.getK8sMasterResourceSpec());
-    userIntent.tserverK8SNodeResourceSpec =
-        toV1K8SNodeResourceSpec(clusterNodeSpec.getK8sTserverResourceSpec());
+    // An omitted k8s resource spec keeps the stored one, so a partial node_spec edit doesn't reset
+    // it.
+    if (clusterNodeSpec.getK8sMasterResourceSpec() != null) {
+      userIntent.masterK8SNodeResourceSpec =
+          toV1K8SNodeResourceSpec(clusterNodeSpec.getK8sMasterResourceSpec());
+    }
+    if (clusterNodeSpec.getK8sTserverResourceSpec() != null) {
+      userIntent.tserverK8SNodeResourceSpec =
+          toV1K8SNodeResourceSpec(clusterNodeSpec.getK8sTserverResourceSpec());
+    }
 
     // fill user intent overrides
     if (clusterNodeSpec.getMaster() != null

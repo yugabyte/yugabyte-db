@@ -2042,16 +2042,14 @@ public class KubernetesUtil {
       }
       // The PLAT-9690 added initialization from the instanceType only,
       // masterInstanceType is ignored.
-      UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec =
-          initK8sResourceSpec(userIntent);
+      UserIntent.K8SNodeResourceSpec k8SNodeResourceSpec = initK8sResourceSpec(userIntent);
       if (k8SNodeResourceSpec != null) {
         pi.setNodeResourceSpec(k8SNodeResourceSpec, serverType);
       }
     }
   }
 
-  public static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(
-      UserIntent userIntent) {
+  public static UserIntent.K8SNodeResourceSpec initK8sResourceSpec(UserIntent userIntent) {
     UUID providerUUID = Util.getSingleProviderUUID(userIntent);
 
     String instanceTypeCode = userIntent.getBaseInstanceType(providerUUID);
