@@ -78,14 +78,26 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
     }
   }
 
-  private static void assertConnectionLost(Connection conn) {
+  private static void assertHasRoleDroppedFatal(SQLException e, String role) {
+    String expected = "role \"" + role + "\" does not exist";
+    for (SQLException cur = e; cur != null; cur = cur.getNextException()) {
+      if ("28000".equals(cur.getSQLState()) && cur.getMessage().contains(expected))
+        return;
+    }
+    LOG.error("Unexpected error", e);
+    fail("Expected FATAL 28000 '" + expected + "', got: " + e.getSQLState() + " "
+        + e.getMessage());
+  }
+
+  private static void assertClosedWithRoleDroppedFatal(Connection conn, String role)
+      throws SQLException {
     try {
       execute(conn, "SELECT 1");
       fail("Expected the session to be disconnected");
     } catch (SQLException e) {
-      assertTrue("Unexpected error: " + e.getSQLState() + " " + e.getMessage(),
-          e.getSQLState() != null && e.getSQLState().startsWith("08"));
+      assertHasRoleDroppedFatal(e, role);
     }
+    assertTrue("Expected the session to be closed", conn.isClosed());
   }
 
   // A session raises errors whose text looks like a dropped database or role.
@@ -130,7 +142,8 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
   }
 
   // Two sessions of a role, then DROP ROLE on another node.
-  // current_user fails on the first session and both sessions get disconnected.
+  // current_user fails on the first session and both sessions get disconnected
+  // with FATAL 28000 role "..." does not exist.
   @Test
   public void testDroppedRoleClosesItsSessions() throws Exception {
     runDirect("CREATE ROLE ycm_dropped_role LOGIN");
@@ -149,9 +162,10 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       } catch (SQLException e) {
         assertTrue("Unexpected error: " + e.getMessage(),
             e.getMessage().contains("invalid role OID"));
+        assertHasRoleDroppedFatal(e, "ycm_dropped_role");
       }
-      assertConnectionLost(conn1);
-      assertConnectionLost(conn2);
+      assertTrue("Expected the session to be closed", conn1.isClosed());
+      assertClosedWithRoleDroppedFatal(conn2, "ycm_dropped_role");
     }
   }
 
@@ -172,11 +186,12 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
       try {
         execute(conn1, "DO $$ BEGIN PERFORM current_user; "
             + "EXCEPTION WHEN undefined_object THEN NULL; END $$");
+        fail("Expected the session to be disconnected");
       } catch (SQLException e) {
-        LOG.info("Got error", e);
+        assertHasRoleDroppedFatal(e, "ycm_dropped_role_caught");
       }
-      assertConnectionLost(conn1);
-      assertConnectionLost(conn2);
+      assertTrue("Expected the session to be closed", conn1.isClosed());
+      assertClosedWithRoleDroppedFatal(conn2, "ycm_dropped_role_caught");
     }
   }
 }
