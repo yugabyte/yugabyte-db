@@ -116,7 +116,9 @@ def base_file_size(dataset: Dataset) -> int:
     if dataset.base_file.endswith('.fvecs'):
         # .fvecs prefixes each vector with its dimensions as int32.
         return dataset.num_vectors * 4 * (1 + dataset.dimensions)
-    return fbin_size(dataset.num_vectors, dataset.dimensions)
+    if dataset.base_file.endswith('.fbin'):
+        return fbin_size(dataset.num_vectors, dataset.dimensions)
+    raise ValueError(f'Unknown format of {dataset.base_file}')
 
 
 def format_size(size: int) -> str:
