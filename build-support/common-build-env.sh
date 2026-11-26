@@ -1741,10 +1741,6 @@ cmd_line_to_env_vars_for_remote_cmd() {
     # The separator used here must match the separator used in remote_cmd.sh.
     YB_ENCODED_REMOTE_CMD_LINE+=$arg$ARG_SEPARATOR
   done
-  # Only ssh, which run_remote_cmd starts, gets this variable, and remote_cmd.sh reads it on the
-  # other side.  Exported here, a value longer than the kernel allows for one environment variable
-  # would also keep every later command in this shell from starting.
-  export -n YB_ENCODED_REMOTE_CMD_LINE
 }
 
 run_remote_cmd() {
@@ -1759,6 +1755,9 @@ run_remote_cmd() {
     "$PATH"
     "$executable"
   )
+  # remote_cmd.sh reads YB_ENCODED_REMOTE_CMD_LINE on the worker, so ssh needs it in its
+  # environment.  Export it to ssh alone, because a value longer than the kernel allows for one
+  # environment variable keeps any program that inherits it from starting.
   if debugging_remote_compilation; then
     ( export YB_ENCODED_REMOTE_CMD_LINE; set -x; ssh "${ssh_args[@]}" ) 2>&1
   else
