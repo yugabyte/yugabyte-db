@@ -275,13 +275,35 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 	return 0;
 }
 
+/*
+ * YB: Match GUC names as postgres does in guc_name_compare(): case-insensitive,
+ * with ASCII-only downcasing. A placeholder GUC is reported under the spelling
+ * that created it on each backend, e.g. g3.Tenant on one and g3.tenant on
+ * another, and an exact match would keep a stale value under one of them.
+ */
+static inline bool yb_kiwi_guc_name_equal(const char *a, const char *b)
+{
+	while (*a && *b) {
+		char cha = *a++;
+		char chb = *b++;
+
+		if (cha >= 'A' && cha <= 'Z')
+			cha += 'a' - 'A';
+		if (chb >= 'A' && chb <= 'Z')
+			chb += 'a' - 'A';
+		if (cha != chb)
+			return false;
+	}
+	return *a == *b;
+}
+
 static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 {
 	if (vars->size == 0)
 		return NULL;
 
 	for (int i = 0; i < vars->size; i++) {
-		if (strcmp(vars->vars[i].name, name) == 0)
+		if (yb_kiwi_guc_name_equal(vars->vars[i].name, name))
 			return &vars->vars[i];
 	}
 	return NULL;
@@ -438,7 +460,7 @@ static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
 	int idx_to_remove = -1;
 	for (int i = 0; i < vars->size; i++) {
 		if (vars->vars[i].name_len == name_len &&
-		    strcmp(vars->vars[i].name, name) == 0) {
+		    yb_kiwi_guc_name_equal(vars->vars[i].name, name)) {
 			idx_to_remove = i;
 			break;
 		}
