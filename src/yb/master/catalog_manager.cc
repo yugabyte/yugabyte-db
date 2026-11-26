@@ -1798,12 +1798,14 @@ void CatalogManager::ScheduleAddTableToTablet(
   }
   {
     // DeleteTable aborts the tasks of the table after it commits DELETING, which waits for this
-    // lock. So the table is either no longer PREPARING here, or the tasks are added in time to be
-    // aborted.
+    // lock. So the table is either deleting here, or the tasks are added in time to be aborted.
     auto l = table->LockForRead();
-    if (!l->IsPreparing()) {
+    if (l->started_hiding_or_deleting()) {
       LOG(INFO) << "Not sending AddTableToTablet for " << table->ToString()
-                << ", which is no longer PREPARING";
+                << ", which is being deleted";
+      for (const auto& call : calls) {
+        call->AbortAndReturnPrevState(STATUS(Aborted, "Table is being deleted"));
+      }
       return;
     }
     DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
