@@ -1175,47 +1175,44 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
 }
 
+static struct YsqlConnMgrInstanceStats *yb_conn_mgr_instance_stats = NULL;
+
 /*
- * Publish in the Connection Manager stats segment whether the postmaster
- * accepts connections; the tserver starts Connection Manager only once it
- * does.  Does nothing when the segment is not configured.
+ * Attach the Connection Manager stats segment for YbSetYsqlConnMgrPgReady.
+ * Called once by the postmaster outside signal handlers.  Does nothing when
+ * the segment is not configured.
+ */
+void
+YbAttachYsqlConnMgrPgReady(void)
+{
+	const char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+	const char *max_pools = getenv("FLAGS_ysql_conn_mgr_max_pools");
+	int			shmid;
+	void	   *addr;
+
+	if (stats_shm_key == NULL || max_pools == NULL)
+		return;
+
+	shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
+	addr = shmid == -1 ? (void *) -1 : shmat(shmid, NULL, 0);
+	if (addr == (void *) -1)
+	{
+		elog(WARNING,
+			 "unable to attach to the Connection Manager stats shared memory segment: %m");
+		return;
+	}
+
+	yb_conn_mgr_instance_stats = YSQL_CONN_MGR_INSTANCE_STATS(addr, atoi(max_pools));
+}
+
+/*
+ * Publish whether the postmaster accepts connections; the tserver starts
+ * Connection Manager only once it does.  Safe to call from signal handlers.
  */
 void
 YbSetYsqlConnMgrPgReady(bool ready)
 {
-	static struct YsqlConnMgrInstanceStats *instance_stats = NULL;
-	static bool attach_failed = false;
-
-	if (instance_stats == NULL)
-	{
-		const char *stats_shm_key;
-		const char *max_pools;
-		int			shmid;
-		void	   *addr;
-
-		if (attach_failed)
-			return;
-
-		stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
-		max_pools = getenv("FLAGS_ysql_conn_mgr_max_pools");
-		if (stats_shm_key == NULL || max_pools == NULL)
-		{
-			attach_failed = true;
-			return;
-		}
-
-		shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
-		addr = shmid == -1 ? (void *) -1 : shmat(shmid, NULL, 0);
-		if (addr == (void *) -1)
-		{
-			elog(WARNING,
-				 "unable to attach to the Connection Manager stats shared memory segment: %m");
-			attach_failed = true;
-			return;
-		}
-
-		instance_stats = YSQL_CONN_MGR_INSTANCE_STATS(addr, atoi(max_pools));
-	}
-
-	__atomic_store_n(&instance_stats->pg_ready, ready ? 1 : 0, __ATOMIC_RELEASE);
+	if (yb_conn_mgr_instance_stats != NULL)
+		__atomic_store_n(&yb_conn_mgr_instance_stats->pg_ready, ready ? 1 : 0,
+						 __ATOMIC_RELEASE);
 }
