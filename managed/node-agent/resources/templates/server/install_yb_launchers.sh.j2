@@ -3,8 +3,10 @@
     the other server scripts, but re-provisioning starts the servers on the units YNP writes
     without running ConfigureServer, so the YNP modules that write the units include this next to
     them.
-    Only a node that already has bin/ needs them now. A blank node gets them from ConfigureServer,
-    and creating bin/ here would fail the clean home directory check in the yugabyte precheck.
+    Only a node whose server scripts are already installed (bin/yb-server-ctl.sh, as DestroyServer
+    checks) needs them now. A blank node gets them from ConfigureServer. The clean home directory
+    check in the yugabyte precheck passes an empty bin/ but fails a non-empty one, and bin/ alone
+    is no sign of an earlier run: useradd copies an empty /etc/skel/bin into a new home on SLES.
     The module scripts do not run with set -e, so a failed install exits here instead of leaving
     the units pointing at a missing file. #}
 # Reads the launcher from stdin and installs it as bin/$1, owned by the yb user.
@@ -26,7 +28,7 @@ install_yb_launcher() {
     return $rc
 }
 
-if [ -d "{{ yb_home_dir }}/bin" ]; then
+if [ -f "{{ yb_home_dir }}/bin/yb-server-ctl.sh" ]; then
     if ! install_yb_launcher yb-server-exec.sh <<'YB_LAUNCHER_EOF'
 {% include "yb-server-exec.sh.j2" %}
 YB_LAUNCHER_EOF
@@ -44,5 +46,5 @@ YB_LAUNCHER_EOF
     fi
 {% endif %}
 else
-    echo "{{ yb_home_dir }}/bin does not exist; ConfigureServer installs the server launchers"
+    echo "{{ yb_home_dir }}/bin/yb-server-ctl.sh is missing; ConfigureServer installs the launchers"
 fi
