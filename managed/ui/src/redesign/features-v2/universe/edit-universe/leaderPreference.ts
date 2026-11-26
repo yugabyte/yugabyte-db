@@ -1,3 +1,4 @@
+import { ClusterPlacementSpec, ClusterSpec, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../create-universe/helpers/constants';
 
 type AzLeaderFields = { leader_affinity?: boolean; leader_preference?: number };
@@ -30,3 +31,14 @@ export const getMapRankGetter = (regions: MapRegion[] | undefined) => {
   );
   return (region: MapRegion, az: AzLeaderFields) => (isReadReplica(region) ? 0 : rankOf(az));
 };
+
+const placementAzs = (placement?: ClusterPlacementSpec): PlacementAZ[] =>
+  (placement?.cloud_list ?? [])
+    .flatMap((cloud) => cloud.region_list ?? [])
+    .flatMap((region) => region.az_list ?? []);
+
+/** Every AZ of a cluster, across all geo partitions: the backend decides ranks vs affinity on the merged placement. */
+export const getClusterAzs = (cluster: ClusterSpec): PlacementAZ[] => [
+  ...placementAzs(cluster.placement_spec),
+  ...(cluster.partitions_spec ?? []).flatMap((partition) => placementAzs(partition.placement))
+];

@@ -244,13 +244,7 @@ function overlayExistingOntoExpected(
       if (isUsed(expectedZone)) {
         continue;
       }
-      // An expected AZ can be a universe AZ that wasn't kept above; keep its seeded rank.
-      const universeZone = existingInRegion.find(
-        (zone) =>
-          (Boolean(zone.uuid) && zone.uuid === expectedZone.uuid) ||
-          (Boolean(zone.name) && zone.name === expectedZone.name)
-      );
-      merged.push({ ...expectedZone, preffered: universeZone?.preffered ?? AZ_NOT_PREFERRED });
+      merged.push({ ...expectedZone, preffered: AZ_NOT_PREFERRED });
       markUsed(expectedZone);
     }
 

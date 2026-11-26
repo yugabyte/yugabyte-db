@@ -18,6 +18,7 @@ import {
   isKubernetesUniverse,
   useEditUniverseContext
 } from '../EditUniverseUtils';
+import { getMapRankGetter } from '../leaderPreference';
 
 interface MapRegionsViewProps {
   regions: RegionsAndNodesFormType['regions'];
@@ -28,6 +29,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
   const unit = t(isKubernetesUniverse(universeData!) ? 'pod' : 'node');
 
   const regionsByName = groupBy(regions, 'code');
+  const rankOf = getMapRankGetter(regions);
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const readReplicaIcon = useGetMapIcons({ type: MarkerType.READ_REPLICA });
 
@@ -50,7 +52,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
                 ? MarkerType.READ_REPLICA
                 : MarkerType.REGION_SELECTED
             }
-            tooltip={<MapRegionTooltip regions={regionsByName[region.code]} />}
+            tooltip={<MapRegionTooltip regions={regionsByName[region.code]} rankOf={rankOf} />}
           />
         );
       })}

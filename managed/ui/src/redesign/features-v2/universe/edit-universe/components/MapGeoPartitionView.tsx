@@ -89,6 +89,7 @@ export const MapGeoPartitionView = () => {
             tooltip={
               <MapRegionTooltip
                 regions={regionsByName[region.code]}
+                rankOf={rankOf}
                 partitionName={toUpper((region as any).paritition_name)}
               />
             }

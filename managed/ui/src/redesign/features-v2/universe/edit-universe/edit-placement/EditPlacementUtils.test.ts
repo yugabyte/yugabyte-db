@@ -248,8 +248,8 @@ describe('leader affinity and default region on edit', () => {
     const payload = buildPrimaryPlacementEditPayload(universe(), twoAzResilience, zones(1, 0) as any);
     const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
     expect(azs.map((a) => a.leader_affinity)).toEqual([true, false, true]);
-    expect(azs[1]).not.toHaveProperty('leader_preference');
-    expect(azs[0].leader_preference).toBe(1);
+    // Nothing was changed, so stored leader_preference (none) is not rewritten.
+    expect(azs.some((az) => 'leader_preference' in az)).toBe(false);
   });
 
   it('keeps the ranks of a ranked universe and does not promote the rank-0 AZ', () => {
@@ -271,6 +271,28 @@ describe('leader affinity and default region on edit', () => {
     const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
     expect(azs[0]).toMatchObject({ leader_affinity: true, leader_preference: 1 });
     expect(azs[1].leader_preference).toBeUndefined();
+  });
+
+  it('writes create-style values when the user changes a Preferred value', () => {
+    const ranked = universe();
+    const azList =
+      ranked.spec!.clusters![0].placement_spec!.cloud_list[0].region_list![0].az_list!;
+    azList[0].leader_preference = 1;
+    azList[1].leader_affinity = true;
+    azList[1].leader_preference = 0;
+    // User sets the only ranked AZ (az-1) to No.
+    const payload = buildPrimaryPlacementEditPayload(ranked, twoAzResilience, {
+      ...zones(0, 0),
+      availabilityZones: {
+        [region.code]: [
+          { uuid: 'az-1', name: 'us-west-2a', nodeCount: 1, preffered: 0 },
+          { uuid: 'az-2', name: 'us-west-2b', nodeCount: 2, preffered: 0 }
+        ]
+      }
+    } as any);
+    const azs = payload.placementSpec.cloud_list[0].region_list?.[0].az_list ?? [];
+    expect(azs.map((a) => a.leader_affinity)).toEqual([true, true]);
+    expect(azs.some((a) => 'leader_preference' in a)).toBe(false);
   });
 
   it('preserves stored affinity when the universe has no preference configured', () => {

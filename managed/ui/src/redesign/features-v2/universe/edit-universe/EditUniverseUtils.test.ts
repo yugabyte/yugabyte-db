@@ -235,6 +235,21 @@ describe('placementSpecToAvailabilityZones', () => {
     expect(seed()).toEqual([1, 0]);
   });
 
+  it('uses cluster-wide AZs (other geo partitions) to decide ranked vs affinity mode', () => {
+    const spec = makePrimaryPlacementSpec();
+    const [az1, az2] = spec.cloud_list[0].region_list![0].az_list!;
+    az1.leader_affinity = true;
+    az2.leader_affinity = false;
+    const otherPartitionRanked = [{ uuid: 'x', name: 'x', num_nodes_in_az: 1, leader_preference: 1 }];
+
+    const zones = placementSpecToAvailabilityZones(spec, [
+      az1,
+      az2,
+      ...(otherPartitionRanked as any)
+    ])[FIXTURE_REGION_CODE];
+    expect(zones.map((z) => z.preffered)).toEqual([0, 0]);
+  });
+
   it('ignores leader_affinity when ranks exist (the backend does)', () => {
     const spec = makePrimaryPlacementSpec();
     const [az1, az2] = spec.cloud_list[0].region_list![0].az_list!;

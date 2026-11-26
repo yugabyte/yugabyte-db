@@ -13,8 +13,12 @@ import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUti
 
 const { styled, Typography, Divider } = mui;
 
+type MapRankGetter = ReturnType<typeof getMapRankGetter>;
+
 interface MapRegionTooltipProps {
   regions: RegionsAndNodesFormType['regions'];
+  /** Built from every region of the map, not just the hovered one: ranks are cluster-wide. */
+  rankOf: MapRankGetter;
   partitionName?: string;
 }
 
@@ -142,8 +146,8 @@ const RegionList: FC<{
   regions: RegionsAndNodesFormType['regions'];
   t: TFunction;
   isK8s: boolean;
-}> = ({ regions, t, isK8s }) => {
-  const rankOf = getMapRankGetter(regions);
+  rankOf: MapRankGetter;
+}> = ({ regions, t, isK8s, rankOf }) => {
   return (
     <>
       {regions?.map((region) => {
@@ -187,7 +191,7 @@ const RegionList: FC<{
   );
 };
 
-export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partitionName }) => {
+export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partitionName, rankOf }) => {
   const regionsByType = groupBy(regions, 'clusterType');
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -212,12 +216,14 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
         regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []}
         t={t}
         isK8s={isK8s}
+        rankOf={rankOf}
       />
       {regionsByType[ClusterSpecClusterType.ASYNC] && <StyledDivider />}
       <RegionList
         regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []}
         t={t}
         isK8s={isK8s}
+        rankOf={rankOf}
       />
     </StyledTooltipContainer>
   );
