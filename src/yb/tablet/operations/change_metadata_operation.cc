@@ -52,6 +52,10 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+DEFINE_RUNTIME_bool(change_metadata_use_mvcc, true,
+    "Whether a tablet leader tracks change metadata operations in MVCC, so that the safe time "
+    "and the history cutoff of every replica stay below such an operation until it is applied.");
+
 DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"
                  " on followers.");
@@ -59,10 +63,6 @@ DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
 DEFINE_test_flag(bool, fail_cdc_setting_retention_barriers_on_apply, false,
                  "Used in tests to fail setting retention barriers on apply of change metadata "
                  "operation.");
-
-DEFINE_RUNTIME_bool(change_metadata_use_mvcc, true,
-    "Whether a tablet leader tracks change metadata operations in MVCC, so that the safe time "
-    "and the history cutoff of every replica stay below such an operation until it is applied.");
 
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 

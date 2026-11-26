@@ -8078,7 +8078,12 @@ docdb::HistoryCutoff Tablet::AllowedHistoryCutoff() {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
         << "Failed to get safe time, not moving history cutoff: " << safe_time.status();
   }
-  result.primary_cutoff_ht.MakeAtMost(safe_time.ok() ? *safe_time : HybridTime::kMin);
+  auto safe_time_cap = safe_time.ok() ? *safe_time : HybridTime::kMin;
+  result.primary_cutoff_ht.MakeAtMost(safe_time_cap);
+  // An invalid cotables cutoff means that the tablet has none, and MakeAtMost would set one.
+  if (result.cotables_cutoff_ht) {
+    result.cotables_cutoff_ht.MakeAtMost(safe_time_cap);
+  }
   return result;
 }
 
