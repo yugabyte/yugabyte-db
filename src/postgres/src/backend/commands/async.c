@@ -359,7 +359,7 @@ int			yb_test_notifs_poller_init_delay_ms = 0;
 int			yb_test_notify_queue_max_pages = 0;
 int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
 int			yb_notifications_poll_sleep_duration_empty_ms = 100;
-int			yb_notifications_poller_retry_timeout_ms = 300000;
+int			yb_notifications_poller_failure_window_ms = 300000;
 
 /*
  * listenChannels identifies the channels we are actually listening to
@@ -3582,7 +3582,7 @@ ybNotifsPollerMarkHealthy(void)
 /*
  * Exit to be restarted from the slot's restart LSN. Terminate the listeners
  * instead on a permanent error, or once restarts have kept failing for
- * yb_notifications_poller_retry_timeout_ms.
+ * yb_notifications_poller_failure_window_ms.
  *
  * Caller holds NotifyQueueLock exclusively and has checked that the poller
  * isn't stale; this releases the lock.
@@ -3607,7 +3607,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 
 	if (!ybNotifsPollerCannotRun &&
 		!TimestampDifferenceExceeds(poller_data->retry_start_time, now,
-									yb_notifications_poller_retry_timeout_ms))
+									yb_notifications_poller_failure_window_ms))
 	{
 		LWLockRelease(NotifyQueueLock);
 		ereport(WARNING,
@@ -3619,8 +3619,8 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	if (!ybNotifsPollerCannotRun && len < sizeof(message))
 		snprintf(message + len, sizeof(message) - len,
 				 " (restarts kept failing for "
-				 "yb_notifications_poller_retry_timeout_ms = %d ms)",
-				 yb_notifications_poller_retry_timeout_ms);
+				 "yb_notifications_poller_failure_window_ms = %d ms)",
+				 yb_notifications_poller_failure_window_ms);
 	strlcpy(poller_data->error_message, message,
 			sizeof(poller_data->error_message));
 	poller_data->has_runtime_error = true;
@@ -3759,13 +3759,13 @@ ybNotifsPollerLoop()
 			yb_notifications_poll_sleep_duration_empty_ms;
 
 		/*
-		 * A poller that has run for the retry timeout is healthy: forget the
-		 * earlier errors, so that the next one gets the full timeout again.
+		 * A poller that has run for the failure window is healthy: forget the
+		 * earlier errors, so that the next one gets a full window again.
 		 */
 		if (ybNotifsPollerUpSince != 0 &&
 			TimestampDifferenceExceeds(ybNotifsPollerUpSince,
 									   GetCurrentTimestamp(),
-									   yb_notifications_poller_retry_timeout_ms))
+									   yb_notifications_poller_failure_window_ms))
 			ybNotifsPollerMarkHealthy();
 
 		PG_TRY();
