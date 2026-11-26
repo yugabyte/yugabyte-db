@@ -58,7 +58,7 @@ Using the provisioning script, you can apply current node requirements without g
 - Root work and YugabyteDB Anywhere registration can be split across two teams. See [Split root and user privileges](#split-root-and-user-privileges-separation-of-duties).
 - The same four steps replace the old per-node command list, including after a YugabyteDB Anywhere upgrade. See [Four steps at a glance](#four-steps-at-a-glance) and [Keep provisioning current](#keep-provisioning-current).
 - The package you download matches the YugabyteDB Anywhere version, so the node gets the requirements for that release. See [What the script configures](#what-the-script-configures).
-- The script checks that it can reach YugabyteDB Anywhere, then creates or updates the provider and adds the node. See [Modify the configuration file](#modify-the-configuration-file).
+- The script checks that it can reach YugabyteDB Anywhere, then creates the provider and adds the node. See [Modify the configuration file](#modify-the-configuration-file).
 - A preflight check runs as part of provisioning, and you can run it on its own. See [Preflight check](#preflight-check).
 - A dry run prints the shell it would execute, which you can review or hand to another team. See [Dry run](#dry-run).
 - A failed or partial run can be re-run. See [Run the provisioning script](#run-the-provisioning-script).
