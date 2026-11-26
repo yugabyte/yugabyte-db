@@ -23,6 +23,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
@@ -531,6 +532,9 @@ TEST_F(CDCSDKYsqlTest, TestGrpcStreamTransactionalDdlPackedFullGetChangesAfterRe
   }
 }
 
+YB_STRONGLY_TYPED_BOOL(PackedRow);
+YB_STRONGLY_TYPED_BOOL(RestartMidTxn);
+
 class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
  protected:
   // A column added and dropped in the same transaction is removed from the schema right away
@@ -538,13 +542,13 @@ class CDCSDKYsqlTxnDdlTest : public CDCSDKYsqlTest {
   // DDL record streamed before each of them, must not have the column. With restart_mid_txn, the
   // tserver restarts after the first batch of the transaction's intents is streamed, before the
   // records written while the column existed.
-  void TestWritesAfterDropOfAddedColumn(bool packed_row, bool restart_mid_txn);
+  void TestWritesAfterDropOfAddedColumn(PackedRow packed_row, RestartMidTxn restart_mid_txn);
 };
 
 void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(
-    bool packed_row, bool restart_mid_txn) {
+    PackedRow packed_row, RestartMidTxn restart_mid_txn) {
   ToggleDDLMode(/* use_legacy = */ false);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packed_row.get();
   // With the rows inserted first, the transaction with the DDLs is streamed over several batches of
   // intents.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
@@ -696,19 +700,19 @@ void CDCSDKYsqlTxnDdlTest::TestWritesAfterDropOfAddedColumn(
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnPacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true, /* restart_mid_txn = */ false);
+  TestWritesAfterDropOfAddedColumn(PackedRow::kTrue, RestartMidTxn::kFalse);
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnUnpacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false, /* restart_mid_txn = */ false);
+  TestWritesAfterDropOfAddedColumn(PackedRow::kFalse, RestartMidTxn::kFalse);
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnPacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ true, /* restart_mid_txn = */ true);
+  TestWritesAfterDropOfAddedColumn(PackedRow::kTrue, RestartMidTxn::kTrue);
 }
 
 TEST_F(CDCSDKYsqlTxnDdlTest, TestGrpcStreamWritesAfterDropOfAddedColumnRestartMidTxnUnpacked) {
-  TestWritesAfterDropOfAddedColumn(/* packed_row = */ false, /* restart_mid_txn = */ true);
+  TestWritesAfterDropOfAddedColumn(PackedRow::kFalse, RestartMidTxn::kTrue);
 }
 
 }  // namespace cdc

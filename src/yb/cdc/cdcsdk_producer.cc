@@ -198,28 +198,35 @@ class IntentSchemaState {
 
 // Erases each cached schema loaded while decoding a transaction's intents whose version differs
 // from the table's schema at the transaction's commit. The next record then reloads the schema and
-// sends a DDL record for it. If the lookup fails, the schema stays cached and marked, and the end
-// of the next transaction checks it again.
+// sends a DDL record for it. If the schema at commit can't be read, the tablet's current schema
+// version stands in for it, as in GetOrPopulateRequiredSchemaDetails: the tablet has already
+// applied the transaction's schema changes.
 void EraseSchemasLoadedInTxn(
-    client::YBClient* client, HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
+    client::YBClient* client, const tablet::RaftGroupMetadata& tablet_metadata,
+    HybridTime commit_time, SchemaDetailsMap* cached_schema_details) {
   for (auto it = cached_schema_details->begin(); it != cached_schema_details->end();) {
     auto& [table_id, details] = *it;
     if (!details.loaded_in_txn) {
       ++it;
       continue;
     }
+    details.loaded_in_txn = false;
+    SchemaVersion commit_version;
     auto commit_schema = client->GetTableSchemaFromSysCatalog(table_id, commit_time.ToUint64());
-    if (!commit_schema.ok()) {
-      LOG(WARNING) << "Keeping cached schema version " << details.schema_version << " of table "
-                   << table_id << " until the end of the next transaction, failed to get its "
-                   << "schema at commit time " << commit_time << ": " << commit_schema.status();
-      ++it;
-    } else if (commit_schema->second != details.schema_version) {
+    if (commit_schema.ok()) {
+      commit_version = commit_schema->second;
+    } else {
+      commit_version = tablet_metadata.schema_version(table_id);
+      YB_LOG_EVERY_N_SECS(WARNING, 60)
+          << "Failed to get the schema of table " << table_id << " at commit time " << commit_time
+          << ", using the tablet's schema version " << commit_version << ": "
+          << commit_schema.status();
+    }
+    if (commit_version != details.schema_version) {
       VLOG(1) << "Erasing cached schema version " << details.schema_version << " of table "
-              << table_id << ", its schema version at commit is " << commit_schema->second;
+              << table_id << ", its schema version at commit is " << commit_version;
       it = cached_schema_details->erase(it);
     } else {
-      details.loaded_in_txn = false;
       ++it;
     }
   }
@@ -2118,7 +2125,7 @@ Status ProcessIntents(
   }
 
   if (end_of_transaction && FLAGS_cdc_reload_schema_after_txn_schema_change) {
-    EraseSchemasLoadedInTxn(client, commit_time, cached_schema_details);
+    EraseSchemasLoadedInTxn(client, *tablet->metadata(), commit_time, cached_schema_details);
   }
 
   if (end_of_transaction) {
