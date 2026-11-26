@@ -85,6 +85,8 @@ To edit a flag:
 
 To delete the flag's value, click the **Remove Flag** icon for either **MASTER VALUE** or **T-SERVER VALUE** or both.
 
+If API redaction of LDAP bind passwords is enabled, provide the actual `ldapbindpasswd` value whenever you modify the `ysql_hba_conf_csv` flag. Refer to [Redact LDAP bind passwords in API responses](../../security/authentication/ldap-authentication-platform/#redact-ldap-bind-passwords-in-api-responses).
+
 ## Add configuration flags
 
 You can add configuration flags when you are creating a new universe, as follows:
