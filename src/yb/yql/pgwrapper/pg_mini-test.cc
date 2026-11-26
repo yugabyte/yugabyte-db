@@ -9909,11 +9909,82 @@ TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyFailedCutoverIsRetried) {
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn2.Execute("INSERT INTO t VALUES (101, 'v101', 202)"));
 
-  ASSERT_OK(conn.Execute(kAlter));
+  // Only the same statement resumes the job, compared by its parse tree, not its text.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 2)"),
+      "another online schema change job is in progress on table \"t\"");
+  ASSERT_OK(conn.Execute(
+      "alter table t concurrently\n  alter column n type bigint using (n::bigint * 10)"));
   ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT count(*) FILTER (WHERE n IS DISTINCT FROM id * 20) FROM t")), 0);
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT id FROM t WHERE v = 'v101'")), 101);
+}
+
+// A cancel during the copy rolls the job back, as a failed copy does, and leaves nothing behind.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyCancelRollsBack) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, n INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) AS i"));
+
+  auto alter_conn = ASSERT_RESULT(Connect());
+  const auto alter_pid = ASSERT_RESULT(alter_conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&alter_conn] {
+    ASSERT_NOK_STR_CONTAINS(
+        alter_conn.Execute(
+            "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"),
+        "canceling statement due to user request");
+  });
+
+  ASSERT_OK(WaitFor([&conn]() -> Result<bool> {
+    auto rows = VERIFY_RESULT(conn.FetchRows<std::string>(
+        "SELECT status FROM pg_catalog.yb_online_schema_change"));
+    return !rows.empty() && rows[0] == "backfilling";
+  }, 30s, "Wait for the job to begin"));
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn.FetchRow<bool>(Format("SELECT pg_cancel_backend($0)", alter_pid))));
+  thread_holder.JoinAll();
+
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "aborted");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_proc WHERE proname LIKE 'yb_osc%'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_trigger WHERE tgrelid = 't'::regclass")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+      "WHERE attrelid = 't'::regclass AND attname = 'n'")), "integer");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_online_schema_change_backfill_pause_controller) = false;
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n <> id * 10) FROM t")), 0);
+}
+
+// A begin that fails leaves the shadow table without a job. The next statement on the table drops
+// it and starts over.
+TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyDropsOrphanShadow) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, n INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i FROM generate_series(1, 100) AS i"));
+  const auto oid = ASSERT_RESULT(conn.FetchRow<PGOid>("SELECT 't'::regclass::oid"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE yb_osc_shadow_$0 (id INT PRIMARY KEY)", oid));
+
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t CONCURRENTLY ALTER COLUMN n TYPE BIGINT USING (n::bigint * 10)"));
+  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FILTER (WHERE n <> id * 10) FROM t")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_class WHERE relname LIKE 'yb_osc%'")), 0);
 }
 
 TEST_F(PgMiniOnlineSchemaChangeTest, AlterConcurrentlyAsTableOwner) {

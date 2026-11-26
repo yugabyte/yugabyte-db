@@ -990,6 +990,9 @@ static void change_label_id_default(char *graph_name, char *label_name,
     atuc.relid = relid;
     atuc.queryEnv = pstate->p_queryEnv;
     atuc.queryString = pstate->p_sourcetext;
+    /* YB: no ALTER TABLE ... CONCURRENTLY state */
+    atuc.yb_osc_capture = NULL;
+    atuc.yb_osc_shadow_oid = InvalidOid;
 
     AlterTable(tbl_stmt, AccessExclusiveLock, &atuc);
 
