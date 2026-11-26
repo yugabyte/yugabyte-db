@@ -3595,6 +3595,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	TimestampTz now = GetCurrentTimestamp();
 	char		message[sizeof(poller_data->error_message)];
 	int			len;
+	bool		terminate;
 
 	if (edata->detail)
 		len = snprintf(message, sizeof(message), "%s: %s", edata->message,
@@ -3605,9 +3606,10 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	if (poller_data->retry_start_time == 0)
 		poller_data->retry_start_time = now;
 
-	if (!ybNotifsPollerCannotRun &&
-		!TimestampDifferenceExceeds(poller_data->retry_start_time, now,
-									yb_notifications_poller_failure_window_ms))
+	terminate = ybNotifsPollerCannotRun ||
+		TimestampDifferenceExceeds(poller_data->retry_start_time, now,
+								   yb_notifications_poller_failure_window_ms);
+	if (!terminate)
 	{
 		LWLockRelease(NotifyQueueLock);
 		ereport(WARNING,
