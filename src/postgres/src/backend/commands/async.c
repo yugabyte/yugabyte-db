@@ -3598,6 +3598,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	TimestampTz now = GetCurrentTimestamp();
 	char		message[sizeof(poller_data->error_message)];
 	int			len;
+	bool		timed_out;
 	bool		permanently_terminate;
 
 	if (edata->detail)
@@ -3606,9 +3607,9 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	else
 		len = strlcpy(message, edata->message, sizeof(message));
 
-	permanently_terminate = ybNotifsPollerPermanentError ||
-		TimestampDifferenceExceeds(poller_data->last_progress_time, now,
-								   yb_notifications_poller_no_progress_timeout_ms);
+	timed_out = TimestampDifferenceExceeds(poller_data->last_progress_time, now,
+										   yb_notifications_poller_no_progress_timeout_ms);
+	permanently_terminate = ybNotifsPollerPermanentError || timed_out;
 	if (!permanently_terminate)
 	{
 		LWLockRelease(NotifyQueueLock);
@@ -3618,7 +3619,7 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	if (!ybNotifsPollerPermanentError)
+	if (timed_out)
 	{
 		char		suffix[128];
 		int			suffix_len;
