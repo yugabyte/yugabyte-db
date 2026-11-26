@@ -359,7 +359,7 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 }
 
 /*
- * yb_distribute_pushdown_quals
+ * yb_extract_pushdown_quals
  *	  Distribute the clauses of a RestrictInfo list, as the actual clauses or
  *	  as the RestrictInfos ('actual_clauses'),
  * 	  between three groups:
@@ -383,13 +383,13 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
  * function yb_extract_pushdown_clauses_from_index_predicate as well.
  */
 static void
-yb_distribute_pushdown_quals(List *restrictinfo_list,
-							 IndexOptInfo *indexinfo, bool bitmapindex,
-							 bool actual_clauses,
-							 List **local_quals, List **rel_remote_quals,
-							 List **rel_colrefs, List **idx_remote_quals,
-							 List **idx_colrefs, Oid relid,
-							 Bitmapset *non_pushable_attnums)
+yb_extract_pushdown_quals(List *restrictinfo_list,
+						  IndexOptInfo *indexinfo, bool bitmapindex,
+						  bool actual_clauses,
+						  List **local_quals, List **rel_remote_quals,
+						  List **rel_colrefs, List **idx_remote_quals,
+						  List **idx_colrefs, Oid relid,
+						  Bitmapset *non_pushable_attnums)
 {
 	ListCell   *lc;
 
@@ -457,7 +457,7 @@ yb_distribute_pushdown_quals(List *restrictinfo_list,
 
 /*
  * yb_extract_pushdown_clauses
- *	  The groups of yb_distribute_pushdown_quals() as actual clauses, for
+ *	  The groups of yb_extract_pushdown_quals() as actual clauses, for
  *	  building the quals of a plan node.
  */
 void
@@ -468,16 +468,16 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 							List **idx_colrefs, Oid relid,
 							Bitmapset *non_pushable_attnums)
 {
-	yb_distribute_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
-								 true,	/* actual_clauses */
-								 local_quals, rel_remote_quals, rel_colrefs,
-								 idx_remote_quals, idx_colrefs, relid,
-								 non_pushable_attnums);
+	yb_extract_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
+							  true,	/* actual_clauses */
+							  local_quals, rel_remote_quals, rel_colrefs,
+							  idx_remote_quals, idx_colrefs, relid,
+							  non_pushable_attnums);
 }
 
 /*
  * yb_extract_pushdown_restrictinfos
- *	  The groups of yb_distribute_pushdown_quals() as RestrictInfos, for
+ *	  The groups of yb_extract_pushdown_quals() as RestrictInfos, for
  *	  estimating their selectivity: clauselist_selectivity() applies extended
  *	  statistics to RestrictInfos only.
  */
@@ -489,11 +489,11 @@ yb_extract_pushdown_restrictinfos(List *restrictinfo_list,
 								  List **idx_colrefs, Oid relid,
 								  Bitmapset *non_pushable_attnums)
 {
-	yb_distribute_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
-								 false, /* actual_clauses */
-								 local_quals, rel_remote_quals, rel_colrefs,
-								 idx_remote_quals, idx_colrefs, relid,
-								 non_pushable_attnums);
+	yb_extract_pushdown_quals(restrictinfo_list, indexinfo, bitmapindex,
+							  false, /* actual_clauses */
+							  local_quals, rel_remote_quals, rel_colrefs,
+							  idx_remote_quals, idx_colrefs, relid,
+							  non_pushable_attnums);
 }
 
 /*
@@ -505,7 +505,7 @@ yb_extract_pushdown_restrictinfos(List *restrictinfo_list,
  *	  quals.
  *
  * Note - If you are modifying this function, consider changing
- * function yb_distribute_pushdown_quals as well.
+ * function yb_extract_pushdown_quals as well.
  */
 void
 yb_extract_pushdown_clauses_from_index_predicate(List *expr_list, List **local_quals,
