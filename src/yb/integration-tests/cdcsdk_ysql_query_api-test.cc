@@ -26,6 +26,36 @@ class CDCSDKYsqlQueryApiTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_query_api) = true;
   }
+
+  // pg_logical_slot_get_changes pins catalog reads to a past time and resets the pin before it
+  // returns. Inside a transaction block the backend does not refresh its catalog version at the
+  // next statement, so a statement after get_changes in the same block must still pass the
+  // catalog version check and read at the current time.
+  void TestGetChangesInTransactionBlock() {
+    ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+    auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+    ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
+    ASSERT_OK(conn.Fetch(
+        "SELECT * FROM pg_create_logical_replication_slot('txn_block_slot', 'test_decoding')"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'a')"));
+    ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 'b')"));
+
+    ASSERT_OK(conn.Execute("BEGIN"));
+    // upto_nchanges = 3 consumes only the first INSERT's transaction (BEGIN + INSERT + COMMIT).
+    auto changes = ASSERT_RESULT(conn.FetchRows<std::string>(
+        "SELECT data FROM pg_logical_slot_get_changes("
+        "'txn_block_slot', NULL, 3, 'include-xids', '0', 'skip-empty-xacts', '1')"));
+    ASSERT_EQ(changes, (decltype(changes){
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 name[text]:'a'",
+        "COMMIT",
+    }));
+    // Reading at the time pinned by get_changes would miss the second INSERT.
+    auto ids = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT id FROM test_table ORDER BY id"));
+    ASSERT_EQ(ids, (decltype(ids){1, 2}));
+    ASSERT_OK(conn.Execute("COMMIT"));
+  }
 };
 
 // Verify that the GUC yb_enable_replication_slot_query_api gates all 4 SQL functions.
@@ -38,40 +68,7 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestQueryApiGucGuard) {
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"));
 
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
   ASSERT_OK(conn.Execute("SET yb_enable_replication_slot_query_api = false"));
-
-  auto assert_query_api_unavailable = [&](const std::string& query) {
-    auto result = conn.Fetch(query);
-    ASSERT_NOK(result);
-    ASSERT_NE(
-        result.status().message().AsStringView().find(
-            "getting logical slot changes is unavailable"),
-        std::string::npos)
-        << result.status().message();
-  };
-
-  assert_query_api_unavailable(
-      "SELECT * FROM pg_logical_slot_get_changes('test_slot', NULL, NULL)");
-  assert_query_api_unavailable(
-      "SELECT * FROM pg_logical_slot_peek_changes('test_slot', NULL, NULL)");
-  assert_query_api_unavailable(
-      "SELECT * FROM pg_logical_slot_get_binary_changes('test_slot', NULL, NULL)");
-  assert_query_api_unavailable(
-      "SELECT * FROM pg_logical_slot_peek_binary_changes('test_slot', NULL, NULL)");
-}
-
-// Verify that the GUC yb_disable_catalog_version_check gates all 4 SQL functions.
-TEST_F(CDCSDKYsqlQueryApiTest, TestDisableCatalogVersionCheckGucGuard) {
-  ASSERT_OK(SetUpWithParams(3, 1, false, true));
-
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
-  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub FOR ALL TABLES"));
-  ASSERT_OK(
-      conn.Fetch("SELECT * FROM pg_create_logical_replication_slot('test_slot', 'test_decoding')"));
-
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = false"));
 
   auto assert_query_api_unavailable = [&](const std::string& query) {
     auto result = conn.Fetch(query);
@@ -102,8 +99,6 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestTextPeekAndGet) {
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('text_slot', 'test_decoding')"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'hello')"));
-
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
 
   // Peek returns rows: test_decoding emits BEGIN + INSERT + COMMIT = 3 rows.
   auto peek1 = ASSERT_RESULT(conn.Fetch(
@@ -139,8 +134,6 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestBinaryPeekAndGet) {
       "SELECT * FROM pg_create_logical_replication_slot('bin_slot', 'pgoutput', false)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 'hello')"));
 
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
-
   // Peek binary returns rows with bytea data.
   // pgoutput binary message count can vary (relation messages, type messages, etc.),
   // so we only assert > 0 here instead of an exact count.
@@ -172,8 +165,6 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestNoRecordsReturnsEmpty) {
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('empty_slot', 'test_decoding')"));
 
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
-
   // No inserts -- should return 0 rows.
   auto result = ASSERT_RESULT(conn.Fetch(
       "SELECT * FROM pg_logical_slot_get_changes('empty_slot', NULL, NULL)"));
@@ -188,8 +179,6 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestUptoNchangesLimit) {
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (id int PRIMARY KEY, name text)"));
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('limit_slot', 'test_decoding')"));
-
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
 
   for (int i = 1; i <= 5; i++) {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table VALUES ($0, 'row$0')", i));
@@ -225,8 +214,6 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestMultiStatementTransaction) {
       "CREATE TABLE test_table (id int PRIMARY KEY, val int, name text)"));
   ASSERT_OK(conn.Fetch(
       "SELECT * FROM pg_create_logical_replication_slot('txn_slot', 'test_decoding')"));
-
-  ASSERT_OK(conn.Execute("SET yb_disable_catalog_version_check = true"));
 
   // Txn 1: multi-statement (BEGIN + 2 INSERTs + 1 UPDATE + COMMIT = 5 rows).
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -269,6 +256,17 @@ TEST_F(CDCSDKYsqlQueryApiTest, TestMultiStatementTransaction) {
       "table public.test_table: INSERT: id[integer]:3 val[integer]:3 name[text]:'c'",
       "COMMIT",
   }));
+}
+
+TEST_F(CDCSDKYsqlQueryApiTest, TestGetChangesInTransactionBlock) {
+  TestGetChangesInTransactionBlock();
+}
+
+// Without transactional DDL support, get_changes pins catalog reads with yb_read_time, which resets
+// the backend's local catalog version.
+TEST_F(CDCSDKYsqlQueryApiTest, TestGetChangesInTransactionBlockWithoutTransactionalDdl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
+  TestGetChangesInTransactionBlock();
 }
 
 }  // namespace cdc

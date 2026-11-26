@@ -106,14 +106,11 @@ LogicalOutputWrite(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xi
 static Datum
 pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool binary)
 {
-	if (IsYugaByteEnabled()
-		&& !(yb_enable_replication_slot_query_api && yb_disable_catalog_version_check))
+	if (IsYugaByteEnabled() && !yb_enable_replication_slot_query_api)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("getting logical slot changes is unavailable"),
-				 errdetail("yb_enable_replication_slot_query_api "
-						   "or yb_disable_catalog_version_check "
-						   "is false.")));
+				 errdetail("yb_enable_replication_slot_query_api is false.")));
 
 	Name		name;
 	XLogRecPtr	upto_lsn;
