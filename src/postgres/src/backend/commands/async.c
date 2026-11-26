@@ -3770,6 +3770,11 @@ ybNotifsPollerLoop()
 		PG_TRY();
 		{
 			record = YBCReadRecord(publications);
+			/*
+			 * An empty read counts as progress only between transactions: one
+			 * in the middle of a transaction the poller keeps failing on would
+			 * keep it from terminating.
+			 */
 			if (record)
 				ybNotifsPollerProcessRecord(record);
 			else if (ybNotifsPollerProcessingXid == InvalidTransactionId)
