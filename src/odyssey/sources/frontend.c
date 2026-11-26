@@ -652,15 +652,21 @@ static inline bool yb_frontend_fatal_dropped(od_client_t *client)
 {
 	od_route_t *route = client->route;
 
-	if (route->yb_role_dropped)
+	od_route_lock(route);
+	bool role_dropped = route->yb_role_dropped;
+	bool role_login_rejected = route->yb_role_login_rejected;
+	bool db_dropped = route->yb_db_dropped;
+	od_route_unlock(route);
+
+	if (role_dropped)
 		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
 				  "role \"%s\" does not exist",
 				  client->startup.user.value);
-	else if (route->yb_role_login_rejected)
+	else if (role_login_rejected)
 		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
 				  "role \"%s\" does not exist or is not permitted to log in",
 				  client->startup.user.value);
-	else if (route->yb_db_dropped)
+	else if (db_dropped)
 		od_frontend_fatal(client, KIWI_INVALID_CATALOG_NAME,
 				  "database \"%s\" does not exist",
 				  client->startup.database.value);

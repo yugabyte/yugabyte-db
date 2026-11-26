@@ -449,18 +449,18 @@ static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
 	od_route_lock(route);
 
 	if (*db_oid != -1 && *db_oid == route->id.yb_db_oid) {
-		route->status = YB_ROUTE_INACTIVE;
 		route->yb_db_dropped |= *dropped;
+		route->status = YB_ROUTE_INACTIVE;
 		od_route_unlock(route);
 		return 0;
 	}
 
 	if (*user_oid != -1 && *user_oid == route->id.yb_user_oid) {
-		route->status = YB_ROUTE_INACTIVE;
 		if (*dropped)
 			route->yb_role_dropped = true;
 		else
 			route->yb_role_login_rejected = true;
+		route->status = YB_ROUTE_INACTIVE;
 		od_route_unlock(route);
 		return 0;
 	}
