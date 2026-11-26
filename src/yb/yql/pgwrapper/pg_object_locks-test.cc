@@ -5634,4 +5634,199 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
       20s * kTimeMultiplier));
 }
 
+// A libpq connection that can read LISTEN notifications, which PGConn doesn't expose.
+class ListenerConn {
+ public:
+  static Result<ListenerConn> Connect(const ExternalTabletServer& ts) {
+    const auto conn_str = Format(
+        "host=$0 port=$1 user=$2", ts.bind_host(), ts.ysql_port(), PGConnSettings::kDefaultUser);
+    ListenerConn result(PQconnectdb(conn_str.c_str()));
+    SCHECK_EQ(
+        PQstatus(result.conn_.get()), CONNECTION_OK, NetworkError,
+        PQerrorMessage(result.conn_.get()));
+    return result;
+  }
+
+  Status Execute(const std::string& query) {
+    std::unique_ptr<PGresult, decltype(&PQclear)> res(PQexec(conn_.get(), query.c_str()), &PQclear);
+    const auto status = PQresultStatus(res.get());
+    SCHECK(
+        status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK, NetworkError,
+        Format("Query '$0' failed: $1", query, PQresultErrorMessage(res.get())));
+    return Status::OK();
+  }
+
+  Result<int64_t> FetchCount(const std::string& query) {
+    std::unique_ptr<PGresult, decltype(&PQclear)> res(PQexec(conn_.get(), query.c_str()), &PQclear);
+    SCHECK_EQ(
+        PQresultStatus(res.get()), PGRES_TUPLES_OK, NetworkError,
+        Format("Query '$0' failed: $1", query, PQresultErrorMessage(res.get())));
+    return std::stoll(PQgetvalue(res.get(), 0, 0));
+  }
+
+  // Whether a notification has arrived. Reads the socket only; sends nothing to the backend.
+  Result<bool> HasNotification() {
+    SCHECK(PQconsumeInput(conn_.get()), NetworkError, PQerrorMessage(conn_.get()));
+    std::unique_ptr<PGnotify, decltype(&PQfreemem)> notify(PQnotifies(conn_.get()), &PQfreemem);
+    return notify != nullptr;
+  }
+
+ private:
+  explicit ListenerConn(PGconn* conn) : conn_(conn, &PQfinish) {}
+
+  std::unique_ptr<PGconn, decltype(&PQfinish)> conn_;
+};
+
+class PgObjectLocksNotifyTest : public PgObjectLocksTest {
+ protected:
+  struct NotifyAfterCatalogChangeOptions {
+    // Whether the listener fails a lookup of t2 first, leaving a negative cache entry for it.
+    bool lookup_before_create = false;
+    // Runs on ts1. Its transaction inserts a row named marker_name into deployments.
+    std::string writer_sql;
+    std::string marker_name;
+    // Whether a plain NOTIFY is sent from another ts1 connection once the marker row is visible on
+    // ts2, instead of the writer sending one.
+    bool notify_after_marker = false;
+    // Whether the listener's notification must arrive only after ts2's release is unblocked.
+    bool expect_held = false;
+    // Whether t2 exists after the writer commits and is read on ts2.
+    bool read_t2 = true;
+  };
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_listen_notify=true");
+    opts->extra_master_flags.emplace_back("--ysql_yb_enable_listen_notify=true");
+  }
+
+  // As in PG, where a committing transaction sends its invalidations before it signals listeners,
+  // a listener must see the catalog changes of the transaction that notified it. A listener on ts2
+  // gets notifications while ts2 learns the writer's catalog version only from the global lock
+  // release, which fails on ts2 until the test unblocks it 10 s after the marker row is visible on
+  // ts2.
+  void TestNotifyAfterCatalogChange(const NotifyAfterCatalogChangeOptions& options);
+};
+
+void PgObjectLocksNotifyTest::TestNotifyAfterCatalogChange(
+    const NotifyAfterCatalogChangeOptions& options) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  auto writer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(writer.Execute("CREATE TABLE deployments (name TEXT)"));
+  // The first NOTIFY in the cluster fails while LISTEN/NOTIFY creates its internal objects.
+  ASSERT_OK(WaitFor(
+      [&writer]() -> Result<bool> { return writer.Execute("NOTIFY ch").ok(); }, 60s,
+      "LISTEN/NOTIFY ready"));
+
+  // Connections are opened before ts2 goes stale: a new connection waits at startup for its
+  // tserver to reach the latest catalog version.
+  auto notifier = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto listener = ASSERT_RESULT(ListenerConn::Connect(*ts2));
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(listener.Execute("LISTEN ch"));
+  if (options.lookup_before_create) {
+    ASSERT_NOK(listener.Execute("SELECT * FROM t2"));
+  }
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks_on_tserver_uuid", ts2->uuid()));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "true"));
+  auto reset_flags = ScopeExit([this, ts2] {
+    WARN_NOT_OK(
+        cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"), "Failed to reset flag");
+    WARN_NOT_OK(
+        cluster_->SetFlag(ts2, "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"),
+        "Failed to reset flag");
+  });
+
+  const auto marker_count_query =
+      Format("SELECT COUNT(*) FROM deployments WHERE name = '$0'", options.marker_name);
+  std::atomic<bool> release_unblocked{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&writer, &options] {
+    ASSERT_OK(writer.Execute(options.writer_sql));
+  });
+  thread_holder.AddThreadFunctor(
+      [this, ts2, &observer, &notifier, &options, &marker_count_query, &release_unblocked] {
+        // observer reads only deployments: a lock on the new table would wait for the release.
+        ASSERT_OK(WaitFor(
+            [&observer, &marker_count_query]() -> Result<bool> {
+              return VERIFY_RESULT(observer.FetchRow<PGUint64>(marker_count_query)) == 1;
+            },
+            60s, "marker row visible on ts2"));
+        if (options.notify_after_marker) {
+          ASSERT_OK(notifier.Execute("NOTIFY ch"));
+        }
+        SleepFor(10s);
+        release_unblocked = true;
+        ASSERT_OK(cluster_->SetFlag(ts2, "TEST_fail_release_object_locks", "false"));
+      });
+
+  // No statement goes to the listener before the notification: the listener's backend sends it
+  // while idle.
+  ASSERT_OK(WaitFor(
+      [&listener]() -> Result<bool> {
+        return listener.HasNotification();
+      },
+      90s, "notification"));
+  const auto held = release_unblocked.load();
+  const auto t2_status =
+      options.read_t2 ? listener.Execute("SELECT * FROM t2") : Status::OK();
+  auto marker_count = listener.FetchCount(marker_count_query);
+  thread_holder.JoinAll();
+  LOG(INFO) << "notification held until release unblocked: " << held
+            << ", listener reading t2: " << t2_status
+            << ", marker rows: " << AsString(marker_count);
+
+  ASSERT_OK(t2_status);
+  ASSERT_EQ(ASSERT_RESULT(std::move(marker_count)), 1);
+  ASSERT_EQ(held, options.expect_held);
+  if (options.read_t2) {
+    auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    ASSERT_OK(new_conn.Fetch("SELECT * FROM t2"));
+  }
+}
+
+TEST_F(PgObjectLocksNotifyTest, ListenerWithCachedMissSeesRelationCreatedBeforeNotify) {
+  TestNotifyAfterCatalogChange({
+      .lookup_before_create = true,
+      .writer_sql = "BEGIN; CREATE TABLE t2 (k INT); INSERT INTO deployments VALUES ('t2'); "
+                    "NOTIFY ch; COMMIT",
+      .marker_name = "t2",
+      .expect_held = true,
+  });
+}
+
+TEST_F(PgObjectLocksNotifyTest, ListenerWithCachedMissSeesRelationCreatedInDoBlock) {
+  TestNotifyAfterCatalogChange({
+      .lookup_before_create = true,
+      .writer_sql = "DO $$ BEGIN CREATE TABLE t2 (k INT); INSERT INTO deployments VALUES ('t2'); "
+                    "PERFORM pg_notify('ch', ''); END $$",
+      .marker_name = "t2",
+      .expect_held = true,
+  });
+}
+
+// A notification from a transaction without DDL isn't held while the listener's tserver lacks
+// another transaction's catalog version.
+TEST_F(PgObjectLocksNotifyTest, NotifyWithoutDdlIsNotHeldForStaleCatalog) {
+  TestNotifyAfterCatalogChange({
+      .writer_sql = "BEGIN; CREATE TABLE t3 (k INT); INSERT INTO deployments VALUES ('t3'); COMMIT",
+      .marker_name = "t3",
+      .notify_after_marker = true,
+      .expect_held = false,
+      .read_t2 = false,
+  });
+}
+
+TEST_F(PgObjectLocksNotifyTest, ListenerSeesRelationCreatedBeforeNotify) {
+  TestNotifyAfterCatalogChange({
+      .writer_sql = "BEGIN; CREATE TABLE t2 (k INT); INSERT INTO deployments VALUES ('t2'); "
+                    "NOTIFY ch; COMMIT",
+      .marker_name = "t2",
+      .expect_held = true,
+  });
+}
+
 }  // namespace yb::pgwrapper
