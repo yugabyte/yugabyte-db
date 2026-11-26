@@ -50,6 +50,7 @@ od_retcode_t od_logger_init(od_logger_t *logger, od_pid_t *pid)
 	logger->max_log_size = 0;
 	logger->current_log_size = 0;
 	logger->rotate_interval = 0;
+	logger->yb_fatal_written = 0;
 	/* set temporary format */
 	od_logger_set_format(logger, "%p %t %l (%c) %h %m\n");
 
@@ -543,7 +544,9 @@ static inline void od_logger(void *arg)
 					logger->current_log_size += len;
 				}
 			}
-			_od_logger_write(logger, le->msg, len, le->lvl);			
+			_od_logger_write(logger, le->msg, len, le->lvl);
+			if (le->lvl == OD_FATAL)
+				logger->yb_fatal_written = 1;
 		} break;
 		default: {
 			assert(0);
@@ -588,10 +591,20 @@ void od_logger_write(od_logger_t *logger, od_logger_level_t level,
 
 		machine_msg_set_type(msg, OD_MSG_LOG);
 		_od_log_entry *le = machine_msg_data(msg);
+		le->lvl = level;
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
-		machine_channel_write(logger->task_channel, msg);
+		int rc = machine_channel_write(logger->task_channel, msg);
+		if (rc == MM_OK_RETCODE && level == OD_FATAL) {
+			/*
+			 * od_fatal() exits right after this returns. Wait (bounded)
+			 * for the logger thread to write the line rather than writing
+			 * it here, since that thread may rotate and close logger->fd.
+			 */
+			for (int i = 0; i < 1000 && !logger->yb_fatal_written; i++)
+				usleep(1000);
+		}
 	} else {
 		_od_logger_write(logger, output, len, level);
 	}
@@ -645,6 +658,7 @@ extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 
 		machine_msg_set_type(msg, OD_MSG_LOG);
 		_od_log_entry *le = machine_msg_data(msg);
+		le->lvl = level;
 		strncpy(le->msg, output, len);
 		le->msg[len] = '\0';
 
