@@ -336,7 +336,7 @@ od_frontend_attach(od_client_t *client, char *context,
 			if (yb_frontend_error_is_db_does_not_exist(client))
 				yb_mark_routes_inactive(router, ((od_route_t *)server->route)->id.yb_db_oid, -1, true);
 			else if (yb_frontend_error_is_role_does_not_exist(client))
-				/* YB: 28000 also covers a NOLOGIN role, so don't flag the role as dropped */
+				/* YB: 28000 is also used for NOLOGIN, so the role may still exist */
 				yb_mark_routes_inactive(router, -1, ((od_route_t *)server->route)->id.yb_user_oid,
 							false);
 
@@ -655,6 +655,10 @@ static inline bool yb_frontend_fatal_dropped(od_client_t *client)
 	if (route->yb_role_dropped)
 		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
 				  "role \"%s\" does not exist",
+				  client->startup.user.value);
+	else if (route->yb_role_login_rejected)
+		od_frontend_fatal(client, KIWI_INVALID_AUTHORIZATION_SPECIFICATION,
+				  "role \"%s\" does not exist or is not permitted to log in",
 				  client->startup.user.value);
 	else if (route->yb_db_dropped)
 		od_frontend_fatal(client, KIWI_INVALID_CATALOG_NAME,

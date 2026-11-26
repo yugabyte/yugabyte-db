@@ -263,10 +263,10 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
 
   // A role is made NOLOGIN and its pooled backends are terminated. Spawning a
   // new backend fails with 28000 "not permitted to log in", which invalidates
-  // the role's routes, but the role still exists, so the remaining session
-  // must not be told that it does not exist.
+  // the role's routes. 28000 also means a missing role, so the remaining
+  // session gets FATAL 28000 naming both causes.
   @Test
-  public void testNologinRoleIsNotReportedDropped() throws Exception {
+  public void testNologinRoleGetsLoginRejectedFatal() throws Exception {
     final int numTriggers = 4;
     runDirect("CREATE ROLE ycm_nologin_role LOGIN");
     waitForCatalogChange();
@@ -306,11 +306,11 @@ public class TestDroppedObjectRoutes extends BaseYsqlConnMgr {
         fail("Expected the session to be disconnected");
       } catch (SQLException e) {
         LOG.info("Target session got error", e);
-        assertTrue("Unexpected error: " + e.getSQLState() + " " + e.getMessage(),
-            e.getSQLState() != null && e.getSQLState().startsWith("08"));
-        assertTrue("Unexpected error: " + e.getMessage(),
-            !e.getMessage().contains("does not exist"));
+        assertEquals("Unexpected error: " + e.getMessage(), "28000", e.getSQLState());
+        assertTrue("Unexpected error: " + e.getMessage(), e.getMessage().contains(
+            "role \"ycm_nologin_role\" does not exist or is not permitted to log in"));
       }
+      assertTrue("Expected the session to be closed", target.isClosed());
     } finally {
       for (Connection conn : triggers)
         conn.close();
