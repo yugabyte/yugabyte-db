@@ -332,6 +332,7 @@ extern PGDLLIMPORT int yb_test_notifs_poller_init_delay_ms;
 extern PGDLLIMPORT int yb_test_notify_queue_max_pages;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_nonempty_ms;
 extern PGDLLIMPORT int yb_notifications_poll_sleep_duration_empty_ms;
+extern PGDLLIMPORT int yb_notifications_poller_no_progress_timeout_ms;
 extern PGDLLIMPORT bool yb_skip_ensure_read_time_in_parallel_execution;
 extern PGDLLIMPORT bool yb_enable_mage;
 
