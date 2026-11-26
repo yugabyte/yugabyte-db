@@ -633,10 +633,26 @@ export function distributeReplicationFactorAcrossAzs(
   return replicationFactors;
 }
 
+const getLeaderAffinity = (
+  az: { uuid: string; preffered: number },
+  existingAzs?: Map<string, { leader_affinity: boolean; rank: number }>
+) => {
+  const existing = existingAzs?.get(az.uuid);
+  if (!existing) return true;
+  return az.preffered === existing.rank ? existing.leader_affinity : az.preffered > AZ_NOT_PREFERRED;
+};
+
 export const getPlacementRegions = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
   availabilityZones?: NodeAvailabilityProps['availabilityZones'],
-  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>
+  nodesAvailability?: Pick<NodeAvailabilityProps, typeof REPLICATION_FACTOR>,
+  /**
+   * Edit flows pass the universe's AZs (uuid -> stored leader_affinity and the rank the form was
+   * seeded with). An existing AZ whose Preferred value the user left alone keeps its stored
+   * leader_affinity; a changed one gets leader_affinity = rank > 0. AZs not in the map, and every
+   * AZ when it is omitted (create), are sent affinitized.
+   */
+  existingAzs?: Map<string, { leader_affinity: boolean; rank: number }>
 ) => {
   const { resilienceType, resilienceFormMode } = resilienceAndRegionsSettings;
 
@@ -734,9 +750,11 @@ export const getPlacementRegions = (
           name: azFromRegion!.name,
           num_nodes_in_az: az.nodeCount,
           subnet: azFromRegion!.subnet,
-          leader_affinity: true,
+          leader_affinity: getLeaderAffinity(az, existingAzs),
           replication_factor: azReplicationFactor,
-          ...(az.preffered !== undefined ? { leader_preference: az.preffered } : {})
+          ...(az.preffered !== undefined && (!existingAzs || az.preffered > AZ_NOT_PREFERRED)
+            ? { leader_preference: az.preffered }
+            : {})
         };
       })
     };

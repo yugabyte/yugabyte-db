@@ -1,4 +1,5 @@
 import { useContext } from 'react';
+import { getAzRankGetter } from '../leaderPreference';
 import { EditPlacementContext, EditPlacementContextMethods } from './EditPlacementContext';
 import {
   ClusterSpec,
@@ -166,11 +167,24 @@ const buildPlacementSpecFromRegionList = (
     cloud_list: [
       {
         ...cloud,
-        default_region: regionList[0]?.uuid ?? cloud.default_region,
+        // Only keep a default region the universe already has; never invent one.
+        default_region: regionList.some((r) => r.uuid === cloud.default_region)
+          ? cloud.default_region
+          : undefined,
         region_list: regionList
       }
     ]
   };
+};
+
+export const getExistingAzs = (placementSpec: ClusterPlacementSpec) => {
+  const azs = placementSpec.cloud_list
+    .flatMap((cloud) => cloud.region_list ?? [])
+    .flatMap((region) => region.az_list ?? []);
+  const rankOf = getAzRankGetter(azs);
+  return new Map(
+    azs.map((az) => [az.uuid, { leader_affinity: az.leader_affinity !== false, rank: rankOf(az) }])
+  );
 };
 
 export const buildPrimaryPlacementEditPayload = (
@@ -186,7 +200,8 @@ export const buildPrimaryPlacementEditPayload = (
   const regionList = getPlacementRegions(
     resilience,
     nodesAndAvailability?.availabilityZones,
-    nodesAndAvailability
+    nodesAndAvailability,
+    getExistingAzs(primaryCluster.placement_spec)
   );
 
   return {
@@ -239,7 +254,8 @@ export const buildGeoPartitionPlacementEditPayload = (
   const regionList = getPlacementRegions(
     resilience,
     nodesAndAvailability?.availabilityZones,
-    nodesAndAvailability
+    nodesAndAvailability,
+    getExistingAzs(selectedPartition.placement)
   );
   const updatedPlacement = buildPlacementSpecFromRegionList(selectedPartition.placement, regionList);
   const effectiveReplicationFactor = getEffectiveReplicationFactorForResilience(

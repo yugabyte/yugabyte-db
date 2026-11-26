@@ -12,10 +12,8 @@ import {
   PlacementAZ,
   PlacementRegion
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import {
-  AZ_NOT_PREFERRED,
-  AZ_PREFFERED_HIGHEST_RANK
-} from '../../create-universe/helpers/constants';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { getAzRankGetter } from '../leaderPreference';
 import {
   countRegionsAzsAndNodes,
   countNodesInAzByType,
@@ -109,15 +107,11 @@ const regionTableDetailPanelProps = ({ row }: { row: { getIsExpanded: () => bool
   }
 });
 
-const isAzPreferred = (az: PlacementAZ) =>
-  az.leader_affinity === true && (az.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED;
-
-const PreferredAzTag: FC<{ az: PlacementAZ }> = ({ az }) => {
+const PreferredAzTag: FC<{ rank: number }> = ({ rank }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse.placement' });
   const theme = useTheme();
-  const rank = az.leader_preference ?? AZ_NOT_PREFERRED;
 
-  if (isAzPreferred(az)) {
+  if (rank > AZ_NOT_PREFERRED) {
     return (
       <YBTag
         size="medium"
@@ -198,7 +192,11 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
   const isReadReplicaCluster = cluster.cluster_type === ClusterSpecClusterType.ASYNC;
   const dedicatedFromSpec = !!cluster.node_spec?.dedicated_nodes;
   const regionList = placement.cloud_list.map((cloud) => cloud.region_list).flat();
-  const hasPreferredAz = regionList.some((region) => (region.az_list ?? []).some(isAzPreferred));
+  const rankOf = getAzRankGetter(regionList.flatMap((region) => region?.az_list ?? []));
+  // Leader preference only applies to the primary cluster.
+  const hasPreferredAz =
+    !isReadReplicaCluster &&
+    regionList.some((region) => (region?.az_list ?? []).some((az) => rankOf(az) > AZ_NOT_PREFERRED));
 
   const dedicatedDisplayTotals = getDedicatedTserverMasterDisplayCounts(
     universeData,
@@ -237,7 +235,7 @@ export const ClusterInstanceCard: FC<ClusterInstanceCardProps> = ({
     Header: () => <PreferredColumnHeader onHelpClick={() => setShowPreferredInfoModal(true)} />,
     // eslint-disable-next-line react/display-name
     Cell: ({ row: azRow }: { row: { original: PlacementAZ } }) => (
-      <PreferredAzTag az={azRow.original} />
+      <PreferredAzTag rank={rankOf(azRow.original)} />
     )
   };
 

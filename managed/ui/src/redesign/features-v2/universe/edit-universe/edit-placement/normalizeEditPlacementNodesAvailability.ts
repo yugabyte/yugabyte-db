@@ -15,7 +15,10 @@ import {
 } from '../../create-universe/steps/resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone } from '../../create-universe/steps/nodes-availability/dtos';
 import { REPLICATION_FACTOR } from '../../create-universe/fields/FieldNames';
-import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
+import {
+  AZ_NOT_PREFERRED,
+  AZ_PREFFERED_HIGHEST_RANK
+} from '../../create-universe/helpers/constants';
 import { EditPlacementContextProps } from './EditPlacementContext';
 
 export function isSingleAzMode(resilience: ResilienceAndRegionsProps): boolean {
@@ -241,7 +244,13 @@ function overlayExistingOntoExpected(
       if (isUsed(expectedZone)) {
         continue;
       }
-      merged.push({ ...expectedZone, preffered: AZ_NOT_PREFERRED });
+      // An expected AZ can be a universe AZ that wasn't kept above; keep its seeded rank.
+      const universeZone = existingInRegion.find(
+        (zone) =>
+          (Boolean(zone.uuid) && zone.uuid === expectedZone.uuid) ||
+          (Boolean(zone.name) && zone.name === expectedZone.name)
+      );
+      merged.push({ ...expectedZone, preffered: universeZone?.preffered ?? AZ_NOT_PREFERRED });
       markUsed(expectedZone);
     }
 
@@ -308,7 +317,11 @@ function normalizeSingleAzLayout(
       {
         ...zone,
         nodeCount,
-        preffered: AZ_NOT_PREFERRED
+        // A lone AZ keeps whether the universe had it preferred (rank is moot with one AZ).
+        preffered:
+          existingZone && existingZone.preffered > AZ_NOT_PREFERRED
+            ? AZ_PREFFERED_HIGHEST_RANK
+            : AZ_NOT_PREFERRED
       }
     ]
   };

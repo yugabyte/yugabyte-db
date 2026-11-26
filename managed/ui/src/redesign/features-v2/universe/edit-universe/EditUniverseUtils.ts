@@ -36,7 +36,7 @@ import { ProxyAdvancedProps } from '../create-universe/steps/advanced-settings/d
 import { getInferredOutageCount, inferResilience } from '../create-universe/CreateUniverseUtils';
 import { NodeAvailabilityProps } from '../create-universe/steps/nodes-availability/dtos';
 import { REPLICATION_FACTOR } from '../create-universe/fields/FieldNames';
-import { AZ_NOT_PREFERRED } from '../create-universe/helpers/constants';
+import { getAzRankGetter } from './leaderPreference';
 
 export const getClusterByType = (universeData: Universe, type: ClusterSpecClusterType) => {
   return universeData.spec?.clusters.find((cluster) => cluster.cluster_type === type);
@@ -142,6 +142,9 @@ export const placementSpecToAvailabilityZones = (
   placement: ClusterPlacementSpec
 ): NodeAvailabilityProps['availabilityZones'] =>
   placement.cloud_list.reduce<NodeAvailabilityProps['availabilityZones']>((acc, cloud) => {
+    const rankOf = getAzRankGetter(
+      placement.cloud_list.flatMap((c) => c.region_list ?? []).flatMap((r) => r.az_list ?? [])
+    );
     cloud.region_list?.forEach((region) => {
       const regionKey = region.code ?? region.uuid ?? '';
       if (!regionKey) return;
@@ -149,7 +152,7 @@ export const placementSpecToAvailabilityZones = (
         name: az.name ?? '',
         uuid: az.uuid ?? `${regionKey}-${index}`,
         nodeCount: az.num_nodes_in_az ?? 0,
-        preffered: az.leader_preference ?? AZ_NOT_PREFERRED
+        preffered: rankOf(az)
       }));
     });
     return acc;

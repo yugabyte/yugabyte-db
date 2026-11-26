@@ -5,10 +5,10 @@ import { TFunction } from 'i18next';
 import { IconPosition, mui, StatusType, YBSmartStatus } from '@yugabyte-ui-library/core';
 
 import { RegionsAndNodesFormType } from '../../geo-partition/add/AddGeoPartitionUtils';
-import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { ClusterSpecClusterType, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import './MapTooltip.css';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { getMapRankGetter } from '../leaderPreference';
 import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 
 const { styled, Typography, Divider } = mui;
@@ -143,26 +143,19 @@ const RegionList: FC<{
   t: TFunction;
   isK8s: boolean;
 }> = ({ regions, t, isK8s }) => {
+  const rankOf = getMapRankGetter(regions);
   return (
     <>
       {regions?.map((region) => {
         const sortedZones = [...(region?.zones ?? [])].sort((a, b) => {
-          const prefA = isDefinedNotNull(a.leader_preference)
-            ? a.leader_preference! !== AZ_NOT_PREFERRED
-              ? a.leader_preference!
-              : Number.MAX_VALUE
-            : Number.MAX_VALUE;
-          const prefB = isDefinedNotNull(b.leader_preference)
-            ? b.leader_preference! !== AZ_NOT_PREFERRED
-              ? b.leader_preference!
-              : Number.MAX_VALUE
-            : Number.MAX_VALUE;
+          const prefA = rankOf(region, a) !== AZ_NOT_PREFERRED ? rankOf(region, a) : Number.MAX_VALUE;
+          const prefB = rankOf(region, b) !== AZ_NOT_PREFERRED ? rankOf(region, b) : Number.MAX_VALUE;
           return prefA - prefB;
         });
         return sortedZones.map(
           (zone: RegionsAndNodesFormType['regions'][number]['zones'][number]) => (
             <ZoneContainer key={zone.code}>
-              <ZoneItem preferredRank={zone.leader_preference}>
+              <ZoneItem preferredRank={rankOf(region, zone)}>
                 <Typography variant="body2" sx={{ width: '126px' }}>
                   {zone.name}
                 </Typography>
@@ -171,10 +164,10 @@ const RegionList: FC<{
                     total: (zone as PlacementAZ).num_nodes_in_az ?? 0
                   })}
                 </StyledNodeCount>
-                {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED && (
+                {rankOf(region, zone) > AZ_NOT_PREFERRED && (
                   <YBSmartStatus
                     type={StatusType.OTHER}
-                    label={t('preferredRank', { rank: zone.leader_preference! })}
+                    label={t('preferredRank', { rank: rankOf(region, zone) })}
                     iconPosition={IconPosition.NONE}
                   />
                 )}

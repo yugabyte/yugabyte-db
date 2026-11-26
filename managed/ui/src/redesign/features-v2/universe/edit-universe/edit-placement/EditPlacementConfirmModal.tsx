@@ -10,16 +10,21 @@ import {
 } from '../EditUniverseUtils';
 import { ClusterType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { CloudType } from '@app/redesign/helpers/dtos';
-import { buildPrimaryPlacementEditPayload, useGetEditPlacementContext } from './EditPlacementUtils';
+import {
+  buildPrimaryPlacementEditPayload,
+  getExistingAzs,
+  useGetEditPlacementContext
+} from './EditPlacementUtils';
+import { getAzRankGetter } from '../leaderPreference';
 import {
   getEffectiveReplicationFactorForResilience,
   getNodeCount
 } from '../../create-universe/CreateUniverseUtils';
 import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUtils';
-import { AZ_NOT_PREFERRED } from '../../create-universe/helpers/constants';
+import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
 
 import pluralize from 'pluralize';
-import { keys } from 'lodash';
+import { keys, values } from 'lodash';
 import { ArrowDownward, ArrowUpward } from '@material-ui/icons';
 import NextLineIcon from '@app/redesign/assets/next-line.svg';
 
@@ -147,6 +152,20 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
     .flat()
     .sort((a, b) => (a?.name ?? '').localeCompare(b?.name ?? ''));
 
+  const currentRankOf = getAzRankGetter(
+    (currentRegions ?? []).flatMap((region) => region?.az_list ?? [])
+  );
+  // Mirrors the payload: AZs added in this edit are sent affinitized, which only takes effect
+  // when no AZ in the new layout has a rank and an existing AZ was excluded.
+  const existingAzs = getExistingAzs(placementSpec!);
+  const newLayoutHasRanks = values(nodesAndAvailability!.availabilityZones!)
+    .flat()
+    .some((az) => az.preffered > AZ_NOT_PREFERRED);
+  const anyExistingExcluded = [...existingAzs.values()].some((az) => !az.leader_affinity);
+  const isNewAzPreferred = (az: { uuid: string; preffered: number }) =>
+    az.preffered > AZ_NOT_PREFERRED ||
+    (!existingAzs.has(az.uuid) && !newLayoutHasRanks && anyExistingExcluded);
+
   const sortedNewRegionKeys = keys(nodesAndAvailability!.availabilityZones!).sort((a, b) => {
     const regionA = resilience?.regions.find((r) => r.code === a)?.name ?? '';
     const regionB = resilience?.regions.find((r) => r.code === b)?.name ?? '';
@@ -209,9 +228,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                         {az?.num_nodes_in_az}&nbsp;
                         {pluralize(t(isK8s ? 'pod' : 'node'), az?.num_nodes_in_az)}
                       </YBTag>
-                      {(az?.leader_preference ?? AZ_NOT_PREFERRED) > AZ_NOT_PREFERRED ? (
+                      {currentRankOf(az) > AZ_NOT_PREFERRED ? (
                         <YBTag size="medium" customSx={placementValueTagSx}>
-                          {t('rank', { rank: az.leader_preference })}
+                          {t('rank', { rank: currentRankOf(az) })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">
@@ -269,9 +288,9 @@ export const EditPlacementConfirmModal: FC<EditPlacementConfirmModalProps> = ({
                           {az?.nodeCount}&nbsp;{pluralize(t(isK8s ? 'pod' : 'node'), az?.nodeCount)}
                         </YBTag>
                       </div>
-                      {az?.preffered > AZ_NOT_PREFERRED ? (
+                      {isNewAzPreferred(az) ? (
                         <YBTag size="medium" customSx={placementValueTagSx}>
-                          {t('rank', { rank: az.preffered })}
+                          {t('rank', { rank: Math.max(az.preffered, AZ_PREFFERED_HIGHEST_RANK) })}
                         </YBTag>
                       ) : (
                         <YBTag size="medium" variant="dark">

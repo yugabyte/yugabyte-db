@@ -11,9 +11,9 @@ import pluralize from 'pluralize';
 import { extractGeoPartitionsFromUniverse } from '../../geo-partition/add/AddGeoPartitionUtils';
 import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 import { useTranslation } from 'react-i18next';
-import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { MapRegionTooltip } from './MapTooltip';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { getMapRankGetter } from '../leaderPreference';
 
 const { styled, Box } = mui;
 
@@ -62,18 +62,15 @@ export const MapGeoPartitionView = () => {
   }, 0);
 
   const regionsByName = groupBy(regions, 'code');
+  const rankOf = getMapRankGetter(regions);
   const hasPrefferedRegions = regions.some((region) =>
-    region.zones.some(
-      (zone: any) => isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED
-    )
+    region.zones.some((zone: any) => rankOf(region, zone) > AZ_NOT_PREFERRED)
   );
   return (
     <>
       {regions?.map((region, index) => {
         const hasHighestPreferedRank = region.zones.some(
-          (zone: any) =>
-            isDefinedNotNull(zone.leader_preference) &&
-            zone.leader_preference === AZ_PREFFERED_HIGHEST_RANK
+          (zone: any) => rankOf(region, zone) === AZ_PREFFERED_HIGHEST_RANK
         );
         return (
           <YBMapMarker
