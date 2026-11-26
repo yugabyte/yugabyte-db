@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.WRITE_READ_TABLE;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -209,7 +210,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.joda.time.DateTime;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
@@ -7827,11 +7827,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Ok to fail, don't put this inside try block.
     Schedule.modifyScheduleRunningAndSave(
         customerUUID, schedule.getScheduleUUID(), true /* isRunning */);
-
-    // Lock universe if PIT based schedule
-    if (scheduleParams.enablePointInTimeRestore) {
-      lockAndFreezeUniverseForUpdate(
-          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    try {
+      // The schedule may have changed since the request checked it, e.g. a create or delete task
+      // moved it on. Fail without touching it when it can't be edited now.
+      State state = Schedule.getOrBadRequest(customerUUID, scheduleUUID).getStatus();
+      if (!state.stateTransitionAllowed(State.Editing)) {
+        throw new PlatformServiceException(
+            CONFLICT, String.format("Schedule is %s, so it can't be edited now", state));
+      }
+      // Lock universe if PIT based schedule
+      if (scheduleParams.enablePointInTimeRestore) {
+        lockAndFreezeUniverseForUpdate(
+            universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+      }
+    } catch (Throwable t) {
+      // Nothing changed; just release the schedule.
+      Schedule.modifyScheduleRunningAndSave(
+          customerUUID, schedule.getScheduleUUID(), false /* isRunning */);
+      throw t;
     }
     try {
       log.info(
@@ -7860,10 +7873,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
             .forEach(
                 backup -> {
+                  // In long millis: a retention over 24 days overflows an int.
                   Date newExpiry =
-                      new DateTime(backup.getCreateTime())
-                          .plusMillis((int) scheduleParams.timeBeforeDelete)
-                          .toDate();
+                      new Date(backup.getCreateTime().getTime() + scheduleParams.timeBeforeDelete);
                   backup.setExpiry(newExpiry);
                   backup.save();
                 });

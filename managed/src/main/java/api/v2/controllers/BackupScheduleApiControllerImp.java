@@ -35,6 +35,12 @@ public class BackupScheduleApiControllerImp extends BackupScheduleApiControllerI
   }
 
   @Override
+  public YBATask editBackupSchedule(
+      Http.Request request, UUID cUUID, UUID bsUUID, BackupScheduleSpec backupScheduleSpec) {
+    return backupScheduleHandler.editBackupSchedule(cUUID, bsUUID, backupScheduleSpec);
+  }
+
+  @Override
   public BackupSchedule getBackupSchedule(Http.Request request, UUID cUUID, UUID bsUUID) {
     return backupScheduleHandler.getBackupSchedule(cUUID, bsUUID);
   }

@@ -675,4 +675,181 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertTrue(resp.getHasNext());
     assertTrue(resp.getHasPrev());
   }
+
+  /** An Active, daily, incremental YSQL schedule of the test universe kept for a week. */
+  private Schedule editableSchedule(String name, boolean pointInTimeRestore) {
+    BackupRequestParams params = new BackupRequestParams();
+    params.scheduleName = name;
+    params.customerUUID = customer.getUuid();
+    params.storageConfigUUID = storageConfig.getConfigUUID();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.backupType = TableType.PGSQL_TABLE_TYPE;
+    params.keyspaceTableList = new ArrayList<>();
+    params.schedulingFrequency = DAY;
+    params.frequencyTimeUnit = TimeUnit.DAYS;
+    params.incrementalBackupFrequency = HOUR;
+    params.incrementalBackupFrequencyTimeUnit = TimeUnit.HOURS;
+    params.timeBeforeDelete = 7 * DAY;
+    params.expiryTimeUnit = TimeUnit.DAYS;
+    params.enablePointInTimeRestore = pointInTimeRestore;
+    params.parallelism = 4;
+    return Schedule.create(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        params,
+        TaskType.CreateBackup,
+        DAY,
+        null,
+        true,
+        TimeUnit.DAYS,
+        name);
+  }
+
+  private BackupScheduleSpec specOf(Schedule schedule) throws ApiException {
+    return backupScheduleApi
+        .getBackupSchedule(customer.getUuid(), schedule.getScheduleUUID())
+        .getSpec();
+  }
+
+  private static BackupScheduleFrequency cron(String expression) {
+    return new BackupScheduleFrequency(
+        new BackupScheduleCronFrequency()
+            .frequencyType(BackupScheduleFrequencyType.BackupScheduleFrequencyCron)
+            .cronExpression(expression)
+            .useLocalTimezone(true));
+  }
+
+  /** The params of the EditBackupSchedule task submitted last. */
+  private BackupScheduleTaskParams submittedEdit(int submits) {
+    ArgumentCaptor<ITaskParams> params = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(submits))
+        .submit(eq(TaskType.EditBackupSchedule), params.capture());
+    return (BackupScheduleTaskParams) params.getValue();
+  }
+
+  private ApiException assertEditError(Schedule schedule, BackupScheduleSpec spec, int code) {
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                backupScheduleApi.editBackupSchedule(
+                    customer.getUuid(), schedule.getScheduleUUID(), spec, null));
+    assertEquals(e.getResponseBody(), code, e.getCode());
+    return e;
+  }
+
+  @Test
+  public void editSubmitsTheMergedParams() throws ApiException {
+    when(mockCommissioner.submit(eq(TaskType.EditBackupSchedule), any(ITaskParams.class)))
+        .thenAnswer(invocation -> buildTaskInfo(null, TaskType.EditBackupSchedule));
+    Schedule schedule = editableSchedule("daily", false);
+    // As get returns it, with a new frequency, incremental interval and retention.
+    BackupScheduleSpec spec =
+        specOf(schedule)
+            .frequency(cron("0 2 * * *"))
+            .incrementalInterval(duration(30, TimeUnitType.MINUTES))
+            .retention(duration(1, TimeUnitType.MONTHS));
+
+    YBATask task =
+        backupScheduleApi.editBackupSchedule(
+            customer.getUuid(), schedule.getScheduleUUID(), spec, null);
+
+    assertEquals(schedule.getScheduleUUID(), task.getResourceUuid());
+    BackupScheduleTaskParams params = submittedEdit(1);
+    assertEquals(schedule.getScheduleUUID(), params.getScheduleUUID());
+    assertEquals(customer.getUuid(), params.getCustomerUUID());
+    assertEquals(universe.getUniverseUUID(), params.getUniverseUUID());
+    assertEquals("0 2 * * *", params.scheduleParams.cronExpression);
+    assertEquals(0, params.scheduleParams.schedulingFrequency);
+    assertEquals(30 * 60_000L, params.scheduleParams.incrementalBackupFrequency);
+    assertEquals(TimeUnit.MINUTES, params.scheduleParams.incrementalBackupFrequencyTimeUnit);
+    assertEquals(30 * DAY, params.scheduleParams.timeBeforeDelete);
+    assertEquals(TimeUnit.MONTHS, params.scheduleParams.expiryTimeUnit);
+    // The rest of the stored params stays.
+    assertEquals(storageConfig.getConfigUUID(), params.scheduleParams.storageConfigUUID);
+    assertEquals(4, params.scheduleParams.parallelism);
+    assertEquals("daily", params.scheduleParams.scheduleName);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(task.getTaskUuid());
+    assertEquals(CustomerTask.TargetType.Schedule, customerTask.getTargetType());
+    assertEquals(CustomerTask.TaskType.Update, customerTask.getType());
+  }
+
+  @Test
+  public void editRejectsWhatItCantChange() throws ApiException {
+    Schedule schedule = editableSchedule("daily", false);
+    BackupScheduleSpec spec = specOf(schedule);
+    assertEditError(schedule, specOf(schedule).name("renamed"), 400);
+    assertEditError(schedule, specOf(schedule).storageConfigUuid(UUID.randomUUID()), 400);
+    assertEditError(
+        schedule,
+        specOf(schedule).keyspaces(List.of(new BackupScheduleKeyspace().keyspace("db"))),
+        400);
+    assertEditError(schedule, specOf(schedule).sse(true), 400);
+    assertEditError(schedule, specOf(schedule).minBackupsToRetain(5), 400);
+    // Incremental backups can't be turned off, nor the retention removed.
+    assertEditError(schedule, specOf(schedule).incrementalInterval(null), 400);
+    assertEditError(schedule, specOf(schedule).retention(null), 400);
+    // Nor can a cron's timezone change, which the task doesn't apply.
+    BackupScheduleFrequency utcCron = cron("0 2 * * *");
+    ((BackupScheduleCronFrequency) utcCron.getActualInstance()).useLocalTimezone(false);
+    assertEditError(schedule, specOf(schedule).frequency(utcCron), 400);
+    // Omitted options and min_backups_to_retain count as their defaults, so these are unchanged.
+    assertEquals(Integer.valueOf(3), spec.getMinBackupsToRetain());
+
+    // Schedules of the older backup tasks.
+    Schedule older =
+        ModelFactory.createScheduleBackup(
+            customer.getUuid(), universe.getUniverseUUID(), storageConfig.getConfigUUID());
+    assertEditError(older, specOf(older), 400);
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditBackupSchedule), any(ITaskParams.class));
+  }
+
+  @Test
+  public void editConflicts() throws ApiException {
+    Schedule creating = editableSchedule("creating", false);
+    BackupScheduleSpec creatingSpec = specOf(creating);
+    creating.setStatus(Schedule.State.Creating);
+    creating.save();
+    ApiException e = assertEditError(creating, creatingSpec, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    assertEquals("CREATING", error(e).get("backup_schedule_state").asText());
+
+    // Another task holds it.
+    Schedule held = editableSchedule("held", false);
+    BackupScheduleSpec heldSpec = specOf(held);
+    Schedule.modifyScheduleRunningAndSave(customer.getUuid(), held.getScheduleUUID(), true);
+    e = assertEditError(held, heldSpec, 409);
+    assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
+    assertEquals("ACTIVE", error(e).get("backup_schedule_state").asText());
+
+    // A point-in-time-restore schedule while a task holds the universe.
+    Schedule pit = editableSchedule("pit", true);
+    BackupScheduleSpec pitSpec = specOf(pit);
+    Universe.saveDetails(
+        universe.getUniverseUUID(), u -> u.getUniverseDetails().updateInProgress = true);
+    e = assertEditError(pit, pitSpec, 409);
+    assertEquals(BackupScheduleHandler.UNIVERSE_LOCKED, error(e).get("code").asText());
+    assertEquals(universe.getUniverseUUID().toString(), error(e).get("universe_uuid").asText());
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditBackupSchedule), any(ITaskParams.class));
+  }
+
+  @Test
+  public void editMissing() throws ApiException {
+    Schedule schedule = editableSchedule("daily", false);
+    BackupScheduleSpec spec = specOf(schedule);
+    ApiException e =
+        assertThrows(
+            ApiException.class,
+            () ->
+                backupScheduleApi.editBackupSchedule(
+                    customer.getUuid(), UUID.randomUUID(), spec, null));
+    assertEquals(404, e.getCode());
+    // Another customer's.
+    Customer other = ModelFactory.testCustomer("other-customer");
+    Schedule otherSchedule =
+        createBackupSchedule(other, "other", UUID.randomUUID(), UUID.randomUUID());
+    assertEditError(otherSchedule, spec, 404);
+  }
 }

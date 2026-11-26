@@ -377,6 +377,62 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+  put:
+    operationId: editBackupSchedule
+    summary: Edit a backup schedule
+    description: |
+      Edits a backup schedule and returns the task that applies the edit (resource_uuid is the
+      schedule's UUID). The spec replaces the stored one, but only the frequency (an interval or a
+      cron expression), the incremental interval and the retention can change; every other field
+      must equal the schedule's, as getBackupSchedule returns it, where an omitted option counts as
+      false and an omitted min_backups_to_retain as 3. Incremental backups can't be turned on or
+      off, and a retention can't be removed. A changed retention also changes the expiry of the
+      schedule's completed backups. Only schedules of the CreateBackup task can be edited, not
+      those of the older BackupUniverse and MultiTableBackup tasks. The schedule keeps its state;
+      it is EDITING while the task runs. For point_in_time_restore the task also sets the history
+      retention the new frequency needs. If the task fails, the schedule is left in ERROR. Retry
+      with the same Idempotency-Key to get the task of a request whose response was lost.
+    tags:
+      - Backup Schedule
+    requestBody:
+      $ref: "../components/requestBodies/BackupScheduleEditReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: 'Invalid input, such as a change to a field other than the frequency, incremental interval and retention, turning incremental backups on or off, removing the retention, an interval shorter than an hour, an invalid cron expression, or a schedule of an older backup task'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no update permission on the universe or the customer'
+      '404':
+        description: The customer has no backup schedule with this UUID
+      '409':
+        description: 'error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING, EDITING or DELETING, or a task holds it (error.backup_schedule_state), and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a task holds its universe (error.universe_uuid).'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Schedule
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: EditBackupSchedule
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: update
+        resourceLocation:
+          path: universe_uuid
+          sourceType: request_body
+      - requiredPermission:
+          resourceType: other
+          action: update
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-idempotent: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 /ybc/gflags-metadata:
   get:
     operationId: listYbcGflagsMetadata

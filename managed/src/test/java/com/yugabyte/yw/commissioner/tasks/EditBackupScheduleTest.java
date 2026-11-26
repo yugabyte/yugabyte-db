@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -230,5 +232,52 @@ public class EditBackupScheduleTest extends CommissionerBaseTest {
     tInfo = submitTask(scheduleParams, scheduleUUID);
     schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
     assertEquals(State.Stopped, schedule.getStatus());
+  }
+
+  @Test
+  public void testEditOfAScheduleBeingCreatedFailsWithoutTouchingIt() {
+    Schedule schedule =
+        createSchedule(100000000L, 86200000L, null /* cron */, false /* enablePITRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    schedule.setStatus(State.Creating);
+    schedule.save();
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    scheduleParams.timeBeforeDelete = 259200000L;
+
+    TaskInfo tInfo = submitTask(scheduleParams, scheduleUUID);
+
+    assertEquals(TaskInfo.State.Failure, tInfo.getTaskState());
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), scheduleUUID);
+    // Not moved to Error, and released.
+    assertEquals(State.Creating, schedule.getStatus());
+    assertFalse(schedule.isRunningState());
+    assertEquals(
+        0L, Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class).timeBeforeDelete);
+  }
+
+  @Test
+  public void testRetentionOverAnIntOfMillisSetsTheExpiryOfCompletedBackups() {
+    Schedule schedule =
+        createSchedule(100000000L, 86200000L, null /* cron */, false /* enablePITRestore */);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    Backup backup =
+        ModelFactory.createExpiredBackupWithScheduleUUID(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            storageConfig.getConfigUUID(),
+            scheduleUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    // 30 days, more than Integer.MAX_VALUE milliseconds.
+    long retention = 30L * 24 * 3600 * 1000;
+    scheduleParams.timeBeforeDelete = retention;
+
+    TaskInfo tInfo = submitTask(scheduleParams, scheduleUUID);
+
+    assertEquals(TaskInfo.State.Success, tInfo.getTaskState());
+    backup = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(backup.getCreateTime().getTime() + retention, backup.getExpiry().getTime());
   }
 }
