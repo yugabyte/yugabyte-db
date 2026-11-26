@@ -2280,7 +2280,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           "yb_test_notifs_poller_error_holding_queue_lock", "true", "on", originalPgConf);
       LogLineCounter restarts = countLogLines(POLLER_RESTART_LOG);
       stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
-      TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
+      TestUtils.waitFor(
+          () -> restarts.count() >= 1, Timeouts.adjustTimeoutSecForBuildType(30_000));
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
     }
@@ -2296,7 +2297,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     try {
       setVirtualWalLimit("0");
       ProcessUtil.signalProcess(pollerPid, "TERM");
-      TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
+      TestUtils.waitFor(
+          () -> restarts.count() >= 1, Timeouts.adjustTimeoutSecForBuildType(30_000));
       whileFailing.run();
     } finally {
       setVirtualWalLimit("5");

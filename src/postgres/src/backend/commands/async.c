@@ -3618,11 +3618,20 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		proc_exit(1);
 	}
 
-	if (!ybNotifsPollerCannotRun && len < sizeof(message))
-		snprintf(message + len, sizeof(message) - len,
-				 " (no progress for "
-				 "yb_notifications_poller_no_progress_timeout_ms = %d ms)",
-				 yb_notifications_poller_no_progress_timeout_ms);
+	if (!ybNotifsPollerCannotRun)
+	{
+		char		suffix[128];
+		int			suffix_len;
+
+		/* Cut the error, not the reason, if they don't both fit. */
+		suffix_len = snprintf(suffix, sizeof(suffix),
+							  " (no progress for "
+							  "yb_notifications_poller_no_progress_timeout_ms"
+							  " = %d ms)",
+							  yb_notifications_poller_no_progress_timeout_ms);
+		len = Min(len, (int) sizeof(message) - 1 - suffix_len);
+		strlcpy(message + len, suffix, sizeof(message) - len);
+	}
 	strlcpy(poller_data->error_message, message,
 			sizeof(poller_data->error_message));
 	poller_data->has_runtime_error = true;
