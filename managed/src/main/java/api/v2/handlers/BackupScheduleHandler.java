@@ -78,11 +78,15 @@ public class BackupScheduleHandler {
   public static final String NAME_CONFLICT = "BACKUP_SCHEDULE_NAME_CONFLICT";
   public static final String STORAGE_CONFIG_NOT_ACTIVE = StorageConfigHandler.NOT_ACTIVE;
   public static final String BUSY = "BACKUP_SCHEDULE_BUSY";
+  public static final String NOT_EDITABLE = "BACKUP_SCHEDULE_NOT_EDITABLE";
   public static final String UNIVERSE_LOCKED = "UNIVERSE_LOCKED";
 
-  /** The states v1 lets the edit task move to Editing from. */
+  /**
+   * The states v2 edits, which the edit task returns the schedule to. v1 also edits an Error
+   * schedule, which may have no stable state to return to.
+   */
   private static final Set<Schedule.State> EDITABLE_STATES =
-      EnumSet.of(Schedule.State.Active, Schedule.State.Stopped, Schedule.State.Error);
+      EnumSet.of(Schedule.State.Active, Schedule.State.Stopped);
 
   private static final String BACKUP_TYPE_PARAM = "task_params->>'backupType'";
   private static final List<String> V2_BACKUP_TYPES =
@@ -187,6 +191,17 @@ public class BackupScheduleHandler {
     BackupRequestParams requested = BackupScheduleMapper.toBackupRequestParams(cUUID, spec);
     if (current.getRetention() != null && requested.timeBeforeDelete <= 0L) {
       throw badRequest("The retention can't be removed");
+    }
+    if (schedule.getStatus() == Schedule.State.Error) {
+      ObjectNode error = Json.newObject();
+      error.put("code", NOT_EDITABLE);
+      error.put(
+          "message",
+          String.format(
+              "Backup schedule %s is in ERROR and can't be edited; delete it",
+              schedule.getScheduleName()));
+      error.put("backup_schedule_state", BackupScheduleState.BackupScheduleError.toString());
+      throw new PlatformServiceException(CONFLICT, error);
     }
     if (!EDITABLE_STATES.contains(schedule.getStatus()) || schedule.isRunningState()) {
       throw busy(schedule);

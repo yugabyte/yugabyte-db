@@ -552,11 +552,14 @@ paths:
         schedule''s completed backups. Only schedules of the CreateBackup task can
         be edited, not
 
-        those of the older BackupUniverse and MultiTableBackup tasks. The schedule
-        keeps its state;
+        those of the older BackupUniverse and MultiTableBackup tasks. Only an ACTIVE
+        or PAUSED
 
-        it is EDITING while the task runs. For point_in_time_restore the task also
-        sets the history
+        schedule can be edited; one in ERROR can only be deleted. The schedule keeps
+        its state; it
+
+        is EDITING while the task runs. For point_in_time_restore the task also sets
+        the history
 
         retention the new frequency needs. If the task fails, the schedule is left
         in ERROR. Retry
@@ -586,9 +589,10 @@ paths:
         '409':
           description: error.code is BACKUP_SCHEDULE_BUSY when the schedule is CREATING,
             EDITING or DELETING, or a task holds it (error.backup_schedule_state),
-            and UNIVERSE_LOCKED when the schedule has point_in_time_restore and a
-            task holds its universe (error.universe_uuid). Also returned while a request
-            with the same Idempotency-Key is still in progress.
+            BACKUP_SCHEDULE_NOT_EDITABLE when it is in ERROR, and UNIVERSE_LOCKED
+            when the schedule has point_in_time_restore and a task holds its universe
+            (error.universe_uuid). Also returned while a request with the same Idempotency-Key
+            is still in progress.
         '500':
           description: Server error
         '422':

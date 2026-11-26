@@ -210,6 +210,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes;
@@ -7873,9 +7874,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         Backup.fetchAllCompletedBackupsByScheduleUUID(customerUUID, scheduleUUID)
             .forEach(
                 backup -> {
-                  // In long millis: a retention over 24 days overflows an int.
                   Date newExpiry =
-                      new Date(backup.getCreateTime().getTime() + scheduleParams.timeBeforeDelete);
+                      new DateTime(backup.getCreateTime())
+                          .plusMillis((int) scheduleParams.timeBeforeDelete)
+                          .toDate();
                   backup.setExpiry(newExpiry);
                   backup.save();
                 });

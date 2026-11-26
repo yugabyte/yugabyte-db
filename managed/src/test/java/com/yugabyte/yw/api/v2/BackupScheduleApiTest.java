@@ -815,6 +815,15 @@ public class BackupScheduleApiTest extends FakeDBApplication {
     assertEquals(BackupScheduleHandler.BUSY, error(e).get("code").asText());
     assertEquals("CREATING", error(e).get("backup_schedule_state").asText());
 
+    // A schedule in ERROR can only be deleted.
+    Schedule failed = editableSchedule("failed", false);
+    BackupScheduleSpec failedSpec = specOf(failed);
+    failed.setStatus(Schedule.State.Error);
+    failed.save();
+    e = assertEditError(failed, failedSpec, 409);
+    assertEquals(BackupScheduleHandler.NOT_EDITABLE, error(e).get("code").asText());
+    assertEquals("ERROR", error(e).get("backup_schedule_state").asText());
+
     // Another task holds it.
     Schedule held = editableSchedule("held", false);
     BackupScheduleSpec heldSpec = specOf(held);
