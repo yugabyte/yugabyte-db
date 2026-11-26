@@ -597,6 +597,13 @@ openApiFormat / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiFormat := {
   import java.nio.file.Path
+  def installOpenapiFormat(): Unit = {
+    ybLog(s"Install openapi-format if required")
+    val rc = Process(s"./openapi_format_install.sh", baseDirectory.value / "scripts").!
+    if (rc != 0) {
+      throw new RuntimeException("openapi format installation failed!!!")
+    }
+  }
   def formatFile(file: Path): Unit = {
     ybLog(s"formatting api file $file")
     val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
@@ -606,6 +613,11 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
+  // Install once before the parallel loop: concurrent npx installs into the shared npx cache
+  // corrupt it and every format call then fails.
+  if (changedFiles.nonEmpty) {
+    installOpenapiFormat()
+  }
   changedFiles.par.foreach(formatFile)
 }
 
