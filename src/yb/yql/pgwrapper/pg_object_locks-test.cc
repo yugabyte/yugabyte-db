@@ -3876,6 +3876,86 @@ TEST_F(PgObjectLocksTestLostMessageRelease, OutOfOrderAcquireReleasedAfterReques
   ASSERT_OK(ts1->Restart());
 }
 
+// Like OutOfOrderAcquireReleasedAfterRequestorShutdown, but without a retried acquire: the
+// backend waiting for the exclusive lock is terminated while master's acquire fanout is still in
+// progress. Master runs the release fanout concurrently, so the release reaches ts2 ahead of the
+// acquire.
+TEST_F(PgObjectLocksTestLostMessageRelease, TerminatedAcquireReleasedAfterRequestorShutdown) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto admin_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (id INT PRIMARY KEY, value TEXT)"));
+
+  // Below master_ts_rpc_timeout_ms (30 s), so master does not retry the blocked acquire RPC
+  // before it is let through.
+  const auto kStatementTimeoutSec = 30;
+  ASSERT_OK(conn.ExecuteFormat("SET statement_timeout = '$0s'", kStatementTimeoutSec));
+  const auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "vmodule", "ts_local_lock_manager=3"));
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "true"));
+  LogWaiter blocked_waiter(ts2, "Blocking acquire request to simulate out-of-order requests");
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  const auto lock_request_start = CoarseMonoClock::Now();
+  auto lock_future = std::async(std::launch::async, [&conn]() -> Status {
+    return conn.Execute("LOCK TABLE test_table IN ACCESS EXCLUSIVE MODE");
+  });
+  const auto kTimeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  ASSERT_OK(blocked_waiter.WaitFor(kTimeout));
+  // Only the acquire already blocked stays blocked; conn2's locks below must go through.
+  ASSERT_OK(cluster_->SetFlag(ts2, "TEST_block_acquires_to_simulate_out_of_order", "false"));
+
+  LogWaiter release_waiter(ts2, "Releasing locks for txn");
+  ASSERT_TRUE(ASSERT_RESULT(
+      admin_conn.FetchRow<bool>(Format("SELECT pg_terminate_backend($0)", pid))));
+  ASSERT_NOK(lock_future.get());
+  ASSERT_OK(release_waiter.WaitFor(kTimeout));
+
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test_table IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+
+  ts1->Shutdown();
+
+  const auto acquire_deadline =
+      lock_request_start + kStatementTimeoutSec * 1s + kPgClientExtraTimeoutMs * 1ms;
+  const auto kGracePeriod = MonoDelta::FromMilliseconds(500);
+  ASSERT_LE(CoarseMonoClock::Now() + kGracePeriod, acquire_deadline);
+  LogWaiter unblocked_waiter(ts2, "Unblocking acquire request.");
+  ASSERT_OK(
+      cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
+  ASSERT_OK(unblocked_waiter.WaitFor(kTimeout));
+
+  auto get_locks_count_on_ts2 = [&ts2, this]() -> Result<int64_t> {
+    return VERIFY_RESULT(cluster_->GetObjectLockStatus(*ts2)).object_lock_infos_size();
+  };
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(get_locks_count_on_ts2()) > 0; },
+      kGracePeriod, "Wait for the terminated txn's acquire to take the lock on ts2"));
+
+  const auto cleanup_deadline =
+      std::max(acquire_deadline, CoarseMonoClock::Now()) +
+      MonoDelta::FromMilliseconds(3 * kDefaultMasterYSQLLeaseTTLMilli * kTimeMultiplier);
+  ASSERT_OK(LoggedWait(
+      [&]() -> Result<bool> {
+        auto locks_count = VERIFY_RESULT(get_locks_count_on_ts2());
+        LOG(INFO) << "Number of locks on ts2: " << locks_count;
+        return locks_count == 0;
+      },
+      cleanup_deadline, "Wait for the terminated txn's acquire on ts2 to be released"));
+
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test_table IN ACCESS SHARE MODE"));
+  ASSERT_OK(conn2.Execute("COMMIT"));
+  ASSERT_OK(ts1->Restart());
+}
+
 // This test relies on the OLM poller to run frequently and timedout waiters, in order to
 // check for deadlocks/transaction aborts and retry from pg_client_session if necessary.
 TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlock)) {
