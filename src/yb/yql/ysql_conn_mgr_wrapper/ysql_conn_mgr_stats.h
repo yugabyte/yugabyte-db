@@ -47,3 +47,13 @@ struct ConnectionStats {
   int user_oid;
   bool logical_rep;
 };
+
+// Stored in the stats shared memory right after the max_pools ConnectionStats slots.
+struct YsqlConnMgrInstanceStats {
+  // 1 while the postmaster accepts connections, else 0. Written by the tserver and the postmaster
+  // with __atomic builtins.
+  uint64_t pg_ready;
+};
+
+#define YSQL_CONN_MGR_INSTANCE_STATS(pool_stats, max_pools) \
+  ((struct YsqlConnMgrInstanceStats *)((struct ConnectionStats *)(pool_stats) + (max_pools)))

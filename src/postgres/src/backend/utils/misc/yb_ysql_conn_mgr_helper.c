@@ -1174,3 +1174,48 @@ YbIsConnMgrReservedStartupParameter(const char *name)
 		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
 		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
 }
+
+/*
+ * Publish in the Connection Manager stats segment whether the postmaster
+ * accepts connections; the tserver starts Connection Manager only once it
+ * does.  Does nothing when the segment is not configured.
+ */
+void
+YbSetYsqlConnMgrPgReady(bool ready)
+{
+	static struct YsqlConnMgrInstanceStats *instance_stats = NULL;
+	static bool attach_failed = false;
+
+	if (instance_stats == NULL)
+	{
+		const char *stats_shm_key;
+		const char *max_pools;
+		int			shmid;
+		void	   *addr;
+
+		if (attach_failed)
+			return;
+
+		stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+		max_pools = getenv("FLAGS_ysql_conn_mgr_max_pools");
+		if (stats_shm_key == NULL || max_pools == NULL)
+		{
+			attach_failed = true;
+			return;
+		}
+
+		shmid = shmget((key_t) atoi(stats_shm_key), 0, 0666);
+		addr = shmid == -1 ? (void *) -1 : shmat(shmid, NULL, 0);
+		if (addr == (void *) -1)
+		{
+			elog(WARNING,
+				 "unable to attach to the Connection Manager stats shared memory segment: %m");
+			attach_failed = true;
+			return;
+		}
+
+		instance_stats = YSQL_CONN_MGR_INSTANCE_STATS(addr, atoi(max_pools));
+	}
+
+	__atomic_store_n(&instance_stats->pg_ready, ready ? 1 : 0, __ATOMIC_RELEASE);
+}

@@ -161,6 +161,7 @@
 #include "yb_internal_conn.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
+#include "yb_ysql_conn_mgr_helper.h"
 
 
 /*
@@ -3357,6 +3358,7 @@ pmdie(SIGNAL_ARGS)
 
 			/* Report status */
 			AddToDataDirLockFile(LOCK_FILE_LINE_PM_STATUS, PM_STATUS_STOPPING);
+			YbSetYsqlConnMgrPgReady(false);
 #ifdef USE_SYSTEMD
 			sd_notify(0, "STOPPING=1");
 #endif
@@ -3398,6 +3400,7 @@ pmdie(SIGNAL_ARGS)
 
 			/* Report status */
 			AddToDataDirLockFile(LOCK_FILE_LINE_PM_STATUS, PM_STATUS_STOPPING);
+			YbSetYsqlConnMgrPgReady(false);
 #ifdef USE_SYSTEMD
 			sd_notify(0, "STOPPING=1");
 #endif
@@ -3444,6 +3447,7 @@ pmdie(SIGNAL_ARGS)
 
 			/* Report status */
 			AddToDataDirLockFile(LOCK_FILE_LINE_PM_STATUS, PM_STATUS_STOPPING);
+			YbSetYsqlConnMgrPgReady(false);
 #ifdef USE_SYSTEMD
 			sd_notify(0, "STOPPING=1");
 #endif
@@ -3723,6 +3727,7 @@ reaper(SIGNAL_ARGS)
 
 			/* Report status */
 			AddToDataDirLockFile(LOCK_FILE_LINE_PM_STATUS, PM_STATUS_READY);
+			YbSetYsqlConnMgrPgReady(true);
 #ifdef USE_SYSTEMD
 			sd_notify(0, "READY=1");
 #endif
@@ -4422,6 +4427,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		pmState == PM_STOP_BACKENDS ||
 		pmState == PM_SHUTDOWN)
 		pmState = PM_WAIT_BACKENDS;
+	YbSetYsqlConnMgrPgReady(false);
 
 	/*
 	 * .. and if this doesn't happen quickly enough, now the clock is ticking
