@@ -47,8 +47,9 @@ if [[ $YB_ENCODED_REMOTE_CMD_LINE != *"$ARG_SEPARATOR" ]]; then
   exit 1
 fi
 
-# Split the arguments in one awk pass.  Arguments cannot contain NUL, so NUL separates them on the
-# way back.
+# Split the arguments in one awk pass.  awk ends each argument with NUL for readarray to split on.
+# No argument can contain NUL, because each one is a C string, both in YB_ENCODED_REMOTE_CMD_LINE
+# and in the exec below.
 readarray -d '' args < <(
   awk -v sep="$ARG_SEPARATOR" 'BEGIN {
     n = split(ENVIRON["YB_ENCODED_REMOTE_CMD_LINE"], parts, sep)
