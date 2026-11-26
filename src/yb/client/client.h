@@ -370,8 +370,16 @@ class YBClient {
       IsBackfillIndexInProgressCallback&& callback);
 
   Status StartTableBackfill(
-      const TableId& source_table_id, uint32_t target_table_oid,
+      const TableId& source_table_id, const TableId& target_table_id,
       uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+      CoarseTimePoint deadline = CoarseTimePoint());
+
+  Status AbortTableBackfill(
+      const TableId& source_table_id, int64_t pg_job_id,
+      CoarseTimePoint deadline = CoarseTimePoint());
+
+  Result<master::TableBackfillStatusPB> GetTableBackfillStatus(
+      const TableId& source_table_id, int64_t pg_job_id,
       CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(

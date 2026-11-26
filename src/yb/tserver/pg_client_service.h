@@ -53,6 +53,8 @@ class TserverXClusterContextIf;
     (AlterDatabase) \
     (AlterTable) \
     (StartTableBackfill) \
+    (AbortTableBackfill) \
+    (GetTableBackfillStatus) \
     (CancelTransaction) \
     (CheckIfPitrActive) \
     (CreateDatabase) \

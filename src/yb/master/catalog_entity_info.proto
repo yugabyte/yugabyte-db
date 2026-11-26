@@ -55,8 +55,7 @@ message BackfillJobPB {
 
 message OnlineSchemaChangeJobPB {
   // Only the master writes this state; the controller (OnlineSchemaChangeController) drives the
-  // copy from it. Postgres reads it through GetTableBackfillStatus and records a terminal state in
-  // pg_yb_online_schema_change itself.
+  // copy from it. Postgres reads it through GetTableBackfillStatus and does not copy it.
   enum State {
     IN_PROGRESS = 0;
     FAILED = 1;
@@ -64,12 +63,16 @@ message OnlineSchemaChangeJobPB {
     CANCELLED = 3;
     // A resume recomputes the read time from scratch.
     COMPUTING_READ_TIME = 4;
+    // Set by yb_abort_mirror_table.
+    ABORTED = 5;
   }
   optional State state = 1;
   // In COMPUTING_READ_TIME, the client's lower bound for the read time. In every later state, the
   // read time itself: the max of the source tablets' safe times.
   optional uint64 backfilling_timestamp = 2;
   optional int64 pg_job_id = 3;
+  // pg_class OIDs, which the copy's Postgres function opens the tables by. They differ from the
+  // relfilenodes in the DocDB table ids once a table has been rewritten.
   optional uint32 source_table_oid = 4;
   optional uint32 target_table_oid = 5;
   optional uint32 transform_fn_oid = 6;
@@ -78,8 +81,8 @@ message OnlineSchemaChangeJobPB {
   // backfilled_rows.
   optional uint64 num_rows_processed = 8;
   optional uint32 resume_count = 9;
-  // Set by CancelTableBackfill. A job that has it stops copying and ends CANCELLED, on this
-  // leader or at the next resume.
+  // A job that has it stops copying and ends CANCELLED, on this leader or at the next resume.
+  // Nothing sets it: the SQL interface stops a job with AbortTableBackfill.
   optional bool cancel_requested = 10;
   // Written with the terminal state: a SUCCESS job drops the per-tablet resume keys they are
   // otherwise derived from.
@@ -87,9 +90,10 @@ message OnlineSchemaChangeJobPB {
   optional int32 num_tablets_total = 16;
   // FAILED only: the first error that failed the job.
   optional string error_message = 17;
-  // Hybrid time of the terminal write. The delete-marker retention pin of a SUCCESS job is
-  // released only once no chunk sent before it can still be writing.
+  // Hybrid time of the terminal write.
   optional fixed64 finished_at = 18;
+  // The DocDB table id of the target, which the master looks the target up by.
+  optional string target_table_id = 19;
 }
 
   message YsqlDdlTxnVerifierStatePB {

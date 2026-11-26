@@ -98,13 +98,15 @@ class OnlineSchemaChangeJob : public server::MonitoredTask {
 //                        together with IN_PROGRESS.
 //   IN_PROGRESS          one chunk RPC in flight per source tablet that has not drained, from its
 //                        resume key. A chunk response only persists the tablet's new resume key and
-//                        row count. Once every tablet has drained: SUCCESS.
+//                        row count. Once every tablet has drained: releases the pin, then SUCCESS.
 //   cancel_requested     CANCELLED, in place of any other next state.
-//   terminal             releases the pin and the resume keys, then forgets the job.
+//   terminal             releases the pin if it is still held and the resume keys, then forgets the
+//                        job.
 //
 // A job is visited on every bg tasks tick, and also right after anything that may move it (an RPC
-// response, Start or a cancel), so a step does not wait for the tick. Durable writes are
-// compare-and-set on the entry, so two passes that race cannot overwrite each other's outcome.
+// response, Start, a cancel or an abort), so a step does not wait for the tick. Durable writes are
+// compare-and-set on the entry, so two passes that race, or a pass that races a user abort, cannot
+// overwrite each other's outcome.
 //
 // The in-memory state is only what this leader has sent, and is dropped with the leader term.
 // Responses to a dropped term are ignored, and the next leader starts over from the durable entry:
@@ -131,7 +133,7 @@ class OnlineSchemaChangeController {
       const TableInfoPtr& source_table, const OnlineSchemaChangeJobPB& job,
       const LeaderEpoch& epoch);
 
-  // Visits the job on `source_table` now, e.g. after a cancel has been written.
+  // Visits the job on `source_table` now, e.g. after a cancel or an abort has been written.
   void Reconcile(const TableInfoPtr& source_table, const LeaderEpoch& epoch);
 
  private:
@@ -164,8 +166,8 @@ class OnlineSchemaChangeController {
       const JobPtr& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch);
   Result<bool> Copy(
       const JobPtr& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch);
-  // Releases what a terminal job still holds. Returns false while a SUCCESS job must keep its pin.
-  Result<bool> Release(Job& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch);
+  // Releases what a terminal job still holds.
+  Status Release(Job& job, const OnlineSchemaChangeJobPB& entry, const LeaderEpoch& epoch);
 
   Status ResolveTables(Job& job, const OnlineSchemaChangeJobPB& entry, bool skip_missing);
   Status PinTarget(const Job& job, const LeaderEpoch& epoch);
@@ -192,10 +194,6 @@ class OnlineSchemaChangeController {
   Status ClearTabletProgress(const Job& job, const LeaderEpoch& epoch);
   // Stops resending the chunk RPCs this leader has in flight for the job.
   void AbortChunks(Job& job);
-
-  // Whether a finished job may release its pin. A SUCCESS job keeps it until no chunk sent before
-  // the terminal write can still be writing.
-  static bool PinReleaseDue(const OnlineSchemaChangeJobPB& entry, HybridTime now);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -242,6 +240,7 @@ class TableBackfillChunk : public RetryingTSRpcTaskWithTable {
   TabletId tablet_id() const override { return tablet_->id(); }
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void CheckLeaderAndSend(int attempt);
   void UnregisterAsyncTaskCallback() override;
 
   // Whether the master's own metadata agrees with a TABLET_NOT_FOUND from the tablet server, i.e.

@@ -56,6 +56,8 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (IsYsqlDdlVerificationDone)
     (LaunchBackfillIndexForTable)
     (StartTableBackfill)
+    (AbortTableBackfill)
+    (GetTableBackfillStatus)
     (ListNamespaces)
     (ListTablegroups)
     (ListTables)
