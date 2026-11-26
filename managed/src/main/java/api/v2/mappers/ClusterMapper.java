@@ -175,8 +175,10 @@ public interface ClusterMapper {
   ClusterPlacementSpec toV2PlacementSpec(PlacementInfo placementInfo);
 
   // Partition mappings. The default region of a placement cloud is deprecated and replaced by the
-  // default partition, so it is meaningless inside a partition placement: clear it both ways so it
-  // is neither persisted nor returned. Cluster-level placementSpec keeps it (old-style universes).
+  // default partition, so it is meaningless inside a partition placement: clear it both ways so v2
+  // clients can neither set nor see it. Writers outside the mapper (initPartitions,
+  // PlacementInfoUtil) alias the cluster placementInfo as the partition placement, so the stored
+  // partition may still carry it. Cluster-level placementSpec keeps it (old-style universes).
   @Mapping(target = "placement", qualifiedByName = "toV1PartitionPlacement")
   UniverseDefinitionTaskParams.PartitionInfo toV1PartitionInfo(ClusterPartitionSpec partitionSpec);
 

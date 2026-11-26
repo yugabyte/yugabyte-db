@@ -689,8 +689,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
 
     assertTrue(CollectionUtils.isEmpty(primary.getPartitionsSpec()));
     assertThat(
-        primary.getPlacementSpec().getCloudList().get(0).getDefaultRegion(),
-        is(defaultRegionUuid));
+        primary.getPlacementSpec().getCloudList().get(0).getDefaultRegion(), is(defaultRegionUuid));
   }
 
   @Test

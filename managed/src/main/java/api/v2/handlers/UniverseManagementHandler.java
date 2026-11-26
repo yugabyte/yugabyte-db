@@ -220,8 +220,9 @@ public class UniverseManagementHandler extends ApiControllerUtils {
           initPartitions(cluster);
         }
       } else {
-        log.warn("Universe {} is old geo-partitioned," +
-            "cannot convert it automatically", universe.getUniverseUUID());
+        log.warn(
+            "Universe {} is old geo-partitioned," + "cannot convert it automatically",
+            universe.getUniverseUUID());
       }
     }
     // get v1 Universe

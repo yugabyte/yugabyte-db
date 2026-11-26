@@ -15,12 +15,10 @@ import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
 /**
- * New UI is erroneously setting defaultRegion to the first region.
- * From now this defaultRegion is ignored in V2 API (so universes saved through new UI will
- * have no defaultRegion). A leftover value makes the universe look like an old-style
- * geo-partitioned one.
- * Clear it from the cluster placementInfo and from every partition placement
- * of each cluster that has partitions.
+ * New UI is erroneously setting defaultRegion to the first region. From now this defaultRegion is
+ * ignored in V2 API (so universes saved through new UI will have no defaultRegion). A leftover
+ * value makes the universe look like an old-style geo-partitioned one. Clear it from the cluster
+ * placementInfo and from every partition placement of each cluster that has partitions.
  */
 @Slf4j
 public class V482__Clear_Default_Region_For_Partitions extends BaseJavaMigration {
@@ -63,29 +61,38 @@ public class V482__Clear_Default_Region_For_Partitions extends BaseJavaMigration
       if (partitions == null || !partitions.isArray() || partitions.isEmpty()) {
         continue;
       }
-      boolean clusterUpdated = clearDefaultRegion(cluster.get("placementInfo"));
+      String clusterUUID = cluster.path("uuid").asText();
+      updated |=
+          clearDefaultRegion(
+              cluster.get("placementInfo"), universeUUID, clusterUUID, "cluster placement");
       for (JsonNode partition : partitions) {
-        clusterUpdated |= clearDefaultRegion(partition.get("placement"));
-      }
-      if (clusterUpdated) {
-        log.info(
-            "Universe {}: cleared default region for cluster {}",
-            universeUUID,
-            cluster.path("uuid").asText());
-        updated = true;
+        updated |=
+            clearDefaultRegion(
+                partition.get("placement"),
+                universeUUID,
+                clusterUUID,
+                "partition " + partition.path("name").asText());
       }
     }
     return updated;
   }
 
-  private static boolean clearDefaultRegion(JsonNode placement) {
+  private static boolean clearDefaultRegion(
+      JsonNode placement, String universeUUID, String clusterUUID, String location) {
     if (placement == null || !placement.path("cloudList").isArray()) {
       return false;
     }
     boolean updated = false;
     for (JsonNode cloud : placement.get("cloudList")) {
       if (cloud instanceof ObjectNode && cloud.hasNonNull("defaultRegion")) {
-        ((ObjectNode) cloud).remove("defaultRegion");
+        JsonNode removed = ((ObjectNode) cloud).remove("defaultRegion");
+        log.info(
+            "Universe {}, cluster {}, {}: removed default region {} from cloud {}",
+            universeUUID,
+            clusterUUID,
+            location,
+            removed.asText(),
+            cloud.path("code").asText());
         updated = true;
       }
     }
