@@ -1482,8 +1482,17 @@ Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(
     PgStatement* handle, PgExpr* target, bool is_for_secondary_index) {
-  return VERIFY_RESULT_REF(
-      GetStatementAs<PgDml>(handle)).AppendTarget(target, is_for_secondary_index);
+  SCHECK(target->is_colref(), InvalidArgument, "target must be a column reference");
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle))
+      .AppendTarget(target, is_for_secondary_index);
+}
+
+Status PgApiImpl::DmlAppendAggregateTarget(PgStatement* handle, PgExpr* target, int index) {
+  SCHECK(target->is_aggregate(), InvalidArgument, "target must be an aggregate");
+  SCHECK_GE(index, 0, InvalidArgument, "aggregate tuple index must be non-negative");
+  down_cast<PgAggregateOperator*>(target)->set_index(index);
+  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle))
+      .AppendTarget(target, false /* is_for_secondary_index */);
 }
 
 Status PgApiImpl::DmlAppendQual(

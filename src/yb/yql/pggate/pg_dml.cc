@@ -256,19 +256,13 @@ Status PgDml::AddBaseYbctidTarget() {
 
 Status PgDml::AppendTargetPB(PgExpr* target) {
   // Append to targets_.
-  bool is_aggregate = target->is_aggregate();
   if (!targets_) {
     targets_ = std::make_shared<FetchedTargets>();
-    has_aggregate_targets_ = is_aggregate;
-  } else {
-    RSTATUS_DCHECK_EQ(has_aggregate_targets_, is_aggregate,
-                      IllegalState, "Combining aggregate and non aggregate targets");
   }
 
-  if (is_aggregate) {
-    auto aggregate = down_cast<PgAggregateOperator*>(target);
-    aggregate->set_index(narrow_cast<int>(targets_->size()));
-    targets_->push_back(aggregate);
+  if (target->is_aggregate()) {
+    has_aggregate_targets_ = true;
+    targets_->push_back(down_cast<PgAggregateOperator*>(target));
   } else {
     targets_->push_back(down_cast<PgColumnRef*>(target));
   }

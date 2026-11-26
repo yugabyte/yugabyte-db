@@ -20,6 +20,7 @@
 
 #include "yb/client/yb_op.h"
 
+#include "yb/common/pgsql_utils.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/dockv/doc_key.h"

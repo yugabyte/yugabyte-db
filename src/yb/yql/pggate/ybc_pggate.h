@@ -532,6 +532,9 @@ YbcStatus YBCPgWaitVectorIndexReady(
 YbcStatus YBCPgDmlAppendTarget(
     YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index);
 
+// Append an aggregate target. index is the PgTuple slot the caller reads.
+YbcStatus YBCPgDmlAppendAggregateTarget(YbcPgStatement handle, YbcPgExpr target, int index);
+
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.

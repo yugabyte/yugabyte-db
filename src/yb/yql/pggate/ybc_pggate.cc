@@ -1475,6 +1475,10 @@ YbcStatus YBCPgDmlAppendTarget(
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target, is_for_secondary_index));
 }
 
+YbcStatus YBCPgDmlAppendAggregateTarget(YbcPgStatement handle, YbcPgExpr target, int index) {
+  return ToYBCStatus(pgapi->DmlAppendAggregateTarget(handle, target, index));
+}
+
 YbcStatus YbPgDmlAppendQual(
     YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
     bool is_for_secondary_index) {
