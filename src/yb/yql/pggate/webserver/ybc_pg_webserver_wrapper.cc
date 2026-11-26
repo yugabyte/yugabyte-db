@@ -274,7 +274,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
           ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_logger_dropped_lines",
           instance_stats.logger_dropped_lines, AggregationFunction::kSum, kServerLevel,
           METRIC_TYPE_SERVER, "counter",
-          "Number of log lines YSQL Connection Manager dropped because its logger queue was full"),
+          "Number of log lines YSQL Connection Manager dropped because its logger queue was over "
+          "its limit"),
       "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   WARN_NOT_OK(
