@@ -74,7 +74,7 @@ Setting the option to false turns off all three behaviors.
 
 Before you enable or disable the option, note the following:
 
-- Update any automation that reads universe details from API responses and sends them back, such as the YugabyteDB Anywhere Terraform provider or custom API clients. These clients must handle `REDACTED` values and must not send them when creating a universe or adding a cluster.
+- Update any automation that reads universe details from API responses and sends them back, such as the YugabyteDB Anywhere Terraform provider or custom API clients. These clients must handle `REDACTED` values and must not send them when creating a universe or when adding a cluster using the v1 API.
 - Reload the YugabyteDB Anywhere UI after changing the option. If you disable the option and then submit an **Edit Flags** form that was open before the change, YugabyteDB Anywhere can write the literal value `REDACTED` to the universe nodes.
 - Don't use the string `REDACTED` as part of an actual password.
 
