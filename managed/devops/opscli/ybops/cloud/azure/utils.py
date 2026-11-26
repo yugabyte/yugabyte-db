@@ -490,22 +490,38 @@ class AzureCloudAdmin():
             self.delete_data_disks(creations.keys())
             raise
 
-    def delete_data_disks(self, disk_names):
-        """Best effort data disk removal, to avoid leaking disks when creation fails."""
-        deletions = OrderedDict()
-        for disk_name in disk_names:
-            try:
-                deletions[disk_name] = self.delete_disk(disk_name)
-            except Exception as e:
-                logging.warning("[app] Could not delete disk {}. Failed with error {}."
-                                .format(disk_name, e))
-        for disk_name, deletion in deletions.items():
-            try:
-                deletion.wait()
-                logging.info("[app] Deleted disk {}".format(disk_name))
-            except Exception as e:
-                logging.warning("[app] Could not delete disk {}. Failed with error {}."
-                                .format(disk_name, e))
+    def delete_data_disks(self, disk_names, max_attempts=1, retry_interval_sec=30):
+        """Best effort data disk removal, to avoid leaking disks when creation fails.
+
+        After a failed VM creation Azure keeps the disks reserved for that VM for a few minutes
+        and rejects their deletion, so that caller passes max_attempts > 1 to keep retrying.
+        """
+        pending = list(disk_names)
+        for attempt in range(1, max_attempts + 1):
+            failed = []
+            deletions = OrderedDict()
+            for disk_name in pending:
+                try:
+                    deletions[disk_name] = self.delete_disk(disk_name)
+                except Exception as e:
+                    failed.append(disk_name)
+                    logging.warning("[app] Could not delete disk {}. Failed with error {}."
+                                    .format(disk_name, e))
+            for disk_name, deletion in deletions.items():
+                try:
+                    deletion.wait()
+                    logging.info("[app] Deleted disk {}".format(disk_name))
+                except Exception as e:
+                    failed.append(disk_name)
+                    logging.warning("[app] Could not delete disk {}. Failed with error {}."
+                                    .format(disk_name, e))
+            if not failed:
+                return
+            pending = failed
+            if attempt < max_attempts:
+                logging.info("[app] Retrying deletion of disks {} in {} seconds (attempt {} of {})."
+                             .format(pending, retry_interval_sec, attempt, max_attempts))
+                time.sleep(retry_interval_sec)
 
     def update_disk(self, vm_name, disk_size):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
@@ -1107,8 +1123,9 @@ class AzureCloudAdmin():
             creation_result.result()
         except Exception:
             # AnsibleCreateServer.onFailure only cleans up when the VM exists, so a failed VM
-            # creation would otherwise leak the data disks.
-            self.delete_data_disks(created_disk_names)
+            # creation would otherwise leak the data disks. Azure can hold them for the failed VM
+            # for a few minutes (e.g. after ZonalAllocationFailed), so keep retrying.
+            self.delete_data_disks(created_disk_names, max_attempts=10)
             raise
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 

@@ -176,6 +176,28 @@ class TestAzureCreateVm(TestCase):
         deleted = [call.args[1] for call in self.compute.disks.begin_delete.call_args_list]
         self.assertEqual(self.DISK_NAMES, deleted)
 
+    @patch.object(azure_utils.time, "sleep")
+    def test_failed_vm_creation_retries_disks_still_held_by_azure(self, sleep):
+        # After ZonalAllocationFailed Azure keeps the disks reserved for the failed VM for a
+        # few minutes and rejects their deletion; they must not be leaked (PLAT-24171).
+        self.compute.virtual_machines.begin_create_or_update.side_effect = \
+            YBOpsRuntimeError("ZonalAllocationFailed")
+        attempts = {}
+
+        def delete_disk(resource_group, disk_name):
+            attempts[disk_name] = attempts.get(disk_name, 0) + 1
+            if attempts[disk_name] < 3:
+                raise YBOpsRuntimeError("disk is reserved for the VM")
+            return MagicMock()
+
+        self.compute.disks.begin_delete.side_effect = delete_disk
+
+        with self.assertRaises(YBOpsRuntimeError):
+            self.create_or_update_vm()
+
+        self.assertEqual({name: 3 for name in self.DISK_NAMES}, attempts)
+        self.assertEqual(2, sleep.call_count)
+
     def test_failed_disk_creation_leaves_no_disks_behind(self):
         calls = []
 
