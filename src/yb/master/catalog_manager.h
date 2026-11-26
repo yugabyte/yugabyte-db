@@ -1778,10 +1778,23 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
+  // What WillCDCSDKStreamAcceptTable needs from a stream. A caller that tests many tables against
+  // one stream builds it once with GetCDCSDKStreamTableInfo instead of recomputing it per table.
+  struct CDCSDKStreamTableInfo {
+    // The qualified and unqualified tables of the stream.
+    std::unordered_set<TableId> table_ids;
+    // The PG table oids of the stream's tables, set only for a stream that takes just rewrites of
+    // them (see CDCSDKStreamTakesNewTable).
+    std::optional<std::unordered_set<uint32_t>> pg_table_oids;
+  };
+
   // Returns true if the CDC bg thread would add 'table' to 'stream_info': the stream is live and
   // accepts new tables, the table is eligible for it, and it is not yet in its table lists.
+  // 'stream_table_info', if given, must be GetCDCSDKStreamTableInfo of 'stream_info'; when null it
+  // is computed here.
   bool WillCDCSDKStreamAcceptTable(
-      const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table) const
+      const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table,
+      const CDCSDKStreamTableInfo* stream_table_info = nullptr) const
       REQUIRES_SHARED(mutex_);
 
   // Adds hidden tables that a logical replication stream would still have accepted to the
@@ -1838,7 +1851,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Whether 'table', created after the CDCSDK stream, can be added to the stream: a regular stream
   // and one bound to a FOR ALL TABLES publication take every new table, while a stream bound to a
   // publication with a table list takes it only if it is a rewrite of one of its tables.
-  bool CDCSDKStreamTakesNewTable(const CDCStreamInfo& stream, const TableInfo& table) const
+  // 'stream_table_info' is as in WillCDCSDKStreamAcceptTable.
+  bool CDCSDKStreamTakesNewTable(
+      const CDCStreamInfo& stream, const TableInfo& table,
+      const CDCSDKStreamTableInfo* stream_table_info = nullptr) const
+      REQUIRES_SHARED(mutex_);
+
+  // Returns the per-stream data that WillCDCSDKStreamAcceptTable checks every table against.
+  CDCSDKStreamTableInfo GetCDCSDKStreamTableInfo(const CDCStreamInfo& stream) const
       REQUIRES_SHARED(mutex_);
 
   // Whether 'table' is a rewrite of one of the tables of a CDCSDK stream, whose tables have the PG
@@ -3467,6 +3487,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
+
+  // Streams that would pick up 'table_id' once the CDC bg thread registers it. Empty unless the
+  // table is in the unprocessed map.
+  std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsWaitingForTable(
+      const TableId& table_id, bool require_logical_replication) const REQUIRES_SHARED(mutex_);
 
   std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
       const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);

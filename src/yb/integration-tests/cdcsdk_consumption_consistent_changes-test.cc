@@ -6366,10 +6366,10 @@ void CDCSDKConsumptionConsistentChangesTest::RunDroppedTableAwaitsRegistrationTe
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
 
-  std::atomic<int> deferred_hits{0};
+  std::atomic<int> retained_hits{0};
   SyncPoint::GetInstance()->SetCallBack(
-      "DoProcessCDCSDKTabletDeletion::DeferredWaitingTable",
-      [&deferred_hits](void*) { ++deferred_hits; });
+      "DoProcessCDCSDKTabletDeletion::RetainedForWaitingStreams",
+      [&retained_hits](void*) { ++retained_hits; });
   SyncPoint::GetInstance()->EnableProcessing();
   auto sync_point_cleanup = ScopeExit([] {
     SyncPoint::GetInstance()->DisableProcessing();
@@ -6402,17 +6402,16 @@ void CDCSDKConsumptionConsistentChangesTest::RunDroppedTableAwaitsRegistrationTe
   if (restart_master) {
     ASSERT_OK(test_cluster_.mini_cluster_->mini_master()->Restart());
     ASSERT_OK(test_cluster_.mini_cluster_->WaitForAllTabletServers());
-    // Only count deferrals made after the reseed.
-    deferred_hits = 0;
+    retained_hits = 0;
   }
 
   // KEY ASSERTION 2: The tablet deletion task (1s interval) must run several times while the old
   // table is still unregistered. GetCDCSDKStreamsForTable() is empty for it, so without the
-  // deferral in DoProcessCDCSDKTabletDeletion the task releases the tablet and it is deleted.
+  // waiting-stream check in DoProcessCDCSDKTabletDeletion the tablet is released and deleted.
   ASSERT_OK(WaitFor(
-      [&deferred_hits]() -> bool { return deferred_hits.load() >= 3; },
+      [&retained_hits]() -> bool { return retained_hits.load() >= 3; },
       MonoDelta::FromSeconds(60 * kTimeMultiplier),
-      "Deletion task never deferred the tablet of the waiting table"));
+      "Deletion task never retained the tablet of the waiting table"));
   {
     auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
     auto table_info = ASSERT_RESULT(cm.FindTableById(old_table_id));

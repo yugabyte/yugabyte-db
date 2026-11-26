@@ -2456,12 +2456,13 @@ Status CatalogManager::DropXReplStreams(
 }
 
 bool CatalogManager::WillCDCSDKStreamAcceptTable(
-    const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table) const {
+    const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table,
+    const CDCSDKStreamTableInfo* stream_table_info) const {
   if (stream_info->namespace_id().empty() || stream_info->IsDynamicTableAdditionDisabled()) {
     return false;
   }
 
-  if (!CDCSDKStreamTakesNewTable(*stream_info, *table)) {
+  if (!CDCSDKStreamTakesNewTable(*stream_info, *table, stream_table_info)) {
     return false;
   }
 
@@ -2479,6 +2480,9 @@ bool CatalogManager::WillCDCSDKStreamAcceptTable(
   }
 
   const auto& table_id = table->id();
+  if (stream_table_info) {
+    return !stream_table_info->table_ids.contains(table_id);
+  }
   if (std::find(ltm->table_id().begin(), ltm->table_id().end(), table_id) !=
       ltm->table_id().end()) {
     return false;
@@ -2534,13 +2538,14 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
       continue;
     }
 
+    const auto stream_table_info = GetCDCSDKStreamTableInfo(*stream_info);
     for (const auto& unprocessed_table_id : *unprocessed_tables) {
       const auto* table = FindOrNull(unprocessed_table_infos, unprocessed_table_id);
       if (!table) {
         continue;
       }
 
-      if (WillCDCSDKStreamAcceptTable(stream_info, *table)) {
+      if (WillCDCSDKStreamAcceptTable(stream_info, *table, &stream_table_info)) {
         (*table_to_unprocessed_streams_map)[unprocessed_table_id].push_back(stream_info);
         VLOG(1) << "Will try and add table: " << unprocessed_table_id
                 << ", to stream: " << stream_info->id();
@@ -2611,13 +2616,30 @@ std::unordered_set<uint32_t> CatalogManager::GetPgTableOidsOfCDCSDKStreamTables(
 }
 
 bool CatalogManager::CDCSDKStreamTakesNewTable(
-    const CDCStreamInfo& stream, const TableInfo& table) const {
+    const CDCStreamInfo& stream, const TableInfo& table,
+    const CDCSDKStreamTableInfo* stream_table_info) const {
   auto ltm = stream.LockForRead();
   if (!ltm->pb.cdcsdk_ysql_publications_bound_stream() ||
       ltm->pb.cdcsdk_ysql_include_new_tables()) {
     return true;
   }
+  if (stream_table_info && stream_table_info->pg_table_oids) {
+    return IsRewriteOfStreamTable(*stream_table_info->pg_table_oids, table);
+  }
   return IsRewriteOfStreamTable(GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id()), table);
+}
+
+CatalogManager::CDCSDKStreamTableInfo CatalogManager::GetCDCSDKStreamTableInfo(
+    const CDCStreamInfo& stream) const {
+  CDCSDKStreamTableInfo info;
+  auto ltm = stream.LockForRead();
+  info.table_ids.insert(ltm->table_id().begin(), ltm->table_id().end());
+  info.table_ids.insert(ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end());
+  if (ltm->pb.cdcsdk_ysql_publications_bound_stream() &&
+      !ltm->pb.cdcsdk_ysql_include_new_tables()) {
+    info.pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
+  }
+  return info;
 }
 
 bool CatalogManager::IsRewriteOfStreamTable(
@@ -6404,16 +6426,22 @@ bool CatalogManager::IsTablePartOfCDCSDK(
 
   // A table created (or rewritten) after the stream is not in cdcsdk_tables_to_stream_map_ until
   // the CDC bg thread registers it, but it is already logically part of the stream.
+  return !GetCDCSDKStreamsWaitingForTable(table_id, require_logical_replication).empty();
+}
+
+std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsWaitingForTable(
+    const TableId& table_id, bool require_logical_replication) const {
+  std::unordered_set<xrepl::StreamId> result;
   auto table_info = GetTableInfoUnlocked(table_id);
   if (!table_info) {
-    return false;
+    return result;
   }
   const auto& namespace_id = table_info->namespace_id();
   {
     SharedLock lock(cdcsdk_unprocessed_table_mutex_);
     auto it = namespace_to_cdcsdk_unprocessed_table_map_.find(namespace_id);
     if (it == namespace_to_cdcsdk_unprocessed_table_map_.end() || !it->second.contains(table_id)) {
-      return false;
+      return result;
     }
   }
 
@@ -6426,11 +6454,10 @@ bool CatalogManager::IsTablePartOfCDCSDK(
     }
     if (WillCDCSDKStreamAcceptTable(stream_info, table_info)) {
       VLOG(1) << "Table " << table_id << " is waiting to be added to CDCSDK stream " << stream_id;
-      return true;
+      result.insert(stream_id);
     }
   }
-
-  return false;
+  return result;
 }
 
 bool CatalogManager::IsTablePartOfCDCStreamUsingPubRefresh(const TableId& table_id) const {
@@ -7021,25 +7048,21 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
 
     // For each hidden tablet, get all the streams on it and related info about the streams.
     std::unordered_set<xrepl::StreamId> stream_ids;
+    bool has_waiting_streams = false;
     HybridTime min_restart_time_across_slots;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+      // Streams the CDC bg thread has not registered the table with yet still need its data.
+      has_waiting_streams =
+          hidden_tablet.hide_reason_ == HiddenReplicationTabletInfo::HideReason::kTableDeleted &&
+          !GetCDCSDKStreamsWaitingForTable(
+               hidden_tablet.table_id_, true /* require_logical_replication */)
+               .empty();
       min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
       if (min_restart_time_across_slots.is_valid()) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
-      }
-
-      // A dropped table with no streams may still be waiting for the CDC bg thread to register it.
-      // Defer deletion; the next run re-evaluates it.
-      if (stream_ids.empty() &&
-          hidden_tablet.hide_reason_ == HiddenReplicationTabletInfo::HideReason::kTableDeleted &&
-          IsTablePartOfCDCSDK(hidden_tablet.table_id_, true /* require_logical_replication */)) {
-        VLOG(2) << "Tablet " << tablet_id << " belongs to table " << hidden_tablet.table_id_
-                << " which is waiting to be added to a stream. Deferring deletion.";
-        TEST_SYNC_POINT("DoProcessCDCSDKTabletDeletion::DeferredWaitingTable");
-        continue;
       }
     }
 
@@ -7141,6 +7164,10 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     }
 
     if (count_tablet_streams_to_delete + count_streams_already_deleted == stream_ids.size()) {
+      if (has_waiting_streams) {
+        TEST_SYNC_POINT("DoProcessCDCSDKTabletDeletion::RetainedForWaitingStreams");
+        continue;
+      }
       tablets_to_delete.insert(tablet_id);
     }
   }
@@ -7169,23 +7196,24 @@ Status CatalogManager::DoProcessCDCSDKColocatedTableDeletion(
   for (const auto& [table_id, tablet_hide_pair] : hidden_colocated_tables) {
     const auto& [tablet_id, hide_time] = tablet_hide_pair;
     std::unordered_set<xrepl::StreamId> stream_ids;
+    bool has_waiting_streams = false;
     HybridTime min_restart_time_across_slots;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
     {
       SharedLock lock(mutex_);
       stream_ids = GetCDCSDKStreamsForTable(table_id);
+      // Streams the CDC bg thread has not registered the table with yet still need its data.
+      has_waiting_streams =
+          !GetCDCSDKStreamsWaitingForTable(table_id, true /* require_logical_replication */)
+               .empty();
       min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
       if (min_restart_time_across_slots.is_valid()) {
         stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
       }
+    }
 
-      // The table may still be waiting for the CDC bg thread to register it. Defer deletion.
-      if (stream_ids.empty() &&
-          IsTablePartOfCDCSDK(table_id, true /* require_logical_replication */)) {
-        VLOG(2) << "Colocated table " << table_id
-                << " is waiting to be added to a stream. Deferring deletion.";
-        continue;
-      }
+    if (has_waiting_streams) {
+      continue;
     }
 
     if (min_restart_time_across_slots.is_valid() && (hide_time < min_restart_time_across_slots)) {
