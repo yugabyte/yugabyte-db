@@ -58,7 +58,7 @@ Redaction also applies to these values when they are set in Kubernetes universe 
 
 YugabyteDB Anywhere doesn't redact other flags in API responses, such as `ycql_ldap_bind_dn` and the deprecated `ysql_hba_conf` flag.
 
-YugabyteDB Anywhere always redacts LDAP bind passwords in logs, task details, audit logs, and support bundles, independent of the API redaction setting.
+YugabyteDB Anywhere always redacts LDAP bind passwords in logs, audit logs, and support bundles, independent of the API redaction setting.
 
 ### Enable API redaction
 
