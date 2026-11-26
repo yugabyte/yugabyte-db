@@ -120,6 +120,12 @@ extern void YbSendMasterLogicalClientVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
+extern bool YbIsCatalogPinnedToReadTime();
+
+extern void YbSetObjectLockingForCurrTxn();
+
+extern bool YbIsHistoricalCatalogRead();
+
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
@@ -169,6 +175,27 @@ extern bool yb_enable_spi_dist_tracing;
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
+
+/*
+ * Set by yb_backfill_online_schema_change_chunk for the duration of one call.
+ *
+ *   yb_backfill_timestamp - hybrid time at which reads and writes run, and
+ *       writes become non-transactional backfill writes; zero when inactive.
+ *   yb_osc_backfill_partition_key - hex partition_key_start of the one
+ *       tablet the chunk's scan is limited to.
+ *   yb_osc_backfill_bfinstr - hex PgsqlBackfillSpecPB carrying the resume
+ *       key and row limit of that scan.
+ *   yb_osc_backfill_out_param - receives the backfill spec that the scan
+ *       returns, with the key to resume at.
+ *   yb_osc_backfill_outer_started - set once the chunk's own statement has
+ *       started, so standard_ExecutorStart can tell nested executors apart.
+ */
+struct YbPgExecOutParam;
+extern uint64_t yb_backfill_timestamp;
+extern char *yb_osc_backfill_partition_key;
+extern char *yb_osc_backfill_bfinstr;
+extern struct YbPgExecOutParam *yb_osc_backfill_out_param;
+extern bool yb_osc_backfill_outer_started;
 
 /*
  * Parsed span context from the yb_dist_tracecontext GUC.
@@ -990,6 +1017,8 @@ extern bool yb_enable_inplace_index_update;
  */
 extern bool yb_enable_advisory_locks;
 
+extern bool yb_enable_colocated_tables_with_tablespaces;
+
 /*
  * Enable invalidation messages.
  */
@@ -1084,6 +1113,8 @@ extern bool yb_silence_advisory_locks_not_supported_error;
  */
 extern bool yb_xcluster_automatic_mode_target_ddl;
 
+extern bool yb_xcluster_invalid_index_ddl_check;
+
 extern bool yb_enable_xcluster_analyze_replication;
 
 extern bool yb_user_ddls_preempt_auto_analyze;
@@ -1143,6 +1174,8 @@ extern CommandTag YBGetTopLevelStmtDdlCommandTag();
 extern CommandTag YBGetGlobalDdlCommandTag();
 extern CommandTag YBGetBreakingDdlCommandTag();
 extern bool YBGetDdlUseRegularTransactionBlock();
+extern bool YBIsDdlTxnBlockCommitInProgress();
+extern bool YbUsingObjectLocksLocally(void);
 
 /*
  * Snapshot of the current top-level DDL statement identity. Used to preserve
@@ -1152,6 +1185,7 @@ typedef struct YbDdlOriginalStmtState
 {
 	NodeTag		node_tag;
 	CommandTag	command_tag;
+	bool		is_analyze;
 	bool		is_top_level_ddl_active;
 } YbDdlOriginalStmtState;
 
@@ -1190,6 +1224,8 @@ void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);
+extern void YBAddDdlTxnStateExtended(YbDdlMode mode, bool block_ddl_concurrency_in_db);
+extern void YbLockDatabaseToBlockDdlConcurrency(YbDdlMode mode);
 extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 
@@ -1357,9 +1393,10 @@ bool		IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * These functions are unsafe to run in a multi-threaded environment. There is
- * no specific attribute that identifies them as such, so we have to manually
- * identify them.
+ * These functions are unsafe to evaluate in DocDB: they are not thread-safe,
+ * need a resource owner, or depend on session state DocDB doesn't have. There
+ * is no specific attribute that identifies them as such, so we have to
+ * manually identify them.
  */
 extern const uint32 yb_funcs_unsafe_for_pushdown[];
 
@@ -1456,10 +1493,13 @@ extern void assign_yb_xcluster_consistency_level(const char *newval,
 void		YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
+extern bool YbCanResetYbReadTime(const char *reset_val, int elevel);
 extern void assign_yb_read_time(const char *newval, void *extra);
 extern bool check_yb_read_time_skip_catalog(bool *newval, void **extra,
 											GucSource source);
 extern void assign_yb_read_time_skip_catalog(bool newval, void *extra);
+extern void YbHandleReadTimeSnapshotTooOld(void);
+extern void YbCheckReadTimeTooOld(Node *parsetree);
 
 extern uint64_t yb_origination_time;
 extern void YbRefreshOriginationTime(void);
@@ -1661,6 +1701,8 @@ extern void decrement_sticky_object_count();
  */
 extern bool YbIsStickyConnection(int *change);
 
+extern bool YbHasReplicationOriginSetup(void);
+
 /*
  * Creates a shallow copy of the pointer list.
  */
@@ -1713,13 +1755,17 @@ extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern void YBCSetHistoricalReadContext(uint64_t read_time_ht,
 										uint64_t in_txn_limit_ht,
-										const char *docdb_txn_id);
+										const char *docdb_txn_id,
+										const uint32_t *aborted_subtxn_set,
+										int aborted_subtxn_set_size);
 
 extern void YBCInvalidateCachesForHistoricalReadContext(void);
 
 extern void YBCSetHistoricalReadContextAndInvalidateCaches(uint64_t read_time_ht,
 															 uint64_t in_txn_limit_ht,
-															 const char *docdb_txn_id);
+															 const char *docdb_txn_id,
+															 const uint32_t *aborted_subtxn_set,
+															 int aborted_subtxn_set_size);
 
 extern void YBCResetHistoricalReadContextAndInvalidateRelcache(void);
 
@@ -1883,6 +1929,7 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 extern YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoWrite(Relation rel);
 extern void YbEnableSkipIntentsForNewTransaction();
 extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
+extern void YbValidateFunctionSetItem(const VariableSetStmt *sstmt);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
@@ -1948,6 +1995,15 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
 extern YbcAdvisoryLockId YbSubscriptionAdvisoryLockId(Oid subid);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
+
+/*
+ * The yb_xcluster_ddl_replication extension and its tables. The extension
+ * creates its tables in a schema of the same name. The master's copies are in
+ * src/yb/cdc/xcluster_types.h.
+ */
+#define YB_XCLUSTER_DDL_REPLICATION_NAME		"yb_xcluster_ddl_replication"
+#define YB_XCLUSTER_DDL_QUEUE_TABLE_NAME		"ddl_queue"
+#define YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME	"replicated_ddls"
 
 /*
  * YB: defined in inval.c; in logical replication workers, asserts the

@@ -3,17 +3,20 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -28,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,9 +39,34 @@ import lombok.extern.slf4j.Slf4j;
 @Abortable
 public class ConfigureDBApis extends UpgradeTaskBase {
 
+  private final CloudAPI.Factory cloudAPIFactory;
+
   @Inject
-  protected ConfigureDBApis(BaseTaskDependencies baseTaskDependencies) {
+  protected ConfigureDBApis(
+      BaseTaskDependencies baseTaskDependencies, CloudAPI.Factory cloudAPIFactory) {
     super(baseTaskDependencies);
+    this.cloudAPIFactory = cloudAPIFactory;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (!isFirstTry) {
+      return;
+    }
+    // The task ensures the load balancers with the new ports last, after the rolling restart.
+    Universe universe = getUniverse();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      List<Integer> ports =
+          ManageLoadBalancerGroup.getForwardedPorts(
+              targetUserIntent(cluster), taskParams().communicationPorts);
+      if (ManagedLoadBalancerUtil.isEnabled(cluster)
+          && !ports.equals(
+              ManageLoadBalancerGroup.getForwardedPorts(
+                  cluster.userIntent, universe.getUniverseDetails().communicationPorts))) {
+        ManagedLoadBalancerUtil.validatePorts(universe, cluster, ports, cloudAPIFactory);
+      }
+    }
   }
 
   @Override
@@ -181,9 +210,20 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // The load balancers forward the API ports, which these subtasks read when they run.
           // Last,
           // so a load balancer error can't leave auth on with the default password.
-          createEnsureManagedLoadBalancerTasks(universe.getUniverseDetails().getPrimaryCluster());
-          createManageLoadBalancerTasks(
-              createLoadBalancerMap(universe.getUniverseDetails(), null, null, null));
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          for (Cluster cluster : details.clusters) {
+            createEnsureManagedLoadBalancerTasks(cluster);
+          }
+          createManageLoadBalancerTasks(createLoadBalancerMap(details, null, null, null));
+          // Ensure gives a load balancer deleted outside YBA a new address, which the certs must
+          // name.
+          Set<String> lbCertNodes =
+              getLoadBalancerCertNodes(details, ManagedLoadBalancerUtil::isEnabled);
+          if (!lbCertNodes.isEmpty()) {
+            Predicate<String> isLbCertStale = isLoadBalancerCertStale();
+            createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
+            createRebindProxiesTasks(Set.of(), lbCertNodes, isLbCertStale);
+          }
         });
   }
 

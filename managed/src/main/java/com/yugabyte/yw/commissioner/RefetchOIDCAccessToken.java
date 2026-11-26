@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.nimbusds.oauth2.sdk.token.BearerAccessToken;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -28,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.actor.Cancellable;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
+import org.pac4j.oidc.profile.OidcProfile;
 
 @Singleton
 @Slf4j
@@ -86,7 +88,12 @@ public class RefetchOIDCAccessToken {
       if (profile.getAttribute("expiration") != null) {
         JsonNode data = refetchAccessToken(profile);
         String refreshedToken = data.get("access_token").asText();
-        profile.addAttribute("access_token", refreshedToken);
+        if (profile instanceof OidcProfile oidcProfile) {
+          // pac4j 6 stores the access token as encoded JSON, not the raw string.
+          oidcProfile.setAccessToken(new BearerAccessToken(refreshedToken));
+        } else {
+          profile.addAttribute("access_token", refreshedToken);
+        }
         Date updatedDate = this.computeExpiryTime(data.get("expires_in").asLong());
         profile.addAttribute("expiration", updatedDate);
         profileManager.save(true, profile, true);

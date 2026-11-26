@@ -371,6 +371,9 @@ CREATE ROLE test_role;
 GRANT CREATE ON TABLEGROUP "default" TO test_role;
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
 
+-- Cannot rename an implicit tablegroup
+ALTER TABLEGROUP "default" RENAME TO renamed;
+
 -- Any user can create tables/indexes in an implicit tablegroup
 GRANT CREATE ON SCHEMA public TO test_role;
 SET SESSION AUTHORIZATION test_role;

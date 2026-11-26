@@ -24,6 +24,10 @@ on:
       - LICENSE.md
       - 'license/**'
       - 'managed/**'
+      # Files under managed/ that tests use, from FILES_USED_BY_TESTS in
+      # python/yugabyte/source_files.py.
+      - '!managed/devops/bin/yb_backup.py'
+      - '!managed/download_ybc.sh'
       - '!managed/src/main/resources/ybc_version.conf'
       - NOTICE.txt
       - '**/*.md'

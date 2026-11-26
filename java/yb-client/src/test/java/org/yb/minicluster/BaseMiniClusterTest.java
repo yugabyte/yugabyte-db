@@ -507,8 +507,6 @@ public class BaseMiniClusterTest extends BaseYBTest {
    * - DDLs in a transaction block and
    * - concurrency with other DMLs and
    * - concurrency with other DDLs
-   *
-   * They are validated against each other in common_flags.cc, so they can only be moved together.
    */
   private static final String[] NEW_DDL_MODE_FLAGS = {
       "ysql_yb_ddl_transaction_block_enabled",
@@ -523,9 +521,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
       "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks"};
 
   /**
-   * Selects the DDL mode the cluster runs in. Transactional DDL, object locking, and concurrent DDL
-   * are enabled/ disabled together, per the cross-flag validators in common_flags.cc, so a test
-   * must move all three at once or the daemons FATAL at startup.
+   * Selects the DDL mode the cluster runs in. Transactional DDL and object locking are validated
+   * against each other in common_flags.cc, so a test must move both at once or the daemons FATAL at
+   * startup. Concurrent DDL moves with them.
    *
    * <p>DDL savepoint support and the new relation fastpath write in transaction blocks require
    * transactional DDL, so the legacy mode turns them off too. The new mode leaves them at their

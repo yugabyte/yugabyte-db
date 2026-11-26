@@ -17,13 +17,14 @@ services:
       WorkingDirectory={{ .ActiveDir }}
 
       # Defaults; values in byoc-api-proxy.env override these when set.
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.21.1+2-jre/"
       Environment="SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:{{ .AppConfigFile }}"
       EnvironmentFile=-{{ .EnvFile }}
 
       ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" \
         -Djdk.internal.httpclient.disableHostnameVerification=true \
         -XX:+ExitOnOutOfMemoryError \
+        -XX:-UseBASE64Intrinsics \
         -jar {{ .JarPath }} \
         >> {{ .LogDir }}/byoc-api-proxy.log 2>&1'
 

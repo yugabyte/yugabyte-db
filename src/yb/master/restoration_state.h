@@ -136,9 +136,14 @@ class RestorationState : public StateWithTablets {
 
   Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);
 
+  // Stores this entry with complete_time set, leaving this object unchanged.
+  Status StoreCompletionToWriteBatch(
+      HybridTime complete_time, docdb::KeyValueWriteBatchPB* write_batch);
+
  private:
   std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status ToEntryPB(ForClient for_client, SysRestorationEntryPB* out);
+  Status EntryToKeyValuePair(const SysRestorationEntryPB& entry, docdb::KeyValuePairPB* pair);
 
   SysSnapshotEntryPB::State MigrateInitialStateIfNeeded(SysSnapshotEntryPB::State initial_state);
 

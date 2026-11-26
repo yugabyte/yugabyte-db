@@ -521,21 +521,6 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     }
   }
 
-  private void validateNtpServers(
-      Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
-    if (provider.getDetails() != null && provider.getDetails().ntpServers != null) {
-      try {
-        validateNTPServers(provider.getDetails().ntpServers);
-      } catch (PlatformServiceException e) {
-        ArrayNode ntpArrayJson = (ArrayNode) processedJson.get("details").get("ntpServers");
-        // since there is single form field for ntp servers  on UI, we can use the jsonPath of the
-        // first element
-        String ntpJsonPath = ntpArrayJson.get(0).get("jsonPath").asText();
-        validationErrorsMap.put(ntpJsonPath, e.getMessage());
-      }
-    }
-  }
-
   private void validateSubscriptionID(
       AzureResourceManager azure,
       String subID,

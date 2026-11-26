@@ -1,0 +1,88 @@
+-- Test LDP GRRM functionality
+BEGIN;
+
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+
+-- Test basic execution
+SELECT anon.ldp_grrm(5, 1.0, 10) IS NOT NULL AS basic_test;
+ basic_test 
+------------
+ t
+(1 row)
+
+
+-- Test bounds compliance (all results must be in range [1, max_v])
+SELECT bool_and(val >= 1 AND val <= 10) AS bounds_test
+FROM (
+    SELECT anon.ldp_grrm(5, 1.0, 10) as val 
+    FROM generate_series(1, 100)
+) t;
+ bounds_test 
+-------------
+ t
+(1 row)
+
+
+-- Test using PTTT parameter
+SELECT anon.ldp_grrm_pttt(5, 0.65, 10) IS NOT NULL AS pttt_test;
+ pttt_test 
+-----------
+ t
+(1 row)
+
+
+-- Test with different max_v values
+SELECT anon.ldp_grrm(3, 1.5, 5) BETWEEN 1 AND 5 AS small_range_test;
+ small_range_test 
+------------------
+ t
+(1 row)
+
+SELECT anon.ldp_grrm(50, 2.0, 100) BETWEEN 1 AND 100 AS large_range_test;
+ large_range_test 
+------------------
+ t
+(1 row)
+
+
+-- Test privacy-utility tradeoff
+-- Higher epsilon should preserve more original values
+CREATE TEMP TABLE ldp_test (id SERIAL, original INT, low_eps INT, high_eps INT);
+INSERT INTO ldp_test (original, low_eps, high_eps)
+SELECT 
+    val,
+    anon.ldp_grrm(val, 0.5, 10),
+    anon.ldp_grrm(val, 3.0, 10)
+FROM generate_series(1, 10) val
+CROSS JOIN generate_series(1, 10);
+
+SELECT 
+    (SELECT COUNT(*) FROM ldp_test WHERE original = low_eps)::float / 100 < 
+    (SELECT COUNT(*) FROM ldp_test WHERE original = high_eps)::float / 100
+    AS higher_epsilon_keeps_more;
+ higher_epsilon_keeps_more 
+---------------------------
+ t
+(1 row)
+
+
+-- Error handling tests
+\set ON_ERROR_STOP 0
+
+-- Should error: epsilon <= 0
+SELECT anon.ldp_grrm(5, 0.0, 10);
+ERROR:  Epsilon must be greater than 0
+
+-- Should error: max_v < 2
+SELECT anon.ldp_grrm(5, 1.0, 1);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+
+-- Should error: kept_percentage out of range
+SELECT anon.ldp_grrm_pttt(5, 1.5, 10);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT anon.ldp_grrm_pttt(5, -0.1, 10);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+
+\set ON_ERROR_STOP 1
+
+ROLLBACK;

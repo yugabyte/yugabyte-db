@@ -155,7 +155,7 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Path on the YBA host to the script file to execute on the node (e.g."
-                + " bin/node_utils.sh). May be relative to yb.devops.home.")
+                + " bin/support_bundle_utils.sh). May be relative to yb.devops.home.")
     private String scriptPath;
 
     @ApiModelProperty(
@@ -189,13 +189,13 @@ public class BundleDetails {
     @ApiModelProperty(
         value =
             "Path on the YBA host to the script file to execute on the node (e.g."
-                + " bin/node_utils.sh). May be relative to yb.devops.home.")
+                + " bin/support_bundle_utils.sh). May be relative to yb.devops.home.")
     private String scriptPath;
 
     @ApiModelProperty(
         value =
             "Arguments appended after the script (entrypoint + flags), e.g."
-                + " [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
+                + " [collect_top_ps_pmap_stats, --remote_tar_path, /tmp/top.tar.gz, ...].")
     private List<String> params;
 
     @ApiModelProperty(

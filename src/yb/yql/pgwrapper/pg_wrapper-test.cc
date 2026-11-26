@@ -876,6 +876,7 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
 
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
+  ASSERT_NOK(SetFlagOnAllTServers("ysql_conn_mgr_sequence_support_mode", "session"));
 }
 
 class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
@@ -1213,8 +1214,7 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   ASSERT_NO_FATALS(expect_err(
       {{"enable_object_locking_for_table_locks", "true"}},
       "enable_object_locking_for_table_locks"));
-  // Object locking requires both transactional DDL and concurrent DDL, so all three have to move
-  // together, in any order.
+  // Object locking requires transactional DDL, so the two have to move together, in any order.
   ASSERT_NO_FATALS(expect_ok({
       {"enable_object_locking_for_table_locks", "true"},
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
@@ -1224,6 +1224,12 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
       {"ysql_yb_ddl_transaction_block_enabled", "true"},
       {"ysql_enable_concurrent_ddl", "true"},
       {"enable_object_locking_for_table_locks", "true"},
+  }));
+  // Object locking with concurrent DDL off runs DDLs in a database one at a time.
+  ASSERT_NO_FATALS(expect_ok({
+      {"enable_object_locking_for_table_locks", "true"},
+      {"ysql_yb_ddl_transaction_block_enabled", "true"},
+      {"ysql_enable_concurrent_ddl", "false"},
   }));
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
   ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_ddl_transaction_block_enabled")), "false");
@@ -1321,6 +1327,11 @@ TEST_F(PgWrapperCoDependentFlagsTest, ValidateCoDependentFlags) {
   // FLAG_IN_SET_VALIDATOR
   ASSERT_NO_FATALS(expect_err({{"otel_internal_log_level", "nope"}}, "otel_internal_log_level"));
   ASSERT_NO_FATALS(expect_ok({{"otel_internal_log_level", "warning"}}));
+  ASSERT_NO_FATALS(expect_err(
+      {{"ysql_conn_mgr_sequence_support_mode", "pooled"}}, "ysql_conn_mgr_sequence_support_mode"));
+  ASSERT_NO_FATALS(expect_ok({{"ysql_conn_mgr_sequence_support_mode", "session"}}));
+  ASSERT_NO_FATALS(expect_ok(
+      {{"ysql_conn_mgr_sequence_support_mode", "pooled_with_currval_lastval"}}));
 
   // FLAG_GT_VALUE_VALIDATOR
   ASSERT_NO_FATALS(expect_err({{"pg_client_heartbeat_interval_ms", "500"}},

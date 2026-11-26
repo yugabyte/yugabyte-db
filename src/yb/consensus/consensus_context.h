@@ -23,6 +23,12 @@
 namespace yb {
 namespace consensus {
 
+// State that ConsensusContext::PostponeApply keeps for the operation it postponed.
+class PostponedApply {
+ public:
+  virtual ~PostponedApply() = default;
+};
+
 class ConsensusContext {
  public:
   // Factory for replica transactions.
@@ -55,6 +61,13 @@ class ConsensusContext {
   // when a DB is stalled. See #30728.
   virtual bool AreWritesStopped() = 0;
 
+  // Returns non-null if a follower should postpone applying the non-write operation, without
+  // holding ReplicaState's lock, until a later update from the leader. The result is passed back to
+  // the next call for the same operation. Leaders do not postpone.
+  // Called under ReplicaState's lock, so it must not block.
+  virtual PostponedApplyPtr PostponeApply(
+      const LWReplicateMsg& replicate_msg, PostponedApplyPtr postponed) = 0;
+
   // Performs steps to prepare request for peer.
   // For instance it could enqueue some operations to the Raft.
   //
@@ -81,6 +94,9 @@ class ConsensusContext {
   // Register listener that will be invoked when number of SST files changed.
   // Listener could be set only once and then reset.
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
+
+  // Whether post-split compaction is still pending on this tablet.
+  virtual bool PendingPostSplitCompaction() = 0;
 
   // Checks whether operation with provided op id and type could be added to the log.
   virtual Status CheckOperationAllowed(

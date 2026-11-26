@@ -32,6 +32,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Transient;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
@@ -392,6 +394,18 @@ public class DrConfig extends Model {
 
   public static List<DrConfig> getByStorageConfigUuid(UUID storageConfigUuid) {
     return find.query().where().eq("storageConfigUuid", storageConfigUuid).findList();
+  }
+
+  /** DR configs using any of the given storage configs, with their xCluster configs. */
+  public static List<DrConfig> getByStorageConfigUuids(Collection<UUID> storageConfigUuids) {
+    if (storageConfigUuids.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return find.query()
+        .fetch("xClusterConfigs")
+        .where()
+        .in("storageConfigUuid", storageConfigUuids)
+        .findList();
   }
 
   @JsonIgnore

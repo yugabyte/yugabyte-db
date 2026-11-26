@@ -103,6 +103,37 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 DROP TABLE items;
 
+-- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753),
+-- whether or not it rewrites the table.
+CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
+-- Before the index exists, the ALTER works.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+-- Once the index exists, the ALTER is rejected, on the empty table...
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
+-- ...and with rows.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+-- Nothing changed: the index column keeps its dimensions, the column still
+-- refuses wrong-size vectors, and searches work.
+SELECT atttypmod FROM pg_attribute WHERE attrelid = 'items_idx'::regclass;
+INSERT INTO items VALUES (4, '[1, 2]');
+SELECT id FROM items ORDER BY embedding <-> '[1, 1, 1]' LIMIT 2;
+-- Without the index, the ALTER works.
+DROP INDEX items_idx;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
+-- The same on a partitioned table with the index on the parent.
+CREATE TABLE items (id int, embedding vector(3)) PARTITION BY RANGE (id);
+CREATE TABLE items_1 PARTITION OF items FOR VALUES FROM (0) TO (100);
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
+
 -- Partial vector indexes are not supported (#31441).  The predicate is not
 -- pushed into the vector AM, so allowing them would silently produce wrong
 -- query results.  The CREATE INDEX should be rejected for both vector AMs.

@@ -181,6 +181,8 @@ class AsyncRpcBase : public AsyncRpc {
 
   void SetRequestRaftConfigOpidIndex(int64_t opid_index) override;
 
+  bool AppliedBeforeReplication() const override { return req_.use_async_write(); }
+
   virtual std::string GetRpcName() = 0;
 
  protected:
@@ -226,6 +228,8 @@ class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadRes
   virtual ~ReadRpc();
 
   std::string GetRpcName() override { return "Read"; }
+
+  bool AppliedBeforeReplication() const override;
 
  private:
   Status SwapResponses(RefCntBuffer data_holder) override;

@@ -1,7 +1,6 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.jayway.jsonpath.JsonPath;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -21,7 +20,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -39,6 +37,7 @@ import io.swagger.annotations.Authorization;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -137,8 +136,7 @@ public class ReleasesController extends AuthenticatedController {
         gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
     release.setSensitiveGflags(sensitiveGflags);
     release.save();
-    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+    RedactingService.addSensitiveGFlagPathsForLogs(sensitiveGflags);
   }
 
   @ApiOperation(
@@ -181,7 +179,8 @@ public class ReleasesController extends AuthenticatedController {
     } else {
       releases = Release.getAll();
     }
-    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    Map<String, List<ResponseRelease.Universe>> versionUniverseMap =
+        releasesUtils.versionUniverseSummaries();
     List<ResponseRelease> respReleases = new ArrayList<>();
     for (Release release : releases) {
       ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
@@ -205,7 +204,8 @@ public class ReleasesController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);
-    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    Map<String, List<ResponseRelease.Universe>> versionUniverseMap =
+        releasesUtils.versionUniverseSummaries();
     ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
     return PlatformResults.withData(resp);
   }
@@ -297,12 +297,14 @@ public class ReleasesController extends AuthenticatedController {
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
-        if (!release.getUniverses().isEmpty()) {
+        Release.ReleaseState newState = Release.ReleaseState.valueOf(reqRelease.state);
+        if (!isActiveDisabledToggle(release.getState(), newState)
+            && !release.getUniverses().isEmpty()) {
           throw new PlatformServiceException(
               BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
         }
         log.info("updating release state to {}", reqRelease.state);
-        release.saveState(Release.ReleaseState.valueOf(reqRelease.state));
+        release.saveState(newState);
       }
 
       // Now, check if any artifacts have changed, and update them as needed
@@ -390,8 +392,16 @@ public class ReleasesController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  // Universes on a disabled release keep running and can still be upgraded off it, so disabling
+  // only blocks new selections of the version and is safe while the release is in use.
+  private static boolean isActiveDisabledToggle(
+      Release.ReleaseState from, Release.ReleaseState to) {
+    return (from == Release.ReleaseState.ACTIVE && to == Release.ReleaseState.DISABLED)
+        || (from == Release.ReleaseState.DISABLED && to == Release.ReleaseState.ACTIVE);
+  }
+
   private ResponseRelease releaseToResponseRelease(
-      Release release, Map<String, List<Universe>> versionUniversesMap) {
+      Release release, Map<String, List<ResponseRelease.Universe>> versionUniversesMap) {
     ResponseRelease resp = new ResponseRelease();
     resp.release_uuid = release.getReleaseUUID();
     resp.version = release.getVersion();
@@ -419,12 +429,8 @@ public class ReleasesController extends AuthenticatedController {
     }
 
     resp.universes =
-        versionUniversesMap.getOrDefault(release.getVersion(), new ArrayList<Universe>()).stream()
-            .map(
-                u ->
-                    new ResponseRelease.Universe(
-                        u.getUniverseUUID(), u.getName(), u.getCreationDate()))
-            .collect(Collectors.toList());
+        new ArrayList<>(
+            versionUniversesMap.getOrDefault(release.getVersion(), Collections.emptyList()));
     return resp;
   }
 }

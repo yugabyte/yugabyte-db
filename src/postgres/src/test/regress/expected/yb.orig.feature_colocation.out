@@ -929,6 +929,9 @@ GRANT CREATE ON TABLEGROUP "default" TO test_role;
 ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
 ERROR:  cannot set privileges of an implicit tablegroup in a colocated database
+-- Cannot rename an implicit tablegroup
+ALTER TABLEGROUP "default" RENAME TO renamed;
+ERROR:  cannot rename an implicit tablegroup in a colocated database
 -- Any user can create tables/indexes in an implicit tablegroup
 GRANT CREATE ON SCHEMA public TO test_role;
 SET SESSION AUTHORIZATION test_role;

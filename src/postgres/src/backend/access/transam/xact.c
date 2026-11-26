@@ -73,6 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "tcop/tcopprot.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -230,8 +231,7 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount; /* Count of objects that
 												 * require stickiness within a
 												 * certain transaction (e.g.
-												 * TEMP TABLES/WITH HOLD
-												 * CURSORS) */
+												 * TEMP TABLES) */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -2309,7 +2309,18 @@ StartTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCSetObjectLockingInfraForCurrTxn();
+		/*
+		 * A statement keeps the object locking mode of its first transaction,
+		 * so that it never builds state in one mode and uses it in the other.
+		 * Upstream gets the same effect for its own settings by applying a
+		 * config reload only between client messages, but a statement's first
+		 * transaction can start in an earlier message (Parse or Bind) than the
+		 * one that runs it (Execute), and a statement can start more
+		 * transactions while it runs (ANALYZE of several tables, CREATE INDEX,
+		 * COMMIT in a procedure).
+		 */
+		if (!YbIsStatementTransactionStarted())
+			YbSetObjectLockingForCurrTxn();
 
 		/*
 		 * A background worker receives no messages, so it takes a fresh
@@ -3386,8 +3397,32 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 	MemoryContextSwitchTo(CurTransactionContext);
 }
 
+/*
+ * YbCommitTransactionCommandIntermediate
+ *
+ * Commits the current transaction and starts a new one in the middle of a
+ * statement that runs in several transactions, such as an ANALYZE of several
+ * tables, and carries the statement's DDL state into the new transaction. The
+ * new transaction takes the database DDL lock like any DDL transaction (see
+ * YbLockDatabaseToBlockDdlConcurrency).
+ */
 void
 YbCommitTransactionCommandIntermediate(void)
+{
+	YbCommitTransactionCommandIntermediateExtended(true /* block_ddl_concurrency_in_db */ );
+}
+
+/*
+ * YbCommitTransactionCommandIntermediateExtended
+ *
+ * With block_ddl_concurrency_in_db false, the new transaction enters DDL state
+ * without the database DDL lock. DETACH PARTITION CONCURRENTLY needs this: it
+ * waits for lockers right after the new transaction starts, and holding the
+ * lock during that wait can block a writer's DDL with no deadlock reported
+ * (see YBAddDdlTxnStateExtended). It takes the lock after the wait.
+ */
+void
+YbCommitTransactionCommandIntermediateExtended(bool block_ddl_concurrency_in_db)
 {
 	YbDdlOriginalStmtState yb_ddl_stmt_state;
 	bool		is_ddl_mode = YBCPgIsDdlMode();
@@ -3414,12 +3449,13 @@ YbCommitTransactionCommandIntermediate(void)
 	StartTransactionCommand();
 
 	/*
-	 * YB: The new transaction latched the object locking infra auto flag
-	 * afresh. If it disagrees with what this statement started with, the rest
-	 * of the statement would run in the other mode while the state it already
-	 * built belongs to this one, so fail the statement instead.
-	 * TODO(#34635): Keep the statement in one mode by pinning the latched
-	 * value across the intermediate commit.
+	 * YB: A caller that runs inside a client statement kept the object
+	 * locking mode in the new transaction (see StartTransaction). A caller
+	 * outside one reads the flag again here: a pg_cron background worker that
+	 * runs a scheduled ANALYZE of several tables, for example. If the mode
+	 * changed, the rest of the statement would run in the other mode while
+	 * the state it already built belongs to this one, so fail the statement
+	 * instead.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
 		ereport(ERROR,
@@ -3431,8 +3467,12 @@ YbCommitTransactionCommandIntermediate(void)
 
 	if (ddl_txn_block_enabled && is_ddl_mode)
 	{
-		YBAddDdlTxnState(ddl_mode);
+		/*
+		 * Restore the statement state first: entering DDL state reads it to
+		 * decide whether to take the database DDL lock (ANALYZE does not).
+		 */
 		YBSetDdlOriginalStmtState(&yb_ddl_stmt_state);
+		YBAddDdlTxnStateExtended(ddl_mode, block_ddl_concurrency_in_db);
 	}
 }
 

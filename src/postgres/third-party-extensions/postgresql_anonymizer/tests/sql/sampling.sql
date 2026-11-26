@@ -5,8 +5,6 @@ CREATE EXTENSION IF NOT EXISTS anon CASCADE;
 CREATE TABLE hundred AS
 SELECT generate_series(1,100) AS h;
 
-SELECT anon.get_tablesample_ratio('hundred'::REGCLASS::OID) IS NULL;
-
 SAVEPOINT before_error_invalid_label;
   SECURITY LABEL FOR anon ON TABLE hundred IS 'INVALID LABEL';
 ROLLBACK TO before_error_invalid_label;
@@ -23,16 +21,10 @@ ROLLBACK TO before_sql_injection;
 SECURITY LABEL FOR anon ON TABLE hundred
 IS 'TABLESAMPLE SYSTEM(33)';
 
-SELECT anon.get_tablesample_ratio('hundred'::REGCLASS::OID) IS NOT NULL;
-
 SECURITY LABEL FOR anon ON TABLE hundred IS NULL;
-
-SELECT anon.get_tablesample_ratio('hundred'::REGCLASS::OID) IS NULL;
 
 SECURITY LABEL FOR anon ON DATABASE contrib_regression
 IS 'TABLESAMPLE BERNOULLI(50)';
-
-SELECT anon.get_tablesample_ratio('hundred'::REGCLASS::OID) IS NOT NULL;
 
 
 SECURITY LABEL FOR anon ON COLUMN hundred.h
@@ -40,9 +32,31 @@ IS 'MASKED WITH VALUE 0';
 
 SELECT count(*) = 100 FROM hundred;
 
-SELECT anon.start_dynamic_masking();
+--
+-- Transparent Dynamic Masking
+--
+CREATE ROLE jimmy LOGIN;
+SECURITY LABEL FOR anon ON ROLE jimmy IS 'MASKED';
 
-SELECT count(*) < 100 FROM mask.hundred;
+GRANT USAGE ON SCHEMA public TO jimmy;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO jimmy;
+
+SET ROLE jimmy;
+SELECT count(*) = 100 FROM hundred;
+RESET ROLE;
+
+SET anon.transparent_dynamic_masking TO true;
+
+SET ROLE jimmy;
+SELECT count(*) < 100 FROM hundred;
+RESET ROLE;
+
+SET anon.transparent_dynamic_masking TO false;
+
+--
+-- Static Masking
+--
+
 
 -- This should raise a notice
 SELECT anon.anonymize_column('hundred','h');

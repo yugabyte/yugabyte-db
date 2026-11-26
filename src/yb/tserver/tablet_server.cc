@@ -313,6 +313,7 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
@@ -456,15 +457,25 @@ bool ObjectLockFastpathEnabled() {
   return FLAGS_enable_object_lock_fastpath && FLAGS_enable_object_locking_for_table_locks;
 }
 
+std::function<void(NamespaceIdView)> MakeSequenceCacheEpochBumper(
+    const std::weak_ptr<PgClientServiceHolder>& pg_client_service) {
+  return [pg_client_service](NamespaceIdView namespace_id) {
+    auto db_oid = GetPgsqlDatabaseOid(namespace_id);
+    if (!db_oid.ok()) {
+      LOG(WARNING) << "Could not parse database OID for namespace "
+                   << namespace_id << ": " << db_oid;
+      return;
+    }
+
+    auto pg_client_service_holder = pg_client_service.lock();
+    if (pg_client_service_holder) {
+      pg_client_service_holder->impl.BumpDatabaseSequenceCacheEpoch(*db_oid);
+      VLOG(1) << "Bumped sequence cache epoch for database OID " << *db_oid;
+    }
+  };
+}
+
 }  // namespace
-
-struct TabletServer::PgClientServiceHolder {
-  template <class... Args>
-  explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
-
-  std::optional<PgClientServiceMockImpl> mock;
-  PgClientServiceImpl impl;
-};
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
@@ -897,6 +908,16 @@ Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly 
   } else {
     reg->set_pg_port(pgsql_proxy_bind_address().port());
   }
+  // Tiered storage is a preview feature: with it off the master must not learn or persist tiers,
+  // so a tserver registers none and the master treats its tiers as unknown, as for a tserver that
+  // predates the field. With it on, unlabeled data dirs are on kDefaultStorageTier, so this is
+  // never empty once the fs is open.
+  reg->clear_storage_tiers();
+  if (FLAGS_enable_tiered_storage) {
+    for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
+      reg->add_storage_tiers(tier);
+    }
+  }
   return Status::OK();
 }
 
@@ -1226,7 +1247,7 @@ Status TabletServer::KillPgUnlocked() const {
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(live_tservers_mutex_);
   // We reset the list each time, since we want to keep the tservers that are live from the
   // master's perspective.
   // TODO: In the future, we should enhance the logic here to keep track information retrieved
@@ -1241,14 +1262,14 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
     }
   }
   // Prune handles to the TServers that are no longer alive.
-  std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(lock_) {
+  std::erase_if(remote_tservers_, [&](const auto& remote_ts_pair) REQUIRES(live_tservers_mutex_) {
     return !live_tservers_.contains(remote_ts_pair.first);
   });
   return Status::OK();
 }
 
 Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_tservers) const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   live_tservers->reserve(live_tservers_.size());
   for (const auto& [_, ts_info_pb] : live_tservers_) {
     live_tservers->push_back(ts_info_pb);
@@ -1257,7 +1278,7 @@ Status TabletServer::GetLiveTServers(std::vector<master::TSInformationPB> *live_
 }
 
 Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers() const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   std::vector<RemoteTabletServerPtr> remote_tservers;
   remote_tservers.reserve(remote_tservers_.size());
   for (auto& [_, remote_ts_ptr] : remote_tservers_) {
@@ -1268,7 +1289,7 @@ Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers(
 
 Result<std::vector<RemoteTabletServerPtr>> TabletServer::GetRemoteTabletServers(
     const std::unordered_set<std::string>& ts_uuids) const {
-  SharedLock l(lock_);
+  SharedLock l(live_tservers_mutex_);
   std::vector<RemoteTabletServerPtr> remote_tservers;
   remote_tservers.reserve(ts_uuids.size());
   for (auto& ts_uuid : ts_uuids) {
@@ -2572,6 +2593,7 @@ void TabletServer::InvalidatePgTableCache(
     pg_client_service->impl.InvalidateTableCache(filter);
   }
 }
+
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
 
@@ -2706,7 +2728,8 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
   }
   xcluster_guarded_info_version_ = term_and_count;
 
-  xcluster_context_->UpdateXClusterInfoPerNamespace(info.xcluster_info_per_namespace());
+  xcluster_context_->UpdateXClusterInfoPerNamespace(
+      info.xcluster_info_per_namespace(), MakeSequenceCacheEpochBumper(pg_client_service_));
   if (info.has_oid_cache_invalidations_count()) {
     UpdateOidCacheInvalidationsCount(info.oid_cache_invalidations_count());
   }
@@ -2720,7 +2743,8 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
   // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
   if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
     xcluster_context_->UpdateXClusterInfoPerNamespace(
-        resp.deprecated_xcluster_heartbeat_info().xcluster_info_per_namespace());
+        resp.deprecated_xcluster_heartbeat_info().xcluster_info_per_namespace(),
+        MakeSequenceCacheEpochBumper(pg_client_service_));
   }
   // Update lease now that we have already updated the information it protects with fresh info.
   // (ApplyXClusterGuardedInfoIfNewer is called by the heartbeater right before this function.)
@@ -2905,6 +2929,10 @@ Status TabletServer::SetCDCServiceEnabled() {
 
 TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
+}
+
+bool TabletServer::IsXClusterAutomaticModeTarget(const NamespaceId& namespace_id) const {
+  return xcluster_context_->IsTargetAndInAutomaticMode(namespace_id);
 }
 
 void TabletServer::ScheduleCheckLaggingCatalogVersions() {
@@ -3204,7 +3232,8 @@ TabletServer::AllocateObjectLockSharedState() const {
     if (result.ok()) {
       return std::move(*result);
     }
-    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+    LOG_IF(DFATAL, !result.status().IsShutdownInProgress())
+        << "Failed to allocate new object lock shared state: " << result.status();
   }
   return std::nullopt;
 }

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
@@ -13,9 +14,22 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.pa.PerfAdvisorServiceTest;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -82,6 +96,196 @@ public class PAProxyControllerTest extends FakeDBApplication {
       assertThat(forwarded.getHeader("Cookie"), nullValue());
       assertThat(forwarded.getHeader("Accept"), equalTo("application/json"));
     }
+  }
+
+  @Test
+  public void testV2UniverseCallIsForwarded() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      paServer.enqueue(new MockResponse().setBody("{}"));
+      Result result =
+          route(
+              proxyRequest(
+                  collector, "v2/universes/" + universe.getUniverseUUID() + "/nodes?limit=5"));
+      assertThat(result.status(), equalTo(200));
+      assertThat(
+          paServer.takeRequest().getPath(),
+          equalTo("/api/v2/universes/" + universe.getUniverseUUID() + "/nodes?limit=5"));
+
+      paServer.enqueue(new MockResponse().setBody("{}"));
+      result = route(proxyRequest(collector, "v2/universes/" + universe.getUniverseUUID()));
+      assertThat(result.status(), equalTo(200));
+      assertThat(
+          paServer.takeRequest().getPath(),
+          equalTo("/api/v2/universes/" + universe.getUniverseUUID()));
+    }
+  }
+
+  @Test
+  public void testV2UniverseCallNamingAnotherUniverseIsRejected() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+      String prefix = "v2/universes/" + universe.getUniverseUUID();
+      String other = UUID.randomUUID().toString();
+      String otherEncoded = String.format("%%%02X", (int) other.charAt(0)) + other.substring(1);
+
+      for (String path :
+          new String[] {
+            prefix + "/nodes?x=/universes/" + other,
+            prefix + "/nodes?universes=" + other,
+            prefix + "/nodes?x=/universes/" + otherEncoded,
+            prefix + "/x/universes/" + other + "/y/universes/" + universe.getUniverseUUID(),
+            prefix + "/x/universes%5C" + other,
+            prefix + "/x/Universes/" + other,
+            prefix + "/x/universes;y/" + other
+          }) {
+        assertPlatformException(() -> route(proxyRequest(collector, path)));
+      }
+      assertThat(paServer.getRequestCount(), equalTo(1));
+    }
+  }
+
+  @Test
+  public void testV2UniverseCallOutsideItsRouteIsRejected() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      for (String path :
+          new String[] {
+            "v2//universes/" + universe.getUniverseUUID() + "/nodes",
+            "v2/./universes/" + universe.getUniverseUUID(),
+            "v2/%75niverses/" + universe.getUniverseUUID(),
+            "x/%2e%2e/v2/universes/" + universe.getUniverseUUID() + "/nodes",
+            "x/../v2/universes/" + universe.getUniverseUUID() + "/nodes",
+            "v2/universes/" + universe.getUniverseUUID() + "/%2e%2e/" + UUID.randomUUID(),
+            "v2/universes/" + universe.getUniverseUUID() + "/../" + UUID.randomUUID()
+          }) {
+        assertPlatformException(() -> route(proxyRequest(collector, path)));
+      }
+      assertThat(paServer.getRequestCount(), equalTo(1));
+    }
+  }
+
+  @Test
+  public void testTelemetryIsTheOnlyV1UniverseCallForwarded() throws Exception {
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe universe = ModelFactory.createUniverse(customer.getId());
+
+      paServer.enqueue(new MockResponse().setResponseCode(204));
+      Result result =
+          route(
+              proxyRequest(
+                  collector, "POST", "universe/" + universe.getUniverseUUID() + "/ui_events"));
+      assertThat(result.status(), equalTo(204));
+      RecordedRequest forwarded = paServer.takeRequest();
+      assertThat(forwarded.getMethod(), equalTo("POST"));
+      assertThat(
+          forwarded.getPath(),
+          equalTo("/api/universe/" + universe.getUniverseUUID() + "/ui_events"));
+
+      // Every other v1 universe path falls through to the generic route, which refuses it rather
+      // than forward it with customer-level authorization only.
+      for (String path :
+          new String[] {
+            "universe/" + universe.getUniverseUUID() + "/queries",
+            "universe/" + universe.getUniverseUUID() + "/metadata",
+            "universe//" + universe.getUniverseUUID() + "/ui_events"
+          }) {
+        assertPlatformException(() -> route(proxyRequest(collector, path)));
+      }
+      assertThat(paServer.getRequestCount(), equalTo(2));
+    }
+  }
+
+  @Test
+  public void testTelemetryAuthorizedForTheRouteUniverse() throws Exception {
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useNewRbacAuthz.getKey(), "true");
+    try (MockWebServer paServer = new MockWebServer()) {
+      paServer.start();
+      PACollector collector = registerCollector(paServer);
+      Universe readable = ModelFactory.createUniverse("readable", customer.getId());
+      Universe other = ModelFactory.createUniverse("other", customer.getId());
+      String readerToken = universeReaderToken(readable);
+
+      paServer.enqueue(new MockResponse().setResponseCode(204));
+      Result result =
+          route(
+              proxyRequest(
+                  collector,
+                  "POST",
+                  "universe/" + readable.getUniverseUUID() + "/ui_events",
+                  readerToken));
+      assertThat(result.status(), equalTo(204));
+
+      result =
+          route(
+              proxyRequest(
+                  collector,
+                  "POST",
+                  "universe/" + other.getUniverseUUID() + "/ui_events",
+                  readerToken));
+      assertThat(result.status(), equalTo(401));
+      assertThat(paServer.getRequestCount(), equalTo(2));
+    }
+  }
+
+  // A user with universe READ on the given universe only.
+  private String universeReaderToken(Universe universe) {
+    Role universeReader =
+        Role.create(
+            customer.getUuid(),
+            "UniverseReader",
+            "Reads universes",
+            RoleType.Custom,
+            new HashSet<>(
+                Set.of(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.OTHER, Action.READ))));
+    Users reader = ModelFactory.testUser(customer, "reader@customer.com", Users.Role.ConnectOnly);
+    ResourceDefinition universeOnly =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Set.of(universe.getUniverseUUID())))
+            .build();
+    RoleBinding.create(
+        reader,
+        RoleBindingType.Custom,
+        universeReader,
+        new ResourceGroup(new HashSet<>(Set.of(universeOnly))));
+    return reader.createAuthToken();
+  }
+
+  private Http.RequestBuilder proxyRequest(PACollector collector, String path) {
+    return proxyRequest(collector, "GET", path);
+  }
+
+  private Http.RequestBuilder proxyRequest(PACollector collector, String method, String path) {
+    return proxyRequest(collector, method, path, authToken);
+  }
+
+  private Http.RequestBuilder proxyRequest(
+      PACollector collector, String method, String path, String token) {
+    return Helpers.fakeRequest(
+            method,
+            "/api/v1/customers/"
+                + customer.getUuid()
+                + "/pa_proxy/"
+                + collector.getUuid()
+                + "/api/"
+                + path)
+        .header("X-AUTH-TOKEN", token);
   }
 
   private PACollector registerCollector(MockWebServer server) throws Exception {

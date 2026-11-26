@@ -9,6 +9,7 @@
 
 #define OD_MAX_PROC_TITLE_LEN 256
 
-od_retcode_t od_setproctitlef(char **argv_ptr, char *fmt, ...);
+od_retcode_t od_setproctitlef(char **argv_ptr, char *fmt, ...)
+	__attribute__((format(printf, 2, 3)));
 
 #endif /* ODYSSEY_SETPROCTITLE_H */

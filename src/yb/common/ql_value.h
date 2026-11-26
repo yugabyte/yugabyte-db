@@ -565,6 +565,15 @@ bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator ==(const QLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator ==(const LWQLValuePB& lhs, const QLValuePB& rhs);
 
+// Order of the elements of frozen sets and the keys of frozen maps. YCQL stores them sorted, so the
+// order is part of the encoded value, of the key and of its hash, and must not change. It differs
+// from operator< only for UUIDs, which keep the order from before #28566.
+struct FrozenCollectionLess {
+  bool operator()(const QLValuePB& lhs, const QLValuePB& rhs) const;
+  bool operator()(const LWQLValuePB& lhs, const LWQLValuePB& rhs) const;
+  bool operator()(const QLValue& lhs, const QLValue& rhs) const;
+};
+
 InternalType type(const QLValuePB& v);
 
 bool IsNull(const QLValuePB& v);

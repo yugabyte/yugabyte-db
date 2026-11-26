@@ -13,7 +13,7 @@ type: docs
 
 The YugabyteDB Connector comes bundled with Single Message Transformers (SMTs). SMTs are applied to messages as they flow through Kafka Connect so that sinks understand the format in which data is sent. SMTs transform inbound messages after a source connector has produced them, but before they are written to Kafka. SMTs transform outbound messages before they are sent to a sink connector.
 
-The following SMTs are bundled with the connector jar file available on [GitHub releases](https://github.com/yugabyte/debezium/releases):
+The following SMTs are bundled with the connector jar file available on the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page:
 
 * YBExtractNewRecordState
 * PGCompatible

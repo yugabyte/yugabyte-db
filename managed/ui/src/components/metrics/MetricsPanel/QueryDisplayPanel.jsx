@@ -5,6 +5,10 @@ import { maxBy } from 'lodash';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSlowQueriesApi } from '../../queries/helpers/queriesHelper';
 import { Highlighter } from '../../../helpers/Highlighter';
+import {
+  MonitoringItem,
+  getMonitoringItemPath
+} from '../../universes/Monitoring/monitoringUrlHelpers';
 import './MetricsPanel.scss';
 
 const GRAPH_COL_WIDTH = 192;
@@ -77,7 +81,7 @@ export const QueryDisplayPanel = ({ universeUUID, enabled }) => {
   return (
     <div className="query-display-panel">
       <Link
-        to={`/universes/${universeUUID}/queries?tab=slow-queries`}
+        to={`${getMonitoringItemPath(universeUUID, MonitoringItem.QUERIES)}?tab=slow-queries`}
         className="query-display-panel__link"
       >
         Top SQL Statements <i className="fa fa-chevron-right" />

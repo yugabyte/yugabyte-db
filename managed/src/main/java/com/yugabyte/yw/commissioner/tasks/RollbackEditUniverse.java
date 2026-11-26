@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -172,12 +174,21 @@ public class RollbackEditUniverse extends EditUniverseTaskBase {
 
       // Delete before restore: the restore drops the state of load balancers that the failed edit
       // created, for example for a new region.
+      ManagedLoadBalancerState lbState =
+          universe.getUniverseDetails().getManagedLoadBalancerState();
       List<ManagedLoadBalancer> plannedLbs =
           before.clusters.stream()
-              .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c).stream())
+              .flatMap(c -> ManagedLoadBalancerUtil.planLoadBalancers(c, lbState).stream())
               .collect(Collectors.toList());
+      // A removed read replica's load balancer, whose forced delete failed, is the next edit's to
+      // retry, with errors ignored, so it can't block a rollback.
+      Set<UUID> clusterUuids =
+          before.clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
       createDeleteManagedLoadBalancerTasks(
-          lb -> plannedLbs.stream().noneMatch(lb::matches), false /* ignoreErrors */);
+          lb ->
+              clusterUuids.contains(lb.getClusterUuid())
+                  && plannedLbs.stream().noneMatch(lb::matches),
+          false /* ignoreErrors */);
 
       // Force-release before restore: DeleteCapacityReservation reads current details; restore
       // would drop failed-edit CapacityReservationState while cloud reservations may remain.

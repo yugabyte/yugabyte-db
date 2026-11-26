@@ -29,9 +29,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -40,6 +42,7 @@ import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
@@ -1137,6 +1140,304 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     updateRuntimeFlagPGCBackend();
   }
 
+  private List<Double> fetchRandomValues(Statement stmt, int count) throws Exception {
+    List<Double> values = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      ResultSet rs = stmt.executeQuery("SELECT random()");
+      assertTrue(rs.next());
+      values.add(rs.getDouble(1));
+    }
+    return values;
+  }
+
+  @Test
+  public void testSeedMakesConnectionSticky() throws Exception {
+    for (String setSeed : Arrays.asList("SET seed = 0.5", "SELECT setseed(0.5)")) {
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute(setSeed);
+        List<Double> first = fetchRandomValues(stmt, 5);
+        assertConnectionStickyState(stmt, true);
+
+        stmt.execute(setSeed);
+        assertEquals(first, fetchRandomValues(stmt, 5));
+
+        stmt.execute("RESET seed");
+        stmt.execute("DISCARD ALL");
+        assertConnectionStickyState(stmt, true);
+      }
+    }
+
+    // Setting seed through startup packet doesn't do anything in vanilla PG
+    // since its check hook only allows interactive sets (>= PGC_S_INTERACTIVE).
+    // So we don't make the connection sticky with ConnMgr.
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c seed=0.5")
+            .connect();
+         Statement stmt = conn.createStatement()) {
+      assertConnectionStickyState(stmt, false);
+    }
+  }
+
+  @Test
+  public void testTextSearchConfigMakesConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    for (boolean startupPacket : new boolean[] {false, true}) {
+      for (boolean rename : new boolean[] {false, true}) {
+        String cfg = "cm_ts_cfg_" + (startupPacket ? "startup" : "set") +
+            (rename ? "_rename" : "_drop");
+        checkStickyAfterObjectChange("default_text_search_config", "public." + cfg,
+            startupPacket,
+            "CREATE TEXT SEARCH CONFIGURATION public." + cfg + " (COPY = english)",
+            rename ?
+                "ALTER TEXT SEARCH CONFIGURATION public." + cfg + " RENAME TO " + cfg + "_new" :
+                "DROP TEXT SEARCH CONFIGURATION public." + cfg,
+            "DROP TEXT SEARCH CONFIGURATION IF EXISTS public." + cfg,
+            "DROP TEXT SEARCH CONFIGURATION IF EXISTS public." + cfg + "_new");
+      }
+    }
+  }
+
+  @Test
+  public void testTableAccessMethodMakesConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    checkStickyAfterObjectChange("default_table_access_method", "cm_am_set",
+        false /* startupPacket */,
+        "CREATE ACCESS METHOD cm_am_set TYPE TABLE HANDLER heap_tableam_handler",
+        "DROP ACCESS METHOD cm_am_set",
+        "DROP ACCESS METHOD IF EXISTS cm_am_set");
+  }
+
+  // A SET of these GUCs makes the connection sticky. A value from ALTER ROLE/DATABASE ... SET or
+  // from the config file (ysql_pg_conf_csv), at startup or on SIGHUP, is applied by every backend
+  // of the pool, so it must not.
+  private static final String[][] STICKY_ON_SET_SETTINGS = {
+      {"default_tablespace", "pg_default"},
+      {"temp_tablespaces", "pg_default"},
+      {"yb_read_after_commit_visibility", "relaxed"},
+  };
+
+  // Not in STICKY_ON_SET_SETTINGS: a role override applied by every backend of the pool would
+  // change how the DDL in those tests is handled.
+  private static final String[][] XCLUSTER_STICKY_ON_SET_SETTINGS = {
+      {"yb_xcluster_ddl_replication.enable_manual_ddl_replication", "on"},
+      {"yb_xcluster_ddl_replication.TEST_replication_role_override", "SOURCE"},
+  };
+
+  private static final String[][] ALL_STICKY_ON_SET_SETTINGS =
+      Stream.concat(Arrays.stream(STICKY_ON_SET_SETTINGS),
+                    Arrays.stream(XCLUSTER_STICKY_ON_SET_SETTINGS))
+          .toArray(String[][]::new);
+
+  // Each case uses a new role or database, so its pool starts a backend after the ALTER.
+  @Test
+  public void testRoleAndDatabaseSettingsDontMakeConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      pgStmt.execute("CREATE ROLE cm_settings_role LOGIN");
+      pgStmt.execute("CREATE DATABASE cm_settings_db");
+      try {
+        checkAlterSettingsDontMakeConnectionSticky(pgStmt, "ROLE cm_settings_role",
+            getConnectionBuilder()
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("cm_settings_role"));
+        checkAlterSettingsDontMakeConnectionSticky(pgStmt, "DATABASE cm_settings_db",
+            getConnectionBuilder()
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withDatabase("cm_settings_db"));
+      } finally {
+        pgStmt.execute("DROP DATABASE IF EXISTS cm_settings_db");
+        pgStmt.execute("DROP ROLE IF EXISTS cm_settings_role");
+      }
+    }
+  }
+
+  private void checkAlterSettingsDontMakeConnectionSticky(Statement pgStmt, String target,
+      ConnectionBuilder builder) throws Exception {
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      pgStmt.execute("ALTER " + target + " SET " + setting[0] + " = '" + setting[1] + "'");
+    }
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement()) {
+      assertSettingValues(stmt, STICKY_ON_SET_SETTINGS);
+      // Both clients connect after the ALTERs, so they get the same LCV and can share the backend.
+      startQueuedClient(builder).assertServed();
+    }
+    assertSetMakesConnectionSticky(builder);
+  }
+
+  // The backend applies a reloaded ysql_pg_conf_csv while serving the client, so the check hooks
+  // run on a Connection Manager backend.
+  @Test
+  public void testSighupSettingsDontMakeConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    List<String> confEntries = new ArrayList<>();
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      confEntries.add(setting[0] + "=" + setting[1]);
+    }
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement()) {
+      int pid = queryInt(stmt, "SELECT pg_backend_pid()");
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_pg_conf_csv", String.join(",", confEntries));
+      }
+      TestUtils.waitFor(() -> {
+        ResultSet rs = stmt.executeQuery("SHOW " + STICKY_ON_SET_SETTINGS[0][0]);
+        return rs.next() && rs.getString(1).equals(STICKY_ON_SET_SETTINGS[0][1]);
+      }, 30000);
+      assertEquals(pid, queryInt(stmt, "SELECT pg_backend_pid()"));
+      assertSettingValues(stmt, STICKY_ON_SET_SETTINGS);
+      // The reload doesn't bump the LCV, since only PGC_BACKEND GUCs do, so the second client can
+      // share the client's backend. With a single backend, it is served only if the client isn't
+      // sticky.
+      startQueuedClient(builder).assertServed();
+    }
+    assertSetMakesConnectionSticky(builder);
+  }
+
+  // A startup-packet value is replayed by Connection Manager on any backend the client moves to,
+  // like a SET, so it makes the connection sticky.
+  @Test
+  public void testStartupSettingsMakeConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    for (String[] setting : ALL_STICKY_ON_SET_SETTINGS) {
+      QueuedClient queued;
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withOptions("-c " + setting[0] + "=" + setting[1])
+               .connect();
+           Statement stmt = conn.createStatement()) {
+        assertSettingValues(stmt, setting);
+        queued = startQueuedClient();
+        queued.assertBlocked();
+      }
+      queued.assertServed();
+    }
+  }
+
+  // SET LOCAL, a function's SET clause and RESET leave nothing for Connection Manager to replay on
+  // another backend, so they don't make the connection sticky. Neither does the end-of-transaction
+  // restore of a SET LOCAL.
+  @Test
+  public void testScopedSettingsAndResetDontMakeConnectionSticky() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      for (String[] setting : ALL_STICKY_ON_SET_SETTINGS) {
+        // The check hook of yb_read_after_commit_visibility rejects SET LOCAL.
+        if (!setting[0].equals("yb_read_after_commit_visibility")) {
+          for (String end : new String[] {"COMMIT", "ROLLBACK"}) {
+            assertNotSticky(stmt -> {
+              stmt.execute("BEGIN");
+              stmt.execute("SET LOCAL " + setting[0] + " = '" + setting[1] + "'");
+              assertSettingValues(stmt, setting);
+              stmt.execute(end);
+            });
+          }
+        }
+
+        pgStmt.execute("CREATE FUNCTION cm_scoped_setting_fn() RETURNS text LANGUAGE sql " +
+            "SET " + setting[0] + " = '" + setting[1] + "' " +
+            "AS $$ SELECT current_setting('" + setting[0] + "') $$");
+        try {
+          assertNotSticky(stmt -> {
+            ResultSet rs = stmt.executeQuery("SELECT cm_scoped_setting_fn()");
+            assertTrue(rs.next());
+            assertEquals(setting[1], rs.getString(1));
+          });
+        } finally {
+          pgStmt.execute("DROP FUNCTION cm_scoped_setting_fn()");
+        }
+
+        assertNotSticky(stmt -> stmt.execute("RESET " + setting[0]));
+      }
+    }
+  }
+
+  private interface StatementAction {
+    void run(Statement stmt) throws Exception;
+  }
+
+  // With a single backend per pool, a second client is served while the first one stays connected
+  // only if the first one isn't sticky.
+  private void assertNotSticky(StatementAction action) throws Exception {
+    ConnectionBuilder builder = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+    try (Connection conn = builder.connect();
+         Statement stmt = conn.createStatement()) {
+      action.run(stmt);
+      startQueuedClient(builder).assertServed();
+    }
+  }
+
+  private void assertSettingValues(Statement stmt, String[]... settings) throws Exception {
+    for (String[] setting : settings) {
+      ResultSet rs = stmt.executeQuery("SHOW " + setting[0]);
+      assertTrue(rs.next());
+      assertEquals(setting[1], rs.getString(1));
+    }
+  }
+
+  // With a single backend per pool, a second client is queued while the first one is sticky.
+  private void assertSetMakesConnectionSticky(ConnectionBuilder builder) throws Exception {
+    for (String[] setting : STICKY_ON_SET_SETTINGS) {
+      QueuedClient queued;
+      try (Connection conn = builder.connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute("SET " + setting[0] + " = '" + setting[1] + "'");
+        queued = startQueuedClient(builder);
+        queued.assertBlocked();
+      }
+      queued.assertServed();
+    }
+  }
+
+  // The client sets guc to value, then another session changes the object it names. With a single
+  // backend, a second client is queued behind the client. If the client were not sticky, the
+  // second client would take the backend, and the client's next query would replay value on it
+  // and fail, since the name no longer resolves.
+  private void checkStickyAfterObjectChange(String guc, String value, boolean startupPacket,
+      String createSql, String changeSql, String... cleanupSqls) throws Exception {
+    try (Connection pg = connectToPostgres();
+         Statement pgStmt = pg.createStatement()) {
+      pgStmt.execute(createSql);
+      try {
+        ConnectionBuilder builder = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR);
+        if (startupPacket) {
+          builder = builder.withOptions("-c " + guc + "=" + value);
+        }
+        QueuedClient queued;
+        try (Connection conn = builder.connect();
+             Statement stmt = conn.createStatement()) {
+          if (!startupPacket) {
+            stmt.execute("SET " + guc + " = '" + value + "'");
+          }
+          int pid = queryInt(stmt, "SELECT pg_backend_pid()");
+          pgStmt.execute(changeSql);
+
+          queued = startQueuedClient();
+          queued.assertBlocked();
+          assertEquals(pid, queryInt(stmt, "SELECT pg_backend_pid()"));
+          ResultSet rs = stmt.executeQuery("SHOW " + guc);
+          assertTrue(rs.next());
+          assertEquals(value, rs.getString(1));
+        }
+        queued.assertServed();
+      } finally {
+        for (String sql : cleanupSqls) {
+          pgStmt.execute(sql);
+        }
+      }
+    }
+  }
+
   // With a single backend, B's query resets the backend to defaults, so A's next query has to
   // replay both its startup parameter ('G' packet) and its SET on it. Postgres reports those
   // GUC_REPORT variables again, but A already knows their values and must not be sent a
@@ -1168,6 +1469,36 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
           .query("SET TimeZone = 'UTC'")
           .run();
       assertEquals(Arrays.asList(new Pair<>("TimeZone", "UTC")), r.parameterStatuses());
+    }
+  }
+
+  // The transaction priority bounds check each other on SET, so replaying them is
+  // order-sensitive. A's upper bound starts at 0.5 from a startup parameter, and A then sets
+  // lower 0.1, upper 0.8, lower 0.6, which lists the lower bound first. B's query resets the only
+  // backend to defaults, so A's next query replays its bounds onto a backend whose upper bound is
+  // the startup 0.5 again. Sending lower = 0.6 first would fail that deploy.
+  @Test
+  public void testTxnPriorityBoundsDeploy() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (WireConn a = rawConnBuilder()
+             .startupParam("yb_transaction_priority_upper_bound", "0.5").connect();
+         WireConn b = rawConnBuilder().connect()) {
+      a.createPipeline()
+          .query("SET yb_transaction_priority_lower_bound = 0.1")
+          .query("SET yb_transaction_priority_upper_bound = 0.8")
+          .query("SET yb_transaction_priority_lower_bound = 0.6")
+          .run();
+
+      // B must see the reset backend, or A's next query would not have to replay its bounds.
+      b.createPipeline()
+          .query("SHOW yb_transaction_priority_upper_bound").row("1")
+          .run();
+
+      a.createPipeline()
+          .query("SHOW yb_transaction_priority_lower_bound").row("0.6")
+          .query("SHOW yb_transaction_priority_upper_bound").row("0.8")
+          .run();
     }
   }
 }

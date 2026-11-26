@@ -39,10 +39,12 @@ public class ManageOtelCollector extends NodeTaskBase {
   //
   // The -fips suffix selects the build made with GOFIPS140=v1.0.0, the FIPS 140-3 validated Go
   // Cryptographic Module (CMVP certificate #5247), which also defaults the binary to
-  // GODEBUG=fips140=on. It is a separate artifact from the bare 0.145.0 rather than a
+  // GODEBUG=fips140=on. It is a separate artifact from the bare 0.165.1-1 rather than a
   // replacement, published from the same collector manifest by the unified-otelcol workflow in
   // yugabyte-cloud, so the suffix is part of the version string and not a build flag here.
-  public static String OtelCollectorVersion = "0.145.0-fips";
+  // The number after the dash is the YB rebuild count; published artifacts are immutable, so any
+  // rebuild bumps it. 0.165.1-1 carries brotli v1.2.7 (CVE-2026-111497) and Prometheus 0.315.1.
+  public static String OtelCollectorVersion = "0.165.1-1-fips";
   public static String OtelCollectorPlatform = "linux";
 
   private final NodeAgentRpcPayload nodeAgentRpcPayload;

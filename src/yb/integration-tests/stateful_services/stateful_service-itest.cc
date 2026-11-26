@@ -38,6 +38,7 @@
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
+DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_string(vmodule);
 DECLARE_bool(TEST_combine_batcher_errors);
@@ -99,6 +100,8 @@ class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
 TEST_F(StatefulServiceTest, TestRemoteBootstrap) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) =
       5 * kTimeMultiplier;
+  // The rebootstrapped peer may have recently lost an election; allow stepping down to it anyway.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 0;
 
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
   master::MasterClusterProxy master_proxy(&client_->proxy_cache(), leader_master->bound_rpc_addr());

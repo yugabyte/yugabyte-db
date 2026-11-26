@@ -146,6 +146,7 @@ static inline char *mm_tls_strerror(int error)
 	return "SSL_ERROR unknown";
 }
 
+__attribute__((format(printf, 3, 4)))
 static inline void mm_tls_error(mm_io_t *io, int ssl_rc, char *fmt, ...)
 {
 	/* get error description */
@@ -383,6 +384,10 @@ SSL_CTX *mm_tls_get_context(mm_io_t *io, int is_client)
 	}
 cache:
 	ctx_container = malloc(sizeof(*ctx_container));
+	if (ctx_container == NULL) {
+		goto error;
+	}
+
 	ctx_container->key = io->tls;
 	ctx_container->tls_ctx = ctx;
 	ctx_container->yb_cert_hash_len = 0;

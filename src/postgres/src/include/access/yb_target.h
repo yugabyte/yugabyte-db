@@ -8,9 +8,12 @@
  *	  by pushed-down expressions (WHERE clauses, etc.) that are
  *	  evaluated server-side.
  *
- *	  Used by AM implementations (yb_scan_core, yb_lsm, ybgin,
- *	  yb_catalog_scan, yb_sample_scan) and the executor
- *	  (createplan, ybModifyTable).
+ *	  Used by the access methods.  Some code above them also builds
+ *	  its own pggate requests with it.  That should probably move
+ *	  behind the access methods, though this is not yet settled.
+ *	  ybc_get_attcollation() does not build requests at all, and
+ *	  #37403 tracks moving it out, which also removes the planner's
+ *	  use of this header.
  *
  * Copyright (c) YugabyteDB, Inc.
  *

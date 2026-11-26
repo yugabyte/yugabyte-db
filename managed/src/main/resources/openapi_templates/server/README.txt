@@ -191,3 +191,32 @@ resourcePathSegment: Path segment before the resource UUID (optional; defaults t
   annotation if omitted).
 
 Gating by yb.api.conditional_get.enabled is handled inside ConditionalGetAction.
+
+12. x-yba-api-idempotent
+Optional, boolean. When true on a mutating, authenticated operation, the generated
+*ImpInterface.<operationId>Http method runs the operation through
+IdempotencyService (ApiControllerUtils.idempotent), which honours the Idempotency-Key request
+header: a successful response is stored and replayed to retries with the same key, a concurrent
+retry gets 409 and a key reused for a different request gets 422. See IdempotencyService.
+
+Example:
+
+x-yba-api-idempotent: true
+
+openapi_process_vendor_ext.py expands it in the bundled openapi.yaml: it adds the Idempotency-Key
+header parameter (components/parameters/IdempotencyKey.yaml), so that generated clients can send
+the key, and documents the 409 and 422 responses. Don't declare the parameter on the operation
+yourself; the script rejects that. The parameter carries "x-yba-api-idempotency-key: true", which
+keeps it out of the generated server method signatures: the controller implementation never sees
+it.
+
+If the operation submits a task, the first task it submits without an explicit UUID gets the UUID
+derived from the key (IdempotencyService.taskUuidFor, picked up in Commissioner.submit), so that
+clients can follow it without the response. A retry that finds the task started (it has a
+CustomerTask, or hasn't failed) gets 409 pointing at it, and at its newest retry if YBA retried it
+after a restart, instead of running the operation twice. Only a task that failed while being
+submitted lets the retry run again.
+
+Do not mark an operation whose response carries a secret (a generated API token, a private key):
+the response is stored as is for the retention period (yb.api.idempotency.retention), and a stored
+secret would defeat YBA's hash-only storage of credentials.

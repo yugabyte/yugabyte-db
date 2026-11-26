@@ -66,6 +66,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
@@ -92,6 +93,8 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_util.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/outbound_call.h"
@@ -334,6 +337,45 @@ void FillFromRepeatedTabletLocations(
     }
   }
 }
+
+class IsBackfillIndexInProgressRequest {
+  class PrivateTag {};
+  using Self = IsBackfillIndexInProgressRequest;
+
+ public:
+  IsBackfillIndexInProgressRequest(
+      PrivateTag, TableIdView index_id, IsBackfillIndexInProgressCallback&& user_cb)
+      : index_id_(index_id), user_cb_(std::move(user_cb)) {}
+
+  [[nodiscard]] static auto MakeCallback(
+      TableIdView index_id, IsBackfillIndexInProgressCallback&& user_cb) {
+    auto self = std::make_shared<Self>(PrivateTag{}, index_id, std::move(user_cb));
+    auto info = SharedField(self, &self->info_);
+    return std::make_pair(Bind(&Self::HandleResult, std::move(self)), std::move(info));
+  }
+
+ private:
+  static void HandleResult(const std::shared_ptr<Self>& self, const Status& status) {
+    self->user_cb_(self->DoHandleResult(status));
+  }
+
+  Result<bool> DoHandleResult(const Status& status) {
+    RETURN_NOT_OK(status);
+    const auto& index = *VERIFY_RESULT(info_.index_map.FindIndex(index_id_));
+    if (const auto& error_msg = index.backfill_error_message(); !error_msg.empty()) {
+      // backfill_status preserves the error codes (such as the PostgreSQL error code) but may be
+      // stale after a rollback: an old master clears only backfill_error_message on success.
+      const auto& backfill_status = index.backfill_status();
+      return backfill_status.ok()
+          ? STATUS(Aborted, error_msg) : backfill_status.CloneAndReplaceCode(Status::kAborted);
+    }
+    return index.index_permissions() <= IndexPermissions::INDEX_PERM_DO_BACKFILL;
+  }
+
+  TableId index_id_;
+  YBTableInfo info_;
+  IsBackfillIndexInProgressCallback user_cb_;
+};
 
 } // namespace
 
@@ -639,14 +681,44 @@ Status YBClient::TruncateTables(const TableIds& table_ids, bool wait) {
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
-Status YBClient::BackfillIndex(const TableId& table_id,
-                               std::optional<TransactionMetadata> requester_transaction,
-                               bool wait, CoarseTimePoint deadline) {
-  if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms;
+void YBClient::BackfillIndexAsync(
+    TableIdView table_id, const std::optional<TransactionMetadata>& requester_transaction,
+    CoarseTimePoint deadline, BackfillIndexCallback&& callback) {
+  data_->BackfillIndexAsync(
+      this, YBTableName(), table_id, requester_transaction, deadline, std::move(callback));
+}
+
+void YBClient::IsBackfillIndexInProgressAsync(
+    TableIdView table_id, TableIdView index_id, CoarseTimePoint deadline,
+    IsBackfillIndexInProgressCallback&& user_cb) {
+  auto [cb, info] = IsBackfillIndexInProgressRequest::MakeCallback(index_id, std::move(user_cb));
+  if (const auto status = data_->GetTableSchema(this, table_id, deadline, std::move(info), cb);
+      !status.ok()) {
+    cb.Run(status);
   }
-  return data_->BackfillIndex(
-      this, YBTableName(), table_id, deadline, std::move(requester_transaction), wait);
+}
+
+Status YBClient::StartTableBackfill(
+    const TableId& source_table_id, uint32_t target_table_oid,
+    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+    CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  }
+  master::StartTableBackfillRequestPB req;
+  req.mutable_source_table()->set_table_id(source_table_id);
+  req.set_target_table_oid(target_table_oid);
+  req.set_transform_fn_oid(transform_fn_oid);
+  req.set_backfill_timestamp(backfill_timestamp);
+  req.set_pg_job_id(pg_job_id);
+  master::StartTableBackfillResponsePB resp;
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "StartTableBackfill",
+      &MasterDdlProxy::StartTableBackfillAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Status YBClient::GetIndexBackfillProgress(
@@ -1696,7 +1768,10 @@ Status YBClient::GetCDCStream(
     std::optional<bool>* detect_publication_changes_implicitly,
     std::optional<std::string>* replication_slot_plugin_name,
     bool* is_notification_slot,
-    std::optional<bool>* xcluster_use_target_applied_filter) {
+    std::optional<bool>* xcluster_use_target_applied_filter,
+    bool* paused_for_upgrade,
+    bool* unusable_with_transactional_ddl,
+    std::optional<HybridTime>* implicit_conversion_barrier_ht) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1783,6 +1858,20 @@ Status YBClient::GetCDCStream(
   if (xcluster_use_target_applied_filter &&
       resp.stream().has_xcluster_use_target_applied_filter()) {
     *xcluster_use_target_applied_filter = resp.stream().xcluster_use_target_applied_filter();
+  }
+
+  if (paused_for_upgrade) {
+    *paused_for_upgrade = resp.stream().cdcsdk_paused_for_upgrade();
+  }
+
+  if (unusable_with_transactional_ddl) {
+    *unusable_with_transactional_ddl = resp.stream().cdcsdk_unusable_with_transactional_ddl();
+  }
+
+  if (implicit_conversion_barrier_ht &&
+      resp.stream().has_cdcsdk_implicit_conversion_barrier_ht()) {
+    *implicit_conversion_barrier_ht =
+        HybridTime(resp.stream().cdcsdk_implicit_conversion_barrier_ht());
   }
 
   return Status::OK();
@@ -2816,9 +2905,10 @@ Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   return data_->GetTableDiskSize(table_id, deadline);
 }
 
-Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
+Status YBClient::ReportYsqlDdlTxnStatus(
+    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
-  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, propagated_hybrid_time, deadline);
 }
 
 Status YBClient::WaitForDdlVerificationToFinish(const TransactionMetadata& txn) {

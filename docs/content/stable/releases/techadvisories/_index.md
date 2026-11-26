@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 35465>}}
+| YugabyteDB gRPC connector may skip rows when a task restarts during the initial snapshot
+| [CDC: YugabyteDB (Debezium) gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [dz.1.9.5.yb.grpc.2024.1](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2024.1) to [dz.1.9.5.yb.grpc.2026.1.2.0.2](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2026.1.2.0.2)
+| {{<nobreak "5 November 2026">}}
+|
 | {{<ta 19066>}}
 | CDC stream creation may time out on namespaces with a large number of tablets
 | {{<product "cdc">}}
@@ -162,7 +168,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 24992>}}
 |Partial streaming stall after tablet split
 | [YugabyteDB gRPC (Debezium) Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
-| [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
+| [dz.1.9.5.yb.grpc.2024.1](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2024.1)
 | {{<nobreak "3 December 2024">}}
 |
 | {{<ta 23476>}}

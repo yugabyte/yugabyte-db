@@ -102,8 +102,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
     ToggleDDLMode(options->extra_master_flags, LegacyDDLMode());
   }
 
-  // Object locking, concurrent DDL and transactional DDL are enabled/ disabled together, per the
-  // cross-flag validators in common_flags.cc, so a single knob drives all three.
+  // Object locking and transactional DDL are validated against each other in common_flags.cc,
+  // so a single knob drives both. Concurrent DDL moves with them.
   virtual bool LegacyDDLMode() const {
     // The tests assert for transaction verification errors in case of concurrent/conflicting DDLs.
     // But with object locks, conflicting DDLs get serialized, and the latter one times out with
@@ -1393,8 +1393,10 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
   VerifyTableNotExists(client.get(), kDatabase, kCreateTable, 60);
 
-  // Verify all the other tables are unchanged by all of the DDLs.
+  // Verify all the other tables are unchanged by all of the DDLs. Wait for their rollback to
+  // finish so that the DDLs below do not hit TABLE_SCHEMA_CHANGE_IN_PROGRESS.
   for (const auto& table : tables_to_create) {
+    ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, table));
     ASSERT_OK(VerifySchema(client.get(), kDatabase, table, {"key", "value", "num"}));
   }
 
@@ -2501,6 +2503,60 @@ TEST_F(PgDdlAtomicitySavepointMiniClusterTest, RollbackToSavepointWithUnlistedIn
 
   ASSERT_OK(WaitForNoTablesLeftBehind(
       kTableName, "Wait for the table and its index to be deleted"));
+}
+
+class PgDdlAtomicitySavepointMultiMasterTest : public PgDdlAtomicitySavepointMiniClusterTest {
+ protected:
+  size_t NumMasters() override { return 3; }
+};
+
+// The master leader changes after it accepts a ROLLBACK TO SAVEPOINT but before it rolls back the
+// DocDB schema. The rollback must fail rather than be reported as done (#36958).
+TEST_F(PgDdlAtomicitySavepointMultiMasterTest, RollbackToSavepointLostOnLeaderChange) {
+  const auto kTableName = "savepoint_leader_change"s;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+
+  CountDownLatch rollback_started(1);
+  CountDownLatch leader_changed(1);
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "CatalogManager::YsqlRollbackDocdbSchemaToSubTxnHelper:Start", [&](void*) {
+        rollback_started.CountDown();
+        leader_changed.Wait();
+      });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([&] {
+    leader_changed.CountDown();
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c1 INT", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 INT", kTableName));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_TRUE(rollback_started.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+    ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+    leader_changed.CountDown();
+  });
+  // The failed rollback is FATAL, so the client sees only the closed connection.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ROLLBACK TO SAVEPOINT s"), "server closed the connection unexpectedly");
+  thread_holder.JoinAll();
+
+  // The failed rollback ends the session, aborting the whole transaction.
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_EQ(table_info->schema.num_columns(), 1);
 }
 
 // Test that the table cache is correctly invalidated after transaction verification

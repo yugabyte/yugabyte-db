@@ -27,7 +27,6 @@
 
 #include "access/xact.h"
 #include "catalog/pg_publication.h"
-#include "catalog/yb_type.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -39,11 +38,13 @@
 #include "utils/snapmgr.h"
 #include "utils/varlena.h"
 #include "utils/wait_event.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
 static MemoryContext unacked_txn_list_context = NULL;
+static MemoryContext decode_record_context = NULL;
+static MemoryContext aborted_subtxn_sets_context = NULL;
 
 /* Cached records received from the CDC service. */
 static YbcPgChangeRecordBatch *cached_records = NULL;
@@ -53,6 +54,17 @@ static TimestampTz last_getconsistentchanges_response_receipt_time;
 static XLogRecPtr last_txn_begin_lsn = InvalidXLogRecPtr;
 /* Commit LSN of the latest transaction filtered by the decoder. */
 static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
+
+/*
+ * Aborted subtransaction sets (YbcPgAbortedSubtxnSet) of the DocDB
+ * transactions being streamed, from the aborted_subtxns map of the
+ * GetConsistentChanges responses. In the case of commit time ties between
+ * different DocDB transactions, the virtual WAL combines them into a single
+ * BEGIN/COMMIT block, so a streamed transaction can have several entries.
+ * They are dropped by commit time, not by DocDB transaction id, because the
+ * COMMIT of such a block carries the id of only one of them.
+ */
+static List *aborted_subtxn_sets = NIL;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -140,6 +152,7 @@ static void YbResetVirtualWalCatalogSnapshot(void);
 static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
+static void AddAbortedSubtxnSets(YbcPgChangeRecordBatch *batch);
 static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
@@ -194,6 +207,14 @@ YBCInitVirtualWal(List *yb_publication_names)
 												   "YB cached record batch "
 												   "context",
 												   ALLOCSET_DEFAULT_SIZES);
+	decode_record_context = AllocSetContextCreate(virtual_wal_context,
+												  "YB decode record context",
+												  ALLOCSET_DEFAULT_SIZES);
+	aborted_subtxn_sets_context = AllocSetContextCreate(virtual_wal_context,
+														"YB aborted subtxn sets "
+														"context",
+														ALLOCSET_DEFAULT_SIZES);
+	aborted_subtxn_sets = NIL;
 	/*
 	 * Reset cached state for a fresh start. Ensures we don't use stale data
 	 * from a previous session if Init is ever called without Destroy.
@@ -274,9 +295,17 @@ YBCDestroyVirtualWal()
 	if (cached_records_context)
 		MemoryContextDelete(cached_records_context);
 
+	if (aborted_subtxn_sets_context)
+		MemoryContextDelete(aborted_subtxn_sets_context);
+
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
 
+	unacked_txn_list_context = NULL;
+	cached_records_context = NULL;
+	virtual_wal_context = NULL;
+	decode_record_context = NULL;
+	aborted_subtxn_sets_context = NULL;
 	/*
 	 * Reset cached_records to avoid dangling pointer. The memory it pointed
 	 * to was freed when cached_records_context was deleted above.
@@ -291,6 +320,7 @@ YBCDestroyVirtualWal()
 	publication_refresh_txn_id[0] = '\0';
 	publication_refresh_record.lsn = InvalidXLogRecPtr;
 	publication_refresh_record.xid = InvalidTransactionId;
+	aborted_subtxn_sets = NIL;
 
 	/* Reset catalog snapshot set by InitVirtualWal. */
 	YbResetVirtualWalCatalogSnapshot();
@@ -309,7 +339,8 @@ YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables)
 		yb_publications =
 			YBGetPublicationsByNames(publication_names, false /* missing_ok */ );
 
-		tables = yb_pg_get_publications_tables(yb_publications, yb_is_pub_all_tables);
+		tables = yb_pg_get_publications_tables(yb_publications, yb_is_pub_all_tables,
+											   true /* yb_expand_all_tables_pub */ );
 		list_free(yb_publications);
 	}
 	else
@@ -405,9 +436,11 @@ static void
 YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 							   const char *docdb_txn_id)
 {
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (yb_enable_replication_slot_transactional_ddl)
 	{
 		uint64_t	read_time = read_time_ht;
+		const uint32_t *aborted_subtxn_set;
+		int			aborted_subtxn_set_size;
 
 		if (in_txn_limit_ht != PG_UINT64_MAX)
 		{
@@ -417,6 +450,9 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 			Assert(docdb_txn_id != NULL && docdb_txn_id[0] != '\0');
 		}
 
+		aborted_subtxn_set = YBCGetAbortedSubtxnSet(docdb_txn_id,
+													&aborted_subtxn_set_size);
+
 		elog(DEBUG2,
 			 "Setting historical read context for catalog snapshot to "
 			 "read_time_ht: %" PRIu64 ", in_txn_limit_ht: %" PRIu64
@@ -424,8 +460,10 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 			 read_time, in_txn_limit_ht, docdb_txn_id);
 		YBCSetHistoricalReadContextAndInvalidateCaches(read_time,
 													   in_txn_limit_ht,
-													   docdb_txn_id);
-		CatalogCacheFlushCatalog(PublicationRelationId);
+													   docdb_txn_id,
+													   aborted_subtxn_set,
+													   aborted_subtxn_set_size);
+		YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 	}
 	else
 	{
@@ -439,7 +477,7 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 static void
 YbResetVirtualWalCatalogSnapshot(void)
 {
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	if (yb_enable_replication_slot_transactional_ddl)
 		YBCResetHistoricalReadContextAndInvalidateRelcache();
 	else
 		YBCResetYbReadTimeAndInvalidateRelcache();
@@ -487,7 +525,7 @@ InitVirtualWal(List *publication_names,
 	 * rather than from a catcache entry that may have been warmed earlier at a
 	 * different (latest) read time.
 	 */
-	CatalogCacheFlushCatalog(PublicationRelationId);
+	YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 
 	/*
 	 * We may encounter a failure prompting a retry in 2 cases:
@@ -544,31 +582,11 @@ InitVirtualWal(List *publication_names,
 	pfree(yb_publication_oids);
 }
 
-static const YbcPgTypeEntity *
-GetDynamicTypeEntity(int attr_num, Oid relid)
+MemoryContext
+YBCGetDecodeRecordContext(void)
 {
-	bool		is_in_txn = IsTransactionOrTransactionBlock();
-	MemoryContext caller_context = CurrentMemoryContext;
-
-	if (!is_in_txn)
-		StartTransactionCommand();
-
-	Relation	rel = RelationIdGetRelation(relid);
-
-	if (!RelationIsValid(rel))
-		elog(ERROR, "Could not open relation with OID %u", relid);
-	Oid			type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
-
-	RelationClose(rel);
-	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
-
-	if (!is_in_txn)
-	{
-		AbortCurrentTransaction();
-		MemoryContextSwitchTo(caller_context);
-	}
-
-	return type_entity;
+	Assert(decode_record_context);
+	return decode_record_context;
 }
 
 YbVirtualWalRecord *
@@ -620,7 +638,7 @@ YBCReadRecord(List *publication_names)
 		 * set: a table list refresh below invalidates the caches directly,
 		 * otherwise the record follows the next records returned.
 		 */
-		if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+		if (yb_enable_replication_slot_transactional_ddl &&
 			explicit_alter_publication_detected &&
 			TransactionIdIsValid(publication_refresh_record.xid))
 		{
@@ -643,7 +661,7 @@ YBCReadRecord(List *publication_names)
 			uint64_t	in_txn_limit = PG_UINT64_MAX;
 			const char *docdb_txn_id = "";
 
-			if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl &&
+			if (yb_enable_replication_slot_transactional_ddl &&
 				publication_refresh_record_time != 0)
 			{
 				in_txn_limit = publication_refresh_record_time;
@@ -653,7 +671,7 @@ YBCReadRecord(List *publication_names)
 			if (!is_in_txn)
 				StartTransactionCommand();
 
-			if (!*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+			if (!yb_enable_replication_slot_transactional_ddl)
 				Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
@@ -698,8 +716,10 @@ YBCReadRecord(List *publication_names)
 
 		AckFilteredTransactions();
 
+		Assert(CurrentMemoryContext == cached_records_context);
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records, &GetDynamicTypeEntity);
+								   &cached_records);
+		AddAbortedSubtxnSets(cached_records);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;
@@ -752,7 +772,9 @@ YBCReadRecord(List *publication_names)
 
 	/* record should be non-null, but be conservative and check. */
 	if (record)
+	{
 		TrackUnackedTransaction(record);
+	}
 
 	return record;
 }
@@ -770,15 +792,6 @@ PreProcessBeforeFetchingNextBatch()
 		TimestampDifference(last_getconsistentchanges_response_receipt_time,
 							GetCurrentTimestamp(), &secs, &microsecs);
 
-		/*
-		 * Note that this processing time does not include the time taken for
-		 * the conversion from QLValuePB (proto) to PG datum values. This is
-		 * done in ybc_pggate and is logged separately.
-		 *
-		 * The time being logged here is the total time it took for processing
-		 * and sending a whole batch AFTER converting all the values to the PG
-		 * format.
-		 */
 		elog(DEBUG1,
 			 "Walsender processing time for the last batch is (%ld s, %d us)",
 			 secs, microsecs);
@@ -878,6 +891,75 @@ TrackUnackedTransaction(YbVirtualWalRecord *record)
 	}
 
 	MemoryContextSwitchTo(caller_context);
+}
+
+/* Copy the aborted subtxn sets of a batch, which is freed before the next one. */
+static void
+AddAbortedSubtxnSets(YbcPgChangeRecordBatch *batch)
+{
+	MemoryContext caller_context;
+	int			size;
+
+	if (!batch)
+		return;
+
+	caller_context = MemoryContextSwitchTo(aborted_subtxn_sets_context);
+	for (int i = 0; i < batch->aborted_subtxn_sets_count; i++)
+	{
+		YbcPgAbortedSubtxnSet *batch_entry = &batch->aborted_subtxn_sets[i];
+		YbcPgAbortedSubtxnSet *entry;
+
+		if (YBCGetAbortedSubtxnSet(batch_entry->docdb_txn_id, &size))
+			continue;
+
+		entry = palloc(sizeof(YbcPgAbortedSubtxnSet));
+		*entry = *batch_entry;
+		entry->set = palloc(sizeof(uint32_t) * batch_entry->set_size);
+		memcpy(entry->set, batch_entry->set,
+			   sizeof(uint32_t) * batch_entry->set_size);
+		aborted_subtxn_sets = lappend(aborted_subtxn_sets, entry);
+	}
+	MemoryContextSwitchTo(caller_context);
+}
+
+/* Drop the aborted subtxn sets of the transactions committed by a decoded COMMIT. */
+void
+YBCDropAbortedSubtxnSets(uint64_t commit_time_ht)
+{
+	ListCell   *lc;
+
+	foreach(lc, aborted_subtxn_sets)
+	{
+		YbcPgAbortedSubtxnSet *entry = (YbcPgAbortedSubtxnSet *) lfirst(lc);
+
+		if (entry->commit_time_ht <= commit_time_ht)
+		{
+			aborted_subtxn_sets = foreach_delete_current(aborted_subtxn_sets, lc);
+			pfree(entry->set);
+			pfree(entry);
+		}
+	}
+}
+
+/* Get the aborted subtxn set of a DocDB transaction being decoded. */
+const uint32_t *
+YBCGetAbortedSubtxnSet(const char *docdb_txn_id, int *size)
+{
+	ListCell   *lc;
+
+	foreach(lc, aborted_subtxn_sets)
+	{
+		YbcPgAbortedSubtxnSet *entry = (YbcPgAbortedSubtxnSet *) lfirst(lc);
+
+		if (strcmp(entry->docdb_txn_id, docdb_txn_id) == 0)
+		{
+			*size = entry->set_size;
+			return entry->set;
+		}
+	}
+
+	*size = 0;
+	return NULL;
 }
 
 /*

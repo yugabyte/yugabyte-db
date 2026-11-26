@@ -41,6 +41,9 @@ inline uint64_t VectorIdToUInt(vector_index::VectorId value) {
   return BigEndian::Load64(value.data());
 }
 
+// pgvector's upper bound of hnsw.ef_search.
+constexpr size_t kPgVectorMaxEfSearch = 1000;
+
 // Type of the table's `id` column. kBigint is for tables loaded by other tools.
 YB_DEFINE_ENUM(PgVectorIdType, (kUuid)(kBigint));
 

@@ -93,7 +93,9 @@
     }
   }
 }
-#universe-tab-panel-pane-queries {
+// Query details side panel. Alert and backup details reuse this id.
+#universe-tab-panel-pane-queries,
+.queries-viewer {
   .side-panel {
     background: colors.$YB_BG_WHITE_2;
     height: 100%;

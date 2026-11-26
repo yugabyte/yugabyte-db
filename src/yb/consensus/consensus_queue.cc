@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
@@ -479,6 +480,16 @@ uint64_t GetNumMessagesToSendWithBackoff(int64_t last_num_messages_sent) {
   return std::max<int64_t>((last_num_messages_sent >> 1) - 1, 0);
 }
 
+namespace {
+
+// The last operation the peer has after accepting the request. The committed op id sent in the
+// request is capped by it.
+OpId LastOpIdAfterRequest(const LWConsensusRequestPB& request, const OpId& preceding_id) {
+  return request.ops().empty() ? preceding_id : OpId::FromPB(request.ops().rbegin()->id());
+}
+
+} // namespace
+
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         LWConsensusRequestPB* request,
                                         LWReplicateMsgsHolder* msgs_holder,
@@ -578,6 +589,10 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     } else {
       queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
     }
+    // Nothing is sent to a peer that needs remote bootstrap.
+    if (!peer->needs_remote_bootstrap) {
+      peer->last_sent_committed_idx = request->committed_op_id().index();
+    }
 
     request->set_caller_term(queue_state_.current_term);
     if (FLAGS_enable_quiescent_tablets) {
@@ -670,6 +685,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
         return STATUS(NotFound, "Peer not tracked.");
       }
 
+      // The committed op id is capped below, see max_allowed_committed_op_id.
+      peer->last_sent_committed_idx = std::min(
+          peer->last_sent_committed_idx, LastOpIdAfterRequest(*request, preceding_id).index);
       peer->last_num_messages_sent = result->messages.size();
       if (batch_reaches_majority_replicated &&
           queue_state_.majority_replicated_op_id.is_valid_not_empty()) {
@@ -713,8 +731,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // We don't have to change committed_op_id when it is less than max_allowed_committed_op_id,
   // because it will have actual committed_op_id value and this operation is known to the
   // follower.
-  const auto max_allowed_committed_op_id = !request->ops().empty()
-      ? OpId::FromPB(request->ops().rbegin()->id()) : preceding_id;
+  const auto max_allowed_committed_op_id = LastOpIdAfterRequest(*request, preceding_id);
   if (max_allowed_committed_op_id.index < request->committed_op_id().index()) {
     max_allowed_committed_op_id.ToPB(request->mutable_committed_op_id());
   }
@@ -1139,9 +1156,16 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
 Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerForBootstrap(
     const TrackedPeer* remote_tracked_peer) {
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
+  // Prefer a source that finished post-split compaction, so the new peer doesn't copy the split
+  // parent's data, unless it's outside the new peer's region.
+  auto score = [&src_cloud_info](const TrackedPeer& peer) {
+    auto level = TablespaceParser::GetLocalityLevel(src_cloud_info, peer.cloud_info.value());
+    bool compacted = !peer.pending_post_split_compaction;
+    bool compacted_in_region = compacted && level >= LocalityLevel::kRegion;
+    return std::tuple(compacted_in_region, level, compacted);
+  };
   // initializing rbs_source as the leader itself.
-  LocalityLevel best_locality_level =
-      TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
+  auto best_score = score(*local_peer_);
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
   const auto min_anchorable_index = VERIFY_RESULT(log_cache_.min_anchorable_index());
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
@@ -1165,10 +1189,9 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
       continue;
     }
 
-    auto cur_locality_level =
-        TablespaceParser::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
-    if (cur_locality_level > best_locality_level) {
-      best_locality_level = cur_locality_level;
+    auto cur_score = score(*it->second);
+    if (cur_score > best_score) {
+      best_score = cur_score;
       rbs_source = it->second;
     }
   }
@@ -1178,11 +1201,17 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
+  // Read here rather than on local appends, which stop on a tablet without writes and leave the
+  // value stale. Outside queue_lock_ because the check takes a ScopedRWOperation and the metadata
+  // mutex.
+  const bool local_pending_post_split_compaction =
+      context_ && context_->PendingPostSplitCompaction();
   // The whole request is populated under queue_lock_: rbs_source points into peers_map_, and
   // UntrackPeer deletes those objects under the same lock.
   LockGuard lock(queue_lock_);
   DCHECK_EQ(queue_state_.state, State::kQueueOpen);
   DCHECK_NE(uuid, local_peer_uuid_);
+  local_peer_->pending_post_split_compaction = local_pending_post_split_compaction;
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
     return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
@@ -1687,6 +1716,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     peer->is_last_exchange_successful = true;
     peer->num_sst_files = response.num_sst_files();
+    peer->pending_post_split_compaction = response.pending_post_split_compaction();
 
     if (response.has_responder_term()) {
       // The peer must have responded with a term that is greater than or equal to the last known
@@ -1703,10 +1733,13 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
           << "Response: " << response.ShortDebugString();
     }
 
-    // If our log has the next request for the peer or if the peer's committed index is lower than
-    // our own, set 'more_pending' to true.
+    // If our log has the next request for the peer, or the peer's committed index is lower than our
+    // own and the peer was not sent it yet, set 'more_pending' to true. A peer that was sent it,
+    // but stopped applying because of a write stall or ConsensusContext::PostponeApply, gets it
+    // again in heartbeats, instead of in a tight loop of requests.
     result = log_cache_.HasOpBeenWritten(peer->next_index) ||
-        (peer->last_known_committed_idx < queue_state_.committed_op_id.index);
+        (peer->last_known_committed_idx < queue_state_.committed_op_id.index &&
+         peer->last_sent_committed_idx < queue_state_.committed_op_id.index);
 
     mode_copy = queue_state_.mode;
     if (mode_copy == Mode::LEADER) {

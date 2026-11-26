@@ -30,6 +30,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using namespace std::literals;
 
@@ -115,8 +116,10 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     if (temp_read_operation_result.ok()) {
       read_operation = std::move(*temp_read_operation_result);
       if (tablet.tablet->transaction_participant()) {
+        TEST_SYNC_POINT("TabletServiceBackupImpl::TabletSnapshotOp:ResolveIntents");
+        // Restore drops intents, so committed intents must be written to regular DB.
         status = tablet.tablet->transaction_participant()->ResolveIntents(
-            snapshot_hybrid_time, context.GetClientDeadline());
+            snapshot_hybrid_time, context.GetClientDeadline(), tablet::WaitForApply::kTrue);
       }
     } else {
       status = temp_read_operation_result.status();

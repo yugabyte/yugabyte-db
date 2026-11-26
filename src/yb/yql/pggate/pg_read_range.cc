@@ -68,25 +68,6 @@ bool PgReadRange::Intersects(const PgReadRange& other) const {
   return true;
 }
 
-std::optional<uint16_t> PgReadRange::DecodeEncodedHashPartitionKeyBound(Slice bound) {
-  dockv::DocKeyDecoder decoder(bound);
-  uint16_t hash_code;
-  auto result = decoder.DecodeHashCode(&hash_code);
-  if (!result.ok() || !*result) {
-    return std::nullopt;
-  }
-  // The entry type is kInvalid if the left input is empty.
-  const auto next_key_entry_type = dockv::DecodeKeyEntryType(decoder.left_input());
-  if (next_key_entry_type == dockv::KeyEntryType::kInvalid ||
-      next_key_entry_type == dockv::KeyEntryType::kLowest) {
-    return hash_code;
-  } else if (hash_code < UINT16_MAX &&
-             next_key_entry_type == dockv::KeyEntryType::kHighest) {
-    return hash_code + 1;
-  }
-  return std::nullopt;
-}
-
 void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool is_lower) {
   if (!is_inclusive) {
     if (is_lower) {
@@ -101,14 +82,16 @@ void PgReadRange::SetHashCodeBound(uint16_t hash_code, bool is_inclusive, bool i
   if ((is_lower && hash_code == 0) || (!is_lower && hash_code == UINT16_MAX)) {
     return;
   }
-  SetBound(HashCodeToBound(hash_code, is_lower), false /* is_inclusive */, is_lower);
+  SetBound(
+      dockv::PartitionSchema::HashCodeToDocKeyBound(table_->schema(), hash_code, is_lower),
+      false /* is_inclusive */, is_lower);
 }
 
 template <class T>
 void PgReadRange::SetDocKeyBound(const T& doc_key, bool is_inclusive, bool is_lower) {
   auto key_bytes = ToKeyBytes(doc_key);
   if (table_->schema().num_hash_key_columns() > 0) {
-    auto opt_hash_code = DecodeEncodedHashPartitionKeyBound(key_bytes);
+    auto opt_hash_code = dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(key_bytes);
     if (opt_hash_code) {
       // If the document key is found to be a hash partition key, original is_inclusive value
       // does not matter, as valid document key can't be equal to a hash partition key.
@@ -143,14 +126,16 @@ void PgReadRange::SetPartitionBounds(size_t partition) {
     // Partition key is a hash code
     if (partition > 0) {
       auto hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_keys[partition]);
-      auto bound = HashCodeToBound(hash, true /* is_lower */);
+      auto bound = dockv::PartitionSchema::HashCodeToDocKeyBound(
+          table_->schema(), hash, true /* is_lower */);
       // Hash code bound is not a document key, inclusivity does not matter
       SetLowerBound(std::move(bound), false /* is_inclusive */);
     }
     if (partition < partition_keys.size() - 1) {
       auto hash =
           dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_keys[partition + 1]) - 1;
-      auto bound = HashCodeToBound(hash, false /* is_lower */);
+      auto bound = dockv::PartitionSchema::HashCodeToDocKeyBound(
+          table_->schema(), hash, false /* is_lower */);
       // Hash code bound is not a document key, inclusivity does not matter
       SetUpperBound(std::move(bound), false /* is_inclusive */);
     }
@@ -195,7 +180,8 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
   // Skip if the bound is a hash code bound already.
   if (req.has_lower_bound() &&
       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.lower_bound().key())) {
-    auto hash_code = DecodeEncodedHashPartitionKeyBound(req.lower_bound().key());
+    auto hash_code =
+        dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(req.lower_bound().key());
     if (!hash_code) {
       return STATUS_FORMAT(
           RuntimeError, kErrorMessage, "lower", req.lower_bound().key().ToDebugString());
@@ -208,7 +194,8 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
   // Skip if the bound is a hash code bound already.
   if (req.has_upper_bound() &&
       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.upper_bound().key())) {
-    auto hash_code = DecodeEncodedHashPartitionKeyBound(req.upper_bound().key());
+    auto hash_code =
+        dockv::PartitionSchema::DecodeEncodedHashPartitionKeyBound(req.upper_bound().key());
     if (!hash_code || *hash_code == 0) {
       return STATUS_FORMAT(
           RuntimeError, kErrorMessage, "upper", req.upper_bound().key().ToDebugString());
@@ -219,15 +206,6 @@ Status PgReadRange::ConvertBoundsToHashCode(LWPgsqlReadRequestPB& req) {
     req.mutable_upper_bound()->set_is_inclusive(true);
   }
   return Status::OK();
-}
-
-dockv::KeyBytes PgReadRange::HashCodeToBound(uint16_t hash_code, bool is_lower) const {
-  static const dockv::KeyEntryValues kLowest{dockv::KeyEntryValue{dockv::KeyEntryType::kLowest}};
-  static const dockv::KeyEntryValues kHighest{dockv::KeyEntryValue{dockv::KeyEntryType::kHighest}};
-
-  const auto& hash_range_components = is_lower ? kLowest : kHighest;
-  return dockv::DocKey(
-      table_->schema(), hash_code, hash_range_components, hash_range_components).Encode();
 }
 
 void PgReadRange::ComputeEmpty() {
