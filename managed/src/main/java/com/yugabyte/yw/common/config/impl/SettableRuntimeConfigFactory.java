@@ -30,7 +30,6 @@ import io.ebean.DB;
 import io.ebean.Model;
 import io.ebean.Transaction;
 import io.ebean.TransactionCallbackAdapter;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -183,6 +182,22 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     return appConfig;
   }
 
+  @Override
+  public void invalidateScope(UUID scopeUuid) {
+    invalidateNowAndAfterTransaction(
+        () -> {
+          synchronized (this) {
+            removeCache(scopeUuid);
+            overriddenScopes.remove(scopeUuid);
+          }
+        });
+  }
+
+  @Override
+  public void invalidateAllScopes() {
+    invalidateNowAndAfterTransaction(this::clearCache);
+  }
+
   private Config globalConfig() {
     Config config =
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
@@ -241,13 +256,17 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
         .collect(Collectors.joining(", "));
   }
 
-  @VisibleForTesting
   public Map<UUID, Config> getCachedConfigs() {
     return cachedConfigs != null ? cachedConfigs.asMap() : Map.of();
   }
 
-  @VisibleForTesting
+  public Set<UUID> getOverriddenScopes() {
+    return Set.copyOf(overriddenScopes);
+  }
+
   public void clearCache() {
+    LOG.debug("Clearing runtime config cache");
+
     synchronized (overriddenScopes) {
       invalidations.incrementAndGet();
       if (cachedConfigs != null) {
@@ -258,6 +277,8 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   }
 
   void removeCache(UUID scope) {
+    LOG.debug("Clearing runtime config cache for scope {}", scope);
+
     invalidations.incrementAndGet();
     if (cachedConfigs != null) {
       cachedConfigs.invalidate(scope);
@@ -268,19 +289,6 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     if (cachedConfigs == null) {
       // Cache is disabled. Load directly from DB.
       return supplier.get();
-    }
-    Set<UUID> snapshotScopes = new HashSet<>(overriddenScopes);
-    if (snapshotScopes.size() > 0 && !ScopedRuntimeConfig.containsAll(snapshotScopes)) {
-      synchronized (overriddenScopes) {
-        if (overriddenScopes.equals(snapshotScopes)) {
-          // Some overridden scopes are deleted. E.g universe or provider is deleted.
-          // OverridenScopes is stale too. Clear if it has not been cleared (compare and clear).
-          LOG.debug(
-              "Clearing entire runtime config cache as there are deleted scopes {}",
-              snapshotScopes);
-          clearCache();
-        }
-      }
     }
 
     long invalidationsBefore = invalidations.get();
