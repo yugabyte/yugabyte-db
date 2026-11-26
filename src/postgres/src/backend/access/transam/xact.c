@@ -2665,6 +2665,8 @@ CommitTransaction(void)
 	{
 		YbAtEOXact_ReplicationOrigin();
 		YbAtEOXact_UpgradeNextOid();
+		ysql_conn_mgr_sticky_object_count += s->ybUncommittedStickyObjectCount;
+		s->ybUncommittedStickyObjectCount = 0;
 	}
 	pgstat_report_xact_timestamp(0);
 
