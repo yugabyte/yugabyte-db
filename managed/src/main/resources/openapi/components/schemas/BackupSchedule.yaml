@@ -1,0 +1,17 @@
+title: BackupSchedule
+description: |
+  BackupSchedule
+
+  A schedule that backs up a universe at a fixed interval or on a cron expression, optionally with
+  incremental backups in between. Part of BackupScheduleResp and BackupSchedulePagedResp.
+type: object
+required:
+  - spec
+  - info
+properties:
+  spec:
+    $ref: "./BackupScheduleSpec.yaml"
+  info:
+    $ref: "./BackupScheduleInfo.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

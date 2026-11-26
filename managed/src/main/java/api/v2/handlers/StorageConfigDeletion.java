@@ -20,8 +20,8 @@ import play.libs.Json;
  * the task, under the config's row lock; the lock keeps out edits, but not a backup that a request
  * accepted just before the task ran and whose row its task hasn't inserted yet (that backup then
  * fails, as with the v1 delete). The backup lookups are customer-scoped and use the
- * storage_config_uuid index; DR configs are looked up by the config's UUID, and schedules among the
- * customer's backup schedules.
+ * storage_config_uuid index; DR configs are looked up by the config's UUID, and schedules by the
+ * customer and the config UUID in their task params.
  */
 public final class StorageConfigDeletion {
 

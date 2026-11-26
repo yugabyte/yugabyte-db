@@ -1,0 +1,20 @@
+title: BackupScheduleDuration
+description: |
+  BackupScheduleDuration
+
+  A length of time, as an amount of a time unit. A month is 30 days and a year 365 days. Part of
+  BackupScheduleSpec and BackupScheduleIntervalFrequency.
+type: object
+required:
+  - amount
+  - unit
+properties:
+  amount:
+    description: Number of units
+    type: integer
+    format: int64
+    minimum: 1
+  unit:
+    $ref: "./TimeUnitType.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -1,0 +1,7 @@
+description: The backup schedule
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/BackupSchedule.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

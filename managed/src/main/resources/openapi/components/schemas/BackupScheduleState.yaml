@@ -1,0 +1,25 @@
+title: BackupScheduleState
+description: |
+  BackupScheduleState
+
+  State of a backup schedule. CREATING, EDITING and DELETING while a task creates, edits or
+  deletes it. ACTIVE schedules take backups; PAUSED ones don't until resumed. ERROR means a task
+  that created, edited or deleted the schedule failed. Part of BackupScheduleInfo.
+type: string
+readOnly: true
+enum:
+  - CREATING
+  - ACTIVE
+  - PAUSED
+  - EDITING
+  - DELETING
+  - ERROR
+x-enum-varnames:
+  - BackupScheduleCreating
+  - BackupScheduleActive
+  - BackupSchedulePaused
+  - BackupScheduleEditing
+  - BackupScheduleDeleting
+  - BackupScheduleError
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

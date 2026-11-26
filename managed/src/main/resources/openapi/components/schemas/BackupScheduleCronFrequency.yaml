@@ -1,0 +1,23 @@
+title: BackupScheduleCronFrequency
+description: |
+  BackupScheduleCronFrequency
+
+  Full backups at the times a cron expression gives. Part of BackupScheduleFrequency.
+type: object
+required:
+  - frequency_type
+  - cron_expression
+properties:
+  frequency_type:
+    $ref: "./BackupScheduleFrequencyType.yaml"
+  cron_expression:
+    description: 'UNIX cron expression with five fields: minute, hour, day of month, month and day of week'
+    type: string
+    example: 0 2 * * *
+    minLength: 1
+  use_local_timezone:
+    description: Whether the expression is in YBA's local timezone (true) or UTC (false)
+    type: boolean
+    default: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
@@ -62,6 +63,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -734,28 +736,34 @@ public class Schedule extends Model {
   private static ExpressionList<Schedule> backupSchedulesUsingStorageConfig() {
     return find.query()
         .where()
-        .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup, TaskType.CreateBackup)
+        .in("task_type", BackupUtil.BACKUP_TASK_TYPES)
         .notIn("status", State.Deleting, State.Error);
   }
 
-  /** The customer's backup schedules that keep their storage config from being deleted. */
-  public static List<Schedule> findBackupSchedulesUsingStorageConfig(UUID customerUUID) {
-    return backupSchedulesUsingStorageConfig().eq("customer_uuid", customerUUID).findList();
+  /** A backup schedule's storage config UUID, which is only in its task params. */
+  public static final String STORAGE_CONFIG_UUID_PARAM = "task_params->>'storageConfigUUID'";
+
+  /** The customer's backup schedules that keep one of these storage configs from being deleted. */
+  public static List<Schedule> findBackupSchedulesUsingStorageConfigs(
+      UUID customerUUID, Collection<UUID> storageConfigUUIDs) {
+    if (storageConfigUUIDs.isEmpty()) {
+      return new ArrayList<>();
+    }
+    return backupSchedulesUsingStorageConfig()
+        .eq("customer_uuid", customerUUID)
+        .in(STORAGE_CONFIG_UUID_PARAM, toStrings(storageConfigUUIDs))
+        .findList();
   }
 
   public static List<Schedule> findAllScheduleWithCustomerConfig(UUID customerConfigUUID) {
-    List<Schedule> scheduleList = backupSchedulesUsingStorageConfig().findList();
-    // This should be safe to do since storageConfigUUID is a required constraint.
-    scheduleList =
-        scheduleList.stream()
-            .filter(
-                s ->
-                    s.getTaskParams()
-                        .path("storageConfigUUID")
-                        .asText()
-                        .equals(customerConfigUUID.toString()))
-            .collect(Collectors.toList());
-    return scheduleList;
+    return backupSchedulesUsingStorageConfig()
+        .eq(STORAGE_CONFIG_UUID_PARAM, customerConfigUUID.toString())
+        .findList();
+  }
+
+  /** UUIDs as the strings the JSON task params hold. */
+  public static List<String> toStrings(Collection<UUID> uuids) {
+    return uuids.stream().map(UUID::toString).collect(Collectors.toList());
   }
 
   public static SchedulePagedApiResponse pagedList(SchedulePagedQuery pagedQuery) {

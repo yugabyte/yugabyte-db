@@ -1,0 +1,16 @@
+title: BackupScheduleFrequency
+description: |
+  BackupScheduleFrequency
+
+  When a backup schedule takes its full backups. frequency_type selects the variant. Part of
+  BackupScheduleSpec.
+oneOf:
+  - $ref: "./BackupScheduleIntervalFrequency.yaml"
+  - $ref: "./BackupScheduleCronFrequency.yaml"
+discriminator:
+  propertyName: frequency_type
+  mapping:
+    INTERVAL: ./BackupScheduleIntervalFrequency.yaml
+    CRON: ./BackupScheduleCronFrequency.yaml
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

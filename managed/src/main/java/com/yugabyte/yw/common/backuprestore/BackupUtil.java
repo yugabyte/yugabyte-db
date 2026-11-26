@@ -124,6 +124,8 @@ public class BackupUtil {
       "(/?)" + UNIVERSE_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
       Pattern.compile(YBC_BACKUP_LOCATION_IDENTIFIER_STRING);
+
+  /** Task types of backups and backup schedules; the last two are older ones still found. */
   public static final List<TaskType> BACKUP_TASK_TYPES =
       ImmutableList.of(TaskType.CreateBackup, TaskType.BackupUniverse, TaskType.MultiTableBackup);
 

@@ -1,0 +1,31 @@
+title: BackupScheduleApiFilter
+description: |
+  BackupScheduleApiFilter
+
+  Filters of the paged list of backup schedules. A schedule is listed when it matches every filter
+  given. Part of BackupSchedulePagedQuerySpec.
+type: object
+properties:
+  name:
+    description: Only schedules with this name
+    type: string
+    minLength: 1
+  universe_uuids:
+    description: Only schedules of these universes
+    type: array
+    items:
+      type: string
+      format: uuid
+  storage_config_uuids:
+    description: Only schedules that store their backups with these storage configurations
+    type: array
+    items:
+      type: string
+      format: uuid
+  states:
+    description: Only schedules in these states
+    type: array
+    items:
+      $ref: "./BackupScheduleState.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

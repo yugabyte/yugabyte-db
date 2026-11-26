@@ -24,6 +24,8 @@ servers:
 tags:
 - name: Authentication
   description: Authentication operations on YBA
+- name: Backup Schedule
+  description: Scheduled universe backups
 - name: Backup and Restore
   description: Operations related to universe backup and restore
 - name: Certificate
@@ -294,6 +296,115 @@ paths:
           description: Server error
       security:
       - apiKeyAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/backup-schedules/page:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    post:
+      operationId: pageListBackupSchedules
+      summary: List backup schedules (paged)
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns the customer''s backup
+        schedules, in every state, of all its universes. Rows are
+
+        ordered by name (case-insensitive), then UUID.
+
+        '
+      tags:
+      - Backup Schedule
+      requestBody:
+        $ref: '#/components/requestBodies/BackupSchedulePagedReq'
+      responses:
+        '200':
+          $ref: '#/components/responses/BackupSchedulePagedResp'
+        '400':
+          description: Invalid input, such as a limit outside 1-500
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no read permission on
+            the customer
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+      x-yba-api-audit:
+        noAudit: true
+      x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+  /customers/{cUUID}/backup-schedules/{bsUUID}:
+    parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bsUUID
+      in: path
+      description: Backup schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    get:
+      operationId: getBackupSchedule
+      summary: Get a backup schedule
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Returns a backup schedule: what
+        it backs up, where, how often and for how long, with its
+
+        state and when its next backups are due.
+
+        '
+      tags:
+      - Backup Schedule
+      responses:
+        '200':
+          $ref: '#/components/responses/BackupScheduleResp'
+        '401':
+          description: The request has no valid API or session token, cUUID is not
+            the caller's customer, or the caller's role has no read permission on
+            the customer
+        '404':
+          description: The customer has no backup schedule with this UUID
+        '500':
+          description: Server error
+      security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
       x-yba-api-audit:
         noAudit: true
       x-yba-api-authz:
@@ -5860,6 +5971,464 @@ components:
           items:
             $ref: '#/components/schemas/Backup'
           description: Backups in the incremental chain for this page.
+    BackupScheduleState:
+      title: BackupScheduleState
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleState
+
+
+        State of a backup schedule. CREATING, EDITING and DELETING while a task creates,
+        edits or
+
+        deletes it. ACTIVE schedules take backups; PAUSED ones don''t until resumed.
+        ERROR means a task
+
+        that created, edited or deleted the schedule failed. Part of BackupScheduleInfo.
+
+        '
+      type: string
+      readOnly: true
+      enum:
+      - CREATING
+      - ACTIVE
+      - PAUSED
+      - EDITING
+      - DELETING
+      - ERROR
+      x-enum-varnames:
+      - BackupScheduleCreating
+      - BackupScheduleActive
+      - BackupSchedulePaused
+      - BackupScheduleEditing
+      - BackupScheduleDeleting
+      - BackupScheduleError
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleApiFilter:
+      title: BackupScheduleApiFilter
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleApiFilter
+
+
+        Filters of the paged list of backup schedules. A schedule is listed when it
+        matches every filter
+
+        given. Part of BackupSchedulePagedQuerySpec.
+
+        '
+      type: object
+      properties:
+        name:
+          description: Only schedules with this name
+          type: string
+          minLength: 1
+        universe_uuids:
+          description: Only schedules of these universes
+          type: array
+          items:
+            type: string
+            format: uuid
+        storage_config_uuids:
+          description: Only schedules that store their backups with these storage
+            configurations
+          type: array
+          items:
+            type: string
+            format: uuid
+        states:
+          description: Only schedules in these states
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupScheduleState'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupSchedulePagedQuerySpec:
+      title: BackupSchedulePagedQuerySpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupSchedulePagedQuerySpec
+
+
+        Paged list of the customer''s backup schedules. Rows are ordered by name (case-insensitive),
+        then
+
+        UUID. The order is ascending by default. Part of BackupSchedulePagedReq.
+
+        '
+      type: object
+      allOf:
+      - $ref: '#/components/schemas/PaginationSpec'
+      properties:
+        filter:
+          $ref: '#/components/schemas/BackupScheduleApiFilter'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleTableType:
+      title: BackupScheduleTableType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleTableType
+
+
+        API whose tables a backup schedule backs up: YSQL or YCQL. REDIS appears only
+        on schedules an
+
+        older YBA created for YEDIS tables; a new schedule can''t use it. Part of
+        BackupScheduleSpec.
+
+        '
+      type: string
+      enum:
+      - YSQL
+      - YCQL
+      - REDIS
+      x-enum-varnames:
+      - BackupScheduleTableTypeYSQL
+      - BackupScheduleTableTypeYCQL
+      - BackupScheduleTableTypeREDIS
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleKeyspace:
+      title: BackupScheduleKeyspace
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleKeyspace
+
+
+        A keyspace (YCQL) or database (YSQL) a backup schedule backs up. Part of BackupScheduleSpec.
+
+        '
+      type: object
+      properties:
+        keyspace:
+          description: Name of the keyspace or database. Absent only in some older
+            YCQL schedules that list tables without their keyspace; table_uuids then
+            holds those tables.
+          type: string
+          minLength: 1
+        table_uuids:
+          description: 'UUIDs of the tables to back up (YCQL). Empty or omitted: every
+            table of the keyspace.'
+          type: array
+          items:
+            type: string
+            format: uuid
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleFrequencyType:
+      title: BackupScheduleFrequencyType
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleFrequencyType
+
+
+        How a backup schedule''s full backups are timed: at a fixed interval, or on
+        a cron expression.
+
+        Part of BackupScheduleIntervalFrequency and BackupScheduleCronFrequency.
+
+        '
+      type: string
+      enum:
+      - INTERVAL
+      - CRON
+      x-enum-varnames:
+      - BackupScheduleFrequencyInterval
+      - BackupScheduleFrequencyCron
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    TimeUnitType:
+      title: TimeUnitType
+      description: 'TimeUnitType
+
+
+        Time units that correspond to TimeUnit.java enum. Used for variable frequencies.
+
+        '
+      type: string
+      enum:
+      - NANOSECONDS
+      - MICROSECONDS
+      - MILLISECONDS
+      - SECONDS
+      - MINUTES
+      - HOURS
+      - DAYS
+      - MONTHS
+      - YEARS
+    BackupScheduleDuration:
+      title: BackupScheduleDuration
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleDuration
+
+
+        A length of time, as an amount of a time unit. A month is 30 days and a year
+        365 days. Part of
+
+        BackupScheduleSpec and BackupScheduleIntervalFrequency.
+
+        '
+      type: object
+      required:
+      - amount
+      - unit
+      properties:
+        amount:
+          description: Number of units
+          type: integer
+          format: int64
+          minimum: 1
+        unit:
+          $ref: '#/components/schemas/TimeUnitType'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleIntervalFrequency:
+      title: BackupScheduleIntervalFrequency
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleIntervalFrequency
+
+
+        Full backups at a fixed interval. Part of BackupScheduleFrequency.
+
+        '
+      type: object
+      required:
+      - frequency_type
+      - interval
+      properties:
+        frequency_type:
+          $ref: '#/components/schemas/BackupScheduleFrequencyType'
+        interval:
+          $ref: '#/components/schemas/BackupScheduleDuration'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleCronFrequency:
+      title: BackupScheduleCronFrequency
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleCronFrequency
+
+
+        Full backups at the times a cron expression gives. Part of BackupScheduleFrequency.
+
+        '
+      type: object
+      required:
+      - frequency_type
+      - cron_expression
+      properties:
+        frequency_type:
+          $ref: '#/components/schemas/BackupScheduleFrequencyType'
+        cron_expression:
+          description: 'UNIX cron expression with five fields: minute, hour, day of
+            month, month and day of week'
+          type: string
+          example: 0 2 * * *
+          minLength: 1
+        use_local_timezone:
+          description: Whether the expression is in YBA's local timezone (true) or
+            UTC (false)
+          type: boolean
+          default: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleFrequency:
+      title: BackupScheduleFrequency
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleFrequency
+
+
+        When a backup schedule takes its full backups. frequency_type selects the
+        variant. Part of
+
+        BackupScheduleSpec.
+
+        '
+      oneOf:
+      - $ref: '#/components/schemas/BackupScheduleIntervalFrequency'
+      - $ref: '#/components/schemas/BackupScheduleCronFrequency'
+      discriminator:
+        propertyName: frequency_type
+        mapping:
+          INTERVAL: '#/components/schemas/BackupScheduleIntervalFrequency'
+          CRON: '#/components/schemas/BackupScheduleCronFrequency'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleSpec:
+      title: BackupScheduleSpec
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleSpec
+
+
+        The client-settable part of a backup schedule: what it backs up, where, how
+        often and for how
+
+        long the backups are kept. incremental_interval is the interval between incremental
+        backups,
+
+        taken between the full backups; without it the schedule takes only full backups.
+        retention is how
+
+        long YBA keeps each backup before it deletes it; without it backups are kept
+        until deleted. Part
+
+        of BackupSchedule.
+
+        '
+      type: object
+      required:
+      - name
+      - universe_uuid
+      - storage_config_uuid
+      - backup_type
+      - frequency
+      properties:
+        name:
+          description: Name of the schedule, unique among the universe's schedules
+          type: string
+          maxLength: 255
+          minLength: 1
+        universe_uuid:
+          description: UUID of the universe the schedule backs up
+          type: string
+          format: uuid
+        storage_config_uuid:
+          description: UUID of the storage configuration the backups are stored with
+          type: string
+          format: uuid
+        backup_type:
+          $ref: '#/components/schemas/BackupScheduleTableType'
+        keyspaces:
+          description: 'Keyspaces (YCQL) or databases (YSQL) to back up, optionally
+            limited to some tables. Empty or omitted: every keyspace or database of
+            backup_type.'
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupScheduleKeyspace'
+        frequency:
+          $ref: '#/components/schemas/BackupScheduleFrequency'
+        incremental_interval:
+          $ref: '#/components/schemas/BackupScheduleDuration'
+        retention:
+          $ref: '#/components/schemas/BackupScheduleDuration'
+        min_backups_to_retain:
+          description: Number of the schedule's most recent backups that are kept
+            even after their retention expires
+          type: integer
+          format: int32
+          minimum: 0
+        kms_config_uuid:
+          description: UUID of the KMS configuration that encrypts the backups, for
+            a universe with encryption at rest
+          type: string
+          format: uuid
+        sse:
+          description: Whether S3 server-side encryption is requested for the backup
+            files
+          type: boolean
+        table_by_table_backup:
+          description: Whether tables are backed up one at a time instead of together
+            (YCQL)
+          type: boolean
+        point_in_time_restore:
+          description: Whether the backups can be restored to a point in time within
+            the interval between backups
+          type: boolean
+        use_tablespaces:
+          description: Whether the backups include tablespace information (YSQL)
+          type: boolean
+        use_roles:
+          description: Whether the backups include the global YSQL roles (YSQL)
+          type: boolean
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleInfo:
+      title: BackupScheduleInfo
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupScheduleInfo
+
+
+        What YBA keeps about a backup schedule. Part of BackupSchedule.
+
+        '
+      type: object
+      readOnly: true
+      required:
+      - uuid
+      - state
+      properties:
+        uuid:
+          description: UUID of the schedule
+          type: string
+          format: uuid
+          readOnly: true
+        state:
+          $ref: '#/components/schemas/BackupScheduleState'
+        backup_running:
+          description: Whether the backup the schedule last started is still running
+          type: boolean
+          readOnly: true
+        next_backup_time:
+          description: When the next full backup is due. Absent unless the schedule
+            is ACTIVE.
+          type: string
+          format: date-time
+          readOnly: true
+        next_incremental_backup_time:
+          description: When the next incremental backup is due. Absent unless the
+            schedule is ACTIVE and takes incremental backups.
+          type: string
+          format: date-time
+          readOnly: true
+        last_backup_time:
+          description: When the schedule last started a backup, full or incremental
+          type: string
+          format: date-time
+          readOnly: true
+        is_kubernetes_operator_controlled:
+          description: Whether the YBA Kubernetes operator manages the schedule; edit
+            it through its custom resource
+          type: boolean
+          readOnly: true
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupSchedule:
+      title: BackupSchedule
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>BackupSchedule
+
+
+        A schedule that backs up a universe at a fixed interval or on a cron expression,
+        optionally with
+
+        incremental backups in between. Part of BackupScheduleResp and BackupSchedulePagedResp.
+
+        '
+      type: object
+      required:
+      - spec
+      - info
+      properties:
+        spec:
+          $ref: '#/components/schemas/BackupScheduleSpec'
+        info:
+          $ref: '#/components/schemas/BackupScheduleInfo'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupSchedulePagedResp:
+      title: BackupSchedulePagedResp
+      description: '<b style="color:#FFA500">WARNING: This is a preview API in YBA
+        version 2026.2.0.0 that could change.</b></p>Paged list response for backup
+        schedules.'
+      type: object
+      x-data-container: PaginationResp
+      x-data-item: BackupSchedule
+      x-data-entities-description: Backup schedules for this page.
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+      allOf:
+      - $ref: '#/components/schemas/PaginationResp'
+      properties:
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupSchedule'
+          description: Backup schedules for this page.
     GflagMetadata:
       title: GflagMetadata
       description: Metadata for Gflags of YB Controller.
@@ -5994,25 +6563,6 @@ components:
           format: date-time
           example: '2022-12-12T13:07:18Z'
           readOnly: true
-    TimeUnitType:
-      title: TimeUnitType
-      description: 'TimeUnitType
-
-
-        Time units that correspond to TimeUnit.java enum. Used for variable frequencies.
-
-        '
-      type: string
-      enum:
-      - NANOSECONDS
-      - MICROSECONDS
-      - MILLISECONDS
-      - SECONDS
-      - MINUTES
-      - HOURS
-      - DAYS
-      - MONTHS
-      - YEARS
     ContinuousBackupSpec:
       title: ContinuousBackupSpec
       description: 'ContinuousBackupSpec
@@ -14470,6 +15020,22 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedResp'
+    BackupSchedulePagedResp:
+      description: A page of backup schedules
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BackupSchedulePagedResp'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
+    BackupScheduleResp:
+      description: The backup schedule
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BackupSchedule'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     YbcGflagsResp:
       description: OK
       content:
@@ -14758,6 +15324,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/IncrementalBackupPagedQuerySpec'
+    BackupSchedulePagedReq:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BackupSchedulePagedQuerySpec'
+      x-yba-api-since: 2026.2.0.0
+      x-yba-api-visibility: preview
     CertificateCreateReq:
       required: true
       content:

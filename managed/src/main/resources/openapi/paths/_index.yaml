@@ -215,6 +215,103 @@
         checkOnlyPermission: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/backup-schedules/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListBackupSchedules
+    summary: List backup schedules (paged)
+    description: |
+      Returns the customer's backup schedules, in every state, of all its universes. Rows are
+      ordered by name (case-insensitive), then UUID.
+    tags:
+      - Backup Schedule
+    requestBody:
+      $ref: "../components/requestBodies/BackupSchedulePagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/BackupSchedulePagedResp.yaml"
+      '400':
+        description: 'Invalid input, such as a limit outside 1-500'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/backup-schedules/{bsUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bsUUID
+      in: path
+      description: Backup schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getBackupSchedule
+    summary: Get a backup schedule
+    description: |
+      Returns a backup schedule: what it backs up, where, how often and for how long, with its
+      state and when its next backups are due.
+    tags:
+      - Backup Schedule
+    responses:
+      '200':
+        $ref: "../components/responses/BackupScheduleResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no read permission on the customer'
+      '404':
+        description: The customer has no backup schedule with this UUID
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 /ybc/gflags-metadata:
   get:
     operationId: listYbcGflagsMetadata

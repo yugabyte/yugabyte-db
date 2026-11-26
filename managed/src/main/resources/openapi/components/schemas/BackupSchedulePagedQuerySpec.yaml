@@ -1,0 +1,14 @@
+title: BackupSchedulePagedQuerySpec
+description: |
+  BackupSchedulePagedQuerySpec
+
+  Paged list of the customer's backup schedules. Rows are ordered by name (case-insensitive), then
+  UUID. The order is ascending by default. Part of BackupSchedulePagedReq.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./BackupScheduleApiFilter.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
