@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_GATEWAY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -30,6 +31,9 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -126,10 +130,12 @@ public class PAProxyController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+        // The route's segment is singular: ".../api/universe/:uUUID/*path".
+        resourceLocation = @Resource(path = "universe", sourceType = SourceType.ENDPOINT))
   })
   public CompletionStage<Result> proxyUniverse(
       UUID customerUUID, UUID paUUID, UUID universeUUID, String path, Http.Request request) {
+    checkForwardedParts(universeUUID, path, request);
     // Sanity-check that the referenced universe belongs to this customer before forwarding.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
@@ -146,7 +152,66 @@ public class PAProxyController extends AuthenticatedController {
   })
   public CompletionStage<Result> proxyGeneric(
       UUID customerUUID, UUID paUUID, String path, Http.Request request) {
+    // Throws on a ".." segment.
+    forwardedSegments(path);
     return doProxy(customerUUID, paUUID, path, request);
+  }
+
+  // Authorization checks the universe in the route's path, but Perf Advisor also sees the
+  // forwarded *path and query string, so they must not name another universe.
+  private static void checkForwardedParts(UUID universeUUID, String path, Http.Request request) {
+    rejectOtherUniverses(universeUUID, forwardedSegments(path));
+    // Play has already decoded the query string once, as Perf Advisor will.
+    request
+        .queryString()
+        .forEach(
+            (key, values) -> {
+              for (String value : values) {
+                rejectOtherUniverses(universeUUID, segments(key + "/" + value));
+              }
+            });
+  }
+
+  private static void rejectOtherUniverses(UUID universeUUID, List<String> segments) {
+    for (int i = 0; i + 1 < segments.size(); i++) {
+      String segment = segments.get(i);
+      if (!segment.equals("universe") && !segment.equals(Util.UNIVERSES)) {
+        continue;
+      }
+      UUID named;
+      try {
+        named = UUID.fromString(segments.get(i + 1));
+      } catch (IllegalArgumentException e) {
+        continue;
+      }
+      if (!named.equals(universeUUID)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "The request names a universe other than " + universeUUID);
+      }
+    }
+  }
+
+  // The segments of a forwarded path as Perf Advisor may resolve them. Rejects "..", which would
+  // leave the route the caller was authorized for.
+  private static List<String> forwardedSegments(String path) {
+    String decoded;
+    try {
+      decoded = URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid path: " + path);
+    }
+    List<String> segments = segments(decoded);
+    if (segments.contains("..")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid path: " + path);
+    }
+    return segments;
+  }
+
+  private static List<String> segments(String decoded) {
+    return Arrays.stream(decoded.split("[/\\\\]"))
+        .map(segment -> StringUtils.substringBefore(segment, ";").trim().toLowerCase())
+        .filter(segment -> !segment.isEmpty() && !segment.equals("."))
+        .toList();
   }
 
   private CompletionStage<Result> doProxy(
