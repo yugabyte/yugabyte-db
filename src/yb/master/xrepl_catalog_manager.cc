@@ -669,8 +669,7 @@ bool IsCatalogTableEligibleForCDC(uint32_t table_oid) {
   return table_oid == kPgClassTableOid || table_oid == kPgPublicationRelOid ||
          table_oid == kPgReplicationOriginOid || table_oid == kPgPublicationOid ||
          (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl &&
-          (table_oid == kPgAttributeTableOid ||
-           table_oid == kPgPublicationRelPrpubidIndexOid));
+          std::ranges::find(kTxnDdlCatalogTableOids, table_oid) != kTxnDdlCatalogTableOids.end());
 }
 
 const char* SkipReason(PrepareSlotForTxnDdlResult result) {
@@ -699,8 +698,9 @@ Result<std::vector<TableId>> GetCatalogTableIdsPolledByLogicalReplication(
   std::vector<TableId> table_ids;
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
   if (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) {
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgAttributeTableOid));
-    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelPrpubidIndexOid));
+    for (const auto table_oid : kTxnDdlCatalogTableOids) {
+      table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
+    }
   }
   table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
   table_ids.push_back(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
@@ -1315,17 +1315,13 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     table_ids.push_back(table->id());
   }
 
-  // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
-  // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
-  // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams or notifications slots.
   if (detect_publication_changes_implicitly) {
     auto catalog_table_ids =
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
     VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class"
                       << (FLAGS_ysql_yb_enable_replication_slot_transactional_ddl
-                              ? ", pg_attribute, pg_publication_rel_prpubid_index"
+                              ? ", pg_attribute, pg_namespace, pg_publication_rel_prpubid_index"
                               : "")
                       << ", pg_publication_rel, pg_replication_origin and pg_publication to the "
                       << "stream metadata tables list.";
