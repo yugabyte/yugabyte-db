@@ -60,3 +60,16 @@ set yb_enable_planner_trace = on;
 
 explain (settings, costs off)
 select * from pg_class;
+
+
+---------------------------------------------------------------------------------
+-- reset all after a change to a GUC whose default yb_enable_cbo sets (#39154) --
+---------------------------------------------------------------------------------
+
+-- The test configuration file turns yb_explain_hide_non_deterministic_fields
+-- on, and reset all brings that value back.
+show yb_explain_hide_non_deterministic_fields;
+set yb_enable_bitmapscan = on;
+set yb_explain_hide_non_deterministic_fields = off;
+reset all;
+show yb_explain_hide_non_deterministic_fields;
