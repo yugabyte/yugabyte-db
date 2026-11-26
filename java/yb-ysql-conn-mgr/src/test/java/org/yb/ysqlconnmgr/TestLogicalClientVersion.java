@@ -237,4 +237,39 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
       assertThrows(SQLException.class, () -> statement.execute("SELECT 1"));
     }
   }
+
+  // ALTER ROLE ... NOSUPERUSER with other options must bump the version too, so that a new
+  // session of the role does not reuse a pooled backend started while the role was superuser.
+  @Test
+  public void testVersionBumpOnAlterRoleSuperuserWithOtherOptions() throws Exception {
+    try (Connection adminConn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement adminStmt = adminConn.createStatement()) {
+      adminStmt.execute("CREATE ROLE su_role SUPERUSER LOGIN");
+
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .withUser("su_role")
+              .connect();
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "on"));
+      }
+
+      long oldVersion = getLogicalClientVersion(adminStmt);
+      adminStmt.execute("ALTER ROLE su_role NOSUPERUSER CREATEDB");
+      assertEquals(oldVersion + 1, getLogicalClientVersionFromPgEndpoint());
+
+      try (Connection conn = getConnectionBuilder()
+              .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+              .withUser("su_role")
+              .connect();
+          Statement stmt = conn.createStatement()) {
+        assertTrue(verifySessionParameterValue(stmt, "is_superuser", "off"));
+        assertThrows(SQLException.class,
+            () -> stmt.execute("SET SESSION AUTHORIZATION yugabyte"));
+      }
+      adminStmt.execute("DROP ROLE su_role");
+    }
+  }
 }

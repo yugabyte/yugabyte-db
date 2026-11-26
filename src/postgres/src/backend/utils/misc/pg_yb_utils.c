@@ -4033,15 +4033,16 @@ YbShouldIncrementLogicalClientVersion(PlannedStmt *pstmt)
 		case T_AlterRoleStmt:
 			{
 				AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+				ListCell   *lc;
 
-				if (list_length(stmt->options) == 1)
+				foreach(lc, stmt->options)
 				{
-					DefElem    *def = (DefElem *) linitial(stmt->options);
+					DefElem    *def = lfirst_node(DefElem, lc);
 
 					/*
-					 * In case of ALTER ROLE <role> superuser, increment the
-					 * logical client as for the new backends, the role will have
-					 * superuser priviledges.
+					 * In case of ALTER ROLE <role> [NO]SUPERUSER, along with any
+					 * other options, increment the logical client version as for
+					 * the new backends, the role's superuser status changes.
 					 */
 					if (strcmp(def->defname, "superuser") == 0)
 						return true;
