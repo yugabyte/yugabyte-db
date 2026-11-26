@@ -684,3 +684,44 @@ UPDATE t SET id = 3 WHERE id = 1 AND g = 10;
 SELECT * FROM t ORDER BY id;
 SELECT yb_index_check('idx_v'::regclass);
 DROP TABLE t;
+
+-- GH-33617: the generated primary key depends on two columns. With one source
+-- in SET, the other must be read to compute the key. With both in SET, every
+-- source is known, so the statement is a single-row candidate and must still
+-- be refused.
+CREATE TABLE t (id INT, c1 INT, c2 INT,
+	g INT GENERATED ALWAYS AS (c1 + c2) STORED, v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, c2, v) VALUES (1, 1, 1, 10), (2, 50, 50, 20);
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 5 WHERE g = 2;
+UPDATE t SET c1 = 5 WHERE g = 2;
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = 3, c2 = 4 WHERE g = 6;
+UPDATE t SET c1 = 3, c2 = 4 WHERE g = 6;
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t SET c1 = c1 + 1 WHERE g = 7;
+UPDATE t SET c1 = 5, c2 = 15 WHERE g = 100;
+SET yb_update_num_cols_to_compare TO 50;
+-- Swapping the sources leaves the key unchanged.
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c2, c2 = c1 WHERE g = 20;
+UPDATE t SET c1 = c2, c2 = c1 WHERE g = 20;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
+
+-- GH-33617: rows found by a sequential scan or a secondary index scan rather
+-- than by primary key, with the runtime optimization disabled.
+CREATE TABLE t (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v ON t (v);
+INSERT INTO t (id, c1, v) VALUES (1, 1, 10), (2, 2, 20), (3, 3, 10);
+SET yb_update_num_cols_to_compare TO 0;
+EXPLAIN (COSTS OFF) UPDATE t SET c1 = c1 + 100;
+UPDATE t SET c1 = c1 + 100;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+EXPLAIN (COSTS OFF) /*+ IndexScan(t idx_v) */ UPDATE t SET c1 = c1 + 100 WHERE v = 10;
+/*+ IndexScan(t idx_v) */ UPDATE t SET c1 = c1 + 100 WHERE v = 10;
+SET yb_update_num_cols_to_compare TO 50;
+SELECT * FROM t ORDER BY id;
+SELECT yb_index_check('idx_v'::regclass);
+DROP TABLE t;
