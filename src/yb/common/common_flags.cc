@@ -292,7 +292,7 @@ DEFINE_RUNTIME_bool(pg_client_use_shared_memory, !yb::kIsMac,
 DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
     "Whether to use shared memory fastpath for shared object locks.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
+DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, false,
     "Takes effect only when enable_object_locking_for_table_locks is true and "
     "disable_global_object_locks is false. When true, DDLs on unrelated objects run "
     "concurrently, and object locks order DDLs on related objects. When false, the DDLs in a "
