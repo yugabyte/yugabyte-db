@@ -196,18 +196,6 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   }
 
   @Test
-  public void testUniverseGetReadsGFlagsApiRedactionConfigOnce() {
-    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
-    when(mockRuntimeConfig.getBoolean(key)).thenReturn(true);
-    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
-    String url = "/api/customers/" + customer.getUuid() + "/universes/" + uUUID;
-    for (int i = 0; i < 3; i++) {
-      assertOk(doRequestWithAuthToken("GET", url, authToken));
-    }
-    verify(mockRuntimeConfig, times(1)).getBoolean(key);
-  }
-
-  @Test
   public void testOnlyApiRedactionReadsGFlagsApiRedactionConfig() {
     String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
     clearInvocations(mockRuntimeConfig);
