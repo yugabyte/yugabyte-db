@@ -2125,8 +2125,9 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 }
 
 // Tests for #34673 that need the C++ harness: with ysql_enable_concurrent_ddl off, the database DDL
-// lock can close a deadlock cycle, and the detector aborts either transaction. The other tests of
-// the flag are in the isolation spec yb.orig.concurrent_ddl_disabled.
+// lock can close a deadlock cycle, and the detector aborts either transaction; and a DDL in another
+// database does not wait for the lock. The other tests of the flag are in the isolation spec
+// yb.orig.concurrent_ddl_disabled.
 class PgObjectLocksTestConcurrentDdlDisabled : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
@@ -2262,6 +2263,29 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIs
   if (alter_status.ok()) {
     ASSERT_OK(ddl_conn.Execute("COMMIT"));
   }
+}
+
+// With ysql_enable_concurrent_ddl off, the DDL lock is per database: while a transaction holds it
+// in one database, a DDL in another database does not wait. The isolation spec cannot cover this,
+// since isolationtester connects every session to the same database.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlInOtherDatabaseDoesNotWait) {
+  auto* ts1 = cluster_->tablet_server(0);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE DATABASE other_db"));
+  }
+
+  auto holder_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(holder_conn.Execute("BEGIN"));
+  ASSERT_OK(holder_conn.Execute("ALTER TABLE a ADD COLUMN v INT"));
+
+  // A wait on the holder would end in this timeout, since the holder commits only afterwards.
+  auto other_db_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts1, "other_db"));
+  ASSERT_OK(other_db_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+  ASSERT_OK(other_db_conn.Execute("CREATE TABLE y(k INT PRIMARY KEY)"));
+
+  ASSERT_OK(holder_conn.Execute("COMMIT"));
 }
 
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).
