@@ -6,6 +6,8 @@ import api.v2.handlers.BackupScheduleHandler;
 import api.v2.models.BackupSchedule;
 import api.v2.models.BackupSchedulePagedQuerySpec;
 import api.v2.models.BackupSchedulePagedResp;
+import api.v2.models.BackupScheduleSpec;
+import api.v2.models.YBATask;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.audit.AuditService;
@@ -24,6 +26,12 @@ public class BackupScheduleApiControllerImp extends BackupScheduleApiControllerI
       BackupScheduleHandler backupScheduleHandler) {
     super(auditService, config, gFlagsAuditHandler);
     this.backupScheduleHandler = backupScheduleHandler;
+  }
+
+  @Override
+  public YBATask createBackupSchedule(
+      Http.Request request, UUID cUUID, BackupScheduleSpec backupScheduleSpec) {
+    return backupScheduleHandler.createBackupSchedule(cUUID, backupScheduleSpec);
   }
 
   @Override

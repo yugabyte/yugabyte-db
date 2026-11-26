@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.models.Universe;
@@ -37,20 +38,8 @@ public class CreateBackupSchedule extends BackupScheduleBase {
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
     taskParams()
-        .scheduleParams
-        .validateExistingSchedule(taskParams().getCustomerUUID(), isFirstTry);
-    if (isFirstTry) {
-      Universe universe = getUniverse();
-      taskParams().scheduleParams.validateScheduleParams(backupHelper, universe);
-      boolean useStorageConfig = !backupHelper.isSkipConfigBasedPreflightValidation(universe);
-      taskParams()
-          .scheduleParams
-          .validateStorageConfigOnCreate(
-              customerConfigService,
-              backupHelper,
-              useStorageConfig /* useConfig */,
-              taskParams().getCustomerUUID());
-    }
+        .validateCreate(
+            isFirstTry, isFirstTry ? getUniverse() : null, backupHelper, customerConfigService);
   }
 
   @Override
@@ -60,6 +49,15 @@ public class CreateBackupSchedule extends BackupScheduleBase {
         taskParams().scheduleParams.keyspaceTableList,
         universe,
         taskParams().scheduleParams.backupType);
+    if (taskParams().validateStorageConfigInTask) {
+      // From YBA only: run() checks the storage from the universe for a YB-Controller backup.
+      createBackupStorageConfigValidateTask(
+              taskParams().scheduleParams.storageConfigUUID,
+              taskParams().getCustomerUUID(),
+              universe.getUniverseUUID(),
+              false /* ybcBackup */)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+    }
   }
 
   @Override
@@ -69,6 +67,7 @@ public class CreateBackupSchedule extends BackupScheduleBase {
             getUniverse(), taskParams().scheduleParams, null /* deleteScheduleUUID */),
         taskParams().scheduleParams,
         taskParams().customerUUID,
-        ybcManager.getStableYbcVersion());
+        ybcManager.getStableYbcVersion(),
+        taskParams().createdScheduleUUID);
   }
 }

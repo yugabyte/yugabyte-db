@@ -1,3 +1,65 @@
+'/customers/{cUUID}/backup-schedules':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createBackupSchedule
+    summary: Create a backup schedule
+    description: |
+      Creates a backup schedule and returns the task that sets it up (resource_uuid is the new
+      schedule's UUID). The request checks the spec, that the universe and the storage
+      configuration exist, that the configuration is ACTIVE and that the name is free among the
+      universe's schedules. It saves the schedule in state CREATING, so get and list show it at
+      once. The task checks that the configuration's storage can be used, from YBA unless
+      yb.backup.skip_config_based_preflight_validation is set for the universe, and from the
+      universe for YB-Controller backups. It upgrades YB-Controller on the universe when it is
+      older than YBA's, and for point_in_time_restore sets the history retention the backups need.
+      It then makes the schedule ACTIVE. If the task fails, the schedule is removed, so the name is
+      free for a retry; the failed task's error says why. Only YSQL and YCQL schedules can be
+      created; each keyspaces entry needs its keyspace. Retry with the same Idempotency-Key to get the task of a request whose response
+      was lost.
+    tags:
+      - Backup Schedule
+    requestBody:
+      $ref: "../components/requestBodies/BackupScheduleCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: 'Invalid input, such as an interval shorter than an hour, an invalid cron expression, an incremental interval not shorter than the full backups'' interval, a REDIS backup_type or a keyspaces entry without its keyspace'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no backup permission on the universe'
+      '404':
+        description: 'The customer has no universe with universe_uuid, or no storage configuration with storage_config_uuid'
+      '409':
+        description: 'error.code is BACKUP_SCHEDULE_NAME_CONFLICT when the universe already has a schedule with this name, with error.backup_schedule_uuid and error.backup_schedule_state naming it, and STORAGE_CONFIG_NOT_ACTIVE when the storage configuration is being validated or deleted'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: Schedule
+      auditTargetId: obj.getResourceUuid().toString()
+      auditActionType: CreateBackupSchedule
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: backup_restore
+        resourceLocation:
+          path: universe_uuid
+          sourceType: request_body
+    x-yba-api-idempotent: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/backup-schedules/page':
   parameters:
     - name: cUUID
