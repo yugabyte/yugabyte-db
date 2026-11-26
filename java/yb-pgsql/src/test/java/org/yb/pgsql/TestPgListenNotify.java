@@ -85,6 +85,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     LARGE_PAYLOAD = new String(chars);
   }
   private static final String SHORT_POLLER_RETRY_TIMEOUT_MS = "5000";
+  private static final String POLLER_RESTART_LOG = "notifications poller restarting after an error";
   // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
   private static final String RETRIED_UPDATE =
       "UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1) WHERE k = 1"
@@ -2147,9 +2148,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       listener.createStatement().execute("LISTEN ch1");
       getPollerPid(stmt);
 
-      appendToPgConfOnAllTServers(
-          "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
-      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+      appendToPgConfAndWait(
+          "yb_test_notifs_poller_error_holding_queue_lock", "true", "on", originalPgConf);
 
       stmt.execute("NOTIFY ch1, 'x'");
 
@@ -2197,17 +2197,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       listenerStmt.execute("LISTEN " + channel);
       int pollerPid = getPollerPid(listenerStmt);
 
-      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
       try (Connection joiner = getConnectionBuilder().withTServer(0).connect();
            Statement joinerStmt = joiner.createStatement()) {
-        try {
-          setVirtualWalLimit("0");
-          ProcessUtil.signalProcess(pollerPid, "TERM");
-          TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
-          joinerStmt.execute("LISTEN " + channel);
-        } finally {
-          setVirtualWalLimit("5");
-        }
+        failPollerInitAfterTerm(pollerPid, () -> joinerStmt.execute("LISTEN " + channel));
 
         try (Connection notifier = getConnectionBuilder().withTServer(0).connect();
              Statement notifierStmt = notifier.createStatement()) {
@@ -2238,14 +2230,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
       // Stay up past the timeout, then fail init once after a SIGTERM.
       Thread.sleep(timeoutMs + Timeouts.adjustTimeoutSecForBuildType(2000));
-      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
-      try {
-        setVirtualWalLimit("0");
-        ProcessUtil.signalProcess(getPollerPid(stmt), "TERM");
-        TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
-      } finally {
-        setVirtualWalLimit("5");
-      }
+      failPollerInitAfterTerm(getPollerPid(stmt), () -> {});
 
       stmt.execute("NOTIFY " + channel + ", 'b'");
       waitForNotification(listener, channel, "b");
@@ -2329,16 +2314,32 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       throws Exception {
     Map<HostAndPort, String> originalPgConf = new HashMap<>();
     try {
-      appendToPgConfOnAllTServers(
-          "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
-      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
-      LogLineCounter restarts = countLogLines("notifications poller restarting after an error");
+      appendToPgConfAndWait(
+          "yb_test_notifs_poller_error_holding_queue_lock", "true", "on", originalPgConf);
+      LogLineCounter restarts = countLogLines(POLLER_RESTART_LOG);
       long notifyMs = System.currentTimeMillis();
       stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
       TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
       return notifyMs;
     } finally {
       restorePgConfOnAllTServers(originalPgConf);
+    }
+  }
+
+  /**
+   * Terminates the poller with init failing, waits for a restart to fail, runs whileFailing, then
+   * lets init succeed again.
+   */
+  private void failPollerInitAfterTerm(int pollerPid, ThrowingRunnable whileFailing)
+      throws Exception {
+    LogLineCounter restarts = countLogLines(POLLER_RESTART_LOG);
+    try {
+      setVirtualWalLimit("0");
+      ProcessUtil.signalProcess(pollerPid, "TERM");
+      TestUtils.waitFor(() -> restarts.count() >= 1, 30_000);
+      whileFailing.run();
+    } finally {
+      setVirtualWalLimit("5");
     }
   }
 
@@ -2377,9 +2378,20 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   /** Returns the ysql_pg_conf_csv values to restore with restorePgConfOnAllTServers. */
   private Map<HostAndPort, String> setPollerRetryTimeoutMs(String value) throws Exception {
     Map<HostAndPort, String> original = new HashMap<>();
-    appendToPgConfOnAllTServers("yb_notifications_poller_retry_timeout_ms=" + value, original);
-    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+    appendToPgConfAndWait("yb_notifications_poller_retry_timeout_ms", value, value, original);
     return original;
+  }
+
+  /**
+   * Appends guc=value to ysql_pg_conf_csv on every tserver, saving the prior values in original,
+   * and waits until each postmaster shows the expected setting.
+   */
+  private void appendToPgConfAndWait(String guc, String value, String setting,
+      Map<HostAndPort, String> original) throws Exception {
+    appendToPgConfOnAllTServers(guc + "=" + value, original);
+    for (int i = 0; i < miniCluster.getTabletServers().size(); i++) {
+      waitForPostmasterSetting(i, guc, setting);
+    }
   }
 
   private void setCdcIntentRetentionMs(String value) throws Exception {

@@ -622,9 +622,8 @@ typedef struct YbNotifsPollerPendingEntry
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
 static TimestampTz ybNotifsPollerId = 0;
 
-/* See ybNotifsPollerExitOnError. */
+/* When this poller initialized, or 0 once ybNotifsPollerMarkHealthy ran. */
 static TimestampTz ybNotifsPollerUpSince = 0;
-static bool ybNotifsPollerHealthy = false;
 
 /* Set by ybNotifsPollerInit when a restart cannot help. */
 static bool ybNotifsPollerCannotRun = false;
@@ -1508,6 +1507,7 @@ Exec_ListenPreCommit(void)
 		poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 		poller_data->error_message[0] = '\0';
 		poller_data->has_runtime_error = false;
+		poller_data->retry_start_time = 0;
 		poller_data->poller_id = GetCurrentTimestamp();
 		poller_data->starter = MyBackendId;
 	}
@@ -3572,7 +3572,7 @@ ybNotifsPollerMarkHealthy(void)
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 
-	ybNotifsPollerHealthy = true;
+	ybNotifsPollerUpSince = 0;
 	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 	if (!ybIsStaleNotifsPoller())
 		poller_data->retry_start_time = 0;
@@ -3593,13 +3593,14 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 	bool		found;
 	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
 	TimestampTz now = GetCurrentTimestamp();
-	char		error[sizeof(poller_data->error_message)];
 	char		message[sizeof(poller_data->error_message)];
+	int			len;
 
 	if (edata->detail)
-		snprintf(error, sizeof(error), "%s: %s", edata->message, edata->detail);
+		len = snprintf(message, sizeof(message), "%s: %s", edata->message,
+					   edata->detail);
 	else
-		strlcpy(error, edata->message, sizeof(error));
+		len = strlcpy(message, edata->message, sizeof(message));
 
 	if (poller_data->retry_start_time == 0)
 		poller_data->retry_start_time = now;
@@ -3611,17 +3612,15 @@ ybNotifsPollerExitOnError(const ErrorData *edata)
 		LWLockRelease(NotifyQueueLock);
 		ereport(WARNING,
 				(errmsg("notifications poller restarting after an error"),
-				 errdetail("%s", error)));
+				 errdetail("%s", message)));
 		proc_exit(1);
 	}
 
-	if (ybNotifsPollerCannotRun)
-		strlcpy(message, error, sizeof(message));
-	else
-		snprintf(message, sizeof(message),
-				 "%s (restarts kept failing for "
+	if (!ybNotifsPollerCannotRun && len < sizeof(message))
+		snprintf(message + len, sizeof(message) - len,
+				 " (restarts kept failing for "
 				 "yb_notifications_poller_retry_timeout_ms = %d ms)",
-				 error, yb_notifications_poller_retry_timeout_ms);
+				 yb_notifications_poller_retry_timeout_ms);
 	strlcpy(poller_data->error_message, message,
 			sizeof(poller_data->error_message));
 	poller_data->has_runtime_error = true;
@@ -3717,11 +3716,7 @@ ybNotifsPollerInit(void)
 	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
 	if (ybIsStaleNotifsPoller())
 		ybExitStaleNotifsPoller(NULL);
-	if (poller_data->init_status != YB_NOTIFS_POLLER_INIT_SUCCESS)
-	{
-		poller_data->retry_start_time = 0;
-		poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
-	}
+	poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
 	LWLockRelease(NotifyQueueLock);
 	ybNotifsPollerUpSince = GetCurrentTimestamp();
 }
@@ -3759,7 +3754,7 @@ ybNotifsPollerLoop()
 		yb_walsender_poll_sleep_duration_empty_ms =
 			yb_notifications_poll_sleep_duration_empty_ms;
 
-		if (!ybNotifsPollerHealthy &&
+		if (ybNotifsPollerUpSince != 0 &&
 			TimestampDifferenceExceeds(ybNotifsPollerUpSince,
 									   GetCurrentTimestamp(),
 									   yb_notifications_poller_retry_timeout_ms))
@@ -3846,7 +3841,7 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 						 errmsg("test-only: notifications poller simulated crash "
 								"before CDC ack")));
 			YBCCalculatePersistAndGetRestartLSN(record->lsn);
-			if (!ybNotifsPollerHealthy)
+			if (ybNotifsPollerUpSince != 0)
 				ybNotifsPollerMarkHealthy();
 			ybNotifsPollerPendingEntries = NIL;
 			ybNotifsPollerProcessingXid = InvalidTransactionId;
