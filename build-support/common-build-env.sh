@@ -1741,8 +1741,10 @@ cmd_line_to_env_vars_for_remote_cmd() {
     # The separator used here must match the separator used in remote_cmd.sh.
     YB_ENCODED_REMOTE_CMD_LINE+=$arg$ARG_SEPARATOR
   done
-  # This variable must be accessible to remote_cmd.sh on the other side of ssh.
-  export YB_ENCODED_REMOTE_CMD_LINE
+  # Only ssh, which run_remote_cmd starts, gets this variable, and remote_cmd.sh reads it on the
+  # other side.  Exported here, a value longer than the kernel allows for one environment variable
+  # would also keep every later command in this shell from starting.
+  export -n YB_ENCODED_REMOTE_CMD_LINE
 }
 
 run_remote_cmd() {
@@ -1758,9 +1760,9 @@ run_remote_cmd() {
     "$executable"
   )
   if debugging_remote_compilation; then
-    ( set -x; ssh "${ssh_args[@]}" ) 2>&1
+    ( export YB_ENCODED_REMOTE_CMD_LINE; set -x; ssh "${ssh_args[@]}" ) 2>&1
   else
-    ssh "${ssh_args[@]}"
+    ( export YB_ENCODED_REMOTE_CMD_LINE; ssh "${ssh_args[@]}" )
   fi
 }
 

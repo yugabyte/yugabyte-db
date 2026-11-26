@@ -41,19 +41,22 @@ if [[ -z ${YB_ENCODED_REMOTE_CMD_LINE:-} ]]; then
   exit 1
 fi
 
-while [[ $YB_ENCODED_REMOTE_CMD_LINE == *$ARG_SEPARATOR ]]; do
-  args+=( "${YB_ENCODED_REMOTE_CMD_LINE%%"$ARG_SEPARATOR"*}" )
-  if [[ ${#args[@]} -gt 1000 ]]; then
-    echo "Too many args encoded in YB_ENCODED_REMOTE_CMD_LINE (${#args[@]}): ${args[*]}" >&2
-    exit 1
-  fi
-  YB_ENCODED_REMOTE_CMD_LINE=${YB_ENCODED_REMOTE_CMD_LINE#*"$ARG_SEPARATOR"}
-done
-
-if [[ -n $YB_ENCODED_REMOTE_CMD_LINE ]]; then
+if [[ $YB_ENCODED_REMOTE_CMD_LINE != *"$ARG_SEPARATOR" ]]; then
   echo "Got extra args in YB_ENCODED_REMOTE_CMD_LINE, could not unpack:" \
-       "'${YB_ENCODED_REMOTE_CMD_LINE}'" >&2
+       "'${YB_ENCODED_REMOTE_CMD_LINE##*"$ARG_SEPARATOR"}'" >&2
   exit 1
 fi
+
+# Split the arguments in one awk pass.  Removing them from the front one at a time with parameter
+# expansion copies the rest of the string each time, which takes seconds for a link command with
+# thousands of arguments.  Arguments cannot contain NUL, so NUL separates them on the way back.
+readarray -d '' args < <(
+  awk -v sep="$ARG_SEPARATOR" 'BEGIN {
+    n = split(ENVIRON["YB_ENCODED_REMOTE_CMD_LINE"], parts, sep)
+    for (i = 1; i < n; i++) {
+      printf "%s%c", parts[i], 0
+    }
+  }'
+)
 
 exec "$@" "${args[@]}"
