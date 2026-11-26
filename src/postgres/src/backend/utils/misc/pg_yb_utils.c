@@ -241,7 +241,9 @@ static uint64_t function_cache_generation = 0;
  * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
  * transaction state (use_regular_txn_block). A DDL statement sets that state,
  * and so does YBAddDdlTxnState for a catalog change made without one, such as
- * by the statistics restore functions or the pg_hint_plan hint table trigger.
+ * by the statistics restore functions (unless their catalog version
+ * increments are deferred, see YbStatsCatalogWriteBegin) or the pg_hint_plan
+ * hint table trigger.
  * The DDL transaction state is cleared before the commit RPC, so this is what
  * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
@@ -11608,6 +11610,15 @@ YbGetFederatedForeignTableBackingRelid(Oid ft_relid)
  *
  * Only per-database catalog version mode defers: the restore script
  * increments the version of its own database.
+ *
+ * Deferred writes have no DDL transaction state, so the retry guard in
+ * yb_is_retry_possible does not cover them, and a statement can be retried
+ * without a PG-side rollback.  That is safe: the update of pg_class puts the
+ * new tuple into the syscache (YbSetSysCacheTuple), but the
+ * CommandCounterIncrement() after each write removes it again through local
+ * invalidation, and the writes are buffered, so a retryable error only comes
+ * from their flush after that.  The retry then reads the old values from
+ * DocDB.  pg_statistic tuples are not put into the syscache by the update.
  */
 bool		yb_stats_restore_defer_catalog_version_increment = false;
 

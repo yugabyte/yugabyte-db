@@ -850,7 +850,6 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 
 	if (HeapTupleIsValid(oldtup))
 	{
-		/* YB: CatalogTupleDelete() takes the tuple, not its TID */
 		CatalogTupleDelete(sd, oldtup);
 		ReleaseSysCache(oldtup);
 		result = true;
