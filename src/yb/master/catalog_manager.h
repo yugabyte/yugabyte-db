@@ -1783,17 +1783,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // What WillCDCSDKStreamAcceptTable needs from a stream. A caller that tests many tables against
   // one stream builds it once with GetCDCSDKStreamTableInfo instead of recomputing it per table.
   struct CDCSDKStreamTableInfo {
-    // The qualified and unqualified tables of the stream.
     std::unordered_set<TableId> table_ids;
-    // The PG table oids of the stream's tables, set only for a stream that takes just rewrites of
-    // them (see CDCSDKStreamTakesNewTable).
     std::optional<std::unordered_set<uint32_t>> pg_table_oids;
   };
 
-  // Returns true if the CDC bg thread would add 'table' to 'stream_info': the stream is live and
-  // accepts new tables, the table is eligible for it, and it is not yet in its table lists.
-  // 'stream_table_info', if given, must be GetCDCSDKStreamTableInfo of 'stream_info'; when null it
-  // is computed here.
+  // Returns true if the CDC bg thread would add 'table' to 'stream_info'. 'stream_table_info', if
+  // given, is GetCDCSDKStreamTableInfo of 'stream_info'; when null it is computed here.
   bool WillCDCSDKStreamAcceptTable(
       const CDCStreamInfoPtr& stream_info, const TableInfoPtr& table,
       const CDCSDKStreamTableInfo* stream_table_info = nullptr) const
